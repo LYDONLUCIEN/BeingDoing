@@ -1,0 +1,72 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# 数据文件
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# 日志
+*.log
+logs/
+
+# 测试
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# 临时文件
+*.tmp
+*.temp
+*.bak
+*.swp
+
+# 文档生成
+docs/_build/
+site/
+
+# 用户原始文档（保留在根目录）
+# note.md
+# question.md
+# flowchart.md
+# note_organized.md
+# *.csv

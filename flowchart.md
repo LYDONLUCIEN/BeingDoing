@@ -9,6 +9,20 @@
 - **长处（擅长的事）** - 对应页码：P102
 - **喜欢的领域（喜欢的事）** - 对应页码：P124
 
+## 📝 渲染说明
+
+本文件使用 **Mermaid** 流程图格式，支持以下 Markdown 渲染器：
+- ✅ GitHub/GitLab（原生支持）
+- ✅ VS Code（需要 Mermaid 扩展）
+- ✅ Typora（原生支持）
+- ✅ Obsidian（原生支持）
+- ✅ 其他支持 Mermaid 的 Markdown 编辑器
+
+如果您的编辑器不支持 Mermaid，可以：
+1. 安装 Mermaid 扩展插件
+2. 使用在线工具查看：https://mermaid.live/
+3. 参考下方的文本描述版本
+
 ---
 
 ## 完整流程图（Mermaid格式）
@@ -19,7 +33,6 @@ flowchart TD
     
     Start --> Q1{是否明确工作目的?}
     
-    %% 工作目的不明确的分支
     Q1 -->|否| Q2{是否明确自己为什么而活?}
     Q2 -->|否| FindValues[寻找自己的价值观吧!<br/>P68]
     FindValues --> AnswerValues[回答问题清单中的30个问题]
@@ -29,10 +42,8 @@ flowchart TD
     
     Q2 -->|是| ClarifyPurpose
     
-    %% 工作目的明确的分支
     Q1 -->|是| Q3{是否有能取得成果的长处?}
     
-    %% 长处探索分支
     Q3 -->|否| FindStrengths[寻找自己的长处吧!<br/>P102]
     FindStrengths --> AnswerStrengths[回答问题清单中的30个问题]
     AnswerStrengths --> CheckStrengths{找到长处?}
@@ -41,7 +52,6 @@ flowchart TD
     
     Q3 -->|是| Q4
     
-    %% 兴趣探索分支
     Q4 -->|否| FindInterests[寻找自己喜欢的领域吧!<br/>P124]
     FindInterests --> AnswerInterests[回答问题清单中的30个问题]
     AnswerInterests --> CheckInterests{找到喜欢的领域?}
@@ -50,22 +60,20 @@ flowchart TD
     
     Q4 -->|是| Combine
     
-    %% 组合喜欢和擅长的事
     Combine[通过组合喜欢和擅长的事<br/>假设一个想做的事<br/>P136]
     Combine --> CheckCombine{组合成功?}
-    CheckCombine -->|无法很好地组合出来| ReEvaluate{重新评估}
+    CheckCombine -->|无法很好地组合出来| ReEvaluate[重新评估]
     ReEvaluate --> FindInterests
     ReEvaluate --> FindStrengths
     
     CheckCombine -->|是| Refine
     
-    %% 通过工作目的提炼
-    ClarifyPurpose --> AnswerStar[回答问题清单中带⭐的问题]
-    AnswerStar --> Refine[通过"工作目的"提炼出"想做的事"<br/>P141]
+    ClarifyPurpose --> AnswerStar[回答问题清单中带星号的问题]
+    AnswerStar --> Refine[通过工作目的提炼出想做的事<br/>P141]
     
     Refine --> CheckRefine{提炼成功?}
-    CheckRefine -->|否| Q5{喜欢的事是"领域"<br/>长处是"行动"吗?}
-    Q5 -->|明白了| Insight[喜欢的事终究只是为了实现<br/>"工作目的"的手段<br/>确定能够实现工作目的的领域<br/>边工作边培养吧!]
+    CheckRefine -->|否| Q5{喜欢的事是领域<br/>长处是行动吗?}
+    Q5 -->|明白了| Insight[喜欢的事终究只是为了实现<br/>工作目的的手段<br/>确定能够实现工作目的的领域<br/>边工作边培养吧!]
     Insight --> Result
     
     CheckRefine -->|是| Q6{是否找到实现真正想做的事的手段?}
@@ -75,7 +83,6 @@ flowchart TD
     
     Result([辛苦了!<br/>全身心投入到实现真正想做的事情中去吧!])
     
-    %% 样式设置
     style Start fill:#e1f5ff,stroke:#01579b,stroke-width:3px
     style Result fill:#d4edda,stroke:#155724,stroke-width:3px
     style FindValues fill:#fff3cd,stroke:#856404
@@ -97,34 +104,28 @@ flowchart TD
     
     Start --> CheckPurpose{是否明确工作目的?}
     
-    %% 路径1: 工作目的不明确
     CheckPurpose -->|否| CheckWhy{是否明确自己为什么而活?}
     CheckWhy -->|否| Step1[步骤1: 寻找价值观<br/>回答30个问题]
     Step1 --> Step1Check{找到价值观?}
     Step1Check -->|否| Step1
-    Step1Check -->|是| Step1_2[明确工作目的<br/>回答带⭐的问题]
+    Step1Check -->|是| Step1_2[明确工作目的<br/>回答带星号的问题]
     
     CheckWhy -->|是| Step1_2
     
-    %% 路径2: 工作目的明确
     CheckPurpose -->|是| CheckStrengths{是否有能取得成果的长处?}
     
-    %% 路径2.1: 没有长处
     CheckStrengths -->|否| Step2[步骤2: 寻找长处<br/>回答30个问题]
     Step2 --> Step2Check{找到长处?}
     Step2Check -->|否| Step2
     Step2Check -->|是| CheckInterests
     
-    %% 路径2.2: 有长处
     CheckStrengths -->|是| CheckInterests{有没有感兴趣或有热情的领域?}
     
-    %% 路径2.2.1: 没有兴趣领域
     CheckInterests -->|否| Step3[步骤3: 寻找喜欢的领域<br/>回答30个问题]
     Step3 --> Step3Check{找到喜欢的领域?}
     Step3Check -->|否| Step3
     Step3Check -->|是| CombineStep
     
-    %% 路径2.2.2: 有兴趣领域
     CheckInterests -->|是| CombineStep[步骤4: 组合喜欢和擅长的事<br/>假设一个想做的事]
     
     CombineStep --> CombineCheck{组合成功?}
@@ -134,16 +135,13 @@ flowchart TD
     
     CombineCheck -->|是| RefineStep
     
-    %% 路径3: 提炼想做的事
-    Step1_2 --> RefineStep[步骤5: 通过"工作目的"提炼出"想做的事"]
+    Step1_2 --> RefineStep[步骤5: 通过工作目的提炼出想做的事]
     RefineStep --> RefineCheck{提炼成功?}
     
-    %% 路径3.1: 提炼不成功
-    RefineCheck -->|否| Understand{喜欢的事是"领域"<br/>长处是"行动"吗?}
+    RefineCheck -->|否| Understand{喜欢的事是领域<br/>长处是行动吗?}
     Understand -->|明白了| Insight[领悟: 喜欢的事是实现工作目的的手段<br/>确定能实现工作目的的领域<br/>边工作边培养]
     Insight --> FinalStep
     
-    %% 路径3.2: 提炼成功
     RefineCheck -->|是| FindMeans{是否找到实现手段?}
     FindMeans -->|否| CollectInfo[收集信息<br/>书、网络、研讨会等]
     CollectInfo --> FindMeans
@@ -151,7 +149,6 @@ flowchart TD
     
     FinalStep([结果: 全身心投入到实现<br/>真正想做的事情中去吧!])
     
-    %% 样式
     style Start fill:#e1f5ff,stroke:#01579b,stroke-width:3px
     style FinalStep fill:#d4edda,stroke:#155724,stroke-width:3px
     style Step1 fill:#fff3cd,stroke:#856404,stroke-width:2px
@@ -210,7 +207,7 @@ flowchart TD
 - **失败处理**：如果无法很好地组合，重新评估喜欢的事和长处
 
 #### 步骤5：通过"工作目的"提炼出"想做的事"（P141）
-- **前提**：已明确工作目的（通过回答带⭐的问题）
+- **前提**：已明确工作目的（通过回答带星号的问题）
 - **方法**：用工作目的来提炼和验证想做的事
 - **验证**：检查提炼是否成功
 
@@ -265,7 +262,7 @@ flowchart TD
 
 2. **工作目的的重要性**：工作目的是整个流程的核心，需要优先明确
 
-3. **带⭐的问题**：在明确工作目的时，需要特别关注问题清单中带⭐的问题
+3. **带星号的问题**：在明确工作目的时，需要特别关注问题清单中带星号的问题
 
 4. **组合失败的处理**：如果无法很好地组合喜欢和擅长的事，需要重新评估两者，可能需要重新探索
 
@@ -288,4 +285,25 @@ flowchart TD
 - **价值观30问**：对应 `question.md` 第一部分
 - **长处30问**：对应 `question.md` 第二部分
 - **兴趣30问**：对应 `question.md` 第三部分
-- **带⭐的问题**：在价值观30问中，用于思考"工作目的"的问题
+- **带星号的问题**：在价值观30问中，用于思考"工作目的"的问题
+
+---
+
+## 🔧 流程图修复说明
+
+已修复的语法问题：
+1. ✅ 移除了中文引号中的特殊字符
+2. ✅ 将特殊符号（⭐）改为文字描述（星号）
+3. ✅ 简化了节点标签中的引号使用
+4. ✅ 优化了 subgraph 标签格式（使用引号包裹中文）
+
+如果仍然无法渲染，请检查：
+- Markdown 编辑器是否支持 Mermaid
+- 是否需要安装 Mermaid 扩展
+- 语法是否符合 Mermaid 规范
+
+### 在线查看工具
+
+如果您的编辑器不支持 Mermaid，可以使用在线工具查看：
+- **Mermaid Live Editor**: https://mermaid.live/
+- 复制流程图代码到在线编辑器即可查看和编辑

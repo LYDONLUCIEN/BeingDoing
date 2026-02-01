@@ -266,6 +266,15 @@
 
 ## 🔄 流程图
 
+### 📝 渲染说明
+
+以下流程图使用 **Mermaid** 格式，支持 GitHub、GitLab、VS Code（需扩展）、Typora、Obsidian 等编辑器。
+
+如果无法渲染，可以：
+1. 安装 Mermaid 扩展插件
+2. 使用在线工具查看：https://mermaid.live/
+3. 参考下方的文本描述
+
 ### Mermaid流程图
 
 ```mermaid
@@ -277,10 +286,10 @@ flowchart TD
     FindStrengths --> Rule3[规则3: 最后找喜欢的事<br/>热情领域]
     Rule3 --> FindInterests[找到喜欢的事<br/>回答5个问题]
     
-    FindInterests --> Formula1[公式1: 喜欢的事 × 擅长的事<br/>= 想做的事]
+    FindInterests --> Formula1["公式1: 喜欢的事 × 擅长的事 = 想做的事"]
     Formula1 --> Hypothesis[假设一个想做的事]
     Hypothesis --> Test[验证和调整]
-    Test --> Formula2[公式2: 想做的事 × 重要的事<br/>= 真正想做的事]
+    Test --> Formula2["公式2: 想做的事 × 重要的事 = 真正想做的事"]
     Formula2 --> FindMeans[找到实现手段<br/>色彩浴效应]
     FindMeans --> Success([找到真正想做的事])
     
@@ -305,7 +314,7 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    subgraph 第一步: 找到重要的事
+    subgraph Step1["第一步: 找到重要的事"]
         V1[问题1: 尊敬的人] --> V2[问题2: 童年经历]
         V2 --> V3[问题3: 社会不足]
         V3 --> V4[问题4: 他人看法]
@@ -315,22 +324,22 @@ flowchart LR
         VCenter --> VPurpose[确定工作目的]
     end
     
-    subgraph 第二步: 找到擅长的事
+    subgraph Step2["第二步: 找到擅长的事"]
         S1[问题1: 充实的体验] --> S2[问题2: 烦躁的事]
         S2 --> S3[问题3: 他人眼中的长处]
         S3 --> S4[问题4: 工作留恋部分]
         S4 --> SManual[写使用说明书]
     end
     
-    subgraph 第三步: 找到喜欢的事
+    subgraph Step3["第三步: 找到喜欢的事"]
         I1[问题1: 花钱想学的] --> I2[问题2: 书架上的书]
         I2 --> I3[问题3: 拯救我的事物]
         I3 --> I4[问题4: 想道谢的工作]
         I4 --> I5[问题5: 愤怒的事]
     end
     
-    subgraph 第四步: 组合
-        VPurpose --> Formula[喜欢的事 × 擅长的事 × 重要的事]
+    subgraph Step4["第四步: 组合"]
+        VPurpose --> Formula["喜欢的事 × 擅长的事 × 重要的事"]
         SManual --> Formula
         I5 --> Formula
         Formula --> Result[真正想做的事]
@@ -366,3 +375,23 @@ flowchart LR
 
 - 书籍：《如何找到想做的事》[日]八木仁平
 - 笔记来源：微信读书（131个笔记）
+
+---
+
+## 🔧 流程图修复说明
+
+已修复的语法问题：
+1. ✅ 移除了公式中的特殊字符（× 符号）
+2. ✅ 优化了 subgraph 标签格式（使用引号包裹中文）
+3. ✅ 简化了节点标签中的引号使用
+
+如果仍然无法渲染，请检查：
+- Markdown 编辑器是否支持 Mermaid
+- 是否需要安装 Mermaid 扩展
+- 语法是否符合 Mermaid 规范
+
+### 在线查看工具
+
+如果您的编辑器不支持 Mermaid，可以使用在线工具查看：
+- **Mermaid Live Editor**: https://mermaid.live/
+- 复制流程图代码到在线编辑器即可查看和编辑
