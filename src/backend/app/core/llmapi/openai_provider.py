@@ -21,21 +21,26 @@ class OpenAIProvider(BaseLLMProvider):
         "gpt-3.5-turbo-16k": {"input": 0.003, "output": 0.004},
     }
     
-    def __init__(self, model: str, api_key: Optional[str] = None, **kwargs):
+    def __init__(self, model: str, api_key: Optional[str] = None, base_url: Optional[str] = None, **kwargs):
         """
-        初始化OpenAI Provider
+        初始化OpenAI Provider（也支持兼容接口如 DeepSeek）
         
         Args:
-            model: 模型名称（如 gpt-4, gpt-3.5-turbo）
-            api_key: OpenAI API密钥
+            model: 模型名称（如 gpt-4, deepseek-chat）
+            api_key: API密钥
+            base_url: 可选，API 地址（如 https://api.deepseek.com）
             **kwargs: 其他配置
         """
         super().__init__(model, api_key, **kwargs)
-        self.client = AsyncOpenAI(
-            api_key=api_key or settings.OPENAI_API_KEY or "",
+        key = api_key or settings.OPENAI_API_KEY or ""
+        client_kwargs = dict(
+            api_key=key,
             timeout=kwargs.get("timeout", 60.0),
-            max_retries=kwargs.get("max_retries", 3)
+            max_retries=kwargs.get("max_retries", 3),
         )
+        if base_url:
+            client_kwargs["base_url"] = base_url
+        self.client = AsyncOpenAI(**client_kwargs)
         self._encoding = None
     
     def _get_encoding(self):

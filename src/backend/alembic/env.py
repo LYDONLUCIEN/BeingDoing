@@ -20,15 +20,22 @@ from app.models import (
     UserSelection, GuidePreference, ExplorationResult
 )
 
-# 导入配置
-from app.config.settings import settings
+# 导入配置与数据库URL
 from app.models.database import get_database_url
 
 # this is the Alembic Config object
 config = context.config
 
-# 设置数据库URL
-config.set_main_option("sqlalchemy.url", get_database_url())
+# 设置数据库URL（注意：Alembic 需要使用同步驱动）
+_async_url = get_database_url()
+if _async_url.startswith("sqlite+aiosqlite"):
+    sqlalchemy_url = _async_url.replace("sqlite+aiosqlite", "sqlite")
+elif _async_url.startswith("postgresql+asyncpg"):
+    sqlalchemy_url = _async_url.replace("postgresql+asyncpg", "postgresql")
+else:
+    sqlalchemy_url = _async_url
+
+config.set_main_option("sqlalchemy.url", sqlalchemy_url)
 
 # Interpret the config file for Python logging.
 if config.config_file_name is not None:

@@ -1,6 +1,7 @@
 """
 LangGraph状态图定义
 """
+from typing import Optional
 from langgraph.graph import StateGraph, END
 from app.core.agent.state import AgentState
 from app.core.agent.nodes import reasoning_node, action_node, observation_node, guide_node

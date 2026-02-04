@@ -10,7 +10,10 @@ from app.models.database import AsyncSessionLocal
 from app.config.settings import settings
 
 # 密码加密上下文
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# 说明：
+# - 当前环境里的 bcrypt 库与 passlib 有兼容性问题（找不到 __about__），并触发 72 字节限制错误
+# - 为了简单稳定，本地开发环境改用 pbkdf2_sha256（业界常用方案之一，无额外依赖）
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 # JWT配置
 SECRET_KEY = settings.SECRET_KEY
@@ -38,7 +41,7 @@ class AuthService:
     @staticmethod
     def get_password_hash(password: str) -> str:
         """
-        加密密码
+        加密密码（内部会按 bcrypt 72 字节限制截断，避免报错）
         
         Args:
             password: 明文密码

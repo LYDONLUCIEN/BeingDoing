@@ -32,7 +32,9 @@ class Answer(Base):
     question_id = Column(Integer, ForeignKey("questions.id"), nullable=True)
     category = Column(String(50), nullable=False)  # values, strengths, interests
     content = Column(Text, nullable=False)
-    metadata = Column(Text, nullable=True)  # JSON字符串，存储语音文件、编辑历史等
+    # 注意：SQLAlchemy Declarative API 中属性名 `metadata` 是保留的，
+    # 这里使用属性名 `extra_metadata`，但数据库列名仍然叫 `metadata`。
+    extra_metadata = Column("metadata", Text, nullable=True)  # JSON字符串，存储语音文件、编辑历史等
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

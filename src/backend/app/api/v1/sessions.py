@@ -1,7 +1,7 @@
 """
 会话管理API
 """
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Query
 from pydantic import BaseModel
 from typing import Optional
 from app.api.v1.auth import get_current_user

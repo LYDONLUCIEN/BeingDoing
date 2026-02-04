@@ -16,10 +16,16 @@ class Settings(BaseSettings):
     # 数据库
     DATABASE_URL: str = "sqlite+aiosqlite:///./app.db"
     
+    # 架构配置（与 app.config.architecture 保持一致）
+    ARCHITECTURE_MODE: str = "simple"  # simple | full
+    
     # LLM配置
-    LLM_PROVIDER: str = "openai"
+    LLM_PROVIDER: str = "openai"  # openai | deepseek
     OPENAI_API_KEY: Optional[str] = None
     LLM_MODEL: str = "gpt-4"
+    # DeepSeek（兼容 OpenAI 接口，需设置 base_url）
+    DEEPSEEK_API_KEY: Optional[str] = None
+    LLM_BASE_URL: Optional[str] = None  # 如 https://api.deepseek.com
     
     # ASR配置
     ASR_PROVIDER: str = "openai"

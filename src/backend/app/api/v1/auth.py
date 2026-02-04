@@ -1,7 +1,7 @@
 """
 认证API
 """
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Header
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 from app.services.auth_service import AuthService

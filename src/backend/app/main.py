@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config.settings import settings
 from app.api.middleware import AudioModeMiddleware, ErrorHandlerMiddleware
-from app.api.v1 import auth, users, sessions, questions, answers, chat, search, formula
+from app.api.v1 import auth, users, sessions, questions, answers, chat, search, formula, audio, export
 
 app = FastAPI(
     title="找到想做的事 - 智能引导系统",
