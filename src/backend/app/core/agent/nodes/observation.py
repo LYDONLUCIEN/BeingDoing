@@ -31,7 +31,7 @@ async def observation_node(state: AgentState) -> AgentState:
         system_prompt = """你是一个专业的职业规划助手。你刚刚使用工具获取了一些信息。
 
 工具结果：
-{}
+{tool_output}
 
 请分析这个结果，决定：
 1. 是否需要继续使用其他工具

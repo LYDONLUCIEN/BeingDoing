@@ -84,8 +84,17 @@ if [ ! -f ".env" ]; then
         cat > .env << 'EOF'
 SECRET_KEY=your-secret-key-here-change-in-production
 OPENAI_API_KEY=your-openai-api-key-here
+
+# 使用 DeepSeek 时设置（从文件读取后调用 LLM，见 src/backend/scripts/call_llm.py）
+LLM_PROVIDER=deepseek
+DEEPSEEK_API_KEY=your-deepseek-api-key-here
+LLM_MODEL=deepseek-chat
+
+# 架构模式：simple=简化架构(默认) | full=完整架构(预留)
 ARCHITECTURE_MODE=simple
+# 是否启用语音：False=仅文本 | True=启用 ASR/TTS
 AUDIO_MODE=False
+# 数据库连接：SQLite(默认) 或 PostgreSQL 等
 DATABASE_URL=sqlite+aiosqlite:///./app.db
 EOF
         echo "✓ 已创建.env文件，请编辑填入必要的配置"
@@ -100,7 +109,9 @@ echo "环境配置完成！"
 echo "========================================"
 echo ""
 echo "下一步："
-echo "1. 编辑 .env 文件，填入必要的配置（如OPENAI_API_KEY）"
+echo "1. 编辑 .env 文件，填入必要的配置（如 OPENAI_API_KEY 或 DEEPSEEK_API_KEY）"
+echo "   使用 DeepSeek 时设置 LLM_PROVIDER=deepseek、DEEPSEEK_API_KEY=你的key"
+echo "   测试 LLM：cd src/backend && source venv/bin/activate && python scripts/call_llm.py"
 echo "2. 运行测试: pytest test/backend/test_config.py -v"
 echo "3. 启动后端: cd src/backend; source venv/bin/activate; uvicorn app.main:app --reload"
 echo "4. 启动前端: cd src/frontend; npm run dev"

@@ -55,7 +55,7 @@ class KnowledgeLoader:
         """
         if base_dir is None:
             # 默认从项目根目录查找
-            self.base_dir = Path(__file__).parent.parent.parent.parent.parent
+            self.base_dir = Path(__file__).parent.parent.parent.parent.parent.parent # back to root_dir
         else:
             self.base_dir = Path(base_dir)
         

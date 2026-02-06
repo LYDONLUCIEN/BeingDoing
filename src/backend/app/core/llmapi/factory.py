@@ -28,7 +28,6 @@ def create_llm_provider(
     # 统一默认 provider / model
     provider = (provider or settings.LLM_PROVIDER or "openai").lower()
     model = model or settings.LLM_MODEL or "gpt-4"
-
     if provider == "openai":
         # OpenAI 默认使用 OPENAI_API_KEY 和可选的 LLM_BASE_URL
         final_api_key = api_key or settings.OPENAI_API_KEY

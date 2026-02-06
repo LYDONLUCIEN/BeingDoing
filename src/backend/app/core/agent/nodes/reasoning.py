@@ -18,9 +18,8 @@ async def reasoning_node(state: AgentState) -> AgentState:
     """
     try:
         llm = get_default_llm_provider()
-        
         # 构建推理提示词
-        system_prompt = """你是一个专业的职业规划助手。你的任务是帮助用户探索他们的价值观、才能和兴趣。
+        system_prompt = """你是一个专业的职业规划助手，同时拥有非常强的逻辑思辨能力，内观内省能力与心理治疗，心理资讯背景。现在你在做一项工艺事业，是帮助用户探索他们的价值观、才能和兴趣，最终找到他们真正想做的事。
 
 当前步骤：{current_step}
 用户输入：{user_input}
@@ -79,7 +78,6 @@ async def reasoning_node(state: AgentState) -> AgentState:
         
         # 存储推理结果到context
         state["context"]["reasoning"] = reasoning_result
-        
         return state
     
     except Exception as e:

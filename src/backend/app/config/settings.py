@@ -3,7 +3,7 @@
 """
 from pydantic_settings import BaseSettings
 from typing import Optional
-
+from pathlib import Path
 
 class Settings(BaseSettings):
     """应用配置类"""
@@ -52,7 +52,9 @@ class Settings(BaseSettings):
     GUIDE_SHORT_ANSWER_THRESHOLD: int = 20  # 字数阈值
     
     class Config:
-        env_file = ".env"
+        #env_file = ".env"
+        base_dir = Path(__file__).resolve().parents[4]  # 指向 /home/gitclone/BeingDoing
+        env_file = base_dir / ".env"
         case_sensitive = True
 
 
