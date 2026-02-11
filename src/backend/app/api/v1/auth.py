@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends, status, Header
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 from app.services.auth_service import AuthService
+from app.config.settings import settings
 
 router = APIRouter(prefix="/auth", tags=["认证"])
 
@@ -82,6 +83,19 @@ async def get_current_user(token: Optional[str] = Depends(get_token_from_header)
     return user
 
 
+def _is_super_admin(user: Optional[dict]) -> bool:
+    """是否超级管理员（仅超级管理员可看 debug 日志等）"""
+    if not user:
+        return False
+    ids_str = (getattr(settings, "SUPER_ADMIN_USER_IDS", None) or "").strip()
+    emails_str = (getattr(settings, "SUPER_ADMIN_EMAILS", None) or "").strip()
+    if ids_str and user.get("user_id") in [x.strip() for x in ids_str.split(",") if x.strip()]:
+        return True
+    if emails_str and user.get("email") in [x.strip() for x in emails_str.split(",") if x.strip()]:
+        return True
+    return False
+
+
 @router.post("/register", response_model=AuthResponse)
 async def register(request: RegisterRequest):
     """
@@ -156,8 +170,5 @@ async def get_me(current_user: dict = Depends(get_current_user)):
     Returns:
         用户信息
     """
-    return AuthResponse(
-        code=200,
-        message="success",
-        data=current_user
-    )
+    data = {**current_user, "is_super_admin": _is_super_admin(current_user)}
+    return AuthResponse(code=200, message="success", data=data)

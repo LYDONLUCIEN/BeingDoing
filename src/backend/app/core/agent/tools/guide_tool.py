@@ -1,10 +1,12 @@
 """
-引导工具
+引导工具（步骤与分类、知识源配置从 domain 读取）
 """
 from typing import Dict, Any
 from app.core.agent.tools.base import BaseAgentTool
 from app.core.agent.state import AgentState
 from app.core.knowledge import KnowledgeLoader
+from app.domain import STEP_TO_CATEGORY, EXPLORATION_STEP_IDS, DEFAULT_CURRENT_STEP
+from app.domain.knowledge_config import get_knowledge_config
 
 
 class GuideTool(BaseAgentTool):
@@ -15,7 +17,7 @@ class GuideTool(BaseAgentTool):
             name="guide_tool",
             description="获取当前步骤的引导问题，帮助用户继续探索"
         )
-        self.loader = KnowledgeLoader()
+        self.loader = KnowledgeLoader(config=get_knowledge_config())
     
     async def execute(
         self,
@@ -32,16 +34,8 @@ class GuideTool(BaseAgentTool):
         Returns:
             引导问题列表
         """
-        step = input_data.get("step") or state.get("current_step", "values_exploration")
-        
-        # 映射步骤到分类
-        step_to_category = {
-            "values_exploration": "values",
-            "strengths_exploration": "strengths",
-            "interests_exploration": "interests"
-        }
-        
-        category = step_to_category.get(step, "values")
+        step = input_data.get("step") or state.get("current_step", DEFAULT_CURRENT_STEP)
+        category = STEP_TO_CATEGORY.get(step, "values")
         
         # 获取问题
         questions = self.loader.load_questions()
@@ -76,7 +70,7 @@ class GuideTool(BaseAgentTool):
             "properties": {
                 "step": {
                     "type": "string",
-                    "enum": ["values_exploration", "strengths_exploration", "interests_exploration"],
+                    "enum": EXPLORATION_STEP_IDS,
                     "description": "当前探索步骤"
                 }
             }

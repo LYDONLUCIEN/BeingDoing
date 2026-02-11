@@ -5,7 +5,8 @@ from fastapi import APIRouter, HTTPException, Depends, status, Query
 from pydantic import BaseModel
 from typing import Optional
 from app.api.v1.auth import get_current_user
-from app.core.knowledge import KnowledgeSearcher
+from app.core.knowledge import KnowledgeLoader, KnowledgeSearcher
+from app.domain.knowledge_config import get_knowledge_config
 
 router = APIRouter(prefix="/search", tags=["检索"])
 
@@ -29,9 +30,10 @@ async def search(
     request: SearchRequest,
     current_user: Optional[dict] = Depends(get_current_user)
 ):
-    """搜索内容"""
+    """搜索内容（知识源配置从 domain 注入）"""
     try:
-        searcher = KnowledgeSearcher()
+        loader = KnowledgeLoader(config=get_knowledge_config())
+        searcher = KnowledgeSearcher(loader=loader)
         
         results = []
         
@@ -90,9 +92,10 @@ async def get_similar_examples(
     limit: int = Query(5, description="返回数量限制"),
     current_user: Optional[dict] = Depends(get_current_user)
 ):
-    """获取相似示例"""
+    """获取相似示例（知识源配置从 domain 注入）"""
     try:
-        searcher = KnowledgeSearcher()
+        loader = KnowledgeLoader(config=get_knowledge_config())
+        searcher = KnowledgeSearcher(loader=loader)
         examples = searcher.get_similar_examples(category, query, limit)
         
         return StandardResponse(

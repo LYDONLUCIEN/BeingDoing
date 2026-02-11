@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -25,8 +25,10 @@ const registerSchema = z.object({
 
 type RegisterFormData = z.infer<typeof registerSchema>;
 
-export default function RegisterPage() {
+function RegisterForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get('redirect') || '/profile/setup';
   const { setUser, setToken } = useAuthStore();
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(false);
@@ -59,7 +61,7 @@ export default function RegisterPage() {
           username: response.data.username,
         });
         setToken(response.data.token);
-        router.push('/profile/setup');
+        router.push(redirectTo);
       }
     } catch (err: any) {
       setError(err.response?.data?.detail || '注册失败，请重试');
@@ -178,5 +180,17 @@ export default function RegisterPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-primary-100">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600" />
+      </div>
+    }>
+      <RegisterForm />
+    </Suspense>
   );
 }

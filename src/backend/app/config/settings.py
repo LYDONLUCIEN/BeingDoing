@@ -12,6 +12,15 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     DEBUG: bool = True
     SECRET_KEY: str = "your-secret-key-here-change-in-production"
+    # JWT 登录态有效期（分钟），如 60=1 小时内免登录，1440=24 小时
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+
+    # 超级管理员（用于查看调试日志等，仅后端权限控制使用）
+    # 说明：
+    # - SUPER_ADMIN_USER_IDS：逗号分隔的 user_id 列表，如 "1,2,3"
+    # - SUPER_ADMIN_EMAILS：逗号分隔的邮箱列表，如 "a@example.com,b@example.com"
+    SUPER_ADMIN_USER_IDS: Optional[str] = None
+    SUPER_ADMIN_EMAILS: Optional[str] = None
     
     # 数据库
     DATABASE_URL: str = "sqlite+aiosqlite:///./app.db"

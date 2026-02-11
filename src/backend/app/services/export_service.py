@@ -9,6 +9,7 @@ from app.core.database import UserDB, HistoryDB
 from app.models.database import AsyncSessionLocal
 from app.utils.conversation_file_manager import ConversationFileManager
 from app.core.knowledge import KnowledgeLoader
+from app.domain.knowledge_config import get_knowledge_config
 
 
 class ExportService:
@@ -17,7 +18,7 @@ class ExportService:
     def __init__(self):
         """初始化导出服务"""
         self.conversation_manager = ConversationFileManager()
-        self.knowledge_loader = KnowledgeLoader()
+        self.knowledge_loader = KnowledgeLoader(config=get_knowledge_config())
     
     async def collect_export_data(
         self,

@@ -1,0 +1,1017 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KATE优势身份证 - 完整报告</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
+
+        :root {
+            --primary-color: #1a2a3a; /* 普鲁士蓝 - 专业、深度 */
+            --accent-color: #c5a065; /* 香槟金 - 价值、高贵 */
+            --bg-color: #f9f8f4;     /* 暖米白 - 纸张感、舒适 */
+            --text-color: #333333;
+            --light-text: #666666;
+            --white: #ffffff;
+            --section-padding: 60px 20px;
+            --max-width: 900px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.8;
+            font-size: 16px;
+        }
+
+        h1, h2, h3, h4 {
+            font-family: 'Noto Serif SC', serif;
+            color: var(--primary-color);
+            line-height: 1.4;
+        }
+
+        /* 容器 */
+        .container {
+            max-width: var(--max-width);
+            margin: 0 auto;
+            background: var(--white);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.05);
+            overflow: hidden;
+        }
+
+        /* 顶部 Header */
+        header {
+            text-align: center;
+            padding: 80px 40px;
+            background: linear-gradient(180deg, #1a2a3a 0%, #2c3e50 100%);
+            color: var(--white);
+            position: relative;
+        }
+
+        header::after {
+            content: "";
+            position: absolute;
+            bottom: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 20px solid transparent;
+            border-right: 20px solid transparent;
+            border-top: 20px solid #2c3e50;
+        }
+
+        .report-meta {
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            font-size: 0.8rem;
+            color: var(--accent-color);
+            margin-bottom: 20px;
+            display: block;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            color: var(--white);
+            font-weight: 700;
+        }
+
+        .core-archetype {
+            font-size: 1.8rem;
+            color: var(--accent-color);
+            font-family: 'Noto Serif SC', serif;
+            font-weight: 700;
+            margin-top: 10px;
+            border-top: 1px solid rgba(255,255,255,0.2);
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            display: inline-block;
+            padding: 15px 30px;
+        }
+
+        /* Section 通用样式 */
+        .section-title {
+            text-align: center;
+            font-size: 1.8rem;
+            margin-bottom: 40px;
+            position: relative;
+            padding-bottom: 15px;
+        }
+
+        .section-title::after {
+            content: "";
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 3px;
+            background-color: var(--accent-color);
+        }
+
+        /* 优势身份证卡片 - 全新设计 */
+        .id-card {
+            background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%);
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(26, 42, 58, 0.15),
+                        0 2px 10px rgba(197, 160, 101, 0.1);
+            overflow: hidden;
+            position: relative;
+            max-width: 720px;
+            margin: 0 auto;
+            border: 1px solid rgba(197, 160, 101, 0.2);
+        }
+
+        .id-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary-color) 0%, var(--accent-color) 50%, var(--primary-color) 100%);
+        }
+
+        .id-card-content {
+            padding: 35px 40px 40px;
+        }
+
+        /* 标题部分 - 更精致 */
+        .card-title {
+            text-align: center;
+            margin-bottom: 30px;
+            position: relative;
+        }
+
+        .card-title h2 {
+            font-size: 1.6rem;
+            color: var(--primary-color);
+            font-weight: 700;
+            letter-spacing: 4px;
+            margin-bottom: 8px;
+            position: relative;
+            display: inline-block;
+        }
+
+        .card-title h2::after {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 2px;
+            background: var(--accent-color);
+        }
+
+        .card-title .subtitle {
+            font-size: 0.7rem;
+            color: #999;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-top: 12px;
+        }
+
+        /* 核心原型 - 全新设计 */
+        .core-identity-box {
+            background: linear-gradient(135deg, #fafbfc 0%, #f0f2f5 100%);
+            border-radius: 16px;
+            padding: 24px 30px;
+            text-align: center;
+            margin-bottom: 30px;
+            position: relative;
+            border: 2px solid var(--accent-color);
+            box-shadow: inset 0 2px 8px rgba(197, 160, 101, 0.08);
+        }
+
+        .core-identity-box .label {
+            font-size: 0.7rem;
+            color: #888;
+            margin-bottom: 8px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            font-weight: 500;
+        }
+
+        .core-identity-box .value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+            letter-spacing: 1px;
+        }
+
+        .core-identity-box .description {
+            font-size: 0.95rem;
+            color: #555;
+            line-height: 1.6;
+            font-style: italic;
+            max-width: 480px;
+            margin: 0 auto;
+        }
+
+        /* 内容网格 - 重新设计 */
+        .content-grid {
+            display: grid;
+            grid-template-columns: 1.1fr 0.9fr;
+            gap: 25px;
+            margin-bottom: 0;
+        }
+
+        /* 三大天赋关键词 - 优化 */
+        .section-title-small {
+            font-size: 0.95rem;
+            color: var(--primary-color);
+            font-weight: 600;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            letter-spacing: 1px;
+        }
+
+        .section-title-small::before {
+            content: '';
+            width: 4px;
+            height: 18px;
+            background: linear-gradient(180deg, var(--primary-color) 0%, var(--accent-color) 100%);
+            border-radius: 2px;
+        }
+
+        .talent-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .talent-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 16px;
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            border-left: 4px solid var(--accent-color);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        }
+
+        .talent-item:hover {
+            transform: translateX(4px);
+            box-shadow: 0 4px 16px rgba(197, 160, 101, 0.15);
+        }
+
+        .talent-number {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
+            color: var(--white);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            font-weight: 700;
+            flex-shrink: 0;
+            box-shadow: 0 2px 6px rgba(26, 42, 58, 0.2);
+        }
+
+        .talent-content {
+            flex: 1;
+        }
+
+        .talent-name {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 3px;
+            letter-spacing: 0.5px;
+        }
+
+        .talent-desc {
+            font-size: 0.8rem;
+            color: #666;
+            line-height: 1.5;
+        }
+
+        /* 右侧列 */
+        .right-column {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        /* 让你闪耀的舞台 - 重新设计 */
+        .stage-section {
+            background: linear-gradient(135deg, #fff8f0 0%, #ffe8d1 100%);
+            border-radius: 14px;
+            padding: 16px 18px;
+            border: 1px solid rgba(225, 112, 85, 0.2);
+        }
+
+        .stage-section .section-title-small {
+            color: #d35400;
+            font-size: 0.9rem;
+            margin-bottom: 12px;
+        }
+
+        .stage-section .section-title-small::before {
+            background: linear-gradient(180deg, #e17055 0%, #d35400 100%);
+        }
+
+        .stage-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 8px;
+            font-size: 0.82rem;
+            color: #333;
+            line-height: 1.5;
+        }
+
+        .stage-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .stage-icon {
+            width: 6px;
+            height: 6px;
+            background: #e17055;
+            border-radius: 50%;
+            flex-shrink: 0;
+            margin-top: 6px;
+        }
+
+        /* 行动暗号 - 重新设计 */
+        .action-code {
+            background: linear-gradient(135deg, #e8f8f5 0%, #d4efdf 100%);
+            border-radius: 14px;
+            padding: 18px;
+            text-align: center;
+            border: 1px solid rgba(46, 204, 113, 0.3);
+        }
+
+        .action-code .label {
+            font-size: 0.7rem;
+            color: #27ae60;
+            margin-bottom: 8px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .action-code .code {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 6px;
+            letter-spacing: 1px;
+        }
+
+        .action-code .desc {
+            font-size: 0.8rem;
+            color: #555;
+            line-height: 1.5;
+        }
+
+        /* 需呵护的边界 - 重新设计 */
+        .boundary-section {
+            background: linear-gradient(135deg, #fef9e7 0%, #fcf3cf 100%);
+            border-radius: 14px;
+            padding: 16px 18px;
+            border-left: 4px solid #f39c12;
+        }
+
+        .boundary-section .section-title-small {
+            color: #d35400;
+            font-size: 0.88rem;
+            margin-bottom: 8px;
+        }
+
+        .boundary-section .section-title-small::before {
+            background: linear-gradient(180deg, #f39c12 0%, #e67e22 100%);
+        }
+
+        .boundary-content {
+            font-size: 0.82rem;
+            color: #555;
+            line-height: 1.6;
+        }
+
+        /* 核心摘要 Section */
+        .summary-section {
+            padding: var(--section-padding);
+            text-align: center;
+        }
+
+        .summary-text {
+            font-size: 1.1rem;
+            color: var(--light-text);
+            max-width: 700px;
+            margin: 0 auto 40px;
+        }
+
+        .highlight {
+            color: var(--primary-color);
+            font-weight: 700;
+            background: linear-gradient(120deg, transparent 0%, transparent 60%, rgba(197, 160, 101, 0.2) 60%);
+        }
+
+        .image-placeholder {
+            width: 100%;
+            max-width: 600px;
+            height: auto;
+            margin: 20px auto;
+            display: block;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            border: 1px solid #eee;
+        }
+
+        /* 优势类别 Grid */
+        .categories-section {
+            padding: var(--section-padding);
+            background-color: #f4f6f8;
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+        }
+
+        .card {
+            background: var(--white);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.03);
+            border-top: 4px solid var(--accent-color);
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.08);
+        }
+
+        .card h3 {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+        }
+
+        .card h3::before {
+            content: "✦";
+            color: var(--accent-color);
+            margin-right: 10px;
+            font-size: 1.5rem;
+        }
+
+        .sub-point {
+            margin-bottom: 20px;
+        }
+
+        .sub-point h4 {
+            font-size: 1rem;
+            margin-bottom: 8px;
+            color: var(--primary-color);
+        }
+
+        .evidence {
+            font-style: italic;
+            color: #777;
+            font-size: 0.9rem;
+            border-left: 2px solid #ddd;
+            padding-left: 10px;
+            margin-top: 5px;
+        }
+
+        /* 词云 Section */
+        .wordcloud-section {
+            padding: var(--section-padding);
+            background: var(--white);
+            text-align: center;
+        }
+
+        .insight-box {
+            background-color: #fdfbf7;
+            border: 1px solid #eaddcf;
+            padding: 30px;
+            border-radius: 8px;
+            margin-top: 30px;
+            text-align: left;
+        }
+
+        /* 硬币两面 - 黑色背景 */
+        .flipside-section {
+            padding: var(--section-padding);
+            background-color: var(--primary-color);
+            color: rgba(255,255,255,0.9);
+        }
+
+        .flipside-section .section-title {
+            color: var(--white);
+        }
+
+        .flipside-section .section-title::after {
+            background-color: var(--accent-color);
+        }
+
+        .balance-grid {
+            display: grid;
+            gap: 20px;
+        }
+
+        .balance-item {
+            background: rgba(255,255,255,0.05);
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 3px solid var(--accent-color);
+        }
+
+        .balance-item h4 {
+            color: var(--accent-color);
+            margin-bottom: 10px;
+            font-family: 'Noto Sans SC', sans-serif;
+        }
+
+        .balance-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .balance-col {
+            flex: 1;
+            min-width: 250px;
+        }
+
+        .label {
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 1px;
+            opacity: 0.6;
+            margin-bottom: 5px;
+            display: block;
+        }
+
+        /* 情境适配 */
+        .context-section {
+            padding: var(--section-padding);
+        }
+
+        .context-flex {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 40px;
+        }
+
+        .context-col {
+            flex: 1;
+            min-width: 300px;
+            padding: 30px;
+            border-radius: 12px;
+        }
+
+        .high-energy {
+            background-color: #f0f7f4;
+            border: 1px solid #dbece5;
+        }
+
+        .low-energy {
+            background-color: #fff5f5;
+            border: 1px solid #ffe3e3;
+        }
+
+        .context-col h3 {
+            margin-bottom: 20px;
+            font-size: 1.4rem;
+        }
+
+        .high-energy h3 { color: #2d6a4f; }
+        .low-energy h3 { color: #c0392b; }
+
+        .context-col ul {
+            list-style-type: none;
+        }
+
+        .context-col ul li {
+            position: relative;
+            padding-left: 20px;
+            margin-bottom: 12px;
+            font-size: 0.95rem;
+        }
+
+        .high-energy ul li::before {
+            content: "↑";
+            color: #2d6a4f;
+            position: absolute;
+            left: 0;
+            font-weight: bold;
+        }
+
+        .low-energy ul li::before {
+            content: "↓";
+            color: #c0392b;
+            position: absolute;
+            left: 0;
+            font-weight: bold;
+        }
+
+        /* 职业与寄语 */
+        .career-section {
+            padding: var(--section-padding);
+            background-color: #fcfcfc;
+            border-top: 1px solid #eee;
+        }
+
+        .career-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 30px;
+        }
+
+        .career-tag {
+            background: var(--white);
+            border: 1px solid var(--accent-color);
+            color: var(--primary-color);
+            padding: 10px 20px;
+            border-radius: 50px;
+            font-weight: 500;
+        }
+
+        footer {
+            background-color: var(--primary-color);
+            color: var(--white);
+            padding: 60px 40px;
+            text-align: center;
+        }
+
+        .quote-box {
+            max-width: 600px;
+            margin: 0 auto;
+            font-family: 'Noto Serif SC', serif;
+            font-size: 1.1rem;
+            line-height: 1.8;
+            font-style: italic;
+        }
+
+        .signature {
+            margin-top: 30px;
+            font-weight: 700;
+            color: var(--accent-color);
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            header h1 {
+                font-size: 1.8rem;
+            }
+
+            .core-archetype {
+                font-size: 1.4rem;
+            }
+
+            .id-card-content {
+                padding: 20px;
+            }
+
+            .card-title h2 {
+                font-size: 1.2rem;
+            }
+
+            .core-identity-box .value {
+                font-size: 1.2rem;
+            }
+
+            .action-code .code {
+                font-size: 0.95rem;
+            }
+
+            /* 身份证卡片在移动端改为单列 */
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* 打印优化 */
+        @media print {
+            body { background: white; }
+            .container { box-shadow: none; max-width: 100%; }
+            .card, .balance-item, .context-col { break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <!-- 头部 -->
+        <header>
+            <span class="report-meta">KATE ADVANTAGE IDENTITY CARD // 2026.02.08</span>
+            <h1>KATE优势身份证</h1>
+            <div class="core-archetype">滋养型园丁</div>
+        </header>
+
+        <!-- 核心摘要 -->
+        <section class="summary-section">
+            <h2 class="section-title">核心洞察</h2>
+            <p class="summary-text">
+                你擅长<span class="highlight">营造安全、鼓励的成长氛围</span>，并在其中通过积极的沟通与敏锐的洞察推动他人与自我前进。你的力量来源于一段深刻的"自我重建"之旅，这让你同时具备了<span class="highlight">韧性、真诚的自我觉察</span>与<span class="highlight">务实的理想主义</span>。
+            </p>
+
+            <!-- 优势身份证卡片 - 替换矩阵图 -->
+            <div class="id-card">
+                <div class="id-card-header"></div>
+
+                <div class="id-card-content">
+                    <!-- 标题 -->
+                    <div class="card-title">
+                        <h2>优势身份认证</h2>
+                        <div class="subtitle">YOUR UNIQUE STRENGTHS PROFILE</div>
+                    </div>
+
+                    <!-- 核心原型 -->
+                    <div class="core-identity-box">
+                        <div class="label">核心原型</div>
+                        <div class="value">滋养型园丁</div>
+                        <div class="description">
+                            "你擅长培育土壤，点燃生长，相信每一株植物都有自己的花期"
+                        </div>
+                    </div>
+
+                    <!-- 内容网格 -->
+                    <div class="content-grid">
+                        <!-- 左列：三大天赋 -->
+                        <div class="talents-section">
+                            <div class="section-title-small">三大天赋关键词</div>
+                            <div class="talent-list">
+                                <div class="talent-item">
+                                    <div class="talent-number">1</div>
+                                    <div class="talent-content">
+                                        <div class="talent-name">勇敢的鼓励者</div>
+                                        <div class="talent-desc">从自身勇敢，到鼓励他人</div>
+                                    </div>
+                                </div>
+                                <div class="talent-item">
+                                    <div class="talent-number">2</div>
+                                    <div class="talent-content">
+                                        <div class="talent-name">智慧的连接者</div>
+                                        <div class="talent-desc">洞察需求，营造安全联结</div>
+                                    </div>
+                                </div>
+                                <div class="talent-item">
+                                    <div class="talent-number">3</div>
+                                    <div class="talent-content">
+                                        <div class="talent-name">坚韧的成长者</div>
+                                        <div class="talent-desc">在自我对话中淬炼韧性</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 右列：舞台 + 暗号 + 边界 -->
+                        <div class="right-column">
+                            <!-- 让你闪耀的舞台 -->
+                            <div class="stage-section">
+                                <div class="section-title-small">让你闪耀的舞台</div>
+                                <div class="stage-item">
+                                    <span class="stage-icon"></span>
+                                    <span>建立信任与安全感的开局</span>
+                                </div>
+                                <div class="stage-item">
+                                    <span class="stage-icon"></span>
+                                    <span>培养人、发展人为核心的领域</span>
+                                </div>
+                                <div class="stage-item">
+                                    <span class="stage-icon"></span>
+                                    <span>开放、鼓励真诚反馈的文化</span>
+                                </div>
+                            </div>
+
+                            <!-- 行动暗号 -->
+                            <div class="action-code">
+                                <div class="label">给你的行动暗号</div>
+                                <div class="code">"创造一个小气候"</div>
+                                <div class="desc">
+                                    无论环境如何，你都有能力在身边营造积极、支持、成长的"微环境"
+                                </div>
+                            </div>
+
+                            <!-- 需呵护的边界 -->
+                            <div class="boundary-section">
+                                <div class="section-title-small">需呵护的边界</div>
+                                <div class="boundary-content">
+                                    你是滋养者，但不是拯救者。维护好自己这口"井"的水位是核心。
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 四大类别 -->
+        <section class="categories-section">
+            <h2 class="section-title">四大优势类别解析</h2>
+            <div class="grid-container">
+                <!-- 类别一 -->
+                <div class="card">
+                    <h3>人际联结与氛围塑造</h3>
+                    <div class="sub-point">
+                        <h4>积极氛围营造</h4>
+                        <p>擅长主动发起积极反馈，通过击掌等行动即时鼓励，提升凝聚力。</p>
+                        <div class="evidence">"我鼓完掌后，其他人都会跟着鼓掌…感觉被带出来了。"</div>
+                    </div>
+                    <div class="sub-point">
+                        <h4>共情式鼓励</h4>
+                        <p>敏锐察觉情绪，提供具体的心理支持，帮助他人建立信心。</p>
+                        <div class="evidence">"只要一碰到球，我就会跟他说'可以'。"</div>
+                    </div>
+                    <div class="sub-point">
+                        <h4>包容性组织</h4>
+                        <p>关注个体体验，创造"新手友好"环境，注重公平与过程。</p>
+                    </div>
+                </div>
+
+                <!-- 类别二 -->
+                <div class="card">
+                    <h3>主动学习与执行推进</h3>
+                    <div class="sub-point">
+                        <h4>向上管理式沟通</h4>
+                        <p>不畏惧权威，将沟通构建为"目标协同"，确保资源到位。</p>
+                        <div class="evidence">"我能够完全get到领导的意思…保持很多交流。"</div>
+                    </div>
+                    <div class="sub-point">
+                        <h4>目标导向的主动学习</h4>
+                        <p>剥离羞耻感，以虚心姿态果断求教，高效启动问题解决。</p>
+                    </div>
+                    <div class="sub-point">
+                        <h4>实践洞察</h4>
+                        <p>热衷分析真实问题，从实践中洞察脉络与规律。</p>
+                    </div>
+                </div>
+
+                <!-- 类别三 -->
+                <div class="card">
+                    <h3>内在建构与心理韧性</h3>
+                    <div class="sub-point">
+                        <h4>结构化自我对话</h4>
+                        <p>利用日记等工具梳理混乱思绪，进行情绪管理与决策。</p>
+                        <div class="evidence">"这种写下来的日记让我更好地认识到了自己。"</div>
+                    </div>
+                    <div class="sub-point">
+                        <h4>心理韧性重建</h4>
+                        <p>具备从挫折中"充电"的能力，将孤独转化为力量。</p>
+                        <div class="evidence">"那一年…我内心更有力量也更勇敢了。"</div>
+                    </div>
+                </div>
+
+                <!-- 类别四 -->
+                <div class="card">
+                    <h3>价值驱动与成长导向</h3>
+                    <div class="sub-point">
+                        <h4>成长型视角</h4>
+                        <p>本能关注人的"闪光点"与过程，用发展眼光看待人。</p>
+                    </div>
+                    <div class="sub-point">
+                        <h4>关系维护与边界觉察</h4>
+                        <p>珍视连接与和谐，正清醒地学习建立"勇敢摊开说"的边界。</p>
+                        <div class="evidence">"我认为我应该勇敢…不要害怕冲突。"</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 词云 -->
+        <section class="wordcloud-section">
+            <h2 class="section-title">能量场关键词</h2>
+            <!-- 加载词云素材图 -->
+            <img src="../assets/ciyun1.png" alt="词云分析" class="image-placeholder" style="max-width: 500px;">
+
+            <div class="insight-box">
+                <p><strong>"勇敢"</strong> 与 <strong>"鼓励"</strong> 构成了你的基本张力——你用内在的勇敢去进行外在的鼓励。<strong>"氛围"</strong> 是你创造的舞台，<strong>"沟通"</strong> 与 <strong>"洞察"</strong> 是你的核心工具。这张图，是你能量场的生动写照。</p>
+            </div>
+        </section>
+
+        <!-- 硬币的两面 -->
+        <section class="flipside-section">
+            <h2 class="section-title">优势的硬币正反面</h2>
+            <p style="text-align:center; margin-bottom: 30px; opacity: 0.8;">成熟驾驭天赋，在于觉察阴影，清醒运用。</p>
+
+            <div class="balance-grid">
+                <div class="balance-item">
+                    <h4>积极氛围 & 共情鼓励</h4>
+                    <div class="balance-row">
+                        <div class="balance-col">
+                            <span class="label">阴影面</span>
+                            <p>可能过度承担他人情绪，成为"情绪海绵"；或因害怕破坏和谐而回避必要冲突。</p>
+                        </div>
+                        <div class="balance-col">
+                            <span class="label">平衡点</span>
+                            <p>区分"支持情绪"与"解决问题"。练习"先肯定，后建议"的结构化反馈。</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="balance-item">
+                    <h4>向上沟通 & 主动学习</h4>
+                    <div class="balance-row">
+                        <div class="balance-col">
+                            <span class="label">阴影面</span>
+                            <p>频繁沟通可能被误解为依赖；过于主动求教可能导致不加筛选地承接任务。</p>
+                        </div>
+                        <div class="balance-col">
+                            <span class="label">平衡点</span>
+                            <p>沟通尾声明确行动项。学会礼貌评估新任务："需评估手头工作后回复。"</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="balance-item">
+                    <h4>自我对话 & 韧性</h4>
+                    <div class="balance-row">
+                        <div class="balance-col">
+                            <span class="label">阴影面</span>
+                            <p>压力下可能陷入过度反思的"思维漩涡"；可能习惯忍耐本该离开的环境。</p>
+                        </div>
+                        <div class="balance-col">
+                            <span class="label">平衡点</span>
+                            <p>为反思设定时限。问自己："下一个最小的可执行动作是什么？"</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 情境适配 -->
+        <section class="context-section">
+            <h2 class="section-title">情境适配指南</h2>
+            <div class="context-flex">
+                <div class="context-col high-energy">
+                    <h3>⚡ 高能情境 (充电)</h3>
+                    <p style="margin-bottom: 15px; font-size: 0.9rem; opacity: 0.8;">在这些环境中，你的优势自然流动，带来成就感。</p>
+                    <ul>
+                        <li><strong>建立信任的启动期：</strong>新团队、新项目，需要凝聚人心的时刻。</li>
+                        <li><strong>发展与辅导角色：</strong>新人导师、教练、培训师，最大化"成长视角"。</li>
+                        <li><strong>跨部门协作桥梁：</strong>项目经理、客户成功，打通资源。</li>
+                        <li><strong>关注"人与体验"：</strong>用户研究、社群运营、人文关怀机构。</li>
+                        <li><strong>文化开放组织：</strong>鼓励反馈与主动沟通的扁平化环境。</li>
+                    </ul>
+                </div>
+                <div class="context-col low-energy">
+                    <h3>🔋 低能情境 (耗电)</h3>
+                    <p style="margin-bottom: 15px; font-size: 0.9rem; opacity: 0.8;">这些环境可能限制发挥，需谨慎评估。</p>
+                    <ul>
+                        <li><strong>零和博弈环境：</strong>过度强调内部排名与恶性竞争的狼性文化。</li>
+                        <li><strong>僵化层级制：</strong>不容许质疑、沟通受阻的权威环境。</li>
+                        <li><strong>高度孤独的角色：</strong>缺乏人际互动的纯技术岗。</li>
+                        <li><strong>对抗性工作：</strong>催收、高压谈判等破坏和谐的岗位。</li>
+                        <li><strong>缺乏信任的团队：</strong>主动性被压制，内耗严重。</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div style="margin-top: 30px; background: #fff; padding: 20px; border-radius: 8px; border: 1px dashed #ccc;">
+                <strong>💡 行动建议：</strong> 求职时反向评估团队文化；在现有岗位主动创造"高能微情境"；定期检视能量状态。
+            </div>
+        </section>
+
+        <!-- 职业建议 -->
+        <section class="career-section">
+            <h2 class="section-title">职业发展罗盘</h2>
+            <div class="career-tags">
+                <div class="career-tag">教育 / 员工发展 (L&D)</div>
+                <div class="career-tag">企业培训师</div>
+                <div class="career-tag">社群运营专家</div>
+                <div class="career-tag">用户体验研究</div>
+                <div class="career-tag">职业规划 / 咨询助理</div>
+                <div class="career-tag">项目管理 (人际导向)</div>
+            </div>
+            <p style="text-align: center; margin-top: 20px; font-size: 0.85rem; color: #888;">*注：基于当前优势模式推测，需结合实际技能树进一步探索。</p>
+        </section>
+
+        <!-- 底部 -->
+        <footer>
+            <div class="quote-box">
+                "这份报告中的'擅长之事'，是你生命故事的注解。你已成功地从充满张力的过去中，萃取出清晰而温暖的力量。请像在排球场上鼓励队友那样，坚定地鼓励自己。"
+            </div>
+            <div class="signature">—— Lena</div>
+        </footer>
+    </div>
+
+</body>
+</html>

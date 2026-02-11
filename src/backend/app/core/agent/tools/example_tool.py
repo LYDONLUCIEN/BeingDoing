@@ -1,10 +1,11 @@
 """
-示例推荐工具
+示例推荐工具（知识源配置从 domain 注入）
 """
 from typing import Dict, Any
 from app.core.agent.tools.base import BaseAgentTool
 from app.core.agent.state import AgentState
-from app.core.knowledge import KnowledgeSearcher
+from app.core.knowledge import KnowledgeLoader, KnowledgeSearcher
+from app.domain.knowledge_config import get_knowledge_config
 
 
 class ExampleTool(BaseAgentTool):
@@ -15,7 +16,8 @@ class ExampleTool(BaseAgentTool):
             name="example_tool",
             description="根据用户输入推荐相似的价值观、兴趣或才能示例"
         )
-        self.searcher = KnowledgeSearcher()
+        loader = KnowledgeLoader(config=get_knowledge_config())
+        self.searcher = KnowledgeSearcher(loader=loader)
     
     async def execute(
         self,

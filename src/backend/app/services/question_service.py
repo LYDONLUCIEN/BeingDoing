@@ -1,8 +1,9 @@
 """
-问题服务
+问题服务（知识源配置从 domain 注入）
 """
 from typing import List, Dict, Optional
 from app.core.knowledge import KnowledgeLoader
+from app.domain.knowledge_config import get_knowledge_config
 
 
 class QuestionService:
@@ -10,7 +11,7 @@ class QuestionService:
     
     def __init__(self):
         """初始化问题服务"""
-        self.loader = KnowledgeLoader()
+        self.loader = KnowledgeLoader(config=get_knowledge_config())
     
     def get_questions_by_category(self, category: str) -> List[Dict]:
         """
@@ -97,14 +98,8 @@ class QuestionService:
         Returns:
             引导问题列表
         """
-        # 映射步骤到分类
-        step_to_category = {
-            "values_exploration": "values",
-            "strengths_exploration": "strengths",
-            "interests_exploration": "interests"
-        }
-        
-        category = step_to_category.get(current_step, "values")
+        from app.domain import STEP_TO_CATEGORY
+        category = STEP_TO_CATEGORY.get(current_step, "values")
         
         # 优先返回带星号的问题
         starred = self.get_starred_questions(category)

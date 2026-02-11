@@ -31,3 +31,17 @@ body {
     text-wrap: balance;
   }
 }
+
+/* Ensure content is visible even if JS fails to load */
+@layer base {
+  /* Reset framer-motion initial hidden states */
+  [style*="opacity:0"] {
+    opacity: 1 !important;
+  }
+  [style*="translateY"] {
+    transform: none !important;
+  }
+  [style*="scale"] {
+    transform: none !important;
+  }
+}

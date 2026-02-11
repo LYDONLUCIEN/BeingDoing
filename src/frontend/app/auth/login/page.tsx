@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -20,8 +20,10 @@ const loginSchema = z.object({
 
 type LoginFormData = z.infer<typeof loginSchema>;
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get('redirect') || '/explore';
   const { setUser, setToken } = useAuthStore();
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(false);
@@ -46,14 +48,26 @@ export default function LoginPage() {
       });
 
       if (response.code === 200 && response.data) {
-        setUser({
-          user_id: response.data.user_id,
-          email: response.data.email,
-          phone: response.data.phone,
-          username: response.data.username,
-        });
+        try {
+          const me = await authApi.getCurrentUser();
+          const userData = me.data || response.data;
+          setUser({
+            user_id: userData.user_id,
+            email: userData.email,
+            phone: userData.phone,
+            username: userData.username,
+            is_super_admin: userData.is_super_admin,
+          });
+        } catch {
+          setUser({
+            user_id: response.data.user_id,
+            email: response.data.email,
+            phone: response.data.phone,
+            username: response.data.username,
+          });
+        }
         setToken(response.data.token);
-        router.push('/explore');
+        router.push(redirectTo);
       }
     } catch (err: any) {
       setError(err.response?.data?.detail || '登录失败，请检查您的凭据');
@@ -143,5 +157,17 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-primary-100">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600" />
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 }

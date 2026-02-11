@@ -17,11 +17,19 @@ export interface Session {
 
 export const sessionsApi = {
   create: async (data: CreateSessionRequest): Promise<ApiResponse<Session>> => {
-    return apiClient.post('/sessions/', data);
+    return apiClient.post('/sessions', data);
+  },
+
+  list: async (): Promise<ApiResponse<{ sessions: Session[] }>> => {
+    return apiClient.get('/sessions');
   },
 
   get: async (sessionId: string): Promise<ApiResponse<Session>> => {
     return apiClient.get(`/sessions/${sessionId}`);
+  },
+
+  delete: async (sessionId: string): Promise<ApiResponse<void>> => {
+    return apiClient.delete(`/sessions/${sessionId}`);
   },
 
   updateProgress: async (

@@ -1,24 +1,32 @@
 """
 对话API
 """
+import asyncio
+import json
+import os
+import re
 from fastapi import APIRouter, HTTPException, Depends, status, BackgroundTasks
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Optional, Dict
+from typing import Optional, Dict, Generator
 from app.api.v1.auth import get_current_user
 from app.core.agent.graph import create_agent_graph, create_initial_state
+from app.core.agent.config import AgentRunConfig
+from app.domain import DEFAULT_CURRENT_STEP
 from app.core.database import HistoryDB
 from app.models.database import AsyncSessionLocal
 from app.utils.conversation_file_manager import ConversationFileManager, ConversationCategory
 from datetime import datetime
+from app.config.settings import settings
 
 router = APIRouter(prefix="/chat", tags=["对话"])
 
 
 class SendMessageRequest(BaseModel):
-    """发送消息请求"""
+    """发送消息请求（current_step 默认从 domain 读取）"""
     session_id: str
     message: str
-    current_step: str = "values_exploration"
+    current_step: str = DEFAULT_CURRENT_STEP
     category: str = "main_flow"  # main_flow, guidance, clarification, other
 
 
@@ -34,6 +42,19 @@ class GuidePreferenceRequest(BaseModel):
     preference: str  # normal, quiet
 
 
+class ResummarizeRequest(BaseModel):
+    """用户修改回答后触发重新梳理总结"""
+    session_id: str
+    current_step: Optional[str] = None
+
+
+class RecordInterruptRequest(BaseModel):
+    """用户点击终止时记录打断与截至内容"""
+    session_id: str
+    partial_content: str
+    current_step: Optional[str] = None
+
+
 class StandardResponse(BaseModel):
     """标准响应"""
     code: int = 200
@@ -47,48 +68,48 @@ async def send_message(
     current_user: Optional[dict] = Depends(get_current_user),
     background_tasks: BackgroundTasks = None
 ):
-    """发送消息"""
+    """发送消息（思考链 + 用户侧输出：用户可见内容来自 user_agent 节点）"""
     try:
         user_id = current_user["user_id"] if current_user else None
-        
-        # 创建智能体图
-        graph = create_agent_graph()
-        
-        # 创建初始状态
+
+        run_config = AgentRunConfig(use_user_agent_node=True)
+        graph = create_agent_graph(run_config)
+
         initial_state = create_initial_state(
             user_input=request.message,
             current_step=request.current_step,
             user_id=user_id,
             session_id=request.session_id
         )
-        
-        # 运行智能体
+
         final_state = None
         try:
-            # LangGraph的astream返回状态字典
             async for state in graph.astream(initial_state):
-                # state是一个字典，包含所有节点的输出
-                # 获取最后一个节点的状态
                 if isinstance(state, dict):
-                    # 如果有多个节点，取最后一个
                     node_name = list(state.keys())[-1] if state else None
-                    if node_name:
-                        final_state = state[node_name]
-                    else:
-                        final_state = state
+                    final_state = state[node_name] if node_name else state
                 else:
                     final_state = state
         except Exception as e:
-            # 如果智能体运行失败，返回错误
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"智能体运行失败: {str(e)}"
             )
-        
-        # 获取最终响应
-        response = final_state.get("final_response") if final_state else "抱歉，我无法处理您的请求。"
+
+        # 用户可见回复：优先从 messages（user_agent 写入）取最后一条，否则 fallback 到 final_response
+        messages = (final_state.get("messages") or []) if final_state else []
+        if messages:
+            last_msg = messages[-1]
+            response = getattr(last_msg, "content", None) or (last_msg.get("content") if isinstance(last_msg, dict) else None)
+        else:
+            response = None
+        if not response and final_state:
+            response = final_state.get("final_response")
+        if not response:
+            response = "抱歉，我无法处理您的请求。"
         error = final_state.get("error") if final_state else None
-        
+        logs = final_state.get("logs") or [] if final_state else []
+
         if error:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -143,7 +164,8 @@ async def send_message(
             data={
                 "response": response,
                 "session_id": request.session_id,
-                "tools_used": final_state.get("tools_used", []) if final_state else []
+                "tools_used": final_state.get("tools_used", []) if final_state else [],
+                "logs": logs,
             }
         )
     
@@ -153,6 +175,246 @@ async def send_message(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
+        )
+
+
+def _chunk_response_for_stream(text: str, chunk_size: int = 20) -> Generator[str, None, None]:
+    """将完整回复按句或按长度切分为小块，便于前端流式展示。chunk_size 较小以更快呈现。"""
+    if not (text or "").strip():
+        return
+    # 先按句号、问号、换行切分，再按长度
+    parts = re.split(r"(?<=[。！？\n])", text)
+    buf = ""
+    for p in parts:
+        buf += p
+        if len(buf) >= chunk_size or buf.endswith(("\n", "。", "！", "？")):
+            if buf.strip():
+                yield buf
+            buf = ""
+    if buf.strip():
+        yield buf
+
+
+def _is_super_admin(user: Optional[dict]) -> bool:
+    """是否超级管理员（仅超级管理员可看 debug 日志）"""
+    if not user:
+        return False
+    ids_str = (getattr(settings, "SUPER_ADMIN_USER_IDS", None) or "").strip()
+    emails_str = (getattr(settings, "SUPER_ADMIN_EMAILS", None) or "").strip()
+    if ids_str and user.get("user_id") in [x.strip() for x in ids_str.split(",") if x.strip()]:
+        return True
+    if emails_str and user.get("email") in [x.strip() for x in emails_str.split(",") if x.strip()]:
+        return True
+    return False
+
+
+def _save_debug_logs(
+    session_id: str,
+    user_input: str,
+    response: str,
+    logs: list,
+    final_state: Optional[dict],
+) -> None:
+    """将本次运行的日志追加到 data/debug_logs/{session_id}.jsonl 以及 logs/{user_id}/{session_id}/runs.jsonl"""
+    try:
+        user_id = (final_state or {}).get("user_id") or None
+
+        # 旧路径：按 session 维度集中存储，便于历史兼容
+        debug_dir = os.path.join("data", "debug_logs")
+        os.makedirs(debug_dir, exist_ok=True)
+        path = os.path.join(debug_dir, f"{session_id}.jsonl")
+        entry = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "user_id": user_id,
+            "session_id": session_id,
+            "user_input": user_input,
+            "response_preview": (response or "")[:500],
+            "logs": logs,
+            "tools_used": (final_state or {}).get("tools_used", []),
+            "context_keys": list((final_state or {}).get("context") or {}).keys(),
+        }
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        # 新路径：按用户 / 会话分目录存储，便于后台人工排查
+        if user_id:
+            user_log_dir = os.path.join("logs", str(user_id), str(session_id))
+        else:
+            user_log_dir = os.path.join("logs", "anonymous", str(session_id))
+        os.makedirs(user_log_dir, exist_ok=True)
+        user_log_path = os.path.join(user_log_dir, "runs.jsonl")
+        with open(user_log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+@router.post("/messages/stream")
+async def send_message_stream(
+    request: SendMessageRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """发送消息并流式返回助手回复（SSE）。先发 started，再跑智能体；reasoning 节点使用 chat_stream 边生成边推块，真流式输出。"""
+    async def event_stream():
+        try:
+            yield f"data: {json.dumps({'started': True}, ensure_ascii=False)}\n\n"
+            conversation_manager = ConversationFileManager()
+            category = "main_flow"
+            await conversation_manager.append_message(
+                session_id=request.session_id,
+                category=category,
+                message={
+                    "role": "user",
+                    "content": request.message,
+                    "context": {"current_step": request.current_step},
+                    "created_at": datetime.utcnow().isoformat() + "Z",
+                },
+            )
+            user_id = current_user["user_id"] if current_user else None
+            run_config = AgentRunConfig(use_user_agent_node=True)
+            graph = create_agent_graph(run_config)
+            queue = asyncio.Queue()
+            initial_state = create_initial_state(
+                user_input=request.message,
+                current_step=request.current_step,
+                user_id=user_id,
+                session_id=request.session_id,
+                stream_queue=queue,
+            )
+            final_holder = {}
+
+            async def run_graph():
+                last = None
+                try:
+                    async for state in graph.astream(initial_state):
+                        if isinstance(state, dict):
+                            node_name = list(state.keys())[-1] if state else None
+                            last = state[node_name] if node_name else state
+                        else:
+                            last = state
+                finally:
+                    final_holder["state"] = last
+                    await queue.put(None)
+
+            task = asyncio.create_task(run_graph())
+            while True:
+                chunk = await queue.get()
+                if chunk is None:
+                    break
+                yield f"data: {json.dumps({'chunk': chunk}, ensure_ascii=False)}\n\n"
+            await task
+
+            final_state = final_holder.get("state")
+            messages = (final_state.get("messages") or []) if final_state else []
+            if messages:
+                last_msg = messages[-1]
+                response = getattr(last_msg, "content", None) or (
+                    last_msg.get("content") if isinstance(last_msg, dict) else None
+                )
+            else:
+                response = final_state.get("final_response") if final_state else None
+            if not response:
+                response = "抱歉，我无法处理您的请求。"
+            err = final_state.get("error") if final_state else None
+            if err:
+                yield f"data: {json.dumps({'error': err}, ensure_ascii=False)}\n\n"
+                return
+
+            logs = final_state.get("logs") or [] if final_state else []
+            if not logs:
+                # 确保至少有一条基础日志，避免 debug-logs 返回完全空数组
+                logs = [{"message": "no internal logs captured", "done": True}]
+            _save_debug_logs(request.session_id, request.message, response, logs, final_state)
+
+            answer_card = (final_state or {}).get("answer_card")
+            yield f"data: {json.dumps({'done': True, 'response': response, 'answer_card': answer_card}, ensure_ascii=False)}\n\n"
+
+            await conversation_manager.append_message(
+                session_id=request.session_id,
+                category=category,
+                message={
+                    "role": "assistant",
+                    "content": response,
+                    "context": {"current_step": request.current_step},
+                    "created_at": datetime.utcnow().isoformat() + "Z",
+                },
+            )
+            async with AsyncSessionLocal() as db:
+                history_db = HistoryDB(db)
+                await history_db.update_session(
+                    request.session_id,
+                    current_step=request.current_step,
+                )
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post("/record-interrupt", response_model=StandardResponse)
+async def record_interrupt(
+    request: RecordInterruptRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """用户点击终止时记录打断动作与截至之前的助手内容"""
+    try:
+        conversation_manager = ConversationFileManager()
+        category = "main_flow"
+        await conversation_manager.append_message(
+            session_id=request.session_id,
+            category=category,
+            message={
+                "role": "assistant",
+                "content": request.partial_content or "(用户终止)",
+                "context": {
+                    "current_step": request.current_step,
+                    "interrupted": True,
+                },
+                "created_at": datetime.utcnow().isoformat() + "Z",
+            },
+        )
+        return StandardResponse(code=200, message="success", data={"recorded": True})
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
+
+
+@router.get("/debug-logs", response_model=StandardResponse)
+async def get_debug_logs(
+    session_id: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """获取某会话的智能体调试日志（仅超级管理员）。含思考链、工具调用、logs 等。"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="仅超级管理员可查看调试日志")
+    try:
+        path = os.path.join("data", "debug_logs", f"{session_id}.jsonl")
+        entries = []
+        if os.path.isfile(path):
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entries.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+        return StandardResponse(code=200, message="success", data={"entries": entries})
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
         )
 
 
@@ -278,3 +540,17 @@ async def set_guide_preference(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+
+@router.post("/resummarize", response_model=StandardResponse)
+async def resummarize_after_edit(
+    request: ResummarizeRequest,
+    current_user: Optional[dict] = Depends(get_current_user)
+):
+    """用户修改回答后触发后台思考智能体重新梳理和总结（当前返回成功，后续可接入智能体重算 step_summary）"""
+    # TODO: 接入 agent 根据该步骤最新回答重新生成 step_summary 并持久化
+    return StandardResponse(
+        code=200,
+        message="success",
+        data={"triggered": True, "session_id": request.session_id, "current_step": request.current_step}
+    )

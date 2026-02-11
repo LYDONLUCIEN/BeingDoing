@@ -15,10 +15,10 @@ from app.config.settings import settings
 # - 为了简单稳定，本地开发环境改用 pbkdf2_sha256（业界常用方案之一，无额外依赖）
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
-# JWT配置
+# JWT 配置（有效期从 .env 的 ACCESS_TOKEN_EXPIRE_MINUTES 读取，默认 60 分钟 = 1 小时内免登录）
 SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30 * 24 * 60  # 30天
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 
 class AuthService:

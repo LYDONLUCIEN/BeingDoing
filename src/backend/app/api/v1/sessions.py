@@ -7,14 +7,15 @@ from typing import Optional
 from app.api.v1.auth import get_current_user
 from app.core.database import HistoryDB
 from app.models.database import AsyncSessionLocal
+from app.domain import DEFAULT_CURRENT_STEP
 
 router = APIRouter(prefix="/sessions", tags=["会话"])
 
 
 class CreateSessionRequest(BaseModel):
-    """创建会话请求"""
+    """创建会话请求（current_step 默认从 domain 读取）"""
     device_id: Optional[str] = None
-    current_step: Optional[str] = "values_exploration"
+    current_step: Optional[str] = DEFAULT_CURRENT_STEP
 
 
 class UpdateSessionRequest(BaseModel):
@@ -64,6 +65,70 @@ async def create_session(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
+        )
+
+
+@router.get("", response_model=StandardResponse)
+async def list_sessions(
+    current_user: Optional[dict] = Depends(get_current_user)
+):
+    """获取当前用户的会话列表（按最近活动排序）"""
+    try:
+        if not current_user:
+            return StandardResponse(code=200, message="success", data={"sessions": []})
+        async with AsyncSessionLocal() as db:
+            history_db = HistoryDB(db)
+            sessions = await history_db.get_user_sessions(current_user["user_id"])
+            return StandardResponse(
+                code=200,
+                message="success",
+                data={
+                    "sessions": [
+                        {
+                            "session_id": s.id,
+                            "user_id": s.user_id,
+                            "current_step": s.current_step,
+                            "status": s.status,
+                            "created_at": str(s.created_at),
+                            "updated_at": str(s.updated_at),
+                            "last_activity_at": str(s.last_activity_at),
+                        }
+                        for s in sessions
+                    ]
+                },
+            )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
+
+
+@router.delete("/{session_id}", response_model=StandardResponse)
+async def delete_session(
+    session_id: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """删除会话（含对话文件）"""
+    try:
+        async with AsyncSessionLocal() as db:
+            history_db = HistoryDB(db)
+            session = await history_db.get_session(session_id)
+            if not session:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
+            if current_user and session.user_id != current_user["user_id"]:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权删除此会话")
+            await history_db.delete_session(session_id)
+        from app.utils.conversation_file_manager import ConversationFileManager
+        conv = ConversationFileManager()
+        await conv.delete_session(session_id)
+        return StandardResponse(code=200, message="删除成功", data={})
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
         )
 
 

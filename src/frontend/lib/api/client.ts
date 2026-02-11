@@ -38,10 +38,18 @@ class ApiClient {
       (response) => response,
       (error: AxiosError) => {
         if (error.response?.status === 401) {
-          // Token过期或无效，清除本地存储
-          this.clearToken();
-          if (typeof window !== 'undefined') {
-            window.location.href = '/auth/login';
+          const requestUrl = error.config?.url ?? '';
+          const isAuthRequest =
+            typeof requestUrl === 'string' &&
+            (requestUrl.includes('/auth/login') || requestUrl.includes('/auth/register'));
+          // 登录/注册接口返回 401 时不跳转，让页面显示错误、用户可重试；其他接口 401 才跳转登录
+          if (!isAuthRequest && typeof window !== 'undefined') {
+            this.clearToken();
+            const currentPath = window.location.pathname;
+            const redirect = currentPath !== '/auth/login' && currentPath !== '/auth/register'
+              ? `?redirect=${encodeURIComponent(currentPath)}`
+              : '';
+            window.location.href = `/auth/login${redirect}`;
           }
         }
         return Promise.reject(error);

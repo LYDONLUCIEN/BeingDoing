@@ -1,0 +1,14 @@
+{
+    "name": "kate-advantage-report-pdf-export",
+    "version": "1.0.0",
+    "description": "KATE优势身份证 - PDF导出工具",
+    "scripts": {
+      "export": "node export-pdf.js",
+      "export:batch": "node export-pdf.js --batch",
+      "install:playwright": "npx playwright install chromium"
+    },
+    "devDependencies": {
+      "playwright": "^1.40.0"
+    }
+  }
+  

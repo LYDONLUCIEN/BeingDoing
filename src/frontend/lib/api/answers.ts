@@ -19,9 +19,13 @@ export interface SubmitAnswerRequest {
   metadata?: any;
 }
 
+export type AnswerChangeType = 'same_direction' | 'opposite' | 'unrelated';
+
 export interface UpdateAnswerRequest {
   content?: string;
   metadata?: any;
+  /** 同向/更精确(same_direction)、反向/推翻(opposite)、无关/随机(unrelated) */
+  change_type?: AnswerChangeType;
 }
 
 export const answersApi = {

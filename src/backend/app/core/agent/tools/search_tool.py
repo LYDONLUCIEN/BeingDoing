@@ -1,10 +1,11 @@
 """
-内容检索工具
+内容检索工具（知识源配置从 domain 注入，解耦且知识集中）
 """
 from typing import Dict, Any
 from app.core.agent.tools.base import BaseAgentTool
 from app.core.agent.state import AgentState
-from app.core.knowledge import KnowledgeSearcher
+from app.core.knowledge import KnowledgeLoader, KnowledgeSearcher
+from app.domain.knowledge_config import get_knowledge_config
 
 
 class SearchTool(BaseAgentTool):
@@ -15,7 +16,8 @@ class SearchTool(BaseAgentTool):
             name="search_tool",
             description="在知识库中搜索相关内容（价值观、兴趣、才能、问题）"
         )
-        self.searcher = KnowledgeSearcher()
+        loader = KnowledgeLoader(config=get_knowledge_config())
+        self.searcher = KnowledgeSearcher(loader=loader)
     
     async def execute(
         self,

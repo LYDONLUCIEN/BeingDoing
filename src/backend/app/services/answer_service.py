@@ -58,42 +58,64 @@ class AnswerService:
     async def update_answer(
         answer_id: str,
         content: Optional[str] = None,
-        metadata: Optional[Dict] = None
+        metadata: Optional[Dict] = None,
+        change_type: Optional[str] = None
     ) -> Optional[Dict]:
         """
-        更新回答
+        更新回答。记录 change_type（同向/反向/无关）到 metadata.edit_history，用于分析思考模式。
         
         Args:
             answer_id: 回答ID
             content: 新的回答内容
-            metadata: 新的元数据
+            metadata: 新的元数据（会与 edit_history 合并）
+            change_type: same_direction | opposite | unrelated
         
         Returns:
             更新后的回答字典，如果不存在则返回None
         """
         import json
-        
+        from datetime import datetime
+
         async with AsyncSessionLocal() as db:
             history_db = HistoryDB(db)
-            
-            metadata_str = json.dumps(metadata) if metadata else None
-            
+            existing = await history_db.get_answer(answer_id)
+            if not existing:
+                return None
+
+            merged = {}
+            if existing.extra_metadata:
+                try:
+                    merged = json.loads(existing.extra_metadata)
+                except Exception:
+                    pass
+            if metadata:
+                merged.update(metadata)
+            if change_type:
+                merged["change_type"] = change_type
+                edit_history = merged.get("edit_history") or []
+                edit_history.append({
+                    "change_type": change_type,
+                    "updated_at": datetime.utcnow().isoformat() + "Z",
+                })
+                merged["edit_history"] = edit_history
+            metadata_str = json.dumps(merged) if merged else None
+
             answer = await history_db.update_answer(
                 answer_id=answer_id,
                 content=content,
                 metadata=metadata_str
             )
-            
             if not answer:
                 return None
-            
+            out_meta = merged
             return {
                 "id": answer.id,
                 "session_id": answer.session_id,
                 "question_id": answer.question_id,
                 "category": answer.category,
                 "content": answer.content,
-                "updated_at": str(answer.updated_at)
+                "metadata": out_meta,
+                "updated_at": str(answer.updated_at),
             }
     
     @staticmethod
@@ -116,9 +138,9 @@ class AnswerService:
             
             import json
             metadata = None
-            if answer.metadata:
+            if answer.extra_metadata:
                 try:
-                    metadata = json.loads(answer.metadata)
+                    metadata = json.loads(answer.extra_metadata)
                 except:
                     pass
             
@@ -156,9 +178,9 @@ class AnswerService:
             result = []
             for answer in answers:
                 metadata = None
-                if answer.metadata:
+                if answer.extra_metadata:
                     try:
-                        metadata = json.loads(answer.metadata)
+                        metadata = json.loads(answer.extra_metadata)
                     except:
                         pass
                 

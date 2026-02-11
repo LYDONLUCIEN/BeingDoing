@@ -23,6 +23,8 @@ class UpdateAnswerRequest(BaseModel):
     """更新回答请求"""
     content: Optional[str] = None
     metadata: Optional[Dict] = None
+    # 用户修改类型：同向/更精确(same_direction)、反向/推翻(opposite)、无关/随机(unrelated)，用于分析思考模式
+    change_type: Optional[str] = None  # same_direction | opposite | unrelated
 
 
 class StandardResponse(BaseModel):
@@ -89,7 +91,8 @@ async def update_answer(
         result = await AnswerService.update_answer(
             answer_id=answer_id,
             content=request.content,
-            metadata=request.metadata
+            metadata=request.metadata,
+            change_type=request.change_type
         )
         
         if not result:

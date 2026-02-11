@@ -2,7 +2,7 @@
 历史数据操作（会话、进度、回答）
 """
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from typing import Optional, List
 from app.models.session import Session, Progress
 from app.models.answer import Answer, Question
@@ -69,7 +69,16 @@ class HistoryDB:
             .order_by(Session.created_at.desc())
         )
         return list(result.scalars().all())
-    
+
+    async def delete_session(self, session_id: str) -> bool:
+        """删除会话（级联删除进度、回答等）"""
+        session = await self.get_session(session_id)
+        if not session:
+            return False
+        await self.session.delete(session)
+        await self.session.commit()
+        return True
+
     # 进度操作
     async def create_progress(
         self,
@@ -190,7 +199,7 @@ class HistoryDB:
         if content is not None:
             answer.content = content
         if metadata is not None:
-            answer.metadata = metadata
+            answer.extra_metadata = metadata
         
         await self.session.commit()
         await self.session.refresh(answer)
