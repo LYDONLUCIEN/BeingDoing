@@ -49,8 +49,8 @@ class ProgressManager:
     存储在session的metadata中，格式：
     {
         "question_progress": {
-            "values_exploration": StepProgress.dict(),
-            "strengths_exploration": StepProgress.dict(),
+            "values_exploration": StepProgress.model_dump(),
+            "strengths_exploration": StepProgress.model_dump(),
             ...
         }
     }
@@ -94,5 +94,5 @@ class ProgressManager:
         if 'question_progress' not in metadata:
             metadata['question_progress'] = {}
 
-        metadata['question_progress'][step_progress.step_id] = step_progress.dict()
+        metadata['question_progress'][step_progress.step_id] = step_progress.model_dump()
         return metadata

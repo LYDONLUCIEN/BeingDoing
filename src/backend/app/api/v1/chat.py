@@ -21,6 +21,55 @@ from app.config.settings import settings
 
 router = APIRouter(prefix="/chat", tags=["对话"])
 
+# ---------- question_progress 持久化 ----------
+
+_QP_DIR = os.path.join("data", "question_progress")
+
+
+def _load_question_progress(session_id: str) -> Dict:
+    """从文件加载 session 的 question_progress"""
+    path = os.path.join(_QP_DIR, f"{session_id}.json")
+    if os.path.isfile(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def _save_question_progress(session_id: str, question_progress: Dict) -> None:
+    """将 question_progress 持久化到文件"""
+    if not question_progress:
+        return
+    os.makedirs(_QP_DIR, exist_ok=True)
+    path = os.path.join(_QP_DIR, f"{session_id}.json")
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(question_progress, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def _extract_step_progress_info(question_progress_data: Dict, current_step: str) -> Optional[Dict]:
+    """从 question_progress_data 中提取当前步骤的进度摘要（返回给前端）"""
+    if current_step not in question_progress_data:
+        return None
+    step_data = question_progress_data[current_step]
+    current_index = step_data.get("current_question_index", 0)
+    questions = step_data.get("questions", [])
+    return {
+        "current_question_id": questions[current_index]["question_id"] if current_index < len(questions) else None,
+        "current_index": current_index,
+        "total_questions": len(questions),
+        "completed_count": sum(1 for q in questions if q.get("status") == "completed"),
+        "current_question_content": questions[current_index]["question_content"] if current_index < len(questions) else None,
+        "is_intro_shown": step_data.get("is_intro_shown", False),
+    }
+
+
+# ---------- 请求/响应模型 ----------
+
 
 class SendMessageRequest(BaseModel):
     """发送消息请求（current_step 默认从 domain 读取）"""
@@ -72,6 +121,9 @@ async def send_message(
     try:
         user_id = current_user["user_id"] if current_user else None
 
+        # 加载已有的 question_progress
+        saved_qp = _load_question_progress(request.session_id)
+
         run_config = AgentRunConfig(use_user_agent_node=True)
         graph = create_agent_graph(run_config)
 
@@ -79,7 +131,8 @@ async def send_message(
             user_input=request.message,
             current_step=request.current_step,
             user_id=user_id,
-            session_id=request.session_id
+            session_id=request.session_id,
+            question_progress=saved_qp,
         )
 
         final_state = None
@@ -125,18 +178,19 @@ async def send_message(
             "other": ConversationCategory.OTHER
         }
         category = category_map.get(request.category, ConversationCategory.MAIN_FLOW)
-        
-        # 添加用户消息
-        await conversation_manager.append_message(
-            session_id=request.session_id,
-            category=category.value if hasattr(category, 'value') else category,
-            message={
-                "role": "user",
-                "content": request.message,
-                "context": {"current_step": request.current_step},
-                "created_at": datetime.utcnow().isoformat() + "Z"
-            }
-        )
+
+        # 只保存非空用户消息（空消息用于触发AI引导）
+        if request.message.strip():
+            await conversation_manager.append_message(
+                session_id=request.session_id,
+                category=category.value if hasattr(category, 'value') else category,
+                message={
+                    "role": "user",
+                    "content": request.message,
+                    "context": {"current_step": request.current_step},
+                    "created_at": datetime.utcnow().isoformat() + "Z"
+                }
+            )
         
         # 添加助手回复
         await conversation_manager.append_message(
@@ -158,6 +212,22 @@ async def send_message(
                 current_step=request.current_step
             )
         
+        # v2.4: 持久化 question_progress 并提取返回信息
+        question_progress_data = final_state.get("question_progress", {}) if final_state else {}
+        _save_question_progress(request.session_id, question_progress_data)
+
+        step_progress_info = _extract_step_progress_info(question_progress_data, request.current_step)
+
+        # 构造answer_card信息
+        answer_card_data = final_state.get("answer_card", {}) if final_state else {}
+        answer_card_info = None
+        if answer_card_data.get("should_show"):
+            answer_card_info = {
+                "question_id": answer_card_data.get("question_id"),
+                "question_content": answer_card_data.get("question_content"),
+                "user_answer": answer_card_data.get("user_answer"),
+            }
+
         return StandardResponse(
             code=200,
             message="success",
@@ -166,6 +236,8 @@ async def send_message(
                 "session_id": request.session_id,
                 "tools_used": final_state.get("tools_used", []) if final_state else [],
                 "logs": logs,
+                "question_progress": step_progress_info,  # v2.4: 新增
+                "answer_card": answer_card_info,  # v2.4: 新增
             }
         )
     
@@ -260,26 +332,33 @@ async def send_message_stream(
             yield f"data: {json.dumps({'started': True}, ensure_ascii=False)}\n\n"
             conversation_manager = ConversationFileManager()
             category = "main_flow"
-            await conversation_manager.append_message(
-                session_id=request.session_id,
-                category=category,
-                message={
-                    "role": "user",
-                    "content": request.message,
-                    "context": {"current_step": request.current_step},
-                    "created_at": datetime.utcnow().isoformat() + "Z",
-                },
-            )
+            # 只保存非空用户消息（空消息用于触发AI引导）
+            if request.message.strip():
+                await conversation_manager.append_message(
+                    session_id=request.session_id,
+                    category=category,
+                    message={
+                        "role": "user",
+                        "content": request.message,
+                        "context": {"current_step": request.current_step},
+                        "created_at": datetime.utcnow().isoformat() + "Z",
+                    },
+                )
             user_id = current_user["user_id"] if current_user else None
             run_config = AgentRunConfig(use_user_agent_node=True)
             graph = create_agent_graph(run_config)
             queue = asyncio.Queue()
+
+            # 加载已有的 question_progress
+            saved_qp = _load_question_progress(request.session_id)
+
             initial_state = create_initial_state(
                 user_input=request.message,
                 current_step=request.current_step,
                 user_id=user_id,
                 session_id=request.session_id,
                 stream_queue=queue,
+                question_progress=saved_qp,
             )
             final_holder = {}
 
@@ -327,7 +406,22 @@ async def send_message_stream(
             _save_debug_logs(request.session_id, request.message, response, logs, final_state)
 
             answer_card = (final_state or {}).get("answer_card")
-            yield f"data: {json.dumps({'done': True, 'response': response, 'answer_card': answer_card}, ensure_ascii=False)}\n\n"
+
+            # v2.4: 持久化 question_progress 并提取返回信息
+            question_progress_data = (final_state or {}).get("question_progress", {})
+            _save_question_progress(request.session_id, question_progress_data)
+            step_progress_info = _extract_step_progress_info(question_progress_data, request.current_step)
+
+            # 构造 answer_card（只传 should_show=True 的）
+            answer_card_info = None
+            if answer_card and answer_card.get("should_show"):
+                answer_card_info = {
+                    "question_id": answer_card.get("question_id"),
+                    "question_content": answer_card.get("question_content"),
+                    "user_answer": answer_card.get("user_answer"),
+                }
+
+            yield f"data: {json.dumps({'done': True, 'response': response, 'answer_card': answer_card_info, 'question_progress': step_progress_info}, ensure_ascii=False)}\n\n"
 
             await conversation_manager.append_message(
                 session_id=request.session_id,

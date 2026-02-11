@@ -2,16 +2,17 @@
 LangGraph 状态图：思考链（reasoning → action → observation）循环，
 结束后可选进入 user_agent 节点，将思考结果转为用户可见 messages。
 """
-from typing import Optional, Any
+from typing import Optional, Any, Dict
 from langgraph.graph import StateGraph, END
 from app.core.agent.state import AgentState
 from app.core.agent.config import AgentRunConfig, DEFAULT_RUN_CONFIG
 from app.core.agent.nodes import (
-    reasoning_node,
     action_node,
     observation_node,
     guide_node,
 )
+# v2.4: 切换到新的reasoning节点（支持逐题引导）
+from app.core.agent.nodes.reasoning_v2 import reasoning_node
 from app.core.agent.nodes.user_agent import user_agent_node
 from app.core.agent.tools import ToolRegistry, SearchTool, GuideTool, ExampleTool
 
@@ -92,11 +93,13 @@ def create_initial_state(
     user_id: Optional[str] = None,
     session_id: Optional[str] = None,
     stream_queue: Optional[Any] = None,
+    question_progress: Optional[Dict] = None,
 ) -> AgentState:
     """
     创建初始状态（含双轨 messages / inner_messages 与 logs）。
     current_step 默认从 domain 读取，便于单点维护。
     stream_queue 非空时 reasoning 节点使用 chat_stream 并往该队列推块，供 SSE 端点真流式输出。
+    question_progress: 从持久化存储加载的题目进度，跨请求保持状态。
     """
     from app.core.llmapi import LLMMessage
     from app.domain import DEFAULT_CURRENT_STEP
@@ -122,4 +125,6 @@ def create_initial_state(
     )
     if stream_queue is not None:
         state["stream_queue"] = stream_queue
+    if question_progress is not None:
+        state["question_progress"] = question_progress
     return state

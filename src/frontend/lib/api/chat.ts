@@ -26,16 +26,34 @@ export interface GuidePreferenceRequest {
 }
 
 export interface AnswerCardMeta {
-  /** 当前步骤（如 values_exploration），前端可结合自身映射展示 */
-  question_step?: string;
-  /** AI 对当前题目的分析/反馈（只读，Markdown 展示） */
-  ai_analysis?: string;
+  /** 题目ID */
+  question_id?: number;
+  /** 题目内容 */
+  question_content?: string;
   /** 用户针对当前题目的回答文本（可编辑，Markdown 展示） */
   user_answer?: string;
+  /** AI 对当前题目的分析/反馈（v2.4: 已移到对话中，此字段保留兼容） */
+  ai_analysis?: string;
+}
+
+// v2.4: 新增题目进度信息
+export interface QuestionProgress {
+  current_question_id: number | null;
+  current_index: number;
+  total_questions: number;
+  completed_count: number;
+  current_question_content: string | null;
+  is_intro_shown: boolean;
 }
 
 export const chatApi = {
-  sendMessage: async (data: SendMessageRequest): Promise<ApiResponse<{ response: string; session_id: string; tools_used: string[] }>> => {
+  sendMessage: async (data: SendMessageRequest): Promise<ApiResponse<{
+    response: string;
+    session_id: string;
+    tools_used: string[];
+    question_progress?: QuestionProgress;  // v2.4: 新增
+    answer_card?: AnswerCardMeta | null;  // v2.4: 新增
+  }>> => {
     return apiClient.post('/chat/messages', data);
   },
 
@@ -69,7 +87,7 @@ export const chatApi = {
     callbacks: {
       onStarted?: () => void;
       onChunk: (chunk: string) => void;
-      onDone: (fullResponse: string, meta?: { answerCard?: AnswerCardMeta }) => void;
+      onDone: (fullResponse: string, meta?: { answerCard?: AnswerCardMeta; questionProgress?: QuestionProgress }) => void;
       onError: (err: string) => void;
       onStop?: (partialContent: string) => void;
     },
@@ -124,7 +142,10 @@ export const chatApi = {
               }
               if (payload.done && payload.response != null) {
                 fullResponse = payload.response;
-                callbacks.onDone(fullResponse, { answerCard: payload.answer_card });
+                callbacks.onDone(fullResponse, {
+                  answerCard: payload.answer_card,
+                  questionProgress: payload.question_progress,
+                });
                 return;
               }
             } catch (_) {}

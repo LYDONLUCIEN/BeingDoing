@@ -33,8 +33,10 @@ async def user_agent_node(state: AgentState) -> AgentState:
     state["messages"] = messages
 
     # 为前端准备答题卡元信息：区分 AI 分析与用户回答
+    # 仅在 reasoning_v2 没有设置 answer_card 时才使用旧版启发式逻辑
     try:
-        if final_response:
+        existing_card = state.get("answer_card")
+        if final_response and not existing_card:
             current_step = state.get("current_step", "")
             user_input = state.get("user_input") or ""
             # 仅在探索类步骤、循环已结束且用户回答有一定长度时，认为有生成答题卡的意义
