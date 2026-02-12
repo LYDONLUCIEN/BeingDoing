@@ -109,4 +109,5 @@
 
 - 详细架构: 查看 [架构设计文档](ARCHITECTURE.md)
 - 数据库设计: 查看 [数据库设计文档](DATABASE_SCHEMA.md)
+- UI定制指南: 查看 [UI 定制文档](UI_CUSTOMIZATION.md)（答题卡、建议标签样式）
 - 设计文档: 查看 `planning/` 目录

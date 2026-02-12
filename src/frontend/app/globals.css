@@ -65,3 +65,146 @@ body {
     transform: none !important;
   }
 }
+
+/* Markdown dark-mode overrides for chat messages */
+.message-content .wmde-markdown {
+  background-color: transparent !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+  font-size: 0.875rem !important;
+  line-height: 1.625 !important;
+}
+
+.message-content .wmde-markdown h1,
+.message-content .wmde-markdown h2,
+.message-content .wmde-markdown h3,
+.message-content .wmde-markdown h4 {
+  color: rgba(255, 255, 255, 0.95) !important;
+  border-bottom: none !important;
+  margin-top: 0.75em !important;
+  margin-bottom: 0.5em !important;
+}
+
+.message-content .wmde-markdown h1 { font-size: 1.25rem !important; }
+.message-content .wmde-markdown h2 { font-size: 1.125rem !important; }
+.message-content .wmde-markdown h3 { font-size: 1rem !important; }
+
+.message-content .wmde-markdown p {
+  margin-bottom: 0.5em !important;
+}
+
+.message-content .wmde-markdown ul,
+.message-content .wmde-markdown ol {
+  padding-left: 1.5em !important;
+  margin-bottom: 0.5em !important;
+}
+
+.message-content .wmde-markdown li {
+  margin-bottom: 0.25em !important;
+}
+
+.message-content .wmde-markdown strong {
+  color: rgba(255, 255, 255, 0.95) !important;
+  font-weight: 600 !important;
+}
+
+.message-content .wmde-markdown a {
+  color: rgb(129, 140, 248) !important;
+}
+
+.message-content .wmde-markdown code {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: rgb(196, 181, 253) !important;
+  padding: 0.125em 0.375em !important;
+  border-radius: 0.25rem !important;
+  font-size: 0.85em !important;
+}
+
+.message-content .wmde-markdown pre {
+  background-color: rgba(0, 0, 0, 0.3) !important;
+  border-radius: 0.5rem !important;
+  margin-bottom: 0.5em !important;
+}
+
+.message-content .wmde-markdown pre code {
+  background-color: transparent !important;
+  padding: 0 !important;
+}
+
+.message-content .wmde-markdown hr {
+  border-color: rgba(255, 255, 255, 0.15) !important;
+  margin: 0.75em 0 !important;
+}
+
+.message-content .wmde-markdown blockquote {
+  border-left-color: rgba(255, 255, 255, 0.3) !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+/* ===== Answer Card 答题卡样式（可定制）===== */
+/* 修改这里的样式以自定义答题卡外观 */
+/* 组件文件: src/frontend/components/explore/EnhancedAnswerCard.tsx */
+
+.answer-card {
+  /* 主容器 - Tailwind 类在组件中设置，这里可覆盖 */
+}
+
+.answer-card__header {
+  /* 头部区域（题目标题） */
+}
+
+.answer-card__summary {
+  /* AI 核心发现区域 */
+}
+
+.answer-card__summary .border-l-\\[3px\\] {
+  /* 左侧绿色竖线（由 Tailwind arbitrary value 控制） */
+}
+
+.answer-card__analysis {
+  /* AI 深层分析区域 */
+}
+
+.answer-card__insights {
+  /* 关键洞察标签容器 */
+}
+
+.answer-card__insight-tag {
+  /* 单个洞察标签 */
+  letter-spacing: 0.02em;
+}
+
+.answer-card__user-answer {
+  /* 用户原话区域 */
+}
+
+.answer-card__actions {
+  /* 操作按钮区域 */
+}
+
+/* 折叠态 */
+.answer-card--collapsed {
+  /* 已确认的折叠卡片 */
+}
+
+.answer-card--collapsed .answer-card__header {
+  cursor: pointer;
+}
+
+/* ===== Suggestion Tags 建议标签样式（可定制）===== */
+/* 修改这里的样式以自定义建议标签外观 */
+/* 组件文件: src/frontend/components/explore/SuggestionTags.tsx */
+
+.suggestion-tags {
+  /* 标签容器 */
+}
+
+.suggestion-tags__item {
+  /* 单个标签 */
+  font-size: 0.8125rem;
+  letter-spacing: 0.01em;
+}
+
+.suggestion-tags__item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2);
+}

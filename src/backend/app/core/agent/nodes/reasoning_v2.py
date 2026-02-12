@@ -18,10 +18,15 @@ from app.core.agent.question_flow import (
     should_show_answer_card,
     update_question_progress,
     save_step_progress_to_state,
+    detect_skip_intent,
+    extract_user_answer_summary,
+    generate_answer_card_analysis,
 )
 from app.domain.prompts import get_reasoning_prompt
 from app.domain.knowledge_rules import should_force_knowledge_query, get_search_category_for_step
 from app.domain.knowledge_config import get_knowledge_config
+from app.domain.question_goals import get_question_goal
+from app.domain.step_guidance import COUNSELOR_RESPONSE_GUIDELINES
 from app.core.llmapi import get_default_llm_provider, LLMMessage
 
 
@@ -97,6 +102,7 @@ async def reasoning_node(state: AgentState) -> AgentState:
             )
 
             state["context"] = {**context, "reasoning": decision.model_dump()}
+            state["suggestions"] = ["我准备好了", "能详细解释一下吗", "这个步骤有什么帮助"]
             _append_log(state, "展示步骤介绍", meta={"step": current_step})
             return state
 
@@ -118,6 +124,7 @@ async def reasoning_node(state: AgentState) -> AgentState:
             state = save_step_progress_to_state(state, step_progress)
 
             state["context"] = {**context, "reasoning": decision.model_dump()}
+            state["suggestions"] = ["让我想想...", "能举个例子吗", "我不太确定怎么回答"]
             _append_log(state, "展示题目引导", meta={"question_id": current_question.question_id})
             return state
 
@@ -129,6 +136,7 @@ async def reasoning_node(state: AgentState) -> AgentState:
                 reasoning="步骤所有题目已完成"
             )
             state["context"] = {**context, "reasoning": decision.model_dump()}
+            state["suggestions"] = []
             _append_log(state, "步骤完成", meta={"step": current_step})
             return state
 
@@ -143,35 +151,90 @@ async def reasoning_node(state: AgentState) -> AgentState:
             inner_messages = state.get("inner_messages", [])
             conversation_history = [{"role": msg.role, "content": msg.content} for msg in inner_messages[-10:]]
 
+            # 检测跳过意图：如果用户想跳过且至少对话过1轮，强制展示 answer_card
+            if detect_skip_intent(user_input) and current_question.turn_count >= 1:
+                user_answer = extract_user_answer_summary(conversation_history)
+                if not user_answer or len(user_answer.strip()) < 5:
+                    user_answer = "（用户选择跳过此题）"
+
+                # 生成 AI 分析
+                card_analysis = await generate_answer_card_analysis(
+                    category=step_progress.category,
+                    question_id=current_question.question_id,
+                    question_content=current_question.question_content,
+                    conversation_history=conversation_history,
+                )
+
+                step_progress = update_question_progress(step_progress, "complete_question", conversation_history)
+                step_progress = update_question_progress(step_progress, "next_question")
+                state = save_step_progress_to_state(state, step_progress)
+
+                state["answer_card"] = {
+                    "question_id": current_question.question_id,
+                    "question_content": current_question.question_content,
+                    "user_answer": user_answer,
+                    "ai_summary": card_analysis["ai_summary"],
+                    "ai_analysis": card_analysis["ai_analysis"],
+                    "key_insights": card_analysis["key_insights"],
+                    "should_show": True,
+                }
+                summary_text = card_analysis["ai_summary"] or user_answer
+                decision = ReasoningDecision(
+                    action="respond",
+                    response=f"好的，我来帮你梳理一下这道题的想法。\n\n**核心发现：**{summary_text}",
+                    reasoning="用户要求跳过，生成带AI分析的answer_card"
+                )
+                state["suggestions"] = []
+                state["context"] = {**context, "reasoning": decision.model_dump()}
+                _append_log(state, "用户跳过，生成answer_card", meta={"question_id": current_question.question_id})
+                return state
+
             # 判断是否应该展示answer_card
             should_show, reason = should_show_answer_card(step_progress, conversation_history)
 
             if should_show:
-                # 回答充分，生成answer_card
-                from app.core.agent.question_flow import extract_user_answer_summary
+                # 回答充分，生成answer_card（含AI分析）
                 user_answer = extract_user_answer_summary(conversation_history)
+
+                # 生成 AI 分析
+                card_analysis = await generate_answer_card_analysis(
+                    category=step_progress.category,
+                    question_id=current_question.question_id,
+                    question_content=current_question.question_content,
+                    conversation_history=conversation_history,
+                )
 
                 # 标记题目完成并推进到下一题
                 step_progress = update_question_progress(step_progress, "complete_question", conversation_history)
                 step_progress = update_question_progress(step_progress, "next_question")
                 state = save_step_progress_to_state(state, step_progress)
 
-                # 设置answer_card信息
+                # 设置answer_card信息（含AI分析）
                 state["answer_card"] = {
                     "question_id": current_question.question_id,
                     "question_content": current_question.question_content,
                     "user_answer": user_answer,
-                    "should_show": True
+                    "ai_summary": card_analysis["ai_summary"],
+                    "ai_analysis": card_analysis["ai_analysis"],
+                    "key_insights": card_analysis["key_insights"],
+                    "should_show": True,
                 }
 
-                # 生成总结性回复
+                # 生成总结性回复（在对话中显示）
+                summary_text = card_analysis["ai_summary"] or user_answer
+                analysis_text = card_analysis["ai_analysis"]
+                response_parts = [f"很好！我理解你的想法了。让我为你总结一下...\n\n**核心发现：**{summary_text}"]
+                if analysis_text:
+                    response_parts.append(f"\n\n{analysis_text}")
+
                 decision = ReasoningDecision(
                     action="respond",
-                    response=f"很好！我理解你的想法了。让我为你总结一下...\n\n{user_answer}",
-                    reasoning=f"回答充分（{reason}），生成answer_card"
+                    response="".join(response_parts),
+                    reasoning=f"回答充分（{reason}），生成带AI分析的answer_card"
                 )
+                state["suggestions"] = []
                 state["context"] = {**context, "reasoning": decision.model_dump()}
-                _append_log(state, "生成answer_card", meta={"question_id": current_question.question_id, "reason": reason})
+                _append_log(state, "生成answer_card（含AI分析）", meta={"question_id": current_question.question_id, "reason": reason})
                 return state
 
             else:
@@ -207,10 +270,14 @@ async def reasoning_node(state: AgentState) -> AgentState:
         step_summary = summaries.get(current_step, "")
         tools_used = ", ".join(state.get("tools_used") or [])
 
-        # 添加题目上下文到提示词
-        question_context = ""
+        # 获取题目目标配置
+        question_goal = None
+        question_content_str = ""
+        current_turn_count = 0
         if step_progress and q_state.get("current_question"):
-            question_context = f"\n当前题目：{q_state['current_question'].question_content}\n"
+            question_goal = get_question_goal(step_progress.category, q_state["current_question"].question_id)
+            question_content_str = q_state["current_question"].question_content
+            current_turn_count = q_state["current_question"].turn_count
 
         system_content = get_reasoning_prompt({
             "current_step": current_step,
@@ -218,18 +285,20 @@ async def reasoning_node(state: AgentState) -> AgentState:
             "user_input": user_input,
             "tools_used": tools_used,
             "knowledge_snippets": knowledge_snippets or "",
+            "question_goal": question_goal,
+            "question_content": question_content_str,
+            "current_turn_count": current_turn_count,
+            "counselor_guidelines": COUNSELOR_RESPONSE_GUIDELINES,
         })
 
-        if question_context:
-            system_content += question_context
-
         if not (system_content or "").strip():
+            question_line = f"当前题目：{question_content_str}\n" if question_content_str else ""
             system_content = (
                 f"当前步骤：{current_step}\n该步骤的阶段性总结：{step_summary}\n"
-                f"{question_context}"
+                f"{question_line}"
                 f"用户输入：{user_input}\n已使用的工具：{tools_used}\n"
                 "请以 JSON 返回：{\"action\": \"use_tool\"|\"respond\"|\"guide\", "
-                "\"tool_name\": \"...\", \"tool_input\": {}, \"response\": \"...\", \"reasoning\": \"...\"}"
+                "\"tool_name\": \"...\", \"tool_input\": {}, \"response\": \"...\", \"reasoning\": \"...\", \"suggestions\": [...]}"
             )
 
         messages = [
@@ -296,9 +365,11 @@ async def reasoning_node(state: AgentState) -> AgentState:
                 action="respond",
                 response=resp_text,
                 reasoning="LLM 直接生成回答",
+                suggestions=["我想聊聊具体的例子", "能换个角度问吗", "我再想想..."],
             )
 
         state["context"] = {**context, "reasoning": decision.model_dump()}
+        state["suggestions"] = decision.suggestions or []
 
         inner = state.get("inner_messages") or []
         inner.append(LLMMessage(role="assistant", content=full_content))

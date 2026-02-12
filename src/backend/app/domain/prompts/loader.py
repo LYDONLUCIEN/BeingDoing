@@ -51,3 +51,8 @@ def get_observation_prompt(context: Dict[str, Any]) -> str:
 def get_guide_prompt(context: Dict[str, Any]) -> str:
     """引导节点系统提示。context: current_step, user_input"""
     return _get_loader().render("guide", context)
+
+
+def get_answer_card_prompt(context: Dict[str, Any]) -> str:
+    """答题卡总结提示。context: question_content, category_label, question_goal, conversation_text"""
+    return _get_loader().render("answer_card_summary", context)

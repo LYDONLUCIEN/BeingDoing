@@ -32,8 +32,12 @@ export interface AnswerCardMeta {
   question_content?: string;
   /** 用户针对当前题目的回答文本（可编辑，Markdown 展示） */
   user_answer?: string;
-  /** AI 对当前题目的分析/反馈（v2.4: 已移到对话中，此字段保留兼容） */
+  /** AI 对用户回答的简短总结（1-2句核心观点） */
+  ai_summary?: string;
+  /** AI 对用户回答的深层分析 */
   ai_analysis?: string;
+  /** AI 提取的关键洞察列表 */
+  key_insights?: string[];
 }
 
 // v2.4: 新增题目进度信息
@@ -87,7 +91,7 @@ export const chatApi = {
     callbacks: {
       onStarted?: () => void;
       onChunk: (chunk: string) => void;
-      onDone: (fullResponse: string, meta?: { answerCard?: AnswerCardMeta; questionProgress?: QuestionProgress }) => void;
+      onDone: (fullResponse: string, meta?: { answerCard?: AnswerCardMeta; questionProgress?: QuestionProgress; suggestions?: string[] }) => void;
       onError: (err: string) => void;
       onStop?: (partialContent: string) => void;
     },
@@ -145,6 +149,7 @@ export const chatApi = {
                 callbacks.onDone(fullResponse, {
                   answerCard: payload.answer_card,
                   questionProgress: payload.question_progress,
+                  suggestions: payload.suggestions,
                 });
                 return;
               }

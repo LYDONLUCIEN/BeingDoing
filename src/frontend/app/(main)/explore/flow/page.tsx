@@ -13,7 +13,9 @@ import FlowHeader from '@/components/explore/FlowHeader';
 import StepTheoryIntro from '@/components/explore/StepTheoryIntro';
 import EnhancedAnswerCard from '@/components/explore/EnhancedAnswerCard';
 import ConversationInput from '@/components/explore/ConversationInput';
+import SuggestionTags from '@/components/explore/SuggestionTags';
 import DebugPanel from '@/components/explore/DebugPanel';
+import MessageContent from '@/components/explore/MessageContent';
 
 // 步骤理论配置（对应后端 step_guidance.py）
 const STEP_THEORIES: Record<string, { name: string; purpose: string; theory: string }> = {
@@ -54,6 +56,8 @@ interface CompletedQuestion {
   questionId: number;
   questionContent: string;
   messages: Message[];
+  answerCard?: AnswerCardMeta;
+  isExpanded: boolean;
 }
 
 export default function ExploreFlowPageV2() {
@@ -79,6 +83,10 @@ export default function ExploreFlowPageV2() {
 
   // Answer Card状态
   const [answerCard, setAnswerCard] = useState<AnswerCardMeta | null>(null);
+
+  // 建议标签状态
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [pendingInputText, setPendingInputText] = useState('');
 
   // 调试状态
   const [showDebugPanel, setShowDebugPanel] = useState(false);
@@ -142,6 +150,7 @@ export default function ExploreFlowPageV2() {
     setError('');
     setStreaming(true);
     setStreamingContent('');
+    setSuggestions([]);
 
     // 只有非空消息才添加到聊天列表（空消息用于触发AI引导）
     if (content.trim()) {
@@ -178,6 +187,9 @@ export default function ExploreFlowPageV2() {
           if (meta?.questionProgress) {
             setQuestionProgress(meta.questionProgress);
           }
+
+          // v2.6: 处理建议标签
+          setSuggestions(meta?.suggestions || []);
 
           await loadChatHistory();
         },
@@ -223,13 +235,15 @@ export default function ExploreFlowPageV2() {
   const handleConfirmAnswer = () => {
     if (!answerCard) return;
 
-    // 将当前题目的对话记录添加到已完成列表
+    // 将当前题目的对话记录和答题卡添加到已完成列表
     setCompletedQuestions(prev => [
       ...prev,
       {
         questionId: answerCard.question_id!,
         questionContent: answerCard.question_content!,
         messages: [...chatMessages],
+        answerCard: answerCard,
+        isExpanded: false,
       }
     ]);
 
@@ -293,20 +307,24 @@ export default function ExploreFlowPageV2() {
 
         {!showStepIntro && (
           <>
-            {/* v2.4: 已完成的题目（折叠显示） */}
-            {completedQuestions.map((q) => (
-              <div
+            {/* v2.4: 已完成的题目（折叠答题卡） */}
+            {completedQuestions.map((q, idx) => (
+              <EnhancedAnswerCard
                 key={q.questionId}
-                className="mb-3 rounded-xl border border-white/10 bg-slate-800/40 overflow-hidden"
-              >
-                <div className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-white/5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs bg-green-500/20 text-green-300 px-2 py-0.5 rounded">已完成</span>
-                    <span className="text-sm text-white/80 truncate max-w-md">{q.questionContent}</span>
-                  </div>
-                  <span className="text-xs text-white/40">{q.messages.length} 条消息</span>
-                </div>
-              </div>
+                questionContent={q.questionContent}
+                userAnswer={q.answerCard?.user_answer || ''}
+                aiSummary={q.answerCard?.ai_summary}
+                aiAnalysis={q.answerCard?.ai_analysis}
+                keyInsights={q.answerCard?.key_insights}
+                onConfirm={() => {}}
+                onDiscussMore={() => {}}
+                isCollapsed={!q.isExpanded}
+                onToggleExpand={() => {
+                  setCompletedQuestions(prev => prev.map((item, i) =>
+                    i === idx ? { ...item, isExpanded: !item.isExpanded } : item
+                  ));
+                }}
+              />
             ))}
 
             {/* 当前题目对话区 */}
@@ -341,8 +359,10 @@ export default function ExploreFlowPageV2() {
                       `}>
                         {msg.role === 'user' ? '你' : 'AI'}
                       </span>
-                      <div className="flex-1 min-w-0 text-white/90 whitespace-pre-wrap">
-                        {msg.content}
+                      <div className="flex-1 min-w-0 text-white/90">
+                        {msg.role === 'assistant'
+                          ? <MessageContent content={msg.content} />
+                          : <span className="whitespace-pre-wrap">{msg.content}</span>}
                       </div>
                     </div>
                   </div>
@@ -355,8 +375,8 @@ export default function ExploreFlowPageV2() {
                       <span className="text-xs font-medium px-2 py-0.5 rounded bg-white/10 text-white/70 flex-shrink-0">
                         AI
                       </span>
-                      <div className="flex-1 min-w-0 text-white/90 whitespace-pre-wrap">
-                        {streamingContent}
+                      <div className="flex-1 min-w-0 text-white/90">
+                        <MessageContent content={streamingContent} />
                       </div>
                     </div>
                   </div>
@@ -370,9 +390,24 @@ export default function ExploreFlowPageV2() {
               <EnhancedAnswerCard
                 questionContent={answerCard.question_content || '当前问题'}
                 userAnswer={answerCard.user_answer}
+                aiSummary={answerCard.ai_summary}
+                aiAnalysis={answerCard.ai_analysis}
+                keyInsights={answerCard.key_insights}
                 onConfirm={handleConfirmAnswer}
                 onDiscussMore={handleDiscussMore}
                 onEdit={handleEditAnswer}
+              />
+            )}
+
+            {/* v2.6: 建议标签 */}
+            {!streaming && !answerCard && (
+              <SuggestionTags
+                suggestions={suggestions}
+                onSelect={(s) => {
+                  setPendingInputText(s);
+                  setSuggestions([]);
+                }}
+                className="mb-3"
               />
             )}
 
@@ -388,6 +423,8 @@ export default function ExploreFlowPageV2() {
                 loading={streaming}
                 streaming={streaming}
                 onStopStream={handleStopStream}
+                externalText={pendingInputText}
+                onExternalTextConsumed={() => setPendingInputText('')}
               />
             </div>
           </>

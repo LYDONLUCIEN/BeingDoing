@@ -47,6 +47,9 @@ class AgentState(TypedDict, total=False):
     # {"question_step": "values_exploration", "user_answer_summary": "...对当前答案的概括..."}
     answer_card: Dict[str, Any]
 
+    # === 建议标签（3个简短建议回答方向）===
+    suggestions: List[str]
+
     # === 题目进度管理 ===
     # 存储当前步骤的题目进度信息
     # {"current_question_id": int, "current_question_index": int, "is_answer_sufficient": bool}

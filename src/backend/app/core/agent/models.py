@@ -2,7 +2,7 @@
 智能体结构化输出模型（Pydantic）
 用于 reasoning / observation 等节点的 LLM 输出解析，降低手写 JSON 解析错误率。
 """
-from typing import Optional, Dict, Any, Literal
+from typing import Optional, Dict, Any, List, Literal
 from pydantic import BaseModel, Field
 
 
@@ -13,6 +13,7 @@ class ReasoningDecision(BaseModel):
     tool_input: Optional[Dict[str, Any]] = Field(default_factory=dict, description="工具入参，如 {\"query\": \"...\"}")
     response: Optional[str] = Field(None, description="当 action 为 respond/guide 时给用户的回答")
     reasoning: Optional[str] = Field(None, description="推理过程说明")
+    suggestions: Optional[List[str]] = Field(default_factory=list, description="3个建议回答方向")
 
 
 class ObservationDecision(BaseModel):

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ImagePlus, Mic, Square } from 'lucide-react';
 
 interface ConversationInputProps {
@@ -10,6 +10,9 @@ interface ConversationInputProps {
   streaming?: boolean;
   onStopStream?: () => void;
   placeholder?: string;
+  /** 外部设置的文本（如点击建议标签） */
+  externalText?: string;
+  onExternalTextConsumed?: () => void;
 }
 
 export default function ConversationInput({
@@ -18,9 +21,19 @@ export default function ConversationInput({
   streaming = false,
   onStopStream,
   placeholder = '把你现在的想法、回答或问题都写在这里，我们一起聊聊…',
+  externalText,
+  onExternalTextConsumed,
 }: ConversationInputProps) {
   const [text, setText] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 同步外部文本到内部 state
+  useEffect(() => {
+    if (externalText) {
+      setText(externalText);
+      onExternalTextConsumed?.();
+    }
+  }, [externalText]);
 
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();

@@ -1,12 +1,27 @@
 """
 题目流程辅助函数：处理题目加载、进度更新、充分性判断等
 """
-from typing import Dict, List, Optional, Tuple
+import json
+from typing import Any, Dict, List, Optional, Tuple
 from app.domain.question_progress import StepProgress, QuestionProgress, ProgressManager
 from app.domain.step_guidance import get_step_theory, get_question_guidance
+from app.domain.question_goals import get_question_goal
 from app.domain.steps import STEP_TO_CATEGORY
 from app.core.agent.state import AgentState
 from app.services.question_service import QuestionService
+
+# 跳过/下一题意图关键词
+SKIP_KEYWORDS = ["下一题", "跳过", "不想回答", "换一题", "下一个", "不想说", "不知道怎么回答", "算了"]
+
+
+def detect_skip_intent(user_input: str) -> bool:
+    """检测用户是否有跳过当前题目的意图"""
+    if not user_input:
+        return False
+    trimmed = user_input.strip()
+    if len(trimmed) <= 15:
+        return any(kw in trimmed for kw in SKIP_KEYWORDS)
+    return False
 
 
 def initialize_step_if_needed(
@@ -126,10 +141,10 @@ def should_show_answer_card(
 
     返回: (should_show, reason)
 
-    判断标准：
-    1. 对话轮数达到3轮以上
-    2. 用户回答包含具体例子和感受
-    3. 不超过5轮（避免过度挖掘）
+    判断标准（基于题目目标配置）：
+    1. 对话轮数达到 min_turns 以上
+    2. 用户回答包含具体例子和感受（sufficiency_hints）
+    3. 不超过 max_turns（避免过度挖掘）
     """
     current_question = step_progress.current_question
     if not current_question:
@@ -137,12 +152,21 @@ def should_show_answer_card(
 
     turn_count = current_question.turn_count
 
-    # 最少3轮对话
-    if turn_count < 2:
+    # 获取题目目标配置
+    goal = get_question_goal(step_progress.category, current_question.question_id)
+    min_turns = goal.get("min_turns", 2) if goal else 2
+    max_turns = goal.get("max_turns", 5) if goal else 5
+    hints = goal.get("sufficiency_hints", []) if goal else []
+    # 如果没有配置 hints，使用默认关键词
+    if not hints:
+        hints = ["因为", "比如", "例如", "感觉", "觉得", "体验", "经历", "让我", "的时候"]
+
+    # 最少轮数检查
+    if turn_count < min_turns:
         return False, "对话轮数不足，需要继续挖掘"
 
-    # 最多5轮对话
-    if turn_count >= 5:
+    # 最多轮数检查
+    if turn_count >= max_turns:
         return True, "对话轮数已达上限，总结回答"
 
     # 分析最近的对话内容
@@ -159,11 +183,10 @@ def should_show_answer_card(
     if len(latest_user_msg) < 30:
         return False, "回答过于简短"
 
-    # 包含具体性词汇
-    concrete_keywords = ["因为", "比如", "例如", "感觉", "觉得", "体验", "经历", "让我", "的时候"]
-    has_concrete = any(kw in latest_user_msg for kw in concrete_keywords)
+    # 包含充分性关键词
+    has_concrete = any(kw in latest_user_msg for kw in hints)
 
-    if turn_count >= 3 and has_concrete:
+    if turn_count >= (min_turns + 1) and has_concrete:
         return True, "回答充分，包含具体例子和感受"
 
     return False, "需要继续挖掘更多细节"
@@ -230,3 +253,79 @@ def save_step_progress_to_state(state: AgentState, step_progress: StepProgress) 
     question_progress_data[step_progress.step_id] = step_progress.model_dump()
     state["question_progress"] = question_progress_data
     return state
+
+
+# 类别标签（中文显示用）
+CATEGORY_LABELS = {
+    "values": "价值观",
+    "strengths": "才能",
+    "interests": "兴趣与热情",
+}
+
+
+async def generate_answer_card_analysis(
+    category: str,
+    question_id: int,
+    question_content: str,
+    conversation_history: List[Dict],
+) -> Dict[str, Any]:
+    """
+    调用 LLM 为答题卡生成结构化分析。
+
+    返回:
+        {
+            "ai_summary": str,     # 1-2句核心观点概括
+            "ai_analysis": str,    # 深层分析
+            "key_insights": list,  # 3-5个关键洞察短语
+        }
+
+    LLM 调用失败时 fallback 到简单文本提取。
+    """
+    from app.core.llmapi import get_default_llm_provider, LLMMessage
+    from app.domain.prompts import get_answer_card_prompt
+    from app.domain.question_goals import get_question_goal
+
+    question_goal = get_question_goal(category, question_id)
+
+    # 格式化对话历史为文本
+    conversation_text = ""
+    for msg in conversation_history:
+        role_label = "用户" if msg.get("role") == "user" else "咨询师"
+        conversation_text += f"{role_label}：{msg.get('content', '')}\n"
+
+    prompt_content = get_answer_card_prompt({
+        "category_label": CATEGORY_LABELS.get(category, category),
+        "question_content": question_content,
+        "question_goal": question_goal,
+        "conversation_text": conversation_text,
+    })
+
+    llm = get_default_llm_provider()
+    messages = [
+        LLMMessage(role="system", content=prompt_content),
+        LLMMessage(role="user", content="请生成答题卡总结。"),
+    ]
+
+    try:
+        response = await llm.chat(messages, temperature=0.5)
+        raw = (response.content or "").strip()
+        # 处理 markdown 代码块包裹
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.strip()
+        data = json.loads(raw)
+        return {
+            "ai_summary": data.get("ai_summary", ""),
+            "ai_analysis": data.get("ai_analysis", ""),
+            "key_insights": data.get("key_insights", []),
+        }
+    except Exception:
+        # Fallback：使用简单提取
+        user_answer = extract_user_answer_summary(conversation_history)
+        return {
+            "ai_summary": user_answer[:100] if user_answer else "",
+            "ai_analysis": "",
+            "key_insights": [],
+        }

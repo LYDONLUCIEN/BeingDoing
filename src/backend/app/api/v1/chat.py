@@ -226,6 +226,9 @@ async def send_message(
                 "question_id": answer_card_data.get("question_id"),
                 "question_content": answer_card_data.get("question_content"),
                 "user_answer": answer_card_data.get("user_answer"),
+                "ai_summary": answer_card_data.get("ai_summary", ""),
+                "ai_analysis": answer_card_data.get("ai_analysis", ""),
+                "key_insights": answer_card_data.get("key_insights", []),
             }
 
         return StandardResponse(
@@ -238,6 +241,7 @@ async def send_message(
                 "logs": logs,
                 "question_progress": step_progress_info,  # v2.4: 新增
                 "answer_card": answer_card_info,  # v2.4: 新增
+                "suggestions": (final_state or {}).get("suggestions", []),
             }
         )
     
@@ -419,9 +423,14 @@ async def send_message_stream(
                     "question_id": answer_card.get("question_id"),
                     "question_content": answer_card.get("question_content"),
                     "user_answer": answer_card.get("user_answer"),
+                    "ai_summary": answer_card.get("ai_summary", ""),
+                    "ai_analysis": answer_card.get("ai_analysis", ""),
+                    "key_insights": answer_card.get("key_insights", []),
                 }
 
-            yield f"data: {json.dumps({'done': True, 'response': response, 'answer_card': answer_card_info, 'question_progress': step_progress_info}, ensure_ascii=False)}\n\n"
+            suggestions = (final_state or {}).get("suggestions", [])
+
+            yield f"data: {json.dumps({'done': True, 'response': response, 'answer_card': answer_card_info, 'question_progress': step_progress_info, 'suggestions': suggestions}, ensure_ascii=False)}\n\n"
 
             await conversation_manager.append_message(
                 session_id=request.session_id,
