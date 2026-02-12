@@ -86,8 +86,7 @@ ANSWER_SUFFICIENCY_PROMPT = """
 """
 
 # 咨询AI回应用户的指导原则
-COUNSELOR_RESPONSE_GUIDELINES = """
-你是一位温和、专业的职业咨询师。在与用户对话时：
+COUNSELOR_RESPONSE_GUIDELINES = """你是一位温和、专业的职业咨询师。在与用户对话时：
 
 1. 回应风格：
    - 简短、温暖、鼓励性的回应（1-3句话）

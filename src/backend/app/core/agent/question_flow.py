@@ -134,7 +134,8 @@ def generate_question_guidance_message(
 
 def should_show_answer_card(
     step_progress: StepProgress,
-    conversation_history: List[Dict]
+    conversation_history: List[Dict],
+    force_regenerate_card: bool = False,
 ) -> Tuple[bool, str]:
     """
     判断是否应该展示 answer_card
@@ -145,10 +146,15 @@ def should_show_answer_card(
     1. 对话轮数达到 min_turns 以上
     2. 用户回答包含具体例子和感受（sufficiency_hints）
     3. 不超过 max_turns（避免过度挖掘）
+    4. force_regenerate_card=True 时强制生成（用于"继续讨论"后的首次消息）
     """
     current_question = step_progress.current_question
     if not current_question:
         return False, "无当前题目"
+
+    # v2.7: 如果是强制重新生成模式，且至少有一轮对话，直接返回 True
+    if force_regenerate_card and current_question.turn_count > 0:
+        return True, "继续讨论后重新生成答题卡"
 
     turn_count = current_question.turn_count
 

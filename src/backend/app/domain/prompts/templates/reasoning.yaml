@@ -26,6 +26,7 @@ prompt: |
   {% endif %}
 
   {% if counselor_guidelines %}
+  {# counselor_guidelines is a multi-line string that should be treated as plain text #}
   {{ counselor_guidelines }}
   {% endif %}
 

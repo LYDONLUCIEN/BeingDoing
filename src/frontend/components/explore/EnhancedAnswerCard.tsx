@@ -14,8 +14,8 @@ interface EnhancedAnswerCardProps {
   aiAnalysis?: string;
   /** AI 提取的关键洞察标签 */
   keyInsights?: string[];
-  onConfirm: () => void;
-  onDiscussMore: () => void;
+  onConfirm?: () => void;  // 可选，已确认时不需要
+  onDiscussMore?: () => void;  // 可选，已确认时不需要
   onEdit?: (newAnswer: string) => Promise<void>;
   /** 是否处于折叠（已确认）状态 */
   isCollapsed?: boolean;
@@ -166,7 +166,7 @@ export default function EnhancedAnswerCard({
               className="flex items-center gap-1 text-xs text-white/40 hover:text-white/60 transition-colors"
             >
               {showUserAnswer ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-              你的原话摘要
+              您的回答(摘要)
             </button>
             {showUserAnswer && (
               <div className="mt-2 bg-white/5 rounded-xl p-4 backdrop-blur-sm">
@@ -176,7 +176,7 @@ export default function EnhancedAnswerCard({
                       value={editValue}
                       onChange={(e) => setEditValue(e.target.value)}
                       className="w-full min-h-[100px] px-3 py-2 rounded-lg bg-slate-800/80 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 resize-none"
-                      placeholder="编辑你的回答..."
+                      placeholder="编辑您的回答..."
                     />
                     <div className="flex gap-2">
                       <button
@@ -222,22 +222,31 @@ export default function EnhancedAnswerCard({
 
           {/* Actions */}
           <div className="answer-card__actions flex gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onConfirm}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-medium transition-all transform hover:scale-[1.02] active:scale-[0.98]"
-            >
-              <CheckCircle2 className="w-5 h-5" />
-              确认并继续
-            </button>
-            <button
-              type="button"
-              onClick={onDiscussMore}
-              className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-white/20 hover:bg-white/10 text-white/80 transition-colors"
-            >
-              <MessageCircle className="w-5 h-5" />
-              继续讨论
-            </button>
+            {onConfirm && (
+              <button
+                type="button"
+                onClick={onConfirm}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-medium transition-all transform hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <CheckCircle2 className="w-5 h-5" />
+                确认并继续
+              </button>
+            )}
+            {onDiscussMore && (
+              <button
+                type="button"
+                onClick={onDiscussMore}
+                className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-white/20 transition-colors ${
+                  isCollapsed
+                    ? 'bg-white/5 text-white/40 cursor-not-allowed'
+                    : 'hover:bg-white/10 text-white/80'
+                }`}
+                disabled={isCollapsed}
+              >
+                <MessageCircle className="w-5 h-5" />
+                继续讨论
+              </button>
+            )}
           </div>
         </div>
       </div>

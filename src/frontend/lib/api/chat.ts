@@ -5,6 +5,8 @@ export interface SendMessageRequest {
   message: string;
   current_step: string;
   category?: string;
+  /** 强制重新生成答题卡（用于"继续讨论"后的首次消息） */
+  force_regenerate_card?: boolean;
 }
 
 export interface Message {
@@ -85,6 +87,8 @@ export const chatApi = {
    * 服务端会先发 started，再跑智能体，再发 chunk / done。
    * signal: 用于终止请求（点击停止时 abort）。
    * onStarted() 收到 started 时调用（可显示「思考中…」），onChunk/onDone/onError/onStop 同上。
+   *
+   * 注意：目前使用优化端点 /api/v1/chat-optimized/messages/stream
    */
   sendMessageStream: async (
     data: SendMessageRequest,
@@ -98,7 +102,7 @@ export const chatApi = {
     signal?: AbortSignal
   ): Promise<void> => {
     const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-    const url = `${baseURL}/api/v1/chat/messages/stream`;
+    const url = `${baseURL}/api/v1/chat-optimized/messages/stream`;
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     const res = await fetch(url, {
       method: 'POST',
@@ -179,5 +183,108 @@ export const chatApi = {
   /** 超级管理员：获取某会话的智能体调试日志 */
   getDebugLogs: async (sessionId: string): Promise<ApiResponse<{ entries: any[] }>> => {
     return apiClient.get('/chat/debug-logs', { params: { session_id: sessionId } });
+  },
+
+  /** 获取会话的所有历史 Answer Cards（使用优化端点） */
+  getAnswerCards: async (sessionId: string): Promise<ApiResponse<{ answer_cards: AnswerCardMeta[]; count: number }>> => {
+    return apiClient.get('/chat-optimized/answer-cards', { params: { session_id: sessionId } });
+  },
+
+  /** 获取会话的所有笔记（包括 summaries 和 answer_cards）（使用优化端点） */
+  getNotes: async (sessionId: string): Promise<ApiResponse<{
+    notes: any[];
+    summaries: any[];
+    answer_cards: AnswerCardMeta[];
+    summary_count: number;
+    answer_card_count: number;
+  }>> => {
+    return apiClient.get('/chat-optimized/notes', { params: { session_id: sessionId } });
+  },
+
+  /**
+   * 使用优化端点发送消息（带缓存和完整上下文）
+   * 参数同 sendMessage，新增 use_cache 和 load_full_context 选项
+   */
+  sendMessageStreamOptimized: async (
+    data: SendMessageRequest & { use_cache?: boolean; load_full_context?: boolean },
+    callbacks: any,
+    signal?: AbortSignal
+  ): Promise<void> => {
+    const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const url = `${baseURL}/api/v1/chat-optimized/messages/stream`;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(data),
+      signal,
+    });
+
+    if (!res.ok) {
+      callbacks.onError?.(res.statusText || '请求失败');
+      return;
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) {
+      callbacks.onError?.('无法读取流');
+      return;
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullResponse = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const payload = JSON.parse(line.slice(6));
+              if (payload.error) {
+                callbacks.onError?.(payload.error);
+                return;
+              }
+              if (payload.started) {
+                callbacks.onStarted?.();
+                continue;
+              }
+              if (payload.chunk) {
+                fullResponse += payload.chunk;
+                callbacks.onChunk?.(payload.chunk);
+              }
+              if (payload.done && payload.response != null) {
+                fullResponse = payload.response;
+                callbacks.onDone?.(fullResponse, {
+                  answerCard: payload.answer_card,
+                  questionProgress: payload.question_progress,
+                  suggestions: payload.suggestions,
+                  noteContent: payload.note_content,
+                });
+                return;
+              }
+            } catch (_) {}
+          }
+        }
+      }
+      if (fullResponse) callbacks.onDone?.(fullResponse);
+    } catch (e: unknown) {
+      if (e instanceof Error && e.name === 'AbortError') {
+        callbacks.onStop?.(fullResponse);
+        return;
+      }
+      callbacks.onError?.(e instanceof Error ? e.message : '流式读取失败');
+    }
   },
 };

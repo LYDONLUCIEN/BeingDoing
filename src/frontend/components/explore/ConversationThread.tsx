@@ -7,8 +7,8 @@ import type { AnswerChangeType } from '@/lib/api/answers';
 import MessageContent from './MessageContent';
 
 export type ConversationItem =
-  | { type: 'answer'; answer: Answer; questionContent?: string }
-  | { type: 'chat'; message: Message };
+  | { type: 'answer'; answer: Answer; questionContent?: string | undefined; content?: string }
+  | { type: 'chat'; message: Message; content?: string };
 
 interface ConversationThreadProps {
   items: ConversationItem[];

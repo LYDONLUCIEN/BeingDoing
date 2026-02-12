@@ -6,19 +6,39 @@ import { useAuthStore } from '@/stores/authStore';
 import { NAV_ITEMS } from '@/lib/nav';
 import { useState } from 'react';
 import { Menu, X } from 'lucide-react';
+import AuthModal from './AuthModal';
 
 export default function TopNavbar() {
   const pathname = usePathname();
   const router = useRouter();
   const { isAuthenticated, user, logout } = useAuthStore();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [redirectPath, setRedirectPath] = useState<string | null>(null);
 
   const handleNavClick = (item: typeof NAV_ITEMS[number], e: React.MouseEvent) => {
     if (item.requiresAuth && !isAuthenticated) {
       e.preventDefault();
-      router.push(`/auth/login?redirect=${encodeURIComponent(item.href)}`);
+      setRedirectPath(item.href);
+      setAuthModalOpen(true);
     }
     setMobileOpen(false);
+  };
+
+  const handleLoginClick = () => {
+    setRedirectPath(null);
+    setAuthModalOpen(true);
+  };
+
+  const handleAuthModalClose = () => {
+    setAuthModalOpen(false);
+  };
+
+  const handleAuthSuccess = () => {
+    setAuthModalOpen(false);
+    if (redirectPath && redirectPath !== pathname) {
+      router.push(redirectPath);
+    }
   };
 
   const handleLogout = () => {
@@ -71,12 +91,12 @@ export default function TopNavbar() {
               </button>
             </>
           ) : (
-            <Link
-              href="/auth/login"
+            <button
+              onClick={handleLoginClick}
               className="px-4 py-1.5 rounded-lg text-sm bg-primary-500 hover:bg-primary-400 text-white transition-colors"
             >
               登录 / 注册
-            </Link>
+            </button>
           )}
         </div>
 
@@ -120,17 +140,22 @@ export default function TopNavbar() {
                 退出（{user?.username || user?.email || '用户'}）
               </button>
             ) : (
-              <Link
-                href="/auth/login"
-                onClick={() => setMobileOpen(false)}
-                className="block px-3 py-2 rounded-lg text-sm bg-primary-500/20 text-primary-300"
+              <button
+                onClick={() => { handleLoginClick(); setMobileOpen(false); }}
+                className="block w-full text-left px-3 py-2 rounded-lg text-sm bg-primary-500/20 text-primary-300"
               >
                 登录 / 注册
-              </Link>
+              </button>
             )}
           </div>
         </div>
       )}
+
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={handleAuthModalClose}
+        redirectTo={redirectPath || undefined}
+      />
     </nav>
   );
 }

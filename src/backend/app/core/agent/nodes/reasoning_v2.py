@@ -190,7 +190,11 @@ async def reasoning_node(state: AgentState) -> AgentState:
                 return state
 
             # 判断是否应该展示answer_card
-            should_show, reason = should_show_answer_card(step_progress, conversation_history)
+            force_regenerate = state.get("force_regenerate_card", False)
+            # 如果是强制重新生成，用完后清除标记（避免每次都强制生成）
+            if force_regenerate:
+                state["force_regenerate_card"] = False
+            should_show, reason = should_show_answer_card(step_progress, conversation_history, force_regenerate)
 
             if should_show:
                 # 回答充分，生成answer_card（含AI分析）

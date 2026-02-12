@@ -77,6 +77,8 @@ class SendMessageRequest(BaseModel):
     message: str
     current_step: str = DEFAULT_CURRENT_STEP
     category: str = "main_flow"  # main_flow, guidance, clarification, other
+    # v2.7: 强制重新生成答题卡（用于"继续讨论"后的首次消息）
+    force_regenerate_card: bool = False
 
 
 class GuideRequest(BaseModel):
@@ -133,6 +135,7 @@ async def send_message(
             user_id=user_id,
             session_id=request.session_id,
             question_progress=saved_qp,
+            force_regenerate_card=request.force_regenerate_card,
         )
 
         final_state = None
@@ -363,6 +366,7 @@ async def send_message_stream(
                 session_id=request.session_id,
                 stream_queue=queue,
                 question_progress=saved_qp,
+                force_regenerate_card=request.force_regenerate_card,
             )
             final_holder = {}
 

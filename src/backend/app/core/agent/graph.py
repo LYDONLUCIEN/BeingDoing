@@ -94,12 +94,14 @@ def create_initial_state(
     session_id: Optional[str] = None,
     stream_queue: Optional[Any] = None,
     question_progress: Optional[Dict] = None,
+    force_regenerate_card: bool = False,
 ) -> AgentState:
     """
     创建初始状态（含双轨 messages / inner_messages 与 logs）。
     current_step 默认从 domain 读取，便于单点维护。
     stream_queue 非空时 reasoning 节点使用 chat_stream 并往该队列推块，供 SSE 端点真流式输出。
     question_progress: 从持久化存储加载的题目进度，跨请求保持状态。
+    force_regenerate_card: 强制重新生成答题卡（用于"继续讨论"后的首次消息）。
     """
     from app.core.llmapi import LLMMessage
     from app.domain import DEFAULT_CURRENT_STEP
@@ -127,4 +129,6 @@ def create_initial_state(
         state["stream_queue"] = stream_queue
     if question_progress is not None:
         state["question_progress"] = question_progress
+    if force_regenerate_card:
+        state["force_regenerate_card"] = force_regenerate_card
     return state

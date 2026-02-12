@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config.settings import settings
 from app.api.middleware import AudioModeMiddleware, ErrorHandlerMiddleware
 from app.api.v1 import auth, users, sessions, questions, answers, chat, search, formula, audio, export
+from app.api.v1 import chat_optimized  # 新增：优化的对话API
 
 app = FastAPI(
     title="找到想做的事 - 智能引导系统",
@@ -66,6 +67,7 @@ app.include_router(sessions.router, prefix="/api/v1")
 app.include_router(questions.router, prefix="/api/v1")
 app.include_router(answers.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
+app.include_router(chat_optimized.router, prefix="/api/v1")  # 新增：优化的对话API路由（使用 /api/v1/chat-optimized 前缀）
 app.include_router(search.router, prefix="/api/v1")
 app.include_router(formula.router, prefix="/api/v1")
 app.include_router(audio.router, prefix="/api/v1")

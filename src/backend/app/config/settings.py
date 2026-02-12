@@ -59,7 +59,22 @@ class Settings(BaseSettings):
     GUIDE_IDLE_TIMEOUT: int = 600  # 10分钟（秒）
     GUIDE_QUIET_TIMEOUT: int = 900  # 15分钟（秒）
     GUIDE_SHORT_ANSWER_THRESHOLD: int = 20  # 字数阈值
-    
+
+    # ========== Graph 缓存配置 ==========
+    GRAPH_CACHE_ENABLED: bool = True
+    GRAPH_CACHE_TTL_MINUTES: int = 15
+    GRAPH_CACHE_MAX_SIZE: int = 20
+    GRAPH_CACHE_CLEANUP_INTERVAL_MINUTES: int = 5
+
+    # ========== 完整上下文加载配置 ==========
+    FULL_CONTEXT_ENABLED: bool = True
+    CONTEXT_COMPRESS_AFTER_ROUNDS: int = 5
+    CONTEXT_KEEP_LATEST_MESSAGES: int = 3
+    CONTEXT_MAX_TOKEN_BUDGET: int = 8000
+
+    # 对话文件存储目录
+    CONVERSATION_DIR: str = "data/conversations"
+
     class Config:
         #env_file = ".env"
         base_dir = Path(__file__).resolve().parents[4]  # 指向 /home/gitclone/BeingDoing
