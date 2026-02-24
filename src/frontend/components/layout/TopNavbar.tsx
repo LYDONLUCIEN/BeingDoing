@@ -3,8 +3,10 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/authStore';
+import { useAuthModalStore } from '@/stores/authModalStore';
+import { onAuthRequired } from '@/lib/api/client';
 import { NAV_ITEMS } from '@/lib/nav';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Menu, X } from 'lucide-react';
 import AuthModal from './AuthModal';
 
@@ -13,32 +15,29 @@ export default function TopNavbar() {
   const router = useRouter();
   const { isAuthenticated, user, logout } = useAuthStore();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [redirectPath, setRedirectPath] = useState<string | null>(null);
+  const { isOpen: authModalOpen, redirectTo, openAuthModal, closeAuthModal } = useAuthModalStore();
+
+  // 监听 API 401 事件，自动弹出登录弹窗
+  useEffect(() => {
+    return onAuthRequired((redirectTo) => {
+      openAuthModal(redirectTo);
+    });
+  }, [openAuthModal]);
 
   const handleNavClick = (item: typeof NAV_ITEMS[number], e: React.MouseEvent) => {
     if (item.requiresAuth && !isAuthenticated) {
       e.preventDefault();
-      setRedirectPath(item.href);
-      setAuthModalOpen(true);
+      openAuthModal(item.href);
     }
     setMobileOpen(false);
   };
 
   const handleLoginClick = () => {
-    setRedirectPath(null);
-    setAuthModalOpen(true);
+    openAuthModal('/explore');
   };
 
   const handleAuthModalClose = () => {
-    setAuthModalOpen(false);
-  };
-
-  const handleAuthSuccess = () => {
-    setAuthModalOpen(false);
-    if (redirectPath && redirectPath !== pathname) {
-      router.push(redirectPath);
-    }
+    closeAuthModal();
   };
 
   const handleLogout = () => {
@@ -47,6 +46,7 @@ export default function TopNavbar() {
   };
 
   return (
+    <>
     <nav className="fixed top-0 left-0 right-0 z-50 h-14 bg-slate-900/95 backdrop-blur border-b border-white/10">
       <div className="max-w-7xl mx-auto h-full px-4 flex items-center justify-between">
         {/* Brand */}
@@ -151,11 +151,14 @@ export default function TopNavbar() {
         </div>
       )}
 
-      <AuthModal
-        isOpen={authModalOpen}
-        onClose={handleAuthModalClose}
-        redirectTo={redirectPath || undefined}
-      />
     </nav>
+
+    {/* AuthModal 放在 nav 外部，避免 nav 的 h-14 / overflow 影响弹窗定位 */}
+    <AuthModal
+      isOpen={authModalOpen}
+      onClose={handleAuthModalClose}
+      redirectTo={redirectTo}
+    />
+  </>
   );
 }

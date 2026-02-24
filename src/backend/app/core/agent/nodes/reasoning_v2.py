@@ -6,6 +6,7 @@
 4. 决定是否展示answer_card
 """
 import json
+import logging
 from typing import Dict
 from app.core.agent.state import AgentState
 from app.core.agent.models import ReasoningDecision
@@ -340,6 +341,22 @@ async def reasoning_node(state: AgentState) -> AgentState:
             full_content = response.content or ""
             raw = full_content.strip()
 
+        # 收集 token 用量
+        token_usage = {}
+        if stream_queue is not None:
+            token_usage = getattr(llm, "_last_stream_usage", None) or {}
+        else:
+            token_usage = response.usage or {}
+
+        if token_usage:
+            session_tokens = state.get("session_token_usage") or {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "llm_calls": 0}
+            session_tokens["prompt_tokens"] += token_usage.get("prompt_tokens", 0)
+            session_tokens["completion_tokens"] += token_usage.get("completion_tokens", 0)
+            session_tokens["total_tokens"] += token_usage.get("total_tokens", 0)
+            session_tokens["llm_calls"] += 1
+            state["session_token_usage"] = session_tokens
+            _append_log(state, f"Token: in={token_usage.get('prompt_tokens', '?')} out={token_usage.get('completion_tokens', '?')} total={token_usage.get('total_tokens', '?')}", meta={"token_usage": token_usage})
+
         # 结构化解析
         try:
             if stream_queue is not None:
@@ -383,6 +400,7 @@ async def reasoning_node(state: AgentState) -> AgentState:
 
         return state
     except Exception as e:
+        logging.getLogger(__name__).exception("[reasoning_v2] 推理节点错误: %s", e)
         state["error"] = f"推理节点错误: {str(e)}"
         state["should_continue"] = False
         _append_log(state, f"推理节点错误: {str(e)}", done=False)

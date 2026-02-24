@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '@/stores/authStore';
+import { useAuthModalStore } from '@/stores/authModalStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { sessionsApi } from '@/lib/api/sessions';
 import { Plus, History } from 'lucide-react';
@@ -11,13 +12,14 @@ import { Plus, History } from 'lucide-react';
 export default function ExploreChoicePage() {
   const router = useRouter();
   const { isAuthenticated } = useAuthStore();
+  const { openAuthModal } = useAuthModalStore();
   const { setCurrentSession } = useSessionStore();
 
   useEffect(() => {
     if (!isAuthenticated) {
-      router.push('/auth/login?redirect=/explore');
+      openAuthModal('/explore');
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, openAuthModal]);
 
   const handleNewStart = async () => {
     try {

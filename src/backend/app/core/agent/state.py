@@ -56,6 +56,11 @@ class AgentState(TypedDict, total=False):
     question_progress: Dict[str, Any]
 
     # === 可选：流式 SSE 推送队列（真流式时由 stream 端点注入）===
-    stream_queue: Any  # asyncio.Queue[str | None]，reasoning 节点边生成边 put(chunk)，端点消费    # === 可选：持久化队列（中优先级改进预留）===
+    stream_queue: Any  # asyncio.Queue[str | None]，reasoning 节点边生成边 put(chunk)，端点消费
+
+    # === Token 用量统计（每次请求累加）===
+    session_token_usage: Dict[str, Any]
+
+    # === 可选：持久化队列（中优先级改进预留）===
     db_records: List[Dict[str, Any]]
     notes: List[Dict[str, Any]]

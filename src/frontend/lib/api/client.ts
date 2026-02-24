@@ -8,6 +8,21 @@ export interface ApiResponse<T = any> {
   data: T;
 }
 
+/** 401 事件：供全局 AuthModal 监听 */
+const AUTH_REQUIRED_EVENT = 'auth:required';
+
+export function onAuthRequired(callback: (redirectTo: string) => void): () => void {
+  const handler = (e: Event) => callback((e as CustomEvent).detail?.redirectTo || '/explore');
+  window.addEventListener(AUTH_REQUIRED_EVENT, handler);
+  return () => window.removeEventListener(AUTH_REQUIRED_EVENT, handler);
+}
+
+function emitAuthRequired(redirectTo: string) {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT, { detail: { redirectTo } }));
+  }
+}
+
 class ApiClient {
   private client: AxiosInstance;
 
@@ -42,14 +57,11 @@ class ApiClient {
           const isAuthRequest =
             typeof requestUrl === 'string' &&
             (requestUrl.includes('/auth/login') || requestUrl.includes('/auth/register'));
-          // 登录/注册接口返回 401 时不跳转，让页面显示错误、用户可重试；其他接口 401 才跳转登录
+          // 登录/注册接口返回 401 时不跳转，让页面显示错误、用户可重试；其他接口 401 弹登录弹窗
           if (!isAuthRequest && typeof window !== 'undefined') {
             this.clearToken();
             const currentPath = window.location.pathname;
-            const redirect = currentPath !== '/auth/login' && currentPath !== '/auth/register'
-              ? `?redirect=${encodeURIComponent(currentPath)}`
-              : '';
-            window.location.href = `/auth/login${redirect}`;
+            emitAuthRequired(currentPath);
           }
         }
         return Promise.reject(error);

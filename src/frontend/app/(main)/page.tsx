@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '@/stores/authStore';
+import { useAuthModalStore } from '@/stores/authModalStore';
 import { Heart, Star, Compass } from 'lucide-react';
 
 const cards = [
@@ -36,12 +37,13 @@ const cards = [
 export default function LandingPage() {
   const router = useRouter();
   const { isAuthenticated } = useAuthStore();
+  const { openAuthModal } = useAuthModalStore();
 
   const handleStart = () => {
     if (isAuthenticated) {
       router.push('/explore');
     } else {
-      router.push('/auth/login?redirect=/explore');
+      openAuthModal('/explore');
     }
   };
 

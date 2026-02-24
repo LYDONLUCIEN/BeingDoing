@@ -3,8 +3,10 @@
 """
 import asyncio
 import json
+import logging
 import os
 import re
+import traceback
 from fastapi import APIRouter, HTTPException, Depends, status, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -18,6 +20,8 @@ from app.models.database import AsyncSessionLocal
 from app.utils.conversation_file_manager import ConversationFileManager, ConversationCategory
 from datetime import datetime
 from app.config.settings import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["对话"])
 
@@ -147,6 +151,7 @@ async def send_message(
                 else:
                     final_state = state
         except Exception as e:
+            logger.exception("[chat] 智能体运行失败: %s", e)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"智能体运行失败: {str(e)}"
@@ -311,6 +316,7 @@ def _save_debug_logs(
             "logs": logs,
             "tools_used": (final_state or {}).get("tools_used", []),
             "context_keys": list((final_state or {}).get("context") or {}).keys(),
+            "token_usage": (final_state or {}).get("session_token_usage"),
         }
         with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
@@ -453,7 +459,9 @@ async def send_message_stream(
                     current_step=request.current_step,
                 )
         except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
+            logger.exception("[chat] event_stream 错误: %s", e)
+            tb = traceback.format_exc()
+            yield f"data: {json.dumps({'error': str(e), 'traceback': tb}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         event_stream(),
@@ -505,18 +513,41 @@ async def get_debug_logs(
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="仅超级管理员可查看调试日志")
     try:
-        path = os.path.join("data", "debug_logs", f"{session_id}.jsonl")
         entries = []
-        if os.path.isfile(path):
+        # 搜索所有可能的日志路径
+        candidate_paths = [
+            os.path.join("data", "debug_logs", f"{session_id}.jsonl"),
+        ]
+        # 扫描 logs/ 目录下所有用户子目录
+        logs_root = "logs"
+        if os.path.isdir(logs_root):
+            for user_dir in os.listdir(logs_root):
+                p = os.path.join(logs_root, user_dir, session_id, "runs.jsonl")
+                if os.path.isfile(p):
+                    candidate_paths.append(p)
+
+        seen_timestamps = set()
+        for path in candidate_paths:
+            if not os.path.isfile(path):
+                continue
             with open(path, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if not line:
                         continue
                     try:
-                        entries.append(json.loads(line))
+                        entry = json.loads(line)
+                        # 按 timestamp 去重（两个路径可能有相同记录）
+                        ts = entry.get("timestamp", "")
+                        if ts and ts in seen_timestamps:
+                            continue
+                        if ts:
+                            seen_timestamps.add(ts)
+                        entries.append(entry)
                     except json.JSONDecodeError:
                         continue
+        # 按时间排序
+        entries.sort(key=lambda x: x.get("timestamp", ""))
         return StandardResponse(code=200, message="success", data={"entries": entries})
     except Exception as e:
         raise HTTPException(

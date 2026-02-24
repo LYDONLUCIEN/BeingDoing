@@ -13,7 +13,9 @@
 """
 import asyncio
 import json
+import logging
 import os
+import traceback
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
@@ -50,6 +52,8 @@ except ImportError:
 from app.core.database import HistoryDB
 from app.models.database import AsyncSessionLocal
 from app.config.settings import settings
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/chat-optimized", tags=["对话（优化版）"])
@@ -319,7 +323,9 @@ async def send_message_stream_optimized(
                 )
 
         except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
+            logger.exception("[chat-optimized] event_stream 错误: %s", e)
+            tb = traceback.format_exc()
+            yield f"data: {json.dumps({'error': str(e), 'traceback': tb}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         event_stream(),
@@ -480,6 +486,7 @@ def _save_debug_logs(
         "logs": logs,
         "tools_used": final_state.get("tools_used", []) if final_state else [],
         "context_keys": list((final_state.get("context") or {}).keys()) if final_state else [],
+        "token_usage": final_state.get("session_token_usage") if final_state else None,
     }
 
     try:

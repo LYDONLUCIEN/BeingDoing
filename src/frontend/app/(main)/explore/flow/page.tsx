@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useProgressStore } from '@/stores/progressStore';
 import { chatApi, type Message, type QuestionProgress, type AnswerCardMeta } from '@/lib/api/chat';
+import { useAuthModalStore } from '@/stores/authModalStore';
 import { ArrowLeft } from 'lucide-react';
 
 // v2.4: 新组件
@@ -103,7 +104,7 @@ export default function ExploreFlowPageV2() {
   // 认证检查
   useEffect(() => {
     if (!isAuthenticated) {
-      router.push('/auth/login?redirect=/explore');
+      useAuthModalStore.getState().openAuthModal('/explore/flow');
       return;
     }
     if (!currentSession) {
@@ -114,16 +115,34 @@ export default function ExploreFlowPageV2() {
     setCurrentStep(step);
   }, [isAuthenticated, currentSession, router]);
 
-  // 首次加载对话历史 + 判断是否显示步骤介绍
+  // 首次加载对话历史 + 历史答题卡 + 判断是否显示步骤介绍
   useEffect(() => {
     if (!currentSession || initialLoaded) return;
     (async () => {
       try {
-        const chatRes = await chatApi.getHistory(currentSession.session_id, 'main_flow', 50);
+        // 并行加载：对话历史 + 历史答题卡
+        const [chatRes, cardsRes] = await Promise.all([
+          chatApi.getHistory(currentSession.session_id, 'main_flow', 50),
+          chatApi.getAnswerCards(currentSession.session_id).catch(() => ({ data: { answer_cards: [] } })),
+        ]);
+
         const messages = chatRes.data?.messages || [];
         setChatMessages(messages);
-        // 如果没有对话历史，说明是新开始的探索，显示步骤理论介绍
-        if (messages.length === 0) {
+
+        // 恢复已完成的答题卡
+        const savedCards: AnswerCardMeta[] = cardsRes.data?.answer_cards || [];
+        if (savedCards.length > 0) {
+          setCompletedQuestions(savedCards.map((card) => ({
+            questionId: card.question_id!,
+            questionContent: card.question_content || '',
+            messages: [], // 历史对话不单独恢复，保持折叠即可
+            answerCard: card,
+            isExpanded: false,
+          })));
+        }
+
+        // 如果没有对话历史也没有已完成答题卡，说明是新开始的探索
+        if (messages.length === 0 && savedCards.length === 0) {
           setShowStepIntro(true);
         }
       } catch (err) {

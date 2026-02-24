@@ -1,12 +1,26 @@
 """
 FastAPI应用主入口
 """
+import logging
+import sys
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config.settings import settings
 from app.api.middleware import AudioModeMiddleware, ErrorHandlerMiddleware
 from app.api.v1 import auth, users, sessions, questions, answers, chat, search, formula, audio, export
 from app.api.v1 import chat_optimized  # 新增：优化的对话API
+
+# ========== 日志配置 ==========
+LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+logging.basicConfig(
+    level=logging.DEBUG if settings.DEBUG else logging.INFO,
+    format=LOG_FORMAT,
+    stream=sys.stdout,
+)
+# 第三方库太吵，只保留 WARNING
+for noisy in ("httpcore", "httpx", "urllib3", "asyncio", "watchfiles", "multipart"):
+    logging.getLogger(noisy).setLevel(logging.WARNING)
 
 app = FastAPI(
     title="找到想做的事 - 智能引导系统",

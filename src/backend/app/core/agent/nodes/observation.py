@@ -3,6 +3,7 @@
 思考链写入 inner_messages、context、logs；final_response 由后续 user_agent 转为用户可见 messages。
 """
 import json
+import logging
 from app.core.agent.state import AgentState
 from app.core.agent.models import ObservationDecision
 from app.domain.prompts import get_observation_prompt
@@ -124,6 +125,7 @@ async def observation_node(state: AgentState) -> AgentState:
 
         return state
     except Exception as e:
+        logging.getLogger(__name__).exception("[observation] 观察节点错误: %s", e)
         state["error"] = f"观察节点错误: {str(e)}"
         state["should_continue"] = False
         _append_log(state, f"观察节点错误: {str(e)}", done=False)

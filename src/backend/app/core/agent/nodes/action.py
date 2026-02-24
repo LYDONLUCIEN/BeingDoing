@@ -2,6 +2,7 @@
 行动节点：根据推理结果调用工具或设置 final_response。
 思考链结果来自 context.reasoning（ReasoningDecision），不直接写用户可见 messages。
 """
+import logging
 from app.core.agent.state import AgentState
 from app.core.agent.tools import ToolRegistry
 
@@ -60,6 +61,7 @@ async def action_node(state: AgentState) -> AgentState:
 
         return state
     except Exception as e:
+        logging.getLogger(__name__).exception("[action] 行动节点错误: %s", e)
         state["error"] = f"行动节点错误: {str(e)}"
         state["should_continue"] = False
         _append_log(state, f"行动节点错误: {str(e)}", done=False)

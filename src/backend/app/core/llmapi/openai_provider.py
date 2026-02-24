@@ -42,6 +42,7 @@ class OpenAIProvider(BaseLLMProvider):
             client_kwargs["base_url"] = base_url
         self.client = AsyncOpenAI(**client_kwargs)
         self._encoding = None
+        self._last_stream_usage = None  # 流式调用结束后的 token 用量
     
     def _get_encoding(self):
         """获取tiktoken编码器（延迟加载）"""
@@ -116,13 +117,13 @@ class OpenAIProvider(BaseLLMProvider):
     ) -> AsyncIterator[str]:
         """
         发送流式聊天请求
-        
+
         Args:
             messages: 消息列表
             temperature: 温度参数
             max_tokens: 最大token数
             **kwargs: 其他参数
-        
+
         Yields:
             流式响应文本片段
         """
@@ -132,22 +133,30 @@ class OpenAIProvider(BaseLLMProvider):
                 {"role": msg.role, "content": msg.content}
                 for msg in messages
             ]
-            
-            # 调用OpenAI流式API
+
+            # 调用OpenAI流式API（启用 stream_options 获取 usage）
             stream = await self.client.chat.completions.create(
                 model=self.model,
                 messages=openai_messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 stream=True,
+                stream_options={"include_usage": True},
                 **kwargs
             )
-            
+
             # 流式返回
             async for chunk in stream:
+                # 最后一个 chunk 携带 usage 信息
+                if chunk.usage:
+                    self._last_stream_usage = {
+                        "prompt_tokens": chunk.usage.prompt_tokens,
+                        "completion_tokens": chunk.usage.completion_tokens,
+                        "total_tokens": chunk.usage.total_tokens,
+                    }
                 if chunk.choices and chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
-        
+
         except Exception as e:
             raise LLMError(f"OpenAI流式API调用失败: {str(e)}")
     
