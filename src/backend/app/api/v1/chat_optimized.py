@@ -23,8 +23,8 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Generator
 
 from app.api.v1.auth import get_current_user
-# ===== 使用优化的模块 =====
-from app.core.agent.graph_optimized import (
+# ===== 使用 graph 模块（已合并 graph_optimized）=====
+from app.core.agent.graph import (
     create_agent_graph,
     create_initial_state,
     save_context_after_agent,
@@ -34,23 +34,14 @@ from app.utils.enhanced_conversation_manager import (
     EnhancedConversationFileManager,
     ConversationCategoryType,
 )
-# 保持向后兼容的导入（如果新模块有问题）
-try:
-    from app.core.agent.graph import (
-        _load_question_progress,
-        _save_question_progress,
-        _extract_step_progress_info,
-    )
-except ImportError:
-    # 降级方案
-    from app.api.v1.chat import (
-        _load_question_progress,
-        _save_question_progress,
-        _extract_step_progress_info,
-    )
+# question_progress 持久化（与 chat 共用）
+from app.api.v1.chat import (
+    _load_question_progress,
+    _save_question_progress,
+    _extract_step_progress_info,
+)
 
-from app.core.database import HistoryDB
-from app.models.database import AsyncSessionLocal
+from app.services.session_service import SessionService
 from app.config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -315,12 +306,10 @@ async def send_message_stream_optimized(
             )
 
             # 14. 更新会话最后活动时间
-            async with AsyncSessionLocal() as db:
-                history_db = HistoryDB(db)
-                await history_db.update_session(
-                    request.session_id,
-                    current_step=request.current_step,
-                )
+            await SessionService.update_session(
+                request.session_id,
+                current_step=request.current_step,
+            )
 
         except Exception as e:
             logger.exception("[chat-optimized] event_stream 错误: %s", e)

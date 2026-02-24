@@ -5,8 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends, status, Query
 from pydantic import BaseModel
 from typing import Optional
 from app.api.v1.auth import get_current_user
-from app.core.knowledge import KnowledgeLoader, KnowledgeSearcher
-from app.domain.knowledge_config import get_knowledge_config
+from app.services.search_service import SearchService
 
 router = APIRouter(prefix="/search", tags=["检索"])
 
@@ -32,51 +31,12 @@ async def search(
 ):
     """搜索内容（知识源配置从 domain 注入）"""
     try:
-        loader = KnowledgeLoader(config=get_knowledge_config())
-        searcher = KnowledgeSearcher(loader=loader)
-        
-        results = []
-        
-        if request.category == "values" or request.category is None:
-            values = searcher.search_values(request.query, limit=request.limit)
-            results.extend([{
-                "type": "value",
-                "name": r["item"].name,
-                "definition": r["item"].definition,
-                "score": r["score"]
-            } for r in values])
-        
-        if request.category == "interests" or request.category is None:
-            interests = searcher.search_interests(request.query, limit=request.limit)
-            results.extend([{
-                "type": "interest",
-                "name": r["item"].name,
-                "score": r["score"]
-            } for r in interests])
-        
-        if request.category == "strengths" or request.category is None:
-            strengths = searcher.search_strengths(request.query, limit=request.limit)
-            results.extend([{
-                "type": "strength",
-                "name": r["item"].name,
-                "strengths": r["item"].strengths,
-                "weaknesses": r["item"].weaknesses,
-                "score": r["score"]
-            } for r in strengths])
-        
-        # 按分数排序
-        results.sort(key=lambda x: x.get("score", 0), reverse=True)
-        
-        return StandardResponse(
-            code=200,
-            message="success",
-            data={
-                "query": request.query,
-                "category": request.category,
-                "results": results[:request.limit],
-                "count": len(results)
-            }
+        result = SearchService().search(
+            query=request.query,
+            category=request.category,
+            limit=request.limit,
         )
+        return StandardResponse(code=200, message="success", data=result)
     
     except Exception as e:
         raise HTTPException(
@@ -94,25 +54,11 @@ async def get_similar_examples(
 ):
     """获取相似示例（知识源配置从 domain 注入）"""
     try:
-        loader = KnowledgeLoader(config=get_knowledge_config())
-        searcher = KnowledgeSearcher(loader=loader)
-        examples = searcher.get_similar_examples(category, query, limit)
-        
+        examples = SearchService().get_similar_examples(category=category, query=query, limit=limit)
         return StandardResponse(
             code=200,
             message="success",
-            data={
-                "query": query,
-                "category": category,
-                "examples": [
-                    {
-                        "name": e["item"].name,
-                        "score": e["score"]
-                    }
-                    for e in examples
-                ],
-                "count": len(examples)
-            }
+            data={"query": query, "category": category, "examples": examples, "count": len(examples)}
         )
     
     except Exception as e:

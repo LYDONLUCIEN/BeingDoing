@@ -1,8 +1,13 @@
 """
 LangGraph 状态图：思考链（reasoning → action → observation）循环，
 结束后可选进入 user_agent 节点，将思考结果转为用户可见 messages。
+
+支持：
+- 基础模式：create_agent_graph + create_initial_state（load_full_context=False）
+- 完整上下文模式：create_initial_state(load_full_context=True) + save_context_after_agent
 """
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, List
+from datetime import datetime
 from langgraph.graph import StateGraph, END
 from app.core.agent.state import AgentState
 from app.core.agent.config import AgentRunConfig, DEFAULT_RUN_CONFIG
@@ -87,7 +92,7 @@ def create_agent_graph(config: Optional[AgentRunConfig] = None):
     return graph.compile()
 
 
-def create_initial_state(
+async def create_initial_state(
     user_input: str,
     current_step: Optional[str] = None,
     user_id: Optional[str] = None,
@@ -95,13 +100,25 @@ def create_initial_state(
     stream_queue: Optional[Any] = None,
     question_progress: Optional[Dict] = None,
     force_regenerate_card: bool = False,
+    load_full_context: bool = False,
+    enhanced_manager=None,
 ) -> AgentState:
     """
     创建初始状态（含双轨 messages / inner_messages 与 logs）。
-    current_step 默认从 domain 读取，便于单点维护。
-    stream_queue 非空时 reasoning 节点使用 chat_stream 并往该队列推块，供 SSE 端点真流式输出。
-    question_progress: 从持久化存储加载的题目进度，跨请求保持状态。
-    force_regenerate_card: 强制重新生成答题卡（用于"继续讨论"后的首次消息）。
+
+    Args:
+        user_input: 用户输入
+        current_step: 当前步骤
+        user_id: 用户 ID
+        session_id: 会话 ID
+        stream_queue: SSE 流式队列
+        question_progress: 从持久化存储加载的题目进度
+        force_regenerate_card: 强制重新生成答题卡
+        load_full_context: 是否加载完整上下文（all_flow + note，默认 False）
+        enhanced_manager: 增强的对话管理器（load_full_context=True 时使用）
+
+    Returns:
+        初始化的 AgentState
     """
     from app.core.llmapi import LLMMessage
     from app.domain import DEFAULT_CURRENT_STEP
@@ -125,6 +142,40 @@ def create_initial_state(
         final_response=None,
         error=None,
     )
+
+    # 完整上下文模式：从 all_flow 加载历史到 inner_messages
+    if load_full_context and session_id:
+        from app.config.settings import settings
+        from app.utils.enhanced_conversation_manager import EnhancedConversationFileManager
+
+        if settings.FULL_CONTEXT_ENABLED:
+            conv_manager = enhanced_manager or EnhancedConversationFileManager()
+            context_data = await conv_manager.get_compressed_context(
+                session_id=session_id,
+                max_rounds=settings.CONTEXT_COMPRESS_AFTER_ROUNDS,
+                keep_latest=settings.CONTEXT_KEEP_LATEST_MESSAGES,
+                include_all_flow=True,
+            )
+
+            loaded_messages: List[LLMMessage] = []
+            for msg in context_data.get("messages", []):
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                if role in ["user", "assistant", "system"]:
+                    loaded_messages.append(LLMMessage(role=role, content=content))
+
+            for flow_msg in context_data.get("all_flow_messages", []):
+                loaded_messages.append(LLMMessage(
+                    role="system",
+                    content=f"[AI 思考] {flow_msg.get('content', '')}"
+                ))
+
+            if loaded_messages:
+                state["inner_messages"] = loaded_messages
+
+            state["context"]["_loaded_session_id"] = session_id
+            state["context"]["_context_round_count"] = context_data.get("round_count", 0)
+
     if stream_queue is not None:
         state["stream_queue"] = stream_queue
     if question_progress is not None:
@@ -132,3 +183,99 @@ def create_initial_state(
     if force_regenerate_card:
         state["force_regenerate_card"] = force_regenerate_card
     return state
+
+
+async def save_context_after_agent(
+    session_id: str,
+    state: AgentState,
+    enhanced_manager=None,
+):
+    """
+    在 Agent 执行完成后保存上下文到持久化存储（all_flow、note、answer_card）。
+
+    Args:
+        session_id: 会话 ID
+        state: 最终的 Agent 状态
+        enhanced_manager: 增强的对话管理器（可选）
+    """
+    from app.config.settings import settings
+    from app.utils.enhanced_conversation_manager import EnhancedConversationFileManager
+
+    if not settings.FULL_CONTEXT_ENABLED:
+        return
+
+    conv_manager = enhanced_manager or EnhancedConversationFileManager()
+
+    # 1. 保存用户的原始输入到 all_flow
+    if state.get("user_input"):
+        await conv_manager.append_all_flow_message(
+            session_id=session_id,
+            role="user",
+            content=state.get("user_input", ""),
+            message_type="user_input",
+            metadata={"current_step": state.get("current_step")}
+        )
+
+    # 2. 保存 AI 的思考过程到 all_flow（来自 logs）
+    logs = state.get("logs", [])
+    for log_entry in logs:
+        await conv_manager.append_all_flow_message(
+            session_id=session_id,
+            role="system",
+            content=log_entry.get("message", ""),
+            message_type="ai_thinking",
+            metadata={
+                "done": log_entry.get("done", True),
+                "step": state.get("current_step")
+            }
+        )
+
+    # 3. 保存 AI 的最终响应到 all_flow
+    messages = state.get("messages", [])
+    final_response = state.get("final_response") or (getattr(messages[-1], "content", "") if messages else "")
+    if final_response:
+        await conv_manager.append_all_flow_message(
+            session_id=session_id,
+            role="assistant",
+            content=final_response,
+            message_type="ai_response",
+            metadata={"current_step": state.get("current_step")}
+        )
+
+    # 4. 保存 AI 总结的 note（结论性内容）
+    context = state.get("context", {})
+    summaries = context.get("summaries", {})
+
+    if summaries:
+        note_content_parts = []
+        for step, summary in summaries.items():
+            note_content_parts.append(f"## {step}\n{summary}")
+
+        if note_content_parts:
+            await conv_manager.save_note(
+                session_id=session_id,
+                note_content="\n\n".join(note_content_parts),
+                note_type="summary",
+                metadata={
+                    "current_step": state.get("current_step"),
+                    "total_summaries": len(summaries),
+                    "generated_at": datetime.utcnow().isoformat() + "Z"
+                }
+            )
+
+    # 5. 保存 Answer Card 到 note.json
+    answer_card = state.get("answer_card")
+    if answer_card and answer_card.get("user_answer"):
+        await conv_manager.save_answer_card(
+            session_id=session_id,
+            answer_card={
+                "question_id": answer_card.get("question_id"),
+                "question_content": answer_card.get("question_content"),
+                "user_answer": answer_card.get("user_answer"),
+                "ai_summary": answer_card.get("ai_summary"),
+                "ai_analysis": answer_card.get("ai_analysis"),
+                "key_insights": answer_card.get("key_insights"),
+                "current_step": state.get("current_step"),
+                "created_at": datetime.utcnow().isoformat() + "Z"
+            }
+        )

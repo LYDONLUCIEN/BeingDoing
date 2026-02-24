@@ -88,7 +88,7 @@ Defined in `src/backend/app/domain/steps.py` (single source of truth):
 ### Backend Structure
 
 - `app/api/v1/` — FastAPI routes (auth, chat, sessions, answers, search, formula)
-- `app/services/` — business logic layer
+- `app/services/` — business logic layer (API 应通过 Service 访问 DB/知识库，见 `docs/SERVICES_ARCHITECTURE.md`)
 - `app/core/agent/` — LangGraph agent (graph, state, nodes, tools, config)
 - `app/core/knowledge/` — knowledge base loader (CSV/Markdown) and searcher
 - `app/core/llmapi/` — LLM provider abstraction (OpenAI)

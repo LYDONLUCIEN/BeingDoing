@@ -25,6 +25,30 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class PasswordResetRequest(BaseModel):
+    """找回密码验证码请求"""
+    email: EmailStr
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    """通过验证码重置密码请求"""
+    email: EmailStr
+    code: str
+    new_password: str
+
+
+class PasswordResetSMSRequest(BaseModel):
+    """通过手机号获取验证码请求（假短信）"""
+    phone: str
+
+
+class PasswordResetSMSConfirmRequest(BaseModel):
+    """通过手机验证码重置密码请求（假短信）"""
+    phone: str
+    code: str
+    new_password: str
+
+
 class AuthResponse(BaseModel):
     """认证响应"""
     code: int = 200
@@ -155,6 +179,92 @@ async def login(request: LoginRequest):
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(e)
+        )
+
+
+@router.post("/password/reset/code", response_model=AuthResponse)
+async def request_password_reset(request: PasswordResetRequest):
+    """
+    申请重置密码验证码（通过邮箱）
+    
+    当前实现为开发环境版本：验证码会打印在后端日志中，方便手动查看。
+    """
+    try:
+        await AuthService.request_password_reset(email=request.email)
+        return AuthResponse(
+            code=200,
+            message="验证码已发送到邮箱（开发环境请查看后端日志）",
+            data={}
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.post("/password/reset/confirm", response_model=AuthResponse)
+async def confirm_password_reset(request: PasswordResetConfirmRequest):
+    """
+    使用邮箱验证码重置密码
+    """
+    try:
+        await AuthService.reset_password_with_code(
+            email=request.email,
+            code=request.code,
+            new_password=request.new_password
+        )
+        return AuthResponse(
+            code=200,
+            message="密码重置成功",
+            data={}
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.post("/password/reset/code/phone", response_model=AuthResponse)
+async def request_password_reset_sms(request: PasswordResetSMSRequest):
+    """
+    申请重置密码验证码（通过手机号，开发环境假短信：验证码打印在后端日志）
+    """
+    try:
+        await AuthService.request_password_reset_by_phone(phone=request.phone)
+        return AuthResponse(
+            code=200,
+            message="验证码已通过短信发送（开发环境请查看后端日志）",
+            data={}
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.post("/password/reset/confirm/phone", response_model=AuthResponse)
+async def confirm_password_reset_sms(request: PasswordResetSMSConfirmRequest):
+    """
+    使用手机短信验证码重置密码（开发环境假实现）
+    """
+    try:
+        await AuthService.reset_password_with_phone_code(
+            phone=request.phone,
+            code=request.code,
+            new_password=request.new_password
+        )
+        return AuthResponse(
+            code=200,
+            message="密码重置成功",
+            data={}
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
 

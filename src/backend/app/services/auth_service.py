@@ -3,6 +3,7 @@
 """
 from typing import Optional, Dict
 from datetime import datetime, timedelta
+import random
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from app.core.database import UserDB
@@ -19,6 +20,11 @@ pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+
+# 简单的内存级找回密码验证码存储（开发环境用，进程重启后会失效）
+# key: email/phone, value: {"code": str, "expires_at": datetime}
+_password_reset_email_codes: Dict[str, Dict[str, any]] = {}
+_password_reset_phone_codes: Dict[str, Dict[str, any]] = {}
 
 
 class AuthService:
@@ -89,6 +95,150 @@ class AuthService:
             return payload
         except JWTError:
             return None
+    
+    # ===================== 找回密码相关 =====================
+
+    @staticmethod
+    async def request_password_reset(email: str) -> None:
+        """
+        申请重置密码：生成一次性验证码，并通过邮件发送（当前开发环境直接打印到日志）
+        
+        Args:
+            email: 用户邮箱
+        
+        Raises:
+            ValueError: 如果用户不存在或邮箱未绑定
+        """
+        async with AsyncSessionLocal() as db:
+            user_db = UserDB(db)
+            user = await user_db.get_user_by_email(email)
+            if not user:
+                raise ValueError("用户不存在或未绑定该邮箱")
+            if not user.is_active:
+                raise ValueError("用户已被禁用")
+        
+        # 生成 6 位数字验证码
+        code = f"{random.randint(0, 999999):06d}"
+        expires_at = datetime.utcnow() + timedelta(minutes=10)
+        _password_reset_email_codes[email] = {
+            "code": code,
+            "expires_at": expires_at,
+        }
+        
+        # 开发环境下，直接打印到控制台 / 日志，方便手动查看
+        print(f"[DEV] Password reset code for {email}: {code} (expires at {expires_at.isoformat()} UTC)")
+
+    @staticmethod
+    async def reset_password_with_code(
+        email: str,
+        code: str,
+        new_password: str
+    ) -> None:
+        """
+        通过邮箱验证码重置密码
+        
+        Args:
+            email: 用户邮箱
+            code: 验证码
+            new_password: 新密码
+        
+        Raises:
+            ValueError: 如果验证码错误/过期，或用户不存在
+        """
+        if not new_password:
+            raise ValueError("新密码不能为空")
+        
+        record = _password_reset_email_codes.get(email)
+        if not record:
+            raise ValueError("请先申请验证码")
+        
+        # 检查过期
+        if datetime.utcnow() > record["expires_at"]:
+            del _password_reset_email_codes[email]
+            raise ValueError("验证码已过期，请重新获取")
+        
+        # 检查验证码
+        if record["code"] != code:
+            raise ValueError("验证码错误")
+        
+        # 验证通过，更新密码
+        async with AsyncSessionLocal() as db:
+            user_db = UserDB(db)
+            user = await user_db.get_user_by_email(email)
+            if not user:
+                raise ValueError("用户不存在")
+            if not user.is_active:
+                raise ValueError("用户已被禁用")
+            
+            password_hash = AuthService.get_password_hash(new_password)
+            await user_db.update_user(user.id, password_hash=password_hash)
+        
+        # 一次性验证码，成功后删除
+        _password_reset_email_codes.pop(email, None)
+
+    @staticmethod
+    async def request_password_reset_by_phone(phone: str) -> None:
+        """
+        申请重置密码：通过手机号生成一次性验证码（假短信，打印到日志）
+        
+        Args:
+            phone: 用户手机号
+        
+        Raises:
+            ValueError: 如果用户不存在或手机号未绑定
+        """
+        async with AsyncSessionLocal() as db:
+            user_db = UserDB(db)
+            user = await user_db.get_user_by_phone(phone)
+            if not user:
+                raise ValueError("用户不存在或未绑定该手机号")
+            if not user.is_active:
+                raise ValueError("用户已被禁用")
+        
+        code = f"{random.randint(0, 999999):06d}"
+        expires_at = datetime.utcnow() + timedelta(minutes=10)
+        _password_reset_phone_codes[phone] = {
+            "code": code,
+            "expires_at": expires_at,
+        }
+        # 假短信通道：仅在控制台打印，便于开发调试
+        print(f"[DEV] SMS password reset code for {phone}: {code} (expires at {expires_at.isoformat()} UTC)")
+
+    @staticmethod
+    async def reset_password_with_phone_code(
+        phone: str,
+        code: str,
+        new_password: str
+    ) -> None:
+        """
+        通过手机短信验证码重置密码（开发环境假实现）
+        """
+        if not new_password:
+            raise ValueError("新密码不能为空")
+        
+        record = _password_reset_phone_codes.get(phone)
+        if not record:
+            raise ValueError("请先申请验证码")
+        
+        if datetime.utcnow() > record["expires_at"]:
+            del _password_reset_phone_codes[phone]
+            raise ValueError("验证码已过期，请重新获取")
+        
+        if record["code"] != code:
+            raise ValueError("验证码错误")
+        
+        async with AsyncSessionLocal() as db:
+            user_db = UserDB(db)
+            user = await user_db.get_user_by_phone(phone)
+            if not user:
+                raise ValueError("用户不存在")
+            if not user.is_active:
+                raise ValueError("用户已被禁用")
+            
+            password_hash = AuthService.get_password_hash(new_password)
+            await user_db.update_user(user.id, password_hash=password_hash)
+        
+        _password_reset_phone_codes.pop(phone, None)
     
     @staticmethod
     async def register(

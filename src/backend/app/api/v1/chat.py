@@ -15,8 +15,7 @@ from app.api.v1.auth import get_current_user
 from app.core.agent.graph import create_agent_graph, create_initial_state
 from app.core.agent.config import AgentRunConfig
 from app.domain import DEFAULT_CURRENT_STEP
-from app.core.database import HistoryDB
-from app.models.database import AsyncSessionLocal
+from app.services.session_service import SessionService
 from app.utils.conversation_file_manager import ConversationFileManager, ConversationCategory
 from datetime import datetime
 from app.config.settings import settings
@@ -133,7 +132,7 @@ async def send_message(
         run_config = AgentRunConfig(use_user_agent_node=True)
         graph = create_agent_graph(run_config)
 
-        initial_state = create_initial_state(
+        initial_state = await create_initial_state(
             user_input=request.message,
             current_step=request.current_step,
             user_id=user_id,
@@ -213,12 +212,10 @@ async def send_message(
         )
         
         # 更新会话最后活动时间
-        async with AsyncSessionLocal() as db:
-            history_db = HistoryDB(db)
-            await history_db.update_session(
-                request.session_id,
-                current_step=request.current_step
-            )
+        await SessionService.update_session(
+            request.session_id,
+            current_step=request.current_step,
+        )
         
         # v2.4: 持久化 question_progress 并提取返回信息
         question_progress_data = final_state.get("question_progress", {}) if final_state else {}
@@ -365,7 +362,7 @@ async def send_message_stream(
             # 加载已有的 question_progress
             saved_qp = _load_question_progress(request.session_id)
 
-            initial_state = create_initial_state(
+            initial_state = await create_initial_state(
                 user_input=request.message,
                 current_step=request.current_step,
                 user_id=user_id,
@@ -452,12 +449,10 @@ async def send_message_stream(
                     "created_at": datetime.utcnow().isoformat() + "Z",
                 },
             )
-            async with AsyncSessionLocal() as db:
-                history_db = HistoryDB(db)
-                await history_db.update_session(
-                    request.session_id,
-                    current_step=request.current_step,
-                )
+            await SessionService.update_session(
+                request.session_id,
+                current_step=request.current_step,
+            )
         except Exception as e:
             logger.exception("[chat] event_stream 错误: %s", e)
             tb = traceback.format_exc()

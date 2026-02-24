@@ -16,6 +16,7 @@ FLOW_STEPS: List[Dict[str, Any]] = [
     {"id": "refinement", "name": "精炼结果", "description": "精炼和验证最终结果", "order": 5},
 ]
 
+
 # 步骤 id -> 问题/知识分类（values/strengths/interests），供 question_service、guide_tool 等使用
 STEP_TO_CATEGORY: Dict[str, str] = {
     "values_exploration": "values",
