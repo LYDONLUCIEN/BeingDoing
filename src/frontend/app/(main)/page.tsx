@@ -40,11 +40,8 @@ export default function LandingPage() {
   const { openAuthModal } = useAuthModalStore();
 
   const handleStart = () => {
-    if (isAuthenticated) {
-      router.push('/explore');
-    } else {
-      openAuthModal('/explore');
-    }
+    // 轻量版入口：不强制登录，直接跳转到激活码模式页面
+    router.push('/light-explore');
   };
 
   return (
