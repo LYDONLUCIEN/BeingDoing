@@ -8,8 +8,12 @@ from app.api.v1.auth import get_current_user
 from app.services.session_service import SessionService
 from app.services.progress_service import ProgressService
 from app.domain import DEFAULT_CURRENT_STEP
+from app.config.settings import settings
+from app.utils.survey_storage import save_basic_info, load_basic_info
 
 router = APIRouter(prefix="/sessions", tags=["会话"])
+
+CONVERSATION_DIR = settings.CONVERSATION_DIR
 
 
 class CreateSessionRequest(BaseModel):
@@ -29,6 +33,48 @@ class StandardResponse(BaseModel):
     code: int = 200
     message: str = "success"
     data: dict
+
+
+class SurveySaveRequest(BaseModel):
+    """调研问卷保存请求"""
+    survey_data: dict
+
+
+async def _check_session_access(session_id: str, current_user: Optional[dict]) -> dict:
+    """检查会话存在且当前用户有权限"""
+    session = await SessionService.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
+    if current_user and session["user_id"] != current_user["user_id"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权访问此会话")
+    return session
+
+
+@router.get("/{session_id}/survey", response_model=StandardResponse)
+async def get_session_survey(
+    session_id: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """获取会话的调研问卷数据"""
+    await _check_session_access(session_id, current_user)
+    data = load_basic_info(session_id, CONVERSATION_DIR)
+    return StandardResponse(
+        code=200,
+        message="success",
+        data={"survey_data": data or {}},
+    )
+
+
+@router.post("/{session_id}/survey", response_model=StandardResponse)
+async def save_session_survey(
+    session_id: str,
+    request: SurveySaveRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """保存调研问卷数据到会话"""
+    await _check_session_access(session_id, current_user)
+    save_basic_info(session_id, request.survey_data or {}, CONVERSATION_DIR)
+    return StandardResponse(code=200, message="success", data={})
 
 
 @router.post("", response_model=StandardResponse)

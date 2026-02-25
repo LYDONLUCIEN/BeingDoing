@@ -6,8 +6,11 @@ import { useAuthStore } from '@/stores/authStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useProgressStore } from '@/stores/progressStore';
 import { chatApi, type Message, type QuestionProgress, type AnswerCardMeta } from '@/lib/api/chat';
+import { surveyApi } from '@/lib/api/survey';
 import { useAuthModalStore } from '@/stores/authModalStore';
 import { ArrowLeft } from 'lucide-react';
+import SurveyForm from '@/components/survey/SurveyForm';
+import type { SurveyData } from '@/lib/survey/schema';
 
 // v2.4: 新组件
 import FlowHeader from '@/components/explore/FlowHeader';
@@ -93,6 +96,11 @@ export default function ExploreFlowPageV2() {
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [debugEntries, setDebugEntries] = useState<any[]>([]);
 
+  // 调研问卷：进入 flow 时若尚无数据则先展示
+  const [surveyData, setSurveyData] = useState<SurveyData | null | undefined>(undefined);
+  const [surveyCompleted, setSurveyCompleted] = useState(false);
+  const [surveyLoading, setSurveyLoading] = useState(false);
+
   const abortControllerRef = useRef<AbortController | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -114,6 +122,31 @@ export default function ExploreFlowPageV2() {
     const step = currentSession.current_step || 'values_exploration';
     setCurrentStep(step);
   }, [isAuthenticated, currentSession, router]);
+
+  // 加载调研数据
+  useEffect(() => {
+    if (!currentSession?.session_id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await surveyApi.getForSession(currentSession.session_id);
+        if (!cancelled && res.data?.survey_data) {
+          const data = res.data.survey_data;
+          const hasData = Object.keys(data).some((k) => {
+            const v = (data as Record<string, unknown>)[k];
+            return v !== undefined && v !== null && v !== '' && (Array.isArray(v) ? v.length > 0 : true);
+          });
+          if (hasData) setSurveyCompleted(true);
+          setSurveyData(data);
+        } else {
+          setSurveyData({});
+        }
+      } catch {
+        if (!cancelled) setSurveyData({});
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentSession?.session_id]);
 
   // 首次加载对话历史 + 历史答题卡 + 判断是否显示步骤介绍
   useEffect(() => {
@@ -300,8 +333,69 @@ export default function ExploreFlowPageV2() {
     );
   }
 
+  // 调研问卷加载中
+  if (surveyData === undefined) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white/60">
+        <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary-500 border-t-transparent mb-4" />
+        <p className="text-sm">加载调研问卷…</p>
+      </div>
+    );
+  }
+
   const stepTheory = STEP_THEORIES[currentStep];
   const progressByStep = {}; // TODO: 从store获取
+
+  // 调研问卷未完成时展示问卷
+  if (surveyData !== undefined && !surveyCompleted) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-900 to-slate-800 text-white flex flex-col">
+        <FlowHeader
+          currentStep={currentStep}
+          progressByStep={progressByStep}
+          isSuperAdmin={user?.is_super_admin || false}
+          onStepChange={setCurrentStep}
+          onOpenDebug={handleOpenDebug}
+        />
+        <main className="flex-1 max-w-2xl mx-auto w-full px-4 py-8 overflow-y-auto">
+          <h2 className="text-xl font-semibold text-white mb-2">调研问卷</h2>
+          <p className="text-sm text-white/60 mb-6">
+            请填写以下基本信息（选填），便于我们更好地为你提供咨询服务。填写后可跳过直接开始探索。
+          </p>
+          <SurveyForm
+            initialData={surveyData || {}}
+            loading={surveyLoading}
+            submitLabel="提交并开始探索"
+            showSkip
+            onSubmit={async (data: SurveyData) => {
+              if (!currentSession) return;
+              setSurveyLoading(true);
+              try {
+                await surveyApi.saveForSession(currentSession.session_id, data);
+                setSurveyCompleted(true);
+              } catch (e) {
+                setError((e as Error)?.message || '保存失败');
+              } finally {
+                setSurveyLoading(false);
+              }
+            }}
+            onSkip={async () => {
+              if (!currentSession) return;
+              setSurveyLoading(true);
+              try {
+                await surveyApi.saveForSession(currentSession.session_id, {});
+                setSurveyCompleted(true);
+              } catch {
+                setSurveyCompleted(true);
+              } finally {
+                setSurveyLoading(false);
+              }
+            }}
+          />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-900 to-slate-800 text-white flex flex-col">

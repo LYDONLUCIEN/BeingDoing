@@ -1,8 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api/client';
+import MessageContent from '@/components/explore/MessageContent';
+import SurveyForm from '@/components/survey/SurveyForm';
+import { surveyApi } from '@/lib/api/survey';
+import type { SurveyData } from '@/lib/survey/schema';
 
 interface SimpleMessage {
   id: string;
@@ -36,7 +40,37 @@ export default function LightExplorePage() {
   const [chatError, setChatError] = useState<string | null>(null);
   const [streamAbortController, setStreamAbortController] = useState<AbortController | null>(null);
 
+  // 调研问卷：激活后有数据则跳过，无数据则先展示问卷
+  const [surveyData, setSurveyData] = useState<SurveyData | null | undefined>(undefined);
+  const [surveyCompleted, setSurveyCompleted] = useState(false);
+  const [surveyLoading, setSurveyLoading] = useState(false);
+
   const currentMessages = messagesByPhase[activePhase];
+
+  // 激活成功后加载调研数据
+  useEffect(() => {
+    if (!activationInfo?.activation_code) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await surveyApi.getForActivation(activationInfo.activation_code);
+        if (!cancelled && res.data?.survey_data) {
+          const data = res.data.survey_data;
+          const hasData = Object.keys(data).some((k) => {
+            const v = (data as Record<string, unknown>)[k];
+            return v !== undefined && v !== null && v !== '' && (Array.isArray(v) ? v.length > 0 : true);
+          });
+          if (hasData) setSurveyCompleted(true);
+          setSurveyData(data);
+        } else {
+          setSurveyData({});
+        }
+      } catch {
+        if (!cancelled) setSurveyData({});
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activationInfo?.activation_code]);
 
   const loadPhaseHistoryOrInit = async (
     code: string,
@@ -100,6 +134,8 @@ export default function LightExplorePage() {
       });
 
       const code = res.data.activation_code as string;
+      setSurveyCompleted(false);
+      setSurveyData(undefined);
       // 激活成功后，分别为三个阶段加载历史或生成首轮引导问题
       await Promise.all(
         PHASES.map((p) => loadPhaseHistoryOrInit(code, p.key))
@@ -282,7 +318,53 @@ export default function LightExplorePage() {
           )}
         </section>
 
-        {/* 对话区域 */}
+        {/* 调研问卷加载中 */}
+        {activationInfo && surveyData === undefined && (
+          <section className="rounded-xl border border-white/10 bg-slate-900/60 p-8 text-center text-white/60">
+            加载调研问卷…
+          </section>
+        )}
+
+        {/* 调研问卷（激活后、未完成时展示） */}
+        {activationInfo && surveyData !== undefined && !surveyCompleted && (
+          <section className="rounded-xl border border-white/10 bg-slate-900/60 p-4 md:p-5">
+            <h2 className="text-lg font-semibold text-white mb-2">调研问卷</h2>
+            <p className="text-sm text-white/60 mb-4">
+              请填写以下基本信息（选填），便于我们更好地为你提供咨询服务。填写后可跳过直接开始对话。
+            </p>
+            <SurveyForm
+              initialData={surveyData || {}}
+              loading={surveyLoading}
+              submitLabel="提交并开始对话"
+              showSkip
+              onSubmit={async (data: SurveyData) => {
+                setSurveyLoading(true);
+                try {
+                  await surveyApi.saveForActivation(activationInfo.activation_code, data);
+                  setSurveyCompleted(true);
+                } catch (e) {
+                  setChatError((e as Error)?.message || '保存失败');
+                } finally {
+                  setSurveyLoading(false);
+                }
+              }}
+              onSkip={async () => {
+                setSurveyLoading(true);
+                try {
+                  await surveyApi.saveForActivation(activationInfo.activation_code, {});
+                  setSurveyCompleted(true);
+                } catch {
+                  setSurveyCompleted(true);
+                } finally {
+                  setSurveyLoading(false);
+                }
+              }}
+            />
+          </section>
+        )}
+
+        {/* 对话区域（激活且调研完成时展示） */}
+        {activationInfo && surveyCompleted && (
         <section className="rounded-xl border border-white/10 bg-slate-900/60 p-4 md:p-5 flex flex-col min-h-[380px]">
           {/* 阶段 tabs */}
           <div className="flex gap-2 mb-3 border-b border-white/10 pb-2">
@@ -322,13 +404,17 @@ export default function LightExplorePage() {
                 }`}
               >
                 <div
-                  className={`max-w-[80%] rounded-lg px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
+                  className={`max-w-[80%] rounded-lg px-3 py-2 text-sm leading-relaxed overflow-x-auto ${
                     m.role === 'user'
                       ? 'bg-primary-500 text-white'
                       : 'bg-slate-800 text-white/90'
-                  }`}
+                  } ${m.role === 'assistant' ? '' : 'whitespace-pre-wrap'}`}
                 >
-                  {m.content}
+                  {m.role === 'assistant' ? (
+                    <MessageContent content={m.content} markdown />
+                  ) : (
+                    m.content
+                  )}
                 </div>
               </div>
             ))}
@@ -358,6 +444,14 @@ export default function LightExplorePage() {
             </button>
           </div>
         </section>
+        )}
+
+        {/* 未激活时显示占位提示 */}
+        {!activationInfo && (
+          <section className="rounded-xl border border-white/10 bg-slate-900/60 p-8 text-center text-white/50">
+            请先输入激活码并完成激活，激活后需先填写调研问卷，然后即可开始对话。
+          </section>
+        )}
 
         {/* 额外导航提示 */}
         <section className="text-xs text-white/40 flex flex-col md:flex-row md:items-center justify-between gap-2 pb-8">

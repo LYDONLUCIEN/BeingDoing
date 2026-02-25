@@ -24,6 +24,8 @@ from app.core.agent.question_flow import (
     generate_answer_card_analysis,
 )
 from app.domain.prompts import get_reasoning_prompt
+from app.utils.survey_storage import load_basic_info, format_basic_info_for_prompt
+from app.config.settings import settings
 from app.domain.knowledge_rules import should_force_knowledge_query, get_search_category_for_step
 from app.domain.knowledge_config import get_knowledge_config
 from app.domain.question_goals import get_question_goal
@@ -284,6 +286,12 @@ async def reasoning_node(state: AgentState) -> AgentState:
             question_content_str = q_state["current_question"].question_content
             current_turn_count = q_state["current_question"].turn_count
 
+        # 加载调研问卷 basic_info（如有）
+        basic_info_str = "暂无"
+        if session_id:
+            survey_data = load_basic_info(session_id, settings.CONVERSATION_DIR)
+            basic_info_str = format_basic_info_for_prompt(survey_data)
+
         system_content = get_reasoning_prompt({
             "current_step": current_step,
             "step_summary": step_summary,
@@ -294,6 +302,7 @@ async def reasoning_node(state: AgentState) -> AgentState:
             "question_content": question_content_str,
             "current_turn_count": current_turn_count,
             "counselor_guidelines": COUNSELOR_RESPONSE_GUIDELINES,
+            "basic_info": basic_info_str,
         })
 
         if not (system_content or "").strip():

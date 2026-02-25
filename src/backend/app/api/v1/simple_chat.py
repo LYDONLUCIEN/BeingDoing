@@ -9,17 +9,57 @@
 
 from typing import Optional, List, AsyncIterator
 import json
+import random
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.core.llmapi import get_default_llm_provider, LLMMessage
+from app.core.knowledge.loader import KnowledgeLoader
 from app.utils.simple_activation_manager import SimpleActivationManager, ActivationStatus
 from app.utils.conversation_file_manager import ConversationFileManager
+from app.utils.survey_storage import (
+    save_basic_info,
+    load_basic_info,
+    format_basic_info_for_prompt,
+)
 
+# 每阶段随机抽取的题目数量
+SIMPLE_QUESTION_SAMPLE_SIZE = 6
+SIMPLE_BASE_DIR = "data/simple"
 
 router = APIRouter(prefix="/simple-chat", tags=["简单模式对话"])
+
+
+def _phase_to_loader_category(phase: str) -> str:
+    """simple_chat 的 phase 映射到 KnowledgeLoader 的 category"""
+    if phase == "values":
+        return "values"
+    if phase == "strengths":
+        return "strengths"
+    if phase in ("interests", "interests_goals", "goals"):
+        return "interests"
+    return "values"
+
+
+def _get_random_questions_for_phase(phase: str, n: int = SIMPLE_QUESTION_SAMPLE_SIZE) -> str:
+    """
+    从 question.md 中按阶段加载问题，随机抽取 n 个，格式化为字符串。
+     phase: values | strengths | interests_goals
+    """
+    try:
+        loader = KnowledgeLoader()
+        all_questions = loader.load_questions()
+        category = _phase_to_loader_category(phase)
+        phase_questions = [q for q in all_questions if q.category == category]
+        if not phase_questions:
+            return "（暂无该阶段题库）"
+        sampled = random.sample(phase_questions, min(n, len(phase_questions)))
+        lines = [f"{i+1}. {q.content}" for i, q in enumerate(sampled)]
+        return "\n".join(lines)
+    except Exception:
+        return "（题库加载失败）"
 
 
 class SimpleChatRequest(BaseModel):
@@ -52,44 +92,115 @@ class SimpleChatStreamRequest(BaseModel):
     phase: Optional[str] = "values"
 
 
-def _build_system_prompt(phase: str) -> str:
+class SurveySaveRequest(BaseModel):
+    activation_code: str
+    survey_data: dict
+
+
+def _load_basic_info_from_activation(activation_code: str) -> str:
+    """根据激活码加载 basic_info，格式化为提示词用文本"""
+    manager = SimpleActivationManager()
+    rec = manager.get_activation(activation_code)
+    if not rec:
+        return "暂无"
+    data = load_basic_info(rec.session_id, SIMPLE_BASE_DIR)
+    return format_basic_info_for_prompt(data)
+
+
+@router.get("/survey")
+def get_survey(activation_code: str):
+    """获取指定激活码下的调研问卷数据"""
+    manager = SimpleActivationManager()
+    rec = manager.get_activation(activation_code)
+    if not rec:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="激活码不存在",
+        )
+    data = load_basic_info(rec.session_id, SIMPLE_BASE_DIR)
+    return SimpleChatResponse(
+        code=200,
+        message="success",
+        data={"survey_data": data or {}},
+    )
+
+
+@router.post("/survey", response_model=SimpleChatResponse)
+def save_survey(request: SurveySaveRequest):
+    """保存调研问卷数据到指定激活码的会话下"""
+    manager = SimpleActivationManager()
+    rec = manager.get_activation(request.activation_code)
+    if not rec:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="激活码不存在",
+        )
+    if rec.status == ActivationStatus.EXPIRED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="激活码已过期",
+        )
+    save_basic_info(rec.session_id, request.survey_data or {}, SIMPLE_BASE_DIR)
+    return SimpleChatResponse(code=200, message="success", data={})
+
+
+def _build_system_prompt(phase: str, question_bank: str = "", basic_info: str = "暂无") -> str:
     """
-    根据阶段构建简单版 system prompt。
+    根据阶段构建 system prompt。
     phase: values | strengths | interests_goals
+    question_bank: 从 question.md 随机抽取的题目文本
+    basic_info: 来访者基本信息（简单模式默认「暂无」）
     """
+    if phase == "values":
+        return f"""你是一名专业的职业规划咨询师，你需要帮助用户一起探索其职业发展的可能性。目前你正在进行第一轮咨询，主题是帮助用户发现其经过收敛的5个价值观关键词，即在职业规划中对其最重要的5件事。以下是你的咨询方法：
+1、先向用户提问：你能否直接告诉我你的5个价值观关键词？
+2、若用户给出关键词，无论多少，先记录下来。若用户给不出关键词，则直接进行下一步。
+3、进入正式问题提问环节。对于提出的每一个问题，帮助用户从该问题的答案中发现价值观关键词。根据用户的回答进行追问，直到用户可以清晰地说出其答案反映出来的价值观关键词。
+4、提的问题不一定针对工作，也可以是生活中发生的事情或者对未来的畅想等等。以下是可供选择的题库：
+{question_bank}
+5、根据你和用户沟通的答案，对应第一个问题中用户自己给出的价值观关键词。如果有重复的，记录其权重+1；对于新出现的，向用户确认是否可以加入关键词序列。
+6、重复该提问过程，直到：1）关键词收敛，即发现无论再问什么问题都提取不出新的关键词才算关键词收敛；或 2）提出的独立问题（新提出的问题，不包括追问）数目超过10个。
+7、当关键词收敛后，提出问题，引导用户针对优先级给关键词排序。若关键词过多，则需要引导用户对关键词进行合并或删减且给出自己对关键词的解释。若合并之后数量少于5个，则需要继续进行提问，帮助用户发现更多未发现的关键词。若用户对如何排序不确定，则需要继续提问引导用户明确。
+8、向用户确认排序结果。
+
+你需要做到：
+1. 给用户回答问题的空间，而不是直接给出答案。如果用户实在回答不出来，可以做一些引导。
+2. 每一次轮对话只能向用户提出一个问题。
+3. 关键词收敛后，需要对比答案记录过程中的权重和用户最终自己排序结果的优先级，如果有区别，进一步向用户提问明确这样差异存在的原因；如果无区别，则按照排序结果。
+4. 最终的结果返回5个收敛的关键词及其解释。注意，并不是关键词到达5个后就算收敛，而是发现无论再问什么问题都提取不出新的关键词才算关键词收敛。
+5. 如果在过程中出现了关键词不足5个的情况，需要再重复步骤3-8，直到最后用户确认5个关键词为止。
+
+来访者基本信息：{basic_info}
+
+请直接用中文和用户继续这一轮对话。"""
+
     if phase == "strengths":
-        module_text = "你的主要才能、天赋和可以反复利用的优势"
-    elif phase in ("interests", "interests_goals", "goals"):
-        module_text = "你真正感兴趣、愿意长期投入并希望达成的目标"
-    else:
-        # 默认按价值观模块处理
-        module_text = "真正对你重要的价值观，以及你想怎样生活"
+        return f"""你是一名专业的职业规划咨询师，正在帮助用户探索其擅长的事（才能）。
+以下是可供选择的题库（可从中选择问题向用户提问）：
+{question_bank}
 
-    return f"""你是一名职业生涯与人生规划向导，擅长用非常温柔、细致的方式陪用户对话。
+来访者基本信息：{basic_info}
 
-当前任务模块：{module_text}
+你需要做到：
+1. 每次对话只向用户提出一个问题。
+2. 根据用户回答进行追问，帮助用户从答案中发现其才能/优势。
+3. 给用户回答问题的空间，不要直接给出答案。
+请直接用中文和用户继续这一轮对话。"""
 
-目标：
-1. 通过多轮对话，帮助用户把模糊的感觉、故事和想法说清楚
-2. 不要急着下结论，而是一步步澄清、追问、总结
-3. 在合适的时机，用自己的话帮用户总结出 3~7 条「核心结论」，包括关键词 + 简短解释
+    if phase in ("interests", "interests_goals", "goals"):
+        return f"""你是一名专业的职业规划咨询师，正在帮助用户探索其喜欢的事（热情）与目标。
+以下是可供选择的题库（可从中选择问题向用户提问）：
+{question_bank}
 
-对话原则：
-- 每次只问 1~2 个问题，问题要具体、有画面感
-- 多用例子帮助用户理解问题含义
-- 允许用户停顿、混乱，你要帮他整理
-- 不要给标准答案，而是引导用户自己说出答案
+来访者基本信息：{basic_info}
 
-输出格式：
-- 正常和用户对话时，用自然中文就好
-- 当你觉得阶段性总结的时机到了，请在回答结尾用一段清晰的「当前阶段性总结」，例如：
-  【阶段性总结】
-  1. 价值观A：……
-  2. 价值观B：……
-  3. 暂时还不确定/存在矛盾的点：……
+你需要做到：
+1. 每次对话只向用户提出一个问题。
+2. 根据用户回答进行追问，帮助用户发现其兴趣与目标。
+3. 给用户回答问题的空间，不要直接给出答案。
+请直接用中文和用户继续这一轮对话。"""
 
-请直接用中文和用户继续这一轮对话。
-"""
+    return _build_system_prompt("values", question_bank, basic_info)
 
 
 @router.post("/message", response_model=SimpleChatResponse)
@@ -134,8 +245,10 @@ async def simple_chat(request: SimpleChatRequest):
 
     llm = get_default_llm_provider()
 
-    # 构造 messages：system + 历史 + 当前用户
-    system_prompt = _build_system_prompt(phase)
+    # 从 question.md 按阶段随机抽取题目，动态注入提示词
+    question_bank = _get_random_questions_for_phase(phase)
+    basic_info = _load_basic_info_from_activation(request.activation_code)
+    system_prompt = _build_system_prompt(phase, question_bank=question_bank, basic_info=basic_info)
     llm_messages = [LLMMessage(role="system", content=system_prompt)]
 
     # 把历史文件中的 role/content 转成 LLMMessage
@@ -213,10 +326,12 @@ async def simple_init(request: SimpleInitRequest):
 
     # 没有历史：生成一条首轮引导问题
     llm = get_default_llm_provider()
-    system_prompt = _build_system_prompt(phase)
+    question_bank = _get_random_questions_for_phase(phase)
+    basic_info = _load_basic_info_from_activation(request.activation_code)
+    system_prompt = _build_system_prompt(phase, question_bank=question_bank, basic_info=basic_info)
     llm_messages = [
         LLMMessage(role="system", content=system_prompt),
-        LLMMessage(role="user", content="请给出第一轮温柔而具体的引导问题，让我开始思考。"),
+        LLMMessage(role="user", content="我是来访者，你需要向我提问。以下是我的基本信息：暂无。请给出第一轮温柔而具体的引导问题，让我开始思考。"),
     ]
     response = await llm.chat(llm_messages, temperature=0.7)
     reply_text = response.content or ""
@@ -328,7 +443,9 @@ async def simple_chat_stream(request: SimpleChatStreamRequest):
             category=category,
         )
 
-        system_prompt = _build_system_prompt(phase)
+        question_bank = _get_random_questions_for_phase(phase)
+        basic_info = _load_basic_info_from_activation(request.activation_code)
+        system_prompt = _build_system_prompt(phase, question_bank=question_bank, basic_info=basic_info)
         llm_messages = [LLMMessage(role="system", content=system_prompt)]
 
         for m in history_messages:
@@ -388,31 +505,6 @@ async def simple_chat_stream(request: SimpleChatStreamRequest):
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
-        },
-    )
-
-    await conv_manager.append_message(
-        session_id=session_id,
-        category=category,
-        message={
-            "role": "assistant",
-            "content": reply_text,
-        },
-    )
-
-    return SimpleChatResponse(
-        code=200,
-        message="success",
-        data={
-            "reply": reply_text,
-            "activation": {
-                "activation_code": rec.code,
-                "session_id": rec.session_id,
-                "mode": rec.mode,
-                "created_at": rec.created_at,
-                "expires_at": rec.expires_at,
-                "status": rec.status,
-            },
         },
     )
 
