@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api/client';
 import MessageContent from '@/components/explore/MessageContent';
 import SurveyForm from '@/components/survey/SurveyForm';
+import PriorContextPanel from '@/components/survey/PriorContextPanel';
 import { surveyApi } from '@/lib/api/survey';
 import type { SurveyData } from '@/lib/survey/schema';
 
@@ -389,6 +390,29 @@ export default function LightExplorePage() {
               </button>
             ))}
           </div>
+
+          {/* 上一轮咨询结果上传（strengths 和 interests_goals 阶段） */}
+          {activePhase === 'strengths' && (
+            <div className="mb-3">
+              <PriorContextPanel
+                activationCode={activationInfo.activation_code}
+                phase="strengths"
+                phaseLabel="擅长的事（才能）"
+                previousPhaseLabel="价值观咨询"
+              />
+            </div>
+          )}
+          {activePhase === 'interests_goals' && (
+            <div className="mb-3">
+              <PriorContextPanel
+                activationCode={activationInfo.activation_code}
+                phase="interests_goals"
+                phaseLabel="喜欢的事 & 目标"
+                previousPhaseLabel="价值观 & 才能咨询"
+              />
+            </div>
+          )}
+
           <div className="flex-1 overflow-y-auto space-y-3 pr-1 mb-3">
             {currentMessages.length === 0 && (
               <p className="text-sm text-white/50">

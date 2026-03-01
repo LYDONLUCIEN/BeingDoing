@@ -6,6 +6,32 @@
 import { apiClient, ApiResponse } from './client';
 import type { SurveyData } from '@/lib/survey/schema';
 
+/** 每个 phase 允许上传/保存的上一轮咨询结果 */
+export const priorContextApi = {
+  /** 获取上一轮咨询结果（激活码模式） */
+  getForActivation: async (
+    activationCode: string,
+    phase: string
+  ): Promise<ApiResponse<{ context_text: string }>> => {
+    return apiClient.get('/simple-chat/prior-context', {
+      params: { activation_code: activationCode, phase },
+    });
+  },
+
+  /** 保存/上传上一轮咨询结果（激活码模式） */
+  saveForActivation: async (
+    activationCode: string,
+    phase: string,
+    contextText: string
+  ): Promise<ApiResponse<void>> => {
+    return apiClient.post('/simple-chat/prior-context', {
+      activation_code: activationCode,
+      phase,
+      context_text: contextText,
+    });
+  },
+};
+
 /** Simple 模式：根据激活码保存调研 */
 export const surveyApi = {
   /** 保存调研（激活码模式） */

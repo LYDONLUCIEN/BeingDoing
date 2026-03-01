@@ -23,6 +23,8 @@ from app.utils.survey_storage import (
     save_basic_info,
     load_basic_info,
     format_basic_info_for_prompt,
+    save_prior_context,
+    load_prior_context,
 )
 
 # 每阶段随机抽取的题目数量
@@ -97,6 +99,12 @@ class SurveySaveRequest(BaseModel):
     survey_data: dict
 
 
+class PriorContextSaveRequest(BaseModel):
+    activation_code: str
+    phase: str       # 目标阶段，如 "strengths" / "interests_goals"
+    context_text: str
+
+
 def _load_basic_info_from_activation(activation_code: str) -> str:
     """根据激活码加载 basic_info，格式化为提示词用文本"""
     manager = SimpleActivationManager()
@@ -105,6 +113,15 @@ def _load_basic_info_from_activation(activation_code: str) -> str:
         return "暂无"
     data = load_basic_info(rec.session_id, SIMPLE_BASE_DIR)
     return format_basic_info_for_prompt(data)
+
+
+def _load_prior_context_from_activation(activation_code: str, phase: str) -> str:
+    """根据激活码和阶段加载上一轮咨询结果文本"""
+    manager = SimpleActivationManager()
+    rec = manager.get_activation(activation_code)
+    if not rec:
+        return ""
+    return load_prior_context(rec.session_id, phase, SIMPLE_BASE_DIR)
 
 
 @router.get("/survey")
@@ -123,6 +140,30 @@ def get_survey(activation_code: str):
         message="success",
         data={"survey_data": data or {}},
     )
+
+
+@router.get("/prior-context")
+def get_prior_context(activation_code: str, phase: str):
+    """获取指定阶段的上一轮咨询结果文本"""
+    manager = SimpleActivationManager()
+    rec = manager.get_activation(activation_code)
+    if not rec:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="激活码不存在")
+    text = load_prior_context(rec.session_id, phase, SIMPLE_BASE_DIR)
+    return SimpleChatResponse(code=200, message="success", data={"context_text": text})
+
+
+@router.post("/prior-context", response_model=SimpleChatResponse)
+def save_prior_context_endpoint(request: PriorContextSaveRequest):
+    """保存（上传）指定阶段的上一轮咨询结果文本"""
+    manager = SimpleActivationManager()
+    rec = manager.get_activation(request.activation_code)
+    if not rec:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="激活码不存在")
+    if rec.status == ActivationStatus.EXPIRED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="激活码已过期")
+    save_prior_context(rec.session_id, request.phase, request.context_text or "", SIMPLE_BASE_DIR)
+    return SimpleChatResponse(code=200, message="success", data={})
 
 
 @router.post("/survey", response_model=SimpleChatResponse)
@@ -144,13 +185,21 @@ def save_survey(request: SurveySaveRequest):
     return SimpleChatResponse(code=200, message="success", data={})
 
 
-def _build_system_prompt(phase: str, question_bank: str = "", basic_info: str = "暂无") -> str:
+def _build_system_prompt(
+    phase: str,
+    question_bank: str = "",
+    basic_info: str = "暂无",
+    prior_context: str = "",
+) -> str:
     """
     根据阶段构建 system prompt。
     phase: values | strengths | interests_goals
     question_bank: 从 question.md 随机抽取的题目文本
-    basic_info: 来访者基本信息（简单模式默认「暂无」）
+    basic_info: 来访者基本信息（调研问卷）
+    prior_context: 上一阶段咨询结果（values → 空；strengths → values 结果；interests_goals → strengths+values 结果）
     """
+    prior_block = f"\n\n以下是该来访者在上一轮咨询中的谈话结果，供你参考：\n{prior_context}" if prior_context.strip() else ""
+
     if phase == "values":
         return f"""你是一名专业的职业规划咨询师，你需要帮助用户一起探索其职业发展的可能性。目前你正在进行第一轮咨询，主题是帮助用户发现其经过收敛的5个价值观关键词，即在职业规划中对其最重要的5件事。以下是你的咨询方法：
 1、先向用户提问：你能否直接告诉我你的5个价值观关键词？
@@ -170,37 +219,55 @@ def _build_system_prompt(phase: str, question_bank: str = "", basic_info: str = 
 4. 最终的结果返回5个收敛的关键词及其解释。注意，并不是关键词到达5个后就算收敛，而是发现无论再问什么问题都提取不出新的关键词才算关键词收敛。
 5. 如果在过程中出现了关键词不足5个的情况，需要再重复步骤3-8，直到最后用户确认5个关键词为止。
 
-来访者基本信息：{basic_info}
+来访者基本信息：{basic_info}{prior_block}
 
 请直接用中文和用户继续这一轮对话。"""
 
     if phase == "strengths":
-        return f"""你是一名专业的职业规划咨询师，正在帮助用户探索其擅长的事（才能）。
-以下是可供选择的题库（可从中选择问题向用户提问）：
+        return f"""你是一名专业的职业规划咨询师，你需要帮助用户一起探索其职业发展的可能性。目前你正在进行第二轮咨询，主题是帮助用户发现其10件擅长的事。以下是你的咨询方法：
+1、先向用户提问：你自己认为你的优势有哪些？
+2、若用户给出答案，无论多少，先记录下来。若用户给不出答案，则直接进行下一步。
+3、进入正式问题提问环节。对于提出的每一个问题，帮助用户从该问题的答案中发现其擅长的事。根据用户的回答进行追问，直到用户可以清晰地说出其答案反映出来的擅长的事。
+4、提的问题不一定针对工作，也可以是生活中发生的事情或者对未来的畅想等等。以下是可供选择的题库：
 {question_bank}
-
-来访者基本信息：{basic_info}
+5、根据你和用户沟通的答案，对应第一个问题中用户自己给出的答案。如果有重复的，记录其权重+1；对于新出现的，向用户确认是否可以加入序列。
+6、重复该提问过程，直到提取出10个擅长的事。
+7、当用户确认后，引导用户针对擅长的事进行标记，同时解释标签体系的含义。标记体系：a. 有充实感，与成功有关；b. 有充实感；c. 目前还不确定。
+8、向用户确认标记结果。告知用户需要进行下一轮咨询：探索"喜欢的事"。
 
 你需要做到：
-1. 每次对话只向用户提出一个问题。
-2. 根据用户回答进行追问，帮助用户从答案中发现其才能/优势。
-3. 给用户回答问题的空间，不要直接给出答案。
+1. 给用户回答问题的空间，而不是直接给出答案。如果用户实在回答不出来，可以做一些引导。
+2. 每一次轮对话只能向用户提出一个问题。
+3. 如果在过程中出现了关键词不足10个的情况，或者用户不认可某一项擅长的事，需要再重复提问，直到最后用户确认10件擅长的事为止。
+4. 提问需要有差异化，防止钻牛角尖。
+5. 提取出的擅长的事之间不能有重复。
+
+来访者基本信息：{basic_info}{prior_block}
+
 请直接用中文和用户继续这一轮对话。"""
 
     if phase in ("interests", "interests_goals", "goals"):
-        return f"""你是一名专业的职业规划咨询师，正在帮助用户探索其喜欢的事（热情）与目标。
-以下是可供选择的题库（可从中选择问题向用户提问）：
+        return f"""你是一名专业的职业规划咨询师，你需要帮助用户一起探索其职业发展的可能性。目前你正在进行第三轮咨询，主题是帮助用户发现其喜欢的事（热情）与目标。以下是你的咨询方法：
+1、先向用户提问：你喜欢做哪些事情？哪些事情让你感到充满热情和意义？
+2、若用户给出答案，无论多少，先记录下来。若用户给不出答案，则直接进行下一步。
+3、进入正式问题提问环节。对于提出的每一个问题，帮助用户从该问题的答案中发现其喜欢的事。根据用户的回答进行追问，直到用户可以清晰地说出其答案反映出来的热情所在。
+4、提的问题不一定针对工作，也可以是生活中发生的事情或者对未来的畅想等等。以下是可供选择的题库：
 {question_bank}
-
-来访者基本信息：{basic_info}
+5、根据你和用户沟通的答案，梳理出用户的热情领域。如果有重复的，记录其权重+1；对于新出现的，向用户确认是否可以加入序列。
+6、重复该提问过程，直到热情领域收敛。
+7、引导用户结合上一轮探索出的价值观和擅长的事，思考其热情与它们的交集，找到最有意义的方向。
+8、向用户确认最终的热情领域列表。
 
 你需要做到：
-1. 每次对话只向用户提出一个问题。
-2. 根据用户回答进行追问，帮助用户发现其兴趣与目标。
-3. 给用户回答问题的空间，不要直接给出答案。
+1. 给用户回答问题的空间，而不是直接给出答案。如果用户实在回答不出来，可以做一些引导。
+2. 每一次轮对话只能向用户提出一个问题。
+3. 充分利用来访者上一轮的咨询结果（价值观和擅长的事）来帮助用户发现热情与它们之间的联系。
+
+来访者基本信息：{basic_info}{prior_block}
+
 请直接用中文和用户继续这一轮对话。"""
 
-    return _build_system_prompt("values", question_bank, basic_info)
+    return _build_system_prompt("values", question_bank, basic_info, prior_context)
 
 
 @router.post("/message", response_model=SimpleChatResponse)
@@ -248,7 +315,8 @@ async def simple_chat(request: SimpleChatRequest):
     # 从 question.md 按阶段随机抽取题目，动态注入提示词
     question_bank = _get_random_questions_for_phase(phase)
     basic_info = _load_basic_info_from_activation(request.activation_code)
-    system_prompt = _build_system_prompt(phase, question_bank=question_bank, basic_info=basic_info)
+    prior_context = _load_prior_context_from_activation(request.activation_code, phase)
+    system_prompt = _build_system_prompt(phase, question_bank=question_bank, basic_info=basic_info, prior_context=prior_context)
     llm_messages = [LLMMessage(role="system", content=system_prompt)]
 
     # 把历史文件中的 role/content 转成 LLMMessage
@@ -328,7 +396,8 @@ async def simple_init(request: SimpleInitRequest):
     llm = get_default_llm_provider()
     question_bank = _get_random_questions_for_phase(phase)
     basic_info = _load_basic_info_from_activation(request.activation_code)
-    system_prompt = _build_system_prompt(phase, question_bank=question_bank, basic_info=basic_info)
+    prior_context = _load_prior_context_from_activation(request.activation_code, phase)
+    system_prompt = _build_system_prompt(phase, question_bank=question_bank, basic_info=basic_info, prior_context=prior_context)
     llm_messages = [
         LLMMessage(role="system", content=system_prompt),
         LLMMessage(role="user", content="我是来访者，你需要向我提问。以下是我的基本信息：暂无。请给出第一轮温柔而具体的引导问题，让我开始思考。"),
@@ -445,7 +514,8 @@ async def simple_chat_stream(request: SimpleChatStreamRequest):
 
         question_bank = _get_random_questions_for_phase(phase)
         basic_info = _load_basic_info_from_activation(request.activation_code)
-        system_prompt = _build_system_prompt(phase, question_bank=question_bank, basic_info=basic_info)
+        prior_context = _load_prior_context_from_activation(request.activation_code, phase)
+        system_prompt = _build_system_prompt(phase, question_bank=question_bank, basic_info=basic_info, prior_context=prior_context)
         llm_messages = [LLMMessage(role="system", content=system_prompt)]
 
         for m in history_messages:

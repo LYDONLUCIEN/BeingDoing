@@ -73,6 +73,60 @@ def load_basic_info(session_id: str, base_dir: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+_PRIOR_CONTEXT_FILENAME = "prior_context_{phase}.txt"
+
+
+def save_prior_context(session_id: str, phase: str, text: str, base_dir: str) -> None:
+    """
+    保存某阶段的上一轮咨询结果文本。
+
+    Args:
+        session_id: 会话 ID
+        phase: 目标阶段（存在 strengths 或 interests_goals 等）
+        text: 上传或自动收集的文本
+        base_dir: 存储根目录
+    """
+    base = Path(base_dir)
+    session_dir = base / session_id
+    session_dir.mkdir(parents=True, exist_ok=True)
+    filename = _PRIOR_CONTEXT_FILENAME.format(phase=phase)
+    (session_dir / filename).write_text(text, encoding="utf-8")
+
+
+def load_prior_context(session_id: str, phase: str, base_dir: str) -> str:
+    """
+    加载某阶段的上一轮咨询结果文本。
+
+    默认加载规则：
+      - strengths 阶段 → 先查 prior_context_strengths.txt；
+        若无，则尝试从 values 阶段的对话文件自动生成摘要（暂返回空，由前端上传）
+      - interests_goals 阶段 → 先查 prior_context_interests_goals.txt；
+        若无，则尝试 prior_context_strengths.txt 作为 fallback
+
+    Returns:
+        文本内容，找不到返回空字符串
+    """
+    base = Path(base_dir)
+    session_dir = base / session_id
+    filename = _PRIOR_CONTEXT_FILENAME.format(phase=phase)
+    path = session_dir / filename
+    if path.exists():
+        try:
+            return path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return ""
+
+    # interests_goals fallback → 尝试 strengths 结果
+    if phase in ("interests_goals", "interests", "goals"):
+        fallback = session_dir / _PRIOR_CONTEXT_FILENAME.format(phase="strengths")
+        if fallback.exists():
+            try:
+                return fallback.read_text(encoding="utf-8").strip()
+            except OSError:
+                pass
+    return ""
+
+
 def format_basic_info_for_prompt(data: Optional[Dict[str, Any]]) -> str:
     """
     将调研数据格式化为可放入提示词的文本。
