@@ -50,8 +50,8 @@ export default function TopNavbar() {
     <nav className="fixed top-0 left-0 right-0 z-50 h-14 bg-slate-900/95 backdrop-blur border-b border-white/10">
       <div className="max-w-7xl mx-auto h-full px-4 flex items-center justify-between">
         {/* Brand */}
-        <Link href="/" className="text-lg font-bold text-white whitespace-nowrap">
-          找到想做的事
+        <Link href="/" className="text-lg font-bold text-white whitespace-nowrap tracking-tight">
+          Being · Doing
         </Link>
 
         {/* Desktop nav links */}

@@ -124,6 +124,22 @@ def load_prior_context(session_id: str, phase: str, base_dir: str) -> str:
                 return fallback.read_text(encoding="utf-8").strip()
             except OSError:
                 pass
+
+    # purpose 阶段 → 合并所有前序阶段的 prior context
+    if phase == "purpose":
+        parts: List[str] = []
+        for prev_phase in ("values", "strengths", "interests_goals"):
+            prev_path = session_dir / _PRIOR_CONTEXT_FILENAME.format(phase=prev_phase)
+            if prev_path.exists():
+                try:
+                    text = prev_path.read_text(encoding="utf-8").strip()
+                    if text:
+                        parts.append(f"【{prev_phase} 阶段结果】\n{text}")
+                except OSError:
+                    pass
+        if parts:
+            return "\n\n".join(parts)
+
     return ""
 
 
