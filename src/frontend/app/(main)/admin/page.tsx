@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useThemeStore, THEMES } from '@/stores/themeStore';
 import { useDebugStore } from '@/stores/debugStore';
 import { apiClient } from '@/lib/api/client';
-import { loadSession, saveSession, setLastActivationCode } from '@/lib/explore/session';
+import { loadSession, saveSession, setLastActivationCode, type PhaseKey } from '@/lib/explore/session';
 import Link from 'next/link';
 import { CheckCircle2, Bug, Loader2, Palette } from 'lucide-react';
 
@@ -105,7 +105,7 @@ function DebugSection() {
         ...session,
         activationCode,
         unlockedPhases: [...ALL_PHASES],
-        currentPhase: redirectTo === 'report' ? 'purpose' : 'values',
+        currentPhase: (redirectTo === 'report' ? 'purpose' : 'values') as PhaseKey,
         surveyCompleted: true,
       };
       saveSession(debugSession);

@@ -40,13 +40,13 @@ export default function TopNavbar() {
   const handleLogout = () => { logout(); router.push('/'); };
 
   const linkBase = 'px-3 py-1.5 rounded-lg text-sm transition-colors';
-  const linkActive = 'bg-bd-primary-dim text-bd-primary';
+  const linkActive = 'bg-bd-ui-accent-dim text-bd-ui-accent';
   const linkInactive = 'text-bd-muted hover:text-bd-fg hover:bg-bd-overlay-md';
 
   return (
     <>
     <nav
-      className="fixed top-0 left-0 right-0 z-50 h-14 backdrop-blur-md"
+      className="bd-nav-glass fixed top-0 left-0 right-0 z-50 h-14"
       style={{ backgroundColor: 'var(--bd-nav-bg)', borderBottom: '1px solid var(--bd-nav-border)' }}
     >
       <div className="max-w-7xl mx-auto h-full px-4 flex items-center justify-between">
@@ -103,10 +103,8 @@ export default function TopNavbar() {
             <button
               type="button"
               onClick={handleLoginClick}
-              className="px-4 py-1.5 rounded-lg text-sm font-medium text-bd-primary-fg transition-colors"
-              style={{ background: 'var(--bd-primary)' }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bd-primary-alt)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bd-primary)')}
+              className="px-4 py-1.5 rounded-lg text-sm font-medium text-bd-ui-accent-fg transition-colors hover:opacity-90"
+              style={{ background: 'var(--bd-ui-accent)' }}
             >
               登录 / 注册
             </button>
@@ -126,7 +124,7 @@ export default function TopNavbar() {
       {/* Mobile menu */}
       {mobileOpen && (
         <div
-          className="md:hidden px-4 pb-4 space-y-1"
+          className="bd-nav-glass md:hidden px-4 pb-4 space-y-1"
           style={{ backgroundColor: 'var(--bd-nav-bg)', borderBottom: '1px solid var(--bd-nav-border)' }}
         >
           {NAV_ITEMS.map((item) => {

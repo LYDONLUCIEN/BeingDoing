@@ -71,6 +71,11 @@ module.exports = {
           nav:        'var(--bd-nav-bg)',
           'nav-border':'var(--bd-nav-border)',
 
+          /* UI 交互色（导航/探索/AI，紫色系） */
+          'ui-accent':    'var(--bd-ui-accent, #a78bfa)',
+          'ui-accent-dim':'var(--bd-ui-accent-dim, rgba(167,139,250,0.2))',
+          'ui-accent-fg': 'var(--bd-ui-accent-fg, #ffffff)',
+
           /* Phase colors (ideal/glimmer define these; others fallback to accent) */
           'phase-values':    'var(--bd-phase-values, var(--bd-accent-1))',
           'phase-strengths': 'var(--bd-phase-strengths, var(--bd-accent-3))',

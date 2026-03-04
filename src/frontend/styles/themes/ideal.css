@@ -54,8 +54,14 @@
   --bd-error:           #DE564F;
   --bd-error-dim:       #FDF2F1;
 
-  --bd-nav-bg:          rgba(255,255,255,0.92);
-  --bd-nav-border:      #EEF1F4;
+  --bd-nav-bg:          rgba(255,255,255,0.72);
+  --bd-nav-border:      rgba(238,241,244,0.9);
+  --bd-nav-blur:        16px;
+
+  /* 交互色：导航/开始探索/AI对话（紫色系，与阶段色区分） */
+  --bd-ui-accent:       #7c3aed;
+  --bd-ui-accent-dim:   rgba(124,58,237,0.12);
+  --bd-ui-accent-fg:    #ffffff;
 
   /* 设计原则：小圆角、浅阴影、毛玻璃 */
   --bd-radius-sm:       4px;

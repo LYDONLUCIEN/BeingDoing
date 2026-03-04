@@ -1,0 +1,55 @@
+/* ══════════════════════════════════════════
+   关键词高亮与特效
+   规划 / 发现 等文案强调
+   ══════════════════════════════════════════ */
+
+/* 「规划」— 淡化、轻划线，暗示非主路径 */
+.bd-word-planned {
+  text-decoration: line-through;
+  text-decoration-color: var(--bd-fg-subtle);
+  text-decoration-thickness: 1px;
+  opacity: 0.7;
+  color: var(--bd-fg-subtle);
+}
+
+/* 「发现」— 渐变 + 闪光动画 */
+.bd-word-discover {
+  background: linear-gradient(
+    135deg,
+    var(--bd-phase-values) 0%,
+    var(--bd-phase-strengths) 25%,
+    var(--bd-phase-interests) 50%,
+    var(--bd-phase-purpose) 75%,
+    var(--bd-phase-values) 100%
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: bd-shimmer 3s ease-in-out infinite;
+  position: relative;
+  font-weight: 600;
+}
+
+.bd-word-discover::before,
+.bd-word-discover::after {
+  content: '✦';
+  color: var(--bd-phase-purpose);
+  font-size: 0.5em;
+  vertical-align: super;
+  animation: bd-sparkle 1.8s ease-in-out infinite;
+  display: inline-block;
+  opacity: 0.9;
+}
+.bd-word-discover::before { margin-right: 0.2em; }
+.bd-word-discover::after { margin-left: 0.2em; animation-delay: 0.4s; }
+
+@keyframes bd-shimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes bd-sparkle {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.15); }
+}

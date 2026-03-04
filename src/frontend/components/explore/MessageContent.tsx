@@ -7,9 +7,16 @@ interface MessageContentProps {
   className?: string;
   /** 是否使用 Markdown 渲染（助手消息默认 true，用户回答可选用） */
   markdown?: boolean;
+  /** light: flow 页浅色主题下的 Markdown 配色 */
+  colorMode?: 'dark' | 'light';
 }
 
-export default function MessageContent({ content, className = '', markdown = true }: MessageContentProps) {
+export default function MessageContent({
+  content,
+  className = '',
+  markdown = true,
+  colorMode = 'dark',
+}: MessageContentProps) {
   if (!content?.trim()) {
     return null;
   }
@@ -22,7 +29,7 @@ export default function MessageContent({ content, className = '', markdown = tru
     <div className={`message-content text-sm leading-relaxed ${className}`.trim()}>
       <MarkdownPreview
         source={content}
-        wrapperElement={{ 'data-color-mode': 'dark' }}
+        wrapperElement={{ 'data-color-mode': colorMode }}
         style={{ backgroundColor: 'transparent' }}
       />
     </div>

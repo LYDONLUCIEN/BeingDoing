@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Lock, CheckCircle2, ChevronRight } from 'lucide-react';
+import { Lock, CheckCircle2, ChevronRight, ArrowUp, Square } from 'lucide-react';
+import Link from 'next/link';
+import FlowAiMessage from '@/components/explore/FlowAiMessage';
 import { apiClient } from '@/lib/api/client';
-import MessageContent from '@/components/explore/MessageContent';
 import {
   PHASES,
   loadSession,
@@ -26,6 +27,7 @@ interface SimpleMessage {
 const PHASE_META: Record<PhaseKey, {
   color: string;
   bg: string;
+  bgLight: string;
   ring: string;
   desc: string;
   hint: string;
@@ -34,6 +36,7 @@ const PHASE_META: Record<PhaseKey, {
   values: {
     color: 'text-bd-phase-values',
     bg: 'border border-bd-phase-values',
+    bgLight: 'bg-bd-phase-values/10',
     ring: 'ring-bd-phase-values/50',
     desc: '探索你最深层的信念。什么对你最重要？哪些原则是你绝不妥协的？',
     hint: '这一步帮你发现5个核心价值观关键词。',
@@ -42,6 +45,7 @@ const PHASE_META: Record<PhaseKey, {
   strengths: {
     color: 'text-bd-phase-strengths',
     bg: 'border border-bd-phase-strengths',
+    bgLight: 'bg-bd-phase-strengths/10',
     ring: 'ring-bd-phase-strengths/50',
     desc: '探索你的天赋与禀赋。有些事你做起来不费力，却让别人惊叹。',
     hint: '这一步帮你发现10件真正擅长的事。',
@@ -50,6 +54,7 @@ const PHASE_META: Record<PhaseKey, {
   interests: {
     color: 'text-bd-phase-interests',
     bg: 'border border-bd-phase-interests',
+    bgLight: 'bg-bd-phase-interests/10',
     ring: 'ring-bd-phase-interests/50',
     desc: '探索你的热忱。什么话题让你停不下来？什么场景让时间消失？',
     hint: '这一步帮你找到真正让你忘我的事。',
@@ -58,6 +63,7 @@ const PHASE_META: Record<PhaseKey, {
   purpose: {
     color: 'text-bd-phase-purpose',
     bg: 'border border-bd-phase-purpose',
+    bgLight: 'bg-bd-phase-purpose/10',
     ring: 'ring-bd-phase-purpose/50',
     desc: '探索你的使命。你想为谁而做？你希望在这个世界留下什么？',
     hint: '这一步帮你找到职业背后更深的驱动力。',
@@ -86,6 +92,10 @@ export default function ChatPhasePage() {
   const [initLoading, setInitLoading] = useState(true);
   const [chatError, setChatError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatBodyRef = useRef<HTMLDivElement>(null);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const phase = phaseParam as PhaseKey;
   const phaseMeta = PHASE_META[phase];
@@ -170,19 +180,69 @@ export default function ChatPhasePage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = async () => {
-    if (!activationCode || !input.trim() || sending) return;
+  const checkScrollPosition = useCallback(() => {
+    const el = chatBodyRef.current;
+    if (!el) return;
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setShowScrollBottom(dist > 80);
+  }, []);
+
+  useEffect(() => {
+    const el = chatBodyRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', checkScrollPosition);
+    checkScrollPosition();
+    return () => el.removeEventListener('scroll', checkScrollPosition);
+  }, [checkScrollPosition, messages]);
+
+  const scrollToBottom = useCallback(() => {
+    chatBodyRef.current?.scrollTo({ top: chatBodyRef.current.scrollHeight, behavior: 'smooth' });
+  }, []);
+
+  const handleStopStream = () => {
+    abortControllerRef.current?.abort();
+  };
+
+  // 输入框：先增高显示全部，超过一半页面后加滚动条
+  useEffect(() => {
+    const ta = inputRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    const sh = ta.scrollHeight;
+    const maxH = typeof window !== 'undefined' ? window.innerHeight * 0.5 : 200;
+    ta.style.height = Math.min(sh, maxH) + 'px';
+    ta.style.overflowY = sh > maxH ? 'auto' : 'hidden';
+  }, [input]);
+
+  const handleRegenerate = useCallback(
+    (aiIdx: number) => {
+      if (sending) return;
+      const prev = [...messages];
+      const lastUser = prev.slice(0, aiIdx).filter((m) => m.role === 'user').pop();
+      if (!lastUser) return;
+      setMessages(prev.slice(0, aiIdx));
+      setChatError(null);
+      handleSend(lastUser.content, true);
+    },
+    [messages, sending]
+  );
+
+  const handleSend = async (prefill?: string, skipAddUser?: boolean) => {
+    const text = prefill ?? input.trim();
+    if (!activationCode || !text || sending) return;
+    if (!prefill) setInput('');
     const userMsg: SimpleMessage = {
       id: `u_${Date.now()}`,
       role: 'user',
-      content: input.trim(),
+      content: text,
     };
     const assistantId = `a_${Date.now()}`;
-    setMessages((prev) => [...prev, userMsg, { id: assistantId, role: 'assistant', content: '' }]);
-    setInput('');
+    const toAdd = skipAddUser ? [{ id: assistantId, role: 'assistant' as const, content: '' }] : [userMsg, { id: assistantId, role: 'assistant' as const, content: '' }];
+    setMessages((prev) => [...prev, ...toAdd]);
     setChatError(null);
     setSending(true);
 
+    abortControllerRef.current = new AbortController();
     try {
       const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
       const url = `${baseURL}/api/v1/simple-chat/message/stream`;
@@ -194,6 +254,7 @@ export default function ChatPhasePage() {
           message: userMsg.content,
           phase: BACKEND_PHASE[phase],
         }),
+        signal: abortControllerRef.current.signal,
       });
       if (!res.body) throw new Error('流式接口返回为空');
 
@@ -234,6 +295,7 @@ export default function ChatPhasePage() {
       if (err?.name !== 'AbortError') setChatError(err?.message || '发送失败，请重试');
     } finally {
       setSending(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -255,152 +317,193 @@ export default function ChatPhasePage() {
   const isLocked = !session.unlockedPhases.includes(phase);
   const currentPhaseIdx = PHASES.findIndex((p) => p.key === phase);
 
-  return (
-    <div className="min-h-screen bg-bd-gradient text-bd-fg flex flex-col">
+  const dimName = { values: '信念', strengths: '禀赋', interests: '热忱', purpose: '使命' }[phase];
+  const phaseClass = { values: 'values', strengths: 'strength', interests: 'interest', purpose: 'purpose' }[phase];
 
-      {/* Top progress bar */}
-      <div className="fixed top-14 left-0 right-0 z-40 backdrop-blur" style={{ backgroundColor: 'var(--bd-nav-bg)', borderBottom: '1px solid var(--bd-border-soft)' }}>
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3 overflow-x-auto">
-          {PHASES.map((p, i) => {
+  return (
+    <div
+      className="flow-light min-h-screen flex flex-col bg-bd-gradient text-bd-fg"
+      data-phase={phase}
+    >
+      {/* 顶部进度条：信念→禀赋→热忱→使命，明显提示 + 解锁逻辑 */}
+      <div className="fixed top-14 left-0 right-0 z-40 backdrop-blur border-b border-black/[0.05] bg-bd-bg/95">
+        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-center gap-1 overflow-x-auto">
+          {PHASES.map((p, idx) => {
             const unlocked = session.unlockedPhases.includes(p.key);
             const isActive = p.key === phase;
-            const meta = PHASE_META[p.key];
             return (
-              <button
-                key={p.key}
-                type="button"
-                disabled={!unlocked}
-                onClick={() => unlocked && router.push(`/explore/chat/${p.key}`)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all flex-shrink-0 ${
-                  isActive
-                    ? `${meta.bg} border ${meta.color}`
-                    : unlocked
-                    ? 'text-bd-muted hover:text-bd-fg hover:bg-bd-overlay-md'
-                    : 'text-bd-ghost cursor-not-allowed'
-                }`}
-              >
-                {unlocked && !isActive ? (
-                  <CheckCircle2 size={13} className="text-bd-subtle" />
-                ) : !unlocked ? (
-                  <Lock size={13} />
-                ) : null}
-                <span className="text-xs font-mono text-current opacity-50 mr-0.5">{p.num}</span>
-                {p.label}
-              </button>
+              <span key={p.key} className="flex items-center gap-1 flex-shrink-0">
+                {idx > 0 && (
+                  <ChevronRight size={14} className="text-bd-ui-accent/60 flex-shrink-0" aria-hidden />
+                )}
+                <button
+                  type="button"
+                  disabled={!unlocked}
+                  onClick={() => unlocked && router.push(`/explore/chat/${p.key}`)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                    isActive ? `${PHASE_META[p.key].bg} ${PHASE_META[p.key].color} ${PHASE_META[p.key].bgLight}` : ''
+                  } ${unlocked && !isActive ? 'text-[var(--bd-ui-accent)]/80 hover:text-[var(--bd-ui-accent)] hover:bg-[var(--bd-ui-accent)]/5' : ''} ${!unlocked ? 'text-[var(--bd-ui-accent)]/40 cursor-not-allowed' : ''}`}
+                >
+                  {unlocked && !isActive ? <CheckCircle2 size={14} className="text-[var(--bd-ui-accent)]" /> : null}
+                  {!unlocked && <Lock size={14} className="text-[var(--bd-ui-accent)]/60" />}
+                  <span className="font-mono text-xs opacity-60">{p.num}</span>
+                  {p.label}
+                </button>
+              </span>
             );
           })}
         </div>
       </div>
 
-      <div className="flex-1 max-w-3xl mx-auto w-full px-4 pt-28 pb-6 flex flex-col gap-4">
-
-        {/* Phase header */}
+      {/* 阶段说明 + 内容区（pt 留出导航+阶段条空间，pb 留出底部输入+完成栏空间） */}
+      <div className="flex-1 max-w-3xl mx-auto w-full px-4 pt-28 pb-[180px] flex flex-col gap-4 min-h-0 overflow-y-auto">
+        {/* 阶段标题与提示（大而明显） */}
         <motion.div
           key={phase}
-          initial={{ opacity: 0, y: 16 }}
+          initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="space-y-1"
+          className="space-y-1 flex-shrink-0"
         >
           <div className="flex items-center gap-2">
-            <span className="text-xs font-mono text-bd-ghost">{phaseInfo.num}</span>
-            <h1 className={`text-2xl font-bold ${phaseMeta.color}`}>{phaseInfo.label}</h1>
+            <span className="text-xs font-mono text-neutral-500">{phaseInfo.num}</span>
+            <h1 className={`text-xl font-bold ${phaseMeta.color}`}>{phaseInfo.label}</h1>
           </div>
-          <p className="text-sm text-bd-muted leading-relaxed">{phaseMeta.desc}</p>
-          <p className="text-xs text-bd-subtle italic">{phaseMeta.hint}</p>
+          <p className="text-sm text-neutral-600 leading-relaxed">{phaseMeta.desc}</p>
+          <p className="text-xs text-neutral-500 italic">{phaseMeta.hint}</p>
         </motion.div>
 
-        {/* Chat area */}
-        <div
-          className={`flex-1 rounded-2xl border bd-chat-card ${phaseMeta.bg} flex flex-col min-h-[400px] overflow-hidden`}
-          data-phase={phase}
-        >
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
-            {initLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="flex gap-1.5">
-                  {[0, 1, 2].map((i) => (
-                    <motion.div
-                      key={i}
-                      className="w-2 h-2 rounded-full bg-bd-subtle"
-                      animate={{ opacity: [0.3, 1, 0.3] }}
-                      transition={{ duration: 1.2, delay: i * 0.2, repeat: Infinity }}
-                    />
-                  ))}
-                </div>
-              </div>
-            ) : messages.length === 0 ? (
-              <p className="text-sm text-bd-subtle text-center py-8">正在准备第一个问题…</p>
-            ) : (
-              messages.map((m) => (
-                <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div
-                    className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                      m.role === 'user'
-                        ? 'bg-bd-primary text-bd-primary-fg rounded-br-md'
-                        : 'bg-bd-surface-2 text-bd-fg rounded-bl-md'
-                    }`}
-                  >
-                    {m.role === 'assistant' ? (
-                      <MessageContent content={m.content} markdown className="assistant" />
-                    ) : (
-                      <span className="whitespace-pre-wrap">{m.content}</span>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-            <div ref={messagesEndRef} />
+        {/* 内容展示框 */}
+        <div className="flow-chat-box flex-1 min-h-[300px] flex flex-col relative">
+          <div ref={chatBodyRef} className="flow-chat-body flex-1 min-h-0 overflow-y-auto">
+          {/* 维度标签：● 正在探索 · 信念维度 */}
+          <div className="flow-dimension-label">
+            <span className="flow-dimension-dot" />
+            正在探索 · {dimName}维度
           </div>
 
-          {/* Input */}
-          {chatError && <p className="px-4 text-xs text-bd-err">{chatError}</p>}
-          <div className="border-t border-bd-border-soft p-3 flex items-end gap-2">
-            <textarea
-              rows={2}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="输入你的回答…（Shift+Enter 换行，Enter 发送）"
-              className="flex-1 resize-none rounded-xl border border-bd-border bg-bd-overlay px-4 py-2.5 text-sm outline-none focus:border-bd-primary transition-colors text-bd-fg"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  if (!sending) handleSend();
-                }
-              }}
-            />
-            <button
-              type="button"
-              onClick={handleSend}
-              disabled={sending || !input.trim()}
-              className="rounded-xl px-4 py-2.5 text-sm font-medium transition-all flex-shrink-0 text-bd-primary-fg disabled:opacity-30"
-              style={{ background: 'var(--bd-primary)' }}
-            >
-              {sending ? (
-                <motion.span animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 1, repeat: Infinity }}>
-                  发送中
-                </motion.span>
-              ) : '发送'}
-            </button>
-          </div>
+          {initLoading ? (
+            <div className="flex justify-center py-12">
+              <div className="flex gap-1.5">
+                {[0, 1, 2].map((i) => (
+                  <motion.div
+                    key={i}
+                    className="w-2 h-2 rounded-full bg-neutral-400"
+                    animate={{ opacity: [0.3, 1, 0.3] }}
+                    transition={{ duration: 1.2, delay: i * 0.2, repeat: Infinity }}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : messages.length === 0 ? (
+            <p className="flow-progress-text text-center py-8 text-sm">正在准备第一个问题…</p>
+          ) : (
+            messages.map((m, idx) => (
+              <div key={m.id} className={m.role === 'user' ? 'flow-msg-user' : ''}>
+                {m.role === 'user' ? (
+                  <div className="flow-msg-user-content">
+                    <span className="whitespace-pre-wrap">{m.content}</span>
+                  </div>
+                ) : (
+                  <FlowAiMessage
+                    content={m.content}
+                    phase={(phaseClass ?? 'values') as 'values' | 'strength' | 'interest' | 'purpose'}
+                    streaming={sending && idx === messages.length - 1}
+                    onRegenerate={() => handleRegenerate(idx)}
+                  />
+                )}
+              </div>
+            ))
+          )}
+
+          {chatError && (
+            <div className="flow-msg-error">
+              <div className="font-semibold text-sm mb-1">⚠ 生成失败</div>
+              {chatError}
+              <button
+                type="button"
+                className="flow-retry-btn mt-2"
+                onClick={() => setChatError(null)}
+              >
+                重试
+              </button>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
         </div>
 
-        {/* Complete phase button */}
-        <div className="flex items-center justify-between pt-2 pb-4">
-          <p className="text-xs text-bd-subtle">
-            对话记录自动保存。随时可以关闭页面，下次回来用同一激活码继续。
-          </p>
+          {/* 向下箭头：滚动到底部，已在最下方时隐藏 */}
           <button
             type="button"
-            onClick={handleCompletePhase}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl border text-sm font-medium transition-all ${phaseMeta.color} ${phaseMeta.bg} hover:brightness-110`}
+            className={`flow-scroll-bottom-btn ${showScrollBottom ? 'visible' : ''}`}
+            onClick={scrollToBottom}
+            title="滚动到底部"
           >
-            完成此步，进入下一步
-            <ChevronRight size={14} />
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
           </button>
         </div>
 
+      </div>
+
+      {/* 底部固定：输入区 + 完成此步（永远在页面最下方） */}
+      <div className="fixed bottom-0 left-0 right-0 z-30 bg-bd-bg/95 backdrop-blur-sm border-t border-black/[0.05]">
+        <div className="max-w-3xl mx-auto px-4 w-full">
+        <div className="flow-input-area">
+          <form
+            onSubmit={(e) => { e.preventDefault(); handleSend(); }}
+            className="w-full"
+          >
+            <div className="flow-input-box">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (!sending) handleSend();
+                  }
+                }}
+                placeholder="说说你的想法..."
+                rows={1}
+                disabled={sending}
+                className="flow-input-field"
+              />
+              <div className="flow-send-btn-wrap">
+                {sending && <div className="flow-send-glow" aria-hidden />}
+                <button
+                  type="button"
+                  onClick={sending ? handleStopStream : () => handleSend()}
+                  disabled={!sending && !input.trim()}
+                  className={`flow-send-btn ${sending ? 'is-stop' : ''}`}
+                >
+                  {sending ? (
+                    <Square size={16} strokeWidth={0} fill="white" />
+                  ) : (
+                    <ArrowUp size={16} strokeWidth={2.2} />
+                  )}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+        {/* 完成此步 */}
+        <div className="py-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-neutral-500">对话记录自动保存</p>
+            <button
+              type="button"
+              onClick={handleCompletePhase}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white"
+              style={{ background: 'var(--bd-ui-accent)' }}
+            >
+              完成此步，进入下一步
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+        </div>
       </div>
     </div>
   );

@@ -20,9 +20,12 @@ export default function SuggestionTags({
           key={i}
           type="button"
           onClick={() => onSelect(s)}
-          className="suggestion-tags__item px-3 py-1.5 rounded-full text-sm
-                     bg-primary-500/15 border border-primary-500/30 text-primary-200
-                     hover:bg-primary-500/25 transition-all"
+          className="suggestion-tags__item px-3 py-1.5 rounded-full text-sm transition-all hover:opacity-90"
+          style={{
+            background: 'var(--bd-ui-accent-dim, rgba(167,139,250,0.15))',
+            border: '1px solid rgba(167,139,250,0.35)',
+            color: 'var(--bd-ui-accent, #a78bfa)',
+          }}
         >
           {s}
         </button>

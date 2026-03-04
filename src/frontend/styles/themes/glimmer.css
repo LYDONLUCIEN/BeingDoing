@@ -54,8 +54,12 @@
   --bd-error:           #B84A54;
   --bd-error-dim:       #FCEEF0;
 
-  --bd-nav-bg:          rgba(255,255,255,0.94);
+  --bd-nav-bg:          rgba(255,255,255,0.74);
   --bd-nav-border:      #EEF1F4;
+  --bd-nav-blur:        16px;
+  --bd-ui-accent:       #8b7bb8;
+  --bd-ui-accent-dim:   rgba(139,123,184,0.15);
+  --bd-ui-accent-fg:    #ffffff;
 
   /* 设计原则：小圆角、浅阴影、毛玻璃 */
   --bd-radius-sm:       4px;

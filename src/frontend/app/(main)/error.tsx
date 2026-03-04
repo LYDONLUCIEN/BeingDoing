@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import Link from 'next/link';
 
-export default function Error({
+export default function MainError({
   error,
   reset,
 }: {
@@ -11,11 +11,11 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error('Page error:', error);
+    console.error('Main layout error:', error);
   }, [error]);
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-slate-100">
+    <div className="min-h-[60vh] flex flex-col items-center justify-center p-6">
       <div className="max-w-md w-full rounded-xl border border-slate-200 bg-white p-8 text-center space-y-4 shadow-sm">
         <h1 className="text-xl font-semibold text-slate-800">页面出错了</h1>
         <p className="text-sm text-slate-600">{error.message}</p>

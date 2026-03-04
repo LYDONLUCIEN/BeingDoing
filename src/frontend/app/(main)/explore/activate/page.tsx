@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { apiClient } from '@/lib/api/client';
-import { loadSession, saveSession, setLastActivationCode, getLastActivationCode } from '@/lib/explore/session';
+import { loadSession, saveSession, setLastActivationCode, getLastActivationCode, hasReportAvailable } from '@/lib/explore/session';
 import { surveyApi } from '@/lib/api/survey';
 
 export default function ActivatePage() {
@@ -12,11 +12,26 @@ export default function ActivatePage() {
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showReport, setShowReport] = useState(false);
 
   useEffect(() => {
     const last = getLastActivationCode();
     if (last) setCode(last);
   }, []);
+
+  useEffect(() => {
+    const trimmed = code.trim();
+    if (!trimmed) {
+      setShowReport(false);
+      return;
+    }
+    try {
+      const session = loadSession(trimmed);
+      setShowReport(hasReportAvailable(session));
+    } catch {
+      setShowReport(false);
+    }
+  }, [code]);
 
   const handleActivate = async () => {
     const trimmed = code.trim();
@@ -82,7 +97,7 @@ export default function ActivatePage() {
 
         {/* Header */}
         <div className="space-y-2">
-          <p className="text-xs tracking-widest uppercase text-bd-primary">Step 0</p>
+          <p className="text-xs tracking-widest uppercase" style={{ color: 'var(--bd-ui-accent)' }}>Step 0</p>
           <h1 className="text-3xl font-bold text-bd-fg">输入激活码</h1>
           <p className="text-bd-muted text-sm leading-relaxed">
             激活码是你专属的探索通行证。整个探索过程中，所有对话记录都会自动保存，可随时回来继续。
@@ -97,32 +112,46 @@ export default function ActivatePage() {
             onChange={(e) => setCode(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !loading) handleActivate(); }}
             placeholder="请输入你的激活码"
-            className="w-full rounded-xl border border-bd-border bg-bd-overlay px-4 py-3.5 text-base outline-none focus:border-bd-primary text-bd-fg transition-colors"
+            className="w-full rounded-xl border bg-bd-overlay px-4 py-3.5 text-base outline-none transition-colors focus:border-[var(--bd-ui-accent)] focus:ring-2 focus:ring-[var(--bd-ui-accent)] focus:ring-opacity-25"
+            style={{
+              color: 'var(--bd-fg)',
+              borderColor: 'var(--bd-border)',
+            }}
           />
           {error && <p className="text-sm text-bd-err">{error}</p>}
           <button
             type="button"
             onClick={handleActivate}
             disabled={loading || !code.trim()}
-            className="w-full rounded-xl px-4 py-3.5 text-base font-semibold text-bd-primary-fg transition-all disabled:opacity-40"
-            style={{ background: 'var(--bd-primary)' }}
+            className="w-full rounded-xl px-4 py-3.5 text-base font-semibold text-bd-ui-accent-fg transition-all disabled:opacity-40 hover:opacity-90"
+            style={{ background: 'var(--bd-ui-accent)' }}
           >
             {loading ? '验证中…' : '开始探索 →'}
           </button>
+          {showReport && (
+            <button
+              type="button"
+              onClick={() => router.push('/explore/report/view')}
+              className="w-full rounded-xl px-4 py-3 text-base font-medium border-2 transition-all hover:opacity-90 flex items-center justify-center gap-2"
+              style={{ borderColor: 'var(--bd-ui-accent)', color: 'var(--bd-ui-accent)' }}
+            >
+              查看报告
+            </button>
+          )}
         </div>
 
         {/* Steps preview */}
         <div className="border-t border-bd-border pt-6 space-y-3">
           <p className="text-xs text-bd-subtle uppercase tracking-widest">探索路径</p>
           {[
-            { num: '01', label: '信念', desc: '你最在意什么？', color: 'text-bd-accent1' },
-            { num: '02', label: '禀赋', desc: '你天生擅长什么？', color: 'text-bd-primary' },
-            { num: '03', label: '热忱', desc: '什么让你忘我投入？', color: 'text-bd-accent2' },
-            { num: '04', label: '使命', desc: '你想为谁而做？', color: 'text-bd-accent3' },
+            { num: '01', label: '信念', desc: '你最在意什么？', varColor: 'var(--bd-phase-values)' },
+            { num: '02', label: '禀赋', desc: '你天生擅长什么？', varColor: 'var(--bd-phase-strengths)' },
+            { num: '03', label: '热忱', desc: '什么让你忘我投入？', varColor: 'var(--bd-phase-interests)' },
+            { num: '04', label: '使命', desc: '你想为谁而做？', varColor: 'var(--bd-phase-purpose)' },
           ].map((s) => (
             <div key={s.num} className="flex items-center gap-3">
-              <span className="text-xs font-mono text-bd-ghost">{s.num}</span>
-              <span className={`text-sm font-semibold ${s.color}`}>{s.label}</span>
+              <span className="text-xs font-mono" style={{ color: s.varColor }}>{s.num}</span>
+              <span className="text-sm font-semibold" style={{ color: s.varColor }}>{s.label}</span>
               <span className="text-xs text-bd-subtle">{s.desc}</span>
             </div>
           ))}

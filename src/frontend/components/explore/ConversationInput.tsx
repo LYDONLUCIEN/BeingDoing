@@ -13,6 +13,8 @@ interface ConversationInputProps {
   /** 外部设置的文本（如点击建议标签） */
   externalText?: string;
   onExternalTextConsumed?: () => void;
+  /** light: 浅色主题（flow 对话页） */
+  variant?: 'dark' | 'light';
 }
 
 export default function ConversationInput({
@@ -23,7 +25,9 @@ export default function ConversationInput({
   placeholder = '把你现在的想法、回答或问题都写在这里，我们一起聊聊…',
   externalText,
   onExternalTextConsumed,
+  variant = 'dark',
 }: ConversationInputProps) {
+  const isLight = variant === 'light';
   const [text, setText] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -52,7 +56,13 @@ export default function ConversationInput({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-      <div className="flex rounded-xl border border-white/15 bg-slate-800/50 focus-within:border-primary-400/50 focus-within:ring-2 focus-within:ring-primary-400/20 transition-all">
+      <div
+        className={`flex rounded-xl border focus-within:border-[var(--bd-ui-accent)] focus-within:ring-2 focus-within:ring-[color:var(--bd-ui-accent)] focus-within:ring-opacity-25 transition-all ${
+          isLight
+            ? 'border-neutral-300/60 bg-white focus-within:shadow-[0_4px_20px_rgba(167,139,250,0.1)]'
+            : 'border-white/15 bg-slate-800/50'
+        }`}
+      >
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -60,13 +70,17 @@ export default function ConversationInput({
           placeholder={placeholder}
           rows={3}
           disabled={loading || streaming}
-          className="flex-1 min-h-[80px] resize-none bg-transparent px-4 py-3 text-white placeholder-white/40 focus:outline-none rounded-xl"
+          className={`flex-1 min-h-[80px] resize-none bg-transparent px-4 py-3 focus:outline-none rounded-xl ${
+            isLight ? 'text-neutral-800 placeholder-neutral-400' : 'text-white placeholder-white/40'
+          }`}
         />
         <div className="flex flex-col justify-end gap-1 pr-2 pb-2">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="p-2 rounded-lg text-white/50 hover:bg-white/10 hover:text-white/70 transition-colors"
+            className={`p-2 rounded-lg transition-colors ${
+              isLight ? 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700' : 'text-white/50 hover:bg-white/10 hover:text-white/70'
+            }`}
             title="上传图片（占位）"
           >
             <ImagePlus size={20} />
@@ -80,7 +94,9 @@ export default function ConversationInput({
           />
           <button
             type="button"
-            className="p-2 rounded-lg text-white/50 hover:bg-white/10 hover:text-white/70 transition-colors"
+            className={`p-2 rounded-lg transition-colors ${
+              isLight ? 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700' : 'text-white/50 hover:bg-white/10 hover:text-white/70'
+            }`}
             title="语音输入（占位）"
           >
             <Mic size={20} />
@@ -100,7 +116,8 @@ export default function ConversationInput({
         <button
           type="submit"
           disabled={loading || streaming || !text.trim()}
-          className="px-6 py-2.5 rounded-lg bg-primary-500 hover:bg-primary-400 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="px-6 py-2.5 rounded-lg text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors hover:opacity-90"
+          style={{ background: 'var(--bd-ui-accent, #a78bfa)' }}
         >
           {loading ? '提交中…' : '发送'}
         </button>

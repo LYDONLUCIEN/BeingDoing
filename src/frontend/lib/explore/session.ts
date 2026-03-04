@@ -17,6 +17,13 @@ export interface ExploreSession {
   unlockedPhases: PhaseKey[];
   currentPhase: PhaseKey;
   surveyCompleted: boolean;
+  /** 是否已生成报告（完成使命后通过渲染预备页） */
+  reportReady?: boolean;
+}
+
+/** 检查是否有可查看的报告（完成全部四阶段探索） */
+export function hasReportAvailable(session: ExploreSession): boolean {
+  return session.unlockedPhases.includes('purpose');
 }
 
 const KEY = (code: string) => `explore_session_${code}`;

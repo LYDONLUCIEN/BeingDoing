@@ -32,9 +32,10 @@
         "--bd-bg": "#f8f6f0",
         "--bd-bg-mid": "#f2efe6",
         "--bd-bg-end": "#f8f6f0",
+        "--bd-eff-bg-gradient": "linear-gradient(160deg, #faf8f5 0%, #f5f0e8 25%, #f0ebe2 50%, #ebe5dc 75%, #faf8f5 100%)",
+        "--bd-eff-bg-pattern": "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.045'/%3E%3C/svg%3E\")",
         "--bd-bg-card": "rgba(248,246,240,0.95)",
         "--bd-bg-card-alt": "rgba(248,246,240,0.9)",
-        "--bd-eff-bg-pattern": "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E\")",
         "--bd-border": "rgba(180,170,150,0.35)",
         "--bd-border-soft": "rgba(180,170,150,0.2)"
       }
