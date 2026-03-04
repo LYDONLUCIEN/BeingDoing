@@ -1,22 +1,22 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useThemeStore } from '@/stores/themeStore';
+import { useThemeStore, DARK_THEMES } from '@/stores/themeStore';
 
 /**
- * Syncs the Zustand theme store to data-theme on <html>.
- * The initial theme is set by an inline <script> in layout.tsx before hydration,
- * so this component only needs to handle subsequent theme changes.
+ * Syncs the Zustand theme store to data-theme and data-color-scheme on <html>.
  */
 export default function ThemeProvider() {
-  const { themeId } = useThemeStore();
+  const { themeId, colorScheme } = useThemeStore();
 
   useEffect(() => {
-    const current = document.documentElement.getAttribute('data-theme');
-    if (current !== themeId) {
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    const scheme = DARK_THEMES.includes(themeId) ? 'dark' : 'light';
+    if (currentTheme !== themeId) {
       document.documentElement.setAttribute('data-theme', themeId);
     }
-  }, [themeId]);
+    document.documentElement.setAttribute('data-color-scheme', scheme);
+  }, [themeId, colorScheme]);
 
   return null;
 }

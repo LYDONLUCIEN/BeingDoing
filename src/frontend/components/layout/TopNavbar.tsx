@@ -4,16 +4,23 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/authStore';
 import { useAuthModalStore } from '@/stores/authModalStore';
+import { useThemeStore, DARK_THEMES } from '@/stores/themeStore';
+import { useLocaleStore } from '@/stores/localeStore';
 import { onAuthRequired } from '@/lib/api/client';
 import { NAV_ITEMS } from '@/lib/nav';
+import { useLocale } from '@/hooks/useLocale';
 import { useState, useEffect } from 'react';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, Sun, Moon } from 'lucide-react';
 import AuthModal from './AuthModal';
 
 export default function TopNavbar() {
   const pathname = usePathname();
   const router = useRouter();
+  const { t } = useLocale();
   const { isAuthenticated, user, logout, _hasHydrated } = useAuthStore();
+  const { themeId, toggleColorScheme } = useThemeStore();
+  const isDark = DARK_THEMES.includes(themeId);
+  const { locale, setLocale } = useLocaleStore();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -52,7 +59,7 @@ export default function TopNavbar() {
       <div className="max-w-7xl mx-auto h-full px-4 flex items-center justify-between">
         {/* Brand */}
         <Link href="/" className="text-lg font-bold whitespace-nowrap tracking-tight text-bd-fg">
-          Being · Doing
+          {t('nav.brand')}
         </Link>
 
         {/* Desktop nav */}
@@ -66,37 +73,55 @@ export default function TopNavbar() {
                 onClick={(e) => handleNavClick(item, e)}
                 className={`${linkBase} ${isActive ? linkActive : linkInactive}`}
               >
-                {item.label}
+                {t(item.labelKey)}
               </Link>
             );
           })}
         </div>
 
-        {/* Right side: auth */}
+        {/* Right side: theme toggle, lang, auth */}
         <div className="hidden md:flex items-center gap-3">
+          <button
+            type="button"
+            onClick={toggleColorScheme}
+            className="p-2 rounded-lg text-bd-muted hover:text-bd-fg hover:bg-bd-overlay transition-colors"
+            title={isDark ? '切换到浅色' : '切换到深色'}
+            aria-label={isDark ? 'Switch to light' : 'Switch to dark'}
+          >
+            {isDark ? <Moon size={18} /> : <Sun size={18} />}
+          </button>
+          <select
+            value={locale}
+            onChange={(e) => setLocale(e.target.value as 'zh' | 'en')}
+            className="text-sm rounded-lg border-0 bg-transparent text-bd-muted hover:text-bd-fg cursor-pointer py-1 pr-6"
+            style={{ borderColor: 'var(--bd-border)' }}
+          >
+            <option value="zh">中文</option>
+            <option value="en">EN</option>
+          </select>
           {showAuth ? (
             <>
               <Link
                 href="/settings/colors"
                 className="text-sm text-bd-muted hover:text-bd-fg transition-colors"
               >
-                配色
+                {t('settings.colors')}
               </Link>
               <Link
                 href="/settings/style-lab"
                 className="text-sm text-bd-muted hover:text-bd-fg transition-colors"
               >
-                效果
+                {t('settings.effects')}
               </Link>
               <span className="text-sm text-bd-muted">
-                {user?.username || user?.email || '用户'}
+                {user?.username || user?.email || t('common.user')}
               </span>
               <button
                 type="button"
                 onClick={handleLogout}
                 className={`${linkBase} ${linkInactive}`}
               >
-                退出
+                {t('common.logout')}
               </button>
             </>
           ) : (
@@ -106,7 +131,7 @@ export default function TopNavbar() {
               className="px-4 py-1.5 rounded-lg text-sm font-medium text-bd-ui-accent-fg transition-colors hover:opacity-90"
               style={{ background: 'var(--bd-ui-accent)' }}
             >
-              登录 / 注册
+              {t('common.loginRegister')}
             </button>
           )}
         </div>
@@ -136,11 +161,28 @@ export default function TopNavbar() {
                 onClick={(e) => handleNavClick(item, e)}
                 className={`block ${linkBase} ${isActive ? linkActive : linkInactive}`}
               >
-                {item.label}
+                {t(item.labelKey)}
               </Link>
             );
           })}
-          <div className="pt-2 border-t border-bd-border">
+          <div className="pt-2 border-t border-bd-border flex items-center gap-2 mb-2">
+            <button
+              type="button"
+              onClick={toggleColorScheme}
+              className="p-2 rounded-lg text-bd-muted hover:text-bd-fg"
+            >
+              {isDark ? <Moon size={18} /> : <Sun size={18} />}
+            </button>
+            <select
+              value={locale}
+              onChange={(e) => setLocale(e.target.value as 'zh' | 'en')}
+              className="text-sm bg-transparent text-bd-muted border-0"
+            >
+              <option value="zh">中文</option>
+              <option value="en">EN</option>
+            </select>
+          </div>
+          <div className="border-t border-bd-border pt-2">
             {showAuth ? (
               <>
                 <Link
@@ -148,21 +190,21 @@ export default function TopNavbar() {
                   onClick={() => setMobileOpen(false)}
                   className={`block ${linkBase} ${linkInactive}`}
                 >
-                  配色定制
+                  {t('nav.colorsMobile')}
                 </Link>
                 <Link
                   href="/settings/style-lab"
                   onClick={() => setMobileOpen(false)}
                   className={`block ${linkBase} ${linkInactive}`}
                 >
-                  效果实验室
+                  {t('nav.effectsMobile')}
                 </Link>
                 <button
                   type="button"
                   onClick={() => { handleLogout(); setMobileOpen(false); }}
                   className={`block w-full text-left ${linkBase} ${linkInactive}`}
                 >
-                  退出（{user?.username || user?.email || '用户'}）
+                  {t('nav.logoutUserTemplate', { name: user?.username || user?.email || t('common.user') })}
                 </button>
               </>
             ) : (
@@ -171,7 +213,7 @@ export default function TopNavbar() {
                 onClick={() => { handleLoginClick(); setMobileOpen(false); }}
                 className={`block w-full text-left ${linkBase} ${linkActive}`}
               >
-                登录 / 注册
+                {t('common.loginRegister')}
               </button>
             )}
           </div>

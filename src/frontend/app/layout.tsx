@@ -20,7 +20,7 @@ const playfair = Playfair_Display({
 });
 
 export const metadata: Metadata = {
-  title: 'Being · Doing — 每一种热爱，都值得成为职业',
+  title: '职·引 — 不是找到方向，而是认出自己',
   description: '通过信念、禀赋、热忱与使命四个维度的深度对话，发现属于你的职业方向。',
 };
 
@@ -30,12 +30,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-CN" data-theme="slate-dark" className={`${inter.variable} ${playfair.variable}`} suppressHydrationWarning>
+    <html lang="zh-CN" data-theme="ideal" data-color-scheme="light" className={`${inter.variable} ${playfair.variable}`} suppressHydrationWarning>
       <head>
         {/* Apply saved theme before first paint to avoid FOUC and hydration mismatch */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=JSON.parse(localStorage.getItem('bd-theme')||'{}');var id=t&&t.state&&t.state.themeId;if(id)document.documentElement.setAttribute('data-theme',id);}catch(e){}})();`,
+            __html: `(function(){try{var s=JSON.parse(localStorage.getItem('bd-theme')||'{}');var st=s&&s.state;var id=st&&st.themeId;var dark=['slate-dark','forest'];if(id){document.documentElement.setAttribute('data-theme',id);document.documentElement.setAttribute('data-color-scheme',dark.indexOf(id)>=0?'dark':'light');}}catch(e){}})();`,
           }}
         />
       </head>

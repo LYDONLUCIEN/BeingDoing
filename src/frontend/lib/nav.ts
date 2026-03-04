@@ -1,11 +1,11 @@
 export interface NavItem {
-  label: string;
+  labelKey: string; // i18n key e.g. 'nav.home'
   href: string;
   requiresAuth?: boolean;
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { label: '首页', href: '/' },
-  { label: '开始探索', href: '/explore/intro' },
-  { label: '社区', href: '/community' },
+  { labelKey: 'nav.home', href: '/' },
+  { labelKey: 'nav.explore', href: '/explore/intro' },
+  { labelKey: 'nav.community', href: '/community' },
 ];

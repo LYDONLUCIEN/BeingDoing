@@ -30,6 +30,7 @@
 @import '../styles/components/design-principles.css';
 @import '../styles/components/bd-highlights.css';
 @import '../styles/components/flow-chat-light.css';
+@import '../styles/components/testimonial-effects.css';
 
 /* ── Tailwind (must come after @import) ─────────────── */
 @tailwind base;

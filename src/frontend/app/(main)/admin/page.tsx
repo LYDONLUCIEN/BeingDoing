@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/authStore';
-import { useThemeStore, THEMES } from '@/stores/themeStore';
+import { useThemeStore, THEMES, DARK_THEMES, LIGHT_THEMES } from '@/stores/themeStore';
 import { useDebugStore } from '@/stores/debugStore';
 import { apiClient } from '@/lib/api/client';
 import { loadSession, saveSession, setLastActivationCode, type PhaseKey } from '@/lib/explore/session';
@@ -173,13 +173,43 @@ function DebugSection() {
 }
 
 function ThemeSwitcher() {
-  const { themeId, setTheme } = useThemeStore();
+  const { themeId, setTheme, colorScheme, darkThemeId, lightThemeId, setDarkThemeId, setLightThemeId } = useThemeStore();
 
   return (
     <section className="bd-eff-card rounded-xl border border-bd-border bg-bd-card px-5 py-5 space-y-5">
       <div>
         <h2 className="text-sm font-semibold text-bd-fg">界面主题</h2>
-        <p className="text-xs text-bd-muted mt-0.5">切换后立即生效，自动记忆，每台设备独立保存。</p>
+        <p className="text-xs text-bd-muted mt-0.5">顶部导航栏可切换日/夜间模式。夜间模式使用以下选择的深色主题。</p>
+      </div>
+
+      {/* 日夜间模式配置 */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-medium text-bd-muted mb-1">日间模式使用</label>
+          <select
+            value={lightThemeId}
+            onChange={(e) => setLightThemeId(e.target.value as typeof lightThemeId)}
+            className="w-full rounded-lg border border-bd-border bg-bd-overlay px-3 py-2 text-sm text-bd-fg"
+          >
+            {LIGHT_THEMES.map((id) => {
+              const t = THEMES.find((x) => x.id === id);
+              return <option key={id} value={id}>{t?.name ?? id}</option>;
+            })}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-bd-muted mb-1">夜间模式使用</label>
+          <select
+            value={darkThemeId}
+            onChange={(e) => setDarkThemeId(e.target.value as typeof darkThemeId)}
+            className="w-full rounded-lg border border-bd-border bg-bd-overlay px-3 py-2 text-sm text-bd-fg"
+          >
+            {DARK_THEMES.map((id) => {
+              const t = THEMES.find((x) => x.id === id);
+              return <option key={id} value={id}>{t?.name ?? id}</option>;
+            })}
+          </select>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
@@ -194,8 +224,8 @@ function ThemeSwitcher() {
       </div>
 
       <p className="text-xs text-bd-subtle">
-        当前：<code className="text-bd-primary font-mono">{themeId}</code>
-        　·　主题存储于浏览器 localStorage，清除缓存后需重新设置。
+        当前：<code className="text-bd-primary font-mono">{themeId}</code>（{colorScheme === 'dark' ? '夜间' : '日间'}）
+        　·　主题存储于浏览器 localStorage。
       </p>
 
       <div className="flex flex-wrap gap-2 mt-2">

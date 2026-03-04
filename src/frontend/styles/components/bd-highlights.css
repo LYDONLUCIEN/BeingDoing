@@ -44,6 +44,24 @@
 .bd-word-discover::before { margin-right: 0.2em; }
 .bd-word-discover::after { margin-left: 0.2em; animation-delay: 0.4s; }
 
+/* Hero slogan：四色渐变 + 流光动画 */
+.bd-hero-slogan {
+  background: linear-gradient(
+    to right,
+    var(--bd-phase-values) 0%,
+    var(--bd-phase-strengths) 25%,
+    var(--bd-phase-interests) 50%,
+    var(--bd-phase-purpose) 75%,
+    var(--bd-phase-values) 100%
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: bd-shimmer 3s ease-in-out infinite;
+  font-weight: 600;
+}
+
 @keyframes bd-shimmer {
   0%, 100% { background-position: 0% 50%; }
   50% { background-position: 100% 50%; }

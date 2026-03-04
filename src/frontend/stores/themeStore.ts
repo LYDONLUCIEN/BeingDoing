@@ -96,22 +96,69 @@ export const THEMES: ThemeMeta[] = [
   },
 ];
 
+export type ColorScheme = 'light' | 'dark';
+
 interface ThemeStore {
   themeId: ThemeId;
+  colorScheme: ColorScheme;
+  /** 夜间模式使用的主题（admin 可配置） */
+  darkThemeId: ThemeId;
+  /** 日间模式使用的主题 */
+  lightThemeId: ThemeId;
   setTheme: (id: ThemeId) => void;
+  setColorScheme: (scheme: ColorScheme) => void;
+  toggleColorScheme: () => void;
+  setDarkThemeId: (id: ThemeId) => void;
+  setLightThemeId: (id: ThemeId) => void;
+}
+
+const DARK_THEMES: ThemeId[] = ['slate-dark', 'forest'];
+const LIGHT_THEMES: ThemeId[] = ['ideal', 'glimmer', 'aurora', 'warm-light', 'sand', 'serene', 'insight'];
+
+function applyTheme(id: ThemeId) {
+  if (typeof document !== 'undefined') {
+    document.documentElement.setAttribute('data-theme', id);
+    document.documentElement.setAttribute('data-color-scheme', DARK_THEMES.includes(id) ? 'dark' : 'light');
+  }
 }
 
 export const useThemeStore = create<ThemeStore>()(
   persist(
-    (set) => ({
-      themeId: 'slate-dark',
+    (set, get) => ({
+      themeId: 'ideal',
+      colorScheme: 'light',
+      darkThemeId: 'slate-dark',
+      lightThemeId: 'ideal',
       setTheme: (id) => {
-        set({ themeId: id });
-        if (typeof document !== 'undefined') {
-          document.documentElement.setAttribute('data-theme', id);
-        }
+        set({ themeId: id, colorScheme: DARK_THEMES.includes(id) ? 'dark' : 'light' });
+        applyTheme(id);
+      },
+      setColorScheme: (scheme) => {
+        const { darkThemeId, lightThemeId } = get();
+        const id = scheme === 'dark' ? darkThemeId : lightThemeId;
+        set({ colorScheme: scheme, themeId: id });
+        applyTheme(id);
+      },
+      toggleColorScheme: () => {
+        const { colorScheme, darkThemeId, lightThemeId } = get();
+        const next = colorScheme === 'light' ? 'dark' : 'light';
+        const id = next === 'dark' ? darkThemeId : lightThemeId;
+        set({ colorScheme: next, themeId: id });
+        applyTheme(id);
+      },
+      setDarkThemeId: (id) => {
+        set({ darkThemeId: id });
+        const { colorScheme } = get();
+        if (colorScheme === 'dark') applyTheme(id);
+      },
+      setLightThemeId: (id) => {
+        set({ lightThemeId: id });
+        const { colorScheme } = get();
+        if (colorScheme === 'light') applyTheme(id);
       },
     }),
     { name: 'bd-theme' }
   )
 );
+
+export { DARK_THEMES, LIGHT_THEMES };

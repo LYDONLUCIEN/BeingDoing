@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useLocale } from '@/hooks/useLocale';
+import { useThemeStore, DARK_THEMES } from '@/stores/themeStore';
 
 // ── 用户留言数据（2~3 色水彩晕染撞色）──────────────────────────
 const TESTIMONIALS: Array<{
@@ -57,57 +59,78 @@ const TESTIMONIALS: Array<{
   },
 ];
 
-// 探索你的故事：紫色系 CTA 卡片（首尾各一）
-const EXPLORE_CTA = {
-  title: '探索你的故事',
-  subtitle: '信念 × 禀赋 × 热忱 = 使命',
-  colors: ['124, 92, 252', '167, 139, 250', '196, 181, 253'] as [string, string, string], // purple 系
-  color: '124, 92, 252',
+// 探索你的故事：紫色系 CTA（文案来自 i18n）
+const EXPLORE_CTA_COLORS = ['124, 92, 252', '167, 139, 250', '196, 181, 253'] as [string, string, string];
+
+// ── 四个核心维度（配色：信念=蓝/禀赋=绿/热忱=红/使命=黄，文案来自 i18n）──
+const DIMENSION_KEYS = ['values', 'strengths', 'interests', 'purpose'] as const;
+const DIMENSION_VARS: Record<(typeof DIMENSION_KEYS)[number], { varColor: string; varBorder: string; varBg: string }> = {
+  values: { varColor: 'var(--bd-phase-values)', varBorder: 'color-mix(in srgb, var(--bd-phase-values) 25%, transparent)', varBg: 'var(--bd-phase-values-dim, color-mix(in srgb, var(--bd-phase-values) 8%, transparent))' },
+  strengths: { varColor: 'var(--bd-phase-strengths)', varBorder: 'color-mix(in srgb, var(--bd-phase-strengths) 25%, transparent)', varBg: 'var(--bd-phase-strengths-dim, color-mix(in srgb, var(--bd-phase-strengths) 8%, transparent))' },
+  interests: { varColor: 'var(--bd-phase-interests)', varBorder: 'color-mix(in srgb, var(--bd-phase-interests) 25%, transparent)', varBg: 'var(--bd-phase-interests-dim, color-mix(in srgb, var(--bd-phase-interests) 8%, transparent))' },
+  purpose: { varColor: 'var(--bd-phase-purpose)', varBorder: 'color-mix(in srgb, var(--bd-phase-purpose) 25%, transparent)', varBg: 'var(--bd-phase-purpose-dim, color-mix(in srgb, var(--bd-phase-purpose) 8%, transparent))' },
 };
 
-// ── 四个核心维度（与探索流程阶段配色一致：信念=蓝/禀赋=绿/热忱=红/使命=黄）──
-const DIMENSIONS = [
-  {
-    num: '01',
-    name: '信念',
-    en: 'Values',
-    desc: '你认为什么值得付出？哪些原则让你夜里安心、白天有力？价值观不是口号，是你做每一个选择时真正生效的标准。',
-    question: '如果职业选择没有对错，你最在意什么？',
-    varColor: 'var(--bd-phase-values)',
-    varBorder: 'color-mix(in srgb, var(--bd-phase-values) 25%, transparent)',
-    varBg: 'var(--bd-phase-values-dim, color-mix(in srgb, var(--bd-phase-values) 8%, transparent))',
-  },
-  {
-    num: '02',
-    name: '禀赋',
-    en: 'Strengths',
-    desc: '有些事你做起来不费力，却让别人惊叹。禀赋不只是技能，是那种「我天生就适合做这个」的自然感。',
-    question: '做哪些事的时候，你觉得自己是游刃有余的？',
-    varColor: 'var(--bd-phase-strengths)',
-    varBorder: 'color-mix(in srgb, var(--bd-phase-strengths) 25%, transparent)',
-    varBg: 'var(--bd-phase-strengths-dim, color-mix(in srgb, var(--bd-phase-strengths) 8%, transparent))',
-  },
-  {
-    num: '03',
-    name: '热忱',
-    en: 'Interests',
-    desc: '什么话题让你停不下来？什么场景让时间消失？热忱是驱动你在无人关注时仍然投入的内在燃料。',
-    question: '你愿意在没有报酬的情况下，反复去做的事是什么？',
-    varColor: 'var(--bd-phase-interests)',
-    varBorder: 'color-mix(in srgb, var(--bd-phase-interests) 25%, transparent)',
-    varBg: 'var(--bd-phase-interests-dim, color-mix(in srgb, var(--bd-phase-interests) 8%, transparent))',
-  },
-  {
-    num: '04',
-    name: '使命',
-    en: 'Purpose',
-    desc: '你想为谁而做？你希望在这个世界留下什么？使命把「我想做」变成「我必须做」，赋予职业真正的重量。',
-    question: '什么事情，是你觉得如果不去做、会有遗憾的？',
-    varColor: 'var(--bd-phase-purpose)',
-    varBorder: 'color-mix(in srgb, var(--bd-phase-purpose) 25%, transparent)',
-    varBg: 'var(--bd-phase-purpose-dim, color-mix(in srgb, var(--bd-phase-purpose) 8%, transparent))',
-  },
-];
+/* 向内寻找答案：带「规划」/「发现」动画的独立区块 */
+function InwardLookingBlock({ t }: { t: (p: string) => string }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      className="text-center mb-14 space-y-4"
+    >
+      <p className="text-xs tracking-widest uppercase" style={{ color: 'var(--bd-fg-subtle)' }}>{t('home.dimensionsTitle')}</p>
+      <h2 className="text-3xl md:text-4xl font-bold" style={{ color: 'var(--bd-fg)' }}>{t('home.dimensionsHeading')}</h2>
+      <p className="text-base max-w-lg mx-auto leading-relaxed" style={{ color: 'var(--bd-fg-muted)' }}>
+        {t('home.dimensionsDescBefore')}
+        <span className="bd-word-planned">{t('home.dimensionsDescPlanned')}</span>
+        {t('home.dimensionsDescMid')}
+        <span className="bd-word-discover">{t('home.dimensionsDescDiscover')}</span>
+        {t('home.dimensionsDescAfter')}
+      </p>
+      <p className="text-base max-w-lg mx-auto leading-relaxed" style={{ color: 'var(--bd-fg-muted)' }}>
+        {t('home.dimensionsDescLine2')}
+      </p>
+    </motion.div>
+  );
+}
+
+function DimensionsSection({ t }: { t: (p: string) => string }) {
+  return (
+    <section className="max-w-4xl mx-auto px-6 py-20 space-y-6">
+      <InwardLookingBlock t={t} />
+      <div className="space-y-4">
+        {DIMENSION_KEYS.map((key, i) => {
+          const vars = DIMENSION_VARS[key];
+          return (
+            <motion.div
+              key={key}
+              initial={{ opacity: 0, x: i % 2 === 0 ? -24 : 24 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true, margin: '-60px' }}
+              transition={{ duration: 0.5, delay: i * 0.07 }}
+              className="bd-eff-card rounded-2xl p-6 md:p-8 flex flex-col md:flex-row md:items-start gap-5"
+              style={{
+                background: vars.varBg,
+                border: `1px solid ${vars.varBorder}`,
+              }}
+            >
+              <div className="flex-shrink-0 pt-0.5">
+                <span className="text-4xl font-black" style={{ color: vars.varColor }}>{t(`dimensions.${key}.num`)}</span>
+              </div>
+              <div className="flex-1 space-y-2">
+                <h3 className="text-xl font-bold" style={{ color: vars.varColor }}>{t(`dimensions.${key}.name`)}</h3>
+                <p className="text-sm leading-relaxed" style={{ color: 'var(--bd-fg-muted)' }}>{t(`dimensions.${key}.desc`)}</p>
+                <p className="text-xs italic pt-1" style={{ color: 'var(--bd-fg-subtle)' }}>「{t(`dimensions.${key}.question`)}」</p>
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
 // ── 即将上线轮播（职业双轨 / 光谱共振 / 静室之我）──
 const COMING_SOON_ITEMS = [
@@ -191,7 +214,7 @@ function ComingSoonCarousel() {
   );
 }
 
-// 水彩撞色渐变（2~3 色）
+// 浅色：水彩撞色（2~3 色）
 function watercolorBg(colors: [string, string, string?]) {
   const [a, b, c] = colors;
   return `
@@ -204,15 +227,27 @@ function watercolorBg(colors: [string, string, string?]) {
   `;
 }
 
+// 深色：流光/荧光底
+function darkGlowBg(colors: [string, string, string?]) {
+  const [a] = colors;
+  return `
+    radial-gradient(ellipse 90% 70% at 50% 100%, rgba(${a}, 0.15) 0%, transparent 55%),
+    linear-gradient(180deg, rgba(15,23,42,0.6) 0%, rgba(2,8,23,0.85) 100%)
+  `;
+}
+
 function TestimonialCarousel() {
   const router = useRouter();
+  const { t } = useLocale();
+  const { themeId } = useThemeStore();
+  const isDark = DARK_THEMES.includes(themeId);
   const TOTAL = TESTIMONIALS.length + 2; // CTA左 + 6条故事 + CTA右
   const [activeIndex, setActiveIndex] = useState(0);
   const [direction, setDirection] = useState(0);
   const isCtaLeft = activeIndex === 0;
   const isCtaRight = activeIndex === TOTAL - 1;
   const isCta = isCtaLeft || isCtaRight;
-  const currentColor = isCta ? EXPLORE_CTA.color : TESTIMONIALS[activeIndex - 1]?.color ?? EXPLORE_CTA.color;
+  const currentColor = isCta ? '124, 92, 252' : TESTIMONIALS[activeIndex - 1]?.color ?? '124, 92, 252';
   const canPrev = activeIndex > 0;
   const canNext = activeIndex < TOTAL - 1;
 
@@ -244,7 +279,7 @@ function TestimonialCarousel() {
         className="absolute top-8 left-0 right-0 text-center text-xs tracking-[0.2em] uppercase transition-opacity duration-500"
         style={{ color: 'var(--bd-fg-subtle)' }}
       >
-        他们的故事
+        {t('home.theirStories')}
       </p>
 
       {/* 换页按钮：左右两侧 */}
@@ -254,8 +289,8 @@ function TestimonialCarousel() {
           onClick={goPrev}
           className="absolute left-4 md:left-8 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300 hover:scale-110 opacity-70 hover:opacity-100"
           style={{
-            background: 'rgba(255,255,255,0.9)',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+            background: isDark ? 'rgba(30,41,59,0.9)' : 'rgba(255,255,255,0.9)',
+            boxShadow: isDark ? '0 4px 20px rgba(0,0,0,0.3)' : '0 4px 20px rgba(0,0,0,0.08)',
             color: `rgb(${currentColor})`,
           }}
           aria-label="上一条"
@@ -269,8 +304,8 @@ function TestimonialCarousel() {
           onClick={goNext}
           className="absolute right-4 md:right-8 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300 hover:scale-110 opacity-70 hover:opacity-100"
           style={{
-            background: 'rgba(255,255,255,0.9)',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+            background: isDark ? 'rgba(30,41,59,0.9)' : 'rgba(255,255,255,0.9)',
+            boxShadow: isDark ? '0 4px 20px rgba(0,0,0,0.3)' : '0 4px 20px rgba(0,0,0,0.08)',
             color: `rgb(${currentColor})`,
           }}
           aria-label="下一条"
@@ -291,11 +326,11 @@ function TestimonialCarousel() {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: direction > 0 ? -60 : 60 }}
               transition={{ duration: 0.45, ease: [0.25, 0.1, 0.25, 1] }}
-              className="w-full rounded-2xl md:rounded-3xl p-8 md:p-12 lg:p-16 relative overflow-hidden text-left transition-transform hover:scale-[1.01] active:scale-[0.99]"
+              className={`w-full rounded-2xl md:rounded-3xl p-8 md:p-12 lg:p-16 relative overflow-hidden text-left transition-transform hover:scale-[1.01] active:scale-[0.99] ${isDark ? 'testimonial-cta-dark' : ''}`}
               style={{
-                background: watercolorBg(EXPLORE_CTA.colors),
-                border: '1px solid rgba(124,92,252,0.12)',
-                boxShadow: '0 8px 40px rgba(124,92,252,0.08), 0 2px 12px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.7)',
+                background: isDark ? darkGlowBg(EXPLORE_CTA_COLORS) : watercolorBg(EXPLORE_CTA_COLORS),
+                border: isDark ? '1px solid rgba(124,92,252,0.25)' : '1px solid rgba(124,92,252,0.12)',
+                boxShadow: isDark ? undefined : '0 8px 40px rgba(124,92,252,0.08), 0 2px 12px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.7)',
               }}
             >
               <div
@@ -308,13 +343,13 @@ function TestimonialCarousel() {
               />
               <div className="relative z-10">
                 <h3 className="text-2xl md:text-3xl font-bold" style={{ color: 'var(--bd-ui-accent)' }}>
-                  {EXPLORE_CTA.title}
+                  {t('home.exploreYourStory')}
                 </h3>
                 <p className="mt-3 text-sm md:text-base" style={{ color: 'var(--bd-fg-muted)' }}>
-                  {EXPLORE_CTA.subtitle}
+                  {t('home.exploreYourStorySub')}
                 </p>
                 <span className="inline-block mt-6 text-sm font-medium" style={{ color: 'var(--bd-ui-accent)' }}>
-                  开始探索 →
+                  {t('home.exploreCta')}
                 </span>
               </div>
             </motion.button>
@@ -325,11 +360,14 @@ function TestimonialCarousel() {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: direction > 0 ? -60 : 60 }}
               transition={{ duration: 0.45, ease: [0.25, 0.1, 0.25, 1] }}
-              className="w-full rounded-2xl md:rounded-3xl p-8 md:p-12 lg:p-16 relative overflow-hidden"
+              className={`w-full rounded-2xl md:rounded-3xl p-8 md:p-12 lg:p-16 relative overflow-hidden ${isDark ? 'testimonial-card-dark' : ''}`}
               style={{
-                background: watercolorBg(TESTIMONIALS[activeIndex - 1].colors),
-                border: '1px solid rgba(0,0,0,0.05)',
-                boxShadow: '0 8px 40px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.7)',
+                background: isDark ? darkGlowBg(TESTIMONIALS[activeIndex - 1].colors) : watercolorBg(TESTIMONIALS[activeIndex - 1].colors),
+                border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.05)',
+                boxShadow: isDark ? undefined : '0 8px 40px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.7)',
+                ['--tc-r' as string]: TESTIMONIALS[activeIndex - 1].color.split(',')[0]?.trim(),
+                ['--tc-g' as string]: TESTIMONIALS[activeIndex - 1].color.split(',')[1]?.trim(),
+                ['--tc-b' as string]: TESTIMONIALS[activeIndex - 1].color.split(',')[2]?.trim(),
               }}
             >
               <div
@@ -379,6 +417,7 @@ function TestimonialCarousel() {
 // ── 主页面 ──────────────────────────────────────────────────
 export default function LandingPage() {
   const router = useRouter();
+  const { t } = useLocale();
 
   return (
     <div
@@ -388,33 +427,24 @@ export default function LandingPage() {
 
       {/* ① Hero */}
       <section className="flex flex-col items-center justify-center text-center px-6 pt-28 pb-20 min-h-[90vh]">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7 }}
-          className="mb-4 text-xs tracking-widest uppercase font-medium"
-          style={{ color: 'var(--bd-ui-accent)' }}
-        >
-          Being · Doing · Becoming
-        </motion.div>
-
         <motion.h1
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, delay: 0.1 }}
-          className="text-5xl md:text-7xl font-bold leading-tight mb-8"
+          transition={{ duration: 0.7 }}
+          className="text-5xl md:text-7xl font-bold leading-tight mb-6"
           style={{ color: 'var(--bd-fg)' }}
         >
-          每一种热爱，<br />
-          <span
-            className="text-transparent bg-clip-text"
-            style={{
-              backgroundImage: 'linear-gradient(to right, var(--bd-phase-values), var(--bd-phase-strengths), var(--bd-phase-interests), var(--bd-phase-purpose))',
-            }}
-          >
-            都值得成为职业
-          </span>
+          {t('home.heroTitle')}
         </motion.h1>
+
+        <motion.p
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.1 }}
+          className="text-xl md:text-2xl lg:text-3xl leading-relaxed mb-8"
+        >
+          <span className="bd-hero-slogan">{t('home.heroSlogan')}</span>
+        </motion.p>
 
         <motion.p
           initial={{ opacity: 0, y: 20 }}
@@ -423,7 +453,7 @@ export default function LandingPage() {
           className="text-lg md:text-xl mb-1.5 leading-relaxed"
           style={{ color: 'var(--bd-fg-muted)' }}
         >
-          人生有两条路需要走完：
+          {t('home.heroP1')}
         </motion.p>
         <motion.p
           initial={{ opacity: 0, y: 20 }}
@@ -432,7 +462,7 @@ export default function LandingPage() {
           className="text-lg md:text-xl mb-1.5 leading-relaxed"
           style={{ color: 'var(--bd-fg-muted)' }}
         >
-          一条通向成就，一条通向意义。
+          {t('home.heroP2')}
         </motion.p>
         <motion.p
           initial={{ opacity: 0, y: 20 }}
@@ -441,7 +471,7 @@ export default function LandingPage() {
           className="text-lg md:text-xl mb-10 leading-relaxed font-semibold"
           style={{ color: 'var(--bd-fg)' }}
         >
-          最幸运的人，走的是同一条。
+          {t('home.heroP3')}
         </motion.p>
 
         <motion.div
@@ -455,56 +485,13 @@ export default function LandingPage() {
             className="px-10 py-4 rounded-xl font-semibold text-lg transition-all text-bd-ui-accent-fg hover:opacity-90"
             style={{ background: 'var(--bd-ui-accent)' }}
           >
-            开始探索 →
+            {t('common.startExploreArrow')}
           </button>
         </motion.div>
       </section>
 
       {/* ② 四个维度 */}
-      <section className="max-w-4xl mx-auto px-6 py-20 space-y-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          className="text-center mb-14 space-y-4"
-        >
-          <p className="text-xs tracking-widest uppercase" style={{ color: 'var(--bd-fg-subtle)' }}>探索维度</p>
-          <h2 className="text-3xl md:text-4xl font-bold" style={{ color: 'var(--bd-fg)' }}>向内寻找答案</h2>
-          <p className="text-base max-w-lg mx-auto leading-relaxed" style={{ color: 'var(--bd-fg-muted)' }}>
-            职业方向不是被<span className="bd-word-planned">「规划」</span>出来的，而是从你自己身上被<span className="bd-word-discover">「发现」</span>的。<br />
-            我们相信答案一直在那里，只是需要一个空间被看见。
-          </p>
-        </motion.div>
-
-        <div className="space-y-4">
-          {DIMENSIONS.map((d, i) => (
-            <motion.div
-              key={d.num}
-              initial={{ opacity: 0, x: i % 2 === 0 ? -24 : 24 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true, margin: '-60px' }}
-              transition={{ duration: 0.5, delay: i * 0.07 }}
-              className="bd-eff-card rounded-2xl p-6 md:p-8 flex flex-col md:flex-row md:items-start gap-5"
-              style={{
-                background: d.varBg,
-                border: `1px solid ${d.varBorder}`,
-              }}
-            >
-              <div className="flex-shrink-0 pt-0.5">
-                <span className="text-4xl font-black" style={{ color: d.varColor }}>{d.num}</span>
-              </div>
-              <div className="flex-1 space-y-2">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-xl font-bold" style={{ color: d.varColor }}>{d.name}</h3>
-                  <span className="text-xs font-medium tracking-wider" style={{ color: 'var(--bd-fg-subtle)' }}>{d.en}</span>
-                </div>
-                <p className="text-sm leading-relaxed" style={{ color: 'var(--bd-fg-muted)' }}>{d.desc}</p>
-                <p className="text-xs italic pt-1" style={{ color: 'var(--bd-fg-subtle)' }}>「{d.question}」</p>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </section>
+      <DimensionsSection t={t} />
 
       {/* ③ 即将上线（职业双轨 / 光谱共振 / 静室之我） */}
       <ComingSoonCarousel />
