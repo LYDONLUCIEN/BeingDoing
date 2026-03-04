@@ -1,0 +1,30 @@
+/* ══════════════════════════════════════════
+   Base / Reset
+   Global body, scrollbar, selection styles
+   ══════════════════════════════════════════ */
+
+body {
+  background-color: var(--bd-bg);
+  color: var(--bd-fg);
+  color-scheme: var(--bd-scheme);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Selection */
+::selection {
+  background-color: var(--bd-primary-dim);
+  color: var(--bd-fg);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bd-bg-overlay); border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: var(--bd-border-strong); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--bd-fg-subtle); }
+
+/* Focus ring (keyboard accessibility) */
+:focus-visible {
+  outline: 2px solid var(--bd-primary);
+  outline-offset: 2px;
+}

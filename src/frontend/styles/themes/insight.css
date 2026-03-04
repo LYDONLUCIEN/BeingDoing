@@ -1,0 +1,77 @@
+/* ══════════════════════════════════════════
+   Theme: insight  (light — Wisdom & Clarity)
+   Oat base · Navy authority · Amber spark
+   Structured, clean, professional
+   Font import is handled in globals.css (must be first @import)
+   ══════════════════════════════════════════ */
+
+[data-theme="insight"] {
+  /* ── Backgrounds ── */
+  --bd-bg:              #f2eeea;   /* warm oat */
+  --bd-bg-mid:          #e8e2da;
+  --bd-bg-end:          #f2eeea;
+  --bd-bg-card:         #fdfcfb;   /* almost white */
+  --bd-bg-card-alt:     rgba(30,60,100,0.03);
+  --bd-bg-overlay:      rgba(30,60,100,0.04);
+  --bd-bg-overlay-md:   rgba(30,60,100,0.07);
+  --bd-bg-overlay-lg:   rgba(30,60,100,0.12);
+  --bd-bg-surface:      #ffffff;
+  --bd-bg-surface-2:    #edeae5;
+
+  /* ── Borders: slightly harder than serene ── */
+  --bd-border:          rgba(30,60,100,0.12);
+  --bd-border-soft:     rgba(30,60,100,0.07);
+  --bd-border-strong:   rgba(30,60,100,0.22);
+
+  /* ── Foreground ── */
+  --bd-fg:              #1a1f2e;   /* near-navy dark */
+  --bd-fg-muted:        rgba(26,31,46,0.58);
+  --bd-fg-subtle:       rgba(26,31,46,0.36);
+  --bd-fg-ghost:        rgba(26,31,46,0.10);
+
+  /* ── Primary: navy / deep teal ── */
+  --bd-primary:         #1e3a6e;   /* navy */
+  --bd-primary-alt:     #2c5282;
+  --bd-primary-dim:     rgba(30,58,110,0.12);
+  --bd-primary-fg:      #ffffff;
+
+  /* ── Accents ── */
+  --bd-accent-1:        #1a6b6b;   /* deep teal */
+  --bd-accent-2:        #d4860e;   /* amber gold — strengths, insight */
+  --bd-accent-3:        #6b7fb8;   /* soft periwinkle */
+  --bd-accent-warn:     #d4860e;
+  --bd-accent-err:      #c0392b;
+
+  --bd-success:         #1a6b6b;
+  --bd-success-dim:     rgba(26,107,107,0.12);
+  --bd-error:           #c0392b;
+  --bd-error-dim:       rgba(192,57,43,0.10);
+
+  /* ── Nav ── */
+  --bd-nav-bg:          rgba(242,238,234,0.97);
+  --bd-nav-border:      rgba(30,60,100,0.10);
+
+  --bd-shadow:          rgba(26,31,46,0.10);
+  --bd-scheme:          light;
+
+  /* ── Insight-specific ── */
+  --bd-font-heading:    var(--font-playfair, 'Playfair Display', Georgia, serif);
+  --bd-font-body:       var(--font-inter, 'Inter', system-ui, sans-serif);
+
+  /* ── Radius: tighter, structured ── */
+  --bd-radius-card:     0.75rem;
+  --bd-radius-btn:      0.5rem;
+
+  --bd-shadow-card:     0 4px 20px rgba(26,31,46,0.08), 0 1px 4px rgba(26,31,46,0.06);
+}
+
+[data-theme="insight"] body {
+  font-family: var(--bd-font-body);
+}
+
+[data-theme="insight"] h1,
+[data-theme="insight"] h2,
+[data-theme="insight"] h3 {
+  font-family: var(--bd-font-heading);
+  letter-spacing: -0.015em;
+}

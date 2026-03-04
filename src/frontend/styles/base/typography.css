@@ -1,0 +1,32 @@
+/* ══════════════════════════════════════════
+   Base / Typography
+   Heading scales, body text, code
+   ══════════════════════════════════════════ */
+
+/* Utility: text-balance for headings */
+.text-balance { text-wrap: balance; }
+
+/* Input / textarea placeholders adapt to theme */
+input::placeholder,
+textarea::placeholder {
+  color: var(--bd-fg-subtle);
+}
+
+/* Links */
+a {
+  color: var(--bd-primary);
+}
+a:hover {
+  color: var(--bd-primary-alt);
+}
+
+/* Code blocks */
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.875em;
+  background: var(--bd-bg-overlay-md);
+  color: var(--bd-fg-muted);
+  padding: 0.1em 0.35em;
+  border-radius: 0.3em;
+  border: 1px solid var(--bd-border);
+}

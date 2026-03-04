@@ -1,0 +1,80 @@
+/* ══════════════════════════════════════════
+   Theme: serene  (light — Modern Serene / Minimalist Warmth)
+   Morandi palette: oat · sage · clay · warm grey
+   Serif headings via font-family on [data-theme]
+   Font import is handled in globals.css (must be first @import)
+   ══════════════════════════════════════════ */
+
+[data-theme="serene"] {
+  /* ── Backgrounds ── */
+  --bd-bg:              #f4f0eb;   /* oat / warm parchment */
+  --bd-bg-mid:          #ede8e0;
+  --bd-bg-end:          #f4f0eb;
+  --bd-bg-card:         #faf8f5;   /* pearl white cards */
+  --bd-bg-card-alt:     rgba(200,185,165,0.10);
+  --bd-bg-overlay:      rgba(120,100,75,0.06);
+  --bd-bg-overlay-md:   rgba(120,100,75,0.10);
+  --bd-bg-overlay-lg:   rgba(120,100,75,0.16);
+  --bd-bg-surface:      #ffffff;
+  --bd-bg-surface-2:    #f0ece5;
+
+  /* ── Borders ── */
+  --bd-border:          rgba(140,120,95,0.14);
+  --bd-border-soft:     rgba(140,120,95,0.08);
+  --bd-border-strong:   rgba(140,120,95,0.24);
+
+  /* ── Foreground / text ── */
+  --bd-fg:              #2d2620;   /* warm dark brown */
+  --bd-fg-muted:        rgba(45,38,32,0.58);
+  --bd-fg-subtle:       rgba(45,38,32,0.36);
+  --bd-fg-ghost:        rgba(45,38,32,0.12);
+
+  /* ── Primary: sage green ── */
+  --bd-primary:         #7a9e82;   /* sage */
+  --bd-primary-alt:     #92b89a;
+  --bd-primary-dim:     rgba(122,158,130,0.14);
+  --bd-primary-fg:      #ffffff;
+
+  /* ── Accents ── */
+  --bd-accent-1:        #7b97b8;   /* dusty blue-grey */
+  --bd-accent-2:        #c47c5a;   /* terracotta clay */
+  --bd-accent-3:        #a0956e;   /* warm khaki */
+  --bd-accent-warn:     #c47c5a;
+  --bd-accent-err:      #b85050;
+
+  --bd-success:         #7a9e82;
+  --bd-success-dim:     rgba(122,158,130,0.12);
+  --bd-error:           #b85050;
+  --bd-error-dim:       rgba(184,80,80,0.10);
+
+  /* ── Nav ── */
+  --bd-nav-bg:          rgba(244,240,235,0.97);
+  --bd-nav-border:      rgba(140,120,95,0.10);
+
+  --bd-shadow:          rgba(80,60,40,0.10);
+  --bd-scheme:          light;
+
+  /* ── Serene-specific: Serif headings ── */
+  --bd-font-heading:    var(--font-playfair, 'Playfair Display', Georgia, serif);
+  --bd-font-body:       var(--font-inter, 'Inter', system-ui, sans-serif);
+
+  /* ── Radius: soft, organic ── */
+  --bd-radius-card:     1.25rem;
+  --bd-radius-btn:      0.75rem;
+
+  /* ── Shadow style: large & soft ── */
+  --bd-shadow-card:     0 8px 40px rgba(80,60,40,0.08), 0 2px 8px rgba(80,60,40,0.05);
+}
+
+/* Apply fonts to serene theme */
+[data-theme="serene"] body {
+  font-family: var(--bd-font-body);
+  letter-spacing: 0.01em;
+}
+
+[data-theme="serene"] h1,
+[data-theme="serene"] h2,
+[data-theme="serene"] h3 {
+  font-family: var(--bd-font-heading);
+  letter-spacing: -0.01em;
+}

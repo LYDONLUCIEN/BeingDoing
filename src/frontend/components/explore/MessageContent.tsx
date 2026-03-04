@@ -19,7 +19,7 @@ export default function MessageContent({ content, className = '', markdown = tru
   }
 
   return (
-    <div className={`message-content text-sm leading-relaxed ${className}`}>
+    <div className={`message-content text-sm leading-relaxed ${className}`.trim()}>
       <MarkdownPreview
         source={content}
         wrapperElement={{ 'data-color-mode': 'dark' }}

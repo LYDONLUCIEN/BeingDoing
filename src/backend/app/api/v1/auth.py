@@ -107,6 +107,14 @@ async def get_current_user(token: Optional[str] = Depends(get_token_from_header)
     return user
 
 
+async def get_current_user_optional(token: Optional[str] = Depends(get_token_from_header)) -> Optional[dict]:
+    """可选获取当前用户，无 token 或无效时返回 None，不抛异常"""
+    if not token:
+        return None
+    user = await AuthService.get_current_user(token)
+    return user
+
+
 def _is_super_admin(user: Optional[dict]) -> bool:
     """是否超级管理员（仅超级管理员可看 debug 日志等）"""
     if not user:
@@ -118,6 +126,13 @@ def _is_super_admin(user: Optional[dict]) -> bool:
     if emails_str and user.get("email") in [x.strip() for x in emails_str.split(",") if x.strip()]:
         return True
     return False
+
+
+def _is_debug_admin(user: Optional[dict]) -> bool:
+    """是否 Debug 模式下的调试管理员（需 DEBUG_MODE=true 且在 SUPER_ADMIN 名单中）"""
+    if not user or not getattr(settings, "DEBUG_MODE", False):
+        return False
+    return _is_super_admin(user)
 
 
 @router.post("/register", response_model=AuthResponse)

@@ -1,0 +1,27 @@
+/* ══════════════════════════════════════════
+   Component: Answer cards & suggestion tags
+   Explore flow answer/insight cards
+   ══════════════════════════════════════════ */
+
+/* ── Answer card ── */
+.answer-card {}
+.answer-card__header {}
+.answer-card__summary {}
+.answer-card__analysis {}
+.answer-card__insights {}
+.answer-card__insight-tag { letter-spacing: 0.02em; }
+.answer-card__user-answer {}
+.answer-card__actions {}
+.answer-card--collapsed {}
+.answer-card--collapsed .answer-card__header { cursor: pointer; }
+
+/* ── Suggestion tags ── */
+.suggestion-tags {}
+.suggestion-tags__item {
+  font-size: 0.8125rem;
+  letter-spacing: 0.01em;
+}
+.suggestion-tags__item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px var(--bd-primary-dim);
+}

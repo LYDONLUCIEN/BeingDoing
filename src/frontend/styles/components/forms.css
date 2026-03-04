@@ -1,0 +1,66 @@
+/* ══════════════════════════════════════════
+   Component: Form inputs
+   Inputs, textareas, selects — theme-aware
+   ══════════════════════════════════════════ */
+
+.bd-input {
+  background: var(--bd-bg-overlay);
+  border: 1px solid var(--bd-border);
+  color: var(--bd-fg);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.bd-input::placeholder {
+  color: var(--bd-fg-subtle);
+}
+
+.bd-input:focus {
+  border-color: var(--bd-primary);
+  box-shadow: 0 0 0 2px var(--bd-primary-dim);
+}
+
+.bd-label {
+  font-size: 0.875rem;
+  color: var(--bd-fg-muted);
+  margin-bottom: 0.25rem;
+  display: block;
+}
+
+.bd-btn-primary {
+  background: var(--bd-primary);
+  color: var(--bd-primary-fg);
+  font-weight: 600;
+  border-radius: 0.75rem;
+  padding: 0.625rem 1.5rem;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+  cursor: pointer;
+  border: none;
+}
+.bd-btn-primary:hover {
+  background: var(--bd-primary-alt);
+  box-shadow: 0 4px 14px var(--bd-primary-dim);
+}
+.bd-btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.bd-btn-ghost {
+  background: var(--bd-bg-overlay);
+  color: var(--bd-fg-muted);
+  font-weight: 500;
+  border-radius: 0.75rem;
+  padding: 0.625rem 1.5rem;
+  transition: background 0.15s ease;
+  cursor: pointer;
+  border: 1px solid var(--bd-border);
+}
+.bd-btn-ghost:hover {
+  background: var(--bd-bg-overlay-md);
+  color: var(--bd-fg);
+}

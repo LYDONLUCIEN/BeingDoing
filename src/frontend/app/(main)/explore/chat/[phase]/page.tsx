@@ -22,7 +22,7 @@ interface SimpleMessage {
   content: string;
 }
 
-// Phase metadata (colors, description, hint)
+// Phase metadata (colors follow design_principle.md: values=蓝, strengths=绿, interests=红, purpose=黄)
 const PHASE_META: Record<PhaseKey, {
   color: string;
   bg: string;
@@ -32,33 +32,33 @@ const PHASE_META: Record<PhaseKey, {
   unlockHint: string;
 }> = {
   values: {
-    color: 'text-blue-400',
-    bg: 'bg-blue-500/10 border-blue-500/30',
-    ring: 'ring-blue-500/50',
+    color: 'text-bd-phase-values',
+    bg: 'border border-bd-phase-values',
+    ring: 'ring-bd-phase-values/50',
     desc: '探索你最深层的信念。什么对你最重要？哪些原则是你绝不妥协的？',
     hint: '这一步帮你发现5个核心价值观关键词。',
     unlockHint: '',
   },
   strengths: {
-    color: 'text-amber-400',
-    bg: 'bg-amber-500/10 border-amber-500/30',
-    ring: 'ring-amber-500/50',
+    color: 'text-bd-phase-strengths',
+    bg: 'border border-bd-phase-strengths',
+    ring: 'ring-bd-phase-strengths/50',
     desc: '探索你的天赋与禀赋。有些事你做起来不费力，却让别人惊叹。',
     hint: '这一步帮你发现10件真正擅长的事。',
     unlockHint: '完成「信念」探索后解锁',
   },
   interests: {
-    color: 'text-rose-400',
-    bg: 'bg-rose-500/10 border-rose-500/30',
-    ring: 'ring-rose-500/50',
+    color: 'text-bd-phase-interests',
+    bg: 'border border-bd-phase-interests',
+    ring: 'ring-bd-phase-interests/50',
     desc: '探索你的热忱。什么话题让你停不下来？什么场景让时间消失？',
     hint: '这一步帮你找到真正让你忘我的事。',
     unlockHint: '完成「禀赋」探索后解锁',
   },
   purpose: {
-    color: 'text-emerald-400',
-    bg: 'bg-emerald-500/10 border-emerald-500/30',
-    ring: 'ring-emerald-500/50',
+    color: 'text-bd-phase-purpose',
+    bg: 'border border-bd-phase-purpose',
+    ring: 'ring-bd-phase-purpose/50',
     desc: '探索你的使命。你想为谁而做？你希望在这个世界留下什么？',
     hint: '这一步帮你找到职业背后更深的驱动力。',
     unlockHint: '完成「热忱」探索后解锁',
@@ -256,10 +256,10 @@ export default function ChatPhasePage() {
   const currentPhaseIdx = PHASES.findIndex((p) => p.key === phase);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white flex flex-col">
+    <div className="min-h-screen bg-bd-gradient text-bd-fg flex flex-col">
 
       {/* Top progress bar */}
-      <div className="fixed top-14 left-0 right-0 z-40 bg-slate-950/90 backdrop-blur border-b border-white/8">
+      <div className="fixed top-14 left-0 right-0 z-40 backdrop-blur" style={{ backgroundColor: 'var(--bd-nav-bg)', borderBottom: '1px solid var(--bd-border-soft)' }}>
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3 overflow-x-auto">
           {PHASES.map((p, i) => {
             const unlocked = session.unlockedPhases.includes(p.key);
@@ -275,12 +275,12 @@ export default function ChatPhasePage() {
                   isActive
                     ? `${meta.bg} border ${meta.color}`
                     : unlocked
-                    ? 'text-white/60 hover:text-white/90 hover:bg-white/5'
-                    : 'text-white/20 cursor-not-allowed'
+                    ? 'text-bd-muted hover:text-bd-fg hover:bg-bd-overlay-md'
+                    : 'text-bd-ghost cursor-not-allowed'
                 }`}
               >
                 {unlocked && !isActive ? (
-                  <CheckCircle2 size={13} className="text-white/40" />
+                  <CheckCircle2 size={13} className="text-bd-subtle" />
                 ) : !unlocked ? (
                   <Lock size={13} />
                 ) : null}
@@ -303,15 +303,18 @@ export default function ChatPhasePage() {
           className="space-y-1"
         >
           <div className="flex items-center gap-2">
-            <span className="text-xs font-mono text-white/20">{phaseInfo.num}</span>
+            <span className="text-xs font-mono text-bd-ghost">{phaseInfo.num}</span>
             <h1 className={`text-2xl font-bold ${phaseMeta.color}`}>{phaseInfo.label}</h1>
           </div>
-          <p className="text-sm text-white/50 leading-relaxed">{phaseMeta.desc}</p>
-          <p className="text-xs text-white/30 italic">{phaseMeta.hint}</p>
+          <p className="text-sm text-bd-muted leading-relaxed">{phaseMeta.desc}</p>
+          <p className="text-xs text-bd-subtle italic">{phaseMeta.hint}</p>
         </motion.div>
 
         {/* Chat area */}
-        <div className={`flex-1 rounded-2xl border ${phaseMeta.bg} flex flex-col min-h-[400px] overflow-hidden`}>
+        <div
+          className={`flex-1 rounded-2xl border bd-chat-card ${phaseMeta.bg} flex flex-col min-h-[400px] overflow-hidden`}
+          data-phase={phase}
+        >
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
             {initLoading ? (
@@ -320,7 +323,7 @@ export default function ChatPhasePage() {
                   {[0, 1, 2].map((i) => (
                     <motion.div
                       key={i}
-                      className="w-2 h-2 rounded-full bg-white/30"
+                      className="w-2 h-2 rounded-full bg-bd-subtle"
                       animate={{ opacity: [0.3, 1, 0.3] }}
                       transition={{ duration: 1.2, delay: i * 0.2, repeat: Infinity }}
                     />
@@ -328,19 +331,19 @@ export default function ChatPhasePage() {
                 </div>
               </div>
             ) : messages.length === 0 ? (
-              <p className="text-sm text-white/40 text-center py-8">正在准备第一个问题…</p>
+              <p className="text-sm text-bd-subtle text-center py-8">正在准备第一个问题…</p>
             ) : (
               messages.map((m) => (
                 <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div
                     className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                       m.role === 'user'
-                        ? 'bg-primary-500 text-white rounded-br-md'
-                        : 'bg-slate-800/80 text-white/90 rounded-bl-md'
+                        ? 'bg-bd-primary text-bd-primary-fg rounded-br-md'
+                        : 'bg-bd-surface-2 text-bd-fg rounded-bl-md'
                     }`}
                   >
                     {m.role === 'assistant' ? (
-                      <MessageContent content={m.content} markdown />
+                      <MessageContent content={m.content} markdown className="assistant" />
                     ) : (
                       <span className="whitespace-pre-wrap">{m.content}</span>
                     )}
@@ -352,14 +355,14 @@ export default function ChatPhasePage() {
           </div>
 
           {/* Input */}
-          {chatError && <p className="px-4 text-xs text-rose-400">{chatError}</p>}
-          <div className="border-t border-white/8 p-3 flex items-end gap-2">
+          {chatError && <p className="px-4 text-xs text-bd-err">{chatError}</p>}
+          <div className="border-t border-bd-border-soft p-3 flex items-end gap-2">
             <textarea
               rows={2}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="输入你的回答…（Shift+Enter 换行，Enter 发送）"
-              className="flex-1 resize-none rounded-xl border border-white/10 bg-slate-900/70 px-4 py-2.5 text-sm outline-none focus:border-primary-400 transition-colors placeholder:text-white/25"
+              className="flex-1 resize-none rounded-xl border border-bd-border bg-bd-overlay px-4 py-2.5 text-sm outline-none focus:border-bd-primary transition-colors text-bd-fg"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
@@ -371,7 +374,8 @@ export default function ChatPhasePage() {
               type="button"
               onClick={handleSend}
               disabled={sending || !input.trim()}
-              className="rounded-xl bg-primary-500 hover:bg-primary-400 disabled:bg-primary-500/30 px-4 py-2.5 text-sm font-medium transition-all flex-shrink-0"
+              className="rounded-xl px-4 py-2.5 text-sm font-medium transition-all flex-shrink-0 text-bd-primary-fg disabled:opacity-30"
+              style={{ background: 'var(--bd-primary)' }}
             >
               {sending ? (
                 <motion.span animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 1, repeat: Infinity }}>
@@ -384,7 +388,7 @@ export default function ChatPhasePage() {
 
         {/* Complete phase button */}
         <div className="flex items-center justify-between pt-2 pb-4">
-          <p className="text-xs text-white/30">
+          <p className="text-xs text-bd-subtle">
             对话记录自动保存。随时可以关闭页面，下次回来用同一激活码继续。
           </p>
           <button

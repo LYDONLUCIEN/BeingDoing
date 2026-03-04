@@ -1,0 +1,69 @@
+/* ══════════════════════════════════════════
+   Theme: ideal  (方案 A · 理想)
+   设计原则：小圆角、毛玻璃卡牌、扁平化、浅阴影
+   价值观=蓝 | 能力=绿 | 热爱=红 | 目的=黄 | 报告=紫
+   ══════════════════════════════════════════ */
+
+[data-theme="ideal"] {
+  /* ── 通用 ── */
+  --bd-bg:              #F2F5F8;
+  --bd-bg-mid:          #EEF1F4;
+  --bd-bg-end:          #F2F5F8;
+  --bd-bg-card:         #FFFFFF;
+  --bd-bg-card-alt:     rgba(255,255,255,0.85);
+  --bd-bg-overlay:      rgba(255,255,255,0.6);
+  --bd-bg-overlay-md:   rgba(255,255,255,0.75);
+  --bd-bg-overlay-lg:   rgba(255,255,255,0.9);
+  --bd-bg-surface:      #FFFFFF;
+  --bd-bg-surface-2:    #F8FAFC;
+
+  --bd-border:          #EEF1F4;
+  --bd-border-soft:     rgba(238,241,244,0.8);
+  --bd-border-strong:   #E2E8F0;
+
+  --bd-fg:              #1E242B;
+  --bd-fg-muted:        #4A5568;
+  --bd-fg-subtle:       #8C98A4;
+  --bd-fg-ghost:        #A8B2BC;
+
+  /* 主色：价值观蓝 */
+  --bd-primary:         #6FAEE0;
+  --bd-primary-alt:     #327EC2;
+  --bd-primary-dim:     #F1F7FC;
+  --bd-primary-fg:      #ffffff;
+
+  /* 阶段色（设计文档） */
+  --bd-phase-values:    #6FAEE0;
+  --bd-phase-values-dim:#F1F7FC;
+  --bd-phase-strengths: #83C290;
+  --bd-phase-strengths-dim:#F2F9F3;
+  --bd-phase-interests: #EF837E;
+  --bd-phase-interests-dim:#FDF2F1;
+  --bd-phase-purpose:   #F4C062;
+  --bd-phase-purpose-dim:#FEF8F0;
+  --bd-phase-report:    #967DDB;
+
+  --bd-accent-1:        #6FAEE0;
+  --bd-accent-2:        #EF837E;
+  --bd-accent-3:        #83C290;
+  --bd-accent-warn:     #F4C062;
+  --bd-accent-err:      #DE564F;
+
+  --bd-success:         #83C290;
+  --bd-success-dim:     #F2F9F3;
+  --bd-error:           #DE564F;
+  --bd-error-dim:       #FDF2F1;
+
+  --bd-nav-bg:          rgba(255,255,255,0.92);
+  --bd-nav-border:      #EEF1F4;
+
+  /* 设计原则：小圆角、浅阴影、毛玻璃 */
+  --bd-radius-sm:       4px;
+  --bd-radius-card:     8px;
+  --bd-radius-btn:      6px;
+  --bd-shadow-card:     0 1px 3px rgba(18,30,50,0.04);
+  --bd-shadow-badge:    0 1px 2px rgba(18,30,50,0.06);
+
+  --bd-shadow:          rgba(18,30,50,0.04);
+  --bd-scheme:          light;
+}

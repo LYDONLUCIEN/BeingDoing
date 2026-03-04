@@ -118,6 +118,30 @@
 
 ---
 
+## 阶段配色（Phase Colors）
+
+四个探索维度使用统一的 CSS 变量，首页与探索流程保持一致：
+
+| 维度 | 变量 | 设计语义 | 默认（ideal 主题） |
+|------|------|----------|--------------------|
+| 信念 | `--bd-phase-values` | 蓝 | #6FAEE0 |
+| 禀赋 | `--bd-phase-strengths` | 绿 | #83C290 |
+| 热忱 | `--bd-phase-interests` | 红 | #EF837E |
+| 使命 | `--bd-phase-purpose` | 黄 | #F4C062 |
+
+### 用户自定义
+
+- **入口**：登录后点击导航栏「配色」，或 Admin → 阶段配色定制
+- **页面**：`/settings/colors`
+- **存储**：localStorage `bd-phase-colors`，覆盖当前主题的默认阶段色
+- **重置**：点击「使用主题默认」恢复单阶段，或「恢复全部默认」
+
+### 主题定义
+
+各主题在 `src/frontend/styles/themes/*.css` 中定义 `--bd-phase-*` 与 `--bd-phase-*-dim`。ideal、glimmer、slate-dark 已完整定义；其他主题继承 `:root` 默认值。
+
+---
+
 ## 主题色说明
 
 项目使用 Tailwind CSS 调色板：
@@ -139,6 +163,8 @@
 |------|------|
 | `src/frontend/components/explore/EnhancedAnswerCard.tsx` | 答题卡组件 |
 | `src/frontend/components/explore/SuggestionTags.tsx` | 建议标签组件 |
+| `src/frontend/app/(main)/settings/colors/page.tsx` | 阶段配色定制页 |
+| `src/frontend/stores/phaseColorStore.ts` | 阶段配色覆盖 Store |
 | `src/frontend/app/globals.css` | 可定制 CSS 样式 |
 | `src/backend/app/domain/prompts/templates/answer_card_summary.yaml` | 答题卡 AI 分析提示词 |
 | `src/backend/app/domain/prompts/templates/reasoning.yaml` | 建议标签生成提示词 |

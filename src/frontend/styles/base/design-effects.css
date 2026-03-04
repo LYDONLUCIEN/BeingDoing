@@ -1,0 +1,33 @@
+/* ══════════════════════════════════════════
+   Design Effects — 效果层变量与规则
+   由 design-effects.json 预设覆盖，DesignEffectsInjector 注入
+   无预设时这些变量保持默认，不影响主题
+   ══════════════════════════════════════════ */
+
+:root,
+[data-theme] {
+  /* 效果变量默认值（无预设时） */
+  --bd-eff-card-blur: 0;
+  --bd-eff-nav-blur: 12px;
+  --bd-eff-overlay-blur: 0;
+  --bd-eff-bg-pattern: none;
+}
+
+/* 当有预设激活时，应用效果到关键区域 */
+[data-bd-effect] nav {
+  backdrop-filter: blur(var(--bd-eff-nav-blur, 12px));
+  -webkit-backdrop-filter: blur(var(--bd-eff-nav-blur, 12px));
+}
+
+/* 卡片类元素：支持毛玻璃（需添加 bd-eff-card 类） */
+[data-bd-effect] .bd-eff-card {
+  backdrop-filter: blur(var(--bd-eff-card-blur, 0));
+  -webkit-backdrop-filter: blur(var(--bd-eff-card-blur, 0));
+}
+
+/* 页面背景纹理（如素描纸，用于主布局 bd-eff-bg） */
+.bd-eff-bg {
+  background-image: var(--bd-eff-bg-pattern, none);
+  background-size: auto;
+  background-repeat: repeat;
+}

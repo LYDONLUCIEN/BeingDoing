@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     # - SUPER_ADMIN_EMAILS：逗号分隔的邮箱列表，如 "a@example.com,b@example.com"
     SUPER_ADMIN_USER_IDS: Optional[str] = None
     SUPER_ADMIN_EMAILS: Optional[str] = None
+
+    # Debug 模式：仅当 DEBUG_MODE=true 且当前用户在 SUPER_ADMIN_USER_IDS/SUPER_ADMIN_EMAILS 内时生效
+    # 启用后：可载入过期激活码、解锁全部探索阶段、直接查看报告
+    DEBUG_MODE: bool = False
     
     # 数据库
     DATABASE_URL: str = "sqlite+aiosqlite:///./app.db"

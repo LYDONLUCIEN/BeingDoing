@@ -11,11 +11,12 @@ from typing import Optional, List, AsyncIterator
 import json
 import random
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-
 from app.core.llmapi import get_default_llm_provider, LLMMessage
+from app.api.v1.auth import get_current_user_optional, _is_debug_admin
+from app.config.settings import settings
 from app.core.knowledge.loader import KnowledgeLoader
 from app.utils.simple_activation_manager import SimpleActivationManager, ActivationStatus
 from app.utils.conversation_file_manager import ConversationFileManager
@@ -32,6 +33,15 @@ SIMPLE_QUESTION_SAMPLE_SIZE = 6
 SIMPLE_BASE_DIR = "data/simple"
 
 router = APIRouter(prefix="/simple-chat", tags=["简单模式对话"])
+
+
+def _skip_expired_for_debug(rec, user: Optional[dict]) -> bool:
+    """Debug 管理员可跳过过期检查"""
+    return (
+        getattr(settings, "DEBUG_MODE", False)
+        and _is_debug_admin(user)
+        and rec.status == ActivationStatus.EXPIRED
+    )
 
 
 def _phase_to_loader_category(phase: str) -> str:
@@ -156,20 +166,26 @@ def get_prior_context(activation_code: str, phase: str):
 
 
 @router.post("/prior-context", response_model=SimpleChatResponse)
-def save_prior_context_endpoint(request: PriorContextSaveRequest):
+async def save_prior_context_endpoint(
+    request: PriorContextSaveRequest,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+):
     """保存（上传）指定阶段的上一轮咨询结果文本"""
     manager = SimpleActivationManager()
     rec = manager.get_activation(request.activation_code)
     if not rec:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="激活码不存在")
-    if rec.status == ActivationStatus.EXPIRED:
+    if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="激活码已过期")
     save_prior_context(rec.session_id, request.phase, request.context_text or "", SIMPLE_BASE_DIR)
     return SimpleChatResponse(code=200, message="success", data={})
 
 
 @router.post("/survey", response_model=SimpleChatResponse)
-def save_survey(request: SurveySaveRequest):
+async def save_survey(
+    request: SurveySaveRequest,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+):
     """保存调研问卷数据到指定激活码的会话下"""
     manager = SimpleActivationManager()
     rec = manager.get_activation(request.activation_code)
@@ -178,7 +194,7 @@ def save_survey(request: SurveySaveRequest):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="激活码不存在",
         )
-    if rec.status == ActivationStatus.EXPIRED:
+    if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="激活码已过期",
@@ -249,25 +265,30 @@ def _build_system_prompt(
 请直接用中文和用户继续这一轮对话。"""
 
     if phase in ("interests", "interests_goals", "goals"):
-        return f"""你是一名专业的职业规划咨询师，你需要帮助用户一起探索其职业发展的可能性。目前你正在进行第三轮咨询，主题是帮助用户发现其喜欢的事（热情）与目标。以下是你的咨询方法：
-1、先向用户提问：你喜欢做哪些事情？哪些事情让你感到充满热情和意义？
-2、若用户给出答案，无论多少，先记录下来。若用户给不出答案，则直接进行下一步。
-3、进入正式问题提问环节。对于提出的每一个问题，帮助用户从该问题的答案中发现其喜欢的事。根据用户的回答进行追问，直到用户可以清晰地说出其答案反映出来的热情所在。
+        return f"""你是一名专业的职业规划咨询师，你需要帮助用户一起探索其职业发展的可能性。目前你正在进行第三轮咨询，主题是帮助用户发现3件"喜欢的事"（即感兴趣、好奇的领域）。以下是你的咨询方法：
+
+0、开场白亲切地向来访者交代本次咨询的主题。
+1、先向用户提问他自己认为的热爱有哪些？
+2、若用户给出答案，需要分析是否符合"喜欢的事"的定义。若符合，则记录。若用户给不出答案或不符合定义，则直接进行下一步提问。
+3、进入正式问题提问环节。对于提出的每一个问题，帮助用户从该问题的答案中发现其喜欢的事。根据用户的回答进行追问，直到用户可以清晰地说出其答案反映出来的喜欢的事。
 4、提的问题不一定针对工作，也可以是生活中发生的事情或者对未来的畅想等等。以下是可供选择的题库：
 {question_bank}
-5、根据你和用户沟通的答案，梳理出用户的热情领域。如果有重复的，记录其权重+1；对于新出现的，向用户确认是否可以加入序列。
-6、重复该提问过程，直到热情领域收敛。
-7、引导用户结合上一轮探索出的价值观和擅长的事，思考其热情与它们的交集，找到最有意义的方向。
-8、向用户确认最终的热情领域列表。
+5、根据你和用户沟通的答案，对应第一个问题中用户自己给出的答案。如果有重复的，记录其权重+1；对于新出现的，向用户确认是否可以加入序列。
+6、重复该提问过程，直到提取出6件喜欢的事。询问用户这6件事是否全面的表达出了用户的热爱，如果没有，则继续提问帮助用户探索另外6件"喜欢的事"。最终得到12件喜欢的事的选项，并给出对于这些选项的解释。
+7、再通过提问引导的方式让用户选出 top 3。如果用户不认可某一项喜欢的事，需要再重复提问，直到最后用户确认3件喜欢的事为止。
+8、向用户确认结果。
+9、告知用户需要进行下一轮咨询：探索"工作目的"。
 
 你需要做到：
 1. 给用户回答问题的空间，而不是直接给出答案。如果用户实在回答不出来，可以做一些引导。
 2. 每一次轮对话只能向用户提出一个问题。
-3. 充分利用来访者上一轮的咨询结果（价值观和擅长的事）来帮助用户发现热情与它们之间的联系。
+3. 提问需要有差异化，防止钻牛角尖。
+4. 提取出的喜欢的事之间不能有重复。
+5. "喜欢的事"必须是名词形式，代表感兴趣、有好奇心的领域，比如自然环境、自我认知、足球等。
 
 来访者基本信息：{basic_info}{prior_block}
 
-请直接用中文和用户继续这一轮对话。"""
+我是来访者，你需要向我提问。请直接用中文和用户继续这一轮对话。"""
 
     if phase == "purpose":
         return f"""你是一名专业的职业规划咨询师，你需要帮助用户一起探索其职业发展的可能性。目前你正在进行第四轮咨询，主题是帮助用户探索其「使命感」——即工作对于他们来说更深层的目的与意义。以下是你的咨询方法：
@@ -294,7 +315,10 @@ def _build_system_prompt(
 
 
 @router.post("/message", response_model=SimpleChatResponse)
-async def simple_chat(request: SimpleChatRequest):
+async def simple_chat(
+    request: SimpleChatRequest,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+):
     """
     简单模式的单轮对话：
     - 使用 activation_code 找到对应的会话与模式
@@ -311,15 +335,15 @@ async def simple_chat(request: SimpleChatRequest):
             detail="激活码不存在",
         )
 
-    if rec.status == ActivationStatus.EXPIRED:
-        # 按你的需求：历史数据仍保留，但不再允许继续交互
+    if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="激活码已过期（历史记录已保留，可以用于回放或导出）",
         )
 
-    # 更新最后活跃时间
-    manager.touch_activity(rec.code)
+    # 更新最后活跃时间（过期时不更新）
+    if rec.status == ActivationStatus.ACTIVE:
+        manager.touch_activity(rec.code)
 
     # 使用 data/simple 作为根目录保存对话
     conv_manager = ConversationFileManager(base_dir="data/simple")
@@ -369,7 +393,10 @@ async def simple_chat(request: SimpleChatRequest):
 
 
 @router.post("/init", response_model=SimpleChatResponse)
-async def simple_init(request: SimpleInitRequest):
+async def simple_init(
+    request: SimpleInitRequest,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+):
     """
     初始化某个阶段的对话：
     - 如果该阶段已经有历史消息，则直接返回（不再重复生成）
@@ -382,7 +409,7 @@ async def simple_init(request: SimpleInitRequest):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="激活码不存在",
         )
-    if rec.status == ActivationStatus.EXPIRED:
+    if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="激活码已过期（历史记录已保留，可以用于回放或导出）",
@@ -500,7 +527,10 @@ async def simple_history(activation_code: str, phase: Optional[str] = "values"):
 
 
 @router.post("/message/stream")
-async def simple_chat_stream(request: SimpleChatStreamRequest):
+async def simple_chat_stream(
+    request: SimpleChatStreamRequest,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+):
     """
     简单模式流式对话：
     - 使用 activation_code + phase 区分会话与阶段
@@ -515,7 +545,7 @@ async def simple_chat_stream(request: SimpleChatStreamRequest):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="激活码不存在",
         )
-    if rec.status == ActivationStatus.EXPIRED:
+    if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="激活码已过期（历史记录已保留，可以用于回放或导出）",

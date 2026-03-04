@@ -1,0 +1,100 @@
+/* ══════════════════════════════════════════
+   Component: Markdown chat messages
+   .message-content .wmde-markdown
+   ══════════════════════════════════════════ */
+
+.message-content .wmde-markdown {
+  background-color: transparent !important;
+  color: var(--bd-fg) !important;
+  font-size: 0.875rem !important;
+  line-height: 1.625 !important;
+}
+
+.message-content .wmde-markdown h1,
+.message-content .wmde-markdown h2,
+.message-content .wmde-markdown h3,
+.message-content .wmde-markdown h4,
+.message-content .wmde-markdown h5,
+.message-content .wmde-markdown h6 {
+  color: var(--bd-fg) !important;
+  border-bottom: none !important;
+  margin-top: 0.75em !important;
+  margin-bottom: 0.5em !important;
+}
+
+.message-content .wmde-markdown h1 { font-size: 1.25rem !important; }
+.message-content .wmde-markdown h2 { font-size: 1.125rem !important; }
+.message-content .wmde-markdown h3 { font-size: 1rem !important; }
+.message-content .wmde-markdown h4 { font-size: 0.9375rem !important; }
+.message-content .wmde-markdown h5 { font-size: 0.875rem !important; }
+.message-content .wmde-markdown h6 { font-size: 0.8125rem !important; }
+
+.message-content .wmde-markdown p { margin-bottom: 0.5em !important; }
+
+.message-content .wmde-markdown ul,
+.message-content .wmde-markdown ol {
+  padding-left: 1.5em !important;
+  margin-bottom: 0.5em !important;
+}
+
+.message-content .wmde-markdown li { margin-bottom: 0.25em !important; }
+
+.message-content .wmde-markdown strong {
+  color: var(--bd-fg) !important;
+  font-weight: 600 !important;
+}
+
+.message-content .wmde-markdown a { color: var(--bd-primary) !important; }
+
+.message-content .wmde-markdown code {
+  background-color: var(--bd-bg-overlay-md) !important;
+  color: var(--bd-accent-1) !important;
+  padding: 0.125em 0.375em !important;
+  border-radius: 0.25rem !important;
+  font-size: 0.85em !important;
+}
+
+.message-content .wmde-markdown pre {
+  background-color: var(--bd-bg-surface) !important;
+  border-radius: 0.5rem !important;
+  margin-bottom: 0.5em !important;
+}
+
+.message-content .wmde-markdown pre code {
+  background-color: transparent !important;
+  padding: 0 !important;
+}
+
+.message-content .wmde-markdown hr {
+  border-color: var(--bd-border) !important;
+  margin: 0.75em 0 !important;
+}
+
+.message-content .wmde-markdown blockquote {
+  border-left-color: var(--bd-border-strong) !important;
+  color: var(--bd-fg-muted) !important;
+}
+
+.message-content .wmde-markdown em {
+  color: var(--bd-fg-muted) !important;
+  font-style: italic !important;
+}
+
+.message-content .wmde-markdown table {
+  display: block !important;
+  overflow-x: auto !important;
+  margin: 0.5em 0 !important;
+  border-collapse: collapse !important;
+}
+
+.message-content .wmde-markdown th,
+.message-content .wmde-markdown td {
+  border: 1px solid var(--bd-border) !important;
+  padding: 0.375em 0.625em !important;
+  text-align: left !important;
+}
+
+.message-content .wmde-markdown th {
+  background-color: var(--bd-bg-overlay-md) !important;
+  font-weight: 600 !important;
+}

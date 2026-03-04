@@ -1,0 +1,59 @@
+/* ══════════════════════════════════════════
+   Theme: slate-dark  (default, dark scheme)
+   Deep space blue-black
+   ══════════════════════════════════════════ */
+:root,
+[data-theme="slate-dark"] {
+  --bd-bg:              #020817;
+  --bd-bg-mid:          #0f172a;
+  --bd-bg-end:          #020817;
+  --bd-bg-card:         rgba(255,255,255,0.05);
+  --bd-bg-card-alt:     rgba(255,255,255,0.03);
+  --bd-bg-overlay:      rgba(255,255,255,0.05);
+  --bd-bg-overlay-md:   rgba(255,255,255,0.08);
+  --bd-bg-overlay-lg:   rgba(255,255,255,0.12);
+  --bd-bg-surface:      #0f172a;
+  --bd-bg-surface-2:    #1e293b;
+
+  --bd-border:          rgba(255,255,255,0.10);
+  --bd-border-soft:     rgba(255,255,255,0.06);
+  --bd-border-strong:   rgba(255,255,255,0.20);
+
+  --bd-fg:              rgba(255,255,255,0.92);
+  --bd-fg-muted:        rgba(255,255,255,0.55);
+  --bd-fg-subtle:       rgba(255,255,255,0.30);
+  --bd-fg-ghost:        rgba(255,255,255,0.10);
+
+  --bd-primary:         #0ea5e9;
+  --bd-primary-alt:     #38bdf8;
+  --bd-primary-dim:     rgba(14,165,233,0.15);
+  --bd-primary-fg:      #ffffff;
+
+  --bd-accent-1:        #818cf8;
+  --bd-accent-2:        #fb7185;
+  --bd-accent-3:        #34d399;
+
+  /* Phase colors: 信念蓝/禀赋绿/热忱红/使命黄 (ideal/glimmer override) */
+  --bd-phase-values:    var(--bd-accent-1);
+  --bd-phase-values-dim:   rgba(129,140,248,0.15);
+  --bd-phase-strengths: var(--bd-accent-3);
+  --bd-phase-strengths-dim: rgba(52,211,153,0.15);
+  --bd-phase-interests: var(--bd-accent-2);
+  --bd-phase-interests-dim: rgba(251,113,133,0.15);
+  --bd-phase-purpose:   var(--bd-accent-warn);
+  --bd-phase-purpose-dim:  rgba(251,191,36,0.15);
+  --bd-phase-report:    var(--bd-accent-1);
+  --bd-accent-warn:     #fbbf24;
+  --bd-accent-err:      #f87171;
+
+  --bd-success:         #4ade80;
+  --bd-success-dim:     rgba(74,222,128,0.15);
+  --bd-error:           #f87171;
+  --bd-error-dim:       rgba(248,113,113,0.15);
+
+  --bd-nav-bg:          rgba(2,8,23,0.95);
+  --bd-nav-border:      rgba(255,255,255,0.08);
+
+  --bd-shadow:          rgba(0,0,0,0.4);
+  --bd-scheme:          dark;
+}

@@ -1,0 +1,209 @@
+/* ══════════════════════════════════════════
+   Theme: aurora  (light — Apple Intelligence / Holographic Glassmorphism)
+   Pure white · metallic borders · mesh gradients · iridescent glow
+   ══════════════════════════════════════════ */
+
+[data-theme="aurora"] {
+  /* ── Backgrounds ── */
+  --bd-bg:              #f5f5f7;   /* Apple cool off-white */
+  --bd-bg-mid:          #f0f0f4;
+  --bd-bg-end:          #f5f5f7;
+  --bd-bg-card:         rgba(255,255,255,0.85);   /* frosted glass */
+  --bd-bg-card-alt:     rgba(255,255,255,0.60);
+  --bd-bg-overlay:      rgba(255,255,255,0.50);
+  --bd-bg-overlay-md:   rgba(255,255,255,0.70);
+  --bd-bg-overlay-lg:   rgba(255,255,255,0.85);
+  --bd-bg-surface:      #ffffff;
+  --bd-bg-surface-2:    rgba(248,248,252,0.95);
+
+  /* ── Borders: metallic gradient (applied via .bd-metallic-border utility) ── */
+  --bd-border:          rgba(160,160,185,0.22);
+  --bd-border-soft:     rgba(160,160,185,0.12);
+  --bd-border-strong:   rgba(160,160,185,0.40);
+
+  /* ── Metallic shimmer ── */
+  --bd-metallic:        linear-gradient(135deg,
+    rgba(180,180,200,0.6) 0%,
+    rgba(255,255,255,0.9) 40%,
+    rgba(210,200,180,0.5) 70%,
+    rgba(200,210,230,0.6) 100%
+  );
+
+  /* ── Mesh gradient (Aurora glow) ── */
+  --bd-aurora-1:        rgba(167,139,250,0.25);   /* violet */
+  --bd-aurora-2:        rgba(96,165,250,0.20);    /* blue  */
+  --bd-aurora-3:        rgba(52,211,153,0.20);    /* teal  */
+  --bd-aurora-4:        rgba(251,191,36,0.18);    /* gold  */
+  --bd-aurora-5:        rgba(248,113,133,0.18);   /* rose  */
+
+  /* ── Foreground ── */
+  --bd-fg:              rgba(20,20,30,0.88);
+  --bd-fg-muted:        rgba(20,20,30,0.52);
+  --bd-fg-subtle:       rgba(20,20,30,0.32);
+  --bd-fg-ghost:        rgba(20,20,30,0.10);
+
+  /* ── Primary: cool indigo-blue (Apple-like) ── */
+  --bd-primary:         #5a6ad4;
+  --bd-primary-alt:     #7b8cee;
+  --bd-primary-dim:     rgba(90,106,212,0.12);
+  --bd-primary-fg:      #ffffff;
+
+  /* ── Accents ── */
+  --bd-accent-1:        #a78bfa;   /* violet */
+  --bd-accent-2:        #f472b6;   /* pink */
+  --bd-accent-3:        #34d399;   /* emerald */
+  --bd-accent-warn:     #fbbf24;   /* amber */
+  --bd-accent-err:      #f87171;
+
+  --bd-success:         #34d399;
+  --bd-success-dim:     rgba(52,211,153,0.12);
+  --bd-error:           #f87171;
+  --bd-error-dim:       rgba(248,113,113,0.12);
+
+  /* ── Nav: frosted glass ── */
+  --bd-nav-bg:          rgba(245,245,247,0.85);
+  --bd-nav-border:      rgba(160,160,185,0.18);
+
+  --bd-shadow:          rgba(50,50,100,0.10);
+  --bd-scheme:          light;
+
+  /* ── Aurora-specific ── */
+  --bd-font-body:       -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif;
+  --bd-font-heading:    -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', system-ui, sans-serif;
+
+  --bd-radius-card:     1.5rem;    /* large Apple-style radius */
+  --bd-radius-btn:      0.875rem;
+
+  --bd-shadow-card:
+    0 2px 4px rgba(50,50,100,0.04),
+    0 8px 32px rgba(50,50,100,0.08),
+    0 32px 64px rgba(50,50,100,0.06),
+    inset 0 1px 0 rgba(255,255,255,0.8);
+}
+
+/* ── Aurora body font ── */
+[data-theme="aurora"] body {
+  font-family: var(--bd-font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+[data-theme="aurora"] h1,
+[data-theme="aurora"] h2,
+[data-theme="aurora"] h3 {
+  font-family: var(--bd-font-heading);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* ── Frosted glass card ── */
+[data-theme="aurora"] .bd-card {
+  background: var(--bd-bg-card);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: var(--bd-shadow-card);
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── Metallic border using pseudo-element ── */
+[data-theme="aurora"] .bd-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--bd-metallic);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ── Aurora glow orbs: mesh gradient background ── */
+[data-theme="aurora"] .bd-aurora-bg {
+  position: relative;
+  overflow: hidden;
+}
+
+[data-theme="aurora"] .bd-aurora-bg::after {
+  content: '';
+  position: fixed;
+  top: -30%;
+  left: -20%;
+  width: 80vw;
+  height: 80vw;
+  border-radius: 50%;
+  background: radial-gradient(ellipse,
+    var(--bd-aurora-1) 0%,
+    var(--bd-aurora-2) 30%,
+    transparent 70%
+  );
+  animation: aurora-drift 18s ease-in-out infinite alternate;
+  pointer-events: none;
+  z-index: 0;
+  filter: blur(60px);
+}
+
+[data-theme="aurora"] .bd-aurora-bg::before {
+  content: '';
+  position: fixed;
+  bottom: -20%;
+  right: -10%;
+  width: 60vw;
+  height: 60vw;
+  border-radius: 50%;
+  background: radial-gradient(ellipse,
+    var(--bd-aurora-3) 0%,
+    var(--bd-aurora-5) 40%,
+    transparent 70%
+  );
+  animation: aurora-drift 22s ease-in-out infinite alternate-reverse;
+  pointer-events: none;
+  z-index: 0;
+  filter: blur(70px);
+}
+
+@keyframes aurora-drift {
+  0%   { transform: translate(0, 0) scale(1); }
+  33%  { transform: translate(6%, -8%) scale(1.06); }
+  66%  { transform: translate(-4%, 5%) scale(0.97); }
+  100% { transform: translate(3%, -3%) scale(1.04); }
+}
+
+/* ── "Breathing" glow for active/AI-thinking state ── */
+[data-theme="aurora"] .bd-glow-pulse {
+  animation: glow-breathe 3s ease-in-out infinite;
+}
+
+@keyframes glow-breathe {
+  0%, 100% {
+    box-shadow:
+      0 0 0 0 rgba(90,106,212,0),
+      0 8px 32px rgba(50,50,100,0.08);
+  }
+  50% {
+    box-shadow:
+      0 0 0 8px rgba(90,106,212,0.06),
+      0 8px 40px rgba(90,106,212,0.15);
+  }
+}
+
+/* ── Iridescent shimmer on hover ── */
+[data-theme="aurora"] .bd-shimmer {
+  background-size: 200% 200%;
+  background-image: linear-gradient(
+    135deg,
+    rgba(167,139,250,0.15) 0%,
+    rgba(96,165,250,0.15) 25%,
+    rgba(52,211,153,0.12) 50%,
+    rgba(248,113,133,0.12) 75%,
+    rgba(251,191,36,0.12) 100%
+  );
+  animation: shimmer-shift 8s ease-in-out infinite;
+}
+
+@keyframes shimmer-shift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}

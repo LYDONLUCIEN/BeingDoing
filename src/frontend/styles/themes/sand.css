@@ -1,0 +1,47 @@
+/* ══════════════════════════════════════════
+   Theme: sand  (light scheme)
+   Warm sand / parchment, earth tones
+   ══════════════════════════════════════════ */
+[data-theme="sand"] {
+  --bd-bg:              #f5f0e8;
+  --bd-bg-mid:          #ebe2d0;
+  --bd-bg-end:          #f5f0e8;
+  --bd-bg-card:         rgba(255,252,248,0.90);
+  --bd-bg-card-alt:     rgba(0,0,0,0.025);
+  --bd-bg-overlay:      rgba(100,60,20,0.05);
+  --bd-bg-overlay-md:   rgba(100,60,20,0.09);
+  --bd-bg-overlay-lg:   rgba(100,60,20,0.14);
+  --bd-bg-surface:      #faf7f2;
+  --bd-bg-surface-2:    #ede5d6;
+
+  --bd-border:          rgba(100,65,30,0.13);
+  --bd-border-soft:     rgba(100,65,30,0.08);
+  --bd-border-strong:   rgba(100,65,30,0.22);
+
+  --bd-fg:              rgba(45,28,12,0.90);
+  --bd-fg-muted:        rgba(45,28,12,0.52);
+  --bd-fg-subtle:       rgba(45,28,12,0.32);
+  --bd-fg-ghost:        rgba(45,28,12,0.10);
+
+  --bd-primary:         #b45309;
+  --bd-primary-alt:     #d97706;
+  --bd-primary-dim:     rgba(180,83,9,0.12);
+  --bd-primary-fg:      #ffffff;
+
+  --bd-accent-1:        #0369a1;
+  --bd-accent-2:        #be185d;
+  --bd-accent-3:        #047857;
+  --bd-accent-warn:     #b45309;
+  --bd-accent-err:      #b91c1c;
+
+  --bd-success:         #047857;
+  --bd-success-dim:     rgba(4,120,87,0.12);
+  --bd-error:           #b91c1c;
+  --bd-error-dim:       rgba(185,28,28,0.10);
+
+  --bd-nav-bg:          rgba(245,240,232,0.96);
+  --bd-nav-border:      rgba(100,65,30,0.10);
+
+  --bd-shadow:          rgba(45,28,12,0.14);
+  --bd-scheme:          light;
+}
