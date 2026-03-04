@@ -56,10 +56,11 @@
   background-image: linear-gradient(to bottom, var(--bd-bg), var(--bd-bg-mid), var(--bd-bg-end));
 }
 
-/* 内容展示框：框内背景与设计一致，框外为页面背景 */
+/* 内容展示框：框内背景与设计一致；min-height 保证有足够高度产生滚动 */
 .flow-light .flow-chat-box {
   flex: 1;
-  min-height: 300px;
+  min-height: 280px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -72,16 +73,21 @@
 
 .flow-light .flow-chat-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 24px 20px;
+  padding-right: 10px; /* 给细窄滚动条留空间 */
   display: flex;
   flex-direction: column;
   gap: 24px;
   scroll-behavior: smooth;
 }
+/* 侧边滚动条：克制、高级感，细窄扁平 */
 .flow-light .flow-chat-body::-webkit-scrollbar { width: 4px; }
 .flow-light .flow-chat-body::-webkit-scrollbar-track { background: transparent; }
-.flow-light .flow-chat-body::-webkit-scrollbar-thumb { background: var(--flow-border); border-radius: 4px; }
+.flow-light .flow-chat-body::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 2px; }
+.flow-light .flow-chat-body::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
 
 /* AI 消息：无气泡，仅左侧色条（完全复刻 msg-ai-content） */
 .flow-light .flow-msg-ai-wrap {
@@ -97,6 +103,8 @@
   line-height: 1.9;
   color: var(--flow-text-body);
   word-break: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
   font-style: normal;
 }
 .flow-light .flow-msg-ai-content.values   { border-left-color: var(--flow-values); }
@@ -160,10 +168,17 @@
 }
 .flow-light .flow-toolbar-btn.liked { color: var(--flow-purple); }
 
-/* 用户消息：纯白气泡 */
+/* 用户消息：纯白气泡 + 复制按钮 */
 .flow-light .flow-msg-user {
   display: flex;
   justify-content: flex-end;
+}
+.flow-light .flow-msg-user-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+  flex-shrink: 0;
 }
 .flow-light .flow-msg-user-content {
   background: #FFFFFF;
@@ -173,48 +188,58 @@
   font-size: 14.5px;
   line-height: 1.7;
   color: var(--flow-text-body);
+  width: fit-content;
   max-width: 78%;
   box-shadow: var(--flow-shadow-card);
-  word-break: break-word;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
+.flow-light .flow-msg-user-toolbar {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.flow-light .flow-msg-user-wrap:hover .flow-msg-user-toolbar { opacity: 1; }
 
-/* 错误消息 + 重试 */
+/* 错误消息：红色边框气泡 + 红色重新尝试 */
 .flow-light .flow-msg-error {
-  padding: 14px 16px 14px 20px;
-  border-left: 3px solid var(--flow-interest);
-  background: rgba(196, 114, 90, 0.08);
-  border-radius: 0 12px 12px 0;
+  padding: 14px 18px;
+  background: rgba(220, 38, 38, 0.06);
+  border: 1px solid rgba(220, 38, 38, 0.5);
+  border-radius: 12px;
   font-size: 14px;
-  line-height: 1.8;
-  color: #A0402A;
-  border: 1px solid rgba(196, 114, 90, 0.30);
+  line-height: 1.7;
+  color: #B91C1C;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
+.flow-light .flow-msg-error-text { flex: 1; }
 .flow-light .flow-retry-btn {
-  margin-top: 12px;
-  margin-left: 20px;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 9px 18px;
+  justify-content: center;
+  padding: 8px 20px;
   border-radius: 10px;
-  border: 1px solid rgba(196, 114, 90, 0.30);
-  background: rgb(247, 247, 248);
-  color: #A0402A;
+  border: 1px solid rgba(220, 38, 38, 0.6);
+  background: transparent;
+  color: #B91C1C;
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s;
+  align-self: flex-start;
 }
 .flow-light .flow-retry-btn:hover {
-  background: rgba(196, 114, 90, 0.10);
+  background: rgba(220, 38, 38, 0.1);
+  border-color: rgba(220, 38, 38, 0.8);
 }
 
-/* 滚动到底部按钮（在内容框内，底部偏上） */
+/* 滚动到底部按钮（在内容框内右下角，明显可见） */
 .flow-light .flow-chat-box .flow-scroll-bottom-btn {
   position: absolute;
-  bottom: 16px;
-  right: 16px;
-  width: 36px;
-  height: 36px;
+  bottom: 20px;
+  right: 20px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   border: 1px solid var(--flow-border);
   background: rgba(255,255,255,0.90);
@@ -276,12 +301,17 @@
   color: var(--flow-text-body);
   resize: none;
   min-height: 26px;
-  max-height: min(50vh, 200px);
+  max-height: 11.5em; /* 约 7 行，超出后显示滚动条 */
   padding: 2px 0;
+  padding-right: 8px; /* 滚动条贴右，与展示框同逻辑 */
   align-self: center;
   overflow-y: auto;
 }
+/* 输入框超长时侧边滚动条（与展示框同风格：细窄扁平、克制） */
 .flow-light .flow-input-field::-webkit-scrollbar { width: 4px; }
+.flow-light .flow-input-field::-webkit-scrollbar-track { background: transparent; }
+.flow-light .flow-input-field::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 2px; }
+.flow-light .flow-input-field::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
 .flow-light .flow-input-field::placeholder { color: #B8B0A8; }
 
 /* 发送/停止按钮 + 呼吸灯 */
@@ -385,3 +415,4 @@
   0%, 100% { transform: translateX(-100%); }
   50% { transform: translateX(100%); }
 }
+

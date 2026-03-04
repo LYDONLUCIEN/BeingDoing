@@ -1,7 +1,7 @@
 'use client';
 
 import { useLocaleStore } from '@/stores/localeStore';
-import { locales, getByPath } from '@/lib/i18n';
+import { locales, getByPath, type LocaleId } from '@/lib/i18n';
 
 function resolvePath(path: string, dict: Record<string, unknown>): unknown {
   const val = getByPath(dict, path);
@@ -12,11 +12,13 @@ function resolvePath(path: string, dict: Record<string, unknown>): unknown {
  * 获取当前语言的 t 函数
  * 用法：t('nav.home') => '首页'
  * 模板：t('nav.logoutUserTemplate', { name: 'xxx' }) => '退出（xxx）'
+ * @param overrideLocale 用于首帧渲染，避免 hydration 时 locale 与服务器不一致
  */
-export function useLocale() {
+export function useLocale(overrideLocale?: LocaleId) {
   const locale = useLocaleStore((s) => s.locale);
   const setLocale = useLocaleStore((s) => s.setLocale);
-  const dict = locales[locale] as Record<string, unknown>;
+  const effectiveLocale = overrideLocale ?? locale;
+  const dict = locales[effectiveLocale] as Record<string, unknown>;
 
   function t(path: string, params?: Record<string, string>): string {
     const val = resolvePath(path, dict);
@@ -30,5 +32,5 @@ export function useLocale() {
     return s;
   }
 
-  return { t, locale, setLocale, dict };
+  return { t, locale: effectiveLocale, setLocale, dict };
 }

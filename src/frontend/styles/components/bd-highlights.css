@@ -44,7 +44,7 @@
 .bd-word-discover::before { margin-right: 0.2em; }
 .bd-word-discover::after { margin-left: 0.2em; animation-delay: 0.4s; }
 
-/* Hero slogan：四色渐变 + 流光动画 */
+/* Hero slogan：四色渐变 + 流光动画（6s 慢速） */
 .bd-hero-slogan {
   background: linear-gradient(
     to right,
@@ -58,7 +58,7 @@
   background-clip: text;
   -webkit-background-clip: text;
   color: transparent;
-  animation: bd-shimmer 3s ease-in-out infinite;
+  animation: bd-shimmer 6s ease-in-out infinite;
   font-weight: 600;
 }
 

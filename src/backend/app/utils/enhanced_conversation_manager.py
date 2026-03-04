@@ -6,7 +6,7 @@
 3. note.json - AI 总结的结论性内容
 
 存储结构：
-data/conversations/
+项目根 data/conversations/
     {session_id}/
         ├── all_flow.json      # 完整对话（原文 + AI 思考）
         ├── main_flow.json    # 用户可见的咨询对话（现有 main_flow）
@@ -20,6 +20,8 @@ from datetime import datetime
 from enum import Enum
 import aiofiles
 
+from app.utils.data_paths import get_conversation_dir
+
 
 class ConversationCategoryType(str, Enum):
     """对话分类类型"""
@@ -31,8 +33,8 @@ class ConversationCategoryType(str, Enum):
 class EnhancedConversationFileManager:
     """增强的对话文件管理器"""
 
-    def __init__(self, base_dir: str = "data/conversations"):
-        self.base_dir = Path(base_dir)
+    def __init__(self, base_dir: Optional[str] = None):
+        self.base_dir = Path(base_dir) if base_dir else get_conversation_dir()
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_session_dir(self, session_id: str) -> Path:
@@ -471,10 +473,10 @@ class ConversationCategory(str, Enum):
 class ConversationFileManager:
     """旧的文件管理器（保持向后兼容）"""
 
-    def __init__(self, base_dir: str = "data/conversations"):
-        self.base_dir = Path(base_dir)
+    def __init__(self, base_dir: Optional[str] = None):
+        self.base_dir = Path(base_dir) if base_dir else get_conversation_dir()
         self.base_dir.mkdir(parents=True, exist_ok=True)
-        self._enhanced = EnhancedConversationFileManager(base_dir)
+        self._enhanced = EnhancedConversationFileManager(str(self.base_dir))
 
     def _get_session_dir(self, session_id: str) -> Path:
         session_dir = self.base_dir / session_id

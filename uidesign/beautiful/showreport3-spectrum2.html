@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>人格频谱 · 包络版</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --paper: #F7F4EE;
+  --ink:   #1E1C18;
+  --mute:  #9A9590;
+  --sans:  'PingFang SC','Noto Sans SC',sans-serif;
+  --serif: 'Noto Serif SC',Georgia,serif;
+}
+body {
+  min-height: 100vh;
+  background: var(--paper);
+  font-family: var(--sans);
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+}
+.report-card {
+  width: 100%;
+  max-width: 680px;
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 48px;
+  align-items: start;
+}
+
+/* ── 左列 ── */
+.spectrum-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.spectrum-label {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--mute);
+}
+canvas#spectrum {
+  display: block;
+  width: 280px;
+  height: 180px;
+}
+.legend {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px 14px;
+}
+.leg-row { display: flex; align-items: center; gap: 7px; }
+.leg-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+.leg-text { font-size: 10px; color: var(--mute); }
+.leg-val  { margin-left: auto; font-size: 10px; color: var(--ink); opacity: 0.4; font-variant-numeric: tabular-nums; }
+
+/* ── 右列 ── */
+.info-wrap { display: flex; flex-direction: column; gap: 26px; padding-top: 4px; }
+.info-name { font-family: var(--serif); font-size: 22px; letter-spacing: 0.02em; line-height: 1.3; }
+.info-sub  { font-size: 11px; color: var(--mute); letter-spacing: 0.08em; margin-top: 4px; }
+.info-divider { width: 24px; height: 1px; background: rgba(0,0,0,0.12); }
+.dims { display: flex; flex-direction: column; gap: 16px; }
+.dim-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 5px; }
+.dim-name  { font-size: 11px; color: var(--mute); letter-spacing: 0.10em; text-transform: uppercase; }
+.dim-score { font-size: 11px; color: var(--ink); opacity: 0.4; font-variant-numeric: tabular-nums; }
+.dim-bar-bg { width: 100%; height: 2px; background: rgba(0,0,0,0.07); border-radius: 2px; }
+.dim-bar-fill {
+  height: 2px; border-radius: 2px;
+  transition: width 1.4s cubic-bezier(0.16,1,0.3,1);
+  position: relative;
+}
+.dim-bar-fill::after {
+  content: ''; position: absolute; right: -1px; top: 50%;
+  transform: translateY(-50%);
+  width: 4px; height: 4px; border-radius: 50%;
+  background: inherit; box-shadow: 0 0 6px currentColor;
+}
+.dim-tags { display: flex; gap: 5px; margin-top: 6px; flex-wrap: wrap; }
+.dim-tag {
+  font-size: 9px; letter-spacing: 0.06em; padding: 2px 7px;
+  border-radius: 8px; border: 1px solid rgba(0,0,0,0.08); color: var(--mute);
+}
+.persona-switch { display: flex; gap: 6px; align-items: center; }
+.ps-label { font-size: 10px; color: var(--mute); letter-spacing: 0.08em; margin-right: 4px; }
+.ps-btn {
+  padding: 3px 10px; border-radius: 10px;
+  border: 1px solid rgba(0,0,0,0.10);
+  background: none; font-size: 10px; color: var(--mute);
+  cursor: pointer; font-family: var(--sans);
+  letter-spacing: 0.04em;
+  transition: all 0.2s ease;
+}
+.ps-btn.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+</style>
+</head>
+<body>
+
+<div class="report-card">
+  <div class="spectrum-wrap">
+    <div class="spectrum-label">能力频谱</div>
+    <canvas id="spectrum" width="560" height="360"></canvas>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <div class="info-wrap">
+    <div class="persona-switch">
+      <span class="ps-label">示例</span>
+      <button class="ps-btn active" onclick="load(0,this)">创作者</button>
+      <button class="ps-btn"        onclick="load(1,this)">建构者</button>
+      <button class="ps-btn"        onclick="load(2,this)">连接者</button>
+    </div>
+    <div>
+      <div class="info-name" id="i-name">—</div>
+      <div class="info-sub"  id="i-sub">—</div>
+    </div>
+    <div class="info-divider"></div>
+    <div class="dims" id="dims"></div>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════
+   颜色
+   ══════════════════════════════════════ */
+const GC = [
+  { name:'语言叙事', hex:'#C4A35A', rgb:[190,162,108] },
+  { name:'系统逻辑', hex:'#6E9BB5', rgb:[100,142,168] },
+  { name:'人际关系', hex:'#6F9E82', rgb:[100,154,126] },
+  { name:'感知审美', hex:'#A07EB5', rgb:[152,120,170] },
+  { name:'执行意志', hex:'#B8705A', rgb:[174,110, 94] },
+  { name:'创生想象', hex:'#7ABFBF', rgb:[108,180,180] },
+];
+const rc = (r,g,b,a) => `rgba(${r},${g},${b},${a})`;
+
+function blendColor(w) {
+  let r=0,g=0,b=0,t=0;
+  w.forEach((v,i)=>{ r+=GC[i].rgb[0]*v; g+=GC[i].rgb[1]*v; b+=GC[i].rgb[2]*v; t+=v; });
+  return t < .01 ? [180,172,160] : [r/t, g/t, b/t];
+}
+
+/* ══════════════════════════════════════
+   人设
+   ══════════════════════════════════════ */
+const PERSONAS = [
+  {
+    name:'Maggie', sub:'32岁 · 市场运营 · 上海',
+    genius:  [0.85, 0.28, 0.52, 0.88, 0.22, 0.76],
+    order:0.22, altruism:0.75, longterm:0.58,
+    stab:0.42,  pro:0.78,  brd:0.82,
+    clar:0.55,  scal:0.66, urg:0.44,
+    dims:[
+      { key:'信念',en:'Creed',   score:0.72,color:'#C4A35A',tags:['利他倾向','长期主义','有限边界感'] },
+      { key:'禀赋',en:'Genius',  score:0.85,color:'#A07EB5',tags:['叙事表达','审美感知','跨域连接'] },
+      { key:'热忱',en:'Calling', score:0.68,color:'#B8705A',tags:['创作驱动','间歇爆发','宽领域漫游'] },
+      { key:'锚点',en:'Purpose', score:0.55,color:'#6F9E82',tags:['方向渐清','中等量级','低紧迫感'] },
+    ],
+  },
+  {
+    name:'陈远山', sub:'38岁 · 工程架构师 · 北京',
+    genius:  [0.32, 0.95, 0.28, 0.38, 0.88, 0.48],
+    order:0.88, altruism:0.28, longterm:0.82,
+    stab:0.85,  pro:0.58,  brd:0.32,
+    clar:0.90,  scal:0.70, urg:0.28,
+    dims:[
+      { key:'信念',en:'Creed',   score:0.82,color:'#6E9BB5',tags:['规则守序','长期主义','自我驱动'] },
+      { key:'禀赋',en:'Genius',  score:0.95,color:'#6E9BB5',tags:['系统建模','执行意志','逻辑精确'] },
+      { key:'热忱',en:'Calling', score:0.74,color:'#B8705A',tags:['问题驱动','持续稳定','专深领域'] },
+      { key:'锚点',en:'Purpose', score:0.88,color:'#6E9BB5',tags:['目标清晰','组织量级','从容节奏'] },
+    ],
+  },
+  {
+    name:'林晓敏', sub:'29岁 · 社区运营 · 成都',
+    genius:  [0.62, 0.30, 0.95, 0.58, 0.48, 0.38],
+    order:0.35, altruism:0.92, longterm:0.62,
+    stab:0.72,  pro:0.68,  brd:0.68,
+    clar:0.60,  scal:0.88, urg:0.58,
+    dims:[
+      { key:'信念',en:'Creed',   score:0.88,color:'#6F9E82',tags:['利他核心','包容边界','当下主义'] },
+      { key:'禀赋',en:'Genius',  score:0.92,color:'#6F9E82',tags:['人际感知','信任建立','叙事表达'] },
+      { key:'热忱',en:'Calling', score:0.70,color:'#B8705A',tags:['人驱动型','稳定持续','中等宽度'] },
+      { key:'锚点',en:'Purpose', score:0.72,color:'#6F9E82',tags:['方向渐明','社会量级','中等紧迫'] },
+    ],
+  },
+];
+
+/* ══════════════════════════════════════
+   Canvas
+   ══════════════════════════════════════ */
+const canvas = document.getElementById('spectrum');
+const ctx    = canvas.getContext('2d');
+const DPR    = window.devicePixelRatio || 1;
+const LW = 280, LH = 180;
+
+canvas.style.width  = LW + 'px';
+canvas.style.height = LH + 'px';
+canvas.width  = LW * DPR;
+canvas.height = LH * DPR;
+ctx.scale(DPR, DPR);
+
+/* ══════════════════════════════════════
+   状态
+   ══════════════════════════════════════ */
+let T = 0;
+let currentP     = PERSONAS[0];
+let liveGenius   = [...PERSONAS[0].genius];
+let targetGenius = [...PERSONAS[0].genius];
+
+/* ══════════════════════════════════════
+   三次样条插值
+   给定 N 个控制点，返回连续曲线上任意 x 的 y
+   用 Catmull-Rom 方法
+   ══════════════════════════════════════ */
+function catmullRomPoint(pts, t) {
+  // pts: [{x,y}...], t: 0~1 全局参数
+  const n   = pts.length;
+  const seg = Math.min(Math.floor(t * (n - 1)), n - 2);
+  const lt  = t * (n - 1) - seg;
+
+  const p0 = pts[Math.max(seg - 1, 0)];
+  const p1 = pts[seg];
+  const p2 = pts[Math.min(seg + 1, n - 1)];
+  const p3 = pts[Math.min(seg + 2, n - 1)];
+
+  const t2 = lt * lt, t3 = lt * lt * lt;
+  const x = 0.5 * (
+    (2*p1.x) +
+    (-p0.x + p2.x) * lt +
+    (2*p0.x - 5*p1.x + 4*p2.x - p3.x) * t2 +
+    (-p0.x + 3*p1.x - 3*p2.x + p3.x) * t3
+  );
+  const y = 0.5 * (
+    (2*p1.y) +
+    (-p0.y + p2.y) * lt +
+    (2*p0.y - 5*p1.y + 4*p2.y - p3.y) * t2 +
+    (-p0.y + 3*p1.y - 3*p2.y + p3.y) * t3
+  );
+  return { x, y };
+}
+
+/* ══════════════════════════════════════
+   绘制
+   ══════════════════════════════════════ */
+function draw() {
+  ctx.clearRect(0, 0, LW, LH);
+
+  const P        = currentP;
+  const genius   = liveGenius;
+
+  const order    = P.order;
+  const altruism = P.altruism;
+  const stab     = P.stab;
+  const pro      = P.pro;
+  const clar     = P.clar;
+  const scal     = P.scal;
+  const urg      = P.urg;
+
+  /* ── 布局常量 ── */
+  const PAD_X  = 18;
+  const CY     = LH / 2;           // 垂直中心线
+  const USABLE = LW - PAD_X * 2;
+
+  // 锚点 scal → 包络整体高度（量级越大越饱满）
+  const maxHalf = LH * 0.28 * (0.6 + scal * 0.8);
+
+  // 信念 altruism → 上下不对称
+  // altruism=1: 上=下（各占 maxHalf）
+  // altruism=0: 上=maxHalf*1.4, 下=maxHalf*0.4
+  const topH = maxHalf * (0.7 + altruism * 0.6);
+  const botH = maxHalf * (0.4 + altruism * 0.6);
+
+  // 热忱 urg + stab → 呼吸节奏
+  const breathFreq  = 0.5 + urg * 1.2;
+  const breathAmp   = 0.018 + (1 - stab) * 0.025;
+  const breathScale = 1 + Math.sin(T * breathFreq) * breathAmp;
+
+  /* ── 6个控制点，均匀分布在 X 轴 ── */
+  const ctrlPts = genius.map((g, i) => ({
+    x: PAD_X + (i / (genius.length - 1)) * USABLE,
+    y: g,     // 禀赋强度 0~1
+  }));
+
+  /* ── 采样曲线（上半） ── */
+  const STEPS = 200;
+  const upperPts = [];
+  const lowerPts = [];
+
+  for (let s = 0; s <= STEPS; s++) {
+    const t   = s / STEPS;
+    const cr  = catmullRomPoint(ctrlPts, t);
+    const amp = cr.y * breathScale;
+
+    // 信念 order → 曲线锐化
+    // order 高：把曲线顶部压平（平顶感）
+    // order 低：保持 catmull-rom 的圆润
+    const sharpened = order > 0.3
+      ? Math.pow(amp, 1 - order * 0.45)
+      : amp;
+
+    upperPts.push({ x: cr.x, y: CY - sharpened * topH });
+    lowerPts.push({ x: cr.x, y: CY + sharpened * botH });
+  }
+
+  /* ── 构建闭合路径 ── */
+  function buildPath() {
+    ctx.beginPath();
+    ctx.moveTo(upperPts[0].x, upperPts[0].y);
+    upperPts.forEach(p => ctx.lineTo(p.x, p.y));
+    // 右端连接下半（反向）
+    for (let i = lowerPts.length - 1; i >= 0; i--) {
+      ctx.lineTo(lowerPts[i].x, lowerPts[i].y);
+    }
+    ctx.closePath();
+  }
+
+  /* ── 0. 底层：宽柔光晕 ── */
+  const baseCol = blendColor(genius);
+  const bgGrd   = ctx.createRadialGradient(LW/2, CY, 0, LW/2, CY, LW * 0.7);
+  bgGrd.addColorStop(0,   rc(...baseCol, 0.07 * (0.5 + pro * 0.8)));
+  bgGrd.addColorStop(0.55,rc(...baseCol, 0.03));
+  bgGrd.addColorStop(1,   rc(...baseCol, 0));
+  ctx.fillStyle = bgGrd;
+  ctx.fillRect(0, 0, LW, LH);
+
+  /* ── 1. 包络填充（分色渐变，横向） ── */
+  buildPath();
+
+  // 横向渐变：6段颜色
+  const fillGrd = ctx.createLinearGradient(PAD_X, 0, LW - PAD_X, 0);
+  genius.forEach((g, i) => {
+    const stop = i / (genius.length - 1);
+    const [r,gv,b] = GC[i].rgb;
+    fillGrd.addColorStop(stop, rc(r, gv, b, 0.13 * (0.4 + pro * 0.8)));
+  });
+
+  ctx.fillStyle = fillGrd;
+  ctx.fill();
+
+  /* ── 2. 包络内发光（径向，叠加一层） ── */
+  buildPath();
+  const innerGrd = ctx.createRadialGradient(LW/2, CY, 0, LW/2, CY, maxHalf * 2.5);
+  innerGrd.addColorStop(0,   rc(...baseCol, 0.14 * (0.5 + pro * 0.7)));
+  innerGrd.addColorStop(0.6, rc(...baseCol, 0.04));
+  innerGrd.addColorStop(1,   rc(...baseCol, 0));
+  ctx.fillStyle = innerGrd;
+  ctx.fill();
+
+  /* ── 3. 上轮廓线（主线，分段变色） ── */
+  // 锚点 clar → 描边清晰度：高=锐利，低=漫射（shadowBlur大）
+  const strokeBlur  = (1 - clar) * 5;
+  const strokeAlpha = 0.55 + pro * 0.30;
+
+  for (let s = 0; s < STEPS; s++) {
+    const pA = upperPts[s], pB = upperPts[s + 1];
+    const t  = s / STEPS;
+    // 在6色之间插值
+    const colorPos = t * (GC.length - 1);
+    const ci = Math.floor(colorPos);
+    const cf = colorPos - ci;
+    const c1 = GC[Math.min(ci,     GC.length-1)].rgb;
+    const c2 = GC[Math.min(ci + 1, GC.length-1)].rgb;
+    const cr_ = Math.round(c1[0] + (c2[0]-c1[0])*cf);
+    const cg_ = Math.round(c1[1] + (c2[1]-c1[1])*cf);
+    const cb_ = Math.round(c1[2] + (c2[2]-c1[2])*cf);
+
+    ctx.beginPath();
+    ctx.moveTo(pA.x, pA.y);
+    ctx.lineTo(pB.x, pB.y);
+    ctx.strokeStyle = rc(cr_, cg_, cb_, strokeAlpha);
+    ctx.lineWidth   = 1.5;
+    ctx.shadowColor = rc(cr_, cg_, cb_, 0.6);
+    ctx.shadowBlur  = strokeBlur + 4;
+    ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
+
+  /* ── 4. 下轮廓线（镜像，更淡） ── */
+  for (let s = 0; s < STEPS; s++) {
+    const pA = lowerPts[s], pB = lowerPts[s + 1];
+    const t  = s / STEPS;
+    const colorPos = t * (GC.length - 1);
+    const ci = Math.floor(colorPos);
+    const cf = colorPos - ci;
+    const c1 = GC[Math.min(ci,     GC.length-1)].rgb;
+    const c2 = GC[Math.min(ci + 1, GC.length-1)].rgb;
+    const cr_ = Math.round(c1[0] + (c2[0]-c1[0])*cf);
+    const cg_ = Math.round(c1[1] + (c2[1]-c1[1])*cf);
+    const cb_ = Math.round(c1[2] + (c2[2]-c1[2])*cf);
+
+    ctx.beginPath();
+    ctx.moveTo(pA.x, pA.y);
+    ctx.lineTo(pB.x, pB.y);
+    ctx.strokeStyle = rc(cr_, cg_, cb_, strokeAlpha * 0.45);
+    ctx.lineWidth   = 1;
+    ctx.shadowColor = rc(cr_, cg_, cb_, 0.3);
+    ctx.shadowBlur  = strokeBlur + 2;
+    ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
+
+  /* ── 5. 中心轴线 ── */
+  ctx.beginPath();
+  ctx.setLineDash([2, 6]);
+  ctx.moveTo(PAD_X, CY);
+  ctx.lineTo(LW - PAD_X, CY);
+  ctx.strokeStyle = rc(...baseCol, 0.12);
+  ctx.lineWidth   = 1;
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  /* ── 6. 控制点光晕（6个禀赋峰值的节点） ── */
+  genius.forEach((g, i) => {
+    const [r,gv,b] = GC[i].rgb;
+    const dotX = PAD_X + (i / (genius.length - 1)) * USABLE;
+    const amp  = Math.pow(g * breathScale, order > 0.3 ? 1 - order*0.45 : 1);
+    const dotY = CY - amp * topH;
+
+    // 节点光晕
+    const ng = ctx.createRadialGradient(dotX,dotY,0,dotX,dotY,6+g*8);
+    ng.addColorStop(0, rc(r,gv,b, 0.85 * (0.4 + pro*0.8)));
+    ng.addColorStop(1, rc(r,gv,b, 0));
+    ctx.beginPath();
+    ctx.arc(dotX, dotY, 6 + g*8, 0, Math.PI*2);
+    ctx.fillStyle   = ng;
+    ctx.shadowColor = rc(r,gv,b, 0.5);
+    ctx.shadowBlur  = 10 + g * 10;
+    ctx.fill();
+    ctx.shadowBlur  = 0;
+
+    // 节点实心点
+    ctx.beginPath();
+    ctx.arc(dotX, dotY, 2 + g * 1.5, 0, Math.PI*2);
+    ctx.fillStyle = rc(r,gv,b, 0.9);
+    ctx.fill();
+
+    // 节点到轴线的垂直虚线
+    ctx.beginPath();
+    ctx.setLineDash([2, 4]);
+    ctx.moveTo(dotX, dotY + 3);
+    ctx.lineTo(dotX, CY);
+    ctx.strokeStyle = rc(r,gv,b, 0.15);
+    ctx.lineWidth   = 1;
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 标签（底部）
+    ctx.font      = '9px PingFang SC,Noto Sans SC,sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = rc(r,gv,b, 0.5 + g * 0.3);
+    ctx.fillText(GC[i].name.slice(0, 2), dotX, LH - 6);
+  });
+
+  /* ── 7. 热忱 stab → 包络内纹理涟漪（stab低时有轻微波纹） ── */
+  if (stab < 0.65) {
+    const rippleAmp   = (0.65 - stab) * 8;
+    const rippleAlpha = (0.65 - stab) * 0.08;
+    for (let layer = 0; layer < 2; layer++) {
+      const offset = Math.sin(T * 1.8 + layer * 1.6) * rippleAmp;
+      buildPath();
+      ctx.save();
+      ctx.translate(0, offset * (layer % 2 === 0 ? 1 : -1));
+      ctx.fillStyle = rc(...baseCol, rippleAlpha);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  /* ── 缓动 ── */
+  liveGenius = liveGenius.map((v,i) => v + (targetGenius[i] - v) * 0.055);
+  T += 0.016;
+}
+
+/* ══════════════════════════════════════
+   右侧 UI
+   ══════════════════════════════════════ */
+function renderUI(p) {
+  document.getElementById('i-name').textContent = p.name;
+  document.getElementById('i-sub').textContent  = p.sub;
+
+  const leg = document.getElementById('legend');
+  leg.innerHTML = '';
+  GC.forEach((gc, i) => {
+    const v = p.genius[i];
+    const row = document.createElement('div');
+    row.className = 'leg-row';
+    row.innerHTML = `
+      <div class="leg-dot" style="background:${gc.hex};box-shadow:0 0 4px ${gc.hex}55"></div>
+      <span class="leg-text">${gc.name}</span>
+      <span class="leg-val">${Math.round(v*100)}</span>
+    `;
+    leg.appendChild(row);
+  });
+
+  const dims = document.getElementById('dims');
+  dims.innerHTML = '';
+  p.dims.forEach(d => {
+    const row = document.createElement('div');
+    row.className = 'dim-row';
+    row.innerHTML = `
+      <div class="dim-head">
+        <span class="dim-name">${d.key} · <span style="font-size:9px;letter-spacing:.06em">${d.en}</span></span>
+        <span class="dim-score">${Math.round(d.score*100)}</span>
+      </div>
+      <div class="dim-bar-bg">
+        <div class="dim-bar-fill" style="width:0%;
+          background:linear-gradient(to right,${d.color}77,${d.color});
+          box-shadow:0 0 5px ${d.color}44"></div>
+      </div>
+      <div class="dim-tags">
+        ${d.tags.map(t=>`<span class="dim-tag">${t}</span>`).join('')}
+      </div>
+    `;
+    dims.appendChild(row);
+    requestAnimationFrame(()=>{
+      row.querySelector('.dim-bar-fill').style.width = (d.score*100)+'%';
+    });
+  });
+}
+
+/* ══════════════════════════════════════
+   加载人设
+   ══════════════════════════════════════ */
+function load(i, btn) {
+  document.querySelectorAll('.ps-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  currentP     = PERSONAS[i];
+  targetGenius = [...currentP.genius];
+  renderUI(currentP);
+}
+
+/* ══════════════════════════════════════
+   主循环
+   ══════════════════════════════════════ */
+(function loop(){ draw(); requestAnimationFrame(loop); })();
+load(0, document.querySelector('.ps-btn'));
+</script>
+</body>
+</html>

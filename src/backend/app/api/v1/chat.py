@@ -10,6 +10,7 @@ import traceback
 from fastapi import APIRouter, HTTPException, Depends, status, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from pathlib import Path
 from typing import Optional, Dict, Generator
 from app.api.v1.auth import get_current_user
 from app.core.agent.graph import create_agent_graph, create_initial_state
@@ -19,20 +20,20 @@ from app.services.session_service import SessionService
 from app.utils.conversation_file_manager import ConversationFileManager, ConversationCategory
 from datetime import datetime
 from app.config.settings import settings
+from app.utils.data_paths import get_question_progress_dir, get_debug_logs_dir, get_logs_dir
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["对话"])
 
-# ---------- question_progress 持久化 ----------
-
-_QP_DIR = os.path.join("data", "question_progress")
+# ---------- question_progress 持久化（项目根 data/question_progress）----------
 
 
 def _load_question_progress(session_id: str) -> Dict:
     """从文件加载 session 的 question_progress"""
-    path = os.path.join(_QP_DIR, f"{session_id}.json")
-    if os.path.isfile(path):
+    qp_dir = get_question_progress_dir()
+    path = qp_dir / f"{session_id}.json"
+    if path.is_file():
         try:
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
@@ -45,8 +46,9 @@ def _save_question_progress(session_id: str, question_progress: Dict) -> None:
     """将 question_progress 持久化到文件"""
     if not question_progress:
         return
-    os.makedirs(_QP_DIR, exist_ok=True)
-    path = os.path.join(_QP_DIR, f"{session_id}.json")
+    qp_dir = get_question_progress_dir()
+    qp_dir.mkdir(parents=True, exist_ok=True)
+    path = qp_dir / f"{session_id}.json"
     try:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(question_progress, f, ensure_ascii=False, indent=2)
@@ -296,14 +298,14 @@ def _save_debug_logs(
     logs: list,
     final_state: Optional[dict],
 ) -> None:
-    """将本次运行的日志追加到 data/debug_logs/{session_id}.jsonl 以及 logs/{user_id}/{session_id}/runs.jsonl"""
+    """将本次运行的日志追加到项目根 data/debug_logs/ 和 data/logs/"""
     try:
         user_id = (final_state or {}).get("user_id") or None
 
-        # 旧路径：按 session 维度集中存储，便于历史兼容
-        debug_dir = os.path.join("data", "debug_logs")
-        os.makedirs(debug_dir, exist_ok=True)
-        path = os.path.join(debug_dir, f"{session_id}.jsonl")
+        # 按 session 维度集中存储
+        debug_dir = get_debug_logs_dir()
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        path = debug_dir / f"{session_id}.jsonl"
         entry = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "user_id": user_id,
@@ -318,13 +320,14 @@ def _save_debug_logs(
         with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
-        # 新路径：按用户 / 会话分目录存储，便于后台人工排查
+        # 按用户 / 会话分目录存储
+        logs_base = get_logs_dir()
         if user_id:
-            user_log_dir = os.path.join("logs", str(user_id), str(session_id))
+            user_log_dir = logs_base / str(user_id) / str(session_id)
         else:
-            user_log_dir = os.path.join("logs", "anonymous", str(session_id))
-        os.makedirs(user_log_dir, exist_ok=True)
-        user_log_path = os.path.join(user_log_dir, "runs.jsonl")
+            user_log_dir = logs_base / "anonymous" / str(session_id)
+        user_log_dir.mkdir(parents=True, exist_ok=True)
+        user_log_path = user_log_dir / "runs.jsonl"
         with open(user_log_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception:
@@ -509,23 +512,24 @@ async def get_debug_logs(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="仅超级管理员可查看调试日志")
     try:
         entries = []
-        # 搜索所有可能的日志路径
-        candidate_paths = [
-            os.path.join("data", "debug_logs", f"{session_id}.jsonl"),
-        ]
-        # 扫描 logs/ 目录下所有用户子目录
-        logs_root = "logs"
-        if os.path.isdir(logs_root):
-            for user_dir in os.listdir(logs_root):
-                p = os.path.join(logs_root, user_dir, session_id, "runs.jsonl")
-                if os.path.isfile(p):
-                    candidate_paths.append(p)
+        # 搜索所有可能的日志路径（项目根 data/ 下）
+        debug_path = get_debug_logs_dir() / f"{session_id}.jsonl"
+        candidate_paths = [str(debug_path)]
+        # 扫描 data/logs/ 下所有用户子目录
+        logs_root = get_logs_dir()
+        if logs_root.is_dir():
+            for user_dir in logs_root.iterdir():
+                if user_dir.is_dir():
+                    p = user_dir / session_id / "runs.jsonl"
+                    if p.is_file():
+                        candidate_paths.append(str(p))
 
         seen_timestamps = set()
-        for path in candidate_paths:
-            if not os.path.isfile(path):
+        for path_str in candidate_paths:
+            p = Path(path_str)
+            if not p.is_file():
                 continue
-            with open(path, "r", encoding="utf-8") as f:
+            with open(p, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if not line:
@@ -560,7 +564,7 @@ async def get_conversation_history(
 ):
     """获取对话历史"""
     try:
-        conversation_manager = ConversationFileManager()
+        conversation_manager = ConversationFileManager(base_dir=str(settings.CONVERSATION_DIR))
         
         category_map = {
             "main_flow": "main_flow",

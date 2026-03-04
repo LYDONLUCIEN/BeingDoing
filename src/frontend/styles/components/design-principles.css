@@ -4,30 +4,24 @@
    1. 小圆角 2. 毛玻璃卡牌 3. 历史访谈斜体 4. 扁平化+浅阴影
    ══════════════════════════════════════════ */
 
-/* ideal、glimmer 主题已在各自 theme 文件中定义 --bd-radius-*、--bd-shadow-card */
-
-/* 卡牌：扁平化、浅阴影、小圆角、阶段色背景 */
+/* 卡牌：阶段色背景（配色由 /settings/colors 注入） */
 [data-theme="ideal"] .bd-chat-card,
-[data-theme="glimmer"] .bd-chat-card {
+[data-theme="slate-dark"] .bd-chat-card {
   border-radius: var(--bd-radius-card) !important;
   box-shadow: var(--bd-shadow-card) !important;
 }
 
-[data-theme="ideal"] .bd-chat-card[data-phase="values"],
-[data-theme="glimmer"] .bd-chat-card[data-phase="values"] { background: var(--bd-phase-values-dim) !important; }
-[data-theme="ideal"] .bd-chat-card[data-phase="strengths"],
-[data-theme="glimmer"] .bd-chat-card[data-phase="strengths"] { background: var(--bd-phase-strengths-dim) !important; }
-[data-theme="ideal"] .bd-chat-card[data-phase="interests"],
-[data-theme="glimmer"] .bd-chat-card[data-phase="interests"] { background: var(--bd-phase-interests-dim) !important; }
-[data-theme="ideal"] .bd-chat-card[data-phase="purpose"],
-[data-theme="glimmer"] .bd-chat-card[data-phase="purpose"] { background: var(--bd-phase-purpose-dim) !important; }
+.bd-chat-card[data-phase="values"] { background: var(--bd-phase-values-dim) !important; }
+.bd-chat-card[data-phase="strengths"] { background: var(--bd-phase-strengths-dim) !important; }
+.bd-chat-card[data-phase="interests"] { background: var(--bd-phase-interests-dim) !important; }
+.bd-chat-card[data-phase="purpose"] { background: var(--bd-phase-purpose-dim) !important; }
 
 /* 历史访谈消息（assistant）：斜体 */
 [data-theme="ideal"] .message-content.assistant,
-[data-theme="glimmer"] .message-content.assistant,
+[data-theme="slate-dark"] .message-content.assistant,
 [data-theme="ideal"] .message-content.assistant .wmde-markdown,
-[data-theme="glimmer"] .message-content.assistant .wmde-markdown,
+[data-theme="slate-dark"] .message-content.assistant .wmde-markdown,
 [data-theme="ideal"] .message-content.assistant .wmde-markdown p,
-[data-theme="glimmer"] .message-content.assistant .wmde-markdown p {
+[data-theme="slate-dark"] .message-content.assistant .wmde-markdown p {
   font-style: italic !important;
 }

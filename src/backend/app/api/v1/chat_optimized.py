@@ -34,11 +34,12 @@ from app.utils.enhanced_conversation_manager import (
     EnhancedConversationFileManager,
     ConversationCategoryType,
 )
-# question_progress 持久化（与 chat 共用）
+# question_progress、debug_logs 持久化（与 chat 共用，统一使用项目根 data/）
 from app.api.v1.chat import (
     _load_question_progress,
     _save_question_progress,
     _extract_step_progress_info,
+    _save_debug_logs,
 )
 
 from app.services.session_service import SessionService
@@ -405,84 +406,6 @@ async def clear_cache(session_id: Optional[str] = None):
 from app.utils.enhanced_conversation_manager import ConversationFileManager as OldConversationFileManager
 
 _old_manager = OldConversationFileManager()
-
-
-def _load_question_progress(session_id: str) -> Dict:
-    """向后兼容的题目进度加载"""
-    path = os.path.join("data", "question_progress", f"{session_id}.json")
-    if os.path.isfile(path):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {}
-
-
-def _save_question_progress(session_id: str, question_progress: Dict) -> None:
-    """向后兼容的题目进度保存"""
-    os.makedirs("data/question_progress", exist_ok=True)
-    path = os.path.join("data", "question_progress", f"{session_id}.json")
-    try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(question_progress, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
-
-
-def _extract_step_progress_info(question_progress_data: Dict, current_step: str) -> Optional[Dict]:
-    """向后兼容的步骤进度提取"""
-    if current_step not in question_progress_data:
-        return None
-    step_data = question_progress_data[current_step]
-    current_index = step_data.get("current_question_index", 0)
-    questions = step_data.get("questions", [])
-    return {
-        "current_question_id": questions[current_index]["question_id"] if current_index < len(questions) else None,
-        "current_index": current_index,
-        "total_questions": len(questions),
-        "completed_count": sum(1 for q in questions if q.get("status") == "completed"),
-        "current_question_content": questions[current_index]["question_content"] if current_index < len(questions) else None,
-        "is_intro_shown": step_data.get("is_intro_shown", False),
-    }
-
-
-def _save_debug_logs(
-    session_id: str,
-    user_input: str,
-    response: str,
-    logs: list,
-    final_state: Optional[dict],
-) -> None:
-    """向后兼容的调试日志保存"""
-    log_dir = "logs"
-    user_id = final_state.get("user_id") if final_state else None
-
-    if user_id:
-        log_dir = os.path.join(log_dir, str(user_id), str(session_id))
-    else:
-        log_dir = os.path.join(log_dir, "anonymous", str(session_id))
-
-    os.makedirs(log_dir, exist_ok=True)
-    log_path = os.path.join(log_dir, "runs.jsonl")
-
-    entry = {
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-        "user_id": user_id,
-        "session_id": session_id,
-        "user_input": user_input,
-        "response_preview": (response or "")[:500],
-        "logs": logs,
-        "tools_used": final_state.get("tools_used", []) if final_state else [],
-        "context_keys": list((final_state.get("context") or {}).keys()) if final_state else [],
-        "token_usage": final_state.get("session_token_usage") if final_state else None,
-    }
-
-    try:
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    except Exception:
-        pass
 
 
 # ========== 新增：获取历史 Answer Cards API ==========

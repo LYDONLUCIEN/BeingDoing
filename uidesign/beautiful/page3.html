@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>他们的故事 · 两种质感</title>
+<style>
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  font-family: 'PingFang SC', 'Noto Sans SC', sans-serif;
+  background: #F5F3EF;
+  color: #2A2520;
+}
+
+/* ============================================================
+   通用页面布局
+   ============================================================ */
+.section {
+  padding: 80px 0 100px;
+}
+
+.section-head {
+  text-align: center;
+  margin-bottom: 48px;
+  padding: 0 40px;
+}
+
+.style-label {
+  display: inline-block;
+  font-size: 10px;
+  letter-spacing: 0.20em;
+  text-transform: uppercase;
+  color: #A09890;
+  margin-bottom: 12px;
+}
+
+.section-title {
+  font-family: 'Noto Serif SC', Georgia, serif;
+  font-size: 28px;
+  font-weight: 700;
+  color: #1A1714;
+  letter-spacing: -0.01em;
+  margin-bottom: 8px;
+}
+
+.section-sub {
+  font-size: 14px;
+  color: #8A8078;
+  line-height: 1.8;
+}
+
+/* 横向滚动轨道 */
+.track {
+  display: flex;
+  gap: 16px;
+  padding: 12px 56px 32px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.track::-webkit-scrollbar { display: none; }
+
+/* ============================================================
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   样式 A · 光谱漫射  Spectrum Diffusion
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   灵感：棱镜打散的光，每张卡是一段光谱切片
+   白色高透卡面 + 底层渐变光晕
+   ============================================================ */
+
+.spectrum-card {
+  flex: 0 0 280px;
+  border-radius: 20px;
+  padding: 32px 28px 28px;
+  position: relative;
+  overflow: hidden;
+  background: rgba(255,255,255,0.72);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255,255,255,0.90);
+  box-shadow:
+    0 2px 4px rgba(0,0,0,0.03),
+    0 8px 32px rgba(0,0,0,0.06),
+    inset 0 1px 0 rgba(255,255,255,0.9);
+  transition: transform 0.4s cubic-bezier(0.34,1.56,0.64,1),
+              box-shadow 0.4s ease;
+  cursor: default;
+}
+
+.spectrum-card:hover {
+  transform: translateY(-8px);
+  box-shadow:
+    0 4px 8px rgba(0,0,0,0.04),
+    0 20px 56px rgba(0,0,0,0.10),
+    inset 0 1px 0 rgba(255,255,255,0.9);
+}
+
+/* 底层光晕色块 */
+.sc-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(48px);
+  pointer-events: none;
+  z-index: 0;
+  transition: transform 0.8s ease;
+}
+.spectrum-card:hover .sc-glow { transform: scale(1.25); }
+
+/* 光谱扫描线（顶部装饰） */
+.sc-prism {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  border-radius: 20px 20px 0 0;
+  z-index: 1;
+}
+
+/* 内容层 */
+.sc-content { position: relative; z-index: 2; }
+
+/* 维度标签 */
+.sc-dim {
+  display: inline-block;
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+  margin-bottom: 20px;
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+
+/* 引言 */
+.sc-quote {
+  font-family: 'Noto Serif SC', Georgia, serif;
+  font-size: 14.5px;
+  line-height: 2.0;
+  color: #2A2520;
+  margin-bottom: 28px;
+  letter-spacing: 0.015em;
+}
+
+/* 关键词下划线 */
+.sc-key {
+  position: relative;
+  display: inline;
+}
+.sc-key::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  opacity: 0.5;
+}
+
+/* 分隔 */
+.sc-rule {
+  height: 1px;
+  margin-bottom: 18px;
+  background: linear-gradient(to right, transparent, rgba(0,0,0,0.08), transparent);
+}
+
+/* 作者 */
+.sc-author {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.sc-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #1A1714;
+  margin-bottom: 3px;
+}
+.sc-info {
+  font-size: 11.5px;
+  color: #A09890;
+  letter-spacing: 0.03em;
+}
+
+/* 光谱点 */
+.sc-spectrum-dots {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+.sc-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  opacity: 0.4;
+  transition: opacity 0.3s, transform 0.3s;
+}
+.sc-dot.lit {
+  opacity: 1;
+  transform: scale(1.3);
+}
+
+/* ============================================================
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   样式 B · 水彩晕染  Watercolor Wash
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   灵感：宣纸上的水彩，颜料自然扩散的边缘
+   每张卡本身是手工质感的纸 + 颜料晕开的色块
+   ============================================================ */
+
+.watercolor-card {
+  flex: 0 0 280px;
+  border-radius: 4px;          /* 极小圆角，像纸张 */
+  padding: 36px 28px 30px;
+  position: relative;
+  overflow: hidden;
+  background: #FDFAF5;
+  box-shadow:
+    0 1px 2px rgba(0,0,0,0.04),
+    0 4px 24px rgba(0,0,0,0.07),
+    2px 4px 0 rgba(0,0,0,0.025);  /* 轻微纸张阴影 */
+  transition: transform 0.5s cubic-bezier(0.34,1.56,0.64,1),
+              box-shadow 0.4s ease;
+  cursor: default;
+  /* 纸张细纹 SVG 背景 */
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+}
+
+.watercolor-card:hover {
+  transform: translateY(-6px) rotate(0.3deg);
+  box-shadow:
+    0 2px 4px rgba(0,0,0,0.05),
+    0 16px 48px rgba(0,0,0,0.10),
+    3px 6px 0 rgba(0,0,0,0.03);
+}
+
+/* SVG 水彩色块（核心装饰） */
+.wc-splash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.wc-splash svg {
+  position: absolute;
+  width: 100%; height: 100%;
+}
+
+/* 纸张折痕线（右上） */
+.wc-fold {
+  position: absolute;
+  top: 0; right: 0;
+  width: 0; height: 0;
+  border-style: solid;
+  border-width: 0 22px 22px 0;
+  border-color: transparent rgba(0,0,0,0.06) transparent transparent;
+  z-index: 3;
+}
+.wc-fold::after {
+  content: '';
+  position: absolute;
+  top: 2px; right: -20px;
+  width: 0; height: 0;
+  border-style: solid;
+  border-width: 0 18px 18px 0;
+  border-color: transparent rgba(253,250,245,0.9) transparent transparent;
+}
+
+/* 内容 */
+.wc-content { position: relative; z-index: 2; }
+
+/* 维度色条（左侧手绘感） */
+.wc-stroke {
+  position: absolute;
+  left: 0; top: 36px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  z-index: 2;
+  filter: blur(0.5px);
+  opacity: 0.75;
+}
+
+/* 维度字 */
+.wc-dim {
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #B0A898;
+  margin-bottom: 18px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.wc-dim-ink {
+  display: inline-block;
+  width: 20px; height: 2px;
+  border-radius: 2px;
+  opacity: 0.5;
+}
+
+/* 引言 */
+.wc-quote {
+  font-family: 'Noto Serif SC', Georgia, serif;
+  font-size: 14px;
+  line-height: 2.05;
+  color: #2A2520;
+  margin-bottom: 26px;
+  letter-spacing: 0.015em;
+  position: relative;
+}
+
+/* 水彩笔触下划线 */
+.wc-brush {
+  position: relative;
+  display: inline;
+}
+.wc-brush::after {
+  content: '';
+  position: absolute;
+  left: -2px; right: -2px;
+  bottom: 0px;
+  height: 7px;
+  border-radius: 50%;
+  opacity: 0.18;
+  z-index: -1;
+  filter: blur(2px);
+}
+
+/* 手写体分隔符 */
+.wc-rule {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  opacity: 0.25;
+}
+.wc-rule-line {
+  flex: 1;
+  height: 1px;
+}
+.wc-rule-dot {
+  width: 3px; height: 3px;
+  border-radius: 50%;
+  background: #8A8078;
+}
+
+/* 作者 */
+.wc-author {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.wc-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #1A1714;
+  letter-spacing: 0.01em;
+}
+.wc-info {
+  font-size: 11.5px;
+  color: #A8A098;
+  letter-spacing: 0.04em;
+}
+
+/* 右下角水彩印章感数字 */
+.wc-resonance {
+  position: absolute;
+  bottom: 28px; right: 24px;
+  font-family: 'Noto Serif SC', Georgia, serif;
+  font-size: 11px;
+  color: #C0B8B0;
+  letter-spacing: 0.04em;
+  z-index: 2;
+}
+
+/* ============================================================
+   两区块的分割带
+   ============================================================ */
+.style-divider {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 20px 56px;
+  margin: 12px 0;
+}
+.style-divider-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(0,0,0,0.08), transparent);
+}
+.style-divider-label {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #C0B8B0;
+}
+
+/* ============================================================
+   背景
+   ============================================================ */
+.section-a { background: #EEECEA; }
+.section-b { background: #F5F2EC; }
+
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════
+     样式 A · 光谱漫射  Spectrum Diffusion
+     ══════════════════════════════════════════════════════════ -->
+<div class="section section-a">
+
+  <div class="section-head">
+    <div class="style-label">Style A · 光谱漫射</div>
+    <h2 class="section-title">他们的故事</h2>
+    <p class="section-sub">棱镜之光，每一段人生是不同波长的颜色</p>
+  </div>
+
+  <div class="track">
+
+    <!-- Card A-1  信念 蓝 -->
+    <div class="spectrum-card">
+      <div class="sc-glow" style="width:200px;height:200px; background:radial-gradient(circle, rgba(91,141,184,0.22), transparent 70%); top:-60px; left:-50px;"></div>
+      <div class="sc-glow" style="width:140px;height:140px; background:radial-gradient(circle, rgba(124,92,252,0.10), transparent 70%); bottom:-40px; right:-30px;"></div>
+      <div class="sc-prism" style="background:linear-gradient(90deg, rgba(91,141,184,0.6), rgba(124,92,252,0.4), rgba(91,141,184,0.2))"></div>
+      <div class="sc-content">
+        <div class="sc-dim" style="background:rgba(91,141,184,0.10); color:rgba(91,141,184,0.9)">信念 · Creed</div>
+        <div class="sc-quote">
+          原来沟通协调这件事对我来说真的是
+          <span class="sc-key" style="color:#4A7EA8">
+            禀赋，不是习惯
+            <span class="sc-key::after" style="background:#5B8DB8"></span>
+          </span>。这个区分让我第一次觉得自己有竞争力。
+        </div>
+        <div class="sc-rule"></div>
+        <div class="sc-author">
+          <div>
+            <div class="sc-name">Maggie</div>
+            <div class="sc-info">32岁 · 市场运营</div>
+          </div>
+          <div class="sc-spectrum-dots">
+            <div class="sc-dot lit" style="background:#5B8DB8"></div>
+            <div class="sc-dot" style="background:#6A9E7F"></div>
+            <div class="sc-dot" style="background:#C4725A"></div>
+            <div class="sc-dot" style="background:#C9A84C"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card A-2  禀赋 绿 -->
+    <div class="spectrum-card">
+      <div class="sc-glow" style="width:220px;height:220px; background:radial-gradient(circle, rgba(106,158,127,0.22), transparent 70%); top:-70px; right:-60px;"></div>
+      <div class="sc-glow" style="width:120px;height:120px; background:radial-gradient(circle, rgba(91,141,184,0.08), transparent 70%); bottom:-30px; left:-20px;"></div>
+      <div class="sc-prism" style="background:linear-gradient(90deg, rgba(106,158,127,0.2), rgba(106,158,127,0.6), rgba(201,168,76,0.3))"></div>
+      <div class="sc-content">
+        <div class="sc-dim" style="background:rgba(106,158,127,0.10); color:rgba(106,158,127,0.95)">禀赋 · Genius</div>
+        <div class="sc-quote">
+          帮助别人成长这件事，让我
+          <span class="sc-key" style="color:#5A8E6F">忘我</span>。
+          我以为那只是爱好，没想到可以成为职业核心。
+        </div>
+        <div class="sc-rule"></div>
+        <div class="sc-author">
+          <div>
+            <div class="sc-name">阿文</div>
+            <div class="sc-info">25岁 · 应届生</div>
+          </div>
+          <div class="sc-spectrum-dots">
+            <div class="sc-dot" style="background:#5B8DB8"></div>
+            <div class="sc-dot lit" style="background:#6A9E7F"></div>
+            <div class="sc-dot" style="background:#C4725A"></div>
+            <div class="sc-dot" style="background:#C9A84C"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card A-3  热忱 橙红 -->
+    <div class="spectrum-card">
+      <div class="sc-glow" style="width:180px;height:180px; background:radial-gradient(circle, rgba(196,114,90,0.20), transparent 70%); top:-50px; left:-30px;"></div>
+      <div class="sc-glow" style="width:160px;height:160px; background:radial-gradient(circle, rgba(201,168,76,0.12), transparent 70%); bottom:-50px; right:-40px;"></div>
+      <div class="sc-prism" style="background:linear-gradient(90deg, rgba(201,168,76,0.3), rgba(196,114,90,0.6), rgba(196,114,90,0.2))"></div>
+      <div class="sc-content">
+        <div class="sc-dim" style="background:rgba(196,114,90,0.10); color:rgba(196,114,90,0.95)">热忱 · Calling</div>
+        <div class="sc-quote">
+          「使命感」以前对我太虚了。但当我说出
+          <span class="sc-key" style="color:#B4624A">「我想帮普通人做出好决策」</span>
+          的时候，我哭了。
+        </div>
+        <div class="sc-rule"></div>
+        <div class="sc-author">
+          <div>
+            <div class="sc-name">晓敏</div>
+            <div class="sc-info">35岁 · 咨询顾问</div>
+          </div>
+          <div class="sc-spectrum-dots">
+            <div class="sc-dot" style="background:#5B8DB8"></div>
+            <div class="sc-dot" style="background:#6A9E7F"></div>
+            <div class="sc-dot lit" style="background:#C4725A"></div>
+            <div class="sc-dot" style="background:#C9A84C"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card A-4  锚点 金 -->
+    <div class="spectrum-card">
+      <div class="sc-glow" style="width:200px;height:200px; background:radial-gradient(circle, rgba(201,168,76,0.20), transparent 70%); top:-60px; right:-50px;"></div>
+      <div class="sc-glow" style="width:130px;height:130px; background:radial-gradient(circle, rgba(196,114,90,0.08), transparent 70%); bottom:-30px; left:-10px;"></div>
+      <div class="sc-prism" style="background:linear-gradient(90deg, rgba(201,168,76,0.2), rgba(201,168,76,0.55), rgba(196,114,90,0.25))"></div>
+      <div class="sc-content">
+        <div class="sc-dim" style="background:rgba(201,168,76,0.10); color:rgba(183,148,54,0.95)">锚点 · Purpose</div>
+        <div class="sc-quote">
+          以为自己什么都喜欢，其实是
+          <span class="sc-key" style="color:#B09035">什么都没认真想过</span>。
+          四个维度逼着我去想清楚，很有价值。
+        </div>
+        <div class="sc-rule"></div>
+        <div class="sc-author">
+          <div>
+            <div class="sc-name">老 K</div>
+            <div class="sc-info">40岁 · 创业者</div>
+          </div>
+          <div class="sc-spectrum-dots">
+            <div class="sc-dot" style="background:#5B8DB8"></div>
+            <div class="sc-dot" style="background:#6A9E7F"></div>
+            <div class="sc-dot" style="background:#C4725A"></div>
+            <div class="sc-dot lit" style="background:#C9A84C"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card A-5  紫 双维度 -->
+    <div class="spectrum-card">
+      <div class="sc-glow" style="width:240px;height:200px; background:radial-gradient(ellipse, rgba(124,92,252,0.18), transparent 70%); top:-60px; left:-60px;"></div>
+      <div class="sc-glow" style="width:160px;height:160px; background:radial-gradient(circle, rgba(196,114,90,0.10), transparent 70%); bottom:-40px; right:-30px;"></div>
+      <div class="sc-prism" style="background:linear-gradient(90deg, rgba(91,141,184,0.4), rgba(124,92,252,0.5), rgba(196,114,90,0.3), rgba(201,168,76,0.2))"></div>
+      <div class="sc-content">
+        <div class="sc-dim" style="background:rgba(124,92,252,0.08); color:rgba(100,72,210,0.9)">禀赋 · 热忱</div>
+        <div class="sc-quote">
+          我不只是想做设计，我想
+          <span class="sc-key" style="color:#6B4ECC">教会别人看见美</span>。
+          这一个字的差别，让我的路完全变了。
+        </div>
+        <div class="sc-rule"></div>
+        <div class="sc-author">
+          <div>
+            <div class="sc-name">Rita</div>
+            <div class="sc-info">29岁 · 设计师 → 导师</div>
+          </div>
+          <div class="sc-spectrum-dots">
+            <div class="sc-dot" style="background:#5B8DB8"></div>
+            <div class="sc-dot lit" style="background:#6A9E7F"></div>
+            <div class="sc-dot lit" style="background:#C4725A"></div>
+            <div class="sc-dot" style="background:#C9A84C"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- 分割 -->
+<div class="style-divider">
+  <div class="style-divider-line"></div>
+  <div class="style-divider-label">Style B</div>
+  <div class="style-divider-line"></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     样式 B · 水彩晕染  Watercolor Wash
+     ══════════════════════════════════════════════════════════ -->
+<div class="section section-b">
+
+  <div class="section-head">
+    <div class="style-label">Style B · 水彩晕染</div>
+    <h2 class="section-title">他们的故事</h2>
+    <p class="section-sub">颜料落在宣纸上，自然漫开，无法复制</p>
+  </div>
+
+  <div class="track">
+
+    <!-- Card B-1  信念 蓝 -->
+    <div class="watercolor-card">
+      <div class="wc-fold"></div>
+      <div class="wc-stroke" style="height:68px; background:linear-gradient(to bottom, #5B8DB8, rgba(91,141,184,0.3));"></div>
+      <div class="wc-splash">
+        <svg viewBox="0 0 280 380" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="blur-a1"><feGaussianBlur stdDeviation="18"/></filter>
+            <filter id="blur-a2"><feGaussianBlur stdDeviation="10"/></filter>
+          </defs>
+          <!-- 主色块，手绘不规则形 -->
+          <ellipse cx="60" cy="45" rx="110" ry="70" fill="rgba(91,141,184,0.13)" filter="url(#blur-a1)" transform="rotate(-12 60 45)"/>
+          <ellipse cx="240" cy="320" rx="80" ry="60" fill="rgba(91,141,184,0.08)" filter="url(#blur-a1)" transform="rotate(8 240 320)"/>
+          <!-- 淡紫色副晕 -->
+          <ellipse cx="220" cy="60" rx="60" ry="40" fill="rgba(124,92,252,0.07)" filter="url(#blur-a2)" transform="rotate(15 220 60)"/>
+          <!-- 细小水渍 -->
+          <circle cx="180" cy="150" r="18" fill="rgba(91,141,184,0.06)" filter="url(#blur-a2)"/>
+          <circle cx="50"  cy="280" r="24" fill="rgba(91,141,184,0.05)" filter="url(#blur-a2)"/>
+        </svg>
+      </div>
+      <div class="wc-content">
+        <div class="wc-dim">
+          <span class="wc-dim-ink" style="background:#5B8DB8;"></span>
+          信念 · Creed
+        </div>
+        <div class="wc-quote">
+          原来沟通协调这件事对我来说真的是
+          <span class="wc-brush" style="background:linear-gradient(to top, rgba(91,141,184,0.20) 40%, transparent 40%)">禀赋，不是习惯</span>。这个区分让我第一次觉得自己有竞争力。
+        </div>
+        <div class="wc-rule">
+          <div class="wc-rule-line" style="background:linear-gradient(to right, rgba(91,141,184,0.3), transparent)"></div>
+          <div class="wc-rule-dot"></div>
+          <div class="wc-rule-line" style="background:linear-gradient(to left, rgba(91,141,184,0.3), transparent)"></div>
+        </div>
+        <div class="wc-author">
+          <div class="wc-name">Maggie</div>
+          <div class="wc-info">32岁 · 市场运营</div>
+        </div>
+      </div>
+      <div class="wc-resonance">214 共鸣</div>
+    </div>
+
+    <!-- Card B-2  禀赋 绿 -->
+    <div class="watercolor-card">
+      <div class="wc-fold"></div>
+      <div class="wc-stroke" style="height:72px; background:linear-gradient(to bottom, #6A9E7F, rgba(106,158,127,0.25));"></div>
+      <div class="wc-splash">
+        <svg viewBox="0 0 280 380" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="blur-b1"><feGaussianBlur stdDeviation="20"/></filter>
+            <filter id="blur-b2"><feGaussianBlur stdDeviation="9"/></filter>
+          </defs>
+          <ellipse cx="230" cy="55" rx="120" ry="80" fill="rgba(106,158,127,0.14)" filter="url(#blur-b1)" transform="rotate(10 230 55)"/>
+          <ellipse cx="30"  cy="330" rx="90"  ry="55" fill="rgba(106,158,127,0.09)" filter="url(#blur-b1)" transform="rotate(-8 30 330)"/>
+          <ellipse cx="150" cy="200" rx="50"  ry="35" fill="rgba(201,168,76,0.06)"  filter="url(#blur-b2)" transform="rotate(5 150 200)"/>
+          <circle cx="220" cy="260" r="22" fill="rgba(106,158,127,0.05)" filter="url(#blur-b2)"/>
+        </svg>
+      </div>
+      <div class="wc-content">
+        <div class="wc-dim">
+          <span class="wc-dim-ink" style="background:#6A9E7F;"></span>
+          禀赋 · Genius
+        </div>
+        <div class="wc-quote">
+          帮助别人成长这件事，让我
+          <span class="wc-brush" style="background:linear-gradient(to top, rgba(106,158,127,0.20) 40%, transparent 40%)">忘我</span>。
+          我以为那只是爱好，没想到可以成为职业核心。
+        </div>
+        <div class="wc-rule">
+          <div class="wc-rule-line" style="background:linear-gradient(to right, rgba(106,158,127,0.3), transparent)"></div>
+          <div class="wc-rule-dot"></div>
+          <div class="wc-rule-line" style="background:linear-gradient(to left, rgba(106,158,127,0.3), transparent)"></div>
+        </div>
+        <div class="wc-author">
+          <div class="wc-name">阿文</div>
+          <div class="wc-info">25岁 · 应届生</div>
+        </div>
+      </div>
+      <div class="wc-resonance">178 共鸣</div>
+    </div>
+
+    <!-- Card B-3  热忱 橙红 -->
+    <div class="watercolor-card">
+      <div class="wc-fold"></div>
+      <div class="wc-stroke" style="height:80px; background:linear-gradient(to bottom, #C4725A, rgba(196,114,90,0.22));"></div>
+      <div class="wc-splash">
+        <svg viewBox="0 0 280 380" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="blur-c1"><feGaussianBlur stdDeviation="22"/></filter>
+            <filter id="blur-c2"><feGaussianBlur stdDeviation="11"/></filter>
+          </defs>
+          <ellipse cx="50"  cy="40"  rx="130" ry="75" fill="rgba(196,114,90,0.13)" filter="url(#blur-c1)" transform="rotate(-8 50 40)"/>
+          <ellipse cx="250" cy="340" rx="95"  ry="60" fill="rgba(196,114,90,0.09)" filter="url(#blur-c1)" transform="rotate(12 250 340)"/>
+          <ellipse cx="200" cy="140" rx="55"  ry="38" fill="rgba(201,168,76,0.08)" filter="url(#blur-c2)"/>
+          <circle cx="40"  cy="310" r="20"   fill="rgba(196,114,90,0.06)" filter="url(#blur-c2)"/>
+        </svg>
+      </div>
+      <div class="wc-content">
+        <div class="wc-dim">
+          <span class="wc-dim-ink" style="background:#C4725A;"></span>
+          热忱 · Calling
+        </div>
+        <div class="wc-quote">
+          「使命感」以前对我太虚了。但当我说出
+          <span class="wc-brush" style="background:linear-gradient(to top, rgba(196,114,90,0.18) 40%, transparent 40%)">「我想帮普通人做出好决策」</span>
+          的时候，我哭了。
+        </div>
+        <div class="wc-rule">
+          <div class="wc-rule-line" style="background:linear-gradient(to right, rgba(196,114,90,0.3), transparent)"></div>
+          <div class="wc-rule-dot"></div>
+          <div class="wc-rule-line" style="background:linear-gradient(to left, rgba(196,114,90,0.3), transparent)"></div>
+        </div>
+        <div class="wc-author">
+          <div class="wc-name">晓敏</div>
+          <div class="wc-info">35岁 · 咨询顾问</div>
+        </div>
+      </div>
+      <div class="wc-resonance">302 共鸣</div>
+    </div>
+
+    <!-- Card B-4  锚点 金 -->
+    <div class="watercolor-card">
+      <div class="wc-fold"></div>
+      <div class="wc-stroke" style="height:64px; background:linear-gradient(to bottom, #C9A84C, rgba(201,168,76,0.22));"></div>
+      <div class="wc-splash">
+        <svg viewBox="0 0 280 380" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="blur-d1"><feGaussianBlur stdDeviation="20"/></filter>
+            <filter id="blur-d2"><feGaussianBlur stdDeviation="10"/></filter>
+          </defs>
+          <ellipse cx="200" cy="50"  rx="120" ry="70" fill="rgba(201,168,76,0.14)" filter="url(#blur-d1)" transform="rotate(14 200 50)"/>
+          <ellipse cx="40"  cy="320" rx="85"  ry="58" fill="rgba(201,168,76,0.08)" filter="url(#blur-d1)" transform="rotate(-6 40 320)"/>
+          <ellipse cx="230" cy="230" rx="50"  ry="36" fill="rgba(196,114,90,0.07)" filter="url(#blur-d2)"/>
+          <circle cx="130" cy="80"  r="16"   fill="rgba(201,168,76,0.07)" filter="url(#blur-d2)"/>
+        </svg>
+      </div>
+      <div class="wc-content">
+        <div class="wc-dim">
+          <span class="wc-dim-ink" style="background:#C9A84C;"></span>
+          锚点 · Purpose
+        </div>
+        <div class="wc-quote">
+          以为自己什么都喜欢，其实是
+          <span class="wc-brush" style="background:linear-gradient(to top, rgba(201,168,76,0.20) 40%, transparent 40%)">什么都没认真想过</span>。
+          四个维度逼着我去想清楚，很有价值。
+        </div>
+        <div class="wc-rule">
+          <div class="wc-rule-line" style="background:linear-gradient(to right, rgba(201,168,76,0.3), transparent)"></div>
+          <div class="wc-rule-dot"></div>
+          <div class="wc-rule-line" style="background:linear-gradient(to left, rgba(201,168,76,0.3), transparent)"></div>
+        </div>
+        <div class="wc-author">
+          <div class="wc-name">老 K</div>
+          <div class="wc-info">40岁 · 创业者</div>
+        </div>
+      </div>
+      <div class="wc-resonance">157 共鸣</div>
+    </div>
+
+    <!-- Card B-5  Rita 紫 -->
+    <div class="watercolor-card">
+      <div class="wc-fold"></div>
+      <div class="wc-stroke" style="height:75px; background:linear-gradient(to bottom, #7C5CFC, rgba(124,92,252,0.22));"></div>
+      <div class="wc-splash">
+        <svg viewBox="0 0 280 380" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="blur-e1"><feGaussianBlur stdDeviation="24"/></filter>
+            <filter id="blur-e2"><feGaussianBlur stdDeviation="12"/></filter>
+          </defs>
+          <ellipse cx="70"  cy="40"  rx="140" ry="80"  fill="rgba(124,92,252,0.11)" filter="url(#blur-e1)" transform="rotate(-10 70 40)"/>
+          <ellipse cx="240" cy="330" rx="100" ry="65"  fill="rgba(124,92,252,0.07)" filter="url(#blur-e1)" transform="rotate(8 240 330)"/>
+          <ellipse cx="210" cy="150" rx="60"  ry="40"  fill="rgba(196,114,90,0.07)" filter="url(#blur-e2)"/>
+          <circle cx="55"  cy="280" r="26"   fill="rgba(124,92,252,0.05)" filter="url(#blur-e2)"/>
+        </svg>
+      </div>
+      <div class="wc-content">
+        <div class="wc-dim">
+          <span class="wc-dim-ink" style="background:#7C5CFC;"></span>
+          禀赋 · 热忱
+        </div>
+        <div class="wc-quote">
+          我不只是想做设计，我想
+          <span class="wc-brush" style="background:linear-gradient(to top, rgba(124,92,252,0.16) 40%, transparent 40%)">教会别人看见美</span>。
+          这一个字的差别，让我的路完全变了。
+        </div>
+        <div class="wc-rule">
+          <div class="wc-rule-line" style="background:linear-gradient(to right, rgba(124,92,252,0.25), transparent)"></div>
+          <div class="wc-rule-dot"></div>
+          <div class="wc-rule-line" style="background:linear-gradient(to left, rgba(124,92,252,0.25), transparent)"></div>
+        </div>
+        <div class="wc-author">
+          <div class="wc-name">Rita</div>
+          <div class="wc-info">29岁 · 设计师 → 导师</div>
+        </div>
+      </div>
+      <div class="wc-resonance">89 共鸣</div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

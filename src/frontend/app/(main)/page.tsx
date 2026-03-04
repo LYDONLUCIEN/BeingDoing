@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useLocale } from '@/hooks/useLocale';
-import { useThemeStore, DARK_THEMES } from '@/stores/themeStore';
+import { useThemeStore } from '@/stores/themeStore';
 
 // ── 用户留言数据（2~3 色水彩晕染撞色）──────────────────────────
 const TESTIMONIALS: Array<{
@@ -239,8 +239,8 @@ function darkGlowBg(colors: [string, string, string?]) {
 function TestimonialCarousel() {
   const router = useRouter();
   const { t } = useLocale();
-  const { themeId } = useThemeStore();
-  const isDark = DARK_THEMES.includes(themeId);
+  const { colorScheme } = useThemeStore();
+  const isDark = colorScheme === 'dark';
   const TOTAL = TESTIMONIALS.length + 2; // CTA左 + 6条故事 + CTA右
   const [activeIndex, setActiveIndex] = useState(0);
   const [direction, setDirection] = useState(0);
@@ -421,8 +421,16 @@ export default function LandingPage() {
 
   return (
     <div
-      className="min-h-screen overflow-x-hidden"
-      style={{ background: 'linear-gradient(to bottom, var(--bd-bg), var(--bd-bg-mid), var(--bd-bg-end))' }}
+      className="min-h-screen overflow-x-hidden landing-page-bg"
+      style={{
+        background: `
+          radial-gradient(ellipse 120% 80% at 50% 0%, color-mix(in srgb, var(--bd-phase-values) 5%, transparent) 0%, transparent 55%),
+          radial-gradient(ellipse 90% 70% at 100% 40%, color-mix(in srgb, var(--bd-phase-strengths) 4%, transparent) 0%, transparent 50%),
+          radial-gradient(ellipse 90% 70% at 0% 70%, color-mix(in srgb, var(--bd-phase-interests) 4%, transparent) 0%, transparent 50%),
+          linear-gradient(180deg, var(--bd-bg) 0%, var(--bd-bg-mid) 35%, var(--bd-bg-end) 100%)
+        `,
+        backgroundAttachment: 'fixed',
+      }}
     >
 
       {/* ① Hero */}

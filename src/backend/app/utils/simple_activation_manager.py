@@ -37,11 +37,21 @@ class ActivationRecord:
     status: str = ActivationStatus.ACTIVE
 
 
+def get_simple_base_dir() -> Path:
+    """使用项目根目录下的 data/simple，避免依赖当前工作目录。供激活码、对话、调研等统一使用。"""
+    project_root = Path(__file__).resolve().parents[4]
+    return project_root / "data" / "simple"
+
+
+def _default_base_dir() -> Path:
+    return get_simple_base_dir()
+
+
 class SimpleActivationManager:
     """简单激活码会话管理器（文件存储实现）"""
 
-    def __init__(self, base_dir: str = "data/simple"):
-        self.base_dir = Path(base_dir)
+    def __init__(self, base_dir: Optional[str] = None):
+        self.base_dir = Path(base_dir) if base_dir else _default_base_dir()
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self._activations_file = self.base_dir / "activations.json"
 
@@ -109,9 +119,17 @@ class SimpleActivationManager:
         return record
 
     def get_activation(self, code: str) -> Optional[ActivationRecord]:
-        """根据激活码获取记录（不会自动删除过期记录）"""
+        """根据激活码获取记录（不会自动删除过期记录）。
+        查找时自动 trim 并转为大写（生成的码为大写），方便用户输入。"""
+        if not code or not isinstance(code, str):
+            return None
+        raw = code.strip()
+        if not raw:
+            return None
+        # 激活码生成时为大写+数字，查找时统一转大写
+        normalized = raw.upper()
         records = self._load_all()
-        rec = records.get(code)
+        rec = records.get(normalized) or records.get(raw)
         if not rec:
             return None
 

@@ -18,7 +18,7 @@ from app.core.llmapi import get_default_llm_provider, LLMMessage
 from app.api.v1.auth import get_current_user_optional, _is_debug_admin
 from app.config.settings import settings
 from app.core.knowledge.loader import KnowledgeLoader
-from app.utils.simple_activation_manager import SimpleActivationManager, ActivationStatus
+from app.utils.simple_activation_manager import SimpleActivationManager, ActivationStatus, get_simple_base_dir
 from app.utils.conversation_file_manager import ConversationFileManager
 from app.utils.survey_storage import (
     save_basic_info,
@@ -30,7 +30,7 @@ from app.utils.survey_storage import (
 
 # 每阶段随机抽取的题目数量
 SIMPLE_QUESTION_SAMPLE_SIZE = 6
-SIMPLE_BASE_DIR = "data/simple"
+SIMPLE_BASE_DIR = str(get_simple_base_dir())
 
 router = APIRouter(prefix="/simple-chat", tags=["简单模式对话"])
 
@@ -346,7 +346,7 @@ async def simple_chat(
         manager.touch_activity(rec.code)
 
     # 使用 data/simple 作为根目录保存对话
-    conv_manager = ConversationFileManager(base_dir="data/simple")
+    conv_manager = ConversationFileManager(base_dir=SIMPLE_BASE_DIR)
     phase = (request.phase or "values").strip() or "values"
     category = phase  # 按阶段区分文件
     session_id = rec.session_id
@@ -415,7 +415,7 @@ async def simple_init(
             detail="激活码已过期（历史记录已保留，可以用于回放或导出）",
         )
 
-    conv_manager = ConversationFileManager(base_dir="data/simple")
+    conv_manager = ConversationFileManager(base_dir=SIMPLE_BASE_DIR)
     phase = (request.phase or "values").strip() or "values"
     category = phase
     session_id = rec.session_id
@@ -500,7 +500,7 @@ async def simple_history(activation_code: str, phase: Optional[str] = "values"):
             detail="激活码不存在",
         )
 
-    conv_manager = ConversationFileManager(base_dir="data/simple")
+    conv_manager = ConversationFileManager(base_dir=SIMPLE_BASE_DIR)
     category = (phase or "values").strip() or "values"
     session_id = rec.session_id
 
@@ -553,7 +553,7 @@ async def simple_chat_stream(
 
     phase = (request.phase or "values").strip() or "values"
     category = phase
-    conv_manager = ConversationFileManager(base_dir="data/simple")
+    conv_manager = ConversationFileManager(base_dir=SIMPLE_BASE_DIR)
     session_id = rec.session_id
 
     async def event_stream() -> AsyncIterator[str]:

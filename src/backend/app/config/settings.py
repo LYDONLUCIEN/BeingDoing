@@ -4,6 +4,7 @@
 from pydantic_settings import BaseSettings
 from typing import Optional
 from pathlib import Path
+from app.utils.data_paths import get_conversation_dir
 
 class Settings(BaseSettings):
     """应用配置类"""
@@ -76,14 +77,15 @@ class Settings(BaseSettings):
     CONTEXT_KEEP_LATEST_MESSAGES: int = 3
     CONTEXT_MAX_TOKEN_BUDGET: int = 8000
 
-    # 对话文件存储目录
-    CONVERSATION_DIR: str = "data/conversations"
+    # 对话文件存储目录（项目根 data/conversations）
+    CONVERSATION_DIR: str = str(get_conversation_dir())
 
     class Config:
         #env_file = ".env"
         base_dir = Path(__file__).resolve().parents[4]  # 指向 /home/gitclone/BeingDoing
         env_file = base_dir / ".env"
         case_sensitive = True
+        extra = "ignore"  # 忽略 .env 中未声明的变量（如 NEXT_PUBLIC_API_URL 供前端使用）
 
 
 # 全局配置实例

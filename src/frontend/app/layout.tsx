@@ -35,7 +35,7 @@ export default function RootLayout({
         {/* Apply saved theme before first paint to avoid FOUC and hydration mismatch */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var s=JSON.parse(localStorage.getItem('bd-theme')||'{}');var st=s&&s.state;var id=st&&st.themeId;var dark=['slate-dark','forest'];if(id){document.documentElement.setAttribute('data-theme',id);document.documentElement.setAttribute('data-color-scheme',dark.indexOf(id)>=0?'dark':'light');}}catch(e){}})();`,
+            __html: `(function(){try{var s=JSON.parse(localStorage.getItem('bd-theme')||'{}');var st=s&&s.state;var cs=st&&st.colorScheme;var id=st&&st.themeId;var dark=['slate-dark'];var light=['ideal'];if(cs){document.documentElement.setAttribute('data-color-scheme',cs);document.documentElement.setAttribute('data-theme',cs==='dark'?'slate-dark':'ideal');}else if(id&&(dark.indexOf(id)>=0||light.indexOf(id)>=0)){document.documentElement.setAttribute('data-theme',id);document.documentElement.setAttribute('data-color-scheme',dark.indexOf(id)>=0?'dark':'light');}}catch(e){}})();`,
           }}
         />
       </head>

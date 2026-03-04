@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>职引 - 认出你自己</title>
+    
+    <!-- 字体库 -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Outfit:wght@300;400;500&family=Noto+Serif+SC:wght@300;400;600&family=Noto+Sans+SC:wght@300;400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-lite-webfont@1.1.0/style.css">
+
+    <style>
+        /* ================= 基础变量设定 ================= */
+        :root {
+            --font-en: 'Inter', sans-serif;
+            --font-cn: 'Noto Sans SC', sans-serif;
+            --font-slogan: 'Noto Sans SC', sans-serif;
+            
+            /* 确保色彩对比度足够 */
+            --color-blue: rgba(162, 194, 232, 0.9);
+            --color-green: rgba(181, 216, 198, 0.9);
+            --color-red: rgba(244, 179, 179, 0.9);
+            --color-yellow: rgba(253, 224, 147, 0.9);
+            
+            --bg-color: #faf9f8; 
+            --text-main: #1d1d1f; 
+            --text-light: #86868b;
+        }
+
+        body.font-serif {
+            --font-en: 'Playfair Display', serif;
+            --font-cn: 'Noto Serif SC', serif;
+            --font-slogan: 'Noto Serif SC', serif;
+        }
+
+        body.font-humanist {
+            --font-en: 'Outfit', sans-serif;
+            --font-cn: 'LXGW WenKai Lite', serif;
+            --font-slogan: 'LXGW WenKai Lite', serif;
+        }
+
+        body, html {
+            margin: 0; padding: 0;
+            width: 100%; height: 100%;
+            background-color: var(--bg-color); /* 底部基准色 */
+            color: var(--text-main);
+            overflow-x: hidden;
+        }
+
+        /* ================= 核心修复：层级系统 (Z-index) ================= */
+        /* 1. 背景动画层 (在 base 之上，内容之下) */
+        .bg-layer {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            z-index: 1; /* 强制正数层级，防止被吞噬 */
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none; /* 防止遮挡鼠标点击 */
+            transition: opacity 0.8s ease-in-out, visibility 0.8s;
+        }
+        .bg-layer.active { 
+            opacity: 1; 
+            visibility: visible;
+        }
+
+        /* 2. 噪点层 (覆盖在动画层之上) */
+        .noise-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            z-index: 2; 
+            pointer-events: none;
+            opacity: 0.05;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+        }
+
+        /* 3. 内容层 (必须相对定位，拉高层级) */
+        .container {
+            position: relative;
+            z-index: 10; /* 绝对在最上层 */
+            max-width: 1000px; margin: 0 auto; padding: 12vh 20px;
+            display: flex; flex-direction: column; align-items: center; text-align: center;
+        }
+
+        /* ================= 强制 GPU 硬件加速的动画 ================= */
+
+        /* --- 动画 1: 网格呼吸 --- */
+        .mesh-blob {
+            position: absolute;
+            filter: blur(80px);
+            border-radius: 50%;
+            animation: float 15s infinite alternate cubic-bezier(0.4, 0, 0.2, 1);
+            will-change: transform; /* 触发独立渲染层 */
+        }
+        .blob-1 { background: var(--color-blue); width: 40vw; height: 40vw; top: -5%; left: -5%; }
+        .blob-2 { background: var(--color-green); width: 35vw; height: 35vw; bottom: 0%; right: -5%; animation-delay: -3s; }
+        .blob-3 { background: var(--color-red); width: 30vw; height: 30vw; top: 40%; left: 30%; animation-delay: -7s; }
+        .blob-4 { background: var(--color-yellow); width: 25vw; height: 25vw; top: -5%; right: 20%; animation-delay: -11s; }
+
+        @keyframes float {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(10vw, 10vh) scale(1.2); }
+        }
+
+        /* --- 动画 2: 雷达波纹 (彻底重写，使用 Transform GPU 加速) --- */
+        /* --- 动画 2: 雷达波纹 (彩色单圈轮播版) --- */
+        #bg-frequency {
+            overflow: hidden;
+        }
+        .ring {
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 100px; height: 100px; 
+            /* 去掉写死的灰色，改为继承 border-color */
+            border: 2px solid; 
+            background: rgba(0, 0, 0, 0.01);
+            border-radius: 50%;
+            animation: rippleExpand 8s cubic-bezier(0.1, 0.8, 0.5, 1) infinite;
+            will-change: transform, opacity;
+        }
+        /* 一圈一色，隐喻四维共鸣 */
+        .ring-1 { border-color: var(--color-blue); animation-delay: 0s; }
+        .ring-2 { border-color: var(--color-green); animation-delay: 2s; }
+        .ring-3 { border-color: var(--color-red); animation-delay: 4s; }
+        .ring-4 { border-color: var(--color-yellow); animation-delay: 6s; }
+
+        @keyframes rippleExpand {
+            /* 稍微调整了透明度，让色彩更清晰但不出戏 */
+            0% { transform: translate(-50%, -50%) scale(0.1); opacity: 0.8; }
+            100% { transform: translate(-50%, -50%) scale(30); opacity: 0; }
+        }
+
+        /* --- 动画 3: 光谱扫射 --- */
+        #bg-prism {
+            background: linear-gradient(
+                120deg, 
+                var(--bg-color) 0%, 
+                var(--bg-color) 30%, 
+                var(--color-blue) 45%, 
+                var(--color-green) 50%, 
+                var(--color-yellow) 55%, 
+                var(--color-red) 60%, 
+                var(--bg-color) 75%, 
+                var(--bg-color) 100%
+            );
+            background-size: 300% 300%;
+            animation: prismSweep 8s linear infinite alternate; /* 加快扫射速度 */
+            will-change: background-position;
+        }
+
+        @keyframes prismSweep {
+            0% { background-position: 0% 50%; }
+            100% { background-position: 100% 50%; }
+        }
+
+        /* ================= UI 组件细节 ================= */
+        .subtitle { font-family: var(--font-en); font-size: 13px; letter-spacing: 0.3em; color: var(--text-light); text-transform: uppercase; margin-bottom: 24px; font-weight: 500; }
+        .title { font-family: var(--font-cn); font-size: 64px; font-weight: 600; margin: 0 0 24px 0; letter-spacing: 0.05em; }
+        .slogan { font-family: var(--font-slogan); font-size: 24px; color: var(--text-light); margin: 0 0 60px 0; font-weight: 300; letter-spacing: 0.05em; transition: font-family 0.3s;}
+
+        .btn-primary {
+            background-color: var(--text-main); color: #fff; border: none; padding: 18px 48px; font-size: 16px; font-family: var(--font-cn); border-radius: 30px; cursor: pointer;
+            box-shadow: 0 20px 40px -10px rgba(0,0,0,0.2); transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+        .btn-primary:hover { transform: scale(0.96) translateY(2px); box-shadow: 0 10px 20px -5px rgba(0,0,0,0.15); background-color: #333; }
+
+        .grid-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-top: 80px; width: 100%; }
+
+        .card {
+            background: rgba(255, 255, 255, 0.6); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.9); border-radius: 24px; padding: 40px 24px; text-align: left;
+            box-shadow: 0 20px 40px -10px rgba(0,0,0,0.03); transition: all 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); position: relative; overflow: hidden;
+        }
+        .card:hover { transform: translateY(-8px) scale(1.02); box-shadow: 0 30px 60px -15px rgba(0,0,0,0.08); background: rgba(255, 255, 255, 0.85); }
+        .card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; opacity: 0.9; }
+        .card.blue::before { background: #4A90E2; }
+        .card.green::before { background: #50E3C2; }
+        .card.red::before { background: #FF5A5F; }
+        .card.yellow::before { background: #F5A623; }
+
+        .card-en { font-family: var(--font-en); font-size: 12px; color: var(--text-light); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
+        .card-cn { font-family: var(--font-cn); font-size: 24px; font-weight: 500; margin: 0 0 16px 0; }
+        .card-desc { font-family: var(--font-cn); font-size: 14px; line-height: 1.6; color: var(--text-light); font-weight: 300; }
+
+        .control-panel {
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(0,0,0,0.08);
+            padding: 16px 32px; border-radius: 40px; display: flex; gap: 32px; box-shadow: 0 10px 40px rgba(0,0,0,0.08); z-index: 100;
+        }
+        .control-group { display: flex; align-items: center; gap: 12px; }
+        .control-label { font-family: var(--font-cn); font-size: 12px; color: var(--text-light); font-weight: 500; }
+        select { appearance: none; background: rgba(0,0,0,0.04); border: 1px solid rgba(0,0,0,0.05); padding: 8px 16px; border-radius: 20px; font-family: var(--font-cn); font-size: 13px; cursor: pointer; outline: none; transition: background 0.3s;}
+        select:hover { background: rgba(0,0,0,0.08); }
+
+        @media (max-width: 768px) {
+            .grid-cards { grid-template-columns: 1fr 1fr; }
+            .title { font-size: 48px; } .slogan { font-size: 18px; }
+            .control-panel { flex-direction: column; gap: 16px; border-radius: 24px; padding: 20px; width: 80%;}
+        }
+        @media (max-width: 480px) { .grid-cards { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+
+    <!-- 背景 1：动态色块 -->
+    <div id="bg-mesh" class="bg-layer active">
+        <div class="mesh-blob blob-1"></div>
+        <div class="mesh-blob blob-2"></div>
+        <div class="mesh-blob blob-3"></div>
+        <div class="mesh-blob blob-4"></div>
+    </div>
+
+    <!-- 背景 2：雷达波纹 (GPU加速版) -->
+    <div id="bg-frequency" class="bg-layer">
+        <div class="ring ring-1"></div>
+        <div class="ring ring-2"></div>
+        <div class="ring ring-3"></div>
+        <div class="ring ring-4"></div>
+    </div>
+
+    <!-- 背景 3：光谱扫射 (线性渐变版) -->
+    <div id="bg-prism" class="bg-layer"></div>
+
+    <!-- 全局噪点层 (必须放在背景层之上，内容层之下) -->
+    <div class="noise-overlay"></div>
+
+    <!-- 主体内容 -->
+    <div class="container">
+        <div class="subtitle" data-cn="InnerWork / Vocation" data-en="InnerWork / Vocation">InnerWork / Vocation</div>
+        <h1 class="title" data-cn="职引" data-en="InnerWork">职引</h1>
+        <h2 class="slogan" data-cn="不是找到方向，而是认出自己。" data-en="Don't find a path. Recognize yourself.">不是找到方向，而是认出自己。</h2>
+        
+        <button class="btn-primary" data-cn="开始探索" data-en="Start Exploring">开始探索</button>
+
+        <div class="grid-cards">
+            <div class="card blue"><div class="card-en">Creed</div><h3 class="card-cn" data-cn="底色" data-en="Creed">底色</h3><div class="card-desc" data-cn="你的核心价值观。你是一个什么样的人，在追求怎样的意义。" data-en="Your core values. Who you are and the meaning you seek.">你的核心价值观。你是一个什么样的人，在追求怎样的意义。</div></div>
+            <div class="card green"><div class="card-en">Gift</div><h3 class="card-cn" data-cn="天赋" data-en="Gift">天赋</h3><div class="card-desc" data-cn="你的能力谱系。那些你能轻松做到，甚至能在其中获得滋养的事。" data-en="Your capability spectrum. Things you do effortlessly and gain energy from.">你的能力谱系。那些你能轻松做到，甚至能在其中获得滋养的事。</div></div>
+            <div class="card red"><div class="card-en">Fire</div><h3 class="card-cn" data-cn="热忱" data-en="Fire">热忱</h3><div class="card-desc" data-cn="你的内在火焰。让你感到兴奋、愿意全身心投入的行业与领域。" data-en="Your inner flame. Fields and industries that excite you to dive all in.">你的内在火焰。让你感到兴奋、愿意全身心投入的行业与领域。</div></div>
+            <div class="card yellow"><div class="card-en">North Star</div><h3 class="card-cn" data-cn="航向" data-en="North Star">航向</h3><div class="card-desc" data-cn="你做事的终极目的。外部的锚点，指引你在现实世界中前行。" data-en="Your ultimate purpose. The external anchor guiding your path in the real world.">你做事的终极目的。外部的锚点，指引你在现实世界中前行。</div></div>
+        </div>
+    </div>
+
+    <!-- 底部控制面板 -->
+    <div class="control-panel">
+        <div class="control-group">
+            <select id="bg-selector" onchange="changeBg(this.value)">
+                <option value="bg-mesh">光晕交融 (Mesh)</option>
+                <option value="bg-frequency">四维共鸣 (Ripple)</option>
+                <option value="bg-prism">光谱扫射 (Prism)</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <select id="font-selector" onchange="changeFont(this.value)">
+                <option value="font-sans">理性客观 (Sans)</option>
+                <option value="font-humanist">温暖包容 (Handwriting)</option>
+                <option value="font-serif">深度哲学 (Serif)</option>
+            </select>
+        </div>
+        <!-- 新增语言切换下拉框 -->
+        <div class="control-group">
+            <select id="lang-selector" onchange="changeLang(this.value)">
+                <option value="cn">中文 (CN)</option>
+                <option value="en">English (EN)</option>
+            </select>
+        </div>
+    </div>
+
+    <script>
+        // 背景切换
+        function changeBg(bgId) {
+            document.querySelectorAll('.bg-layer').forEach(el => el.classList.remove('active'));
+            document.getElementById(bgId).classList.add('active');
+        }
+
+        // 字体切换
+        function changeFont(fontClass) {
+            document.body.className = ''; 
+            if (fontClass !== 'font-sans') { document.body.classList.add(fontClass); }
+        }
+
+                // 语言切换逻辑
+        function changeLang(lang) {
+            // 找到所有带有 data-cn 和 data-en 属性的元素
+            const elements = document.querySelectorAll('[data-cn], [data-en]');
+            
+            elements.forEach(el => {
+                // 如果切换到英文，但该元素不打算改变（比如 subtitle），也会有默认值处理
+                if(lang === 'en' && el.getAttribute('data-en')) {
+                    el.innerText = el.getAttribute('data-en');
+                } else if(lang === 'cn' && el.getAttribute('data-cn')) {
+                    el.innerText = el.getAttribute('data-cn');
+                }
+            });
+
+            // 针对英文排版进行微调（英文单词长，字体需要稍微调整大小）
+            if (lang === 'en') {
+                document.querySelector('.title').style.fontSize = '56px';
+                document.querySelector('.title').style.letterSpacing = '-0.02em'; // 英文标题需要紧凑一点
+                document.querySelector('.slogan').style.fontSize = '20px';
+            } else {
+                document.querySelector('.title').style.fontSize = '64px';
+                document.querySelector('.title').style.letterSpacing = '0.05em';
+                document.querySelector('.slogan').style.fontSize = '24px';
+            }
+        }
+    </script>
+</body>
+</html>

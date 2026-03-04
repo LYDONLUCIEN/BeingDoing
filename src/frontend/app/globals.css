@@ -7,16 +7,9 @@
    NOTE: All @import must come before @tailwind directives.
    ════════════════════════════════════════════════════════ */
 
-/* ── Themes ─────────────────────────────────────────── */
+/* ── Themes（黑白各一套）──────────────────────────────── */
 @import '../styles/themes/slate-dark.css';
-@import '../styles/themes/warm-light.css';
-@import '../styles/themes/forest.css';
-@import '../styles/themes/sand.css';
-@import '../styles/themes/serene.css';
-@import '../styles/themes/insight.css';
-@import '../styles/themes/aurora.css';
 @import '../styles/themes/ideal.css';
-@import '../styles/themes/glimmer.css';
 
 /* ── Base ────────────────────────────────────────────── */
 @import '../styles/base/reset.css';

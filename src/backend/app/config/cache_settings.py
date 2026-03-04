@@ -3,6 +3,7 @@
 """
 from pydantic_settings import BaseSettings
 from pathlib import Path
+from app.utils.data_paths import get_conversation_dir
 
 
 class CacheSettings(BaseSettings):
@@ -38,7 +39,7 @@ class CacheSettings(BaseSettings):
     # all_flow.json: 完整对话（原文 + AI 思考过程）
     # main_flow.json: 用户可见的咨询对话
     # note.json: AI 总结的结论性内容
-    CONVERSATION_DIR: str = "data/conversations"
+    CONVERSATION_DIR: str = str(get_conversation_dir())
     ALL_FLOW_FILENAME: str = "all_flow.json"
     MAIN_FLOW_FILENAME: str = "main_flow.json"
     NOTE_FILENAME: str = "note.json"

@@ -68,11 +68,15 @@ export default function ActivatePage() {
         router.push('/explore/survey');
       }
     } catch (err: any) {
-      const detail =
+      const raw =
         err?.response?.data?.detail ||
         err?.response?.data?.message ||
-        '激活失败，请检查激活码是否正确';
-      setError(String(detail));
+        err?.message;
+      const detail = Array.isArray(raw) ? raw[0] : raw;
+      const fallback = err?.response
+        ? '激活失败，请检查激活码是否正确'
+        : '网络错误或服务器未响应，请检查后端是否启动、NEXT_PUBLIC_API_URL 是否正确';
+      setError(detail || fallback);
     } finally {
       setLoading(false);
     }

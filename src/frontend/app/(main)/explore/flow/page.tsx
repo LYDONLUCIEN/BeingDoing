@@ -8,7 +8,7 @@ import { useProgressStore } from '@/stores/progressStore';
 import { chatApi, type Message, type QuestionProgress, type AnswerCardMeta } from '@/lib/api/chat';
 import { surveyApi } from '@/lib/api/survey';
 import { useAuthModalStore } from '@/stores/authModalStore';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ChevronDown } from 'lucide-react';
 import SurveyForm from '@/components/survey/SurveyForm';
 import type { SurveyData } from '@/lib/survey/schema';
 
@@ -586,16 +586,15 @@ export default function ExploreFlowPageV2() {
                 <div ref={chatEndRef} />
               </div>
 
-              {/* 滚动到底部按钮 */}
+              {/* 向下箭头：不在最底部时显示，点击滚动到底部 */}
               <button
                 type="button"
+                aria-label="滚动到底部"
                 className={`flow-scroll-bottom-btn ${showScrollBottom ? 'visible' : ''}`}
                 onClick={scrollToBottom}
                 title="滚动到底部"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
+                <ChevronDown size={20} strokeWidth={2.5} />
               </button>
             </div>
 

@@ -18,6 +18,13 @@ set -e
 
 SESSION="beingdoing"
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+
+# 加载 .env 供 frontend 使用（NEXT_PUBLIC_API_URL 等，确保跨机器访问时 API 地址正确）
+if [ -f "$REPO_ROOT/.env" ]; then
+  set -a
+  source "$REPO_ROOT/.env"
+  set +a
+fi
 BACKEND_DIR="$REPO_ROOT/src/backend"
 FRONTEND_DIR="$REPO_ROOT/src/frontend"
 

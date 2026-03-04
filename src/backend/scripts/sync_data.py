@@ -24,13 +24,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-# 项目路径
+# 项目路径（统一使用项目根 data/）
 BACKEND_ROOT = Path(__file__).resolve().parent.parent  # src/backend/
-DATA_DIR = BACKEND_ROOT / "data"
+PROJECT_ROOT = BACKEND_ROOT.parent.parent  # 项目根 BeingDoing/
+DATA_DIR = PROJECT_ROOT / "data"
 CONVERSATIONS_DIR = DATA_DIR / "conversations"
 DEBUG_LOGS_DIR = DATA_DIR / "debug_logs"
 QUESTION_PROGRESS_DIR = DATA_DIR / "question_progress"
-LOGS_DIR = BACKEND_ROOT / "logs"
+LOGS_DIR = DATA_DIR / "logs"
 
 
 # ========== 工具函数 ==========

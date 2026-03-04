@@ -1,0 +1,1270 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>他们的故事 · 四种质感</title>
+<style>
+
+/* ============================================================
+   全局基础
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --paper:      #F8F5EF;
+  --paper-dark: #F0EDE6;
+  --ink:        #22201C;
+  --ink-soft:   #6A6460;
+  --ink-mute:   #ABA69F;
+  --blue:       #6E9BB5;
+  --green:      #6F9E82;
+  --terra:      #B8705A;
+  --ochre:      #B89A42;
+  --serif: 'Noto Serif SC', 'Source Han Serif SC', Georgia, serif;
+  --sans:  'PingFang SC', 'Noto Sans SC', sans-serif;
+}
+
+html, body {
+  height: 100%;
+  font-family: var(--sans);
+  background: var(--paper);
+  color: var(--ink);
+  overflow: hidden;
+}
+
+/* ============================================================
+   切换器（顶部导航）
+   ============================================================ */
+.switcher {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 16px 24px;
+  background: rgba(248,245,239,0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+
+.sw-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 18px;
+  border: none;
+  background: none;
+  font-family: var(--sans);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--ink-mute);
+  cursor: pointer;
+  border-radius: 20px;
+  transition: all 0.25s ease;
+  white-space: nowrap;
+}
+
+.sw-btn .sw-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--ink-mute);
+  transition: all 0.25s ease;
+}
+
+.sw-btn:hover { color: var(--ink-soft); }
+
+.sw-btn.active {
+  color: var(--ink);
+  background: rgba(0,0,0,0.05);
+}
+.sw-btn.active .sw-dot {
+  background: var(--ink);
+  transform: scale(1.4);
+}
+
+.sw-sep {
+  width: 1px; height: 14px;
+  background: rgba(0,0,0,0.10);
+  margin: 0 4px;
+}
+
+/* 所有变体容器 */
+.variant {
+  position: fixed;
+  inset: 54px 0 0 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.5s ease;
+}
+.variant.active {
+  opacity: 1;
+  pointer-events: all;
+}
+
+/* ============================================================
+   ██ 变体 A · 书页  Book Page
+   ============================================================ */
+#va {
+  background: var(--paper);
+  overflow-y: auto;
+  padding: 80px 24px 120px;
+}
+
+#va::-webkit-scrollbar { width: 3px; }
+#va::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.10); border-radius: 3px; }
+
+.va-inner {
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+/* 顶部章节题 */
+.va-chapter {
+  font-family: var(--serif);
+  font-size: 11px;
+  letter-spacing: 0.20em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  margin-bottom: 56px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.va-chapter::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, rgba(0,0,0,0.10), transparent);
+}
+
+/* 每条故事 */
+.va-story {
+  display: grid;
+  grid-template-columns: 3px 1fr;
+  gap: 0 28px;
+  margin-bottom: 64px;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+.va-story.revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* 左侧色条 - 会"生长" */
+.va-line {
+  width: 3px;
+  border-radius: 3px;
+  height: 0;
+  transition: height 0.9s cubic-bezier(0.16,1,0.3,1);
+  margin-top: 4px;
+}
+.va-story.revealed .va-line { height: 100%; }
+
+.va-body {}
+
+.va-dim {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  margin-bottom: 14px;
+  font-family: var(--sans);
+}
+
+.va-quote {
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 2.1;
+  color: var(--ink);
+  margin-bottom: 20px;
+  letter-spacing: 0.01em;
+}
+
+/* 荧光笔划过效果 */
+.va-hl {
+  background: linear-gradient(to top,
+    rgba(0,0,0,0.07) 30%, transparent 30%);
+}
+
+.va-sig {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.va-sig-line {
+  width: 16px; height: 1px;
+  background: var(--ink-mute);
+  opacity: 0.4;
+}
+.va-name {
+  font-size: 12px;
+  color: var(--ink-soft);
+  letter-spacing: 0.05em;
+}
+.va-role {
+  font-size: 11px;
+  color: var(--ink-mute);
+  letter-spacing: 0.04em;
+}
+
+/* 页底波形装饰 */
+.va-wave-wrap {
+  margin-top: 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.va-wave-label {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--ink-mute);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.va-wave-track {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.va-wave-bar {
+  width: 3px;
+  border-radius: 3px;
+  background: var(--ink);
+  opacity: 0.12;
+  transition: height 0.3s ease, opacity 0.3s ease;
+  animation: waBar ease-in-out infinite;
+}
+@keyframes waBar {
+  0%,100% { opacity: 0.10; }
+  50%      { opacity: 0.22; }
+}
+
+/* ============================================================
+   ██ 变体 B · 弦振  String Resonance
+   ============================================================ */
+#vb {
+  background: var(--paper);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+.vb-top {
+  position: absolute;
+  top: 32px; left: 0; right: 0;
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+
+/* 四维频谱点（顶部） */
+.vb-spectrum {
+  position: absolute;
+  top: 52px; left: 0; right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+}
+
+.vb-sp-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  opacity: 0.3;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+.vb-sp-item.lit {
+  opacity: 1;
+  transform: translateY(-3px);
+}
+
+.vb-sp-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  transition: box-shadow 0.4s ease, transform 0.4s ease;
+}
+.vb-sp-item.lit .vb-sp-dot {
+  box-shadow: 0 0 0 4px rgba(255,255,255,0.4), 0 0 12px currentColor;
+  transform: scale(1.3);
+}
+.vb-sp-label {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--ink-mute);
+}
+
+/* 弦 + Canvas */
+.vb-string-wrap {
+  width: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+#vb-canvas {
+  width: 100%;
+  height: 120px;
+  display: block;
+}
+
+/* 故事文字 */
+.vb-story {
+  text-align: center;
+  max-width: 480px;
+  padding: 0 32px;
+  position: relative;
+}
+
+.vb-quote {
+  font-family: var(--serif);
+  font-size: 18px;
+  line-height: 2.0;
+  color: var(--ink);
+  margin-bottom: 24px;
+  letter-spacing: 0.01em;
+  min-height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.4s ease;
+}
+
+.vb-author {
+  font-size: 12px;
+  color: var(--ink-mute);
+  letter-spacing: 0.08em;
+  transition: opacity 0.4s ease;
+}
+
+/* 导航 */
+.vb-nav {
+  position: absolute;
+  bottom: 40px; left: 0; right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.vb-nav-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--ink);
+  opacity: 0.12;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+}
+.vb-nav-dot.active {
+  opacity: 1;
+  transform: scale(1.4);
+}
+
+/* ============================================================
+   ██ 变体 C · 满版沉浸  Full-screen Immersion
+   ============================================================ */
+#vc {
+  position: relative;
+  overflow: hidden;
+}
+
+/* 背景色温层 */
+.vc-bg {
+  position: absolute;
+  inset: 0;
+  transition: background 1.2s ease;
+}
+
+/* 极淡的纸张纹理 */
+.vc-noise {
+  position: absolute;
+  inset: 0;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)'/%3E%3C/svg%3E");
+  pointer-events: none;
+}
+
+/* 墨点晕染层 */
+.vc-ink {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(120px);
+  pointer-events: none;
+  transition: background 1.2s ease, transform 1.8s cubic-bezier(0.16,1,0.3,1);
+  width: 60vw; height: 60vw;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%) scale(0.8);
+}
+.vc-ink.spread {
+  transform: translate(-50%, -50%) scale(1.2);
+}
+
+/* 内容 */
+.vc-content {
+  position: relative;
+  z-index: 2;
+  width: 100%; height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.vc-dim-line {
+  width: 32px; height: 1px;
+  margin: 0 auto 20px;
+  transition: background 1.2s ease;
+  border-radius: 1px;
+}
+
+.vc-quote {
+  font-family: var(--serif);
+  font-size: clamp(18px, 3.2vw, 26px);
+  line-height: 2.1;
+  color: var(--ink);
+  max-width: 580px;
+  text-align: center;
+  margin-bottom: 36px;
+  letter-spacing: 0.015em;
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.vc-name {
+  font-size: 12px;
+  color: var(--ink-soft);
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  transition: opacity 0.5s ease;
+}
+.vc-role {
+  font-size: 11px;
+  color: var(--ink-mute);
+  letter-spacing: 0.06em;
+  margin-top: 4px;
+  text-align: center;
+  transition: opacity 0.5s ease;
+}
+
+/* 淡入淡出辅助 */
+.vc-quote.fading, .vc-name.fading, .vc-role.fading { opacity: 0; transform: translateY(10px); }
+
+/* 左右翻页 */
+.vc-arrow {
+  position: absolute;
+  top: 50%; transform: translateY(-50%);
+  z-index: 5;
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.10);
+  background: rgba(248,245,239,0.60);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  color: var(--ink-soft);
+  transition: all 0.22s ease;
+  user-select: none;
+}
+.vc-arrow:hover {
+  background: rgba(248,245,239,0.90);
+  border-color: rgba(0,0,0,0.18);
+  transform: translateY(-50%) scale(1.08);
+}
+.vc-prev { left: 28px; }
+.vc-next { right: 28px; }
+
+/* 底部指示器 */
+.vc-dots {
+  position: absolute;
+  bottom: 32px; left: 0; right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  z-index: 5;
+}
+.vc-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--ink);
+  opacity: 0.15;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+}
+.vc-dot.active {
+  opacity: 0.5;
+  transform: scale(1.5);
+}
+
+/* 进度音波（底部） */
+.vc-waveform {
+  position: absolute;
+  bottom: 56px; left: 50%; transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2.5px;
+  z-index: 5;
+  opacity: 0.2;
+}
+.vc-wbar {
+  width: 2px;
+  border-radius: 2px;
+  background: var(--ink);
+  animation: vcWave ease-in-out infinite;
+}
+@keyframes vcWave {
+  0%,100% { transform: scaleY(0.4); }
+  50%      { transform: scaleY(1); }
+}
+
+/* ============================================================
+   ██ 变体 D · 频谱栏  Spectrum Bars
+   ============================================================ */
+#vd {
+  background: var(--paper);
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  height: 100%;
+}
+
+/* 左侧四色竖栏 */
+.vd-bars {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid rgba(0,0,0,0.06);
+  position: relative;
+}
+
+.vd-bar {
+  flex: 1;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: flex 0.6s cubic-bezier(0.16,1,0.3,1);
+}
+
+/* 非激活时背景 */
+.vd-bar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0.06;
+  transition: opacity 0.4s ease;
+}
+
+.vd-bar.active { flex: 2.4; }
+.vd-bar.active::before { opacity: 0.12; }
+
+/* 竖向文字 */
+.vd-bar-label {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: currentColor;
+  opacity: 0.55;
+  transition: opacity 0.4s ease, letter-spacing 0.4s ease;
+  user-select: none;
+}
+.vd-bar.active .vd-bar-label {
+  opacity: 1;
+  letter-spacing: 0.22em;
+}
+
+/* 右侧边色线 */
+.vd-bar-edge {
+  position: absolute;
+  right: 0; top: 16%; bottom: 16%;
+  width: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 0.4s ease, top 0.6s ease, bottom 0.6s ease;
+}
+.vd-bar.active .vd-bar-edge {
+  opacity: 0.7;
+  top: 0%; bottom: 0%;
+}
+
+/* 活跃点 */
+.vd-bar-dot {
+  position: absolute;
+  right: -4px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  border: 2px solid var(--paper);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  top: 50%; transform: translateY(-50%);
+}
+.vd-bar.active .vd-bar-dot { opacity: 1; }
+
+/* 右侧内容区 */
+.vd-content {
+  padding: 56px 64px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+/* 音波 SVG（装饰） */
+.vd-wave-svg {
+  position: absolute;
+  bottom: 40px; right: 40px;
+  opacity: 0.08;
+  pointer-events: none;
+}
+
+.vd-dim-tag {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  margin-bottom: 28px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: opacity 0.4s ease;
+}
+.vd-dim-dash {
+  width: 20px; height: 1px;
+  border-radius: 1px;
+}
+
+.vd-quote {
+  font-family: var(--serif);
+  font-size: clamp(17px, 2.4vw, 22px);
+  line-height: 2.1;
+  color: var(--ink);
+  max-width: 480px;
+  margin-bottom: 36px;
+  letter-spacing: 0.01em;
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.vd-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: opacity 0.5s ease;
+}
+.vd-line { width: 20px; height: 1px; background: var(--ink-mute); opacity: 0.4; }
+.vd-name { font-size: 13px; color: var(--ink-soft); letter-spacing: 0.04em; }
+.vd-role { font-size: 11px; color: var(--ink-mute); letter-spacing: 0.04em; }
+
+/* 动态：内容切换 */
+.vd-content .vd-quote.fading,
+.vd-content .vd-dim-tag.fading,
+.vd-content .vd-meta.fading {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+/* ============================================================
+   公共工具
+   ============================================================ */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+</style>
+</head>
+<body>
+
+<!-- ══════════ 切换器 ══════════ -->
+<nav class="switcher">
+  <button class="sw-btn active" data-v="va" onclick="switchVariant('va',this)">
+    <span class="sw-dot"></span>书页
+  </button>
+  <div class="sw-sep"></div>
+  <button class="sw-btn" data-v="vb" onclick="switchVariant('vb',this)">
+    <span class="sw-dot"></span>弦振
+  </button>
+  <div class="sw-sep"></div>
+  <button class="sw-btn" data-v="vc" onclick="switchVariant('vc',this)">
+    <span class="sw-dot"></span>满版沉浸
+  </button>
+  <div class="sw-sep"></div>
+  <button class="sw-btn" data-v="vd" onclick="switchVariant('vd',this)">
+    <span class="sw-dot"></span>频谱栏
+  </button>
+</nav>
+
+<!-- ══════════════════════════════════════════════════════════
+     变体 A · 书页
+     ══════════════════════════════════════════════════════════ -->
+<div class="variant active" id="va">
+  <div class="va-inner">
+
+    <div class="va-chapter">他们的故事</div>
+
+    <!-- Story 1 -->
+    <div class="va-story" id="va-s1">
+      <div class="va-line" style="background:var(--blue)"></div>
+      <div class="va-body">
+        <div class="va-dim">信念 · Creed</div>
+        <div class="va-quote">
+          原来沟通协调这件事对我来说真的是
+          <span class="va-hl">禀赋，不是习惯</span>。
+          这个区分让我第一次觉得自己有竞争力。
+        </div>
+        <div class="va-sig">
+          <div class="va-sig-line"></div>
+          <div>
+            <div class="va-name">Maggie</div>
+            <div class="va-role">32岁 · 市场运营</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Story 2 -->
+    <div class="va-story" id="va-s2">
+      <div class="va-line" style="background:var(--green)"></div>
+      <div class="va-body">
+        <div class="va-dim">禀赋 · Genius</div>
+        <div class="va-quote">
+          帮助别人成长这件事，让我<span class="va-hl">忘我</span>。
+          我以为那只是爱好，没想到可以成为职业核心。
+        </div>
+        <div class="va-sig">
+          <div class="va-sig-line"></div>
+          <div>
+            <div class="va-name">阿文</div>
+            <div class="va-role">25岁 · 应届生</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Story 3 -->
+    <div class="va-story" id="va-s3">
+      <div class="va-line" style="background:var(--terra)"></div>
+      <div class="va-body">
+        <div class="va-dim">热忱 · Calling</div>
+        <div class="va-quote">
+          「使命感」以前对我太虚了。但当我说出
+          <span class="va-hl">「我想帮普通人做出好决策」</span>
+          的时候，我哭了。
+        </div>
+        <div class="va-sig">
+          <div class="va-sig-line"></div>
+          <div>
+            <div class="va-name">晓敏</div>
+            <div class="va-role">35岁 · 咨询顾问</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Story 4 -->
+    <div class="va-story" id="va-s4">
+      <div class="va-line" style="background:var(--ochre)"></div>
+      <div class="va-body">
+        <div class="va-dim">锚点 · Purpose</div>
+        <div class="va-quote">
+          以为自己什么都喜欢，其实是
+          <span class="va-hl">什么都没认真想过</span>。
+          四个维度逼着我想清楚，很有价值。
+        </div>
+        <div class="va-sig">
+          <div class="va-sig-line"></div>
+          <div>
+            <div class="va-name">老 K</div>
+            <div class="va-role">40岁 · 创业者</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 底部音波装饰 -->
+    <div class="va-wave-wrap" id="va-wave"></div>
+
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     变体 B · 弦振
+     ══════════════════════════════════════════════════════════ -->
+<div class="variant" id="vb">
+
+  <div class="vb-top">他们的故事</div>
+
+  <!-- 频谱四点 -->
+  <div class="vb-spectrum" id="vb-spectrum">
+    <div class="vb-sp-item lit" data-i="0" onclick="vbGoto(0)">
+      <div class="vb-sp-dot" style="background:var(--blue); color:var(--blue)"></div>
+      <div class="vb-sp-label">信念</div>
+    </div>
+    <div class="vb-sp-item" data-i="1" onclick="vbGoto(1)">
+      <div class="vb-sp-dot" style="background:var(--green); color:var(--green)"></div>
+      <div class="vb-sp-label">禀赋</div>
+    </div>
+    <div class="vb-sp-item" data-i="2" onclick="vbGoto(2)">
+      <div class="vb-sp-dot" style="background:var(--terra); color:var(--terra)"></div>
+      <div class="vb-sp-label">热忱</div>
+    </div>
+    <div class="vb-sp-item" data-i="3" onclick="vbGoto(3)">
+      <div class="vb-sp-dot" style="background:var(--ochre); color:var(--ochre)"></div>
+      <div class="vb-sp-label">锚点</div>
+    </div>
+  </div>
+
+  <div class="vb-string-wrap">
+    <!-- 弦振 Canvas -->
+    <canvas id="vb-canvas"></canvas>
+
+    <!-- 故事文字 -->
+    <div class="vb-story">
+      <div class="vb-quote" id="vb-quote"></div>
+      <div class="vb-author" id="vb-author"></div>
+    </div>
+  </div>
+
+  <!-- 导航点 -->
+  <div class="vb-nav" id="vb-nav"></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     变体 C · 满版沉浸
+     ══════════════════════════════════════════════════════════ -->
+<div class="variant" id="vc">
+  <div class="vc-bg" id="vc-bg"></div>
+  <div class="vc-noise"></div>
+  <div class="vc-ink" id="vc-ink"></div>
+
+  <div class="vc-content">
+    <div class="vc-dim-line" id="vc-dimline"></div>
+    <div class="vc-quote" id="vc-quote"></div>
+    <div class="vc-name"  id="vc-name"></div>
+    <div class="vc-role"  id="vc-role"></div>
+  </div>
+
+  <!-- 底部音波 -->
+  <div class="vc-waveform" id="vc-waveform"></div>
+
+  <!-- 指示点 -->
+  <div class="vc-dots" id="vc-dots"></div>
+
+  <div class="vc-arrow vc-prev" onclick="vcStep(-1)">←</div>
+  <div class="vc-arrow vc-next" onclick="vcStep(1)">→</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     变体 D · 频谱栏
+     ══════════════════════════════════════════════════════════ -->
+<div class="variant" id="vd">
+  <div class="vd-bars" id="vd-bars"></div>
+  <div class="vd-content" id="vd-content">
+
+    <!-- 音波 SVG 装饰 -->
+    <svg class="vd-wave-svg" width="120" height="48" viewBox="0 0 120 48" id="vd-wave-svg">
+    </svg>
+
+    <div class="vd-dim-tag" id="vd-dim-tag">
+      <div class="vd-dim-dash" id="vd-dim-dash"></div>
+      <span id="vd-dim-text"></span>
+    </div>
+    <div class="vd-quote" id="vd-quote"></div>
+    <div class="vd-meta" id="vd-meta">
+      <div class="vd-line"></div>
+      <div>
+        <div class="vd-name" id="vd-name"></div>
+        <div class="vd-role" id="vd-role"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   数据
+   ============================================================ */
+const STORIES = [
+  {
+    dim: '信念 · Creed',
+    color: '#6E9BB5',
+    bg: '#EEF3F7',      /* 极淡的蓝灰纸 */
+    quote: '原来沟通协调这件事对我来说真的是禀赋，不是习惯。这个区分让我第一次觉得自己有竞争力。',
+    name: 'Maggie',
+    role: '32岁 · 市场运营',
+  },
+  {
+    dim: '禀赋 · Genius',
+    color: '#6F9E82',
+    bg: '#EDF5F1',
+    quote: '帮助别人成长这件事，让我忘我。我以为那只是爱好，没想到可以成为职业核心。',
+    name: '阿文',
+    role: '25岁 · 应届生',
+  },
+  {
+    dim: '热忱 · Calling',
+    color: '#B8705A',
+    bg: '#F5EDEA',
+    quote: '「使命感」以前对我太虚了。但当我说出「我想帮普通人做出好决策」的时候，我哭了。',
+    name: '晓敏',
+    role: '35岁 · 咨询顾问',
+  },
+  {
+    dim: '锚点 · Purpose',
+    color: '#B89A42',
+    bg: '#F5F0E6',
+    quote: '以为自己什么都喜欢，其实是什么都没认真想过。四个维度逼着我想清楚，很有价值。',
+    name: '老 K',
+    role: '40岁 · 创业者',
+  },
+];
+
+/* ============================================================
+   切换变体
+   ============================================================ */
+function switchVariant(id, btn) {
+  document.querySelectorAll('.variant').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.sw-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+
+  if (id === 'va') initVA();
+  if (id === 'vb') initVB();
+  if (id === 'vc') initVC();
+  if (id === 'vd') initVD();
+}
+
+/* ============================================================
+   ██ 变体 A · 书页
+   ============================================================ */
+function initVA() {
+  // 滚动入场
+  const el = document.getElementById('va');
+  el.scrollTop = 0;
+
+  const stories = el.querySelectorAll('.va-story');
+  stories.forEach((s, i) => {
+    s.classList.remove('revealed');
+    setTimeout(() => s.classList.add('revealed'), 200 + i * 180);
+  });
+
+  // 生成底部音波
+  const waveWrap = document.getElementById('va-wave');
+  waveWrap.innerHTML = '<div class="va-wave-label">能力频谱</div><div class="va-wave-track" id="va-wt"></div>';
+  const wt = document.getElementById('va-wt');
+  const heights = [4,6,10,14,18,22,16,12,20,24,18,14,10,8,12,16,20,14,8,6,4,8,12,18,22,16,10,6,4,3];
+  const colors = [STORIES[0].color, STORIES[1].color, STORIES[2].color, STORIES[3].color];
+  heights.forEach((h, i) => {
+    const b = document.createElement('div');
+    b.className = 'va-wave-bar';
+    b.style.height = h + 'px';
+    b.style.background = colors[Math.floor(i / 8) % 4];
+    b.style.animationDuration = (1.5 + Math.random()) + 's';
+    b.style.animationDelay = (i * 0.05) + 's';
+    wt.appendChild(b);
+  });
+}
+
+initVA();
+
+/* ============================================================
+   ██ 变体 B · 弦振  — Canvas 弦振动画
+   ============================================================ */
+let vbCurrent = 0;
+let vbPhase = 0;
+let vbAmplitude = 0;
+let vbTargetAmplitude = 0;
+let vbColor = STORIES[0].color;
+let vbRAF = null;
+let vbCanvas, vbCtx, vbW, vbH;
+
+function initVB() {
+  vbCanvas = document.getElementById('vb-canvas');
+  vbCtx = vbCanvas.getContext('2d');
+
+  // 生成导航点
+  const nav = document.getElementById('vb-nav');
+  nav.innerHTML = '';
+  STORIES.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'vb-nav-dot' + (i === 0 ? ' active' : '');
+    d.onclick = () => vbGoto(i);
+    nav.appendChild(d);
+  });
+
+  vbGoto(0);
+  resizeVB();
+  window.addEventListener('resize', resizeVB);
+  vbAnimate();
+}
+
+function resizeVB() {
+  if (!vbCanvas) return;
+  vbW = vbCanvas.offsetWidth;
+  vbH = 120;
+  vbCanvas.width = vbW;
+  vbCanvas.height = vbH;
+}
+
+function vbGoto(i) {
+  vbCurrent = i;
+
+  // 更新频谱点
+  document.querySelectorAll('.vb-sp-item').forEach((el, j) => {
+    el.classList.toggle('lit', j === i);
+  });
+  document.querySelectorAll('.vb-nav-dot').forEach((el, j) => {
+    el.classList.toggle('active', j === i);
+  });
+
+  // 触发弦振
+  vbTargetAmplitude = 28;
+  vbColor = STORIES[i].color;
+
+  // 淡换文字
+  const q = document.getElementById('vb-quote');
+  const a = document.getElementById('vb-author');
+  q.style.opacity = '0'; a.style.opacity = '0';
+  setTimeout(() => {
+    q.textContent = `「${STORIES[i].quote}」`;
+    a.textContent = STORIES[i].name + '　' + STORIES[i].role;
+    q.style.opacity = '1'; a.style.opacity = '1';
+    q.style.transition = 'opacity 0.5s ease';
+    a.style.transition = 'opacity 0.5s ease';
+  }, 250);
+}
+
+function vbAnimate() {
+  if (!vbCtx) return;
+  vbRAF = requestAnimationFrame(vbAnimate);
+
+  vbCtx.clearRect(0, 0, vbW, vbH);
+
+  // 振幅衰减
+  vbAmplitude += (vbTargetAmplitude - vbAmplitude) * 0.08;
+  vbTargetAmplitude *= 0.97;
+  vbPhase += 0.04;
+
+  const cx = vbW / 2;
+  const cy = vbH / 2;
+
+  // 画弦
+  vbCtx.beginPath();
+  for (let x = 0; x <= vbW; x += 2) {
+    const t = (x / vbW);
+    // 正弦包络：两端固定
+    const envelope = Math.sin(t * Math.PI);
+    const y = cy + Math.sin(t * Math.PI * 3 - vbPhase) * vbAmplitude * envelope;
+    if (x === 0) vbCtx.moveTo(x, y);
+    else vbCtx.lineTo(x, y);
+  }
+
+  // 颜色 hex → rgb
+  const r = parseInt(vbColor.slice(1,3),16);
+  const g = parseInt(vbColor.slice(3,5),16);
+  const b = parseInt(vbColor.slice(5,7),16);
+
+  vbCtx.strokeStyle = `rgba(${r},${g},${b},0.55)`;
+  vbCtx.lineWidth = 1.5;
+  vbCtx.stroke();
+
+  // 弦上微光点
+  if (vbAmplitude > 1) {
+    const numDots = 5;
+    for (let d = 0; d < numDots; d++) {
+      const t = (d + 1) / (numDots + 1);
+      const envelope = Math.sin(t * Math.PI);
+      const yd = cy + Math.sin(t * Math.PI * 3 - vbPhase) * vbAmplitude * envelope;
+      const xd = t * vbW;
+      vbCtx.beginPath();
+      vbCtx.arc(xd, yd, 1.8, 0, Math.PI * 2);
+      vbCtx.fillStyle = `rgba(${r},${g},${b},0.35)`;
+      vbCtx.fill();
+    }
+  }
+}
+
+/* ============================================================
+   ██ 变体 C · 满版沉浸
+   ============================================================ */
+let vcCurrent = 0;
+
+function initVC() {
+  // 音波
+  const wf = document.getElementById('vc-waveform');
+  wf.innerHTML = '';
+  const wHeights = [3,5,9,14,18,14,9,5,3,5,9,14,18,22,18,14,9,5,3];
+  wHeights.forEach((h, i) => {
+    const b = document.createElement('div');
+    b.className = 'vc-wbar';
+    b.style.height = h + 'px';
+    b.style.animationDuration = (1.2 + Math.random() * 1.2) + 's';
+    b.style.animationDelay = (i * 0.06) + 's';
+    wf.appendChild(b);
+  });
+
+  // 指示点
+  const dots = document.getElementById('vc-dots');
+  dots.innerHTML = '';
+  STORIES.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'vc-dot' + (i === 0 ? ' active' : '');
+    d.onclick = () => vcGoto(i);
+    dots.appendChild(d);
+  });
+
+  vcGoto(0);
+}
+
+function vcGoto(i) {
+  const s = STORIES[i];
+  vcCurrent = i;
+
+  // 背景色温
+  document.getElementById('vc-bg').style.background = s.bg;
+  const ink = document.getElementById('vc-ink');
+  ink.style.background = `radial-gradient(circle, ${hexA(s.color, 0.18)}, transparent 65%)`;
+  ink.classList.add('spread');
+  setTimeout(() => ink.classList.remove('spread'), 1800);
+
+  // 维度线
+  document.getElementById('vc-dimline').style.background = s.color;
+
+  // 淡换文字
+  const q  = document.getElementById('vc-quote');
+  const n  = document.getElementById('vc-name');
+  const ro = document.getElementById('vc-role');
+  [q, n, ro].forEach(el => el.classList.add('fading'));
+
+  setTimeout(() => {
+    q.textContent = `「${s.quote}」`;
+    n.textContent = s.name;
+    ro.textContent = s.role;
+    [q, n, ro].forEach(el => {
+      el.classList.remove('fading');
+      el.style.transition = 'opacity 0.55s ease, transform 0.55s ease';
+    });
+  }, 320);
+
+  // 指示点
+  document.querySelectorAll('.vc-dot').forEach((d, j) => {
+    d.classList.toggle('active', j === i);
+  });
+}
+
+function vcStep(dir) {
+  vcGoto((vcCurrent + dir + STORIES.length) % STORIES.length);
+}
+
+function hexA(hex, alpha) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+/* ============================================================
+   ██ 变体 D · 频谱栏
+   ============================================================ */
+let vdCurrent = 0;
+
+function initVD() {
+  const bars = document.getElementById('vd-bars');
+  bars.innerHTML = '';
+
+  STORIES.forEach((s, i) => {
+    const bar = document.createElement('div');
+    bar.className = 'vd-bar' + (i === 0 ? ' active' : '');
+    bar.style.color = s.color;
+    bar.innerHTML = `
+      <div class="vd-bar-edge"></div>
+      <div class="vd-bar-dot"></div>
+      <div class="vd-bar-label">${s.dim.split(' ')[0]}</div>
+    `;
+    bar.onclick = () => vdGoto(i);
+    bars.appendChild(bar);
+  });
+
+  // 音波 SVG
+  buildVdWave(STORIES[0].color);
+  vdShowContent(0);
+}
+
+function buildVdWave(color) {
+  const svg = document.getElementById('vd-wave-svg');
+  const pts = [0,4,2,8,6,14,10,18,14,22,18,16,22,12,26,18,30,24,34,20,38,14,42,10,46,16,50,20,54,14,58,8,62,12,66,18,70,22,74,16,78,10,82,6,86,10,90,14,94,8,98,4,102,8,106,12,110,6,114,4,118,8];
+  let d = '';
+  for (let i = 0; i < pts.length; i += 2) {
+    d += (i === 0 ? 'M' : 'L') + pts[i] + ',' + (24 - pts[i+1]/2);
+  }
+  svg.innerHTML = `<path d="${d}" stroke="${color}" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.6"/>`;
+}
+
+function vdGoto(i) {
+  const bars = document.querySelectorAll('.vd-bar');
+  bars.forEach((b, j) => b.classList.toggle('active', j === i));
+
+  const q   = document.getElementById('vd-quote');
+  const tag = document.getElementById('vd-dim-tag');
+  const m   = document.getElementById('vd-meta');
+
+  [q, tag, m].forEach(el => {
+    el.classList.add('fading');
+    el.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+  });
+
+  setTimeout(() => {
+    vdShowContent(i);
+    buildVdWave(STORIES[i].color);
+    [q, tag, m].forEach(el => {
+      el.classList.remove('fading');
+      el.style.transition = 'opacity 0.45s ease, transform 0.45s ease';
+    });
+  }, 300);
+  vdCurrent = i;
+}
+
+function vdShowContent(i) {
+  const s = STORIES[i];
+  document.getElementById('vd-dim-dash').style.background = s.color;
+  document.getElementById('vd-dim-text').textContent = s.dim;
+  document.getElementById('vd-quote').textContent = `「${s.quote}」`;
+  document.getElementById('vd-name').textContent = s.name;
+  document.getElementById('vd-role').textContent = s.role;
+}
+
+/* 键盘翻页 C/D */
+document.addEventListener('keydown', e => {
+  if (document.getElementById('vc').classList.contains('active')) {
+    if (e.key === 'ArrowRight') vcStep(1);
+    if (e.key === 'ArrowLeft')  vcStep(-1);
+  }
+  if (document.getElementById('vd').classList.contains('active')) {
+    if (e.key === 'ArrowDown')  vdGoto((vdCurrent + 1) % 4);
+    if (e.key === 'ArrowUp')    vdGoto((vdCurrent + 3) % 4);
+  }
+});
+
+</script>
+</body>
+</html>

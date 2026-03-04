@@ -291,21 +291,26 @@ END → SSE 推送
 
 ## 数据持久化路径
 
+所有复杂版 explore 的日志、对话、题目进度均存储在**项目根 ./data/** 下，不依赖 src/backend 目录：
+
 ```
-src/backend/
-├── data/
-│   ├── conversations/{session_id}/
-│   │   ├── main_flow.json     ← 用户可见对话 (getHistory 读取)
-│   │   ├── all_flow.json      ← AI 完整思考过程
-│   │   └── note               ← 答题卡 + 总结 (getAnswerCards 读取)
-│   ├── question_progress/
-│   │   └── {session_id}.json  ← 题目状态 (哪些完成/进行中/未开始)
-│   └── debug_logs/
-│       └── {session_id}.jsonl ← 调试日志 (旧路径)
+项目根 (BeingDoing/)  data/
+├── conversations/{session_id}/
+│   ├── main_flow.json     ← 用户可见对话 (getHistory 读取)
+│   ├── all_flow.json      ← AI 完整思考过程
+│   └── note.json          ← 答题卡 + 总结 (getAnswerCards 读取)
+├── question_progress/
+│   └── {session_id}.json  ← 题目状态 (哪些完成/进行中/未开始)
+├── debug_logs/
+│   └── {session_id}.jsonl ← 按 session 的调试日志
 ├── logs/
 │   └── {user_id}/{session_id}/
-│       └── runs.jsonl         ← 调试日志 (新路径)
-└── app.db                     ← SQLite 数据库 (User, Session, Answer)
+│       └── runs.jsonl     ← 按用户/会话的调试日志
+└── simple/                ← 简单版（激活码、对话等）
+    └── ...
+
+src/backend/
+└── app.db                 ← SQLite 数据库 (User, Session, Answer)
 ```
 
 ### 文件格式速查

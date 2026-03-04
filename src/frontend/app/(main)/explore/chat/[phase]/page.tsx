@@ -3,9 +3,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Lock, CheckCircle2, ChevronRight, ArrowUp, Square } from 'lucide-react';
+import { Lock, CheckCircle2, ChevronRight, ChevronDown, ArrowUp, Square, Copy } from 'lucide-react';
 import Link from 'next/link';
 import FlowAiMessage from '@/components/explore/FlowAiMessage';
+import { copyToClipboard } from '@/lib/utils/clipboard';
 import { apiClient } from '@/lib/api/client';
 import {
   PHASES,
@@ -195,6 +196,12 @@ export default function ChatPhasePage() {
     return () => el.removeEventListener('scroll', checkScrollPosition);
   }, [checkScrollPosition, messages]);
 
+  // 内容变化（含流式）后延迟检测是否需显示「滚动到底部」按钮
+  useEffect(() => {
+    const t = setTimeout(checkScrollPosition, 80);
+    return () => clearTimeout(t);
+  }, [messages, sending, checkScrollPosition]);
+
   const scrollToBottom = useCallback(() => {
     chatBodyRef.current?.scrollTo({ top: chatBodyRef.current.scrollHeight, behavior: 'smooth' });
   }, []);
@@ -203,13 +210,14 @@ export default function ChatPhasePage() {
     abortControllerRef.current?.abort();
   };
 
-  // 输入框：先增高显示全部，超过一半页面后加滚动条
+  // 输入框：自适应高度，约 7 行后固定并显示滚动条
   useEffect(() => {
     const ta = inputRef.current;
     if (!ta) return;
     ta.style.height = 'auto';
     const sh = ta.scrollHeight;
-    const maxH = typeof window !== 'undefined' ? window.innerHeight * 0.5 : 200;
+    const lineH = 24;
+    const maxH = lineH * 7;
     ta.style.height = Math.min(sh, maxH) + 'px';
     ta.style.overflowY = sh > maxH ? 'auto' : 'hidden';
   }, [input]);
@@ -322,7 +330,7 @@ export default function ChatPhasePage() {
 
   return (
     <div
-      className="flow-light min-h-screen flex flex-col bg-bd-gradient text-bd-fg"
+      className="flow-light min-h-screen h-screen flex flex-col bg-bd-gradient text-bd-fg overflow-hidden"
       data-phase={phase}
     >
       {/* 顶部进度条：信念→禀赋→热忱→使命，明显提示 + 解锁逻辑 */}
@@ -355,8 +363,8 @@ export default function ChatPhasePage() {
         </div>
       </div>
 
-      {/* 阶段说明 + 内容区（pt 留出导航+阶段条空间，pb 留出底部输入+完成栏空间） */}
-      <div className="flex-1 max-w-3xl mx-auto w-full px-4 pt-28 pb-[180px] flex flex-col gap-4 min-h-0 overflow-y-auto">
+      {/* 阶段说明 + 内容区（无固定 pb，与底部输入区紧邻） */}
+      <div className="flex-1 max-w-3xl mx-auto w-full px-4 pt-28 pb-3 flex flex-col gap-4 min-h-0 overflow-hidden">
         {/* 阶段标题与提示（大而明显） */}
         <motion.div
           key={phase}
@@ -372,8 +380,8 @@ export default function ChatPhasePage() {
           <p className="text-xs text-neutral-500 italic">{phaseMeta.hint}</p>
         </motion.div>
 
-        {/* 内容展示框 */}
-        <div className="flow-chat-box flex-1 min-h-[300px] flex flex-col relative">
+        {/* 内容展示框（内部可滚动，超出时显示侧边滚动条 + 一键向下按钮） */}
+        <div className="flow-chat-box flex-1 min-w-0 flex flex-col relative">
           <div ref={chatBodyRef} className="flow-chat-body flex-1 min-h-0 overflow-y-auto">
           {/* 维度标签：● 正在探索 · 信念维度 */}
           <div className="flow-dimension-label">
@@ -400,8 +408,20 @@ export default function ChatPhasePage() {
             messages.map((m, idx) => (
               <div key={m.id} className={m.role === 'user' ? 'flow-msg-user' : ''}>
                 {m.role === 'user' ? (
-                  <div className="flow-msg-user-content">
-                    <span className="whitespace-pre-wrap">{m.content}</span>
+                  <div className="flow-msg-user-wrap">
+                    <div className="flow-msg-user-content">
+                      <span className="whitespace-pre-wrap">{m.content}</span>
+                    </div>
+                    <div className="flow-msg-user-toolbar">
+                      <button
+                        type="button"
+                        className="flow-toolbar-btn"
+                        title="复制"
+                        onClick={() => copyToClipboard(m.content)}
+                      >
+                        <Copy size={14} strokeWidth={1.6} />
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <FlowAiMessage
@@ -417,37 +437,35 @@ export default function ChatPhasePage() {
 
           {chatError && (
             <div className="flow-msg-error">
-              <div className="font-semibold text-sm mb-1">⚠ 生成失败</div>
-              {chatError}
+              <div className="flow-msg-error-text">{chatError}</div>
               <button
                 type="button"
-                className="flow-retry-btn mt-2"
-                onClick={() => setChatError(null)}
+                className="flow-retry-btn"
+                onClick={() => { setChatError(null); const lastUser = [...messages].filter((m) => m.role === 'user').pop(); if (lastUser) handleSend(lastUser.content, true); }}
               >
-                重试
+                重新尝试
               </button>
             </div>
           )}
           <div ref={messagesEndRef} />
         </div>
 
-          {/* 向下箭头：滚动到底部，已在最下方时隐藏 */}
+          {/* 向下箭头：不在最底部时显示，点击滚动到底部 */}
           <button
             type="button"
+            aria-label="滚动到底部"
             className={`flow-scroll-bottom-btn ${showScrollBottom ? 'visible' : ''}`}
             onClick={scrollToBottom}
             title="滚动到底部"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
+            <ChevronDown size={22} strokeWidth={2.5} />
           </button>
         </div>
 
       </div>
 
-      {/* 底部固定：输入区 + 完成此步（永远在页面最下方） */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 bg-bd-bg/95 backdrop-blur-sm border-t border-black/[0.05]">
+      {/* 底部输入区（flex 流式布局，随输入变高而升高，与展示框保持固定间距） */}
+      <div className="flex-shrink-0 max-w-3xl mx-auto w-full px-4 pb-4 pt-2 bg-bd-bg/95 backdrop-blur-sm border-t border-black/[0.05]">
         <div className="max-w-3xl mx-auto px-4 w-full">
         <div className="flow-input-area">
           <form

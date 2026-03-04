@@ -3,80 +3,12 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/authStore';
-import { useThemeStore, THEMES, DARK_THEMES, LIGHT_THEMES } from '@/stores/themeStore';
+import { useThemeStore } from '@/stores/themeStore';
 import { useDebugStore } from '@/stores/debugStore';
 import { apiClient } from '@/lib/api/client';
 import { loadSession, saveSession, setLastActivationCode, type PhaseKey } from '@/lib/explore/session';
 import Link from 'next/link';
 import { CheckCircle2, Bug, Loader2, Palette } from 'lucide-react';
-
-function ThemeCard({ theme, isActive, onSelect }: {
-  theme: import('@/stores/themeStore').ThemeMeta;
-  isActive: boolean;
-  onSelect: () => void;
-}) {
-  const [bg, accent, accent2] = theme.swatches;
-  const isDark = theme.scheme === 'dark';
-  const fgColor = isDark ? 'rgba(255,255,255,0.9)' : 'rgba(25,20,12,0.9)';
-  const fgMuted = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(25,20,12,0.45)';
-  const badgeBg = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.07)';
-
-  /* Aurora: special gradient card */
-  const isAurora = theme.id === 'aurora';
-  const cardBg = isAurora
-    ? 'linear-gradient(135deg,#f5f5f7 0%,#faf0ff 40%,#f0f8ff 70%,#f5f5f7 100%)'
-    : undefined;
-
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className="relative rounded-xl p-4 text-left transition-all hover:scale-[1.03] active:scale-[0.98]"
-      style={{
-        backgroundColor: isAurora ? undefined : bg,
-        backgroundImage: cardBg,
-        border: isActive
-          ? `2px solid ${accent}`
-          : '2px solid rgba(128,128,128,0.15)',
-        boxShadow: isActive
-          ? `0 0 0 3px ${accent}22, 0 4px 16px rgba(0,0,0,0.08)`
-          : '0 2px 8px rgba(0,0,0,0.06)',
-      }}
-    >
-      {/* Color swatches */}
-      <div className="flex gap-1.5 mb-3">
-        <span className="w-4 h-4 rounded-full shadow-sm" style={{ backgroundColor: accent }} />
-        <span className="w-4 h-4 rounded-full shadow-sm" style={{ backgroundColor: accent2 }} />
-        <span className="w-4 h-4 rounded-full" style={{ backgroundColor: bg, border: '1px solid rgba(128,128,128,0.25)' }} />
-      </div>
-
-      {/* Name & desc */}
-      <p className="text-sm font-semibold mb-0.5" style={{ color: fgColor }}>
-        {theme.name}
-      </p>
-      <p className="text-[11px] leading-snug pr-5" style={{ color: fgMuted }}>
-        {theme.description}
-      </p>
-
-      {/* Active check */}
-      {isActive && (
-        <CheckCircle2
-          size={15}
-          className="absolute top-3 right-3"
-          style={{ color: accent }}
-        />
-      )}
-
-      {/* Light/dark badge */}
-      <span
-        className="absolute bottom-3 right-3 text-[10px] px-1.5 py-0.5 rounded-full"
-        style={{ background: badgeBg, color: fgMuted }}
-      >
-        {isDark ? '深色' : '浅色'}
-      </span>
-    </button>
-  );
-}
 
 const ALL_PHASES = ['values', 'strengths', 'interests', 'purpose'] as const;
 
@@ -173,72 +105,28 @@ function DebugSection() {
 }
 
 function ThemeSwitcher() {
-  const { themeId, setTheme, colorScheme, darkThemeId, lightThemeId, setDarkThemeId, setLightThemeId } = useThemeStore();
+  const { colorScheme } = useThemeStore();
 
   return (
-    <section className="bd-eff-card rounded-xl border border-bd-border bg-bd-card px-5 py-5 space-y-5">
+    <section className="bd-eff-card rounded-xl border border-bd-border bg-bd-card px-5 py-5 space-y-4">
       <div>
         <h2 className="text-sm font-semibold text-bd-fg">界面主题</h2>
-        <p className="text-xs text-bd-muted mt-0.5">顶部导航栏可切换日/夜间模式。夜间模式使用以下选择的深色主题。</p>
+        <p className="text-xs text-bd-muted mt-0.5">黑白各一套。顶部导航栏 ☀️/🌙 切换日/夜间模式。配色在下方入口配置。</p>
       </div>
-
-      {/* 日夜间模式配置 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-xs font-medium text-bd-muted mb-1">日间模式使用</label>
-          <select
-            value={lightThemeId}
-            onChange={(e) => setLightThemeId(e.target.value as typeof lightThemeId)}
-            className="w-full rounded-lg border border-bd-border bg-bd-overlay px-3 py-2 text-sm text-bd-fg"
-          >
-            {LIGHT_THEMES.map((id) => {
-              const t = THEMES.find((x) => x.id === id);
-              return <option key={id} value={id}>{t?.name ?? id}</option>;
-            })}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-bd-muted mb-1">夜间模式使用</label>
-          <select
-            value={darkThemeId}
-            onChange={(e) => setDarkThemeId(e.target.value as typeof darkThemeId)}
-            className="w-full rounded-lg border border-bd-border bg-bd-overlay px-3 py-2 text-sm text-bd-fg"
-          >
-            {DARK_THEMES.map((id) => {
-              const t = THEMES.find((x) => x.id === id);
-              return <option key={id} value={id}>{t?.name ?? id}</option>;
-            })}
-          </select>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-        {THEMES.map((theme) => (
-          <ThemeCard
-            key={theme.id}
-            theme={theme}
-            isActive={themeId === theme.id}
-            onSelect={() => setTheme(theme.id)}
-          />
-        ))}
-      </div>
-
       <p className="text-xs text-bd-subtle">
-        当前：<code className="text-bd-primary font-mono">{themeId}</code>（{colorScheme === 'dark' ? '夜间' : '日间'}）
-        　·　主题存储于浏览器 localStorage。
+        当前：<code className="text-bd-primary font-mono">{colorScheme === 'dark' ? '夜间' : '日间'}</code>
       </p>
-
-      <div className="flex flex-wrap gap-2 mt-2">
+      <div className="flex flex-wrap gap-2">
         <Link
           href="/settings/colors"
           className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors border"
           style={{
             borderColor: 'var(--bd-border)',
-            color: 'var(--bd-fg-muted)',
+            color: 'var(--bd-fg)',
             background: 'var(--bd-overlay)',
           }}
         >
-          <Palette size={16} /> 阶段配色
+          <Palette size={16} /> 配色（背景 / 四维 / 导引色）
         </Link>
         <Link
           href="/settings/style-lab"

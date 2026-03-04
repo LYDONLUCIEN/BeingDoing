@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/authStore';
 import { useAuthModalStore } from '@/stores/authModalStore';
-import { useThemeStore, DARK_THEMES } from '@/stores/themeStore';
+import { useThemeStore } from '@/stores/themeStore';
 import { useLocaleStore } from '@/stores/localeStore';
 import { onAuthRequired } from '@/lib/api/client';
 import { NAV_ITEMS } from '@/lib/nav';
@@ -16,16 +16,17 @@ import AuthModal from './AuthModal';
 export default function TopNavbar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { t } = useLocale();
-  const { isAuthenticated, user, logout, _hasHydrated } = useAuthStore();
-  const { themeId, toggleColorScheme } = useThemeStore();
-  const isDark = DARK_THEMES.includes(themeId);
-  const { locale, setLocale } = useLocaleStore();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  // 仅挂载后根据 persist 状态渲染登录态，确保服务端与客户端首帧一致，避免 Hydration Error
+  const { t } = useLocale(mounted ? undefined : 'zh');
+  const { isAuthenticated, user, logout, _hasHydrated } = useAuthStore();
+  const { colorScheme, toggleColorScheme } = useThemeStore();
+  const { locale, setLocale } = useLocaleStore();
+  // 仅挂载后根据 persist 状态渲染，确保服务端与客户端首帧一致，避免 Hydration Error
   const showAuth = mounted && _hasHydrated ? isAuthenticated : false;
+  const isDark = mounted ? colorScheme === 'dark' : false;
+  const displayLocale = mounted ? locale : 'zh';
   const { isOpen: authModalOpen, redirectTo, openAuthModal, closeAuthModal } = useAuthModalStore();
 
   useEffect(() => {
@@ -91,7 +92,7 @@ export default function TopNavbar() {
             {isDark ? <Moon size={18} /> : <Sun size={18} />}
           </button>
           <select
-            value={locale}
+            value={displayLocale}
             onChange={(e) => setLocale(e.target.value as 'zh' | 'en')}
             className="text-sm rounded-lg border-0 bg-transparent text-bd-muted hover:text-bd-fg cursor-pointer py-1 pr-6"
             style={{ borderColor: 'var(--bd-border)' }}
@@ -125,14 +126,19 @@ export default function TopNavbar() {
               </button>
             </>
           ) : (
-            <button
-              type="button"
-              onClick={handleLoginClick}
-              className="px-4 py-1.5 rounded-lg text-sm font-medium text-bd-ui-accent-fg transition-colors hover:opacity-90"
-              style={{ background: 'var(--bd-ui-accent)' }}
-            >
-              {t('common.loginRegister')}
-            </button>
+            <>
+              <Link href="/settings/colors" className="text-sm text-bd-muted hover:text-bd-fg transition-colors">
+                {t('settings.colors')}
+              </Link>
+              <button
+                type="button"
+                onClick={handleLoginClick}
+                className="px-4 py-1.5 rounded-lg text-sm font-medium text-bd-ui-accent-fg transition-colors hover:opacity-90"
+                style={{ background: 'var(--bd-ui-accent)' }}
+              >
+                {t('common.loginRegister')}
+              </button>
+            </>
           )}
         </div>
 
@@ -174,7 +180,7 @@ export default function TopNavbar() {
               {isDark ? <Moon size={18} /> : <Sun size={18} />}
             </button>
             <select
-              value={locale}
+              value={displayLocale}
               onChange={(e) => setLocale(e.target.value as 'zh' | 'en')}
               className="text-sm bg-transparent text-bd-muted border-0"
             >

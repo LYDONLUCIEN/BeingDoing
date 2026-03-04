@@ -5,10 +5,12 @@
 import json
 import os
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional  # Optional used for base_dir
 from datetime import datetime
 from enum import Enum
 import aiofiles
+
+from app.utils.data_paths import get_conversation_dir
 
 
 class ConversationCategory(str, Enum):
@@ -22,14 +24,14 @@ class ConversationCategory(str, Enum):
 class ConversationFileManager:
     """对话记录文件管理器"""
     
-    def __init__(self, base_dir: str = "data/conversations"):
+    def __init__(self, base_dir: Optional[str] = None):
         """
         初始化文件管理器
         
         Args:
-            base_dir: 对话记录存储根目录
+            base_dir: 对话记录存储根目录，None 则使用项目根 data/conversations
         """
-        self.base_dir = Path(base_dir)
+        self.base_dir = Path(base_dir) if base_dir else get_conversation_dir()
         self.base_dir.mkdir(parents=True, exist_ok=True)
     
     def _get_session_dir(self, session_id: str) -> Path:

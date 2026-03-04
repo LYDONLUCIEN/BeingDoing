@@ -1,31 +1,31 @@
 'use client';
 
 import { useEffect } from 'react';
-import { usePhaseColorStore, getPhaseColorCSS } from '@/stores/phaseColorStore';
+import { useColorThemeStore, getColorThemeCSS, DEFAULT_LIGHT, DEFAULT_DARK } from '@/stores/colorThemeStore';
 
-const STYLE_ID = 'bd-phase-color-overrides';
+const STYLE_ID = 'bd-color-theme-inject';
 
 /**
- * 当用户设置了阶段配色覆盖时，注入 CSS 覆盖 :root 的 --bd-phase-* 变量。
- * 保证首页、探索页等全站阶段相关 UI 使用统一配色。
+ * 根据 colorThemeStore 注入 light/dark 配色，按 data-color-scheme 生效。
+ * 覆盖主题默认的背景、四维色、导引色。
  */
 export default function PhaseColorInjector() {
-  const overrides = usePhaseColorStore((s) => s.overrides);
+  const lightOverrides = useColorThemeStore((s) => s.light);
+  const darkOverrides = useColorThemeStore((s) => s.dark);
 
   useEffect(() => {
-    const css = getPhaseColorCSS(overrides);
+    const light = { ...DEFAULT_LIGHT, ...lightOverrides };
+    const dark = { ...DEFAULT_DARK, ...darkOverrides };
+    const css = getColorThemeCSS(light, dark);
+
     let el = document.getElementById(STYLE_ID);
-    if (css) {
-      if (!el) {
-        el = document.createElement('style');
-        el.id = STYLE_ID;
-        document.head.appendChild(el);
-      }
-      el.textContent = css;
-    } else if (el) {
-      el.remove();
+    if (!el) {
+      el = document.createElement('style');
+      el.id = STYLE_ID;
+      document.head.appendChild(el);
     }
-  }, [overrides]);
+    el.textContent = css;
+  }, [lightOverrides, darkOverrides]);
 
   return null;
 }

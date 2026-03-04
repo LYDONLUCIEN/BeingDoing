@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Copy, RefreshCw, ThumbsUp } from 'lucide-react';
 import MessageContent from './MessageContent';
+import { copyToClipboard } from '@/lib/utils/clipboard';
 
 type PhaseClass = 'values' | 'strength' | 'interest' | 'purpose';
 
@@ -28,9 +29,7 @@ export default function FlowAiMessage({
   const [liked, setLiked] = useState(false);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(content).then(() => {
-      onCopy?.();
-    });
+    copyToClipboard(content).then((ok) => ok && onCopy?.());
   };
 
   return (
