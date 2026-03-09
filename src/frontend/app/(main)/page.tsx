@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -96,35 +96,28 @@ function InwardLookingBlock({ t }: { t: (p: string) => string }) {
   );
 }
 
-function DimensionsSection({ t }: { t: (p: string) => string }) {
+function DimensionsSection({ t, locale }: { t: (p: string) => string; locale: string }) {
+  const isZh = locale === 'zh';
   return (
-    <section className="max-w-4xl mx-auto px-6 py-20 space-y-6">
+    <section className="max-w-5xl mx-auto px-6 py-20 space-y-12">
       <InwardLookingBlock t={t} />
-      <div className="space-y-4">
-        {DIMENSION_KEYS.map((key, i) => {
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {DIMENSION_KEYS.map((key) => {
           const vars = DIMENSION_VARS[key];
           return (
-            <motion.div
+            <div
               key={key}
-              initial={{ opacity: 0, x: i % 2 === 0 ? -24 : 24 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true, margin: '-60px' }}
-              transition={{ duration: 0.5, delay: i * 0.07 }}
-              className="bd-eff-card rounded-2xl p-6 md:p-8 flex flex-col md:flex-row md:items-start gap-5"
-              style={{
-                background: vars.varBg,
-                border: `1px solid ${vars.varBorder}`,
-              }}
+              className={`bd-dimension-card bd-dim-${key} p-6 flex flex-col text-left min-h-[200px] cursor-default`}
             >
-              <div className="flex-shrink-0 pt-0.5">
-                <span className="text-4xl font-black" style={{ color: vars.varColor }}>{t(`dimensions.${key}.num`)}</span>
-              </div>
-              <div className="flex-1 space-y-2">
-                <h3 className="text-xl font-bold" style={{ color: vars.varColor }}>{t(`dimensions.${key}.name`)}</h3>
-                <p className="text-sm leading-relaxed" style={{ color: 'var(--bd-fg-muted)' }}>{t(`dimensions.${key}.desc`)}</p>
-                <p className="text-xs italic pt-1" style={{ color: 'var(--bd-fg-subtle)' }}>「{t(`dimensions.${key}.question`)}」</p>
-              </div>
-            </motion.div>
+              {isZh && (
+                <p className="text-xs font-medium tracking-[0.1em] uppercase mb-1" style={{ color: 'var(--bd-fg-subtle)', fontFamily: 'var(--font-sans-en)' }}>
+                  {t(`dimensions.${key}.en`)}
+                </p>
+              )}
+              <h3 className="text-xl font-bold mb-3" style={{ color: vars.varColor }}>{t(`dimensions.${key}.name`)}</h3>
+              <p className="bd-dim-desc text-sm leading-relaxed flex-1" style={{ color: 'var(--bd-fg-muted)' }}>{t(`dimensions.${key}.desc`)}</p>
+              <p className="bd-dim-question text-xs mt-3 pt-3 border-t border-bd-border-soft" style={{ color: 'var(--bd-fg-subtle)' }}>「{t(`dimensions.${key}.question`)}」</p>
+            </div>
           );
         })}
       </div>
@@ -242,7 +235,7 @@ function TestimonialCarousel() {
   const { colorScheme } = useThemeStore();
   const isDark = colorScheme === 'dark';
   const TOTAL = TESTIMONIALS.length + 2; // CTA左 + 6条故事 + CTA右
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(1); // 默认第一个人的故事卡片
   const [direction, setDirection] = useState(0);
   const isCtaLeft = activeIndex === 0;
   const isCtaRight = activeIndex === TOTAL - 1;
@@ -266,7 +259,7 @@ function TestimonialCarousel() {
 
   return (
     <section
-      className="relative min-h-[70vh] flex flex-col justify-center overflow-hidden transition-colors duration-700"
+      className="relative min-h-[42vh] flex flex-col justify-center overflow-hidden transition-colors duration-700"
       style={{
         background: `linear-gradient(to bottom,
           color-mix(in srgb, rgba(${currentColor}, 0.06) 30%, var(--bd-bg)),
@@ -276,7 +269,7 @@ function TestimonialCarousel() {
       }}
     >
       <p
-        className="absolute top-8 left-0 right-0 text-center text-xs tracking-[0.2em] uppercase transition-opacity duration-500"
+        className="absolute top-5 left-0 right-0 text-center text-xs tracking-[0.2em] uppercase transition-opacity duration-500"
         style={{ color: 'var(--bd-fg-subtle)' }}
       >
         {t('home.theirStories')}
@@ -314,8 +307,8 @@ function TestimonialCarousel() {
         </button>
       )}
 
-      {/* 大卡片：铺满左右 */}
-      <div className="w-full max-w-4xl mx-auto px-6 md:px-12 py-16">
+      {/* 大卡片：铺满左右，版面更紧凑 */}
+      <div className="w-full max-w-4xl mx-auto px-6 md:px-12 py-5 md:py-6">
         <AnimatePresence mode="wait">
           {isCta ? (
             <motion.button
@@ -326,7 +319,7 @@ function TestimonialCarousel() {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: direction > 0 ? -60 : 60 }}
               transition={{ duration: 0.45, ease: [0.25, 0.1, 0.25, 1] }}
-              className={`w-full rounded-2xl md:rounded-3xl p-8 md:p-12 lg:p-16 relative overflow-hidden text-left transition-transform hover:scale-[1.01] active:scale-[0.99] ${isDark ? 'testimonial-cta-dark' : ''}`}
+              className={`w-full rounded-2xl md:rounded-3xl p-5 md:p-6 lg:p-7 relative overflow-hidden text-left transition-transform hover:scale-[1.01] active:scale-[0.99] ${isDark ? 'testimonial-cta-dark' : ''}`}
               style={{
                 background: isDark ? darkGlowBg(EXPLORE_CTA_COLORS) : watercolorBg(EXPLORE_CTA_COLORS),
                 border: isDark ? '1px solid rgba(124,92,252,0.25)' : '1px solid rgba(124,92,252,0.12)',
@@ -360,7 +353,7 @@ function TestimonialCarousel() {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: direction > 0 ? -60 : 60 }}
               transition={{ duration: 0.45, ease: [0.25, 0.1, 0.25, 1] }}
-              className={`w-full rounded-2xl md:rounded-3xl p-8 md:p-12 lg:p-16 relative overflow-hidden ${isDark ? 'testimonial-card-dark' : ''}`}
+              className={`w-full rounded-2xl md:rounded-3xl p-5 md:p-6 lg:p-7 relative overflow-hidden ${isDark ? 'testimonial-card-dark' : ''}`}
               style={{
                 background: isDark ? darkGlowBg(TESTIMONIALS[activeIndex - 1].colors) : watercolorBg(TESTIMONIALS[activeIndex - 1].colors),
                 border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.05)',
@@ -370,6 +363,11 @@ function TestimonialCarousel() {
                 ['--tc-b' as string]: TESTIMONIALS[activeIndex - 1].color.split(',')[2]?.trim(),
               }}
             >
+              <div className="testimonial-waveform" style={{ color: `rgb(${TESTIMONIALS[activeIndex - 1].color})` }} aria-hidden>
+                {[...Array(10)].map((_, i) => (
+                  <span key={i} className="testimonial-waveform-bar" />
+                ))}
+              </div>
               <div
                 className="absolute inset-0 rounded-2xl md:rounded-3xl pointer-events-none opacity-30"
                 style={{
@@ -378,7 +376,7 @@ function TestimonialCarousel() {
                 }}
                 aria-hidden
               />
-              <blockquote className="relative z-10 text-lg md:text-xl lg:text-2xl leading-relaxed md:leading-loose font-serif" style={{ color: 'var(--bd-fg)' }}>
+              <blockquote className="relative z-10 text-lg md:text-xl lg:text-2xl leading-relaxed md:leading-loose testimonial-quote" style={{ color: 'var(--bd-fg)' }}>
                 「{TESTIMONIALS[activeIndex - 1].quote}」
               </blockquote>
               <div className="relative z-10 mt-8 flex items-baseline gap-3">
@@ -391,7 +389,7 @@ function TestimonialCarousel() {
       </div>
 
       {/* 页码指示 */}
-      <div className="absolute bottom-8 left-0 right-0 flex justify-center gap-2">
+      <div className="absolute bottom-3 md:bottom-4 left-0 right-0 flex justify-center gap-2">
         {Array.from({ length: TOTAL }).map((_, i) => (
           <button
             key={i}
@@ -417,21 +415,26 @@ function TestimonialCarousel() {
 // ── 主页面 ──────────────────────────────────────────────────
 export default function LandingPage() {
   const router = useRouter();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
+
+  // 首页时覆盖布局背景为 #faf9f8，与 background4 一致
+  useEffect(() => {
+    document.documentElement.setAttribute('data-landing', 'true');
+    return () => document.documentElement.removeAttribute('data-landing');
+  }, []);
 
   return (
-    <div
-      className="min-h-screen overflow-x-hidden landing-page-bg"
-      style={{
-        background: `
-          radial-gradient(ellipse 120% 80% at 50% 0%, color-mix(in srgb, var(--bd-phase-values) 5%, transparent) 0%, transparent 55%),
-          radial-gradient(ellipse 90% 70% at 100% 40%, color-mix(in srgb, var(--bd-phase-strengths) 4%, transparent) 0%, transparent 50%),
-          radial-gradient(ellipse 90% 70% at 0% 70%, color-mix(in srgb, var(--bd-phase-interests) 4%, transparent) 0%, transparent 50%),
-          linear-gradient(180deg, var(--bd-bg) 0%, var(--bd-bg-mid) 35%, var(--bd-bg-end) 100%)
-        `,
-        backgroundAttachment: 'fixed',
-      }}
-    >
+    <div className="landing-mesh-wrap">
+      {/* Mesh 光晕背景（参考 background4） */}
+      <div className="landing-mesh-bg">
+        <div className="landing-mesh-blob landing-mesh-blob-1" aria-hidden />
+        <div className="landing-mesh-blob landing-mesh-blob-2" aria-hidden />
+        <div className="landing-mesh-blob landing-mesh-blob-3" aria-hidden />
+        <div className="landing-mesh-blob landing-mesh-blob-4" aria-hidden />
+      </div>
+      <div className="landing-mesh-noise" aria-hidden />
+      {/* 与 background4 一致：内容层无遮罩，mesh 直接透过 */}
+      <div className="landing-mesh-content min-h-screen">
 
       {/* ① Hero */}
       <section className="flex flex-col items-center justify-center text-center px-6 pt-28 pb-20 min-h-[90vh]">
@@ -439,8 +442,8 @@ export default function LandingPage() {
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7 }}
-          className="text-5xl md:text-7xl font-bold leading-tight mb-6"
-          style={{ color: 'var(--bd-fg)' }}
+          className="text-5xl md:text-7xl font-bold leading-tight mb-6 tracking-[0.05em]"
+          style={{ color: 'var(--bd-fg)', fontFamily: 'var(--font-sans-cn)' }}
         >
           {t('home.heroTitle')}
         </motion.h1>
@@ -449,7 +452,8 @@ export default function LandingPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
-          className="text-xl md:text-2xl lg:text-3xl leading-relaxed mb-8"
+          className="text-xl md:text-2xl lg:text-3xl leading-relaxed mb-8 font-medium tracking-[0.05em]"
+          style={{ fontFamily: 'var(--font-sans-cn)' }}
         >
           <span className="bd-hero-slogan">{t('home.heroSlogan')}</span>
         </motion.p>
@@ -490,23 +494,24 @@ export default function LandingPage() {
           <button
             type="button"
             onClick={() => router.push('/explore/intro')}
-            className="px-10 py-4 rounded-xl font-semibold text-lg transition-all text-bd-ui-accent-fg hover:opacity-90"
-            style={{ background: 'var(--bd-ui-accent)' }}
+            className="bd-btn-hero px-10 py-4 rounded-[30px] font-semibold text-lg text-white inline-flex items-center gap-2"
+            style={{ background: '#1d1d1f' }}
           >
-            {t('common.startExploreArrow')}
+            {t('common.startExplore')}
+            <span className="bd-btn-hero-arrow">→</span>
           </button>
         </motion.div>
       </section>
 
       {/* ② 四个维度 */}
-      <DimensionsSection t={t} />
+      <DimensionsSection t={t} locale={locale} />
 
       {/* ③ 即将上线（职业双轨 / 光谱共振 / 静室之我） */}
       <ComingSoonCarousel />
 
       {/* ④ 他们的故事：全幅沉浸式换页 */}
       <TestimonialCarousel />
-
+    </div>
     </div>
   );
 }

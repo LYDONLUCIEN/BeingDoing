@@ -24,6 +24,9 @@
 @import '../styles/components/bd-highlights.css';
 @import '../styles/components/flow-chat-light.css';
 @import '../styles/components/testimonial-effects.css';
+@import '../styles/components/landing-mesh.css';
+@import '../styles/components/dimension-cards.css';
+@import '../styles/components/explore-intro.css';
 
 /* ── Tailwind (must come after @import) ─────────────── */
 @tailwind base;

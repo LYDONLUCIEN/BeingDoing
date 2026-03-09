@@ -1,0 +1,156 @@
+/* Background Animations */
+.bg-layer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.8s ease-in-out, visibility 0.8s;
+}
+
+.bg-layer.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Noise Overlay */
+.noise-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+}
+
+/* Mesh Blob Animation */
+.mesh-blob {
+  position: absolute;
+  filter: blur(80px);
+  border-radius: 50%;
+  animation: float 15s infinite alternate cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+
+.blob-1 {
+  background: rgba(162, 194, 232, 0.9);
+  width: 40vw;
+  height: 40vw;
+  top: -5%;
+  left: -5%;
+}
+
+.blob-2 {
+  background: rgba(181, 216, 198, 0.9);
+  width: 35vw;
+  height: 35vw;
+  bottom: 0%;
+  right: -5%;
+  animation-delay: -3s;
+}
+
+.blob-3 {
+  background: rgba(244, 179, 179, 0.9);
+  width: 30vw;
+  height: 30vw;
+  top: 40%;
+  left: 30%;
+  animation-delay: -7s;
+}
+
+.blob-4 {
+  background: rgba(253, 224, 147, 0.9);
+  width: 25vw;
+  height: 25vw;
+  top: -5%;
+  right: 20%;
+  animation-delay: -11s;
+}
+
+@keyframes float {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+  100% {
+    transform: translate(10vw, 10vh) scale(1.2);
+  }
+}
+
+/* Radar Ripple Animation */
+.ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100px;
+  height: 100px;
+  border: 2px solid;
+  background: rgba(0, 0, 0, 0.01);
+  border-radius: 50%;
+  animation: rippleExpand 8s cubic-bezier(0.1, 0.8, 0.5, 1) infinite;
+  will-change: transform, opacity;
+}
+
+.ring-1 {
+  border-color: rgba(162, 194, 232, 0.9);
+  animation-delay: 0s;
+}
+
+.ring-2 {
+  border-color: rgba(181, 216, 198, 0.9);
+  animation-delay: 2s;
+}
+
+.ring-3 {
+  border-color: rgba(244, 179, 179, 0.9);
+  animation-delay: 4s;
+}
+
+.ring-4 {
+  border-color: rgba(253, 224, 147, 0.9);
+  animation-delay: 6s;
+}
+
+@keyframes rippleExpand {
+  0% {
+    transform: translate(-50%, -50%) scale(0.1);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(30);
+    opacity: 0;
+  }
+}
+
+/* Prism Sweep Animation */
+.prism-bg {
+  background: linear-gradient(
+    120deg,
+    #faf9f8 0%,
+    #faf9f8 30%,
+    rgba(162, 194, 232, 0.9) 45%,
+    rgba(181, 216, 198, 0.9) 50%,
+    rgba(253, 224, 147, 0.9) 55%,
+    rgba(244, 179, 179, 0.9) 60%,
+    #faf9f8 75%,
+    #faf9f8 100%
+  );
+  background-size: 300% 300%;
+  animation: prismSweep 8s linear infinite alternate;
+  will-change: background-position;
+}
+
+@keyframes prismSweep {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}

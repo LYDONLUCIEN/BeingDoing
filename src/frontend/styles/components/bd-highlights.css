@@ -67,6 +67,42 @@
   50% { background-position: 100% 50%; }
 }
 
+/* 主 CTA 按钮：高级阴影 + 悬浮反馈（参考 background4） */
+.bd-btn-primary {
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.2);
+  transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+.bd-btn-primary:hover {
+  transform: scale(0.96) translateY(2px);
+  box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.15);
+}
+
+/* 引导类黑色按钮：登录/注册、完成此步等，与开始探索一致 */
+.bd-btn-black {
+  background-color: #1d1d1f !important;
+  box-shadow: 0 4px 16px -6px rgba(0,0,0,0.25);
+  transition: all 0.35s cubic-bezier(0.25, 1, 0.5, 1);
+}
+.bd-btn-black:hover {
+  transform: scale(0.96) translateY(2px);
+  box-shadow: 0 2px 8px -4px rgba(0,0,0,0.2);
+  background-color: #333 !important;
+}
+
+/* Hero 开始探索：与 background4 一致，黑色按钮 + 悬停下移 */
+.bd-btn-hero {
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.2);
+  transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+.bd-btn-hero:hover {
+  transform: scale(0.96) translateY(2px);
+  box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.15);
+  background-color: #333 !important;
+}
+.bd-btn-hero-arrow {
+  display: inline-block;
+}
+
 @keyframes bd-sparkle {
   0%, 100% { opacity: 0.6; transform: scale(1); }
   50% { opacity: 1; transform: scale(1.15); }

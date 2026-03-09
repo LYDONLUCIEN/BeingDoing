@@ -8,6 +8,7 @@
 """
 
 from typing import Optional, List, AsyncIterator
+import asyncio
 import json
 import random
 
@@ -20,6 +21,11 @@ from app.config.settings import settings
 from app.core.knowledge.loader import KnowledgeLoader
 from app.utils.simple_activation_manager import SimpleActivationManager, ActivationStatus, get_simple_base_dir
 from app.utils.conversation_file_manager import ConversationFileManager
+from app.core.dimension_completion_checker import (
+    check_dimension_complete,
+    detect_explicit_completion,
+    _should_run_completion_check,
+)
 from app.utils.survey_storage import (
     save_basic_info,
     load_basic_info,
@@ -42,6 +48,13 @@ def _skip_expired_for_debug(rec, user: Optional[dict]) -> bool:
         and _is_debug_admin(user)
         and rec.status == ActivationStatus.EXPIRED
     )
+
+
+def _storage_category(phase: str, thread_id: Optional[str] = None) -> str:
+    """存储用 category：有 thread_id 则独立文件，实现多对话隔离"""
+    if thread_id:
+        return f"{phase}__{thread_id}"
+    return phase
 
 
 def _phase_to_loader_category(phase: str) -> str:
@@ -92,6 +105,7 @@ class SimpleChatResponse(BaseModel):
 class SimpleInitRequest(BaseModel):
     activation_code: str
     phase: Optional[str] = "values"
+    thread_id: Optional[str] = None  # 新建对话时传入，后端按 thread_id 创建独立存储
 
 
 class SimpleHistoryResponse(BaseModel):
@@ -104,6 +118,7 @@ class SimpleChatStreamRequest(BaseModel):
     activation_code: str
     message: str
     phase: Optional[str] = "values"
+    thread_id: Optional[str] = None  # 当前对话 id，用于加载/保存到对应记录
 
 
 class SurveySaveRequest(BaseModel):
@@ -115,6 +130,12 @@ class PriorContextSaveRequest(BaseModel):
     activation_code: str
     phase: str       # 目标阶段，如 "strengths" / "interests_goals"
     context_text: str
+
+
+class ThreadCompleteRequest(BaseModel):
+    activation_code: str
+    phase: str
+    thread_id: str
 
 
 def _load_basic_info_from_activation(activation_code: str) -> str:
@@ -417,10 +438,10 @@ async def simple_init(
 
     conv_manager = ConversationFileManager(base_dir=SIMPLE_BASE_DIR)
     phase = (request.phase or "values").strip() or "values"
-    category = phase
+    category = _storage_category(phase, request.thread_id)
     session_id = rec.session_id
 
-    # 如果已有历史，就直接返回历史
+    # 如果已有历史，就直接返回历史（新建 thread_id 时文件不存在，返回空）
     history_messages: List[dict] = await conv_manager.get_messages(
         session_id=session_id,
         category=category,
@@ -487,8 +508,54 @@ async def simple_init(
     )
 
 
+class ThreadReopenRequest(BaseModel):
+    activation_code: str
+    phase: str
+    thread_id: str
+
+
+@router.post("/thread/reopen", response_model=SimpleChatResponse)
+async def reopen_thread(
+    request: ThreadReopenRequest,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+):
+    """用户选择「再聊聊」完善答案时，清除完成状态以便继续对话"""
+    manager = SimpleActivationManager()
+    rec = manager.get_activation(request.activation_code)
+    if not rec:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="激活码不存在")
+    conv_manager = ConversationFileManager(base_dir=SIMPLE_BASE_DIR)
+    phase_val = (request.phase or "values").strip() or "values"
+    category = _storage_category(phase_val, request.thread_id)
+    await conv_manager.update_metadata(
+        rec.session_id, category,
+        {
+            "thread_completed": False,
+            "pending_conclusion": None,
+        },
+    )
+    return SimpleChatResponse(code=200, message="success", data={})
+
+
+@router.post("/thread/complete", response_model=SimpleChatResponse)
+async def mark_thread_complete(
+    request: ThreadCompleteRequest,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+):
+    """标记某对话为已完成（用户点击「确认没有问题」后调用）"""
+    manager = SimpleActivationManager()
+    rec = manager.get_activation(request.activation_code)
+    if not rec:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="激活码不存在")
+    conv_manager = ConversationFileManager(base_dir=SIMPLE_BASE_DIR)
+    phase_val = (request.phase or "values").strip() or "values"
+    category = _storage_category(phase_val, request.thread_id)
+    await conv_manager.update_metadata(rec.session_id, category, {"thread_completed": True})
+    return SimpleChatResponse(code=200, message="success", data={})
+
+
 @router.get("/history", response_model=SimpleHistoryResponse)
-async def simple_history(activation_code: str, phase: Optional[str] = "values"):
+async def simple_history(activation_code: str, phase: Optional[str] = "values", thread_id: Optional[str] = None):
     """
     获取某个激活码 + 阶段下的全部历史消息
     """
@@ -501,19 +568,23 @@ async def simple_history(activation_code: str, phase: Optional[str] = "values"):
         )
 
     conv_manager = ConversationFileManager(base_dir=SIMPLE_BASE_DIR)
-    category = (phase or "values").strip() or "values"
+    phase_val = (phase or "values").strip() or "values"
+    category = _storage_category(phase_val, thread_id)
     session_id = rec.session_id
 
-    history_messages: List[dict] = await conv_manager.get_messages(
-        session_id=session_id,
-        category=category,
-    )
+    conv_data = await conv_manager.get_conversation_data(session_id, category)
+    history_messages = conv_data.get("messages", [])
+    metadata = conv_data.get("metadata", {})
 
     return SimpleHistoryResponse(
         code=200,
         message="success",
         data={
             "messages": history_messages,
+            "metadata": {
+                "thread_completed": metadata.get("thread_completed", False),
+                "dimension_conclusion": metadata.get("dimension_conclusion"),
+            },
             "activation": {
                 "activation_code": rec.code,
                 "session_id": rec.session_id,
@@ -552,14 +623,14 @@ async def simple_chat_stream(
         )
 
     phase = (request.phase or "values").strip() or "values"
-    category = phase
+    category = _storage_category(phase, request.thread_id)
     conv_manager = ConversationFileManager(base_dir=SIMPLE_BASE_DIR)
     session_id = rec.session_id
 
     async def event_stream() -> AsyncIterator[str]:
         llm = get_default_llm_provider()
 
-        # 读取历史
+        # 读取当前 thread 的历史（独立存储，全新上下文）
         history_messages: List[dict] = await conv_manager.get_messages(
             session_id=session_id,
             category=category,
@@ -597,6 +668,76 @@ async def simple_chat_stream(
         # 发送 started 事件
         yield f"data: {{\"started\": true}}\n\n"
 
+        # 1) 若有上一轮后台检测的 pending_conclusion，综合本轮输入重新生成并展示
+        conv_data = await conv_manager.get_conversation_data(session_id, category)
+        meta = conv_data.get("metadata", {})
+        pending_conclusion = meta.get("pending_conclusion")
+        conv_history = [
+            {"role": m.get("role", "user"), "content": m.get("content", "")}
+            for m in conv_data.get("messages", [])
+        ]
+        user_count = sum(1 for m in conv_data.get("messages", []) if m.get("role") == "user")
+        conclusion_shown_at = meta.get("conclusion_shown_at_turn")
+
+        if pending_conclusion and not meta.get("thread_completed"):
+            # 综合本轮用户输入 + 上一轮结论，重新生成确定性结论
+            dimension_conclusion = await check_dimension_complete(
+                phase, conv_history, prior_conclusion=pending_conclusion
+            )
+            if dimension_conclusion:
+                await conv_manager.update_metadata(
+                    session_id, category,
+                    {
+                        "conclusion_shown_at_turn": user_count,
+                        "dimension_conclusion": dimension_conclusion,
+                        "pending_conclusion": None,
+                    },
+                )
+                transition_msg = "好的，根据我们的对话，我为你整理出本维度的探索结论，请确认下方摘要是否准确。"
+                yield f"data: {{\"chunk\": {json.dumps(transition_msg, ensure_ascii=False)} }}\n\n"
+                full_reply = transition_msg
+                await conv_manager.append_message(
+                    session_id=session_id,
+                    category=category,
+                    message={"role": "assistant", "content": full_reply},
+                )
+                yield f"data: {{\"dimension_conclusion\": {json.dumps(dimension_conclusion, ensure_ascii=False)} }}\n\n"
+                yield f"data: {{\"done\": true, \"response\": {json.dumps(full_reply, ensure_ascii=False)} }}\n\n"
+                return
+            # 若 regenerate 返回 None，清除 pending 并继续正常流程
+            await conv_manager.update_metadata(session_id, category, {"pending_conclusion": None})
+
+        # 2) 无 pending 时：显式完成 或 轮数条件 → 同步检测
+        dimension_conclusion = None
+        if not meta.get("thread_completed"):
+            explicit_result = bool(
+                user_content and await detect_explicit_completion(phase, user_content, conv_history)
+            )
+            should_check = _should_run_completion_check(
+                user_count, conclusion_shown_at,
+                include_explicit=True, explicit_result=explicit_result,
+            )
+            if should_check:
+                dimension_conclusion = await check_dimension_complete(phase, conv_history)
+                if dimension_conclusion:
+                    await conv_manager.update_metadata(
+                        session_id, category,
+                        {"conclusion_shown_at_turn": user_count, "dimension_conclusion": dimension_conclusion},
+                    )
+
+        if dimension_conclusion:
+            transition_msg = "好的，根据我们的对话，我为你整理出本维度的探索结论，请确认下方摘要是否准确。"
+            yield f"data: {{\"chunk\": {json.dumps(transition_msg, ensure_ascii=False)} }}\n\n"
+            full_reply = transition_msg
+            await conv_manager.append_message(
+                session_id=session_id,
+                category=category,
+                message={"role": "assistant", "content": full_reply},
+            )
+            yield f"data: {{\"dimension_conclusion\": {json.dumps(dimension_conclusion, ensure_ascii=False)} }}\n\n"
+            yield f"data: {{\"done\": true, \"response\": {json.dumps(full_reply, ensure_ascii=False)} }}\n\n"
+            return
+
         try:
             async for chunk in llm.chat_stream(llm_messages, temperature=0.7):
                 if not chunk:
@@ -618,6 +759,35 @@ async def simple_chat_stream(
                     "content": full_reply,
                 },
             )
+
+        # 3) 后台异步检测：不阻塞响应，不展示，仅更新 pending_conclusion 判定
+        async def _background_completion_check() -> None:
+            try:
+                conv_data = await conv_manager.get_conversation_data(session_id, category)
+                meta = conv_data.get("metadata", {})
+                if meta.get("thread_completed"):
+                    return
+                user_count = sum(1 for m in conv_data.get("messages", []) if m.get("role") == "user")
+                conclusion_shown_at = meta.get("conclusion_shown_at_turn")
+                if not _should_run_completion_check(user_count, conclusion_shown_at):
+                    return
+                conv_history = [
+                    {"role": m.get("role", "user"), "content": m.get("content", "")}
+                    for m in conv_data.get("messages", [])
+                ]
+                conclusion = await check_dimension_complete(phase, conv_history)
+                if conclusion:
+                    await conv_manager.update_metadata(
+                        session_id, category, {"pending_conclusion": conclusion}
+                    )
+                else:
+                    await conv_manager.update_metadata(
+                        session_id, category, {"pending_conclusion": None}
+                    )
+            except Exception:
+                pass
+
+        asyncio.create_task(_background_completion_check())
 
         yield f"data: {{\"done\": true, \"response\": {json.dumps(full_reply, ensure_ascii=False)} }}\n\n"
 

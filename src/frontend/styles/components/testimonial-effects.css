@@ -41,3 +41,46 @@
     0 0 100px rgba(124, 92, 252, 0.12), 
     inset 0 0 80px rgba(124, 92, 252, 0.05);
 }
+
+/* 他们的故事：温暖包容 Handwriting（LXGW WenKai Lite） */
+.testimonial-quote {
+  font-family: var(--font-wenkai, "LXGW WenKai Lite"), var(--font-serif-cn), serif !important;
+}
+
+/* 声纹波形：卡片中下方，多条竖线组成波形，震动感 */
+.testimonial-waveform {
+  position: absolute;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  height: 28px;
+  pointer-events: none;
+  z-index: 5;
+}
+.testimonial-waveform-bar {
+  width: 4px;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.65;
+  animation: testimonial-wave-vibrate 1.2s ease-in-out infinite;
+  transform-origin: bottom;
+}
+/* 波形起伏：中间高两边低 */
+.testimonial-waveform-bar:nth-child(1) { height: 10px; animation-delay: 0s; }
+.testimonial-waveform-bar:nth-child(2) { height: 16px; animation-delay: 0.08s; }
+.testimonial-waveform-bar:nth-child(3) { height: 22px; animation-delay: 0.16s; }
+.testimonial-waveform-bar:nth-child(4) { height: 26px; animation-delay: 0.24s; }
+.testimonial-waveform-bar:nth-child(5) { height: 24px; animation-delay: 0.32s; }
+.testimonial-waveform-bar:nth-child(6) { height: 28px; animation-delay: 0.12s; }
+.testimonial-waveform-bar:nth-child(7) { height: 20px; animation-delay: 0.2s; }
+.testimonial-waveform-bar:nth-child(8) { height: 18px; animation-delay: 0.28s; }
+.testimonial-waveform-bar:nth-child(9) { height: 14px; animation-delay: 0.04s; }
+.testimonial-waveform-bar:nth-child(10) { height: 12px; animation-delay: 0.36s; }
+@keyframes testimonial-wave-vibrate {
+  0%, 100% { transform: scaleY(0.6); opacity: 0.5; }
+  50% { transform: scaleY(1.1); opacity: 0.8; }
+}

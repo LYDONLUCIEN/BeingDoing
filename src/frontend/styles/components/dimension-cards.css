@@ -1,0 +1,72 @@
+/* ══════════════════════════════════════════
+   四维卡片：毛玻璃 + 顶部色条 + 悬浮阴影
+   参考 background4.html 高级质感
+   ══════════════════════════════════════════ */
+
+.bd-dimension-card {
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 24px;
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.04);
+  transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.bd-dimension-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  opacity: 0.95;
+  border-radius: 24px 24px 0 0;
+}
+
+.bd-dimension-card.bd-dim-values::before { background: var(--bd-phase-values); }
+.bd-dimension-card.bd-dim-strengths::before { background: var(--bd-phase-strengths); }
+.bd-dimension-card.bd-dim-interests::before { background: var(--bd-phase-interests); }
+.bd-dimension-card.bd-dim-purpose::before { background: var(--bd-phase-purpose); }
+
+/* 与 background4 一致：悬停时上浮 8px scale(1.02) */
+.bd-dimension-card:hover {
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.8);
+}
+
+/* 横排四列时卡片更紧凑 */
+@media (min-width: 1024px) {
+  .bd-dimension-card { min-height: 180px; }
+}
+
+/* 深色模式适配 */
+[data-color-scheme="dark"] .bd-dimension-card {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.3);
+}
+
+[data-color-scheme="dark"] .bd-dimension-card:hover {
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.4);
+}
+
+/* 四维卡片排版：阐释与问题区分字体，高级克制 */
+.bd-dim-desc {
+  font-family: var(--font-serif-cn);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  line-height: 1.65;
+}
+.bd-dim-question {
+  font-family: var(--font-sans-cn);
+  font-size: 11px;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  opacity: 0.85;
+}

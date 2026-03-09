@@ -1,0 +1,106 @@
+/* ══════════════════════════════════════════
+   首页 Mesh 背景（参考 background4.html）
+   光晕交融 + 噪点层，GPU 加速动画
+   ══════════════════════════════════════════ */
+
+.landing-mesh-wrap {
+  position: relative;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+/* 与 background4 一致：浅色模式用暖米白 #faf9f8 */
+html:not([data-color-scheme="dark"]) .landing-mesh-wrap {
+  background-color: #faf9f8;
+}
+
+/* 首页时布局背景也统一为 #faf9f8，避免 navbar 透出冷灰 */
+html[data-landing="true"]:not([data-color-scheme="dark"]) [class*="bd-aurora-bg"],
+html[data-landing="true"]:not([data-color-scheme="dark"]) [class*="bd-eff-bg"] {
+  background-color: #faf9f8 !important;
+}
+
+/* 背景层：fixed，内容之下 */
+.landing-mesh-bg {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* 噪点层（与 background4 一致 0.05） */
+.landing-mesh-noise {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+}
+
+/* 内容层：覆盖在背景之上 */
+.landing-mesh-content {
+  position: relative;
+  z-index: 2;
+}
+
+/* Mesh 色块：与 background4 一致 blur(80px)，15s 动画 */
+.landing-mesh-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  animation: landing-mesh-float 15s cubic-bezier(0.4, 0, 0.2, 1) infinite alternate;
+  will-change: transform;
+}
+
+/* 与 background4 完全一致：4 色各出现一次，位置与尺寸一一复刻 */
+.landing-mesh-blob-1 {
+  background: var(--bd-mesh-blue);
+  width: 40vw;
+  height: 40vw;
+  top: -5%;
+  left: -5%;
+}
+.landing-mesh-blob-2 {
+  background: var(--bd-mesh-green);
+  width: 35vw;
+  height: 35vw;
+  bottom: 0%;
+  right: -5%;
+  animation-delay: -3s;
+}
+.landing-mesh-blob-3 {
+  background: var(--bd-mesh-red);
+  width: 30vw;
+  height: 30vw;
+  top: 40%;
+  left: 30%;
+  animation-delay: -7s;
+}
+.landing-mesh-blob-4 {
+  background: var(--bd-mesh-yellow);
+  width: 25vw;
+  height: 25vw;
+  top: -5%;
+  right: 20%;
+  animation-delay: -11s;
+}
+
+@keyframes landing-mesh-float {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(10vw, 10vh) scale(1.2); }
+}
+
+/* 深色模式：降低 mesh 饱和度、提高对比 */
+[data-color-scheme="dark"] .landing-mesh-blob {
+  filter: blur(100px);
+  opacity: 0.7;
+}
+[data-color-scheme="dark"] .landing-mesh-noise {
+  opacity: 0.06;
+}

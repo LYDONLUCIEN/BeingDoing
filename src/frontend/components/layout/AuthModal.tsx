@@ -41,7 +41,7 @@ interface AuthModalProps {
   redirectTo?: string;
 }
 
-export default function AuthModal({ isOpen, onClose, redirectTo = '/explore' }: AuthModalProps) {
+export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intro' }: AuthModalProps) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(false);
@@ -52,7 +52,9 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore' }: 
   const loginForm = useForm<LoginFormData>({ resolver: zodResolver(loginSchema) });
   const registerForm = useForm<RegisterFormData>({ resolver: zodResolver(registerSchema) });
 
+  const [successMsg, setSuccessMsg] = useState('');
   const handleSuccess = (targetPath: string) => {
+    setSuccessMsg('');
     onClose();
     if (pathname !== targetPath) router.push(targetPath);
     else router.refresh();
@@ -60,6 +62,7 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore' }: 
 
   const onLoginSubmit = async (data: LoginFormData) => {
     setError('');
+    setSuccessMsg('');
     setLoading(true);
     try {
       const response = await authApi.login({
@@ -67,19 +70,38 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore' }: 
         phone: data.phone || undefined,
         password: data.password,
       });
-      if (response.code === 200 && response.data) {
+      const resData = response?.data;
+      if (response?.code === 200 && resData?.token) {
         try {
           const me = await authApi.getCurrentUser();
-          const userData = me.data || response.data;
-          setUser({ user_id: userData.user_id, email: userData.email, phone: userData.phone, username: userData.username, is_super_admin: userData.is_super_admin });
+          const userData = me?.data || resData;
+          setUser({
+            user_id: userData?.user_id ?? resData.user_id,
+            email: userData?.email ?? resData.email,
+            phone: userData?.phone ?? resData.phone,
+            username: userData?.username ?? resData.username,
+            is_super_admin: userData?.is_super_admin,
+          });
         } catch {
-          setUser({ user_id: response.data.user_id, email: response.data.email, phone: response.data.phone, username: response.data.username });
+          setUser({
+            user_id: resData.user_id,
+            email: resData.email,
+            phone: resData.phone,
+            username: resData.username,
+          });
         }
-        setToken(response.data.token);
-        handleSuccess(redirectTo);
+        setToken(resData.token);
+        setSuccessMsg('登录成功！');
+        // 短暂展示成功提示后关闭并跳转，确保 UI 更新
+        setTimeout(() => {
+          setLoading(false);
+          handleSuccess(redirectTo);
+        }, 400);
+      } else {
+        setLoading(false);
       }
     } catch (err: any) {
-      setError(err.response?.data?.detail || '登录失败，请检查您的凭据');
+      setError(err?.response?.data?.detail || err?.message || '登录失败，请检查您的凭据');
     } finally {
       setLoading(false);
     }
@@ -87,6 +109,7 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore' }: 
 
   const onRegisterSubmit = async (data: RegisterFormData) => {
     setError('');
+    setSuccessMsg('');
     setLoading(true);
     try {
       const response = await authApi.register({
@@ -95,13 +118,18 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore' }: 
         username: data.username || undefined,
         password: data.password,
       });
-      if (response.code === 200 && response.data) {
-        setUser({ user_id: response.data.user_id, email: response.data.email, phone: response.data.phone, username: response.data.username });
-        setToken(response.data.token);
-        handleSuccess('/profile/setup');
+      const resData = response?.data;
+      if (response?.code === 200 && resData?.token) {
+        setUser({ user_id: resData.user_id, email: resData.email, phone: resData.phone, username: resData.username });
+        setToken(resData.token);
+        setSuccessMsg('注册成功！');
+        setTimeout(() => {
+          setLoading(false);
+          handleSuccess(redirectTo);
+        }, 400);
       }
     } catch (err: any) {
-      setError(err.response?.data?.detail || '注册失败，请重试');
+      setError(err?.response?.data?.detail || err?.message || '注册失败，请重试');
     } finally {
       setLoading(false);
     }
@@ -178,6 +206,12 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore' }: 
           {error && (
             <div className="mb-4 p-3 rounded-lg text-sm bg-bd-error-dim border border-bd-err text-bd-err">
               {error}
+            </div>
+          )}
+          {/* Success */}
+          {successMsg && (
+            <div className="mb-4 p-3 rounded-lg text-sm bg-green-500/15 border border-green-500/50 text-green-700 dark:text-green-400">
+              {successMsg}
             </div>
           )}
 

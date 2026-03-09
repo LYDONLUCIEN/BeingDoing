@@ -32,6 +32,12 @@
   --bd-primary-dim:     #F1F7FC;
   --bd-primary-fg:      #ffffff;
 
+  /* Mesh 背景色（光晕交融，接近 background4 的 0.9 饱和度） */
+  --bd-mesh-blue:       rgba(162, 194, 232, 0.9);
+  --bd-mesh-green:      rgba(181, 216, 198, 0.9);
+  --bd-mesh-red:        rgba(244, 179, 179, 0.9);
+  --bd-mesh-yellow:     rgba(253, 224, 147, 0.9);
+
   /* 阶段色（设计文档） */
   --bd-phase-values:    #6FAEE0;
   --bd-phase-values-dim:#F1F7FC;

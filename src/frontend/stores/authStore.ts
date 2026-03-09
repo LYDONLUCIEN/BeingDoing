@@ -6,6 +6,7 @@ interface User {
   email?: string;
   phone?: string;
   username?: string;
+  avatar_url?: string;
   is_super_admin?: boolean;
 }
 
@@ -29,7 +30,12 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       _hasHydrated: false,
       setUser: (user) => set({ user, isAuthenticated: !!user }),
-      setToken: (token) => set({ token }),
+      setToken: (token) => {
+        if (typeof window !== 'undefined' && token) {
+          localStorage.setItem('token', token);
+        }
+        set({ token });
+      },
       setHasHydrated: (v) => set({ _hasHydrated: v }),
       logout: () => {
         if (typeof window !== 'undefined') {

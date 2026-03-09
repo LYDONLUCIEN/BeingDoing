@@ -115,6 +115,49 @@ class ConversationFileManager:
         
         return message
     
+    async def get_conversation_data(
+        self,
+        session_id: str,
+        category: str,
+    ) -> Dict:
+        """
+        获取对话完整数据（messages + metadata），用于读写元数据。
+        """
+        file_path = self._get_file_path(session_id, category)
+        try:
+            async with aiofiles.open(file_path, mode='r', encoding='utf-8') as f:
+                content = await f.read()
+                return json.loads(content)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {
+                "session_id": session_id,
+                "category": category,
+                "messages": [],
+                "metadata": {
+                    "created_at": datetime.utcnow().isoformat() + "Z",
+                    "updated_at": datetime.utcnow().isoformat() + "Z",
+                },
+            }
+
+    async def update_metadata(
+        self,
+        session_id: str,
+        category: str,
+        updates: Dict,
+    ) -> None:
+        """更新指定对话的 metadata，合并 updates 到现有 metadata"""
+        file_path = self._get_file_path(session_id, category)
+        try:
+            async with aiofiles.open(file_path, mode='r', encoding='utf-8') as f:
+                data = json.loads(await f.read())
+        except (FileNotFoundError, json.JSONDecodeError):
+            return
+        meta = data.setdefault("metadata", {})
+        meta.update(updates)
+        meta["updated_at"] = datetime.utcnow().isoformat() + "Z"
+        async with aiofiles.open(file_path, mode='w', encoding='utf-8') as f:
+            await f.write(json.dumps(data, indent=2, ensure_ascii=False))
+
     async def get_messages(
         self,
         session_id: str,

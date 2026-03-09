@@ -23,7 +23,10 @@ export const en = {
   nav: {
     brand: 'Vocation',
     home: 'Home',
+    personalHomepage: 'Dashboard',
+    uploadAvatar: 'Upload Avatar',
     explore: 'Explore',
+    dashboard: 'Dashboard',
     community: 'Community',
     colors: 'Colors',
     effects: 'Effects',
@@ -63,6 +66,21 @@ export const en = {
   },
 
   explore: {
+    intro: {
+      back: 'Back to Home',
+      premise1: 'Find a quiet space and an uninterrupted block of time. ',
+      premise2Before: 'With your「',
+      premise2Mentor: 'mentor',
+      premise2After: '」guiding you, write down the answers that arise from within.',
+      blockLabel: 'Your exploration path',
+      step1: { cn: 'Creed', en: 'Creed' },
+      step2: { cn: 'Gift', en: 'Gift' },
+      step3: { cn: 'Fire', en: 'Fire' },
+      step4: { cn: 'North Star', en: 'North Star' },
+      soul: 'No need for perfection—\njust capture the truest flow of the moment.',
+      cta: 'Begin',
+      clickHint: 'Click anywhere to speed up',
+    },
     activate: {
       step: 'Step 0',
       title: 'Enter Activation Code',
@@ -120,6 +138,25 @@ export const en = {
     gotoLogin: 'Login',
   },
 
+  dashboard: {
+    currentProgress: 'Current Progress',
+    basicInfo: 'Basic Info',
+    basicInfoDesc: 'Avatar & Nickname',
+    clickAvatarToUpload: 'Click avatar to upload',
+    nickname: 'Display Name',
+    personalIntro: 'Personal Profile',
+    personalIntroDesc: 'Synced with exploration survey, edit here',
+    report: 'Report',
+    usageGuide: 'Usage Guide',
+    helpCenter: 'Help Center',
+    recycleBin: 'Recycle Bin',
+    setting: 'Setting',
+    journeyTitle: 'My Career Journey',
+    startDate: 'Started',
+    lastEdited: 'Last edited',
+    viewDetails: 'View Details',
+    previousEntries: 'Previous Progress',
+  },
   settings: {
     styleLab: 'Effects Lab',
     styleLabDesc: 'Switch effect presets to preview. Selected effects are saved locally.',

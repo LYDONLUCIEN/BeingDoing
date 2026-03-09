@@ -33,7 +33,13 @@
   --bd-accent-2:        #fb7185;
   --bd-accent-3:        #34d399;
 
-  /* Phase colors: 信念蓝/禀赋绿/热忱红/使命黄 (ideal/glimmer override) */
+  /* Mesh 背景色（深色模式，低饱和光晕） */
+  --bd-mesh-blue:       rgba(129, 140, 248, 0.2);
+  --bd-mesh-green:      rgba(52, 211, 153, 0.18);
+  --bd-mesh-red:        rgba(251, 113, 133, 0.18);
+  --bd-mesh-yellow:     rgba(251, 191, 36, 0.15);
+
+  /* Phase colors: 信念蓝/禀赋绿/热忱红/使命黄 */
   --bd-phase-values:    var(--bd-accent-1);
   --bd-phase-values-dim:   rgba(129,140,248,0.15);
   --bd-phase-strengths: var(--bd-accent-3);

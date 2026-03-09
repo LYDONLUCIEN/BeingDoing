@@ -12,7 +12,7 @@ export interface ApiResponse<T = any> {
 const AUTH_REQUIRED_EVENT = 'auth:required';
 
 export function onAuthRequired(callback: (redirectTo: string) => void): () => void {
-  const handler = (e: Event) => callback((e as CustomEvent).detail?.redirectTo || '/explore');
+  const handler = (e: Event) => callback((e as CustomEvent).detail?.redirectTo || '/explore/intro');
   window.addEventListener(AUTH_REQUIRED_EVENT, handler);
   return () => window.removeEventListener(AUTH_REQUIRED_EVENT, handler);
 }

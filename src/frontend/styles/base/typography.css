@@ -1,7 +1,26 @@
 /* ══════════════════════════════════════════
    Base / Typography
-   Heading scales, body text, code
+   font stacks: 英 Inter/Playfair, 中 Noto Sans/Serif SC
    ══════════════════════════════════════════ */
+
+:root {
+  --font-sans-en: var(--font-inter), system-ui, sans-serif;
+  --font-sans-cn: var(--font-noto-sans-sc, "Noto Sans SC"), var(--font-inter), sans-serif;
+  --font-serif-en: var(--font-playfair), Georgia, serif;
+  --font-serif-cn: var(--font-noto-serif-sc, "Noto Serif SC"), var(--font-playfair), serif;
+  /* 温暖包容 Handwriting（他们的故事） */
+  --font-wenkai: "LXGW WenKai Lite", "LXGW WenKai", var(--font-serif-cn);
+}
+
+/* 文字选中：浅色模式明显色块 */
+::selection {
+  background: rgba(124, 58, 237, 0.35);
+  color: inherit;
+}
+[data-color-scheme="dark"] ::selection {
+  background: rgba(167, 139, 250, 0.4);
+  color: inherit;
+}
 
 /* Utility: text-balance for headings */
 .text-balance { text-wrap: balance; }

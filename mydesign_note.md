@@ -1,3 +1,5 @@
+# 访问路径
+/settings/style-lab  
 
 1. 配置文件（你可直接编辑）
 src/frontend/config/design-effects.json
@@ -20,3 +22,7 @@ components/layout/DesignEffectsInjector.tsx	注入效果
 styles/base/design-effects.css	效果相关样式
 app/(main)/settings/style-lab/page.tsx	效果实验室页面
 docs/DESIGN_EFFECTS.md	使用说明
+
+
+
+# settings/colors

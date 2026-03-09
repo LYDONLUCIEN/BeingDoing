@@ -7,8 +7,16 @@ import { apiClient } from '@/lib/api/client';
 import { loadSession, saveSession, setLastActivationCode, getLastActivationCode, hasReportAvailable } from '@/lib/explore/session';
 import { surveyApi } from '@/lib/api/survey';
 
+function useActivateBg() {
+  useEffect(() => {
+    document.documentElement.setAttribute('data-activate-page', 'true');
+    return () => document.documentElement.removeAttribute('data-activate-page');
+  }, []);
+}
+
 export default function ActivatePage() {
   const router = useRouter();
+  useActivateBg();
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,12 +91,20 @@ export default function ActivatePage() {
   };
 
   return (
-    <div className="min-h-screen bg-bd-gradient text-bd-fg flex items-center justify-center px-4">
+    <div className="activate-page-wrap relative min-h-screen text-bd-fg flex items-center justify-center px-4">
+      {/* 首页 mesh 背景 */}
+      <div className="landing-mesh-bg fixed inset-0 z-0" aria-hidden>
+        <div className="landing-mesh-blob landing-mesh-blob-1" />
+        <div className="landing-mesh-blob landing-mesh-blob-2" />
+        <div className="landing-mesh-blob landing-mesh-blob-3" />
+        <div className="landing-mesh-blob landing-mesh-blob-4" />
+      </div>
+      <div className="landing-mesh-noise fixed inset-0 z-[1]" aria-hidden />
       <motion.div
-        initial={{ opacity: 0, y: 30 }}
+        className="relative z-[2] w-full max-w-md space-y-8"
+        initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-md space-y-8"
+        transition={{ duration: 0.6 }}
       >
         {/* Back */}
         <button
@@ -101,7 +117,7 @@ export default function ActivatePage() {
 
         {/* Header */}
         <div className="space-y-2">
-          <p className="text-xs tracking-widest uppercase" style={{ color: 'var(--bd-ui-accent)' }}>Step 0</p>
+          <p className="text-xs tracking-widest uppercase text-neutral-600">Step 0</p>
           <h1 className="text-3xl font-bold text-bd-fg">输入激活码</h1>
           <p className="text-bd-muted text-sm leading-relaxed">
             激活码是你专属的探索通行证。整个探索过程中，所有对话记录都会自动保存，可随时回来继续。
@@ -116,7 +132,7 @@ export default function ActivatePage() {
             onChange={(e) => setCode(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !loading) handleActivate(); }}
             placeholder="请输入你的激活码"
-            className="w-full rounded-xl border bg-bd-overlay px-4 py-3.5 text-base outline-none transition-colors focus:border-[var(--bd-ui-accent)] focus:ring-2 focus:ring-[var(--bd-ui-accent)] focus:ring-opacity-25"
+            className="w-full rounded-xl border bg-bd-overlay px-4 py-3.5 text-base outline-none transition-colors focus:border-neutral-400 focus:ring-2 focus:ring-neutral-300 focus:ring-opacity-50"
             style={{
               color: 'var(--bd-fg)',
               borderColor: 'var(--bd-border)',
@@ -127,8 +143,7 @@ export default function ActivatePage() {
             type="button"
             onClick={handleActivate}
             disabled={loading || !code.trim()}
-            className="w-full rounded-xl px-4 py-3.5 text-base font-semibold text-bd-ui-accent-fg transition-all disabled:opacity-40 hover:opacity-90"
-            style={{ background: 'var(--bd-ui-accent)' }}
+            className="bd-btn-black w-full rounded-xl px-4 py-3.5 text-base font-semibold text-white transition-all disabled:opacity-40"
           >
             {loading ? '验证中…' : '开始探索 →'}
           </button>
@@ -136,16 +151,15 @@ export default function ActivatePage() {
             <button
               type="button"
               onClick={() => router.push('/explore/report/view')}
-              className="w-full rounded-xl px-4 py-3 text-base font-medium border-2 transition-all hover:opacity-90 flex items-center justify-center gap-2"
-              style={{ borderColor: 'var(--bd-ui-accent)', color: 'var(--bd-ui-accent)' }}
+              className="bd-btn-report w-full rounded-xl px-4 py-3 text-base font-medium flex items-center justify-center gap-2"
             >
               查看报告
             </button>
           )}
         </div>
 
-        {/* Steps preview */}
-        <div className="border-t border-bd-border pt-6 space-y-3">
+        {/* Steps preview - 独立背景避免 mesh 影响文字可读性 */}
+        <div className="bd-activate-steps-preview rounded-xl p-4 space-y-3">
           <p className="text-xs text-bd-subtle uppercase tracking-widest">探索路径</p>
           {[
             { num: '01', label: '信念', desc: '你最在意什么？', varColor: 'var(--bd-phase-values)' },

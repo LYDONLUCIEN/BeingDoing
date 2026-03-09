@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>职引 · 开启探索</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&family=Noto+Sans+SC:wght@300;400;500&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg:          #f0ede8;
+            --ink-heavy:   #3a3632;
+            --ink-mid:     #7a756f;
+            --ink-light:   #b0aba4;
+            --ink-ghost:   #cdc8c0;
+            --line:        rgba(0,0,0,0.05);
+
+            --c-blue:      #b8cdd8;
+            --c-green:     #b4c8bc;
+            --c-red:       #d8bfbb;
+            --c-yellow:    #d8cba8;
+
+            --c-blue-bg:   rgba(184,205,216,0.12);
+            --c-green-bg:  rgba(180,200,188,0.12);
+            --c-red-bg:    rgba(216,191,187,0.12);
+            --c-yellow-bg: rgba(216,203,168,0.12);
+
+            --card-bg:     rgba(253,251,248,0.82);
+            --card-border: rgba(255,255,255,0.70);
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            width: 100%; height: 100%;
+            background: var(--bg);
+            font-family: 'Inter', 'Noto Sans SC', sans-serif;
+            font-size: 15px;
+            font-weight: 300;
+            line-height: 1.9;
+            color: var(--ink-mid);
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+            cursor: default;
+        }
+
+        .bg-layer {
+            position: fixed; inset: 0; z-index: 0;
+            pointer-events: none;
+            background:
+                radial-gradient(ellipse 60% 55% at 15% 20%, rgba(184,205,216,0.18) 0%, transparent 65%),
+                radial-gradient(ellipse 50% 50% at 85% 80%, rgba(216,203,168,0.15) 0%, transparent 65%),
+                radial-gradient(ellipse 45% 50% at 65% 15%, rgba(216,191,187,0.10) 0%, transparent 65%);
+        }
+
+        .noise {
+            position: fixed; inset: 0; z-index: 1;
+            pointer-events: none; opacity: 0.03;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+        }
+
+        /* ── Logo ── */
+        .logo {
+            position: fixed;
+            top: 28px; left: 32px;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            opacity: 0;
+            animation: fadeUp 2s cubic-bezier(0.22,1,0.36,1) 0.4s forwards;
+        }
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(-5px); }
+            to   { opacity: 1; transform: translateY(0);    }
+        }
+        .logo-icon { width: 18px; height: 18px; flex-shrink: 0; }
+        .logo-name {
+            font-size: 12px; font-weight: 500;
+            letter-spacing: 0.22em;
+            color: var(--ink-heavy);
+        }
+        .logo-sep {
+            font-size: 11px; font-weight: 300;
+            color: var(--ink-ghost);
+            letter-spacing: 0.06em;
+        }
+
+        /* ── 舞台 ── */
+        .stage {
+            position: relative; z-index: 10;
+            width: 100%; height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 48px 24px;
+        }
+
+        /* ── 毛玻璃卡片 ── */
+        .card {
+            width: 100%;
+            max-width: 460px;
+            background: var(--card-bg);
+            backdrop-filter: blur(28px) saturate(1.2);
+            -webkit-backdrop-filter: blur(28px) saturate(1.2);
+            border: 1px solid var(--card-border);
+            border-radius: 18px;
+            box-shadow:
+                0 1px 0 rgba(255,255,255,0.9) inset,
+                0 20px 50px rgba(100,90,80,0.08),
+                0  4px 14px rgba(100,90,80,0.05);
+            padding: 48px 48px 38px;
+            display: flex;
+            flex-direction: column;
+            opacity: 0;
+            animation: cardIn 2.2s cubic-bezier(0.22,1,0.36,1) 0.2s forwards;
+        }
+        @keyframes cardIn {
+            from { opacity: 0; transform: translateY(16px); }
+            to   { opacity: 1; transform: translateY(0);    }
+        }
+
+        /* ════════════════════════════════
+           TOKEN 系统
+           ─ 关键修复：
+             transition 列出所有需要过渡的属性
+             包含 background，这样 .step 的悬停
+             背景色变化也能正常工作
+             不再需要在 .step 上单独写 transition
+        ════════════════════════════════ */
+        .token {
+            opacity: 0;
+            transform: translateY(10px);
+            transition:
+                opacity    1.4s cubic-bezier(0.22, 1, 0.36, 1),
+                transform  1.4s cubic-bezier(0.22, 1, 0.36, 1),
+                background 0.6s ease;   /* ← step hover 背景也在这里 */
+        }
+        .token.fast {
+            transition:
+                opacity    0.35s cubic-bezier(0.22, 1, 0.36, 1),
+                transform  0.35s cubic-bezier(0.22, 1, 0.36, 1),
+                background 0.6s ease;
+        }
+        .token.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* ── 前提文字 ── */
+        .premise-wrap { margin-bottom: 30px; }
+        .premise {
+            font-size: 15px; font-weight: 300;
+            color: var(--ink-mid);
+            line-height: 2.0;
+            letter-spacing: 0.04em;
+        }
+        .premise .mark {
+            color: var(--ink-heavy);
+            font-weight: 400;
+        }
+
+        /* ── 分割线 ── */
+        .rule {
+            width: 18px; height: 1px;
+            background: var(--line);
+            margin-bottom: 24px;
+        }
+
+        /* ── 区块标签 ── */
+        .block-label {
+            font-size: 10px; font-weight: 400;
+            letter-spacing: 0.24em;
+            color: var(--ink-ghost);
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+
+        /* ── 四步骤 ── */
+        .steps {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            margin-bottom: 26px;
+        }
+
+        /* 注意：.step 本身不再写 transition，
+           全部交给 .token 统一管理             */
+        .step {
+            display: flex;
+            align-items: center;
+            gap: 13px;
+            padding: 10px 12px 10px 12px;
+            border-radius: 8px;
+            border-left: 2px solid transparent;
+            /* 无 transition，由 .token 接管 */
+        }
+        .step.blue   { border-color: var(--c-blue);   }
+        .step.green  { border-color: var(--c-green);  }
+        .step.red    { border-color: var(--c-red);    }
+        .step.yellow { border-color: var(--c-yellow); }
+
+        .step.blue:hover   { background: var(--c-blue-bg);   }
+        .step.green:hover  { background: var(--c-green-bg);  }
+        .step.red:hover    { background: var(--c-red-bg);    }
+        .step.yellow:hover { background: var(--c-yellow-bg); }
+
+        .step-num {
+            font-size: 10px; font-weight: 400;
+            letter-spacing: 0.06em;
+            flex-shrink: 0; width: 16px;
+            color: var(--ink-ghost);
+        }
+        .step-cn {
+            font-family: 'Noto Sans SC', sans-serif;
+            font-size: 14px; font-weight: 400;
+            color: var(--ink-heavy);
+            letter-spacing: 0.08em;
+            flex-shrink: 0;
+        }
+        .step-dot {
+            width: 3px; height: 3px;
+            border-radius: 50%;
+            background: var(--ink-ghost);
+            opacity: 0.5; flex-shrink: 0;
+        }
+        .step-en {
+            font-size: 11px; font-weight: 300;
+            color: var(--ink-light);
+            letter-spacing: 0.1em;
+        }
+
+        /* ── 呼吸竖条 ── */
+        .soul-wrap {
+            position: relative;
+            padding-left: 18px;
+            margin-bottom: 34px;
+        }
+        .soul-bar {
+            position: absolute;
+            left: 0; top: 4px; bottom: 4px;
+            width: 2.5px;
+            border-radius: 2px;
+            overflow: hidden;
+            background: linear-gradient(
+                to bottom,
+                var(--c-yellow),
+                var(--c-red),
+                var(--c-blue),
+                var(--c-green),
+                var(--c-yellow),
+                var(--c-red),
+                var(--c-blue)
+            );
+            background-size: 100% 300%;
+            background-position: 0% 0%;
+            animation:
+                barDrift   8s linear      infinite,
+                barBreathe 4s ease-in-out infinite;
+        }
+        @keyframes barDrift {
+            0%   { background-position: 0% 0%;   }
+            100% { background-position: 0% 100%; }
+        }
+        @keyframes barBreathe {
+            0%,100% { opacity: 0.55; }
+            50%     { opacity: 0.90; }
+        }
+
+        .soul {
+            font-family: 'Noto Sans SC', sans-serif;
+            font-size: 16px; font-weight: 400;
+            color: var(--ink-heavy);
+            line-height: 2.15;
+            letter-spacing: 0.05em;
+        }
+
+        /* ── 全宽分割 ── */
+        .rule-bottom {
+            width: 100%; height: 1px;
+            background: var(--line);
+            margin-bottom: 22px;
+        }
+
+        /* ── 行动区 ── */
+        .cta-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 18px;
+        }
+        .progress {
+            font-size: 11px; font-weight: 300;
+            color: var(--ink-ghost);
+            letter-spacing: 0.12em;
+        }
+        .progress em {
+            font-style: normal;
+            color: var(--ink-mid); font-weight: 400;
+        }
+        .btn-begin {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: none; border: none;
+            padding: 0; cursor: pointer;
+            font-family: 'Noto Sans SC', sans-serif;
+            font-size: 14px; font-weight: 400;
+            color: var(--ink-heavy);
+            letter-spacing: 0.14em;
+            position: relative;
+            transition: opacity 0.4s ease;
+        }
+        .btn-begin::after {
+            content: '';
+            position: absolute;
+            bottom: -3px; left: 0; right: 22px;
+            height: 1px;
+            background: var(--ink-heavy);
+            transform-origin: left;
+            transform: scaleX(0);
+            transition: transform 0.55s cubic-bezier(0.22,1,0.36,1);
+        }
+        .btn-begin:hover::after { transform: scaleX(1); }
+        .btn-begin:hover { opacity: 0.45; }
+        .btn-arrow {
+            transition: transform 0.55s cubic-bezier(0.22,1,0.36,1);
+        }
+        .btn-begin:hover .btn-arrow { transform: translateX(4px); }
+
+        /* ── 注记 ── */
+        .footnote {
+            font-size: 11px; font-weight: 300;
+            color: var(--ink-ghost);
+            letter-spacing: 0.06em;
+            line-height: 1;
+        }
+
+        /* ── 点击提示 ── */
+        .click-hint {
+            position: fixed;
+            bottom: 28px; right: 28px;
+            font-size: 11px; font-weight: 300;
+            color: var(--ink-ghost);
+            letter-spacing: 0.1em;
+            display: flex; align-items: center; gap: 7px;
+            opacity: 0;
+            transition: opacity 1s ease;
+            z-index: 20; pointer-events: none;
+        }
+        .click-hint.show { opacity: 1; }
+        .click-hint.hide { opacity: 0; }
+        .hint-pulse {
+            width: 4px; height: 4px;
+            border-radius: 50%;
+            background: var(--ink-ghost);
+            animation: pulse 2.5s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%,100% { opacity: 0.2; transform: scale(1);   }
+            50%      { opacity: 0.7; transform: scale(1.5); }
+        }
+
+        /* ── 离场 ── */
+        .stage.leaving .card {
+            transition: opacity 1.4s ease, transform 1.4s cubic-bezier(0.22,1,0.36,1);
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+
+        /* ── 响应式 ── */
+        @media (max-width: 540px) {
+            .card { padding: 36px 28px 28px; border-radius: 14px; }
+            .stage {
+                align-items: flex-start;
+                overflow-y: auto;
+                height: auto; min-height: 100%;
+                padding: 28px 14px 40px;
+            }
+            .cta-row { flex-direction: column; align-items: flex-start; gap: 18px; }
+            .logo { top: 18px; left: 18px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="bg-layer"></div>
+<div class="noise"></div>
+
+<div class="logo">
+    <svg class="logo-icon" viewBox="0 0 22 22" fill="none">
+        <circle cx="11" cy="11" r="10"  stroke="rgba(58,54,50,0.15)" stroke-width="1"/>
+        <circle cx="11" cy="11" r="6.5" stroke="rgba(58,54,50,0.10)" stroke-width="1"/>
+        <circle cx="11" cy="11" r="3"   stroke="rgba(58,54,50,0.08)" stroke-width="1"/>
+        <circle cx="11" cy="11" r="1"   fill="rgba(58,54,50,0.25)"/>
+    </svg>
+    <span class="logo-name">职引</span>
+    <span class="logo-sep">&nbsp;·&nbsp;InnerWork</span>
+</div>
+
+<div class="click-hint" id="clickHint">
+    <div class="hint-pulse"></div>
+    点击任意处加速
+</div>
+
+<div class="stage" id="stage">
+    <div class="card">
+
+        <div class="premise-wrap">
+            <p class="premise token" data-delay="900">
+                请寻找一个安静的空间和不被打扰的时间段，
+            </p>
+            <p class="premise token" data-delay="2300">
+                在<span class="mark">「导师」</span>的指引下，写下你内心浮现的答案。
+            </p>
+        </div>
+
+        <div class="rule token" data-delay="3600"></div>
+
+        <p class="block-label token" data-delay="4100">你将完成的探索</p>
+
+        <div class="steps">
+            <div class="step blue token" data-delay="4800">
+                <span class="step-num">01</span>
+                <span class="step-cn">底色</span>
+                <span class="step-dot"></span>
+                <span class="step-en">Creed</span>
+            </div>
+            <div class="step green token" data-delay="5500">
+                <span class="step-num">02</span>
+                <span class="step-cn">天赋</span>
+                <span class="step-dot"></span>
+                <span class="step-en">Gift</span>
+            </div>
+            <div class="step red token" data-delay="6200">
+                <span class="step-num">03</span>
+                <span class="step-cn">热忱</span>
+                <span class="step-dot"></span>
+                <span class="step-en">Fire</span>
+            </div>
+            <div class="step yellow token" data-delay="6900">
+                <span class="step-num">04</span>
+                <span class="step-cn">航向</span>
+                <span class="step-dot"></span>
+                <span class="step-en">North Star</span>
+            </div>
+        </div>
+
+        <div class="rule token" data-delay="7700"></div>
+
+        <div class="soul-wrap token" data-delay="8300">
+            <div class="soul-bar"></div>
+            <p class="soul">
+                不必追求完美，<br>
+                只需捕捉当下最真实的流动。
+            </p>
+        </div>
+
+        <div class="rule-bottom token" data-delay="9400"></div>
+
+        <div class="cta-row token" data-delay="10000">
+            <span class="progress"><em>1</em>&thinsp;/&thinsp;4</span>
+            <button class="btn-begin" id="btnBegin">
+                开启探索
+                <svg class="btn-arrow" width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M1 7h12M8 2l5 5-5 5"
+                          stroke="currentColor" stroke-width="1.1"
+                          stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </button>
+        </div>
+
+        <p class="footnote token" data-delay="10800">
+            可以分次完成 &nbsp;·&nbsp; 退出后可从历史记录恢复
+        </p>
+
+    </div>
+</div>
+
+<script>
+(function () {
+    const tokens   = [...document.querySelectorAll('.token')]
+        .sort((a, b) => +a.dataset.delay - +b.dataset.delay);
+    const hint     = document.getElementById('clickHint');
+    const btnBegin = document.getElementById('btnBegin');
+    const stage    = document.getElementById('stage');
+
+    let currentIdx  = 0;
+    let accelerated = false;
+    let timer       = null;
+
+    function show(i) {
+        if (i >= tokens.length) return;
+        tokens[i].classList.add('visible');
+    }
+
+    function scheduleNext(i) {
+        if (i >= tokens.length) {
+            hint.classList.remove('show');
+            hint.classList.add('hide');
+            return;
+        }
+        const delay = i === 0
+            ? +tokens[0].dataset.delay
+            : +tokens[i].dataset.delay - +tokens[i - 1].dataset.delay;
+
+        timer = setTimeout(() => {
+            show(i);
+            currentIdx = i + 1;
+            scheduleNext(i + 1);
+        }, delay);
+    }
+
+    function accelerate() {
+        if (accelerated) return;
+        accelerated = true;
+        clearTimeout(timer);
+        tokens.slice(currentIdx).forEach((el, idx) => {
+            el.classList.add('fast');
+            setTimeout(() => el.classList.add('visible'), idx * 80);
+        });
+        hint.classList.remove('show');
+        hint.classList.add('hide');
+    }
+
+    function beginJourney() {
+        stage.classList.add('leaving');
+        setTimeout(() => console.log('进入探索旅程'), 1400);
+    }
+
+    document.addEventListener('click', e => {
+        if (e.target.closest('#btnBegin')) return;
+        if (!accelerated) accelerate();
+    });
+
+    btnBegin.addEventListener('click', e => {
+        e.stopPropagation();
+        if (!tokens[tokens.length - 1].classList.contains('visible')) {
+            accelerate();
+        } else {
+            beginJourney();
+        }
+    });
+
+    scheduleNext(0);
+    setTimeout(() => hint.classList.add('show'), 1600);
+})();
+</script>
+
+</body>
+</html>

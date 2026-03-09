@@ -1,9 +1,7 @@
 import type { Metadata } from 'next';
-import { Inter, Playfair_Display } from 'next/font/google';
+import { Inter, Playfair_Display, Noto_Sans_SC, Noto_Serif_SC } from 'next/font/google';
 import './globals.css';
-import ThemeProvider from '@/components/layout/ThemeProvider';
-import PhaseColorInjector from '@/components/layout/PhaseColorInjector';
-import DesignEffectsInjector from '@/components/layout/DesignEffectsInjector';
+import Providers from '@/components/layout/Providers';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -19,8 +17,22 @@ const playfair = Playfair_Display({
   style: ['normal', 'italic'],
 });
 
+const notoSansSC = Noto_Sans_SC({
+  subsets: ['latin'],
+  variable: '--font-noto-sans-sc',
+  display: 'swap',
+  weight: ['300', '400', '500', '600'],
+});
+
+const notoSerifSC = Noto_Serif_SC({
+  subsets: ['latin'],
+  variable: '--font-noto-serif-sc',
+  display: 'swap',
+  weight: ['400', '600'],
+});
+
 export const metadata: Metadata = {
-  title: '职·引 — 不是找到方向，而是认出自己',
+  title: '职引 — 不是找到方向，而是认出自己',
   description: '通过信念、禀赋、热忱与使命四个维度的深度对话，发现属于你的职业方向。',
 };
 
@@ -30,8 +42,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-CN" data-theme="ideal" data-color-scheme="light" className={`${inter.variable} ${playfair.variable}`} suppressHydrationWarning>
+    <html lang="zh-CN" data-theme="ideal" data-color-scheme="light" className={`${inter.variable} ${playfair.variable} ${notoSansSC.variable} ${notoSerifSC.variable}`} suppressHydrationWarning>
       <head>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-lite-webfont@1.1.0/style.css" />
         {/* Apply saved theme before first paint to avoid FOUC and hydration mismatch */}
         <script
           dangerouslySetInnerHTML={{
@@ -39,11 +52,8 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className={inter.className} suppressHydrationWarning>
-        <ThemeProvider />
-        <PhaseColorInjector />
-        <DesignEffectsInjector />
-        {children}
+      <body className={inter.className} style={{ fontFamily: 'var(--font-sans-cn)' }} suppressHydrationWarning>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

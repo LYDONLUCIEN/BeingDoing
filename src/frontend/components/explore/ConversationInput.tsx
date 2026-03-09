@@ -57,7 +57,7 @@ export default function ConversationInput({
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-2">
       <div
-        className={`flex rounded-xl border focus-within:border-[var(--bd-ui-accent)] focus-within:ring-2 focus-within:ring-[color:var(--bd-ui-accent)] focus-within:ring-opacity-25 transition-all ${
+        className={`flex rounded-xl border focus-within:border-neutral-400 focus-within:ring-2 focus-within:ring-neutral-300 focus-within:ring-opacity-50 transition-all ${
           isLight
             ? 'border-neutral-300/60 bg-white focus-within:shadow-[0_4px_20px_rgba(167,139,250,0.1)]'
             : 'border-white/15 bg-slate-800/50'
@@ -116,8 +116,7 @@ export default function ConversationInput({
         <button
           type="submit"
           disabled={loading || streaming || !text.trim()}
-          className="px-6 py-2.5 rounded-lg text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors hover:opacity-90"
-          style={{ background: 'var(--bd-ui-accent, #a78bfa)' }}
+          className="bd-btn-black px-6 py-2.5 rounded-lg text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors hover:opacity-90"
         >
           {loading ? '提交中…' : '发送'}
         </button>

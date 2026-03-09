@@ -7,11 +7,18 @@ import { copyToClipboard } from '@/lib/utils/clipboard';
 
 type PhaseClass = 'values' | 'strength' | 'interest' | 'purpose';
 
+function formatMessageTime(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+}
+
 interface FlowAiMessageProps {
   content: string;
   phase: PhaseClass;
   /** 是否流式输出中（显示光标） */
   streaming?: boolean;
+  /** 消息时间戳（Unix ms） */
+  timestamp?: number;
   onCopy?: () => void;
   onRegenerate?: () => void;
 }
@@ -23,6 +30,7 @@ export default function FlowAiMessage({
   content,
   phase,
   streaming = false,
+  timestamp,
   onCopy,
   onRegenerate,
 }: FlowAiMessageProps) {
@@ -34,6 +42,11 @@ export default function FlowAiMessage({
 
   return (
     <div className="flow-msg-ai-wrap">
+      {timestamp !== undefined && (
+        <span className="flow-msg-time text-[10px] text-[var(--flow-text-muted)] mb-1">
+          {formatMessageTime(timestamp)}
+        </span>
+      )}
       <div className={`flow-msg-ai-content ${phase}`}>
         <MessageContent content={content} markdown colorMode="light" />
         {streaming && <span className="flow-stream-cursor" aria-hidden />}

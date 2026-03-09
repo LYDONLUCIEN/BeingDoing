@@ -50,7 +50,7 @@ export default function StepProgressBar({
                 'flex-1 min-w-0 py-2.5 px-2 text-center text-sm font-medium transition-all duration-200 ' +
                 (isActive
                   ? isLight
-                    ? 'bg-[var(--bd-ui-accent)] text-white'
+                    ? 'bg-neutral-800 text-white'
                     : 'bg-primary-500/90 text-white'
                   : '') +
                 (isCompleted && !isActive
