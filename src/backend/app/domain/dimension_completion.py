@@ -18,17 +18,11 @@ DIMENSION_COMPLETION_CONFIG: Dict[str, dict] = {
         "completion_criteria": "用户已确认10件擅长的事及其标签，或明确表示认可当前提炼结果",
         "summary_prompt_hint": "用1-2段话概括用户的核心才能与优势，突出做起来轻松自然、他人有反馈的领域",
     },
-    "interests_goals": {
+    "interests": {
         "label": "热忱",
         "goal": "发现用户3件「喜欢的事」（真正感兴趣、好奇的领域），从12件候选中筛选 top3",
         "completion_criteria": "用户已确认 top3 喜欢的事，或明确表示认可当前提炼结果",
         "summary_prompt_hint": "用1-2段话概括用户的热忱所在，突出让用户忘我投入、时间消失的领域",
-    },
-    "interests": {
-        "label": "热忱",
-        "goal": "发现用户3件「喜欢的事」（真正感兴趣、好奇的领域）",
-        "completion_criteria": "用户已确认 top3 喜欢的事，或明确表示认可当前提炼结果",
-        "summary_prompt_hint": "用1-2段话概括用户的热忱所在，突出让用户忘我投入的领域",
     },
     "purpose": {
         "label": "使命",
@@ -40,7 +34,8 @@ DIMENSION_COMPLETION_CONFIG: Dict[str, dict] = {
 
 
 def get_dimension_config(phase: str) -> Optional[dict]:
-    """获取指定阶段的维度完成配置"""
-    return DIMENSION_COMPLETION_CONFIG.get(phase) or DIMENSION_COMPLETION_CONFIG.get(
+    """获取指定阶段的维度完成配置。interests_goals 视为 interests 的别名（兼容旧数据）。"""
+    normalized = "interests" if phase in ("interests_goals", "goals") else phase
+    return DIMENSION_COMPLETION_CONFIG.get(normalized) or DIMENSION_COMPLETION_CONFIG.get(
         "values"
     )

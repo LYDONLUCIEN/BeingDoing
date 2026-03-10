@@ -19,7 +19,7 @@ from typing import Dict, Optional
 # ────────────────────────────────────────────
 # 价值观（values）前5题目标
 # ────────────────────────────────────────────
-VALUES_GOALS: Dict[int, dict] = {
+VALUES_QUESTION_GOALS: Dict[int, dict] = {
     1: {
         "goal": "通过用户敬佩的人的特征，反推出用户核心价值观",
         "extract": ["具体的人物", "让用户震撼的特征", "这些特征对应的价值观"],
@@ -60,7 +60,7 @@ VALUES_GOALS: Dict[int, dict] = {
 # ────────────────────────────────────────────
 # 才能（strengths）前5题目标
 # ────────────────────────────────────────────
-STRENGTHS_GOALS: Dict[int, dict] = {
+STRENGTHS_QUESTION_GOALS: Dict[int, dict] = {
     1: {
         "goal": "发现用户在什么领域能自然运用高效方法，揭示实践型才能",
         "extract": ["用高效方法的具体场景", "别人觉得难但用户觉得轻松的事", "这种才能的表现"],
@@ -101,7 +101,7 @@ STRENGTHS_GOALS: Dict[int, dict] = {
 # ────────────────────────────────────────────
 # 兴趣/热情（interests）前5题目标
 # ────────────────────────────────────────────
-INTERESTS_GOALS: Dict[int, dict] = {
+INTERESTS_QUESTION_GOALS: Dict[int, dict] = {
     1: {
         "goal": "了解用户对动物/自然相关领域的兴趣深度",
         "extract": ["对该领域的具体兴趣点", "投入的时间和精力", "带来的满足感"],
@@ -141,13 +141,13 @@ INTERESTS_GOALS: Dict[int, dict] = {
 
 # 按 category 索引
 QUESTION_GOALS: Dict[str, Dict[int, dict]] = {
-    "values": VALUES_GOALS,
-    "strengths": STRENGTHS_GOALS,
-    "interests": INTERESTS_GOALS,
+    "values": VALUES_QUESTION_GOALS,
+    "strengths": STRENGTHS_QUESTION_GOALS,
+    "interests": INTERESTS_QUESTION_GOALS,
 }
 
 # 每个 category 的默认目标（当具体题目没有配置时使用）
-DEFAULT_GOALS: Dict[str, dict] = {
+DEFAULT_QUESTION_GOALS: Dict[str, dict] = {
     "values": {
         "goal": "帮助用户发现和表达隐含的价值观",
         "extract": ["用户提到的关键词", "背后体现的价值取向", "具体的例子或经历"],
@@ -209,4 +209,4 @@ def get_question_goal(category: str, question_id: int) -> Optional[dict]:
     if question_number in category_goals:
         return category_goals[question_number]
 
-    return DEFAULT_GOALS.get(category)
+    return DEFAULT_QUESTION_GOALS.get(category)

@@ -42,10 +42,10 @@
                               ├── basic_info.json      # 调研问卷
                               ├── values.json          # 信念阶段对话历史
                               ├── strengths.json       # 禀赋阶段对话历史
-                              ├── interests_goals.json # 热忱阶段对话历史
+                              ├── interests.json # 热忱阶段对话历史
                               ├── purpose.json         # 使命阶段对话历史
                               ├── prior_context_strengths.txt   # 信念→禀赋的摘要
-                              ├── prior_context_interests_goals.txt
+                              ├── prior_context_interests.txt
                               └── prior_context_purpose.txt
 ```
 
@@ -55,7 +55,7 @@
 |---------------|------------|-----------|------|
 | values | values | values | 信念 |
 | strengths | strengths | strengths | 禀赋 |
-| interests | interests_goals | interests_goals | 热忱 |
+| interests | interests | interests | 热忱 |
 | purpose | purpose | purpose | 使命 |
 
 ---
@@ -89,7 +89,7 @@
 ```http
 GET /api/v1/simple-chat/history?activation_code=XXXX&phase=values
 GET /api/v1/simple-chat/history?activation_code=XXXX&phase=strengths
-GET /api/v1/simple-chat/history?activation_code=XXXX&phase=interests_goals
+GET /api/v1/simple-chat/history?activation_code=XXXX&phase=interests
 GET /api/v1/simple-chat/history?activation_code=XXXX&phase=purpose
 ```
 
@@ -104,8 +104,8 @@ GET /api/v1/simple-chat/history?activation_code=XXXX&phase=purpose
 报告的数据基础已具备，可由以下数据组装：
 
 - **基础信息**：`GET /api/v1/simple-chat/survey?activation_code=xxx` → `basic_info`
-- **各阶段对话**：`GET /api/v1/simple-chat/history?activation_code=xxx&phase=values|strengths|interests_goals|purpose`
-- **阶段间摘要**：`GET /api/v1/simple-chat/prior-context?activation_code=xxx&phase=strengths|interests_goals|purpose`
+- **各阶段对话**：`GET /api/v1/simple-chat/history?activation_code=xxx&phase=values|strengths|interests|purpose`
+- **阶段间摘要**：`GET /api/v1/simple-chat/prior-context?activation_code=xxx&phase=strengths|interests|purpose`
 
 ### 3.2 报告生成逻辑（建议实现）
 
@@ -163,7 +163,7 @@ GET /api/v1/simple-chat/history?activation_code=XXXX&phase=purpose
 - **激活码索引**：`data/simple/activations.json`
 - **会话数据**：`data/simple/{session_id}/`
   - `basic_info.json`：调研
-  - `values.json`、`strengths.json`、`interests_goals.json`、`purpose.json`：对话历史
+  - `values.json`、`strengths.json`、`interests.json`、`purpose.json`：对话历史
   - `prior_context_{phase}.txt`：阶段摘要
 
 ---

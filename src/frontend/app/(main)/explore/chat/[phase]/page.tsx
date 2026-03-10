@@ -58,7 +58,7 @@ const PHASE_META: Record<PhaseKey, { color: string; desc: string; hint: string }
 const BACKEND_PHASE: Record<PhaseKey, string> = {
   values: 'values',
   strengths: 'strengths',
-  interests: 'interests_goals',
+  interests: 'interests',
   purpose: 'purpose',
 };
 
@@ -303,6 +303,9 @@ export default function ChatPhasePage() {
   // 3) 用户选择「继续完善」后 → 折叠结论卡，可输入
   const isSelectedCompleted = selectedThread?.status === 'completed';
   const isBackendSynced = activeThreadId === backendSyncedThreadId;
+  const hasCollapsedConclusion = messages.some(
+    (m) => m.type === 'dimension_conclusion' && m.conclusionCollapsed
+  );
   const isReadOnly =
     isSelectedCompleted || // 用户已确认完成，锁定
     (!isBackendSynced && !!activeThreadId); // 切到其它 thread 时暂不输入（未同步）
@@ -754,7 +757,13 @@ export default function ChatPhasePage() {
                         if (!sending && !isReadOnly) handleSend();
                       }
                     }}
-                    placeholder={isReadOnly ? '此对话已完成' : '说说你的想法...'}
+                    placeholder={
+                      isReadOnly
+                        ? '此对话已完成'
+                        : hasCollapsedConclusion
+                          ? '继续完善，说说你想补充或深化的…'
+                          : '说说你的想法...'
+                    }
                     rows={1}
                     disabled={sending || isReadOnly}
                     className="flow-input-field"

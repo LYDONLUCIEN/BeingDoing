@@ -2,61 +2,27 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Sparkles, Quote, Star } from 'lucide-react';
 import { useLocale } from '@/hooks/useLocale';
-import { useThemeStore } from '@/stores/themeStore';
-
-// ── 用户留言数据（2~3 色水彩晕染撞色）──────────────────────────
+// ── 用户故事（9 条，3x3 平铺，头像占位 assets/user_story/）──────────────────────────
 const TESTIMONIALS: Array<{
   quote: string;
   name: string;
   role: string;
-  colors: [string, string, string?]; // rgb 如 '129,140,248'，2~3 色撞色
-  color: string; // 主色（用于背景、指示点等）
+  avatar: string; // 占位，后续在 public/assets/user_story/ 放入图片后改为 /assets/user_story/1.jpg 等
+  color: string;
 }> = [
-  {
-    quote: '我第一次意识到，我一直在做别人期待的事，而不是我认为重要的事。这个过程让我看清了自己。',
-    name: '小林',
-    role: '28岁 / 产品经理',
-    colors: ['129, 140, 248', '52, 211, 153', '251, 191, 36'], // indigo + emerald + amber
-    color: '129, 140, 248',
-  },
-  {
-    quote: '原来沟通协调这件事对我来说真的是禀赋，不是习惯。这个区分让我第一次觉得自己有竞争力。',
-    name: 'Maggie',
-    role: '32岁 / 市场运营',
-    colors: ['251, 113, 133', '244, 114, 182', '129, 140, 248'], // rose + pink + indigo
-    color: '251, 113, 133',
-  },
-  {
-    quote: '帮助别人成长这件事，让我忘我。我以为那只是爱好，没想到可以成为职业核心。',
-    name: '阿文',
-    role: '25岁 / 应届生',
-    colors: ['251, 191, 36', '52, 211, 153'], // amber + emerald
-    color: '251, 191, 36',
-  },
-  {
-    quote: '使命感这个词以前对我太虚了。但当我说出「我想帮普通人做出好决策」的时候，我哭了。',
-    name: '晓敏',
-    role: '35岁 / 咨询顾问',
-    colors: ['52, 211, 153', '34, 211, 238', '129, 140, 248'], // emerald + cyan + indigo
-    color: '52, 211, 153',
-  },
-  {
-    quote: '以为自己什么都喜欢，其实是什么都没认真想过。四个维度逼着我去想清楚，很有价值。',
-    name: '老K',
-    role: '40岁 / 创业者',
-    colors: ['34, 211, 238', '129, 140, 248'], // cyan + indigo
-    color: '34, 211, 238',
-  },
-  {
-    quote: '第一次做完就哭了，太多东西压在心里没被看见。这是一份给自己的礼物。',
-    name: '苏苏',
-    role: '29岁 / 教师',
-    colors: ['244, 114, 182', '251, 113, 133', '251, 191, 36'], // pink + rose + amber
-    color: '244, 114, 182',
-  },
+  { quote: '我第一次意识到，我一直在做别人期待的事，而不是我认为重要的事。这个过程让我看清了自己。', name: '小林', role: '28岁 / 产品经理', avatar: '', color: '129, 140, 248' },
+  { quote: '原来沟通协调这件事对我来说真的是禀赋，不是习惯。这个区分让我第一次觉得自己有竞争力。', name: 'Maggie', role: '32岁 / 市场运营', avatar: '', color: '251, 113, 133' },
+  { quote: '帮助别人成长这件事，让我忘我。我以为那只是爱好，没想到可以成为职业核心。', name: '阿文', role: '25岁 / 应届生', avatar: '', color: '251, 191, 36' },
+  { quote: '使命感这个词以前对我太虚了。但当我说出「我想帮普通人做出好决策」的时候，我哭了。', name: '晓敏', role: '35岁 / 咨询顾问', avatar: '', color: '52, 211, 153' },
+  { quote: '以为自己什么都喜欢，其实是什么都没认真想过。四个维度逼着我去想清楚，很有价值。', name: '老K', role: '40岁 / 创业者', avatar: '', color: '34, 211, 238' },
+  { quote: '第一次做完就哭了，太多东西压在心里没被看见。这是一份给自己的礼物。', name: '苏苏', role: '29岁 / 教师', avatar: '', color: '244, 114, 182' },
+  { quote: '以前觉得职业规划是套路，但这里的对话让我真正在思考「我」是谁。', name: '浩然', role: '27岁 / 程序员', avatar: '', color: '129, 140, 248' },
+  { quote: '热忱那一关，我写了五件小事。没想到它们可以串成一条清晰的线。', name: '小雨', role: '31岁 / 设计师', avatar: '', color: '251, 191, 36' },
+  { quote: '和伴侣一起做完探索，才发现我们原来有这么多共振点。', name: '阿杰', role: '33岁 / 创业合伙人', avatar: '', color: '52, 211, 153' },
 ];
 
 // 探索你的故事：紫色系 CTA（文案来自 i18n）
@@ -101,25 +67,55 @@ function DimensionsSection({ t, locale }: { t: (p: string) => string; locale: st
   return (
     <section className="max-w-5xl mx-auto px-6 py-20 space-y-12">
       <InwardLookingBlock t={t} />
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {DIMENSION_KEYS.map((key) => {
-          const vars = DIMENSION_VARS[key];
-          return (
-            <div
-              key={key}
-              className={`bd-dimension-card bd-dim-${key} p-6 flex flex-col text-left min-h-[200px] cursor-default`}
-            >
-              {isZh && (
-                <p className="text-xs font-medium tracking-[0.1em] uppercase mb-1" style={{ color: 'var(--bd-fg-subtle)', fontFamily: 'var(--font-sans-en)' }}>
-                  {t(`dimensions.${key}.en`)}
-                </p>
-              )}
-              <h3 className="text-xl font-bold mb-3" style={{ color: vars.varColor }}>{t(`dimensions.${key}.name`)}</h3>
-              <p className="bd-dim-desc text-sm leading-relaxed flex-1" style={{ color: 'var(--bd-fg-muted)' }}>{t(`dimensions.${key}.desc`)}</p>
-              <p className="bd-dim-question text-xs mt-3 pt-3 border-t border-bd-border-soft" style={{ color: 'var(--bd-fg-subtle)' }}>「{t(`dimensions.${key}.question`)}」</p>
-            </div>
-          );
-        })}
+      <div className="relative">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {DIMENSION_KEYS.map((key) => {
+            const vars = DIMENSION_VARS[key];
+            return (
+              <div
+                key={key}
+                className={`bd-dimension-card bd-dim-${key} p-6 flex flex-col text-left min-h-[200px] cursor-default`}
+              >
+                {isZh && (
+                  <p className="text-xs font-medium tracking-[0.1em] uppercase mb-1" style={{ color: 'var(--bd-fg-subtle)', fontFamily: 'var(--font-sans-en)' }}>
+                    {t(`dimensions.${key}.en`)}
+                  </p>
+                )}
+                <h3 className="text-xl font-bold mb-3" style={{ color: vars.varColor }}>{t(`dimensions.${key}.name`)}</h3>
+                <p className="bd-dim-desc text-sm leading-relaxed flex-1" style={{ color: 'var(--bd-fg-muted)' }}>{t(`dimensions.${key}.desc`)}</p>
+                <p className="bd-dim-question text-xs mt-3 pt-3 border-t border-bd-border-soft" style={{ color: 'var(--bd-fg-subtle)' }}>「{t(`dimensions.${key}.question`)}」</p>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-6 lg:mt-10 flex justify-center relative min-h-[80px] lg:min-h-[100px]">
+          <svg className="absolute top-0 left-1/2 -translate-x-1/2 w-[90%] max-w-xl h-20 pointer-events-none hidden lg:block" viewBox="0 0 400 80" preserveAspectRatio="xMidYMid meet" aria-hidden>
+            {[0, 1, 2, 3].map((i) => {
+              const x1 = 100 + i * 200;
+              return (
+                <path
+                  key={i}
+                  d={`M ${50 + i * 100} 0 C ${50 + i * 100} 45, 200 65, 200 78`}
+                  stroke={`var(--bd-phase-${DIMENSION_KEYS[i]})`}
+                  strokeWidth="1.5"
+                  strokeOpacity="0.4"
+                  fill="none"
+                />
+              );
+            })}
+          </svg>
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="bd-dim-your-direction relative z-10 rounded-2xl px-10 py-6 text-center min-w-[260px]"
+          >
+            <h3 className="text-xl md:text-2xl font-bold" style={{ color: 'var(--bd-fg)' }}>{t('home.yourDirection')}</h3>
+            <p className="text-sm mt-2" style={{ color: 'var(--bd-fg-muted)' }}>
+              {t('home.yourDirectionDesc')}
+            </p>
+          </motion.div>
+        </div>
       </div>
     </section>
   );
@@ -141,274 +137,245 @@ const COMING_SOON_ITEMS = [
   },
 ];
 
-function ComingSoonCarousel() {
-  const [activeIndex, setActiveIndex] = useState(0);
-  const item = COMING_SOON_ITEMS[activeIndex];
+function ComingSoonFlat() {
+  const { t } = useLocale();
 
   return (
-    <section className="max-w-4xl mx-auto px-6 py-16 pb-28">
-      <motion.div
-        initial={{ opacity: 0, y: 30 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true }}
-        className="bd-eff-card rounded-3xl p-10 md:p-14 text-center space-y-5"
-        style={{
-          border: '1px solid var(--bd-border-soft)',
-          background: 'var(--bd-bg-card-alt)',
-        }}
-      >
-        <p className="text-xs tracking-widest uppercase" style={{ color: 'var(--bd-fg-subtle)' }}>即将上线</p>
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeIndex}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.35 }}
-            className="space-y-4"
-          >
-            <h2 className="text-2xl md:text-3xl font-bold" style={{ color: 'var(--bd-fg)' }}>{item.title}</h2>
-            <p className="text-sm max-w-md mx-auto leading-relaxed" style={{ color: 'var(--bd-fg-muted)' }}>
-              {item.desc}
-            </p>
-          </motion.div>
-        </AnimatePresence>
-        <div
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs"
-          style={{
-            border: '1px solid var(--bd-border-soft)',
-            color: 'var(--bd-fg-subtle)',
-          }}
+    <section className="relative z-10 max-w-4xl mx-auto px-5 py-20">
+      <div className="text-center mb-16">
+        <motion.div
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          className="inline-flex items-center gap-2 bg-purple-100/60 dark:bg-purple-500/20 backdrop-blur-md text-purple-700 dark:text-purple-300 px-5 py-2 rounded-full mb-6"
         >
-          <span
-            className="w-1.5 h-1.5 rounded-full animate-pulse"
-            style={{ background: 'var(--bd-accent-3)' }}
-          />
-          开发中
-        </div>
-        <div className="flex justify-center gap-2 pt-2">
-          {COMING_SOON_ITEMS.map((_, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => setActiveIndex(i)}
-              className="w-2 h-2 rounded-full transition-all"
-              style={{
-                background: i === activeIndex ? 'var(--bd-ui-accent)' : 'var(--bd-fg-subtle)',
-                opacity: i === activeIndex ? 1 : 0.5,
-                transform: i === activeIndex ? 'scale(1.2)' : 'scale(1)',
-              }}
-              aria-label={`切换到${COMING_SOON_ITEMS[i].title}`}
-            />
-          ))}
-        </div>
-      </motion.div>
+          <Sparkles className="h-4 w-4" />
+          <span className="text-sm">{t('home.comingSoonBadge')}</span>
+        </motion.div>
+        <motion.h2
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          className="text-5xl font-semibold mb-4 tracking-[0.05em]"
+          style={{ color: 'var(--bd-fg)' }}
+        >
+          {t('home.comingSoonTitle')}
+        </motion.h2>
+        <motion.p
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          className="text-xl font-light"
+          style={{ color: 'var(--bd-fg-muted)' }}
+        >
+          {t('home.comingSoonSubtitle')}
+        </motion.p>
+      </div>
+      <div className="grid md:grid-cols-3 gap-6">
+        {COMING_SOON_ITEMS.map((item, i) => (
+          <motion.div
+            key={i}
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: i * 0.1 }}
+            className="bg-white/60 dark:bg-white/10 backdrop-blur-[24px] border border-white/90 dark:border-white/20 rounded-3xl p-8 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.03)] transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_30px_60px_-15px_rgba(0,0,0,0.08)] hover:bg-white/85 dark:hover:bg-white/15"
+          >
+            <h3 className="text-xl font-medium mb-3" style={{ color: 'var(--bd-fg)' }}>{item.title}</h3>
+            <p className="text-sm leading-relaxed font-light" style={{ color: 'var(--bd-fg-muted)' }}>{item.desc}</p>
+          </motion.div>
+        ))}
+      </div>
     </section>
   );
 }
 
-// 浅色：水彩撞色（2~3 色）
-function watercolorBg(colors: [string, string, string?]) {
-  const [a, b, c] = colors;
-  return `
-    radial-gradient(ellipse 80% 60% at 15% 85%, rgba(${a}, 0.14) 0%, transparent 55%),
-    radial-gradient(ellipse 70% 50% at 85% 15%, rgba(${b}, 0.10) 0%, transparent 50%),
-    ${c ? `radial-gradient(ellipse 60% 70% at 50% 50%, rgba(${c}, 0.06) 0%, transparent 60%),` : ''}
-    linear-gradient(135deg, rgba(${a}, 0.08) 0%, transparent 40%),
-    linear-gradient(225deg, rgba(${b}, 0.06) 0%, transparent 35%),
-    linear-gradient(to bottom, rgba(255,252,248,0.96), rgba(250,248,245,0.93))
-  `;
-}
+const STORIES_PER_PAGE = 3;
+const TOTAL_PAGES = Math.ceil(TESTIMONIALS.length / STORIES_PER_PAGE);
 
-// 深色：流光/荧光底
-function darkGlowBg(colors: [string, string, string?]) {
-  const [a] = colors;
-  return `
-    radial-gradient(ellipse 90% 70% at 50% 100%, rgba(${a}, 0.15) 0%, transparent 55%),
-    linear-gradient(180deg, rgba(15,23,42,0.6) 0%, rgba(2,8,23,0.85) 100%)
-  `;
-}
-
-function TestimonialCarousel() {
+function TestimonialGrid() {
   const router = useRouter();
   const { t } = useLocale();
-  const { colorScheme } = useThemeStore();
-  const isDark = colorScheme === 'dark';
-  const TOTAL = TESTIMONIALS.length + 2; // CTA左 + 6条故事 + CTA右
-  const [activeIndex, setActiveIndex] = useState(1); // 默认第一个人的故事卡片
-  const [direction, setDirection] = useState(0);
-  const isCtaLeft = activeIndex === 0;
-  const isCtaRight = activeIndex === TOTAL - 1;
-  const isCta = isCtaLeft || isCtaRight;
-  const currentColor = isCta ? '124, 92, 252' : TESTIMONIALS[activeIndex - 1]?.color ?? '124, 92, 252';
-  const canPrev = activeIndex > 0;
-  const canNext = activeIndex < TOTAL - 1;
+  const [page, setPage] = useState(0);
 
-  const goPrev = () => {
-    if (!canPrev) return;
-    setDirection(-1);
-    setActiveIndex((i) => i - 1);
-  };
-  const goNext = () => {
-    if (!canNext) return;
-    setDirection(1);
-    setActiveIndex((i) => i + 1);
-  };
-
-  const goToExplore = () => router.push('/explore/intro');
+  const start = page * STORIES_PER_PAGE;
+  const visible = TESTIMONIALS.slice(start, start + STORIES_PER_PAGE);
+  const canPrev = page > 0;
+  const canNext = page < TOTAL_PAGES - 1;
 
   return (
-    <section
-      className="relative min-h-[42vh] flex flex-col justify-center overflow-hidden transition-colors duration-700"
-      style={{
-        background: `linear-gradient(to bottom,
-          color-mix(in srgb, rgba(${currentColor}, 0.06) 30%, var(--bd-bg)),
-          color-mix(in srgb, rgba(${currentColor}, 0.04) 20%, var(--bd-bg-mid)),
-          color-mix(in srgb, rgba(${currentColor}, 0.05) 25%, var(--bd-bg-end))
-        )`,
-      }}
-    >
-      <p
-        className="absolute top-5 left-0 right-0 text-center text-xs tracking-[0.2em] uppercase transition-opacity duration-500"
-        style={{ color: 'var(--bd-fg-subtle)' }}
-      >
-        {t('home.theirStories')}
-      </p>
-
-      {/* 换页按钮：左右两侧 */}
-      {canPrev && (
-        <button
-          type="button"
-          onClick={goPrev}
-          className="absolute left-4 md:left-8 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300 hover:scale-110 opacity-70 hover:opacity-100"
-          style={{
-            background: isDark ? 'rgba(30,41,59,0.9)' : 'rgba(255,255,255,0.9)',
-            boxShadow: isDark ? '0 4px 20px rgba(0,0,0,0.3)' : '0 4px 20px rgba(0,0,0,0.08)',
-            color: `rgb(${currentColor})`,
-          }}
-          aria-label="上一条"
+    <section className="relative z-10 w-full px-5 py-20">
+      <div className="text-center mb-16 max-w-4xl mx-auto">
+        <motion.h2
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          className="text-5xl font-semibold mb-4 tracking-[0.05em]"
+          style={{ color: 'var(--bd-fg)' }}
         >
-          <ChevronLeft size={24} strokeWidth={2} />
-        </button>
-      )}
-      {canNext && (
-        <button
-          type="button"
-          onClick={goNext}
-          className="absolute right-4 md:right-8 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300 hover:scale-110 opacity-70 hover:opacity-100"
-          style={{
-            background: isDark ? 'rgba(30,41,59,0.9)' : 'rgba(255,255,255,0.9)',
-            boxShadow: isDark ? '0 4px 20px rgba(0,0,0,0.3)' : '0 4px 20px rgba(0,0,0,0.08)',
-            color: `rgb(${currentColor})`,
-          }}
-          aria-label="下一条"
+          {t('home.theirStories')}
+        </motion.h2>
+        <motion.p
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          className="text-xl font-light"
+          style={{ color: 'var(--bd-fg-muted)' }}
         >
-          <ChevronRight size={24} strokeWidth={2} />
-        </button>
-      )}
-
-      {/* 大卡片：铺满左右，版面更紧凑 */}
-      <div className="w-full max-w-4xl mx-auto px-6 md:px-12 py-5 md:py-6">
-        <AnimatePresence mode="wait">
-          {isCta ? (
-            <motion.button
-              key={`cta-${activeIndex}`}
-              type="button"
-              onClick={goToExplore}
-              initial={{ opacity: 0, x: direction > 0 ? 60 : -60 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: direction > 0 ? -60 : 60 }}
-              transition={{ duration: 0.45, ease: [0.25, 0.1, 0.25, 1] }}
-              className={`w-full rounded-2xl md:rounded-3xl p-5 md:p-6 lg:p-7 relative overflow-hidden text-left transition-transform hover:scale-[1.01] active:scale-[0.99] ${isDark ? 'testimonial-cta-dark' : ''}`}
-              style={{
-                background: isDark ? darkGlowBg(EXPLORE_CTA_COLORS) : watercolorBg(EXPLORE_CTA_COLORS),
-                border: isDark ? '1px solid rgba(124,92,252,0.25)' : '1px solid rgba(124,92,252,0.12)',
-                boxShadow: isDark ? undefined : '0 8px 40px rgba(124,92,252,0.08), 0 2px 12px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.7)',
-              }}
-            >
-              <div
-                className="absolute inset-0 rounded-2xl md:rounded-3xl pointer-events-none opacity-30"
-                style={{
-                  backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E")`,
-                  backgroundSize: '150px',
-                }}
-                aria-hidden
-              />
-              <div className="relative z-10">
-                <h3 className="text-2xl md:text-3xl font-bold" style={{ color: 'var(--bd-ui-accent)' }}>
-                  {t('home.exploreYourStory')}
-                </h3>
-                <p className="mt-3 text-sm md:text-base" style={{ color: 'var(--bd-fg-muted)' }}>
-                  {t('home.exploreYourStorySub')}
-                </p>
-                <span className="inline-block mt-6 text-sm font-medium" style={{ color: 'var(--bd-ui-accent)' }}>
-                  {t('home.exploreCta')}
-                </span>
-              </div>
-            </motion.button>
-          ) : (
-            <motion.div
-              key={activeIndex}
-              initial={{ opacity: 0, x: direction > 0 ? 60 : -60 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: direction > 0 ? -60 : 60 }}
-              transition={{ duration: 0.45, ease: [0.25, 0.1, 0.25, 1] }}
-              className={`w-full rounded-2xl md:rounded-3xl p-5 md:p-6 lg:p-7 relative overflow-hidden ${isDark ? 'testimonial-card-dark' : ''}`}
-              style={{
-                background: isDark ? darkGlowBg(TESTIMONIALS[activeIndex - 1].colors) : watercolorBg(TESTIMONIALS[activeIndex - 1].colors),
-                border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.05)',
-                boxShadow: isDark ? undefined : '0 8px 40px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.7)',
-                ['--tc-r' as string]: TESTIMONIALS[activeIndex - 1].color.split(',')[0]?.trim(),
-                ['--tc-g' as string]: TESTIMONIALS[activeIndex - 1].color.split(',')[1]?.trim(),
-                ['--tc-b' as string]: TESTIMONIALS[activeIndex - 1].color.split(',')[2]?.trim(),
-              }}
-            >
-              <div className="testimonial-waveform" style={{ color: `rgb(${TESTIMONIALS[activeIndex - 1].color})` }} aria-hidden>
-                {[...Array(10)].map((_, i) => (
-                  <span key={i} className="testimonial-waveform-bar" />
-                ))}
-              </div>
-              <div
-                className="absolute inset-0 rounded-2xl md:rounded-3xl pointer-events-none opacity-30"
-                style={{
-                  backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E")`,
-                  backgroundSize: '150px',
-                }}
-                aria-hidden
-              />
-              <blockquote className="relative z-10 text-lg md:text-xl lg:text-2xl leading-relaxed md:leading-loose testimonial-quote" style={{ color: 'var(--bd-fg)' }}>
-                「{TESTIMONIALS[activeIndex - 1].quote}」
-              </blockquote>
-              <div className="relative z-10 mt-8 flex items-baseline gap-3">
-                <p className="text-base font-semibold" style={{ color: 'var(--bd-fg)' }}>{TESTIMONIALS[activeIndex - 1].name}</p>
-                <span className="text-sm" style={{ color: 'var(--bd-fg-subtle)' }}>{TESTIMONIALS[activeIndex - 1].role}</span>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+          {t('home.testimonialsSubtitle')}
+        </motion.p>
       </div>
 
-      {/* 页码指示 */}
-      <div className="absolute bottom-3 md:bottom-4 left-0 right-0 flex justify-center gap-2">
-        {Array.from({ length: TOTAL }).map((_, i) => (
+      <div className="relative max-w-6xl mx-auto">
+        {canPrev && (
           <button
-            key={i}
             type="button"
-            onClick={() => {
-              setDirection(i > activeIndex ? 1 : -1);
-              setActiveIndex(i);
-            }}
-            className="w-2 h-2 rounded-full transition-all duration-300"
-            style={{
-              background: i === activeIndex ? `rgb(${currentColor})` : 'var(--bd-fg-subtle)',
-              opacity: i === activeIndex ? 1 : 0.4,
-              transform: i === activeIndex ? 'scale(1.3)' : 'scale(1)',
-            }}
-            aria-label={i === 0 || i === TOTAL - 1 ? '探索你的故事' : `第${i}条`}
+            onClick={() => setPage((p) => p - 1)}
+            className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 lg:-translate-x-12 z-20 bg-white/90 dark:bg-white/10 backdrop-blur-md hover:bg-white dark:hover:bg-white/20 border border-black/10 dark:border-white/20 rounded-full p-3 shadow-lg transition-all hover:scale-110"
+            style={{ color: 'var(--bd-fg)' }}
+            aria-label="上一页"
+          >
+            <ChevronLeft className="h-6 w-6" />
+          </button>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 px-4">
+          <AnimatePresence mode="wait">
+            {visible.map((item, i) => (
+              <motion.div
+                key={start + i}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.25 }}
+                className="bg-white/60 dark:bg-white/10 backdrop-blur-[24px] border border-white/90 dark:border-white/20 rounded-3xl p-8 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.03)] transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_30px_60px_-15px_rgba(0,0,0,0.08)] hover:bg-white/85 dark:hover:bg-white/15"
+              >
+                <Quote className="h-10 w-10 text-purple-600 dark:text-purple-400 mb-4 opacity-50" />
+                <div className="flex gap-1 mb-4">
+                  {[1, 2, 3, 4, 5].map((j) => (
+                    <Star key={j} className="h-4 w-4 fill-amber-400 text-amber-400" />
+                  ))}
+                </div>
+                <p className="text-sm min-h-[100px] mb-6 italic leading-relaxed" style={{ color: 'var(--bd-fg-muted)' }}>
+                  「{item.quote}」
+                </p>
+                <div className="flex items-center gap-3">
+                  {item.avatar ? (
+                    <img src={item.avatar} alt="" className="w-12 h-12 rounded-full object-cover" />
+                  ) : (
+                    <div
+                      className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-semibold flex-shrink-0"
+                      style={{ background: `rgba(${item.color}, 0.2)`, color: `rgb(${item.color})` }}
+                    >
+                      {item.name.slice(0, 1)}
+                    </div>
+                  )}
+                  <div>
+                    <div className="font-medium text-sm" style={{ color: 'var(--bd-fg)' }}>{item.name}</div>
+                    <div className="text-xs" style={{ color: 'var(--bd-fg-muted)' }}>{item.role}</div>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+
+        {canNext && (
+          <button
+            type="button"
+            onClick={() => setPage((p) => p + 1)}
+            className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 lg:translate-x-12 z-20 bg-white/90 dark:bg-white/10 backdrop-blur-md hover:bg-white dark:hover:bg-white/20 border border-black/10 dark:border-white/20 rounded-full p-3 shadow-lg transition-all hover:scale-110"
+            style={{ color: 'var(--bd-fg)' }}
+            aria-label="下一页"
+          >
+            <ChevronRight className="h-6 w-6" />
+          </button>
+        )}
+      </div>
+
+      <div className="flex justify-center gap-2 mt-8">
+        {Array.from({ length: TOTAL_PAGES }).map((_, idx) => (
+          <button
+            key={idx}
+            type="button"
+            onClick={() => setPage(idx)}
+            className={`h-2 rounded-full transition-all ${
+              page === idx
+                ? 'bg-purple-600 dark:bg-purple-500 w-8'
+                : 'bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 w-2'
+            }`}
+            aria-label={`第${idx + 1}页`}
           />
         ))}
       </div>
+      <motion.button
+        type="button"
+        onClick={() => router.push('/explore/intro')}
+        initial={{ opacity: 0 }}
+        whileInView={{ opacity: 1 }}
+        viewport={{ once: true }}
+        className="w-full max-w-md mx-auto mt-12 block rounded-2xl p-6 text-center border transition-all hover:scale-[1.01]"
+        style={{
+          background: 'linear-gradient(135deg, rgba(124,92,252,0.12), rgba(167,139,250,0.08))',
+          borderColor: 'rgba(124,92,252,0.2)',
+        }}
+      >
+        <h3 className="text-xl font-bold" style={{ color: 'var(--bd-ui-accent)' }}>{t('home.exploreYourStory')}</h3>
+        <p className="text-sm mt-2" style={{ color: 'var(--bd-fg-muted)' }}>{t('home.exploreYourStorySub')}</p>
+        <span className="inline-block mt-4 text-sm font-medium" style={{ color: 'var(--bd-ui-accent)' }}>{t('home.exploreCta')}</span>
+      </motion.button>
     </section>
+  );
+}
+
+// ── 页脚 ──────────────────────────────────────────────────
+function LandingFooter() {
+  const { t } = useLocale();
+  const year = new Date().getFullYear();
+  const copyright = t('footer.copyright').replace('{year}', String(year));
+  const links = [
+    { label: t('footer.aboutUs'), href: '/about' },
+    { label: t('footer.contactUs'), href: '/contact' },
+    { label: t('footer.privacyPolicy'), href: '/privacy' },
+    { label: t('footer.termsOfService'), href: '/terms' },
+  ];
+
+  return (
+    <footer className="border-t border-black/5 dark:border-white/10 mt-8">
+      <div className="max-w-5xl mx-auto px-6 py-12">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-8">
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+            {links.map(({ label, href }) => (
+              <Link
+                key={href}
+                href={href}
+                className="text-sm hover:underline transition-colors"
+                style={{ color: 'var(--bd-fg-muted)' }}
+              >
+                {label}
+              </Link>
+            ))}
+          </div>
+          {/* 二维码占位：后续可替换为真实 QR 图 */}
+          <div className="flex flex-col items-center gap-2">
+            <div
+              className="w-24 h-24 rounded-lg flex items-center justify-center text-xs"
+              style={{
+                background: 'linear-gradient(135deg, rgba(124,92,252,0.15), rgba(167,139,250,0.1))',
+                border: '1px dashed rgba(124,92,252,0.3)',
+                color: 'var(--bd-fg-subtle)',
+              }}
+            >
+              QR
+            </div>
+            <span className="text-xs" style={{ color: 'var(--bd-fg-subtle)' }}>{t('footer.qrCode')}</span>
+          </div>
+        </div>
+        <p className="text-center text-xs mt-8" style={{ color: 'var(--bd-fg-subtle)' }}>
+          {copyright}
+        </p>
+      </div>
+    </footer>
   );
 }
 
@@ -425,12 +392,9 @@ export default function LandingPage() {
 
   return (
     <div className="landing-mesh-wrap">
-      {/* Mesh 光晕背景（参考 background4） */}
+      {/* 动态背景：光谱扫射 prism（参考 background4） */}
       <div className="landing-mesh-bg">
-        <div className="landing-mesh-blob landing-mesh-blob-1" aria-hidden />
-        <div className="landing-mesh-blob landing-mesh-blob-2" aria-hidden />
-        <div className="landing-mesh-blob landing-mesh-blob-3" aria-hidden />
-        <div className="landing-mesh-blob landing-mesh-blob-4" aria-hidden />
+        <div className="landing-mesh-prism" aria-hidden />
       </div>
       <div className="landing-mesh-noise" aria-hidden />
       {/* 与 background4 一致：内容层无遮罩，mesh 直接透过 */}
@@ -507,10 +471,13 @@ export default function LandingPage() {
       <DimensionsSection t={t} locale={locale} />
 
       {/* ③ 即将上线（职业双轨 / 光谱共振 / 静室之我） */}
-      <ComingSoonCarousel />
+      <ComingSoonFlat />
 
-      {/* ④ 他们的故事：全幅沉浸式换页 */}
-      <TestimonialCarousel />
+      {/* ④ 他们的故事：3×3 平铺 */}
+      <TestimonialGrid />
+
+      {/* ⑤ 页脚 */}
+      <LandingFooter />
     </div>
     </div>
   );

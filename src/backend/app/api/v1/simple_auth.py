@@ -19,7 +19,7 @@ router = APIRouter(prefix="/simple-auth", tags=["简单模式认证"])
 
 class CreateActivationRequest(BaseModel):
     """创建激活码请求（仅开发/内部使用）"""
-    mode: str = "values"  # values | strengths | interests_goals | combined
+    mode: str = "values"  # values | strengths | interests | combined
     ttl_minutes: int = 60
 
 

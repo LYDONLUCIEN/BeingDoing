@@ -49,7 +49,46 @@ html[data-landing="true"]:not([data-color-scheme="dark"]) [class*="bd-eff-bg"] {
   z-index: 2;
 }
 
-/* Mesh 色块：与 background4 一致 blur(80px)，15s 动画 */
+/* 光谱扫射：与 background4 一致，动态 prism 效果 */
+.landing-mesh-prism {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    120deg,
+    #faf9f8 0%,
+    #faf9f8 30%,
+    rgba(162, 194, 232, 0.9) 45%,
+    rgba(181, 216, 198, 0.9) 50%,
+    rgba(253, 224, 147, 0.9) 55%,
+    rgba(244, 179, 179, 0.9) 60%,
+    #faf9f8 75%,
+    #faf9f8 100%
+  );
+  background-size: 300% 300%;
+  animation: landing-prism-sweep 8s linear infinite alternate;
+  will-change: background-position;
+}
+
+@keyframes landing-prism-sweep {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
+}
+
+[data-color-scheme="dark"] .landing-mesh-prism {
+  background: linear-gradient(
+    120deg,
+    var(--bd-bg) 0%,
+    var(--bd-bg) 30%,
+    rgba(162, 194, 232, 0.25) 45%,
+    rgba(181, 216, 198, 0.25) 50%,
+    rgba(253, 224, 147, 0.25) 55%,
+    rgba(244, 179, 179, 0.25) 60%,
+    var(--bd-bg) 75%,
+    var(--bd-bg) 100%
+  );
+}
+
+/* Mesh 色块：与 background4 一致 blur(80px)，15s 动画（可选，与 prism 叠加时降低透明度）*/
 .landing-mesh-blob {
   position: absolute;
   border-radius: 50%;

@@ -51,6 +51,12 @@ export const en = {
     dimensionsDescAfter: '" from within. ',
     dimensionsDescLine2: 'We believe the answer has always been there; it just needs a space to be seen.',
     comingSoon: 'Coming Soon',
+    comingSoonBadge: 'Coming Soon',
+    comingSoonTitle: 'Next Release',
+    comingSoonSubtitle: 'Exciting new features to enhance your journey',
+    testimonialsSubtitle: 'Join thousands who\'ve found their path',
+    yourDirection: 'Your Direction',
+    yourDirectionDesc: 'Values × Strengths × Interests = Purpose',
     developing: 'In Development',
     theirStories: 'Their Stories',
     exploreYourStory: 'Explore Your Story',
@@ -164,6 +170,14 @@ export const en = {
     effects: 'Effects',
   },
 
+  footer: {
+    aboutUs: 'About Us',
+    contactUs: 'Contact Us',
+    qrCode: 'Scan to Follow',
+    privacyPolicy: 'Privacy Policy',
+    termsOfService: 'Terms of Service',
+    copyright: '© {year} All rights reserved.',
+  },
   admin: {
     title: 'Admin',
     theme: 'Theme',

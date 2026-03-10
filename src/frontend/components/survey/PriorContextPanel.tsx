@@ -13,7 +13,7 @@ interface PriorContextPanelProps {
 /**
  * 允许用户上传或粘贴上一轮咨询结果的面板。
  * 对 strengths 阶段，显示 values 谈话结果上传区。
- * 对 interests_goals 阶段，显示 strengths+values 谈话结果上传区。
+ * 对 interests 阶段，显示 strengths+values 谈话结果上传区。
  */
 export default function PriorContextPanel({
   activationCode,

@@ -4,7 +4,7 @@
 用于「简单对话模式」：
 - 通过激活码识别一个简单会话
 - 每个激活码对应一个 session_id，用于对话文件管理
-- 记录创建时间 / 过期时间 / 模式（values / strengths / interests_goals / combined）
+- 记录创建时间 / 过期时间 / 模式（values / strengths / interests / combined）
 
 注意：
 - 激活码过期后，历史文件仍然保留在 data/simple 下

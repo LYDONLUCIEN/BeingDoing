@@ -70,3 +70,68 @@
   letter-spacing: 0.03em;
   opacity: 0.85;
 }
+
+/* 你的方向：磨砂黑底，五彩斑斓的黑，高级哑光质感 */
+.bd-dim-your-direction {
+  background: linear-gradient(
+    155deg,
+    rgba(12, 12, 14, 0.92) 0%,
+    rgba(18, 18, 22, 0.9) 30%,
+    rgba(15, 15, 19, 0.88) 70%,
+    rgba(10, 10, 13, 0.9) 100%
+  );
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow:
+    0 24px 48px -12px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+/* 五彩斑斓的黑：四维色彩微妙晕染边缘 */
+.bd-dim-your-direction::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--bd-phase-values) 35%, transparent) 0%,
+    color-mix(in srgb, var(--bd-phase-strengths) 25%, transparent) 25%,
+    color-mix(in srgb, var(--bd-phase-interests) 25%, transparent) 50%,
+    color-mix(in srgb, var(--bd-phase-purpose) 35%, transparent) 75%,
+    color-mix(in srgb, var(--bd-phase-values) 20%, transparent) 100%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+.bd-dim-your-direction h3 {
+  color: rgba(255, 255, 255, 0.92) !important;
+}
+.bd-dim-your-direction p {
+  color: rgba(255, 255, 255, 0.72) !important;
+}
+
+[data-color-scheme="dark"] .bd-dim-your-direction {
+  background: linear-gradient(
+    155deg,
+    rgba(8, 8, 10, 0.95) 0%,
+    rgba(14, 14, 18, 0.92) 50%,
+    rgba(6, 6, 8, 0.95) 100%
+  );
+  border-color: rgba(255, 255, 255, 0.05);
+  box-shadow:
+    0 24px 48px -12px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+/* 即将上线：参考 NextReleaseSection，使用内联 Tailwind */
