@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
+import { useAuthStore } from '@/stores/authStore';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -60,6 +61,7 @@ class ApiClient {
           // 登录/注册接口返回 401 时不跳转，让页面显示错误、用户可重试；其他接口 401 弹登录弹窗
           if (!isAuthRequest && typeof window !== 'undefined') {
             this.clearToken();
+            useAuthStore.getState().logout();
             const currentPath = window.location.pathname;
             emitAuthRequired(currentPath);
           }

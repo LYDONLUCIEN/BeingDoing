@@ -10,6 +10,7 @@ import { loadSession, saveSession, setLastActivationCode, type PhaseKey } from '
 import Link from 'next/link';
 import { CheckCircle2, Bug, Loader2, Palette } from 'lucide-react';
 import AnalyticsDashboard from '@/components/admin/AnalyticsDashboard';
+import ChatRecordsTable from '@/components/admin/ChatRecordsTable';
 
 const ALL_PHASES = ['values', 'strengths', 'interests', 'purpose'] as const;
 
@@ -178,10 +179,13 @@ export default function AdminPage() {
         </div>
       </div>
 
-      <div className="flex-1 max-w-4xl mx-auto w-full px-6 py-6 space-y-6">
+      <div className="flex-1 max-w-5xl mx-auto w-full px-6 py-8 space-y-8">
 
         {/* 数据统计（仅 admin） */}
         <AnalyticsDashboard />
+
+        {/* 对话明细表格 + 详情查看 */}
+        <ChatRecordsTable />
 
         {/* Theme switcher */}
         <ThemeSwitcher />

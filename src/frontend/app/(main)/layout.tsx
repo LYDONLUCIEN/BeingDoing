@@ -1,5 +1,7 @@
-import TopNavbar from '@/components/layout/TopNavbar';
+import dynamic from 'next/dynamic';
 import AuthGate from '@/components/layout/AuthGate';
+
+const TopNavbar = dynamic(() => import('@/components/layout/TopNavbar'), { ssr: false });
 
 export default function MainLayout({
   children,

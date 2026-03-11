@@ -72,6 +72,7 @@ export default function TopNavbar() {
     <nav
       className="bd-nav-glass fixed top-0 left-0 right-0 z-50 h-14"
       style={{ backgroundColor: 'var(--bd-nav-bg)', borderBottom: '1px solid var(--bd-nav-border)' }}
+      suppressHydrationWarning
     >
       <div className="w-full h-full px-4 md:px-8 flex items-center justify-between relative">
         {/* 左侧：品牌 Logo（职引 / Vocation） */}

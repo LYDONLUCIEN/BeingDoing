@@ -1,18 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getAdminAnalytics, getLikeDetail, type AdminAnalytics } from '@/lib/api/admin';
+import { getAdminAnalytics, getLikeDetail, syncAnalyticsFromHistory, type AdminAnalytics } from '@/lib/api/admin';
 import {
   Users,
   Activity,
-  MessageSquare,
-  Type,
-  Zap,
   FileText,
-  MapPin,
   ThumbsUp,
   Loader2,
   ExternalLink,
+  RefreshCw,
 } from 'lucide-react';
 
 const DIMENSION_LABELS: Record<string, string> = {
@@ -27,20 +24,42 @@ const DIMENSION_LABELS: Record<string, string> = {
   purpose: '使命',
 };
 
+function fetchData(setData: (d: AdminAnalytics | null) => void, setError: (e: string | null) => void, setLoading: (l: boolean) => void) {
+  setLoading(true);
+  setError(null);
+  getAdminAnalytics()
+    .then((res) => {
+      if (res.data) setData(res.data as AdminAnalytics);
+    })
+    .catch((e) => setError(e?.message || '加载失败'))
+    .finally(() => setLoading(false));
+}
+
 export default function AnalyticsDashboard() {
   const [data, setData] = useState<AdminAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [likeDetail, setLikeDetail] = useState<{ sessionId: string; logIndex: number; content: any } | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ synced: number; skipped: number; total_entries: number; from_simple?: number } | null>(null);
 
   useEffect(() => {
-    getAdminAnalytics()
-      .then((res) => {
-        if (res.data) setData(res.data as AdminAnalytics);
-      })
-      .catch((e) => setError(e?.message || '加载失败'))
-      .finally(() => setLoading(false));
+    fetchData(setData, setError, setLoading);
   }, []);
+
+  const handleSyncFromHistory = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await syncAnalyticsFromHistory();
+      if (res.data) setSyncResult(res.data);
+      fetchData(setData, setError, setLoading);
+    } catch {
+      setSyncResult({ synced: 0, skipped: 0, total_entries: 0 });
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const handleViewLikeDetail = async (sessionId: string, logIndex: number) => {
     try {
@@ -66,43 +85,78 @@ export default function AnalyticsDashboard() {
     );
   }
 
+  const STAT_CARD_STYLES = [
+    { icon: Users, label: '用户数量', color: 'var(--bd-phase-values)', bg: 'var(--bd-phase-values-dim)' },
+    { icon: Activity, label: '访问次数', color: 'var(--bd-phase-strengths)', bg: 'var(--bd-phase-strengths-dim)' },
+    { icon: FileText, label: '报告生成数', color: 'var(--bd-phase-purpose)', bg: 'var(--bd-phase-purpose-dim)' },
+    { icon: ThumbsUp, label: '点赞总数', color: 'var(--bd-phase-interests)', bg: 'var(--bd-phase-interests-dim)' },
+  ] as const;
+
   const StatCard = ({
     icon: Icon,
     label,
     value,
+    color,
+    bg,
   }: {
     icon: React.ElementType;
     label: string;
     value: string | number;
+    color: string;
+    bg: string;
   }) => (
-    <div className="rounded-xl border border-bd-border bg-bd-card px-4 py-3 flex items-center gap-3">
-      <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: 'var(--bd-overlay)' }}>
-        <Icon className="w-5 h-5 text-bd-primary" />
+    <div className="rounded-xl border overflow-hidden flex items-center gap-3 transition-all hover:shadow-md" style={{ borderColor: 'var(--bd-border)', background: 'var(--bd-card)' }}>
+      <div className="w-12 h-full min-h-[56px] flex items-center justify-center shrink-0" style={{ background: bg }}>
+        <Icon className="w-6 h-6" style={{ color }} />
       </div>
-      <div>
-        <p className="text-xs text-bd-muted">{label}</p>
-        <p className="text-lg font-semibold text-bd-fg">{typeof value === 'number' ? value.toLocaleString() : value}</p>
+      <div className="py-3 pr-4">
+        <p className="text-xs font-medium" style={{ color: 'var(--bd-fg-muted)' }}>{label}</p>
+        <p className="text-xl font-bold" style={{ color: 'var(--bd-fg)' }}>{typeof value === 'number' ? value.toLocaleString() : value}</p>
       </div>
     </div>
   );
 
   return (
-    <section className="rounded-xl border border-bd-border bg-bd-card px-5 py-5 space-y-6">
-      <div className="flex items-center gap-2">
-        <Activity size={18} className="text-bd-primary" />
-        <h2 className="text-sm font-semibold text-bd-fg">数据统计</h2>
+    <section className="rounded-2xl overflow-hidden shadow-lg space-y-6" style={{ background: 'var(--bd-card)', boxShadow: '0 4px 24px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04)' }}>
+      <div className="px-6 pt-6">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-2">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'var(--bd-primary-dim)' }}>
+            <Activity size={20} style={{ color: 'var(--bd-primary)' }} />
+          </div>
+          <h2 className="text-base font-semibold" style={{ color: 'var(--bd-fg)' }}>数据统计</h2>
+        </div>
+        <button
+          type="button"
+          onClick={handleSyncFromHistory}
+          disabled={syncing}
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+          style={{ background: 'var(--bd-phase-values-dim)', color: 'var(--bd-phase-values)' }}
+        >
+          {syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+          {syncing ? '同步中…' : '从历史同步'}
+        </button>
       </div>
+      </div>
+      <div className="px-6 pb-6 space-y-6">
+      {syncResult && (
+        <p className="text-xs" style={{ color: 'var(--bd-fg-muted)' }}>
+          已同步 {syncResult.synced} 条
+          {typeof syncResult.from_simple === 'number' && syncResult.from_simple > 0 && `（含 simple ${syncResult.from_simple} 条）`}
+          ，共扫描 {syncResult.total_entries} 条 runs
+        </p>
+      )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard icon={Users} label="用户数量" value={data.user_count} />
-        <StatCard icon={Activity} label="访问次数" value={data.visit_count} />
-        <StatCard icon={FileText} label="报告生成数" value={data.report_count} />
-        <StatCard icon={ThumbsUp} label="点赞总数" value={data.like_count} />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard {...STAT_CARD_STYLES[0]} value={data.user_count} />
+        <StatCard {...STAT_CARD_STYLES[1]} value={data.visit_count} />
+        <StatCard {...STAT_CARD_STYLES[2]} value={data.report_count} />
+        <StatCard {...STAT_CARD_STYLES[3]} value={data.like_count} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="rounded-lg border border-bd-border p-4">
-          <h3 className="text-xs font-medium text-bd-muted mb-3">每维度对话轮次</h3>
+        <div className="rounded-xl border p-4 transition-colors" style={{ borderColor: 'var(--bd-border)', background: 'var(--bd-bg-overlay)' }}>
+          <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--bd-phase-values)' }}>每维度对话轮次</h3>
           <div className="space-y-2">
             {Object.entries(data.dialogs_by_dimension).map(([dim, count]) => (
               <div key={dim} className="flex justify-between text-sm">
@@ -115,8 +169,8 @@ export default function AnalyticsDashboard() {
             )}
           </div>
         </div>
-        <div className="rounded-lg border border-bd-border p-4">
-          <h3 className="text-xs font-medium text-bd-muted mb-3">最后停留维度分布</h3>
+        <div className="rounded-xl border p-4 transition-colors" style={{ borderColor: 'var(--bd-border)', background: 'var(--bd-bg-overlay)' }}>
+          <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--bd-phase-strengths)' }}>最后停留维度分布</h3>
           <div className="space-y-2">
             {Object.entries(data.last_stop_by_dimension).map(([dim, count]) => (
               <div key={dim} className="flex justify-between text-sm">
@@ -131,27 +185,27 @@ export default function AnalyticsDashboard() {
         </div>
       </div>
 
-      <div className="rounded-lg border border-bd-border p-4">
-        <h3 className="text-xs font-medium text-bd-muted mb-3">输入与 Token</h3>
-        <div className="grid grid-cols-3 gap-4 text-sm">
-          <div>
-            <p className="text-bd-muted">用户输入字数</p>
-            <p className="font-semibold text-bd-fg">{data.user_input_total_chars.toLocaleString()}</p>
+      <div className="rounded-xl border p-5" style={{ borderColor: 'var(--bd-border)', background: 'linear-gradient(135deg, var(--bd-phase-values-dim) 0%, var(--bd-phase-purpose-dim) 100%)' }}>
+        <h3 className="text-xs font-semibold uppercase tracking-wider mb-4" style={{ color: 'var(--bd-phase-purpose)' }}>输入与 Token</h3>
+        <div className="grid grid-cols-3 gap-6 text-sm">
+          <div className="rounded-lg px-4 py-3" style={{ background: 'var(--bd-card)' }}>
+            <p className="text-xs font-medium mb-1" style={{ color: 'var(--bd-fg-muted)' }}>用户输入字数</p>
+            <p className="text-lg font-bold" style={{ color: 'var(--bd-fg)' }}>{data.user_input_total_chars.toLocaleString()}</p>
           </div>
-          <div>
-            <p className="text-bd-muted">LLM 输入 Tokens</p>
-            <p className="font-semibold text-bd-fg">{data.llm_input_tokens.toLocaleString()}</p>
+          <div className="rounded-lg px-4 py-3" style={{ background: 'var(--bd-card)' }}>
+            <p className="text-xs font-medium mb-1" style={{ color: 'var(--bd-fg-muted)' }}>LLM 输入 Tokens</p>
+            <p className="text-lg font-bold" style={{ color: 'var(--bd-fg)' }}>{data.llm_input_tokens.toLocaleString()}</p>
           </div>
-          <div>
-            <p className="text-bd-muted">LLM 输出 Tokens</p>
-            <p className="font-semibold text-bd-fg">{data.llm_output_tokens.toLocaleString()}</p>
+          <div className="rounded-lg px-4 py-3" style={{ background: 'var(--bd-card)' }}>
+            <p className="text-xs font-medium mb-1" style={{ color: 'var(--bd-fg-muted)' }}>LLM 输出 Tokens</p>
+            <p className="text-lg font-bold" style={{ color: 'var(--bd-fg)' }}>{data.llm_output_tokens.toLocaleString()}</p>
           </div>
         </div>
       </div>
 
       <div>
-        <h3 className="text-xs font-medium text-bd-muted mb-3">点赞记录（可点击查看详情）</h3>
-        <div className="max-h-64 overflow-y-auto rounded-lg border border-bd-border">
+        <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--bd-phase-interests)' }}>点赞记录（可点击查看详情）</h3>
+        <div className="max-h-64 overflow-y-auto rounded-xl border" style={{ borderColor: 'var(--bd-border)' }}>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-bd-border bg-bd-overlay">
@@ -191,17 +245,18 @@ export default function AnalyticsDashboard() {
           </table>
         </div>
         {likeDetail && (
-          <div className="mt-4 rounded-lg border border-bd-border bg-bd-overlay p-4 max-h-48 overflow-y-auto">
-            <p className="text-xs font-medium text-bd-muted mb-2">
+          <div className="mt-4 rounded-xl overflow-hidden max-h-48 overflow-y-auto" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+            <p className="px-4 py-2 text-xs font-medium border-b" style={{ color: '#64748b', borderColor: '#e2e8f0', background: '#f1f5f9' }}>
               详情：session_id={likeDetail.sessionId} · log_index={likeDetail.logIndex}
             </p>
-            <pre className="text-xs text-bd-fg whitespace-pre-wrap break-words">
+            <pre className="p-4 text-xs leading-relaxed whitespace-pre-wrap break-words" style={{ background: '#ffffff', color: '#1e293b' }}>
               {typeof likeDetail.content === 'object'
                 ? JSON.stringify(likeDetail.content, null, 2)
                 : String(likeDetail.content)}
             </pre>
           </div>
         )}
+      </div>
       </div>
     </section>
   );
