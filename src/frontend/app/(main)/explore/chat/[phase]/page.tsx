@@ -77,6 +77,7 @@ export default function ChatPhasePage() {
   const [sending, setSending] = useState(false);
   const [initLoading, setInitLoading] = useState(true);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [backendSessionId, setBackendSessionId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatBodyRef = useRef<HTMLDivElement>(null);
@@ -140,6 +141,12 @@ export default function ChatPhasePage() {
             thread_id: tid,
           });
           const initMsgs: any[] = initRes.data.messages ?? [];
+          const sessId = initRes.data?.activation?.session_id;
+          if (sessId && !cancelled) {
+            setBackendSessionId(sessId);
+            const s = loadSession(activationCode);
+            saveSession({ ...s, sessionId: sessId });
+          }
           const now = Date.now();
           const msgs: ThreadMessage[] = initMsgs.map((m, i) => ({
             id: `init_${i}`,
@@ -179,6 +186,12 @@ export default function ChatPhasePage() {
             });
             const history: any[] = historyRes.data.messages ?? [];
             const meta = historyRes.data?.metadata ?? {};
+            const sessId = meta?.session_id;
+            if (sessId && !cancelled) {
+              setBackendSessionId(sessId);
+              const s = loadSession(activationCode);
+              saveSession({ ...s, sessionId: sessId });
+            }
             if (!cancelled && history.length > 0) {
               const baseMsgs: ThreadMessage[] = history.map((m, i) => ({
                 id: `h_${i}_${m.id ?? i}`,
@@ -239,6 +252,12 @@ export default function ChatPhasePage() {
           });
           const history: any[] = historyRes.data.messages ?? [];
           const meta = historyRes.data?.metadata ?? {};
+          const sessId = meta?.session_id;
+          if (sessId && !cancelled) {
+            setBackendSessionId(sessId);
+            const s = loadSession(activationCode);
+            saveSession({ ...s, sessionId: sessId });
+          }
           if (!cancelled && history.length > 0 && firstId) {
             const baseMsgs: ThreadMessage[] = history.map((m, i) => ({
               id: `h_${i}_${m.id ?? i}`,
@@ -706,6 +725,9 @@ export default function ChatPhasePage() {
                           streaming={sending && idx === messages.length - 1}
                           timestamp={m.createdAt}
                           onRegenerate={() => handleRegenerate(idx)}
+                          sessionId={backendSessionId ?? undefined}
+                          logIndex={messages.slice(0, idx).filter((x) => x.role === 'assistant' && x.type !== 'dimension_conclusion').length}
+                          dimension={phase}
                         />
                       )}
                     </div>

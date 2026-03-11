@@ -17,7 +17,8 @@ from app.models import (
     User, UserProfile, WorkHistory, ProjectExperience,
     Session, Progress,
     Question, Answer,
-    UserSelection, GuidePreference, ExplorationResult
+    UserSelection, GuidePreference, ExplorationResult,
+    AnalyticsChatTurn, AnalyticsReport, AnalyticsLike,
 )
 
 # 导入配置与数据库URL

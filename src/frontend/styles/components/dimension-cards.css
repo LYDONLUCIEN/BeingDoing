@@ -1,16 +1,16 @@
 /* ══════════════════════════════════════════
-   四维卡片：毛玻璃 + 顶部色条 + 悬浮阴影
-   参考 background4.html 高级质感
+   四维卡片：参照 new-report-finall 复刻
+   偏白柔和 + 动画时间/位置
    ══════════════════════════════════════════ */
 
 .bd-dimension-card {
-  background: rgba(255, 255, 255, 0.55);
-  backdrop-filter: blur(28px);
-  -webkit-backdrop-filter: blur(28px);
-  border: 1px solid rgba(255, 255, 255, 0.9);
-  border-radius: 24px;
-  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.04);
-  transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.02);
+  transition: transform 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
   position: relative;
   overflow: hidden;
 }
@@ -22,37 +22,38 @@
   left: 0;
   right: 0;
   height: 4px;
-  opacity: 0.95;
-  border-radius: 24px 24px 0 0;
+  border-radius: 20px 20px 0 0;
 }
 
-.bd-dimension-card.bd-dim-values::before { background: var(--bd-phase-values); }
-.bd-dimension-card.bd-dim-strengths::before { background: var(--bd-phase-strengths); }
-.bd-dimension-card.bd-dim-interests::before { background: var(--bd-phase-interests); }
-.bd-dimension-card.bd-dim-purpose::before { background: var(--bd-phase-purpose); }
+/* new-report-finall 柔和色度渐变 */
+.bd-dimension-card.bd-dim-values::before { background: linear-gradient(90deg, #7bb5fb, #a8cbf3); }
+.bd-dimension-card.bd-dim-strengths::before { background: linear-gradient(90deg, #83e0c3, #a2e8c6); }
+.bd-dimension-card.bd-dim-interests::before { background: linear-gradient(90deg, #fc8d98, #fca5a5); }
+.bd-dimension-card.bd-dim-purpose::before { background: linear-gradient(90deg, #fbca5b, #fde047); }
+.bd-dimension-card.bd-dim-values .bd-dim-card-title { color: #5a8bc9; }
+.bd-dimension-card.bd-dim-strengths .bd-dim-card-title { color: #4da98a; }
+.bd-dimension-card.bd-dim-interests .bd-dim-card-title { color: #d9626e; }
+.bd-dimension-card.bd-dim-purpose .bd-dim-card-title { color: #d09a25; }
 
-/* 与 background4 一致：悬停时上浮 8px scale(1.02) */
 .bd-dimension-card:hover {
-  transform: translateY(-8px) scale(1.02);
-  box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.08);
-  background: rgba(255, 255, 255, 0.8);
+  transform: translateY(-8px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.04);
 }
 
-/* 横排四列时卡片更紧凑 */
+/* 横排四列时卡片接近正方形 */
 @media (min-width: 1024px) {
-  .bd-dimension-card { min-height: 180px; }
+  .bd-dimension-card { min-height: 220px; }
 }
 
 /* 深色模式适配 */
 [data-color-scheme="dark"] .bd-dimension-card {
   background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.3);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
 }
 
 [data-color-scheme="dark"] .bd-dimension-card:hover {
-  background: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
 }
 
 /* 四维卡片排版：阐释与问题区分字体，高级克制 */
@@ -71,67 +72,219 @@
   opacity: 0.85;
 }
 
-/* 你的方向：磨砂黑底，五彩斑斓的黑，高级哑光质感 */
-.bd-dim-your-direction {
-  background: linear-gradient(
-    155deg,
-    rgba(12, 12, 14, 0.92) 0%,
-    rgba(18, 18, 22, 0.9) 30%,
-    rgba(15, 15, 19, 0.88) 70%,
-    rgba(10, 10, 13, 0.9) 100%
-  );
-  backdrop-filter: blur(28px);
-  -webkit-backdrop-filter: blur(28px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow:
-    0 24px 48px -12px rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+/* =========================================
+   连接区域（参照 new-report-finall 复刻）
+   呼吸弧线 + 垂直白光
+   ========================================= */
+.bd-connection-zone {
+  --arc-duration: 3.6s;
+  --arc-delay-final: 2.8s;
+  width: 100%;
+  height: 260px;
   position: relative;
-  overflow: hidden;
+  z-index: 1;
 }
-
-/* 五彩斑斓的黑：四维色彩微妙晕染边缘 */
-.bd-dim-your-direction::before {
-  content: '';
+.bd-arc-svg {
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--bd-phase-values) 35%, transparent) 0%,
-    color-mix(in srgb, var(--bd-phase-strengths) 25%, transparent) 25%,
-    color-mix(in srgb, var(--bd-phase-interests) 25%, transparent) 50%,
-    color-mix(in srgb, var(--bd-phase-purpose) 35%, transparent) 75%,
-    color-mix(in srgb, var(--bd-phase-values) 20%, transparent) 100%
-  );
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-  opacity: 0.85;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.bd-arc-path {
+  fill: none;
+  stroke: white;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-dasharray: 30 999;
+  stroke-dashoffset: 60;
+  opacity: 0;
+  filter: drop-shadow(0 0 3px rgba(255,255,255,1)) drop-shadow(0 0 8px rgba(255,255,255,0.7));
+  animation: bd-breath-arc var(--arc-duration) ease-in-out infinite;
+}
+@keyframes bd-breath-arc {
+  0%   { stroke-dashoffset: 55;  opacity: 0;   }
+  20%  { opacity: 1; }
+  50%  { opacity: 1; }
+  80%  { opacity: 0; }
+  100% { stroke-dashoffset: -25; opacity: 0;   }
+}
+.bd-v-final {
+  position: absolute;
+  left: 50%;
+  top: 150px;
+  transform: translateX(-50%);
+  width: 2px;
+  height: 60px;
+  border-radius: 4px;
+  background: linear-gradient(to bottom, transparent 0%, rgba(255,255,255,0.95) 40%, rgba(255,255,255,0.95) 60%, transparent 100%);
+  filter: drop-shadow(0 0 3px rgba(255,255,255,1)) drop-shadow(0 0 10px rgba(255,255,255,0.6));
+  opacity: 0;
+  animation: bd-fall-final var(--arc-duration) ease-in-out var(--arc-delay-final) infinite;
+}
+@keyframes bd-fall-final {
+  0%   { transform: translateX(-50%) translateY(0);    opacity: 0; }
+  20%  { opacity: 1; }
+  60%  { opacity: 1; }
+  85%  { opacity: 0; }
+  100% { transform: translateX(-50%) translateY(60px); opacity: 0; }
 }
 
-.bd-dim-your-direction h3 {
-  color: rgba(255, 255, 255, 0.92) !important;
+/* =========================================
+   结果卡片 report-glass-card（与 new-report-finall 完全一致）
+   ========================================= */
+.bd-report-glass-card {
+  padding: 60px 40px;
+  border-radius: 32px;
+  background: rgba(255,255,255,0.4);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  border: 1px solid rgba(255,255,255,0.6);
+  box-shadow: 0 30px 60px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
 }
-.bd-dim-your-direction p {
-  color: rgba(255, 255, 255, 0.72) !important;
+[data-color-scheme="dark"] .bd-report-glass-card {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.12);
+  box-shadow: 0 30px 60px rgba(0,0,0,0.2);
 }
 
-[data-color-scheme="dark"] .bd-dim-your-direction {
-  background: linear-gradient(
-    155deg,
-    rgba(8, 8, 10, 0.95) 0%,
-    rgba(14, 14, 18, 0.92) 50%,
-    rgba(6, 6, 8, 0.95) 100%
-  );
-  border-color: rgba(255, 255, 255, 0.05);
-  box-shadow:
-    0 24px 48px -12px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+/* 四维共鸣报告卡片：纯白呼吸光，与连接区光柱同频 3.6s，白光消失时触发 */
+.bd-report-glass-card {
+  animation: bd-report-breath-glow 3.6s ease-in-out infinite;
+}
+@keyframes bd-report-breath-glow {
+  0%, 75% {
+    box-shadow: 0 30px 60px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,1),
+      0 0 16px rgba(255,255,255,0.2),
+      inset 0 0 24px rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.6);
+  }
+  85%, 95% {
+    box-shadow: 0 30px 60px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,1),
+      0 0 36px rgba(255,255,255,0.5),
+      inset 0 0 48px rgba(255,255,255,0.12);
+    border-color: rgba(255,255,255,0.9);
+  }
+}
+[data-color-scheme="dark"] .bd-report-glass-card {
+  animation-name: bd-report-breath-glow-dark;
+}
+@keyframes bd-report-breath-glow-dark {
+  0%, 75% {
+    box-shadow: 0 30px 60px rgba(0,0,0,0.2),
+      0 0 16px rgba(255,255,255,0.15),
+      inset 0 0 24px rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.12);
+  }
+  85%, 95% {
+    box-shadow: 0 30px 60px rgba(0,0,0,0.2),
+      0 0 40px rgba(255,255,255,0.4),
+      inset 0 0 56px rgba(255,255,255,0.1);
+    border-color: rgba(255,255,255,0.35);
+  }
+}
+.bd-report-title {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  margin-bottom: 24px;
+  color: #1a1d20;
+}
+[data-color-scheme="dark"] .bd-report-title { color: var(--bd-fg); }
+.bd-report-subtitle {
+  font-size: 15px;
+  color: #5a626a;
+  line-height: 1.8;
+  margin-bottom: 40px;
+  max-width: 500px;
+}
+[data-color-scheme="dark"] .bd-report-subtitle { color: var(--bd-fg-muted); }
+.bd-btn-start {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,1);
+  padding: 6px 6px 6px 32px;
+  border-radius: 50px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #2c333a;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.03);
+  transition: all 0.3s ease;
+}
+.bd-btn-start:hover {
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+  transform: translateY(-2px);
+}
+[data-color-scheme="dark"] .bd-btn-start {
+  color: var(--bd-fg);
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.2);
+}
+.bd-btn-icon-core {
+  width: 36px;
+  height: 36px;
+  margin-left: 20px;
+  border-radius: 50%;
+  background: conic-gradient(from 180deg at 50% 50%, #7bb5fb, #83e0c3, #fc8d98, #fbca5b, #7bb5fb);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: white;
+  font-size: 16px;
+  box-shadow: inset 0 2px 4px rgba(255,255,255,0.4);
+  transition: transform 0.5s cubic-bezier(0.175,0.885,0.32,1.275);
+}
+.bd-btn-start:hover .bd-btn-icon-core {
+  transform: rotate(90deg) scale(1.05);
 }
 
-/* 即将上线：参考 NextReleaseSection，使用内联 Tailwind */
+/* 你的方向（旧，保留 bd-minimal 作备用） */
+.bd-your-direction-card {
+  transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.bd-your-direction-card:hover {
+  box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.06);
+}
+[data-color-scheme="dark"] .bd-your-direction-card {
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.35);
+}
+
+/* 极简流线型按钮（参考 new-report4） */
+.bd-minimal-capsule-btn {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+}
+.bd-minimal-capsule-btn:hover {
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
+  transform: translateY(-2px);
+}
+[data-color-scheme="dark"] .bd-minimal-capsule-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+[data-color-scheme="dark"] .bd-minimal-capsule-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* 四色微型圆点图标（四维共鸣隐喻） */
+.bd-capsule-icon {
+  background: conic-gradient(from 180deg at 50% 50%, #7bb5fb, #83e0c3, #fc8d98, #fbca5b, #7bb5fb);
+  transition: transform 0.5s ease;
+}
+.bd-minimal-capsule-btn:hover .bd-capsule-icon {
+  transform: rotate(90deg);
+}

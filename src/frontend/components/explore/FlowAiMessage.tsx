@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Copy, RefreshCw, ThumbsUp } from 'lucide-react';
 import MessageContent from './MessageContent';
 import { copyToClipboard } from '@/lib/utils/clipboard';
+import { recordLike } from '@/lib/api/analytics';
 
 type PhaseClass = 'values' | 'strength' | 'interest' | 'purpose';
 
@@ -21,6 +22,10 @@ interface FlowAiMessageProps {
   timestamp?: number;
   onCopy?: () => void;
   onRegenerate?: () => void;
+  /** 埋点：session_id、log_index、dimension，点赞时上报 */
+  sessionId?: string;
+  logIndex?: number;
+  dimension?: string;
 }
 
 /**
@@ -33,11 +38,27 @@ export default function FlowAiMessage({
   timestamp,
   onCopy,
   onRegenerate,
+  sessionId,
+  logIndex,
+  dimension,
 }: FlowAiMessageProps) {
   const [liked, setLiked] = useState(false);
 
   const handleCopy = () => {
     copyToClipboard(content).then((ok) => ok && onCopy?.());
+  };
+
+  const handleLike = () => {
+    const next = !liked;
+    setLiked(next);
+    if (next && sessionId != null && logIndex != null) {
+      recordLike({
+        session_id: sessionId,
+        log_index: logIndex,
+        content_preview: content?.slice(0, 200) || undefined,
+        dimension: dimension || phase,
+      }).catch(() => {});
+    }
   };
 
   return (
@@ -74,7 +95,7 @@ export default function FlowAiMessage({
           type="button"
           className={`flow-toolbar-btn ${liked ? 'liked' : ''}`}
           title="点赞"
-          onClick={() => setLiked((v) => !v)}
+          onClick={handleLike}
         >
           <ThumbsUp size={14} strokeWidth={1.6} />
         </button>

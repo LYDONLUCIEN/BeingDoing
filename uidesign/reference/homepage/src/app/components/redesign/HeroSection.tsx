@@ -13,7 +13,7 @@ export function HeroSection({ language }: HeroSectionProps) {
     },
     zh: {
       title: '职引',
-      slogan: '所有的热爱都值得成为事业。',
+      slogan: '所有热爱都值得成为事业。',
       button: '开始探索',
     },
   };

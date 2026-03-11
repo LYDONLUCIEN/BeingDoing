@@ -549,6 +549,9 @@ export default function ExploreFlowPageV2() {
                         content={msg.content}
                         phase={stepToPhaseClass(currentStep)}
                         onRegenerate={() => handleRegenerate(idx)}
+                        sessionId={currentSession?.id}
+                        logIndex={chatMessages.slice(0, idx).filter((m) => m.role === 'assistant').length}
+                        dimension={currentStep}
                       />
                     )}
                   </div>

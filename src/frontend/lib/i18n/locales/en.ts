@@ -21,7 +21,7 @@ export const en = {
   },
 
   nav: {
-    brand: 'Vocation',
+    brand: 'Careering',
     home: 'Home',
     personalHomepage: 'Dashboard',
     uploadAvatar: 'Upload Avatar',
@@ -36,12 +36,9 @@ export const en = {
   },
 
   home: {
-    tagline: 'Vocation',
-    heroTitle: 'Vocation',
-    heroSlogan: 'The only compass you need is a mirror',
-    heroP1: 'Life has two paths to walk:',
-    heroP2: 'One leads to achievement, one to meaning.',
-    heroP3: 'The luckiest walk the same path.',
+    tagline: 'Careering',
+    heroTitle: 'Careering',
+    heroSlogan: 'All passions deserve to be careers.',
     dimensionsTitle: 'Explore Dimensions',
     dimensionsHeading: 'Look inward for answers',
     dimensionsDescBefore: 'Career direction isn\'t "',
@@ -56,19 +53,23 @@ export const en = {
     comingSoonSubtitle: 'Exciting new features to enhance your journey',
     testimonialsSubtitle: 'Join thousands who\'ve found their path',
     yourDirection: 'Your Direction',
-    yourDirectionDesc: 'Values × Strengths × Interests = Purpose',
+    yourDirectionSub: 'Discover your career direction through values, strengths, interests and purpose.',
+    reportTitle: 'Get Your「Four-Dimension Resonance」Report',
+    reportSubtitleLine1: 'Based on your values, strengths, interests and purpose,',
+    reportSubtitleLine2: 'we derive your best-matched career direction.',
+    reportCta: 'Your Direction',
     developing: 'In Development',
-    theirStories: 'Their Stories',
+    theirStories: 'What Our Users Say',
     exploreYourStory: 'Explore Your Story',
     exploreYourStorySub: 'Values, Strengths, Interests & Purpose — discover your story',
     exploreCta: 'Start Exploring →',
   },
 
   dimensions: {
-    values: { name: 'Values', num: '01', desc: 'What do you believe is worth investing in? What principles give you peace at night and drive by day? Values aren\'t slogans—they\'re the standards that shape every choice you make.', question: 'If there were no wrong career choices, what would matter most to you?' },
-    strengths: { name: 'Strengths', num: '02', desc: 'Some things come easily to you, yet amaze others. Strengths aren\'t just skills—they\'re that "I was meant for this" feeling.', question: 'When do you feel most in your element?' },
-    interests: { name: 'Interests', num: '03', desc: 'What topics make you lose track of time? What settings make hours vanish? Interests are the fuel that keeps you engaged even when no one is watching.', question: 'What would you do again and again, even without reward?' },
-    purpose: { name: 'Purpose', num: '04', desc: 'Who do you want to serve? What mark do you want to leave? Purpose turns "I want to" into "I must"—giving your career real weight.', question: 'What would you regret not doing?' },
+    values: { name: 'Clarify Your Values', step: 'Step 1', desc: 'Identify the core values that matter most to you. Understand the root of past job dissatisfaction and establish the right criteria to evaluate future choices.' },
+    strengths: { name: 'Discover Your Strengths', step: 'Step 2', desc: 'Uncover your unique talents and what you naturally excel at. See the distinct advantages that make you valuable.' },
+    interests: { name: 'Find Your "Flow"', step: 'Step 3', desc: 'Explore the activities and topics that energize you. Identify passions that can sustain long-term motivation.' },
+    purpose: { name: 'Define Your Purpose', step: 'Step 4', desc: 'Connect your future work to a larger mission. Identify the social value or impact your desired work can create.' },
   },
 
   explore: {
@@ -173,10 +174,10 @@ export const en = {
   footer: {
     aboutUs: 'About Us',
     contactUs: 'Contact Us',
-    qrCode: 'Scan to Follow',
+    qrCode: 'QR Code',
     privacyPolicy: 'Privacy Policy',
     termsOfService: 'Terms of Service',
-    copyright: '© {year} All rights reserved.',
+    copyright: '© {year} Careering. All rights reserved.',
   },
   admin: {
     title: 'Admin',

@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config.settings import settings
 from app.api.middleware import AudioModeMiddleware, ErrorHandlerMiddleware
-from app.api.v1 import auth, users, sessions, questions, answers, chat, search, formula, audio, export, debug
+from app.api.v1 import auth, users, sessions, questions, answers, chat, search, formula, audio, export, debug, admin, analytics
 from app.api.v1 import chat_optimized  # 新增：优化的对话API
 from app.api.v1 import simple_auth, simple_chat  # 新增：简单模式激活与对话
 
@@ -90,3 +90,5 @@ app.include_router(search.router, prefix="/api/v1")
 app.include_router(formula.router, prefix="/api/v1")
 app.include_router(audio.router, prefix="/api/v1")
 app.include_router(export.router, prefix="/api/v1")
+app.include_router(admin.router, prefix="/api/v1")
+app.include_router(analytics.router, prefix="/api/v1")

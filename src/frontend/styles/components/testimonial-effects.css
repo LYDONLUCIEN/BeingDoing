@@ -3,6 +3,42 @@
    通过 data-color-scheme 隔离
    ══════════════════════════════════════════ */
 
+/* 他们的故事卡片：参照 new-report-finall 复刻
+   偏白柔和色度 + 动画时间/位置关系 */
+.bd-testimonial-card {
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.85) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.9) !important;
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.02);
+  transition: transform 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+}
+.bd-testimonial-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.04);
+}
+.bd-testimonial-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border-radius: 20px 20px 0 0;
+  background: linear-gradient(90deg, #c4b5fd, #ddd6fe, #ede9fe);
+}
+[data-color-scheme="dark"] .bd-testimonial-card {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+[data-color-scheme="dark"] .bd-testimonial-card:hover {
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
+}
+
 /* 深色模式：流光/荧光 - 底部荧光+边框微光 */
 [data-color-scheme="dark"] .testimonial-card-dark {
   position: relative;
@@ -40,6 +76,14 @@
     0 0 50px rgba(124, 92, 252, 0.35), 
     0 0 100px rgba(124, 92, 252, 0.12), 
     inset 0 0 80px rgba(124, 92, 252, 0.05);
+}
+
+/* 评价正文：黑色字体 */
+.bd-testimonial-quote {
+  color: #1a1d20;
+}
+[data-color-scheme="dark"] .bd-testimonial-quote {
+  color: rgba(255, 255, 255, 0.9);
 }
 
 /* 他们的故事：温暖包容 Handwriting（LXGW WenKai Lite） */

@@ -49,6 +49,7 @@ export default function ActivatePage() {
     try {
       const res = await apiClient.post('/simple-auth/activate', { code: trimmed });
       const activationCode: string = res.data.activation_code;
+      const sessionId: string | undefined = res.data.session_id;
       setLastActivationCode(activationCode);
 
       // Load existing session state (preserves unlocked phases on revisit)
@@ -68,7 +69,7 @@ export default function ActivatePage() {
         } catch {}
       }
 
-      saveSession({ ...session, activationCode, surveyCompleted: surveyDone });
+      saveSession({ ...session, activationCode, surveyCompleted: surveyDone, sessionId: sessionId ?? session.sessionId });
 
       if (surveyDone) {
         router.push(`/explore/chat/${session.currentPhase}`);

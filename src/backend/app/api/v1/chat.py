@@ -17,6 +17,7 @@ from app.core.agent.graph import create_agent_graph, create_initial_state
 from app.core.agent.config import AgentRunConfig
 from app.domain import DEFAULT_CURRENT_STEP
 from app.services.session_service import SessionService
+from app.services.analytics_service import AnalyticsService
 from app.utils.conversation_file_manager import ConversationFileManager, ConversationCategory
 from datetime import datetime
 from app.config.settings import settings
@@ -225,6 +226,20 @@ async def send_message(
 
         step_progress_info = _extract_step_progress_info(question_progress_data, request.current_step)
 
+        # 埋点：记录对话轮次（用户字数、LLM token、维度）
+        try:
+            usage = (final_state or {}).get("session_token_usage") or {}
+            await AnalyticsService.record_chat_turn(
+                session_id=request.session_id,
+                dimension=request.current_step,
+                user_input_chars=len(request.message or ""),
+                llm_input_tokens=usage.get("prompt_tokens", 0),
+                llm_output_tokens=usage.get("completion_tokens", 0),
+                log_index=None,
+            )
+        except Exception:
+            pass
+
         # 构造answer_card信息
         answer_card_data = final_state.get("answer_card", {}) if final_state else {}
         answer_card_info = None
@@ -297,15 +312,10 @@ def _save_debug_logs(
     response: str,
     logs: list,
     final_state: Optional[dict],
-) -> None:
-    """将本次运行的日志追加到项目根 data/debug_logs/ 和 data/logs/"""
+) -> Optional[int]:
+    """将本次运行的日志追加到项目根 data/debug_logs/ 和 data/logs/。返回 log_index（0-based）用于埋点关联。"""
     try:
         user_id = (final_state or {}).get("user_id") or None
-
-        # 按 session 维度集中存储
-        debug_dir = get_debug_logs_dir()
-        debug_dir.mkdir(parents=True, exist_ok=True)
-        path = debug_dir / f"{session_id}.jsonl"
         entry = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "user_id": user_id,
@@ -317,6 +327,12 @@ def _save_debug_logs(
             "context_keys": list((final_state or {}).get("context") or {}).keys(),
             "token_usage": (final_state or {}).get("session_token_usage"),
         }
+
+        # 按 session 维度集中存储
+        debug_dir = get_debug_logs_dir()
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        path = debug_dir / f"{session_id}.jsonl"
+        log_index = sum(1 for _ in open(path, encoding="utf-8")) if path.is_file() else 0
         with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
@@ -330,8 +346,9 @@ def _save_debug_logs(
         user_log_path = user_log_dir / "runs.jsonl"
         with open(user_log_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        return log_index
     except Exception:
-        pass
+        return None
 
 
 @router.post("/messages/stream")
@@ -417,7 +434,21 @@ async def send_message_stream(
             if not logs:
                 # 确保至少有一条基础日志，避免 debug-logs 返回完全空数组
                 logs = [{"message": "no internal logs captured", "done": True}]
-            _save_debug_logs(request.session_id, request.message, response, logs, final_state)
+            log_index = _save_debug_logs(request.session_id, request.message, response, logs, final_state)
+
+            # 埋点：记录对话轮次
+            try:
+                usage = (final_state or {}).get("session_token_usage") or {}
+                await AnalyticsService.record_chat_turn(
+                    session_id=request.session_id,
+                    dimension=request.current_step,
+                    user_input_chars=len(request.message or ""),
+                    llm_input_tokens=usage.get("prompt_tokens", 0),
+                    llm_output_tokens=usage.get("completion_tokens", 0),
+                    log_index=log_index,
+                )
+            except Exception:
+                pass
 
             answer_card = (final_state or {}).get("answer_card")
 

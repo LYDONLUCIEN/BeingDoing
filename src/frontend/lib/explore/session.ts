@@ -19,6 +19,8 @@ export interface ExploreSession {
   surveyCompleted: boolean;
   /** 是否已生成报告（完成使命后通过渲染预备页） */
   reportReady?: boolean;
+  /** 后端 session_id（用于埋点、报告生成等） */
+  sessionId?: string;
 }
 
 /** 检查是否有可查看的报告（完成全部四阶段探索） */

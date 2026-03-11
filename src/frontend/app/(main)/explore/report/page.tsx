@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, FileText } from 'lucide-react';
 import { PHASES } from '@/lib/explore/session';
 import { getLastActivationCode, loadSession, saveSession } from '@/lib/explore/session';
+import { recordReportGenerated } from '@/lib/api/analytics';
 
 const PROGRESS_DURATION_MS = 4200;
 
@@ -27,6 +28,9 @@ export default function ReportPrepPage() {
         if (c) {
           const s = loadSession(c);
           saveSession({ ...s, reportReady: true });
+          if (s.sessionId) {
+            recordReportGenerated({ session_id: s.sessionId, activation_code: c }).catch(() => {});
+          }
         }
         return;
       }

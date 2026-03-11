@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Sparkles, Quote, Star } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Sparkles, Star } from 'lucide-react';
 import { useLocale } from '@/hooks/useLocale';
 // ── 用户故事（9 条，3x3 平铺，头像占位 assets/user_story/）──────────────────────────
 const TESTIMONIALS: Array<{
@@ -14,19 +14,16 @@ const TESTIMONIALS: Array<{
   avatar: string; // 占位，后续在 public/assets/user_story/ 放入图片后改为 /assets/user_story/1.jpg 等
   color: string;
 }> = [
-  { quote: '我第一次意识到，我一直在做别人期待的事，而不是我认为重要的事。这个过程让我看清了自己。', name: '小林', role: '28岁 / 产品经理', avatar: '', color: '129, 140, 248' },
-  { quote: '原来沟通协调这件事对我来说真的是禀赋，不是习惯。这个区分让我第一次觉得自己有竞争力。', name: 'Maggie', role: '32岁 / 市场运营', avatar: '', color: '251, 113, 133' },
-  { quote: '帮助别人成长这件事，让我忘我。我以为那只是爱好，没想到可以成为职业核心。', name: '阿文', role: '25岁 / 应届生', avatar: '', color: '251, 191, 36' },
-  { quote: '使命感这个词以前对我太虚了。但当我说出「我想帮普通人做出好决策」的时候，我哭了。', name: '晓敏', role: '35岁 / 咨询顾问', avatar: '', color: '52, 211, 153' },
-  { quote: '以为自己什么都喜欢，其实是什么都没认真想过。四个维度逼着我去想清楚，很有价值。', name: '老K', role: '40岁 / 创业者', avatar: '', color: '34, 211, 238' },
-  { quote: '第一次做完就哭了，太多东西压在心里没被看见。这是一份给自己的礼物。', name: '苏苏', role: '29岁 / 教师', avatar: '', color: '244, 114, 182' },
-  { quote: '以前觉得职业规划是套路，但这里的对话让我真正在思考「我」是谁。', name: '浩然', role: '27岁 / 程序员', avatar: '', color: '129, 140, 248' },
-  { quote: '热忱那一关，我写了五件小事。没想到它们可以串成一条清晰的线。', name: '小雨', role: '31岁 / 设计师', avatar: '', color: '251, 191, 36' },
-  { quote: '和伴侣一起做完探索，才发现我们原来有这么多共振点。', name: '阿杰', role: '33岁 / 创业合伙人', avatar: '', color: '52, 211, 153' },
+  { quote: '我第一次意识到，我一直在做别人期待的事，而不是我认为重要的事。这个过程让我看清了自己。', name: '小林', role: '产品经理', avatar: '', color: '129, 140, 248' },
+  { quote: '原来沟通协调这件事对我来说真的是禀赋，不是习惯。这个区分让我第一次觉得自己有竞争力。', name: 'Maggie', role: '市场运营', avatar: '', color: '251, 113, 133' },
+  { quote: '帮助别人成长这件事，让我忘我。我以为那只是爱好，没想到可以成为职业核心。', name: '阿文', role: '应届生', avatar: '', color: '251, 191, 36' },
+  { quote: '使命感这个词以前对我太虚了。但当我说出「我想帮普通人做出好决策」的时候，我哭了。', name: '晓敏', role: '咨询顾问', avatar: '', color: '52, 211, 153' },
+  { quote: '以为自己什么都喜欢，其实是什么都没认真想过。四个维度逼着我去想清楚，很有价值。', name: '老K', role: '创业者', avatar: '', color: '34, 211, 238' },
+  { quote: '第一次做完就哭了，太多东西压在心里没被看见。这是一份给自己的礼物。', name: '苏苏', role: '教师', avatar: '', color: '244, 114, 182' },
+  { quote: '以前觉得职业规划是套路，但这里的对话让我真正在思考「我」是谁。', name: '浩然', role: '程序员', avatar: '', color: '129, 140, 248' },
+  { quote: '热忱那一关，我写了五件小事。没想到它们可以串成一条清晰的线。', name: '小雨', role: '设计师', avatar: '', color: '251, 191, 36' },
+  { quote: '和伴侣一起做完探索，才发现我们原来有这么多共振点。', name: '阿杰', role: '创业合伙人', avatar: '', color: '52, 211, 153' },
 ];
-
-// 探索你的故事：紫色系 CTA（文案来自 i18n）
-const EXPLORE_CTA_COLORS = ['124, 92, 252', '167, 139, 250', '196, 181, 253'] as [string, string, string];
 
 // ── 四个核心维度（配色：信念=蓝/禀赋=绿/热忱=红/使命=黄，文案来自 i18n）──
 const DIMENSION_KEYS = ['values', 'strengths', 'interests', 'purpose'] as const;
@@ -37,86 +34,113 @@ const DIMENSION_VARS: Record<(typeof DIMENSION_KEYS)[number], { varColor: string
   purpose: { varColor: 'var(--bd-phase-purpose)', varBorder: 'color-mix(in srgb, var(--bd-phase-purpose) 25%, transparent)', varBg: 'var(--bd-phase-purpose-dim, color-mix(in srgb, var(--bd-phase-purpose) 8%, transparent))' },
 };
 
-/* 向内寻找答案：带「规划」/「发现」动画的独立区块 */
-function InwardLookingBlock({ t }: { t: (p: string) => string }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      className="text-center mb-14 space-y-4"
-    >
-      <p className="text-xs tracking-widest uppercase" style={{ color: 'var(--bd-fg-subtle)' }}>{t('home.dimensionsTitle')}</p>
-      <h2 className="text-3xl md:text-4xl font-bold" style={{ color: 'var(--bd-fg)' }}>{t('home.dimensionsHeading')}</h2>
-      <p className="text-base max-w-lg mx-auto leading-relaxed" style={{ color: 'var(--bd-fg-muted)' }}>
-        {t('home.dimensionsDescBefore')}
-        <span className="bd-word-planned">{t('home.dimensionsDescPlanned')}</span>
-        {t('home.dimensionsDescMid')}
-        <span className="bd-word-discover">{t('home.dimensionsDescDiscover')}</span>
-        {t('home.dimensionsDescAfter')}
-      </p>
-      <p className="text-base max-w-lg mx-auto leading-relaxed" style={{ color: 'var(--bd-fg-muted)' }}>
-        {t('home.dimensionsDescLine2')}
-      </p>
-    </motion.div>
-  );
+/* 运行时绘制连接弧线（与 new-report-finall 一致） */
+function useBuildArcs(zoneRef: React.RefObject<HTMLDivElement | null>, svgRef: React.RefObject<SVGSVGElement | null>) {
+  const build = useCallback(() => {
+    const zone = zoneRef.current;
+    const svg = svgRef.current;
+    const cards = document.querySelectorAll('.bd-dimension-card');
+    if (!zone || !svg || cards.length !== 4) return;
+
+    const zoneRect = zone.getBoundingClientRect();
+    if (zoneRect.height < 50) return; // 移动端隐藏连接区时跳过
+    const r = 8;
+    const arcH = 60;
+    const centerX = zoneRect.width / 2;
+
+    svg.innerHTML = '';
+    cards.forEach((card, i) => {
+      const cardRect = card.getBoundingClientRect();
+      const cx = cardRect.left + cardRect.width / 2 - zoneRect.left;
+      const startY = 30;
+      const turnY = arcH;
+
+      let d: string;
+      if (cx < centerX) {
+        const endX = Math.min(cx + 50, centerX - 10);
+        d = `M ${cx} ${startY} L ${cx} ${turnY - r} A ${r} ${r} 0 0 0 ${cx + r} ${turnY} L ${endX} ${turnY}`;
+      } else {
+        const endX = Math.max(cx - 50, centerX + 10);
+        d = `M ${cx} ${startY} L ${cx} ${turnY - r} A ${r} ${r} 0 0 1 ${cx - r} ${turnY} L ${endX} ${turnY}`;
+      }
+
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', d);
+      path.classList.add('bd-arc-path');
+      const delays = [0, 0.15, 0.15, 0];
+      (path as SVGPathElement).style.animationDelay = `${delays[i]}s`;
+      svg.appendChild(path);
+    });
+  }, [zoneRef, svgRef]);
+
+  useEffect(() => {
+    build();
+    window.addEventListener('resize', build);
+    const t = setTimeout(build, 100);
+    return () => {
+      window.removeEventListener('resize', build);
+      clearTimeout(t);
+    };
+  }, [build]);
 }
 
-function DimensionsSection({ t, locale }: { t: (p: string) => string; locale: string }) {
-  const isZh = locale === 'zh';
+function DimensionsSection({ t }: { t: (p: string) => string; locale: string }) {
+  const router = useRouter();
+  const zoneRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  useBuildArcs(zoneRef, svgRef);
+
   return (
-    <section className="max-w-5xl mx-auto px-6 py-20 space-y-12">
-      <InwardLookingBlock t={t} />
-      <div className="relative">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {DIMENSION_KEYS.map((key) => {
-            const vars = DIMENSION_VARS[key];
-            return (
-              <div
-                key={key}
-                className={`bd-dimension-card bd-dim-${key} p-6 flex flex-col text-left min-h-[200px] cursor-default`}
-              >
-                {isZh && (
-                  <p className="text-xs font-medium tracking-[0.1em] uppercase mb-1" style={{ color: 'var(--bd-fg-subtle)', fontFamily: 'var(--font-sans-en)' }}>
-                    {t(`dimensions.${key}.en`)}
-                  </p>
-                )}
-                <h3 className="text-xl font-bold mb-3" style={{ color: vars.varColor }}>{t(`dimensions.${key}.name`)}</h3>
-                <p className="bd-dim-desc text-sm leading-relaxed flex-1" style={{ color: 'var(--bd-fg-muted)' }}>{t(`dimensions.${key}.desc`)}</p>
-                <p className="bd-dim-question text-xs mt-3 pt-3 border-t border-bd-border-soft" style={{ color: 'var(--bd-fg-subtle)' }}>「{t(`dimensions.${key}.question`)}」</p>
-              </div>
-            );
-          })}
-        </div>
-        <div className="mt-6 lg:mt-10 flex justify-center relative min-h-[80px] lg:min-h-[100px]">
-          <svg className="absolute top-0 left-1/2 -translate-x-1/2 w-[90%] max-w-xl h-20 pointer-events-none hidden lg:block" viewBox="0 0 400 80" preserveAspectRatio="xMidYMid meet" aria-hidden>
-            {[0, 1, 2, 3].map((i) => {
-              const x1 = 100 + i * 200;
-              return (
-                <path
-                  key={i}
-                  d={`M ${50 + i * 100} 0 C ${50 + i * 100} 45, 200 65, 200 78`}
-                  stroke={`var(--bd-phase-${DIMENSION_KEYS[i]})`}
-                  strokeWidth="1.5"
-                  strokeOpacity="0.4"
-                  fill="none"
-                />
-              );
-            })}
-          </svg>
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="bd-dim-your-direction relative z-10 rounded-2xl px-10 py-6 text-center min-w-[260px]"
-          >
-            <h3 className="text-xl md:text-2xl font-bold" style={{ color: 'var(--bd-fg)' }}>{t('home.yourDirection')}</h3>
-            <p className="text-sm mt-2" style={{ color: 'var(--bd-fg-muted)' }}>
-              {t('home.yourDirectionDesc')}
-            </p>
-          </motion.div>
-        </div>
+    <section className="max-w-5xl mx-auto px-6 pt-8 pb-0 w-full">
+      {/* 四卡片区（new-report 以卡片为基准，我们上方有 Hero 故加 pt-8 增加相对留白） */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {DIMENSION_KEYS.map((key) => {
+          const vars = DIMENSION_VARS[key];
+          return (
+            <div
+              key={key}
+              className={`bd-dimension-card bd-dim-${key} px-6 py-8 flex flex-col text-left min-h-[200px] lg:min-h-[220px] cursor-default`}
+            >
+              <p className="text-[13px] font-medium mb-3" style={{ color: '#8892a0', fontFamily: 'var(--font-sans-en)' }}>
+                {t(`dimensions.${key}.step`)}
+              </p>
+              <h3 className="text-xl font-semibold mb-4 bd-dim-card-title">{t(`dimensions.${key}.name`)}</h3>
+              <p className="bd-dim-desc text-sm leading-relaxed flex-1" style={{ color: '#606972' }}>{t(`dimensions.${key}.desc`)}</p>
+            </div>
+          );
+        })}
       </div>
+
+      {/* 连接区域：呼吸弧线 + 垂直白光（260px，与 new-report 一致；移动端隐藏） */}
+      <div ref={zoneRef} className="bd-connection-zone w-full hidden lg:block shrink-0" aria-hidden>
+        <svg ref={svgRef} className="bd-arc-svg" preserveAspectRatio="none" />
+        <div className="bd-v-final" />
+      </div>
+
+      {/* 结果卡片：与 new-report-finall 内容完全一致 */}
+      <section className="w-full max-w-[800px] mx-auto mt-8 lg:mt-0 mb-20 relative z-10">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5, ease: [0.165, 0.84, 0.44, 1] }}
+          className="bd-report-glass-card"
+        >
+          <h2 className="bd-report-title">{t('home.reportTitle')}</h2>
+          <p className="bd-report-subtitle">
+            {t('home.reportSubtitleLine1')}<br />
+            {t('home.reportSubtitleLine2')}
+          </p>
+          <button
+            type="button"
+            onClick={() => router.push('/explore/intro')}
+            className="bd-btn-start"
+          >
+            {t('home.reportCta')}
+            <span className="bd-btn-icon-core">→</span>
+          </button>
+        </motion.div>
+      </section>
     </section>
   );
 }
@@ -194,7 +218,6 @@ const STORIES_PER_PAGE = 3;
 const TOTAL_PAGES = Math.ceil(TESTIMONIALS.length / STORIES_PER_PAGE);
 
 function TestimonialGrid() {
-  const router = useRouter();
   const { t } = useLocale();
   const [page, setPage] = useState(0);
 
@@ -247,33 +270,38 @@ function TestimonialGrid() {
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -12 }}
-                transition={{ duration: 0.25 }}
-                className="bg-white/60 dark:bg-white/10 backdrop-blur-[24px] border border-white/90 dark:border-white/20 rounded-3xl p-8 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.03)] transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_30px_60px_-15px_rgba(0,0,0,0.08)] hover:bg-white/85 dark:hover:bg-white/15"
+                transition={{ duration: 0.4, ease: [0.165, 0.84, 0.44, 1] }}
+                className="h-full"
               >
-                <Quote className="h-10 w-10 text-purple-600 dark:text-purple-400 mb-4 opacity-50" />
-                <div className="flex gap-1 mb-4">
-                  {[1, 2, 3, 4, 5].map((j) => (
-                    <Star key={j} className="h-4 w-4 fill-amber-400 text-amber-400" />
-                  ))}
-                </div>
-                <p className="text-sm min-h-[100px] mb-6 italic leading-relaxed" style={{ color: 'var(--bd-fg-muted)' }}>
-                  「{item.quote}」
-                </p>
-                <div className="flex items-center gap-3">
-                  {item.avatar ? (
-                    <img src={item.avatar} alt="" className="w-12 h-12 rounded-full object-cover" />
-                  ) : (
-                    <div
-                      className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-semibold flex-shrink-0"
-                      style={{ background: `rgba(${item.color}, 0.2)`, color: `rgb(${item.color})` }}
-                    >
-                      {item.name.slice(0, 1)}
+                <div className="bd-testimonial-card px-6 py-8 min-h-[220px] h-full">
+                {/* 顶部：头像+姓名职业 ｜ 评分 */}
+                <div className="flex items-start justify-between gap-4 mb-6">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {item.avatar ? (
+                      <img src={item.avatar} alt="" className="w-11 h-11 rounded-full object-cover flex-shrink-0" />
+                    ) : (
+                      <div
+                        className="w-11 h-11 rounded-full flex items-center justify-center text-base font-semibold flex-shrink-0"
+                        style={{ background: `rgba(${item.color}, 0.2)`, color: `rgb(${item.color})` }}
+                      >
+                        {item.name.slice(0, 1)}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <div className="font-semibold text-[15px] truncate" style={{ color: 'var(--bd-fg)' }}>{item.name}</div>
+                      <div className="text-xs truncate" style={{ color: 'var(--bd-fg-muted)' }}>{item.role}</div>
                     </div>
-                  )}
-                  <div>
-                    <div className="font-medium text-sm" style={{ color: 'var(--bd-fg)' }}>{item.name}</div>
-                    <div className="text-xs" style={{ color: 'var(--bd-fg-muted)' }}>{item.role}</div>
                   </div>
+                  <div className="flex gap-0.5 flex-shrink-0" aria-label="5 星">
+                    {[1, 2, 3, 4, 5].map((j) => (
+                      <Star key={j} className="h-4 w-4 fill-amber-400 text-amber-400" />
+                    ))}
+                  </div>
+                </div>
+                {/* 下方：评价正文（黑色字体） */}
+                <p className="bd-testimonial-quote text-sm leading-[1.75] font-normal">
+                  {item.quote}
+                </p>
                 </div>
               </motion.div>
             ))}
@@ -301,29 +329,13 @@ function TestimonialGrid() {
             onClick={() => setPage(idx)}
             className={`h-2 rounded-full transition-all ${
               page === idx
-                ? 'bg-purple-600 dark:bg-purple-500 w-8'
+                ? 'bg-neutral-800 dark:bg-neutral-300 w-8'
                 : 'bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 w-2'
             }`}
             aria-label={`第${idx + 1}页`}
           />
         ))}
       </div>
-      <motion.button
-        type="button"
-        onClick={() => router.push('/explore/intro')}
-        initial={{ opacity: 0 }}
-        whileInView={{ opacity: 1 }}
-        viewport={{ once: true }}
-        className="w-full max-w-md mx-auto mt-12 block rounded-2xl p-6 text-center border transition-all hover:scale-[1.01]"
-        style={{
-          background: 'linear-gradient(135deg, rgba(124,92,252,0.12), rgba(167,139,250,0.08))',
-          borderColor: 'rgba(124,92,252,0.2)',
-        }}
-      >
-        <h3 className="text-xl font-bold" style={{ color: 'var(--bd-ui-accent)' }}>{t('home.exploreYourStory')}</h3>
-        <p className="text-sm mt-2" style={{ color: 'var(--bd-fg-muted)' }}>{t('home.exploreYourStorySub')}</p>
-        <span className="inline-block mt-4 text-sm font-medium" style={{ color: 'var(--bd-ui-accent)' }}>{t('home.exploreCta')}</span>
-      </motion.button>
     </section>
   );
 }
@@ -401,7 +413,7 @@ export default function LandingPage() {
       <div className="landing-mesh-content min-h-screen">
 
       {/* ① Hero */}
-      <section className="flex flex-col items-center justify-center text-center px-6 pt-28 pb-20 min-h-[90vh]">
+      <section className="flex flex-col items-center justify-center text-center px-6 pt-24 pb-8 min-h-[55vh]">
         <motion.h1
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
@@ -416,38 +428,10 @@ export default function LandingPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
-          className="text-xl md:text-2xl lg:text-3xl leading-relaxed mb-8 font-medium tracking-[0.05em]"
+          className="bd-hero-slogan leading-relaxed mb-10"
           style={{ fontFamily: 'var(--font-sans-cn)' }}
         >
-          <span className="bd-hero-slogan">{t('home.heroSlogan')}</span>
-        </motion.p>
-
-        <motion.p
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="text-lg md:text-xl mb-1.5 leading-relaxed"
-          style={{ color: 'var(--bd-fg-muted)' }}
-        >
-          {t('home.heroP1')}
-        </motion.p>
-        <motion.p
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.28 }}
-          className="text-lg md:text-xl mb-1.5 leading-relaxed"
-          style={{ color: 'var(--bd-fg-muted)' }}
-        >
-          {t('home.heroP2')}
-        </motion.p>
-        <motion.p
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.36 }}
-          className="text-lg md:text-xl mb-10 leading-relaxed font-semibold"
-          style={{ color: 'var(--bd-fg)' }}
-        >
-          {t('home.heroP3')}
+          {t('home.heroSlogan')}
         </motion.p>
 
         <motion.div

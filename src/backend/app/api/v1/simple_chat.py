@@ -26,6 +26,7 @@ from app.core.dimension_completion_checker import (
     detect_explicit_completion,
     _should_run_completion_check,
 )
+from app.services.analytics_service import AnalyticsService
 from app.utils.survey_storage import (
     save_basic_info,
     load_basic_info,
@@ -790,6 +791,10 @@ async def simple_chat_stream(
                     message={"role": "assistant", "content": full_reply},
                 )
                 yield f"data: {{\"dimension_conclusion\": {json.dumps(dimension_conclusion, ensure_ascii=False)} }}\n\n"
+                try:
+                    await AnalyticsService.record_chat_turn(session_id=session_id, dimension=phase, user_input_chars=len(user_content or ""), llm_input_tokens=0, llm_output_tokens=0, log_index=None)
+                except Exception:
+                    pass
                 yield f"data: {{\"done\": true, \"response\": {json.dumps(full_reply, ensure_ascii=False)} }}\n\n"
                 return
             # 若 regenerate 返回 None，清除 pending 并继续正常流程
@@ -823,6 +828,10 @@ async def simple_chat_stream(
                 message={"role": "assistant", "content": full_reply},
             )
             yield f"data: {{\"dimension_conclusion\": {json.dumps(dimension_conclusion, ensure_ascii=False)} }}\n\n"
+            try:
+                await AnalyticsService.record_chat_turn(session_id=session_id, dimension=phase, user_input_chars=len(user_content or ""), llm_input_tokens=0, llm_output_tokens=0, log_index=None)
+            except Exception:
+                pass
             yield f"data: {{\"done\": true, \"response\": {json.dumps(full_reply, ensure_ascii=False)} }}\n\n"
             return
 
@@ -876,6 +885,19 @@ async def simple_chat_stream(
                 pass
 
         asyncio.create_task(_background_completion_check())
+
+        # 埋点：记录对话轮次（simple 模式无 token 统计）
+        try:
+            await AnalyticsService.record_chat_turn(
+                session_id=session_id,
+                dimension=phase,
+                user_input_chars=len(user_content or ""),
+                llm_input_tokens=0,
+                llm_output_tokens=0,
+                log_index=None,
+            )
+        except Exception:
+            pass
 
         yield f"data: {{\"done\": true, \"response\": {json.dumps(full_reply, ensure_ascii=False)} }}\n\n"
 

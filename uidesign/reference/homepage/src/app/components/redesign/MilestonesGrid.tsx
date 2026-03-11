@@ -52,7 +52,7 @@ const milestonesData = {
     },
     {
       en: '第三步',
-      title: '找到你的"心流"',
+      title: '找到你的心流',
       desc: '探索能给你带来活力的活动和话题。找到能够维持长期动力的热情所在。',
       color: 'red',
       borderColor: '#FF5A5F',

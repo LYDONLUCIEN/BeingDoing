@@ -9,6 +9,7 @@ import { apiClient } from '@/lib/api/client';
 import { loadSession, saveSession, setLastActivationCode, type PhaseKey } from '@/lib/explore/session';
 import Link from 'next/link';
 import { CheckCircle2, Bug, Loader2, Palette } from 'lucide-react';
+import AnalyticsDashboard from '@/components/admin/AnalyticsDashboard';
 
 const ALL_PHASES = ['values', 'strengths', 'interests', 'purpose'] as const;
 
@@ -161,12 +162,8 @@ export default function AdminPage() {
   if (!user?.is_super_admin) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-bd-bg text-bd-fg">
-        <div className="rounded-xl border border-bd-border bg-bd-card px-6 py-4 text-center space-y-2">
-          <p className="text-base font-semibold">无权限访问管理视图</p>
-          <p className="text-sm text-bd-muted">
-            只有在 <code className="px-1 py-0.5 bg-bd-overlay rounded border border-bd-border">.env</code>{' '}
-            中配置为超级管理员的账号才能访问此页面。
-          </p>
+        <div className="rounded-xl border border-bd-border bg-bd-card px-6 py-4 text-center">
+          <p className="text-base font-semibold">无权限访问</p>
         </div>
       </div>
     );
@@ -182,6 +179,9 @@ export default function AdminPage() {
       </div>
 
       <div className="flex-1 max-w-4xl mx-auto w-full px-6 py-6 space-y-6">
+
+        {/* 数据统计（仅 admin） */}
+        <AnalyticsDashboard />
 
         {/* Theme switcher */}
         <ThemeSwitcher />
