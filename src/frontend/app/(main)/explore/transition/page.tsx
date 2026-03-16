@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { CheckCircle2, ChevronRight } from 'lucide-react';
@@ -13,7 +13,7 @@ const DIM_LABELS: Record<string, string> = {
   purpose: '使命',
 };
 
-export default function ExploreTransitionPage() {
+function TransitionContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const fromParam = searchParams.get('from');
@@ -141,5 +141,17 @@ export default function ExploreTransitionPage() {
         </motion.div>
       </div>
     </div>
+  );
+}
+
+export default function ExploreTransitionPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-bd-bg">
+        <div className="animate-spin rounded-full h-10 w-10 border-2 border-bd-primary border-t-transparent" />
+      </div>
+    }>
+      <TransitionContent />
+    </Suspense>
   );
 }

@@ -32,7 +32,14 @@ CONDA_BASE="/mnt/vdb1/miniconda3"
 CONDA_ENV="py312"
 # source conda.sh 使 conda activate 在非交互式 shell 里生效
 BACKEND_CMD="source '$CONDA_BASE/etc/profile.d/conda.sh' && conda activate $CONDA_ENV && cd '$BACKEND_DIR' && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
-FRONTEND_CMD="cd '$FRONTEND_DIR' && npm run dev"
+
+# 生产模式：避免 career.soulhappylab.com 等外部访问时的 503（dev 模式会拒绝跨域请求）
+# 在 .env 中设置 FRONTEND_MODE=production 即可
+if [ "${FRONTEND_MODE:-}" = "production" ]; then
+  FRONTEND_CMD="cd '$FRONTEND_DIR' && (test -f .next/BUILD_ID || npm run build) && npm run start -p 3000"
+else
+  FRONTEND_CMD="cd '$FRONTEND_DIR' && npm run dev"
+fi
 
 # ── 颜色输出 ────────────────────────────────────────────────
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; RESET='\033[0m'
