@@ -1,12 +1,42 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { useAuthStore } from '@/stores/authStore';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || '').trim();
+
+function isLoopbackUrl(url: string): boolean {
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(url);
+}
+
+function resolveApiBase(): string {
+  if (!API_URL) return '/api/v1';
+  // 外网访问时若仍注入了 localhost 地址，强制回退同域，避免 CORS/network error
+  if (typeof window !== 'undefined' && isLoopbackUrl(API_URL)) {
+    const host = window.location.hostname;
+    const isLocalPage = host === 'localhost' || host === '127.0.0.1';
+    if (!isLocalPage) return '/api/v1';
+  }
+  return `${API_URL.replace(/\/+$/, '')}/api/v1`;
+}
+
+const API_BASE = resolveApiBase();
 
 export interface ApiResponse<T = any> {
   code: number;
   message: string;
   data: T;
+}
+
+export function getApiErrorMessage(error: unknown, fallback = '请求失败，请稍后重试'): string {
+  const err = error as AxiosError<{ detail?: string; message?: string }>;
+  const detail = err?.response?.data?.detail;
+  const message = err?.response?.data?.message;
+  if (detail) return detail;
+  if (message) return message;
+  if (err?.code === 'ERR_NETWORK') {
+    return '网络连接失败，请检查服务是否可用（或 NEXT_PUBLIC_API_URL 配置是否正确）';
+  }
+  if (err?.message) return err.message;
+  return fallback;
 }
 
 /** 401 事件：供全局 AuthModal 监听 */
@@ -29,7 +59,7 @@ class ApiClient {
 
   constructor() {
     this.client = axios.create({
-      baseURL: `${API_URL}/api/v1`,
+      baseURL: API_BASE,
       headers: {
         'Content-Type': 'application/json',
       },

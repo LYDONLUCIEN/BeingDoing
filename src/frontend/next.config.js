@@ -10,11 +10,8 @@ const nextConfig = {
     'http://47.96.75.69:3000',
     'http://47.96.75.69',
   ],
-  env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
-  },
   async rewrites() {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
     if (!apiUrl) return [];
     return [
       {

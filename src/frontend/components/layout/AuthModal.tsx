@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { X } from 'lucide-react';
 import { authApi } from '@/lib/api/auth';
+import { getApiErrorMessage } from '@/lib/api/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -42,9 +43,12 @@ interface AuthModalProps {
 }
 
 export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intro' }: AuthModalProps) {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const { setUser, setToken } = useAuthStore();
   const router = useRouter();
   const pathname = usePathname();
@@ -100,8 +104,8 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intr
       } else {
         setLoading(false);
       }
-    } catch (err: any) {
-      setError(err?.response?.data?.detail || err?.message || '登录失败，请检查您的凭据');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, '登录失败，请检查邮箱/手机号和密码'));
     } finally {
       setLoading(false);
     }
@@ -128,18 +132,59 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intr
           handleSuccess(redirectTo);
         }, 400);
       }
-    } catch (err: any) {
-      setError(err?.response?.data?.detail || err?.message || '注册失败，请重试');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, '注册失败，请重试'));
     } finally {
       setLoading(false);
     }
   };
 
-  const switchMode = () => {
+  const sendResetCode = async () => {
+    if (!resetEmail) {
+      setError('请输入邮箱');
+      return;
+    }
+    setError('');
+    setSuccessMsg('');
+    setLoading(true);
+    try {
+      await authApi.requestPasswordResetCode({ email: resetEmail });
+      setSuccessMsg('验证码已发送到邮箱（开发环境请查看后端日志）');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, '发送验证码失败，请稍后重试'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const confirmReset = async () => {
+    if (!resetEmail || !resetCode || !newPassword) {
+      setError('请完整填写邮箱、验证码和新密码');
+      return;
+    }
+    setError('');
+    setSuccessMsg('');
+    setLoading(true);
+    try {
+      await authApi.confirmPasswordReset({
+        email: resetEmail,
+        code: resetCode,
+        new_password: newPassword,
+      });
+      setSuccessMsg('密码重置成功，请使用新密码登录');
+      setMode('login');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, '重置密码失败，请检查验证码是否正确'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const switchMode = (target: 'login' | 'register') => {
     setError('');
     loginForm.reset();
     registerForm.reset();
-    setMode(mode === 'login' ? 'register' : 'login');
+    setMode(target);
   };
 
   if (!isOpen) return null;
@@ -180,7 +225,7 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intr
           <div className="text-center mb-6">
             <h2 className="text-2xl font-bold text-bd-fg">Being · Doing</h2>
             <p className="text-bd-muted mt-1 text-sm">
-              {mode === 'login' ? '欢迎回来' : '开始你的探索之旅'}
+              {mode === 'login' ? '欢迎回来' : mode === 'register' ? '开始你的探索之旅' : '通过邮箱重置密码'}
             </p>
           </div>
 
@@ -190,7 +235,7 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intr
               <button
                 key={m}
                 type="button"
-                onClick={() => { if (mode !== m) switchMode(); }}
+                onClick={() => { if (mode !== m) switchMode(m); }}
                 className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
                   mode === m
                     ? 'bg-bd-primary text-bd-primary-fg shadow-sm'
@@ -242,7 +287,81 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intr
               >
                 {loading ? '登录中...' : '登录'}
               </button>
+              <div className="text-right">
+                <button
+                  type="button"
+                  className="text-sm text-bd-primary hover:underline"
+                  onClick={() => {
+                    setError('');
+                    setSuccessMsg('');
+                    setMode('forgot');
+                  }}
+                >
+                  忘记密码？
+                </button>
+              </div>
             </form>
+          ) : mode === 'forgot' ? (
+            <div className="space-y-3.5">
+              <div>
+                <label className={labelClass}>邮箱</label>
+                <input
+                  type="email"
+                  className={inputClass}
+                  placeholder="your@email.com"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                />
+              </div>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={sendResetCode}
+                className="w-full py-2.5 px-4 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-bd-primary-fg"
+                style={{ background: 'var(--bd-primary)' }}
+              >
+                {loading ? '发送中...' : '发送验证码'}
+              </button>
+
+              <div>
+                <label className={labelClass}>验证码</label>
+                <input
+                  type="text"
+                  className={inputClass}
+                  placeholder="请输入邮箱验证码"
+                  value={resetCode}
+                  onChange={(e) => setResetCode(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>新密码</label>
+                <input
+                  type="password"
+                  className={inputClass}
+                  placeholder="至少6位"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                />
+              </div>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={confirmReset}
+                className="w-full py-2.5 px-4 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-bd-primary-fg"
+                style={{ background: 'var(--bd-primary)' }}
+              >
+                {loading ? '提交中...' : '重置密码'}
+              </button>
+              <div className="text-right">
+                <button
+                  type="button"
+                  className="text-sm text-bd-primary hover:underline"
+                  onClick={() => setMode('login')}
+                >
+                  返回登录
+                </button>
+              </div>
+            </div>
           ) : (
             <form onSubmit={registerForm.handleSubmit(onRegisterSubmit)} className="space-y-3.5">
               <div>

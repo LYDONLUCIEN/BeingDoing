@@ -52,14 +52,6 @@ class Settings(BaseSettings):
     # 语音功能
     AUDIO_MODE: bool = False
     
-    # ASR配置
-    ASR_PROVIDER: str = "openai"
-    OPENAI_WHISPER_API_KEY: Optional[str] = None
-    
-    # TTS配置
-    TTS_PROVIDER: str = "openai"
-    OPENAI_TTS_API_KEY: Optional[str] = None
-    
     # 引导策略
     GUIDE_IDLE_TIMEOUT: int = 600  # 10分钟（秒）
     GUIDE_QUIET_TIMEOUT: int = 900  # 15分钟（秒）

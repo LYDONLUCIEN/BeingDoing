@@ -11,6 +11,7 @@ from typing import Optional, List, AsyncIterator
 import asyncio
 import json
 import random
+import logging
 
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import StreamingResponse
@@ -40,6 +41,7 @@ SIMPLE_QUESTION_SAMPLE_SIZE = 6
 SIMPLE_BASE_DIR = str(get_simple_base_dir())
 
 router = APIRouter(prefix="/simple-chat", tags=["简单模式对话"])
+logger = logging.getLogger(__name__)
 
 
 def _skip_expired_for_debug(rec, user: Optional[dict]) -> bool:
@@ -88,6 +90,17 @@ def _get_random_questions_for_phase(phase: str, n: int = SIMPLE_QUESTION_SAMPLE_
         return "\n".join(lines)
     except Exception:
         return "（题库加载失败）"
+
+
+def _build_fallback_opening_question(phase: str) -> str:
+    """当 LLM 不可用时，提供一个可继续流程的兜底开场问题。"""
+    fallback_map = {
+        "values": "我们先从价值观开始：最近一次让你“很有意义感”的事情是什么？为什么它对你重要？",
+        "strengths": "我们先聊聊优势：在别人眼里，你最常被夸“做得自然且稳定”的一件事是什么？",
+        "interests": "我们先聊热忱：哪类话题会让你不知不觉投入很久、并且越做越有能量？",
+        "purpose": "我们先聊使命：如果你的工作能持续帮助一类人，你最希望他们发生什么改变？",
+    }
+    return fallback_map.get(phase, fallback_map["values"])
 
 
 class SimpleChatRequest(BaseModel):
@@ -488,8 +501,16 @@ async def simple_chat(
     llm_messages.append(LLMMessage(role="user", content=request.message))
 
     # 调用大模型
-    response = await llm.chat(llm_messages, temperature=0.7)
-    reply_text = response.content or ""
+    try:
+        response = await llm.chat(llm_messages, temperature=0.7)
+        reply_text = (response.content or "").strip()
+    except Exception as e:
+        # 避免因为上游 LLM 配置/网络问题导致初始化 500，保证问答流程可继续。
+        logger.exception("simple-chat init failed, fallback to local prompt: %s", e)
+        reply_text = _build_fallback_opening_question(phase)
+
+    if not reply_text:
+        reply_text = _build_fallback_opening_question(phase)
 
     # 把当前轮 user / assistant 消息写入文件
     await conv_manager.append_message(
@@ -562,8 +583,16 @@ async def simple_init(
         LLMMessage(role="system", content=system_prompt),
         LLMMessage(role="user", content="我是来访者，你需要向我提问。以下是我的基本信息：暂无。请给出第一轮温柔而具体的引导问题，让我开始思考。"),
     ]
-    response = await llm.chat(llm_messages, temperature=0.7)
-    reply_text = response.content or ""
+    try:
+        response = await llm.chat(llm_messages, temperature=0.7)
+        reply_text = (response.content or "").strip()
+    except Exception as e:
+        # 避免初始化阶段因上游 LLM 失败直接 500，先返回本地兜底问题保证流程可继续。
+        logger.exception("simple-chat init failed, fallback to local prompt: %s", e)
+        reply_text = _build_fallback_opening_question(phase)
+
+    if not reply_text:
+        reply_text = _build_fallback_opening_question(phase)
 
     # 只写入 assistant 消息，作为起始问题
     await conv_manager.append_message(
@@ -770,9 +799,14 @@ async def simple_chat_stream(
 
         if pending_conclusion and not meta.get("thread_completed"):
             # 综合本轮用户输入 + 上一轮结论，重新生成确定性结论
-            dimension_conclusion = await check_dimension_complete(
-                phase, conv_history, prior_conclusion=pending_conclusion
-            )
+            try:
+                dimension_conclusion = await check_dimension_complete(
+                    phase, conv_history, prior_conclusion=pending_conclusion
+                )
+            except Exception as e:
+                # 上游 LLM 异常时，降级为继续普通对话，避免流接口 500。
+                logger.exception("check_dimension_complete(regenerate) failed, continue chat stream: %s", e)
+                dimension_conclusion = None
             if dimension_conclusion:
                 await conv_manager.update_metadata(
                     session_id, category,
@@ -803,15 +837,25 @@ async def simple_chat_stream(
         # 2) 无 pending 时：显式完成 或 轮数条件 → 同步检测
         dimension_conclusion = None
         if not meta.get("thread_completed"):
-            explicit_result = bool(
-                user_content and await detect_explicit_completion(phase, user_content, conv_history)
-            )
+            try:
+                explicit_result = bool(
+                    user_content and await detect_explicit_completion(phase, user_content, conv_history)
+                )
+            except Exception as e:
+                # 显式完成检测是增强能力，不应因上游 LLM 异常中断主对话流。
+                logger.exception("detect_explicit_completion failed, continue chat stream: %s", e)
+                explicit_result = False
             should_check = _should_run_completion_check(
                 user_count, conclusion_shown_at,
                 include_explicit=True, explicit_result=explicit_result,
             )
             if should_check:
-                dimension_conclusion = await check_dimension_complete(phase, conv_history)
+                try:
+                    dimension_conclusion = await check_dimension_complete(phase, conv_history)
+                except Exception as e:
+                    # 维度收敛检测失败时降级为继续普通对话，避免前端出现 500 卡死。
+                    logger.exception("check_dimension_complete failed, continue chat stream: %s", e)
+                    dimension_conclusion = None
                 if dimension_conclusion:
                     await conv_manager.update_metadata(
                         session_id, category,

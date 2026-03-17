@@ -120,7 +120,7 @@ function DimensionsSection({ t }: { t: (p: string) => string; locale: string }) 
       {/* 结果卡片：与 new-report-finall 内容完全一致 */}
       <section className="w-full max-w-[800px] mx-auto mt-8 lg:mt-0 mb-20 relative z-10">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={false}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5, ease: [0.165, 0.84, 0.44, 1] }}
@@ -168,7 +168,7 @@ function ComingSoonFlat() {
     <section className="relative z-10 max-w-4xl mx-auto px-5 py-20">
       <div className="text-center mb-16">
         <motion.div
-          initial={{ opacity: 0 }}
+          initial={false}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
           className="inline-flex items-center gap-2 bg-purple-100/60 dark:bg-purple-500/20 backdrop-blur-md text-purple-700 dark:text-purple-300 px-5 py-2 rounded-full mb-6"
@@ -177,7 +177,7 @@ function ComingSoonFlat() {
           <span className="text-sm">{t('home.comingSoonBadge')}</span>
         </motion.div>
         <motion.h2
-          initial={{ opacity: 0 }}
+          initial={false}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
           className="text-5xl font-semibold mb-4 tracking-[0.05em]"
@@ -186,7 +186,7 @@ function ComingSoonFlat() {
           {t('home.comingSoonTitle')}
         </motion.h2>
         <motion.p
-          initial={{ opacity: 0 }}
+          initial={false}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
           className="text-xl font-light"
@@ -199,7 +199,7 @@ function ComingSoonFlat() {
         {COMING_SOON_ITEMS.map((item, i) => (
           <motion.div
             key={i}
-            initial={{ opacity: 0, y: 20 }}
+            initial={false}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: i * 0.1 }}
@@ -230,7 +230,7 @@ function TestimonialGrid() {
     <section className="relative z-10 w-full px-5 py-20">
       <div className="text-center mb-16 max-w-4xl mx-auto">
         <motion.h2
-          initial={{ opacity: 0 }}
+          initial={false}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
           className="text-5xl font-semibold mb-4 tracking-[0.05em]"
@@ -239,7 +239,7 @@ function TestimonialGrid() {
           {t('home.theirStories')}
         </motion.h2>
         <motion.p
-          initial={{ opacity: 0 }}
+          initial={false}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
           className="text-xl font-light"
@@ -415,7 +415,7 @@ export default function LandingPage() {
       {/* ① Hero */}
       <section className="flex flex-col items-center justify-center text-center px-6 pt-24 pb-8 min-h-[55vh]">
         <motion.h1
-          initial={{ opacity: 0, y: 30 }}
+          initial={false}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7 }}
           className="text-5xl md:text-7xl font-bold leading-tight mb-6 tracking-[0.05em]"
@@ -425,7 +425,7 @@ export default function LandingPage() {
         </motion.h1>
 
         <motion.p
-          initial={{ opacity: 0, y: 20 }}
+          initial={false}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
           className="bd-hero-slogan leading-relaxed mb-10"
@@ -435,7 +435,7 @@ export default function LandingPage() {
         </motion.p>
 
         <motion.div
-          initial={{ opacity: 0, scale: 0.92 }}
+          initial={false}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5, delay: 0.5 }}
         >

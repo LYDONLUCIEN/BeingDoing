@@ -5,6 +5,8 @@
 # 用法：
 #   ./start.sh              启动 backend + frontend（默认）
 #   ./start.sh start        同上
+#   ./start.sh start-dev    以开发模式启动（frontend: next dev）
+#   ./start.sh start-run    以运行模式启动（frontend: 清理 .next + build + start）
 #   ./start.sh stop         关闭所有窗口并销毁 tmux session
 #   ./start.sh restart      重启所有服务
 #   ./start.sh restart backend   仅重启 backend
@@ -19,7 +21,17 @@ set -e
 SESSION="beingdoing"
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
-# 加载 .env 供 frontend 使用（NEXT_PUBLIC_API_URL 等，确保跨机器访问时 API 地址正确）
+# 关键：每次启动前先清理容易串项目的环境变量，再仅加载本项目 .env
+CONFLICT_ENV_VARS=(
+  DEBUG DEBUG_MODE
+  LLM_PROVIDER LLM_BASE_URL LLM_MODEL
+  OPENAI_API_KEY DEEPSEEK_API_KEY
+  GLM_API_KEY KIMI_API_KEY CLAUDE_API_KEY
+  NEXT_PUBLIC_API_URL FRONTEND_MODE
+)
+for v in "${CONFLICT_ENV_VARS[@]}"; do
+  unset "$v" 2>/dev/null || true
+done
 if [ -f "$REPO_ROOT/.env" ]; then
   set -a
   source "$REPO_ROOT/.env"
@@ -27,18 +39,45 @@ if [ -f "$REPO_ROOT/.env" ]; then
 fi
 BACKEND_DIR="$REPO_ROOT/src/backend"
 FRONTEND_DIR="$REPO_ROOT/src/frontend"
+ENV_LOAD_CMD="unset DEBUG DEBUG_MODE LLM_PROVIDER LLM_BASE_URL LLM_MODEL OPENAI_API_KEY DEEPSEEK_API_KEY GLM_API_KEY KIMI_API_KEY CLAUDE_API_KEY NEXT_PUBLIC_API_URL FRONTEND_MODE; set -a; [ -f \"$REPO_ROOT/.env\" ] && source \"$REPO_ROOT/.env\"; set +a"
 
 CONDA_BASE="/mnt/vdb1/miniconda3"
 CONDA_ENV="py312"
 # source conda.sh 使 conda activate 在非交互式 shell 里生效
-BACKEND_CMD="source '$CONDA_BASE/etc/profile.d/conda.sh' && conda activate $CONDA_ENV && cd '$BACKEND_DIR' && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+BACKEND_CMD="$ENV_LOAD_CMD && source '$CONDA_BASE/etc/profile.d/conda.sh' && conda activate $CONDA_ENV && cd '$BACKEND_DIR' && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
 
-# 生产模式：避免 career.soulhappylab.com 等外部访问时的 503（dev 模式会拒绝跨域请求）
-# 在 .env 中设置 FRONTEND_MODE=production 即可
+COMMAND="${1:-start}"
+TARGET="${2:-}"
+
+# 默认根据 .env 的 FRONTEND_MODE 推断；可被 start-dev / start-run 覆盖
 if [ "${FRONTEND_MODE:-}" = "production" ]; then
-  FRONTEND_CMD="cd '$FRONTEND_DIR' && (test -f .next/BUILD_ID || npm run build) && npm run start -p 3000"
+  RUN_MODE="production"
 else
-  FRONTEND_CMD="cd '$FRONTEND_DIR' && npm run dev"
+  RUN_MODE="dev"
+fi
+
+if [ "$COMMAND" = "start-dev" ]; then
+  RUN_MODE="dev"
+  COMMAND="start"
+fi
+
+if [ "$COMMAND" = "start-run" ]; then
+  RUN_MODE="production"
+  FORCE_CLEAN_BUILD="1"
+  COMMAND="start"
+fi
+
+if [ "$RUN_MODE" = "production" ]; then
+  if [ "${FORCE_CLEAN_BUILD:-0}" = "1" ]; then
+    # start-run 场景：强制清理构建缓存并重新 build，避免旧产物/manifest 导致线上异常
+    FRONTEND_CMD="$ENV_LOAD_CMD && cd '$FRONTEND_DIR' && rm -rf .next && npm run build && FRONTEND_MODE=production npm run start"
+  else
+    FRONTEND_CMD="$ENV_LOAD_CMD && cd '$FRONTEND_DIR' && (test -f .next/BUILD_ID || npm run build) && FRONTEND_MODE=production npm run start"
+  fi
+  FRONTEND_MODE_LABEL="production"
+else
+  FRONTEND_CMD="$ENV_LOAD_CMD && cd '$FRONTEND_DIR' && FRONTEND_MODE=dev npm run dev"
+  FRONTEND_MODE_LABEL="dev"
 fi
 
 # ── 颜色输出 ────────────────────────────────────────────────
@@ -90,7 +129,7 @@ cmd_start() {
   # 默认选中 backend 窗口
   tmux select-window -t "$SESSION:backend"
 
-  ok "服务已启动！"
+  ok "服务已启动！（frontend mode: $FRONTEND_MODE_LABEL）"
   echo ""
   echo "  Backend  → http://localhost:8000"
   echo "  Frontend → http://localhost:3000"
@@ -158,8 +197,6 @@ cmd_attach() {
 }
 
 # ── 入口 ────────────────────────────────────────────────────
-COMMAND="${1:-start}"
-TARGET="${2:-}"
 
 case "$COMMAND" in
   start)
@@ -177,6 +214,6 @@ case "$COMMAND" in
   attach)
     cmd_attach ;;
   *)
-    echo "用法: ./start.sh [start|stop|restart [backend|frontend|all]|attach]"
+    echo "用法: ./start.sh [start|start-dev|start-run|stop|restart [backend|frontend|all]|attach]"
     exit 1 ;;
 esac

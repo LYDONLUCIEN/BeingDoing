@@ -22,6 +22,16 @@ export interface AuthResponse {
   expires_in: number;
 }
 
+export interface PasswordResetCodeRequest {
+  email: string;
+}
+
+export interface PasswordResetConfirmRequest {
+  email: string;
+  code: string;
+  new_password: string;
+}
+
 export const authApi = {
   register: async (data: RegisterRequest): Promise<ApiResponse<AuthResponse>> => {
     return apiClient.post('/auth/register', data);
@@ -38,5 +48,13 @@ export const authApi = {
 
   getCurrentUser: async (): Promise<ApiResponse<any>> => {
     return apiClient.get('/auth/me');
+  },
+
+  requestPasswordResetCode: async (data: PasswordResetCodeRequest): Promise<ApiResponse<void>> => {
+    return apiClient.post('/auth/password/reset/code', data);
+  },
+
+  confirmPasswordReset: async (data: PasswordResetConfirmRequest): Promise<ApiResponse<void>> => {
+    return apiClient.post('/auth/password/reset/confirm', data);
   },
 };

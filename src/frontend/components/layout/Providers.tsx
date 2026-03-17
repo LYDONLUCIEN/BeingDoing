@@ -3,6 +3,7 @@
 import ThemeProvider from './ThemeProvider';
 import PhaseColorInjector from './PhaseColorInjector';
 import DesignEffectsInjector from './DesignEffectsInjector';
+import ChunkErrorRecovery from './ChunkErrorRecovery';
 
 /**
  * Single client boundary wrapper.
@@ -12,6 +13,7 @@ import DesignEffectsInjector from './DesignEffectsInjector';
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <>
+      <ChunkErrorRecovery />
       <ThemeProvider />
       <PhaseColorInjector />
       <DesignEffectsInjector />
