@@ -40,6 +40,17 @@ class Settings(BaseSettings):
     # DeepSeek（兼容 OpenAI 接口，需设置 base_url）
     DEEPSEEK_API_KEY: Optional[str] = None
     LLM_BASE_URL: Optional[str] = None  # 如 https://api.deepseek.com
+
+    # SMTP 邮件配置（忘记密码验证码）
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: int = 465
+    SMTP_USER: Optional[str] = None
+    SMTP_PASS: Optional[str] = None
+    SMTP_FROM_EMAIL: Optional[str] = None
+    SMTP_FROM_NAME: str = "BeingDoing"
+    SMTP_USE_SSL: bool = True
+    SMTP_USE_TLS: bool = False
+    SMTP_TIMEOUT_SECONDS: int = 20
     
     # ASR配置
     ASR_PROVIDER: str = "openai"

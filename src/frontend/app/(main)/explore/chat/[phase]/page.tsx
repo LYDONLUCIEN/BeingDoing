@@ -448,6 +448,10 @@ export default function ChatPhasePage() {
     } finally {
       setSending(false);
       abortControllerRef.current = null;
+      // 发送完成后将焦点还给输入框，支持连续 Enter 对话无需再点鼠标。
+      requestAnimationFrame(() => {
+        if (!isReadOnly) inputRef.current?.focus();
+      });
     }
   };
 

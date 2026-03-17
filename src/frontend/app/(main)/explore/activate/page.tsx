@@ -159,22 +159,6 @@ export default function ActivatePage() {
           )}
         </div>
 
-        {/* Steps preview - 独立背景避免 mesh 影响文字可读性 */}
-        <div className="bd-activate-steps-preview rounded-xl p-4 space-y-3">
-          <p className="text-xs text-bd-subtle uppercase tracking-widest">探索路径</p>
-          {[
-            { num: '01', label: '信念', desc: '你最在意什么？', varColor: 'var(--bd-phase-values)' },
-            { num: '02', label: '禀赋', desc: '你天生擅长什么？', varColor: 'var(--bd-phase-strengths)' },
-            { num: '03', label: '热忱', desc: '什么让你忘我投入？', varColor: 'var(--bd-phase-interests)' },
-            { num: '04', label: '使命', desc: '你想为谁而做？', varColor: 'var(--bd-phase-purpose)' },
-          ].map((s) => (
-            <div key={s.num} className="flex items-center gap-3">
-              <span className="text-xs font-mono" style={{ color: s.varColor }}>{s.num}</span>
-              <span className="text-sm font-semibold" style={{ color: s.varColor }}>{s.label}</span>
-              <span className="text-xs text-bd-subtle">{s.desc}</span>
-            </div>
-          ))}
-        </div>
       </motion.div>
     </div>
   );

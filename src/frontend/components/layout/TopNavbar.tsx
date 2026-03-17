@@ -77,7 +77,14 @@ export default function TopNavbar() {
       <div className="w-full h-full px-4 md:px-8 flex items-center justify-between relative">
         {/* 左侧：品牌 Logo（职引 / Vocation） */}
         <div className="flex items-center flex-shrink-0">
-          <Link href="/" className="text-lg font-bold whitespace-nowrap tracking-tight text-bd-fg">
+          <Link
+            href="/"
+            onClick={(e) => {
+              e.preventDefault();
+              router.push('/');
+            }}
+            className="relative z-[60] pointer-events-auto cursor-pointer text-lg font-bold whitespace-nowrap tracking-tight text-bd-fg"
+          >
             {t('nav.brand')}
           </Link>
         </div>

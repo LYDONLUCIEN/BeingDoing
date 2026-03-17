@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -49,6 +49,8 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intr
   const [resetEmail, setResetEmail] = useState('');
   const [resetCode, setResetCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [resetCooldown, setResetCooldown] = useState(0);
   const { setUser, setToken } = useAuthStore();
   const router = useRouter();
   const pathname = usePathname();
@@ -57,6 +59,20 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intr
   const registerForm = useForm<RegisterFormData>({ resolver: zodResolver(registerSchema) });
 
   const [successMsg, setSuccessMsg] = useState('');
+  useEffect(() => {
+    if (mode !== 'forgot' || resetCooldown <= 0) return;
+    const timer = window.setInterval(() => {
+      setResetCooldown((prev) => {
+        if (prev <= 1) {
+          window.clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [mode, resetCooldown]);
+
   const handleSuccess = (targetPath: string) => {
     setSuccessMsg('');
     onClose();
@@ -144,12 +160,17 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intr
       setError('请输入邮箱');
       return;
     }
+    if (resetCooldown > 0) {
+      setError(`请 ${resetCooldown}s 后再发送`);
+      return;
+    }
     setError('');
     setSuccessMsg('');
     setLoading(true);
     try {
       await authApi.requestPasswordResetCode({ email: resetEmail });
-      setSuccessMsg('验证码已发送到邮箱（开发环境请查看后端日志）');
+      setSuccessMsg('验证码已发送到该账号的注册邮箱（5分钟有效）');
+      setResetCooldown(60);
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, '发送验证码失败，请稍后重试'));
     } finally {
@@ -158,8 +179,12 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intr
   };
 
   const confirmReset = async () => {
-    if (!resetEmail || !resetCode || !newPassword) {
-      setError('请完整填写邮箱、验证码和新密码');
+    if (!resetEmail || !resetCode || !newPassword || !confirmNewPassword) {
+      setError('请完整填写邮箱、验证码和两次新密码');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setError('两次输入的新密码不一致');
       return;
     }
     setError('');
@@ -225,7 +250,7 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intr
           <div className="text-center mb-6">
             <h2 className="text-2xl font-bold text-bd-fg">Being · Doing</h2>
             <p className="text-bd-muted mt-1 text-sm">
-              {mode === 'login' ? '欢迎回来' : mode === 'register' ? '开始你的探索之旅' : '通过邮箱重置密码'}
+              {mode === 'login' ? '欢迎回来' : mode === 'register' ? '开始你的探索之旅' : '通过账号注册邮箱重置密码'}
             </p>
           </div>
 
@@ -308,19 +333,19 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intr
                 <input
                   type="email"
                   className={inputClass}
-                  placeholder="your@email.com"
+                  placeholder="请输入账号注册时绑定的邮箱"
                   value={resetEmail}
                   onChange={(e) => setResetEmail(e.target.value)}
                 />
               </div>
               <button
                 type="button"
-                disabled={loading}
+                disabled={loading || resetCooldown > 0}
                 onClick={sendResetCode}
                 className="w-full py-2.5 px-4 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-bd-primary-fg"
                 style={{ background: 'var(--bd-primary)' }}
               >
-                {loading ? '发送中...' : '发送验证码'}
+                {loading ? '发送中...' : resetCooldown > 0 ? `${resetCooldown}s 后可重发` : '发送验证码'}
               </button>
 
               <div>
@@ -341,6 +366,16 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intr
                   placeholder="至少6位"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>确认新密码</label>
+                <input
+                  type="password"
+                  className={inputClass}
+                  placeholder="请再次输入新密码"
+                  value={confirmNewPassword}
+                  onChange={(e) => setConfirmNewPassword(e.target.value)}
                 />
               </div>
               <button

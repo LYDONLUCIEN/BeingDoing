@@ -9,6 +9,7 @@ from passlib.context import CryptContext
 from app.core.database import UserDB
 from app.models.database import AsyncSessionLocal
 from app.config.settings import settings
+from app.services.email_service import EmailService
 
 # 密码加密上下文
 # 说明：
@@ -22,7 +23,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 # 简单的内存级找回密码验证码存储（开发环境用，进程重启后会失效）
-# key: email/phone, value: {"code": str, "expires_at": datetime}
+# key: email/phone, value: {"code": str, "expires_at": datetime, "sent_at": datetime}
 _password_reset_email_codes: Dict[str, Dict[str, any]] = {}
 _password_reset_phone_codes: Dict[str, Dict[str, any]] = {}
 
@@ -117,16 +118,25 @@ class AuthService:
             if not user.is_active:
                 raise ValueError("用户已被禁用")
         
-        # 生成 6 位数字验证码
+        # 60 秒冷却期：避免连续轰炸发送
+        last = _password_reset_email_codes.get(email)
+        if last and last.get("sent_at") and (datetime.utcnow() - last["sent_at"]).total_seconds() < 60:
+            raise ValueError("发送过于频繁，请 60 秒后再试")
+
+        # 生成 6 位数字验证码（最新发送覆盖旧验证码）
         code = f"{random.randint(0, 999999):06d}"
-        expires_at = datetime.utcnow() + timedelta(minutes=10)
+        expires_at = datetime.utcnow() + timedelta(minutes=5)
+        # 通过 SMTP 发送邮件，发送成功后再写入本次验证码记录
+        await EmailService.send_password_reset_code(
+            to_email=email,
+            code=code,
+            valid_minutes=5,
+        )
         _password_reset_email_codes[email] = {
             "code": code,
             "expires_at": expires_at,
+            "sent_at": datetime.utcnow(),
         }
-        
-        # 开发环境下，直接打印到控制台 / 日志，方便手动查看
-        print(f"[DEV] Password reset code for {email}: {code} (expires at {expires_at.isoformat()} UTC)")
 
     @staticmethod
     async def reset_password_with_code(
@@ -195,11 +205,18 @@ class AuthService:
             if not user.is_active:
                 raise ValueError("用户已被禁用")
         
+        # 60 秒冷却期
+        last = _password_reset_phone_codes.get(phone)
+        if last and last.get("sent_at") and (datetime.utcnow() - last["sent_at"]).total_seconds() < 60:
+            raise ValueError("发送过于频繁，请 60 秒后再试")
+
+        # 最新发送覆盖旧验证码
         code = f"{random.randint(0, 999999):06d}"
-        expires_at = datetime.utcnow() + timedelta(minutes=10)
+        expires_at = datetime.utcnow() + timedelta(minutes=5)
         _password_reset_phone_codes[phone] = {
             "code": code,
             "expires_at": expires_at,
+            "sent_at": datetime.utcnow(),
         }
         # 假短信通道：仅在控制台打印，便于开发调试
         print(f"[DEV] SMS password reset code for {phone}: {code} (expires at {expires_at.isoformat()} UTC)")

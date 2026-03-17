@@ -203,13 +203,13 @@ async def request_password_reset(request: PasswordResetRequest):
     """
     申请重置密码验证码（通过邮箱）
     
-    当前实现为开发环境版本：验证码会打印在后端日志中，方便手动查看。
+    邮箱找回密码验证码申请。
     """
     try:
         await AuthService.request_password_reset(email=request.email)
         return AuthResponse(
             code=200,
-            message="验证码已发送到邮箱（开发环境请查看后端日志）",
+            message="验证码已发送到该账号的注册邮箱（5分钟有效，60秒内不可重复发送）",
             data={}
         )
     except ValueError as e:
@@ -245,13 +245,13 @@ async def confirm_password_reset(request: PasswordResetConfirmRequest):
 @router.post("/password/reset/code/phone", response_model=AuthResponse)
 async def request_password_reset_sms(request: PasswordResetSMSRequest):
     """
-    申请重置密码验证码（通过手机号，开发环境假短信：验证码打印在后端日志）
+    申请重置密码验证码（通过手机号）
     """
     try:
         await AuthService.request_password_reset_by_phone(phone=request.phone)
         return AuthResponse(
             code=200,
-            message="验证码已通过短信发送（开发环境请查看后端日志）",
+            message="验证码已发送（5分钟有效，60秒内不可重复发送）",
             data={}
         )
     except ValueError as e:
