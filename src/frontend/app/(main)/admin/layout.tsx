@@ -9,7 +9,7 @@ import { useLocale } from '@/hooks/useLocale';
 const ADMIN_NAV_ITEMS = [
   { path: '/admin', icon: BarChart3, label: '总览 Dashboard' },
   { path: '/admin/activations', icon: KeyRound, label: '激活码管理' },
-  { path: '/admin/conversations', icon: MessageSquare, label: '对话与阶段' },
+  { path: '/admin/conversations', icon: MessageSquare, label: '会话记录' },
   { path: '/admin/reports', icon: FileText, label: '报告概览' },
   { path: '/admin/analytics', icon: Activity, label: '埋点与 Token 统计' },
   { path: '/admin/logs', icon: TerminalSquare, label: '日志与调试' },
@@ -39,8 +39,7 @@ export default function AdminLayout({
             Admin 控制台
           </h1>
           <p className="text-sm mb-6" style={{ color: 'var(--bd-fg-muted)' }}>
-            当前账号没有管理员权限。请确认后端环境变量 <code className="px-1 py-0.5 rounded bg-bd-overlay-md text-xs">SUPER_ADMIN_EMAILS</code>{' '}
-            或 <code className="px-1 py-0.5 rounded bg-bd-overlay-md text-xs">SUPER_ADMIN_USER_IDS</code> 是否包含你的账号。
+            当前账号没有访问该页面的权限。
           </p>
         </div>
       </div>
@@ -49,7 +48,7 @@ export default function AdminLayout({
 
   return (
     <div className="flex min-h-[calc(100vh-3.5rem)] bg-bd-bg">
-      <aside className="w-68 bg-bd-card/90 backdrop-blur-2xl border-r border-bd-border fixed left-0 top-14 bottom-0 flex flex-col items-center pt-8 px-5 z-30">
+      <aside className="w-64 bg-bd-card/90 backdrop-blur-2xl border-r border-bd-border fixed left-0 top-14 bottom-0 flex flex-col items-center pt-8 px-5 z-30">
         <div
           className="w-16 h-16 rounded-2xl flex items-center justify-center text-white text-lg font-semibold mb-3 overflow-hidden ring-2 ring-black/15 ring-offset-2 ring-offset-bd-card shadow-[0_4px_16px_rgba(15,23,42,0.28)]"
           style={{
@@ -98,7 +97,7 @@ export default function AdminLayout({
         </p>
       </aside>
 
-      <main className="ml-68 flex-1 p-8 min-w-0">{children}</main>
+      <main className="ml-64 flex-1 p-8 min-w-0">{children}</main>
     </div>
   );
 }

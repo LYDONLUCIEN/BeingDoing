@@ -15,6 +15,9 @@
   --flow-border:   rgba(0,0,0,0.07);
   --flow-shadow-card: 0 1px 3px rgba(0,0,0,0.05), 0 4px 16px rgba(0,0,0,0.06);
   --flow-shadow-input: 0 2px 12px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
+  --flow-user-bg: linear-gradient(145deg, #F5F8FF 0%, #EEF3FF 100%);
+  --flow-user-border: rgba(102, 126, 234, 0.25);
+  --flow-user-text: #2F3A57;
 }
 
 /* 四阶段背景色：淡、冷、偏白 */
@@ -64,10 +67,10 @@
   flex-direction: column;
   overflow: hidden;
   position: relative;
-  background: rgba(255,255,255,0.6);
-  border: 1px solid rgba(0,0,0,0.06);
-  border-radius: 16px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .flow-light .flow-chat-body {
@@ -75,8 +78,8 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 24px 20px;
-  padding-right: 10px; /* 给细窄滚动条留空间 */
+  padding: 8px 0 14px 0;
+  padding-right: 6px; /* 给细窄滚动条留空间 */
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -94,23 +97,33 @@
 .flow-light .flow-sidebar-threads::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 2px; }
 .flow-light .flow-sidebar-threads::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.18); }
 
-/* AI 消息：无气泡，仅左侧色条（完全复刻 msg-ai-content） */
+/* AI 消息：白底阴影气泡 + 左侧主题竖条 */
 .flow-light .flow-msg-ai-wrap {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+  align-items: flex-start;
 }
 .flow-light .flow-msg-ai-content {
-  padding: 2px 0 2px 18px;
+  position: relative;
+  padding: 12px 16px;
   border-left: 3px solid var(--flow-ai-border);
+  border: 1px solid var(--flow-border);
+  border-left-color: var(--flow-ai-border);
+  border-radius: 18px 18px 18px 6px;
+  background: linear-gradient(180deg, #FFFFFF 0%, #FCFCFD 100%);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.07), 0 2px 6px rgba(15, 23, 42, 0.04);
   font-family: var(--font-playfair, 'Playfair Display', 'Noto Serif SC', Georgia, serif);
   font-size: 15px;
-  line-height: 1.9;
+  line-height: 1.8;
   color: var(--flow-text-body);
   word-break: break-word;
   overflow-wrap: break-word;
-  max-width: 100%;
+  max-width: min(860px, 88%);
   font-style: normal;
+}
+.flow-light .flow-msg-ai-content::after {
+  content: none;
 }
 .flow-light .flow-msg-ai-content.values   { border-left-color: var(--flow-values); }
 .flow-light .flow-msg-ai-content.strength { border-left-color: var(--flow-strength); }
@@ -147,7 +160,7 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  padding-left: 20px;
+  padding-left: 6px;
   opacity: 0;
   transition: opacity 0.2s;
 }
@@ -177,6 +190,7 @@
 .flow-light .flow-msg-user {
   display: flex;
   justify-content: flex-end;
+  width: 100%;
 }
 .flow-light .flow-msg-user-wrap {
   display: flex;
@@ -186,25 +200,25 @@
   flex-shrink: 0;
 }
 .flow-light .flow-msg-user-content {
-  background: #FFFFFF;
-  border: 1px solid var(--flow-border);
+  background: var(--flow-user-bg);
+  border: 1px solid var(--flow-user-border);
   border-radius: 18px 18px 4px 18px;
-  padding: 10px 16px;
+  padding: 12px 16px;
   font-size: 14.5px;
   line-height: 1.7;
-  color: var(--flow-text-body);
-  /* 固定宽度策略：最少 4em 保证短句不异常换行，超长按 max-width 换行 */
-  min-width: 4em;
-  max-width: 320px;
-  width: max-content;
-  box-shadow: var(--flow-shadow-card);
-  overflow-wrap: break-word;
-  word-break: normal;
+  color: var(--flow-user-text);
+  /* 短句不轻易换行：默认至少约 15 个字符宽，超长再折行 */
+  min-width: 15ch;
+  max-width: min(820px, 86%);
+  width: fit-content;
+  box-shadow: 0 6px 18px rgba(67, 97, 238, 0.12), 0 2px 6px rgba(30, 41, 59, 0.05);
+  overflow-wrap: anywhere;
+  word-break: keep-all;
 }
 .flow-light .flow-msg-user-text {
   white-space: pre-wrap;
-  word-break: normal;
-  overflow-wrap: break-word;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 .flow-light .flow-msg-user-toolbar {
   opacity: 0;
@@ -410,8 +424,8 @@
 /* 滚动到底部按钮（在内容框内右下角，明显可见） */
 .flow-light .flow-chat-box .flow-scroll-bottom-btn {
   position: absolute;
-  bottom: 20px;
-  right: 20px;
+  bottom: 14px;
+  right: 2px;
   width: 40px;
   height: 40px;
   border-radius: 50%;
@@ -444,7 +458,7 @@
 /* 输入区（llmchat 风格，宽度与 flow-chat-box 完全一致） */
 .flow-light .flow-input-area {
   flex-shrink: 0;
-  padding: 12px 0 24px;
+  padding: 8px 0 34px;
   width: 100%;
   max-width: 100%;
 }
@@ -452,11 +466,11 @@
 .flow-light .flow-input-box {
   display: flex;
   align-items: flex-end;
-  gap: 10px;
+  gap: 12px;
   background: #FFFFFF;
   border: 1px solid rgba(0,0,0,0.09);
-  border-radius: 18px;
-  padding: 10px 10px 10px 16px;
+  border-radius: 22px;
+  padding: 14px 14px 14px 18px;
   box-shadow: var(--flow-shadow-input);
   transition: border-color 0.3s, box-shadow 0.3s;
 }
@@ -470,12 +484,12 @@
   border: none;
   outline: none;
   background: transparent;
-  font-size: 14.5px;
-  line-height: 1.65;
+  font-size: 15px;
+  line-height: 1.75;
   color: var(--flow-text-body);
   resize: none;
-  min-height: 26px;
-  max-height: 11.5em; /* 约 7 行，超出后显示滚动条 */
+  min-height: 40px;
+  max-height: 13.5em; /* 约 7-8 行，超出后显示滚动条 */
   padding: 2px 0;
   padding-right: 8px; /* 滚动条贴右，与展示框同逻辑 */
   align-self: center;

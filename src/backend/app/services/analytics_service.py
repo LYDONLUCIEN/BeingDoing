@@ -5,14 +5,16 @@ import json
 import logging
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple, Set
+from datetime import datetime
 
 from sqlalchemy import select, func, distinct
 from app.models.database import AsyncSessionLocal
 from app.models.analytics import AnalyticsChatTurn, AnalyticsReport, AnalyticsLike
 from app.models.user import User
 from app.models.session import Session
-from app.utils.data_paths import get_debug_logs_dir, get_logs_dir
+from app.utils.data_paths import get_debug_logs_dir, get_logs_dir, get_project_data_dir
 from app.utils.simple_activation_manager import get_simple_base_dir
+from app.utils.report_registry import ReportRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +198,237 @@ class AnalyticsService:
         except Exception as e:
             logger.exception("get_admin_dashboard 失败: %s", e)
             return AnalyticsService._empty_dashboard()
+
+    @staticmethod
+    async def get_dashboard_overview() -> Dict[str, Any]:
+        """
+        Admin Dashboard 首版概览：
+        - 用户/访问/报告数量
+        - 今日新激活码
+        - 五步漏斗（values/strengths/interests/purpose/rumination）
+        - token 总量与按步骤汇总
+        """
+        # 1) 报告与五步漏斗（文件注册表）
+        registry = ReportRegistry()
+        reports = registry.list_reports()
+        total_reports = len(reports)
+
+        step_order = ["values", "strengths", "interests", "purpose", "rumination"]
+        step_counts = {k: 0 for k in step_order}
+        completed_report_count = 0
+        for report in reports:
+            steps = report.get("steps") or {}
+            rumination_step = steps.get("rumination") or {}
+            rumination_selected = (rumination_step.get("selected_session_id") or "").strip()
+            rumination_sessions = rumination_step.get("session_ids") or []
+            # 只有走到最后一步（rumination）才计入“报告数”
+            if rumination_selected or rumination_sessions:
+                completed_report_count += 1
+            for step in step_order:
+                session_ids = ((steps.get(step) or {}).get("session_ids")) or []
+                if session_ids:
+                    step_counts[step] += 1
+            # 兼容旧命名结构
+            alias_keys = {
+                "strength": "strengths",
+                "interest": "interests",
+                "filter": "rumination",
+                "combine": "rumination",
+                "combination": "rumination",
+            }
+            for old_key, new_key in alias_keys.items():
+                old_sessions = ((steps.get(old_key) or {}).get("session_ids")) or []
+                if old_sessions:
+                    step_counts[new_key] += 1
+
+        funnel = []
+        for step in step_order:
+            count = step_counts[step]
+            pct = round((count / total_reports) * 100, 2) if total_reports else 0.0
+            funnel.append({"step_id": step, "count": count, "pct": pct})
+
+        # 2) 今日激活码 + 用户统计（从 data/simple 直接读取）
+        today_new_activations = 0
+        unique_users: Set[str] = set()
+        try:
+            activations_file = get_simple_base_dir() / "activations.json"
+            if activations_file.is_file():
+                raw = json.loads(activations_file.read_text(encoding="utf-8") or "{}")
+                today = datetime.utcnow().date()
+                for rec in (raw or {}).values():
+                    created = (rec or {}).get("created_at")
+                    owner_uid = (rec or {}).get("owner_user_id")
+                    owner_email = (rec or {}).get("owner_email")
+                    if owner_uid:
+                        unique_users.add(str(owner_uid))
+                    elif owner_email:
+                        unique_users.add(str(owner_email))
+                    if not created:
+                        continue
+                    try:
+                        dt = datetime.fromisoformat(created.replace("Z", ""))
+                    except ValueError:
+                        continue
+                    if dt.date() == today:
+                        today_new_activations += 1
+        except Exception:
+            today_new_activations = 0
+            unique_users = set()
+
+        # 3) 从 runs.jsonl 直接聚合访问与 token（/data 直接读取）
+        entries = AnalyticsService._collect_run_entries()
+        session_set: Set[str] = set()
+        run_token_input_total = 0
+        run_token_output_total = 0
+
+        dim_alias = {
+            "values_exploration": "values",
+            "strengths_exploration": "strengths",
+            "interests_exploration": "interests",
+            "combination": "rumination",
+            "refinement": "rumination",
+            "values": "values",
+            "strengths": "strengths",
+            "strength": "strengths",
+            "interests": "interests",
+            "interest": "interests",
+            "purpose": "purpose",
+            "filter": "rumination",
+            "combine": "rumination",
+            "rumination": "rumination",
+        }
+        run_token_by_step = {
+            step: {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+            for step in step_order
+        }
+
+        for sid, _idx, entry in entries:
+            session_set.add(sid)
+            in_tokens, out_tokens = AnalyticsService._extract_token_usage_from_entry(entry)
+            run_token_input_total += int(in_tokens or 0)
+            run_token_output_total += int(out_tokens or 0)
+            dim = AnalyticsService._extract_dimension_from_entry(entry) or ""
+            key = dim_alias.get((dim or "").strip(), None)
+            if not key:
+                continue
+            run_token_by_step[key]["input_tokens"] += int(in_tokens)
+            run_token_by_step[key]["output_tokens"] += int(out_tokens)
+            run_token_by_step[key]["total_tokens"] += int(in_tokens) + int(out_tokens)
+
+        # simple 目录如果存在会话文件，也并入访问次数
+        simple_dir = get_simple_base_dir()
+        if simple_dir.is_dir():
+            for session_dir in simple_dir.iterdir():
+                if session_dir.is_dir():
+                    session_set.add(session_dir.name)
+
+        # 4) 从 analytics_chat_turn 读取 token 埋点（以 API 返回 usage 落库数据为准）
+        db_token_input_total = 0
+        db_token_output_total = 0
+        db_token_by_step = {
+            step: {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+            for step in step_order
+        }
+        try:
+            async with AsyncSessionLocal() as db:
+                sums = await db.execute(
+                    select(
+                        func.coalesce(func.sum(AnalyticsChatTurn.llm_input_tokens), 0),
+                        func.coalesce(func.sum(AnalyticsChatTurn.llm_output_tokens), 0),
+                    )
+                )
+                row = sums.first()
+                if row:
+                    db_token_input_total = int(row[0] or 0)
+                    db_token_output_total = int(row[1] or 0)
+
+                by_dim = await db.execute(
+                    select(
+                        AnalyticsChatTurn.dimension,
+                        func.coalesce(func.sum(AnalyticsChatTurn.llm_input_tokens), 0),
+                        func.coalesce(func.sum(AnalyticsChatTurn.llm_output_tokens), 0),
+                    ).group_by(AnalyticsChatTurn.dimension)
+                )
+                for dim, in_sum, out_sum in by_dim.all():
+                    key = dim_alias.get((dim or "").strip(), None)
+                    if not key:
+                        continue
+                    db_token_by_step[key]["input_tokens"] += int(in_sum or 0)
+                    db_token_by_step[key]["output_tokens"] += int(out_sum or 0)
+                    db_token_by_step[key]["total_tokens"] += int(in_sum or 0) + int(out_sum or 0)
+        except Exception:
+            db_token_input_total = 0
+            db_token_output_total = 0
+
+        # 融合两条来源：优先保留更完整的一侧（避免简单相加造成重复统计）
+        token_input_total = max(run_token_input_total, db_token_input_total)
+        token_output_total = max(run_token_output_total, db_token_output_total)
+        token_by_step = {}
+        for step in step_order:
+            in_tokens = max(
+                int(run_token_by_step[step]["input_tokens"] or 0),
+                int(db_token_by_step[step]["input_tokens"] or 0),
+            )
+            out_tokens = max(
+                int(run_token_by_step[step]["output_tokens"] or 0),
+                int(db_token_by_step[step]["output_tokens"] or 0),
+            )
+            token_by_step[step] = {
+                "input_tokens": in_tokens,
+                "output_tokens": out_tokens,
+                "total_tokens": in_tokens + out_tokens,
+            }
+
+        visit_count = len(session_set)
+        user_count = len(unique_users)
+
+        return {
+            "user_count": int(user_count),
+            "visit_count": int(visit_count),
+            "report_count": int(completed_report_count),
+            "today_new_activations": int(today_new_activations),
+            "funnel": funnel,
+            "token_totals": {
+                "input_tokens": int(token_input_total),
+                "output_tokens": int(token_output_total),
+                "total_tokens": int(token_input_total) + int(token_output_total),
+            },
+            "token_by_step": token_by_step,
+        }
+
+    @staticmethod
+    def get_dashboard_cache_file() -> Path:
+        static_dir = get_project_data_dir() / "static"
+        static_dir.mkdir(parents=True, exist_ok=True)
+        return static_dir / "admin_dashboard_overview.json"
+
+    @staticmethod
+    async def sync_dashboard_overview_to_static() -> Dict[str, Any]:
+        data = await AnalyticsService.get_dashboard_overview()
+        payload = {
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "source": "data_sync",
+            "overview": data,
+        }
+        cache_file = AnalyticsService.get_dashboard_cache_file()
+        cache_file.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return payload
+
+    @staticmethod
+    async def get_dashboard_overview_from_static() -> Dict[str, Any]:
+        cache_file = AnalyticsService.get_dashboard_cache_file()
+        if not cache_file.is_file():
+            return await AnalyticsService.sync_dashboard_overview_to_static()
+        try:
+            raw = json.loads(cache_file.read_text(encoding="utf-8") or "{}")
+            if "overview" not in raw:
+                return await AnalyticsService.sync_dashboard_overview_to_static()
+            return raw
+        except (json.JSONDecodeError, OSError):
+            return await AnalyticsService.sync_dashboard_overview_to_static()
 
     @staticmethod
     def _collect_run_entries() -> List[Tuple[str, int, Dict[str, Any]]]:

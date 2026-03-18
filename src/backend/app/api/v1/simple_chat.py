@@ -12,12 +12,13 @@ import asyncio
 import json
 import random
 import logging
+import re
 
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.core.llmapi import get_default_llm_provider, LLMMessage
-from app.api.v1.auth import get_current_user_optional, _is_debug_admin
+from app.api.v1.auth import get_current_user, _is_debug_admin
 from app.config.settings import settings
 from app.core.knowledge.loader import KnowledgeLoader
 from app.utils.simple_activation_manager import SimpleActivationManager, ActivationStatus, get_simple_base_dir
@@ -28,6 +29,7 @@ from app.core.dimension_completion_checker import (
     _should_run_completion_check,
 )
 from app.services.analytics_service import AnalyticsService
+from app.utils.report_registry import ReportRegistry
 from app.utils.survey_storage import (
     save_basic_info,
     load_basic_info,
@@ -39,6 +41,7 @@ from app.utils.survey_storage import (
 # 每阶段随机抽取的题目数量
 SIMPLE_QUESTION_SAMPLE_SIZE = 6
 SIMPLE_BASE_DIR = str(get_simple_base_dir())
+REPORTS_BASE_DIR = str(get_simple_base_dir() / "reports")
 
 router = APIRouter(prefix="/simple-chat", tags=["简单模式对话"])
 logger = logging.getLogger(__name__)
@@ -53,11 +56,78 @@ def _skip_expired_for_debug(rec, user: Optional[dict]) -> bool:
     )
 
 
-def _storage_category(phase: str, thread_id: Optional[str] = None) -> str:
-    """存储用 category：有 thread_id 则独立文件，实现多对话隔离"""
-    if thread_id:
-        return f"{phase}__{thread_id}"
-    return phase
+def _storage_category(phase: str, session_id: str) -> str:
+    """存储用 category：每个 step-session 一份文件。"""
+    return f"{phase}__{session_id}"
+
+
+def _resolve_activation_for_user(
+    manager: SimpleActivationManager,
+    activation_code: str,
+    current_user: dict,
+):
+    """激活码访问控制：首次使用绑定用户，后续仅归属用户可访问。"""
+    rec = manager.get_activation(activation_code)
+    if not rec:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="激活码不存在",
+        )
+    if not manager.is_owner(rec, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="该激活码已被其他用户使用",
+        )
+    if rec.status in {ActivationStatus.REVOKED, ActivationStatus.DELETED}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="激活码不可用",
+        )
+    if not rec.owner_user_id and not rec.owner_email:
+        rec = manager.claim_owner(rec.code, current_user)
+    return rec
+
+
+def _resolve_report_context(
+    manager: SimpleActivationManager,
+    registry: ReportRegistry,
+    activation_code: str,
+    current_user: dict,
+    phase: str,
+    thread_id: Optional[str] = None,
+):
+    """
+    统一解析：activation -> report -> step-session 存储上下文。
+    """
+    rec = _resolve_activation_for_user(manager, activation_code, current_user)
+    user_id = (current_user or {}).get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="请先登录")
+
+    report = registry.ensure_report(
+        activation_code=rec.code,
+        user_id=user_id,
+        session_id=rec.session_id,
+    )
+    if not report:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="报告初始化失败")
+
+    phase_step = ReportRegistry.normalize_step_id(phase)
+    logical_session_id = (thread_id or rec.session_id or "").strip()
+    if not logical_session_id:
+        logical_session_id = rec.session_id
+
+    # 进入新阶段前，锁定上一阶段（提交进入下一步后不可修改）
+    try:
+        registry.lock_previous_step_when_entering(report["report_id"], phase_step)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    # 将当前会话纳入 step 的会话池
+    registry.bind_session(report["report_id"], phase_step, logical_session_id)
+    category = _storage_category(phase_step, logical_session_id)
+    conv_manager = ConversationFileManager(base_dir=REPORTS_BASE_DIR)
+    return rec, report, phase_step, logical_session_id, category, conv_manager
 
 
 def _phase_to_loader_category(phase: str) -> str:
@@ -101,6 +171,51 @@ def _build_fallback_opening_question(phase: str) -> str:
         "purpose": "我们先聊使命：如果你的工作能持续帮助一类人，你最希望他们发生什么改变？",
     }
     return fallback_map.get(phase, fallback_map["values"])
+
+
+def _looks_like_markdown_table(text: str) -> bool:
+    if not text:
+        return False
+    has_row = bool(re.search(r"^\s*\|.+\|\s*$", text, flags=re.MULTILINE))
+    has_sep = bool(re.search(r"^\s*\|[\s:\-|]+\|\s*$", text, flags=re.MULTILINE))
+    return has_row and has_sep
+
+
+def _assistant_indicates_completion(text: str) -> bool:
+    """
+    检测助手回复是否在语义上宣告“已完成/可出总结卡”。
+    用于兜底触发结论卡生成，避免用户看到“完成了”却没有卡片。
+    """
+    if not text:
+        return False
+    lowered = text.lower()
+    completion_markers = [
+        "完成了",
+        "已完成",
+        "完成本轮",
+        "可以结束",
+        "输出答题卡",
+        "生成答题卡",
+        "总结如下",
+        "探索结论",
+        "最终结论",
+        "请确认下方摘要",
+    ]
+    return any(marker in text for marker in completion_markers) or any(
+        marker in lowered for marker in ["conclusion", "summary card", "final summary"]
+    )
+
+
+def _normalize_token_usage(usage: Optional[dict]) -> dict:
+    usage = usage or {}
+    in_tokens = int(usage.get("prompt_tokens") or 0)
+    out_tokens = int(usage.get("completion_tokens") or 0)
+    total = int(usage.get("total_tokens") or (in_tokens + out_tokens))
+    return {
+        "prompt_tokens": in_tokens,
+        "completion_tokens": out_tokens,
+        "total_tokens": total,
+    }
 
 
 class SimpleChatRequest(BaseModel):
@@ -172,15 +287,13 @@ def _load_prior_context_from_activation(activation_code: str, phase: str) -> str
 
 
 @router.get("/survey")
-def get_survey(activation_code: str):
+def get_survey(
+    activation_code: str,
+    current_user: dict = Depends(get_current_user),
+):
     """获取指定激活码下的调研问卷数据"""
     manager = SimpleActivationManager()
-    rec = manager.get_activation(activation_code)
-    if not rec:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="激活码不存在",
-        )
+    rec = _resolve_activation_for_user(manager, activation_code, current_user)
     data = load_basic_info(rec.session_id, SIMPLE_BASE_DIR)
     return SimpleChatResponse(
         code=200,
@@ -190,12 +303,14 @@ def get_survey(activation_code: str):
 
 
 @router.get("/prior-context")
-def get_prior_context(activation_code: str, phase: str):
+def get_prior_context(
+    activation_code: str,
+    phase: str,
+    current_user: dict = Depends(get_current_user),
+):
     """获取指定阶段的上一轮咨询结果文本"""
     manager = SimpleActivationManager()
-    rec = manager.get_activation(activation_code)
-    if not rec:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="激活码不存在")
+    rec = _resolve_activation_for_user(manager, activation_code, current_user)
     text = load_prior_context(rec.session_id, phase, SIMPLE_BASE_DIR)
     return SimpleChatResponse(code=200, message="success", data={"context_text": text})
 
@@ -203,13 +318,11 @@ def get_prior_context(activation_code: str, phase: str):
 @router.post("/prior-context", response_model=SimpleChatResponse)
 async def save_prior_context_endpoint(
     request: PriorContextSaveRequest,
-    current_user: Optional[dict] = Depends(get_current_user_optional),
+    current_user: dict = Depends(get_current_user),
 ):
     """保存（上传）指定阶段的上一轮咨询结果文本"""
     manager = SimpleActivationManager()
-    rec = manager.get_activation(request.activation_code)
-    if not rec:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="激活码不存在")
+    rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
     if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="激活码已过期")
     save_prior_context(rec.session_id, request.phase, request.context_text or "", SIMPLE_BASE_DIR)
@@ -219,16 +332,11 @@ async def save_prior_context_endpoint(
 @router.post("/survey", response_model=SimpleChatResponse)
 async def save_survey(
     request: SurveySaveRequest,
-    current_user: Optional[dict] = Depends(get_current_user_optional),
+    current_user: dict = Depends(get_current_user),
 ):
     """保存调研问卷数据到指定激活码的会话下"""
     manager = SimpleActivationManager()
-    rec = manager.get_activation(request.activation_code)
-    if not rec:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="激活码不存在",
-        )
+    rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
     if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -288,6 +396,7 @@ def _build_system_prompt(
 - **引导而非灌输**：始终给用户思考和回答的空间，不要直接替用户下结论。
 - **一次一问**：严格遵守每轮对话只提一个问题。
 - **完整收敛**：务必确认无论问什么都无法再提取新词，才算收敛，不能因为凑够5个就停止。
+- **完成即引导答题卡**：当你判断用户已明确确认完成时，必须明确告知“将生成本维度答题卡总结”，不要只说“完成了”而不说明下一步。
 - 【对话续写】若对话已有历史，必须在已有探索基础上继续深挖，禁止重复开场式提问（如「你的价值观是什么」）或泛泛寒暄，应基于用户已有回答进行追问和深化。
 
 ### 题库参考
@@ -331,6 +440,7 @@ def _build_system_prompt(
 - **一次一问**：严格遵守每轮对话只提一个问题。
 - **确保10个优势**：必须通过提问挖掘，直到用户认可并确认了10个不重复的优势。
 - **提问差异化**：避免重复问类似问题，要变换角度，防止用户思维僵化或"钻牛角尖"。
+- **完成即引导答题卡**：当你判断用户已明确确认完成时，必须明确告知“将生成本维度答题卡总结”，不要只说“完成了”而不说明下一步。
 - 【对话续写】若对话已有历史，必须在已有探索基础上继续深挖，禁止重复开场式提问（如「你的优势有哪些」）或泛泛寒暄，应基于用户已有回答进行追问和深化。
 
 ### 题库参考
@@ -379,6 +489,7 @@ def _build_system_prompt(
 - **一次一问**：严格遵守每轮对话只提一个问题。
 - **提问差异化**：避免重复问类似问题，要变换角度，防止用户思维僵化或"钻牛角尖"。
 - **热爱的形式**：确保提炼出的热爱是名词形式的领域，例如"人工智能"、"心理学"、"户外运动"等，而不是形容词或抽象感受。
+- **完成即引导答题卡**：当你判断用户已明确确认完成时，必须明确告知“将生成本维度答题卡总结”，不要只说“完成了”而不说明下一步。
 - 【对话续写】若对话已有历史，必须在已有探索基础上继续深挖，禁止重复开场式提问（如「你的热爱有哪些」）或泛泛寒暄，应基于用户已有回答进行追问和深化。
 
 ### 题库参考
@@ -423,6 +534,7 @@ def _build_system_prompt(
 - **提问差异化**：在引导用户回忆经历时，变换提问角度，避免重复。
 - **经历数量**：尽量引导至10段经历，若用户实在想不出可适当放宽到8-9段。
 - **匹配准确**：在匹配价值观时，一定要得到用户的明确认可。
+- **完成即引导答题卡**：当你判断用户已明确确认完成时，必须明确告知“将生成本维度答题卡总结”，不要只说“完成了”而不说明下一步。
 - 【对话续写】若对话已有历史，必须在已有探索基础上继续深挖，禁止重复开场式提问（如「你为什么而工作」）或泛泛寒暄，应基于用户已有回答进行追问和深化。
 
 ### 题库参考
@@ -440,7 +552,7 @@ def _build_system_prompt(
 @router.post("/message", response_model=SimpleChatResponse)
 async def simple_chat(
     request: SimpleChatRequest,
-    current_user: Optional[dict] = Depends(get_current_user_optional),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     简单模式的单轮对话：
@@ -451,12 +563,16 @@ async def simple_chat(
     - 将本轮 user / assistant 消息写入 data/simple 下
     """
     manager = SimpleActivationManager()
-    rec = manager.get_activation(request.activation_code)
-    if not rec:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="激活码不存在",
-        )
+    registry = ReportRegistry()
+    phase = (request.phase or "values").strip() or "values"
+    rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
+        manager=manager,
+        registry=registry,
+        activation_code=request.activation_code,
+        current_user=current_user,
+        phase=phase,
+        thread_id=None,
+    )
 
     if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
         raise HTTPException(
@@ -468,11 +584,8 @@ async def simple_chat(
     if rec.status == ActivationStatus.ACTIVE:
         manager.touch_activity(rec.code)
 
-    # 使用 data/simple 作为根目录保存对话
-    conv_manager = ConversationFileManager(base_dir=SIMPLE_BASE_DIR)
-    phase = (request.phase or "values").strip() or "values"
-    category = phase  # 按阶段区分文件
-    session_id = rec.session_id
+    # 使用 report 目录保存对话
+    session_id = report["report_id"]
 
     # 读取历史消息（只取当前分类）
     history_messages: List[dict] = await conv_manager.get_messages(
@@ -483,15 +596,17 @@ async def simple_chat(
     llm = get_default_llm_provider()
 
     # 从 question.md 按阶段随机抽取题目，动态注入提示词
-    question_bank = _get_random_questions_for_phase(phase)
+    question_bank = _get_random_questions_for_phase(phase_step)
     basic_info = _load_basic_info_from_activation(request.activation_code)
-    prior_context = _load_prior_context_from_activation(request.activation_code, phase)
-    system_prompt = _build_system_prompt(phase, question_bank=question_bank, basic_info=basic_info, prior_context=prior_context)
+    prior_context = _load_prior_context_from_activation(request.activation_code, phase_step)
+    system_prompt = _build_system_prompt(phase_step, question_bank=question_bank, basic_info=basic_info, prior_context=prior_context)
     llm_messages = [LLMMessage(role="system", content=system_prompt)]
 
     # 把历史文件中的 role/content 转成 LLMMessage
     for m in history_messages:
         role = m.get("role") or "user"
+        if role not in {"user", "assistant", "system"}:
+            continue
         content = m.get("content") or ""
         if not content:
             continue
@@ -501,16 +616,18 @@ async def simple_chat(
     llm_messages.append(LLMMessage(role="user", content=request.message))
 
     # 调用大模型
+    token_usage = _normalize_token_usage(None)
     try:
         response = await llm.chat(llm_messages, temperature=0.7)
         reply_text = (response.content or "").strip()
+        token_usage = _normalize_token_usage(getattr(response, "usage", None))
     except Exception as e:
         # 避免因为上游 LLM 配置/网络问题导致初始化 500，保证问答流程可继续。
         logger.exception("simple-chat init failed, fallback to local prompt: %s", e)
-        reply_text = _build_fallback_opening_question(phase)
+        reply_text = _build_fallback_opening_question(phase_step)
 
     if not reply_text:
-        reply_text = _build_fallback_opening_question(phase)
+        reply_text = _build_fallback_opening_question(phase_step)
 
     # 把当前轮 user / assistant 消息写入文件
     await conv_manager.append_message(
@@ -519,6 +636,55 @@ async def simple_chat(
         message={
             "role": "user",
             "content": request.message,
+            "session_id": logical_session_id,
+            "step_id": phase_step,
+            "agent_id": None,
+            "event": "user_message",
+        },
+    )
+
+    await conv_manager.append_message(
+        session_id=session_id,
+        category=category,
+        message={
+            "role": "assistant",
+            "content": reply_text,
+            "session_id": logical_session_id,
+            "step_id": phase_step,
+            "agent_id": "coach",
+            "event": "assistant_reply",
+            "token_usage": token_usage,
+        },
+    )
+
+    try:
+        await AnalyticsService.record_chat_turn(
+            session_id=logical_session_id,
+            dimension=phase_step,
+            user_input_chars=len(request.message or ""),
+            llm_input_tokens=int(token_usage.get("prompt_tokens") or 0),
+            llm_output_tokens=int(token_usage.get("completion_tokens") or 0),
+            log_index=None,
+        )
+    except Exception:
+        pass
+
+    return SimpleChatResponse(
+        code=200,
+        message="success",
+        data={
+            "reply": reply_text,
+            "activation": {
+                "activation_code": rec.code,
+                "session_id": logical_session_id,
+                "mode": rec.mode,
+                "created_at": rec.created_at,
+                "expires_at": rec.expires_at,
+                "status": rec.status,
+            },
+            "report_id": report["report_id"],
+            "step_id": phase_step,
+            "token_usage": token_usage,
         },
     )
 
@@ -526,7 +692,7 @@ async def simple_chat(
 @router.post("/init", response_model=SimpleChatResponse)
 async def simple_init(
     request: SimpleInitRequest,
-    current_user: Optional[dict] = Depends(get_current_user_optional),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     初始化某个阶段的对话：
@@ -534,22 +700,22 @@ async def simple_init(
     - 如果没有历史，则生成一条「首轮引导问题」的 assistant 消息
     """
     manager = SimpleActivationManager()
-    rec = manager.get_activation(request.activation_code)
-    if not rec:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="激活码不存在",
-        )
+    registry = ReportRegistry()
+    phase = (request.phase or "values").strip() or "values"
+    rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
+        manager=manager,
+        registry=registry,
+        activation_code=request.activation_code,
+        current_user=current_user,
+        phase=phase,
+        thread_id=request.thread_id,
+    )
     if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="激活码已过期（历史记录已保留，可以用于回放或导出）",
         )
-
-    conv_manager = ConversationFileManager(base_dir=SIMPLE_BASE_DIR)
-    phase = (request.phase or "values").strip() or "values"
-    category = _storage_category(phase, request.thread_id)
-    session_id = rec.session_id
+    session_id = report["report_id"]
 
     # 如果已有历史，就直接返回历史（新建 thread_id 时文件不存在，返回空）
     history_messages: List[dict] = await conv_manager.get_messages(
@@ -564,35 +730,39 @@ async def simple_init(
                 "messages": history_messages,
                 "activation": {
                     "activation_code": rec.code,
-                    "session_id": rec.session_id,
+                    "session_id": logical_session_id,
                     "mode": rec.mode,
                     "created_at": rec.created_at,
                     "expires_at": rec.expires_at,
                     "status": rec.status,
                 },
+                "report_id": report["report_id"],
+                "step_id": phase_step,
             },
         )
 
     # 没有历史：生成一条首轮引导问题
     llm = get_default_llm_provider()
-    question_bank = _get_random_questions_for_phase(phase)
+    question_bank = _get_random_questions_for_phase(phase_step)
     basic_info = _load_basic_info_from_activation(request.activation_code)
-    prior_context = _load_prior_context_from_activation(request.activation_code, phase)
-    system_prompt = _build_system_prompt(phase, question_bank=question_bank, basic_info=basic_info, prior_context=prior_context)
+    prior_context = _load_prior_context_from_activation(request.activation_code, phase_step)
+    system_prompt = _build_system_prompt(phase_step, question_bank=question_bank, basic_info=basic_info, prior_context=prior_context)
     llm_messages = [
         LLMMessage(role="system", content=system_prompt),
         LLMMessage(role="user", content="我是来访者，你需要向我提问。以下是我的基本信息：暂无。请给出第一轮温柔而具体的引导问题，让我开始思考。"),
     ]
+    token_usage = _normalize_token_usage(None)
     try:
         response = await llm.chat(llm_messages, temperature=0.7)
         reply_text = (response.content or "").strip()
+        token_usage = _normalize_token_usage(getattr(response, "usage", None))
     except Exception as e:
         # 避免初始化阶段因上游 LLM 失败直接 500，先返回本地兜底问题保证流程可继续。
         logger.exception("simple-chat init failed, fallback to local prompt: %s", e)
-        reply_text = _build_fallback_opening_question(phase)
+        reply_text = _build_fallback_opening_question(phase_step)
 
     if not reply_text:
-        reply_text = _build_fallback_opening_question(phase)
+        reply_text = _build_fallback_opening_question(phase_step)
 
     # 只写入 assistant 消息，作为起始问题
     await conv_manager.append_message(
@@ -601,6 +771,11 @@ async def simple_init(
         message={
             "role": "assistant",
             "content": reply_text,
+            "session_id": logical_session_id,
+            "step_id": phase_step,
+            "agent_id": "coach",
+            "event": "init_question",
+            "token_usage": token_usage,
         },
     )
 
@@ -616,12 +791,15 @@ async def simple_init(
             ],
             "activation": {
                 "activation_code": rec.code,
-                "session_id": rec.session_id,
+                "session_id": logical_session_id,
                 "mode": rec.mode,
                 "created_at": rec.created_at,
                 "expires_at": rec.expires_at,
                 "status": rec.status,
             },
+            "report_id": report["report_id"],
+            "step_id": phase_step,
+            "token_usage": token_usage,
         },
     )
 
@@ -635,18 +813,25 @@ class ThreadReopenRequest(BaseModel):
 @router.post("/thread/reopen", response_model=SimpleChatResponse)
 async def reopen_thread(
     request: ThreadReopenRequest,
-    current_user: Optional[dict] = Depends(get_current_user_optional),
+    current_user: dict = Depends(get_current_user),
 ):
     """用户选择「再聊聊」完善答案时，清除完成状态以便继续对话"""
     manager = SimpleActivationManager()
-    rec = manager.get_activation(request.activation_code)
-    if not rec:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="激活码不存在")
-    conv_manager = ConversationFileManager(base_dir=SIMPLE_BASE_DIR)
+    registry = ReportRegistry()
     phase_val = (request.phase or "values").strip() or "values"
-    category = _storage_category(phase_val, request.thread_id)
+    rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
+        manager=manager,
+        registry=registry,
+        activation_code=request.activation_code,
+        current_user=current_user,
+        phase=phase_val,
+        thread_id=request.thread_id,
+    )
+    step_meta = ((report.get("steps") or {}).get(phase_step) or {})
+    if step_meta.get("locked"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="该阶段已锁定，不能再修改")
     await conv_manager.update_metadata(
-        rec.session_id, category,
+        report["report_id"], category,
         {
             "thread_completed": False,
             "pending_conclusion": None,
@@ -658,37 +843,70 @@ async def reopen_thread(
 @router.post("/thread/complete", response_model=SimpleChatResponse)
 async def mark_thread_complete(
     request: ThreadCompleteRequest,
-    current_user: Optional[dict] = Depends(get_current_user_optional),
+    current_user: dict = Depends(get_current_user),
 ):
     """标记某对话为已完成（用户点击「确认没有问题」后调用）"""
     manager = SimpleActivationManager()
-    rec = manager.get_activation(request.activation_code)
-    if not rec:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="激活码不存在")
-    conv_manager = ConversationFileManager(base_dir=SIMPLE_BASE_DIR)
+    registry = ReportRegistry()
     phase_val = (request.phase or "values").strip() or "values"
-    category = _storage_category(phase_val, request.thread_id)
-    await conv_manager.update_metadata(rec.session_id, category, {"thread_completed": True})
+    rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
+        manager=manager,
+        registry=registry,
+        activation_code=request.activation_code,
+        current_user=current_user,
+        phase=phase_val,
+        thread_id=request.thread_id,
+    )
+    try:
+        registry.select_session(report["report_id"], phase_step, logical_session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    conv_data = await conv_manager.get_conversation_data(report["report_id"], category)
+    metadata = conv_data.get("metadata", {})
+    dimension_conclusion = metadata.get("dimension_conclusion")
+    messages = conv_data.get("messages") or []
+    has_conclusion_card = any((m or {}).get("role") == "conclusion_card" for m in messages)
+    if dimension_conclusion and not has_conclusion_card:
+        await conv_manager.append_message(
+            session_id=report["report_id"],
+            category=category,
+            message={
+                "role": "conclusion_card",
+                "content": json.dumps(dimension_conclusion, ensure_ascii=False),
+                "session_id": logical_session_id,
+                "step_id": phase_step,
+                "agent_id": "coach",
+                "event": "dimension_conclusion",
+                "card_type": "dimension_conclusion",
+                "card_payload": dimension_conclusion,
+            },
+        )
+    await conv_manager.update_metadata(report["report_id"], category, {"thread_completed": True})
     return SimpleChatResponse(code=200, message="success", data={})
 
 
 @router.get("/history", response_model=SimpleHistoryResponse)
-async def simple_history(activation_code: str, phase: Optional[str] = "values", thread_id: Optional[str] = None):
+async def simple_history(
+    activation_code: str,
+    phase: Optional[str] = "values",
+    thread_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
     """
     获取某个激活码 + 阶段下的全部历史消息
     """
     manager = SimpleActivationManager()
-    rec = manager.get_activation(activation_code)
-    if not rec:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="激活码不存在",
-        )
-
-    conv_manager = ConversationFileManager(base_dir=SIMPLE_BASE_DIR)
+    registry = ReportRegistry()
     phase_val = (phase or "values").strip() or "values"
-    category = _storage_category(phase_val, thread_id)
-    session_id = rec.session_id
+    rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
+        manager=manager,
+        registry=registry,
+        activation_code=activation_code,
+        current_user=current_user,
+        phase=phase_val,
+        thread_id=thread_id,
+    )
+    session_id = report["report_id"]
 
     conv_data = await conv_manager.get_conversation_data(session_id, category)
     history_messages = conv_data.get("messages", [])
@@ -705,12 +923,14 @@ async def simple_history(activation_code: str, phase: Optional[str] = "values", 
             },
             "activation": {
                 "activation_code": rec.code,
-                "session_id": rec.session_id,
+                "session_id": logical_session_id,
                 "mode": rec.mode,
                 "created_at": rec.created_at,
                 "expires_at": rec.expires_at,
                 "status": rec.status,
             },
+            "report_id": report["report_id"],
+            "step_id": phase_step,
         },
     )
 
@@ -718,7 +938,7 @@ async def simple_history(activation_code: str, phase: Optional[str] = "values", 
 @router.post("/message/stream")
 async def simple_chat_stream(
     request: SimpleChatStreamRequest,
-    current_user: Optional[dict] = Depends(get_current_user_optional),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     简单模式流式对话：
@@ -728,25 +948,31 @@ async def simple_chat_stream(
     - 结束时保存完整助手回复
     """
     manager = SimpleActivationManager()
-    rec = manager.get_activation(request.activation_code)
-    if not rec:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="激活码不存在",
-        )
+    registry = ReportRegistry()
+    phase = (request.phase or "values").strip() or "values"
+    rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
+        manager=manager,
+        registry=registry,
+        activation_code=request.activation_code,
+        current_user=current_user,
+        phase=phase,
+        thread_id=request.thread_id,
+    )
     if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="激活码已过期（历史记录已保留，可以用于回放或导出）",
         )
-
-    phase = (request.phase or "values").strip() or "values"
-    category = _storage_category(phase, request.thread_id)
-    conv_manager = ConversationFileManager(base_dir=SIMPLE_BASE_DIR)
-    session_id = rec.session_id
+    session_id = report["report_id"]
 
     async def event_stream() -> AsyncIterator[str]:
         llm = get_default_llm_provider()
+        # 避免复用 provider 时串用上一次流式 token 使用量
+        if hasattr(llm, "_last_stream_usage"):
+            try:
+                setattr(llm, "_last_stream_usage", None)
+            except Exception:
+                pass
 
         # 读取当前 thread 的历史（独立存储，全新上下文）
         history_messages: List[dict] = await conv_manager.get_messages(
@@ -754,14 +980,16 @@ async def simple_chat_stream(
             category=category,
         )
 
-        question_bank = _get_random_questions_for_phase(phase)
+        question_bank = _get_random_questions_for_phase(phase_step)
         basic_info = _load_basic_info_from_activation(request.activation_code)
-        prior_context = _load_prior_context_from_activation(request.activation_code, phase)
-        system_prompt = _build_system_prompt(phase, question_bank=question_bank, basic_info=basic_info, prior_context=prior_context)
+        prior_context = _load_prior_context_from_activation(request.activation_code, phase_step)
+        system_prompt = _build_system_prompt(phase_step, question_bank=question_bank, basic_info=basic_info, prior_context=prior_context)
         llm_messages = [LLMMessage(role="system", content=system_prompt)]
 
         for m in history_messages:
             role = m.get("role") or "user"
+            if role not in {"user", "assistant", "system"}:
+                continue
             content = m.get("content") or ""
             if not content:
                 continue
@@ -778,6 +1006,10 @@ async def simple_chat_stream(
                 message={
                     "role": "user",
                     "content": user_content,
+                    "session_id": logical_session_id,
+                    "step_id": phase_step,
+                    "agent_id": None,
+                    "event": "user_message",
                 },
             )
 
@@ -801,7 +1033,7 @@ async def simple_chat_stream(
             # 综合本轮用户输入 + 上一轮结论，重新生成确定性结论
             try:
                 dimension_conclusion = await check_dimension_complete(
-                    phase, conv_history, prior_conclusion=pending_conclusion
+                    phase_step, conv_history, prior_conclusion=pending_conclusion
                 )
             except Exception as e:
                 # 上游 LLM 异常时，降级为继续普通对话，避免流接口 500。
@@ -822,11 +1054,33 @@ async def simple_chat_stream(
                 await conv_manager.append_message(
                     session_id=session_id,
                     category=category,
-                    message={"role": "assistant", "content": full_reply},
+                    message={
+                        "role": "assistant",
+                        "content": full_reply,
+                        "session_id": logical_session_id,
+                        "step_id": phase_step,
+                        "agent_id": "coach",
+                        "event": "assistant_reply",
+                        "token_usage": _normalize_token_usage(None),
+                    },
+                )
+                await conv_manager.append_message(
+                    session_id=session_id,
+                    category=category,
+                    message={
+                        "role": "conclusion_card",
+                        "content": json.dumps(dimension_conclusion, ensure_ascii=False),
+                        "session_id": logical_session_id,
+                        "step_id": phase_step,
+                        "agent_id": "coach",
+                        "event": "dimension_conclusion",
+                        "card_type": "dimension_conclusion",
+                        "card_payload": dimension_conclusion,
+                    },
                 )
                 yield f"data: {{\"dimension_conclusion\": {json.dumps(dimension_conclusion, ensure_ascii=False)} }}\n\n"
                 try:
-                    await AnalyticsService.record_chat_turn(session_id=session_id, dimension=phase, user_input_chars=len(user_content or ""), llm_input_tokens=0, llm_output_tokens=0, log_index=None)
+                    await AnalyticsService.record_chat_turn(session_id=logical_session_id, dimension=phase_step, user_input_chars=len(user_content or ""), llm_input_tokens=0, llm_output_tokens=0, log_index=None)
                 except Exception:
                     pass
                 yield f"data: {{\"done\": true, \"response\": {json.dumps(full_reply, ensure_ascii=False)} }}\n\n"
@@ -839,7 +1093,7 @@ async def simple_chat_stream(
         if not meta.get("thread_completed"):
             try:
                 explicit_result = bool(
-                    user_content and await detect_explicit_completion(phase, user_content, conv_history)
+                    user_content and await detect_explicit_completion(phase_step, user_content, conv_history)
                 )
             except Exception as e:
                 # 显式完成检测是增强能力，不应因上游 LLM 异常中断主对话流。
@@ -851,7 +1105,7 @@ async def simple_chat_stream(
             )
             if should_check:
                 try:
-                    dimension_conclusion = await check_dimension_complete(phase, conv_history)
+                    dimension_conclusion = await check_dimension_complete(phase_step, conv_history)
                 except Exception as e:
                     # 维度收敛检测失败时降级为继续普通对话，避免前端出现 500 卡死。
                     logger.exception("check_dimension_complete failed, continue chat stream: %s", e)
@@ -869,11 +1123,33 @@ async def simple_chat_stream(
             await conv_manager.append_message(
                 session_id=session_id,
                 category=category,
-                message={"role": "assistant", "content": full_reply},
+                message={
+                    "role": "assistant",
+                    "content": full_reply,
+                    "session_id": logical_session_id,
+                    "step_id": phase_step,
+                    "agent_id": "coach",
+                    "event": "assistant_reply",
+                        "token_usage": _normalize_token_usage(None),
+                },
+            )
+            await conv_manager.append_message(
+                session_id=session_id,
+                category=category,
+                message={
+                    "role": "conclusion_card",
+                    "content": json.dumps(dimension_conclusion, ensure_ascii=False),
+                    "session_id": logical_session_id,
+                    "step_id": phase_step,
+                    "agent_id": "coach",
+                    "event": "dimension_conclusion",
+                    "card_type": "dimension_conclusion",
+                    "card_payload": dimension_conclusion,
+                },
             )
             yield f"data: {{\"dimension_conclusion\": {json.dumps(dimension_conclusion, ensure_ascii=False)} }}\n\n"
             try:
-                await AnalyticsService.record_chat_turn(session_id=session_id, dimension=phase, user_input_chars=len(user_content or ""), llm_input_tokens=0, llm_output_tokens=0, log_index=None)
+                await AnalyticsService.record_chat_turn(session_id=logical_session_id, dimension=phase_step, user_input_chars=len(user_content or ""), llm_input_tokens=0, llm_output_tokens=0, log_index=None)
             except Exception:
                 pass
             yield f"data: {{\"done\": true, \"response\": {json.dumps(full_reply, ensure_ascii=False)} }}\n\n"
@@ -889,6 +1165,7 @@ async def simple_chat_stream(
             err = str(e)
             yield f"data: {{\"error\": {json.dumps(err, ensure_ascii=False)} }}\n\n"
             return
+        stream_usage = _normalize_token_usage(getattr(llm, "_last_stream_usage", None))
 
         # 保存完整助手回复
         if full_reply:
@@ -898,12 +1175,98 @@ async def simple_chat_stream(
                 message={
                     "role": "assistant",
                     "content": full_reply,
+                    "session_id": logical_session_id,
+                    "step_id": phase_step,
+                    "agent_id": "coach",
+                    "event": "assistant_reply",
+                    "token_usage": stream_usage,
                 },
             )
+            if phase_step == "rumination" and _looks_like_markdown_table(full_reply):
+                await conv_manager.append_message(
+                    session_id=session_id,
+                    category=category,
+                    message={
+                        "role": "table",
+                        "content": full_reply,
+                        "session_id": logical_session_id,
+                        "step_id": phase_step,
+                        "agent_id": "coach",
+                        "event": "table_output",
+                        "table_format": "markdown",
+                    },
+                )
 
-        # 3) 后台异步检测：不阻塞响应，不展示，仅更新 pending_conclusion 判定
+        # 3) 本轮结束前再做一次同步检测（兜底）：若判定完成，必须当轮弹出答题卡
+        post_turn_conclusion = None
+        try:
+            conv_data_after_reply = await conv_manager.get_conversation_data(session_id, category)
+            meta_after_reply = conv_data_after_reply.get("metadata", {})
+            if not meta_after_reply.get("thread_completed"):
+                user_count_after_reply = sum(
+                    1 for m in conv_data_after_reply.get("messages", []) if m.get("role") == "user"
+                )
+                shown_at_after_reply = meta_after_reply.get("conclusion_shown_at_turn")
+                should_check_after_reply = (
+                    _should_run_completion_check(user_count_after_reply, shown_at_after_reply)
+                    or _assistant_indicates_completion(full_reply)
+                )
+                if should_check_after_reply:
+                    conv_history_after_reply = [
+                        {"role": m.get("role", "user"), "content": m.get("content", "")}
+                        for m in conv_data_after_reply.get("messages", [])
+                    ]
+                    post_turn_conclusion = await check_dimension_complete(
+                        phase_step, conv_history_after_reply
+                    )
+                    if post_turn_conclusion:
+                        await conv_manager.update_metadata(
+                            session_id,
+                            category,
+                            {
+                                "conclusion_shown_at_turn": user_count_after_reply,
+                                "dimension_conclusion": post_turn_conclusion,
+                                "pending_conclusion": None,
+                            },
+                        )
+                        transition_msg = "好的，根据我们的对话，我为你整理出本维度的探索结论，请确认下方摘要是否准确。"
+                        await conv_manager.append_message(
+                            session_id=session_id,
+                            category=category,
+                            message={
+                                "role": "assistant",
+                                "content": transition_msg,
+                                "session_id": logical_session_id,
+                                "step_id": phase_step,
+                                "agent_id": "coach",
+                                "event": "assistant_reply",
+                                "token_usage": _normalize_token_usage(None),
+                            },
+                        )
+                        await conv_manager.append_message(
+                            session_id=session_id,
+                            category=category,
+                            message={
+                                "role": "conclusion_card",
+                                "content": json.dumps(post_turn_conclusion, ensure_ascii=False),
+                                "session_id": logical_session_id,
+                                "step_id": phase_step,
+                                "agent_id": "coach",
+                                "event": "dimension_conclusion",
+                                "card_type": "dimension_conclusion",
+                                "card_payload": post_turn_conclusion,
+                            },
+                        )
+                        yield f"data: {{\"chunk\": {json.dumps(transition_msg, ensure_ascii=False)} }}\n\n"
+                        yield f"data: {{\"dimension_conclusion\": {json.dumps(post_turn_conclusion, ensure_ascii=False)} }}\n\n"
+        except Exception:
+            post_turn_conclusion = None
+
+        # 4) 后台异步检测：仅在本轮未产出结论卡时，更新 pending_conclusion 判定
         async def _background_completion_check() -> None:
             try:
+                if post_turn_conclusion:
+                    return
                 conv_data = await conv_manager.get_conversation_data(session_id, category)
                 meta = conv_data.get("metadata", {})
                 if meta.get("thread_completed"):
@@ -916,7 +1279,7 @@ async def simple_chat_stream(
                     {"role": m.get("role", "user"), "content": m.get("content", "")}
                     for m in conv_data.get("messages", [])
                 ]
-                conclusion = await check_dimension_complete(phase, conv_history)
+                conclusion = await check_dimension_complete(phase_step, conv_history)
                 if conclusion:
                     await conv_manager.update_metadata(
                         session_id, category, {"pending_conclusion": conclusion}
@@ -930,20 +1293,23 @@ async def simple_chat_stream(
 
         asyncio.create_task(_background_completion_check())
 
-        # 埋点：记录对话轮次（simple 模式无 token 统计）
+        # 埋点：记录对话轮次
         try:
             await AnalyticsService.record_chat_turn(
-                session_id=session_id,
-                dimension=phase,
+                session_id=logical_session_id,
+                dimension=phase_step,
                 user_input_chars=len(user_content or ""),
-                llm_input_tokens=0,
-                llm_output_tokens=0,
+                llm_input_tokens=int(stream_usage.get("prompt_tokens") or 0),
+                llm_output_tokens=int(stream_usage.get("completion_tokens") or 0),
                 log_index=None,
             )
         except Exception:
             pass
 
-        yield f"data: {{\"done\": true, \"response\": {json.dumps(full_reply, ensure_ascii=False)} }}\n\n"
+        yield (
+            f"data: {{\"done\": true, \"response\": {json.dumps(full_reply, ensure_ascii=False)}, "
+            f"\"token_usage\": {json.dumps(stream_usage, ensure_ascii=False)} }}\n\n"
+        )
 
     return StreamingResponse(
         event_stream(),

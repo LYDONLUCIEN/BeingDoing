@@ -16,6 +16,8 @@ export interface ThreadMessage {
   conclusionData?: DimensionConclusionData;
   /** 结论卡是否已折叠（用户点击「再聊聊」后折叠） */
   conclusionCollapsed?: boolean;
+  /** 结论卡是否已确认（用于前端按钮状态兜底） */
+  conclusionConfirmed?: boolean;
 }
 
 /** 维度探索结论卡片（持久化，完成/重访时仍可查看） */

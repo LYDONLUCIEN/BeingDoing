@@ -69,15 +69,15 @@
 
 ### 0.1 当前冲刺（Current Sprint）
 
-- 当前里程碑：`M1`
+- 当前里程碑：`M3`
 - 当前优先级（仅做这 3 件）：
-  - [x] 完成 admin 子域 DNS + SSL
-  - [ ] 完成 1Panel 反代（`/` 到前端，`/api` 到后端）
-  - [x] 完成后端 admin 路由 `super_admin` 强校验梳理
+  - [x] 完成核心 Admin 页面联通（activations/dashboard/conversations/reports/logs/system）
+  - [x] 完成激活码生命周期（批量 + 垃圾桶 + deleted 保留）
+  - [ ] 执行端到端 E2E 验收清单并收敛链路问题
 - 完成定义（DoD）：
-  - [ ] admin 子域打开正常
-  - [ ] `/api/v1/admin/*` 非 super_admin 返回 403
-  - [ ] super_admin 可正常访问 admin 页面和接口
+  - [ ] E2E 清单 P0 项全部通过
+  - [ ] 关键链路：activation -> report -> step -> session -> message/token 可闭环追踪
+  - [ ] 发布前风险项与回滚路径确认
 
 ### A. 上线前准备（基础设施）
 
@@ -99,15 +99,15 @@
 
 ### C. 前端 Admin 页面开发
 
-- [ ] `/admin/layout` 接入权限守卫（非 super_admin 禁止访问）
+- [x] `/admin/layout` 接入权限守卫（非 super_admin 禁止访问）
 - [ ] 增加 step-up 验证页（进入 admin 前二次确认）
-- [ ] `/admin` 总览页：核心指标卡 + 趋势占位图
-- [ ] `/admin/activations`：完善筛选、分页、状态展示
-- [ ] `/admin/conversations`：会话列表 + 详情抽屉
-- [ ] `/admin/reports`：报告状态列表 + 基础预览入口
+- [x] `/admin` 总览页：核心指标卡 + 趋势占位图
+- [x] `/admin/activations`：完善筛选、分页、状态展示
+- [x] `/admin/conversations`：会话列表 + 详情抽屉
+- [x] `/admin/reports`：报告状态列表 + 基础预览入口
 - [ ] `/admin/analytics`：调用量、错误率、Token 统计
-- [ ] `/admin/logs`：关键日志检索（支持按激活码/session）
-- [ ] `/admin/system`：只读环境配置页（脱敏）
+- [x] `/admin/logs`：关键日志检索（支持按激活码/session）
+- [x] `/admin/system`：只读环境配置页（脱敏）
 
 ### D. 验证与发布
 
@@ -167,6 +167,23 @@
   - 状态：已生效，当前执行 M1。
 - [2026-03-18] M1 进展更新：DNS、admin 子域建站、SSL 已完成；后端 `super_admin` 校验与 admin CORS 已就绪。  
   - 状态：进入 7/8/9 联调与回滚演练阶段。
+- [2026-03-18] 收到 Admin 二期需求（激活码批量生命周期、report-step-session-message-agent 数据链路、Dashboard 统计、对话检索、报告概览、日志调试、系统设置迁移），已落地专项方案文档。  
+  - 文档：`tasks/admin-phase2-feature-plan.md`
+  - 状态：待需求确认后进入开发。
+- [2026-03-18] Admin 二期第一批开发完成：激活码批量创建/状态调整/删除入垃圾桶/恢复 API，上线 `/admin/activations` 多选批量操作与垃圾桶视图；新增文件版 report 注册表（activation+user -> report -> 5 steps -> session 绑定）。  
+  - 状态：已可测试，待继续补“30天自动清理定时任务”和 Dashboard/对话/报告模块。
+- [2026-03-18] Admin 二期第二批开发完成：已加入垃圾桶 30 天自动清理后台任务；新增 Dashboard 概览接口（用户/访问/报告/5步漏斗/token总量与分步骤）；`/admin` 页面接入真实数据展示。  
+  - 状态：Dashboard 首版可用，下一步进入“对话与阶段 / 报告概览 / 日志调试”模块。
+- [2026-03-18] Dashboard 统计改为“默认读取 data/static 缓存 + 手动同步从 /data 重算”；report 五步骤命名统一为 `values/strength/interest/purpose/rumination`（兼容旧命名 strengths/interests/filter）。  
+  - 状态：可进行联调验证（手动同步按钮 + 缓存文件生成）。
+- [2026-03-18] 激活码管理增强：删除后保留在主列表（status=deleted），并提供“从数据库同步激活码列表”能力；新增 `sync_simple_storage_alias.py`，可在 data/simple 下生成 `激活码__session_id` 目录别名用于排查。  
+  - 状态：已可测试。
+- [2026-03-18] Admin 页继续落地：`/admin/conversations` 已接入 report-step-session 检索和会话详情查看；`/admin/reports` 已接入列表、详情与 JSON 下载。  
+  - 状态：进入 `logs/system` 页面开发与链路总验收阶段。
+- [2026-03-18] 第 9/10 项完成首版：`/admin/logs` 已支持按 session/dimension 检索埋点并查看 session/like 详情；`/admin/system` 已迁移主题、效果、配色控制并接入只读系统配置。此外 `/admin/reports` 增加“从激活码补齐报告”操作，解决报告列表初始为空问题。  
+  - 状态：进入全链路联调与问题清单收敛阶段。
+- [2026-03-18] 新增端到端验收清单：`tasks/admin-e2e-checklist.md`，用于统一执行上线前链路验证并打勾记录。  
+  - 状态：待逐项验收。
 
 ### 追加模板（复制使用）
 

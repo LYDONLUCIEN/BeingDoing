@@ -6,7 +6,132 @@ import re
 from typing import Dict, List, Optional
 
 from app.core.llmapi import get_default_llm_provider, LLMMessage
+from app.domain.conclusion_card_goals import get_conclusion_card_goal, get_goal_prompt_hint
 from app.domain.dimension_completion import get_dimension_config
+
+
+def _normalize_keyword_list(items: List[str], *, limit: int = 5) -> List[str]:
+    """标准化关键词列表：去重、去空、保序。"""
+    seen = set()
+    result: List[str] = []
+    for raw in items:
+        item = (raw or "").strip()
+        if not item:
+            continue
+        key = item.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(item)
+        if len(result) >= limit:
+            break
+    return result
+
+
+def _extract_enum_keywords(text: str) -> List[str]:
+    """从“1. xxx 2. yyy”这类枚举文本中提取关键词。"""
+    if not text:
+        return []
+    candidates = re.findall(r"(?:^|\n)\s*\d+[\.、]\s*\**([^*\n]+?)\**\s*(?=$|\n)", text)
+    return _normalize_keyword_list(candidates, limit=5)
+
+
+def _extract_delimited_keywords(text: str) -> List[str]:
+    """从“自由，成长，学习，助人，探索自我”这类分隔文本中提取关键词。"""
+    if not text:
+        return []
+    cleaned = text
+    focus_match = re.search(r"(?:就是|是|我的价值观是|关键词是)\s*(.+?)(?:这就是|不用探索|我很明确|。|$)", cleaned)
+    if focus_match:
+        cleaned = focus_match.group(1)
+    cleaned = re.sub(r"[。！？!?\r\t]", " ", cleaned)
+    cleaned = re.sub(
+        r"(我的|就是|包括|分别是|是|有|价值观|关键词|这就是|以上|顺序|按顺序|不用探索了|我很明确|我认为|我觉得|我想|不好|不是|属于我)",
+        " ",
+        cleaned,
+    )
+    parts = re.split(r"[,\n，、；;|/]+", cleaned)
+    candidates: List[str] = []
+    for p in parts:
+        token = (p or "").strip(" ：:\"'“”‘’()（）[]【】")
+        if not token:
+            continue
+        if token in {"我", "你", "他", "她", "它"}:
+            continue
+        if token.startswith("我 "):
+            token = token[2:].strip()
+        if token.startswith("我"):
+            token = token[1:].strip()
+        if not token:
+            continue
+        if len(token) > 16:
+            continue
+        # 过滤明显确认语，避免把“没问题”当关键词
+        if token in {"没问题", "对的", "可以", "确认", "好的", "好", "是的", "不好"}:
+            continue
+        candidates.append(token)
+    return _normalize_keyword_list(candidates, limit=5)
+
+
+def _extract_locked_values_keywords(conversation_history: List[Dict[str, str]]) -> Optional[List[str]]:
+    """
+    从会话中提取用户已明确确认的 5 个价值观词，用于强一致约束。
+    优先从用户消息提取，其次从助手“1. xxx”确认列表提取。
+    """
+    # 1) 优先从用户消息逆序查找
+    for m in reversed(conversation_history[-30:]):
+        if (m.get("role") or "") != "user":
+            continue
+        content = (m.get("content") or "").strip()
+        if not content:
+            continue
+        kws = _extract_delimited_keywords(content)
+        if len(kws) >= 5:
+            return kws[:5]
+
+    # 2) 回退：从助手枚举确认文本提取
+    for m in reversed(conversation_history[-30:]):
+        if (m.get("role") or "") != "assistant":
+            continue
+        content = (m.get("content") or "").strip()
+        if not content:
+            continue
+        kws = _extract_enum_keywords(content)
+        if len(kws) >= 5:
+            return kws[:5]
+
+    return None
+
+
+def _build_goal_fallback_summary(phase: str, keywords: List[str]) -> str:
+    goal = get_conclusion_card_goal(phase)
+    objective = goal.get("objective", "")
+    if keywords:
+        return (
+            f"本维度结论已完成，当前输出聚焦于：{objective}。"
+            f"最终确认关键词为：{'、'.join([f'**{k}**' for k in keywords])}。"
+        )
+    return f"本维度结论已完成，当前输出聚焦于：{objective}。"
+
+
+def _validate_keywords_by_goal(
+    phase: str,
+    keywords: List[str],
+    *,
+    locked_keywords: Optional[List[str]] = None,
+) -> List[str]:
+    goal = get_conclusion_card_goal(phase)
+    validation = goal.get("validation") or {}
+    min_k = int(validation.get("min_keywords", 1))
+    max_k = int(validation.get("max_keywords", 10))
+    strict = bool(validation.get("strict_match_user_confirmed_keywords", False))
+
+    normalized = _normalize_keyword_list(keywords, limit=max(max_k, 1))
+    if strict and locked_keywords:
+        return locked_keywords
+    if len(normalized) < min_k and locked_keywords:
+        return locked_keywords
+    return normalized[:max_k] if normalized else (locked_keywords or [])
 
 
 async def detect_explicit_completion(
@@ -118,6 +243,7 @@ async def check_dimension_complete(
     label = config.get("label", phase)
     goal = config.get("goal", "")
     criteria = config.get("completion_criteria", "")
+    locked_keywords = _extract_locked_values_keywords(conversation_history) if phase == "values" else None
 
     # 若有 prior_conclusion，则跳过完成判定，直接进入生成
     if not prior_conclusion:
@@ -160,6 +286,7 @@ async def check_dimension_complete(
 
     # 已判定完成，生成结论卡片内容
     summary_hint = config.get("summary_prompt_hint", "")
+    goal_hint = get_goal_prompt_hint(phase)
 
     prior_hint = ""
     if prior_conclusion:
@@ -177,10 +304,23 @@ async def check_dimension_complete(
 
 """
 
-    summary_prompt = f"""基于以下对话，生成「{label}」维度的探索结论汇总。{prior_hint}
+    locked_hint = ""
+    if locked_keywords:
+        locked_text = "、".join(locked_keywords)
+        locked_hint = f"""
+
+【硬性约束（必须严格遵守）】
+用户已明确确认本维度关键词为：{locked_text}
+1) 关键词列表必须与上述词条完全一致，数量与顺序都不能改变；
+2) 严禁同义改写、抽象替换或新增任何未出现词条；
+3) 汇总文案可以润色，但关键词只能使用上述原词。
+"""
+
+    summary_prompt = f"""基于以下对话，生成「{label}」维度的探索结论汇总。{prior_hint}{locked_hint}
 
 该维度的目标：{goal}
 {summary_hint}
+{goal_hint}
 
 请用温暖、专业、包容的语气，像一位可靠的咨询师对用户说话。不要用冷冰冰的「AI 分析」口吻，而是表示这是对话的汇总。
 
@@ -203,6 +343,16 @@ async def check_dimension_complete(
     if not keywords and summary:
         # 从 **x** 中解析关键词作为后备
         keywords = re.findall(r"\*\*([^*]+)\*\*", summary)
+
+    keywords = _validate_keywords_by_goal(phase, keywords, locked_keywords=locked_keywords)
+
+    if locked_keywords:
+        # 后端强校验：即使模型返回偏差，也强制对齐用户已确认关键词，防止改写。
+        keywords = locked_keywords
+        # 对 values 阶段使用稳定结构化文案，避免情绪词/口语残片污染总结文本。
+        summary = _build_goal_fallback_summary(phase, locked_keywords)
+    elif not summary:
+        summary = _build_goal_fallback_summary(phase, keywords)
 
     return {
         "summary": summary,

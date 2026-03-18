@@ -17,13 +17,15 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, List
+import shutil
 
 
 class ActivationStatus(str, Enum):
     ACTIVE = "active"
     EXPIRED = "expired"
     REVOKED = "revoked"
+    DELETED = "deleted"
 
 
 @dataclass
@@ -35,6 +37,24 @@ class ActivationRecord:
     expires_at: str
     last_activity_at: str
     status: str = ActivationStatus.ACTIVE
+    owner_user_id: Optional[str] = None
+    owner_email: Optional[str] = None
+    claimed_at: Optional[str] = None
+    deleted_at: Optional[str] = None
+    purge_after: Optional[str] = None
+    source: Optional[str] = None
+
+
+@dataclass
+class ActivationRecycleRecord:
+    activation_code: str
+    session_id: str
+    mode: str
+    original_record: dict
+    deleted_at: str
+    purge_after: str
+    deleted_by_user_id: Optional[str] = None
+    deleted_by_email: Optional[str] = None
 
 
 def get_simple_base_dir() -> Path:
@@ -54,6 +74,11 @@ class SimpleActivationManager:
         self.base_dir = Path(base_dir) if base_dir else _default_base_dir()
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self._activations_file = self.base_dir / "activations.json"
+        self._recycle_file = self.base_dir / "activations_recycle_bin.json"
+
+    @staticmethod
+    def _now_iso() -> str:
+        return datetime.utcnow().isoformat() + "Z"
 
     def _load_all(self) -> Dict[str, ActivationRecord]:
         if not self._activations_file.exists():
@@ -74,6 +99,29 @@ class SimpleActivationManager:
     def _save_all(self, records: Dict[str, ActivationRecord]) -> None:
         serializable = {code: asdict(rec) for code, rec in records.items()}
         self._activations_file.write_text(
+            json.dumps(serializable, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+    def _load_recycle_bin(self) -> Dict[str, ActivationRecycleRecord]:
+        if not self._recycle_file.exists():
+            return {}
+        try:
+            content = self._recycle_file.read_text(encoding="utf-8")
+            raw = json.loads(content or "{}")
+        except (json.JSONDecodeError, OSError):
+            raw = {}
+        records: Dict[str, ActivationRecycleRecord] = {}
+        for code, data in raw.items():
+            try:
+                records[code] = ActivationRecycleRecord(**data)
+            except TypeError:
+                continue
+        return records
+
+    def _save_recycle_bin(self, records: Dict[str, ActivationRecycleRecord]) -> None:
+        serializable = {code: asdict(rec) for code, rec in records.items()}
+        self._recycle_file.write_text(
             json.dumps(serializable, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
@@ -125,6 +173,13 @@ class SimpleActivationManager:
         self._save_all(records)
         return record
 
+    def create_activation_batch(self, mode: str, ttl_minutes: int = 60, count: int = 1) -> List[ActivationRecord]:
+        count = max(1, min(int(count), 500))
+        created: List[ActivationRecord] = []
+        for _ in range(count):
+            created.append(self.create_activation(mode=mode, ttl_minutes=ttl_minutes))
+        return created
+
     def get_activation(self, code: str) -> Optional[ActivationRecord]:
         """根据激活码获取记录（不会自动删除过期记录）。
         查找时自动 trim 并转为大写（生成的码为大写），方便用户输入。"""
@@ -147,20 +202,214 @@ class SimpleActivationManager:
             return rec
         if rec.status == ActivationStatus.ACTIVE and datetime.utcnow() > expires_dt:
             rec.status = ActivationStatus.EXPIRED
-            records[code] = rec
+            records[normalized] = rec
             self._save_all(records)
         return rec
 
     def touch_activity(self, code: str) -> None:
         """更新最后活跃时间（仅在 ACTIVE 时更新）"""
         records = self._load_all()
-        rec = records.get(code)
+        norm = (code or "").strip().upper()
+        rec = records.get(norm) or records.get(code)
         if not rec:
             return
         if rec.status != ActivationStatus.ACTIVE:
             return
         now = datetime.utcnow().isoformat() + "Z"
         rec.last_activity_at = now
-        records[code] = rec
+        records[norm or code] = rec
         self._save_all(records)
+
+    def update_status(self, codes: List[str], status: str) -> int:
+        """批量更新状态（active / expired / revoked）"""
+        status = (status or "").strip().lower()
+        if status not in {
+            ActivationStatus.ACTIVE.value,
+            ActivationStatus.EXPIRED.value,
+            ActivationStatus.REVOKED.value,
+            ActivationStatus.DELETED.value,
+        }:
+            raise ValueError("不支持的状态")
+        records = self._load_all()
+        changed = 0
+        for raw in codes or []:
+            code = (raw or "").strip().upper()
+            rec = records.get(code)
+            if not rec:
+                continue
+            if rec.status == status:
+                continue
+            rec.status = status
+            if status == ActivationStatus.DELETED.value:
+                rec.deleted_at = self._now_iso()
+            records[code] = rec
+            changed += 1
+        if changed:
+            self._save_all(records)
+        return changed
+
+    def claim_owner(self, code: str, user: dict) -> ActivationRecord:
+        """首次绑定激活码归属到当前用户。"""
+        norm = (code or "").strip().upper()
+        records = self._load_all()
+        rec = records.get(norm) or records.get(code)
+        if not rec:
+            raise ValueError("激活码不存在")
+
+        now = datetime.utcnow().isoformat() + "Z"
+        rec.owner_user_id = (user or {}).get("user_id")
+        rec.owner_email = (user or {}).get("email")
+        rec.claimed_at = rec.claimed_at or now
+        rec.last_activity_at = now
+        records[norm or code] = rec
+        self._save_all(records)
+        return rec
+
+    def is_owner(self, rec: ActivationRecord, user: dict) -> bool:
+        """校验当前用户是否为激活码归属者。未绑定时返回 True。"""
+        if not rec.owner_user_id and not rec.owner_email:
+            return True
+
+        uid = (user or {}).get("user_id")
+        email = (user or {}).get("email")
+        if rec.owner_user_id and uid == rec.owner_user_id:
+            return True
+        if rec.owner_email and email == rec.owner_email:
+            return True
+        return False
+
+    def soft_delete_to_recycle_bin(self, codes: List[str], deleted_by: Optional[dict] = None, retention_days: int = 30) -> int:
+        """
+        删除激活码到垃圾桶（软删除）：
+        - 从 activations.json 移除
+        - 写入 activations_recycle_bin.json
+        """
+        records = self._load_all()
+        recycle = self._load_recycle_bin()
+        now = datetime.utcnow()
+        deleted_at = now.isoformat() + "Z"
+        purge_after = (now + timedelta(days=retention_days)).isoformat() + "Z"
+        changed = 0
+
+        for raw in codes or []:
+            code = (raw or "").strip().upper()
+            rec = records.get(code)
+            if not rec:
+                continue
+            # 删除后保留在主记录中，仅状态变更
+            rec.status = ActivationStatus.DELETED.value
+            rec.deleted_at = deleted_at
+            rec.purge_after = purge_after
+            records[code] = rec
+            recycle[code] = ActivationRecycleRecord(
+                activation_code=code,
+                session_id=rec.session_id,
+                mode=rec.mode,
+                original_record=asdict(rec),
+                deleted_at=deleted_at,
+                purge_after=purge_after,
+                deleted_by_user_id=(deleted_by or {}).get("user_id"),
+                deleted_by_email=(deleted_by or {}).get("email"),
+            )
+            changed += 1
+
+        if changed:
+            self._save_all(records)
+            self._save_recycle_bin(recycle)
+        return changed
+
+    def list_recycle_bin(self) -> Dict[str, ActivationRecycleRecord]:
+        return self._load_recycle_bin()
+
+    def restore_from_recycle_bin(self, codes: List[str]) -> int:
+        """从垃圾桶恢复到 activations.json"""
+        records = self._load_all()
+        recycle = self._load_recycle_bin()
+        changed = 0
+        for raw in codes or []:
+            code = (raw or "").strip().upper()
+            recycled = recycle.pop(code, None)
+            if not recycled:
+                continue
+            existing = records.get(code)
+            if existing:
+                rec = existing
+            else:
+                try:
+                    rec = ActivationRecord(**recycled.original_record)
+                except TypeError:
+                    continue
+            rec.status = ActivationStatus.ACTIVE.value
+            rec.deleted_at = None
+            rec.purge_after = None
+            records[code] = rec
+            changed += 1
+        if changed:
+            self._save_all(records)
+            self._save_recycle_bin(recycle)
+        return changed
+
+    def purge_recycle_bin(self, now: Optional[datetime] = None) -> int:
+        """
+        物理清理垃圾桶过期数据：
+        - 超过 purge_after 的记录从垃圾桶删除
+        - 同时删除 data/simple/{session_id} 对话目录
+        """
+        recycle = self._load_recycle_bin()
+        now = now or datetime.utcnow()
+        to_delete_codes: List[str] = []
+
+        for code, rec in recycle.items():
+            try:
+                purge_dt = datetime.fromisoformat(rec.purge_after.replace("Z", ""))
+            except ValueError:
+                continue
+            if now >= purge_dt:
+                to_delete_codes.append(code)
+                session_dir = self.base_dir / rec.session_id
+                if session_dir.exists() and session_dir.is_dir():
+                    shutil.rmtree(session_dir, ignore_errors=True)
+
+        if not to_delete_codes:
+            return 0
+
+        for code in to_delete_codes:
+            recycle.pop(code, None)
+            # 彻底清理后从主记录移除
+            records = self._load_all()
+            if code in records:
+                records.pop(code, None)
+                self._save_all(records)
+        self._save_recycle_bin(recycle)
+        return len(to_delete_codes)
+
+    def upsert_from_db_rows(self, rows: List[dict]) -> int:
+        """
+        从数据库同步激活码记录到 activations.json。
+        仅补齐缺失，不覆盖已有字段（避免破坏人工维护状态）。
+        """
+        records = self._load_all()
+        changed = 0
+        for row in rows or []:
+            code = ((row.get("activation_code") or "").strip().upper())
+            session_id = (row.get("session_id") or "").strip()
+            if not code or not session_id:
+                continue
+            if code in records:
+                continue
+            now = self._now_iso()
+            records[code] = ActivationRecord(
+                code=code,
+                session_id=session_id,
+                mode=row.get("mode") or "combined",
+                created_at=row.get("created_at") or now,
+                expires_at=row.get("expires_at") or now,
+                last_activity_at=row.get("last_activity_at") or now,
+                status=row.get("status") or ActivationStatus.REVOKED.value,
+                source="db_sync",
+            )
+            changed += 1
+        if changed:
+            self._save_all(records)
+        return changed
 

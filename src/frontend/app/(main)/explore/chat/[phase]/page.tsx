@@ -210,7 +210,8 @@ export default function ChatPhasePage() {
                         content: '',
                         type: 'dimension_conclusion' as const,
                         conclusionData: concl,
-                        conclusionCollapsed: !meta.thread_completed,
+                        conclusionCollapsed: false,
+                        conclusionConfirmed: !!meta.thread_completed,
                         createdAt: Date.now(),
                       } satisfies ThreadMessage,
                     ]
@@ -276,7 +277,8 @@ export default function ChatPhasePage() {
                       content: '',
                       type: 'dimension_conclusion' as const,
                       conclusionData: concl,
-                      conclusionCollapsed: !meta.thread_completed,
+                      conclusionCollapsed: false,
+                      conclusionConfirmed: !!meta.thread_completed,
                       createdAt: Date.now(),
                     } satisfies ThreadMessage,
                   ]
@@ -378,9 +380,13 @@ export default function ChatPhasePage() {
     try {
       const apiBase = (process.env.NEXT_PUBLIC_API_URL || '').trim();
       const streamUrl = `${apiBase ? apiBase.replace(/\/+$/, '') : ''}/api/v1/simple-chat/message/stream`;
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
       const res = await fetch(streamUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           activation_code: activationCode,
           message: userMsg.content,
@@ -389,6 +395,17 @@ export default function ChatPhasePage() {
         }),
         signal: abortControllerRef.current.signal,
       });
+      if (!res.ok) {
+        if (res.status === 401) {
+          throw new Error('登录状态已失效，请重新登录后继续对话');
+        }
+        let detail = '';
+        try {
+          const errPayload = await res.json();
+          detail = errPayload?.detail || errPayload?.message || '';
+        } catch {}
+        throw new Error(detail || `请求失败（${res.status}）`);
+      }
       if (!res.body) throw new Error('流式接口返回为空');
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -426,6 +443,7 @@ export default function ChatPhasePage() {
                 type: 'dimension_conclusion',
                 conclusionData: concl,
                 conclusionCollapsed: false,
+                conclusionConfirmed: false,
                 createdAt: Date.now(),
               };
               setMessages((prev) => [...prev, conclMsg]);
@@ -517,16 +535,11 @@ export default function ChatPhasePage() {
     setInitLoading(false);
   };
 
-  const handleMarkComplete = () => {
-    if (!activationCode || !phase || !selectedThread) return;
-    const updated: ChatThread = { ...selectedThread, status: 'completed', messages };
-    saveThread(activationCode, phase, updated);
-    setThreads(getThreads(activationCode, phase));
-  };
-
   const handleConfirmConclusion = async () => {
-    if (!activationCode || !phase || !activeThreadId) return;
-    const th = threads.find((t) => t.id === activeThreadId);
+    if (!activationCode || !phase) return;
+    const targetThreadId = activeThreadId || backendSyncedThreadId;
+    if (!targetThreadId) return;
+    const th = threads.find((t) => t.id === targetThreadId) || selectedThread;
     if (!th) return;
     const lastConcl = messages.filter((m) => m.type === 'dimension_conclusion').pop();
     if (!lastConcl?.conclusionData) return;
@@ -534,20 +547,30 @@ export default function ChatPhasePage() {
       await apiClient.post('/simple-chat/thread/complete', {
         activation_code: activationCode,
         phase: BACKEND_PHASE[phase],
-        thread_id: activeThreadId,
+        thread_id: targetThreadId,
       });
     } catch (e) {
       console.warn('thread/complete API failed:', e);
     }
+    const confirmedMessages = messages.map((m) =>
+      m.type === 'dimension_conclusion'
+        ? { ...m, conclusionConfirmed: true, conclusionCollapsed: false }
+        : m
+    );
+    setMessages(confirmedMessages);
     const updated: ChatThread = {
       ...th,
       status: 'completed',
-      messages,
+      messages: confirmedMessages,
       dimensionConclusion: lastConcl.conclusionData,
     };
     saveThread(activationCode, phase, updated);
     // 使用 functional update 直接更新 state，避免依赖 getThreads 被 persist effect 覆盖
-    setThreads((prev) => prev.map((t) => (t.id === activeThreadId ? updated : t)));
+    setThreads((prev) => {
+      const idx = prev.findIndex((t) => t.id === targetThreadId);
+      if (idx < 0) return [...prev, updated];
+      return prev.map((t) => (t.id === targetThreadId ? updated : t));
+    });
   };
 
   const handleContinueChat = async (conclusionMsg?: ThreadMessage) => {
@@ -556,7 +579,7 @@ export default function ChatPhasePage() {
     if (toCollapse && toCollapse.type === 'dimension_conclusion') {
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === toCollapse.id ? { ...m, conclusionCollapsed: true } : m
+          m.id === toCollapse.id ? { ...m, conclusionCollapsed: true, conclusionConfirmed: false } : m
         )
       );
     }
@@ -645,12 +668,16 @@ export default function ChatPhasePage() {
           </header>
 
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden px-6 py-4">
-            <div className="max-w-3xl mx-auto w-full flex-1 flex flex-col min-h-0 min-w-0">
-            <motion.div key={phase} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1 flex-shrink-0 mb-3">
+            <motion.div
+              key={phase}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-1 flex-shrink-0 mb-3 max-w-3xl mx-auto w-full"
+            >
               <p className="text-sm text-neutral-600 leading-relaxed">{phaseMeta.desc}</p>
               <p className="text-xs text-neutral-500 italic">{phaseMeta.hint}</p>
             </motion.div>
-            {/* 对话展示框：占据剩余空间，内部滚动；下方为输入框 */}
+            {/* 全宽对话区：滚动条贴右侧，消息气泡浮在背景之上 */}
             <div className="flow-chat-box flex-1 min-h-0 min-w-0 flex flex-col relative">
               <div ref={chatBodyRef} className="flow-chat-body flex-1 min-h-0 overflow-y-auto">
                 <div className="flow-dimension-label">
@@ -681,7 +708,7 @@ export default function ChatPhasePage() {
                           <DimensionConclusionCard
                             phase={phaseClass}
                             data={m.conclusionData}
-                            isCompleted={isSelectedCompleted}
+                            isCompleted={isSelectedCompleted || !!m.conclusionConfirmed}
                             inline
                             collapsed={!!m.conclusionCollapsed}
                             onCollapsedChange={(collapsed) =>
@@ -767,11 +794,10 @@ export default function ChatPhasePage() {
                 <ChevronDown size={22} strokeWidth={2.5} />
               </button>
             </div>
-            </div>
           </div>
 
           {/* 对话输入框：固定在最底部 */}
-          <div className="flex-shrink-0 max-w-3xl mx-auto w-full px-6 pb-4 pt-2 bg-bd-bg/95 backdrop-blur-sm border-t border-black/[0.05]">
+          <div className="flex-shrink-0 w-full px-6 pb-5 pt-3 bg-bd-bg/95 backdrop-blur-sm border-t border-black/[0.05]">
             <div className="flow-input-area">
               <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="w-full">
                 <div className="flow-input-box">
@@ -810,21 +836,8 @@ export default function ChatPhasePage() {
                 </div>
               </form>
             </div>
-            <div className="py-3 flex items-center justify-between">
+            <div className="pt-2">
               <p className="text-xs text-neutral-500">对话记录自动保存</p>
-              <button
-                type="button"
-                onClick={handleMarkComplete}
-                disabled={isSelectedCompleted || messages.length === 0}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                  isSelectedCompleted
-                    ? 'bg-emerald-100 text-emerald-700 cursor-default'
-                    : 'bd-btn-black text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed'
-                }`}
-              >
-                {isSelectedCompleted ? '✓ 已完成' : '确认完成'}
-                {!isSelectedCompleted && <ChevronRight size={14} />}
-              </button>
             </div>
           </div>
         </div>

@@ -96,9 +96,20 @@ class ConversationFileManager:
                 }
             }
         
-        # 添加消息ID（如果不存在）
-        if "id" not in message:
-            message["id"] = f"msg_{len(data.get('messages', [])) + 1}"
+        # 统一 message_id / id
+        if "message_id" not in message:
+            if "id" in message and message.get("id"):
+                message["message_id"] = str(message["id"])
+            else:
+                message["message_id"] = f"msg_{len(data.get('messages', [])) + 1}"
+        if "id" not in message or not message.get("id"):
+            message["id"] = message["message_id"]
+
+        # 常用结构字段，便于后续按 report/message 做检索
+        if "agent_id" not in message:
+            message["agent_id"] = "coach" if message.get("role") == "assistant" else None
+        if "event" not in message:
+            message["event"] = "assistant_reply" if message.get("role") == "assistant" else "user_message"
         
         # 添加消息
         if "messages" not in data:

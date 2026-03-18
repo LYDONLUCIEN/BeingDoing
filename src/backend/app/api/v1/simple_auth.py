@@ -12,6 +12,9 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
 from app.utils.simple_activation_manager import SimpleActivationManager, ActivationStatus
+from app.api.v1.auth import get_current_user
+from fastapi import Depends
+from app.utils.report_registry import ReportRegistry
 
 
 router = APIRouter(prefix="/simple-auth", tags=["简单模式认证"])
@@ -61,7 +64,10 @@ async def create_activation(request: CreateActivationRequest):
 
 
 @router.post("/activate", response_model=ActivationResponse)
-async def activate(request: ActivateRequest):
+async def activate(
+    request: ActivateRequest,
+    current_user: dict = Depends(get_current_user),
+):
     """
     使用激活码获取简单会话信息。
 
@@ -82,8 +88,31 @@ async def activate(request: ActivateRequest):
             detail="激活码不存在",
         )
 
-    # 更新活跃时间（仅在 ACTIVE 状态下）
-    manager.touch_activity(rec.code)
+    # 首次激活绑定归属用户；已绑定则仅允许归属者使用
+    if not manager.is_owner(rec, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="该激活码已被其他用户使用",
+        )
+    if rec.status in {ActivationStatus.REVOKED, ActivationStatus.DELETED}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="激活码不可用",
+        )
+    if not rec.owner_user_id and not rec.owner_email:
+        rec = manager.claim_owner(rec.code, current_user)
+    else:
+        manager.touch_activity(rec.code)
+
+    # 绑定/创建 report（activation_code + user_id -> report_id）
+    user_id = (current_user or {}).get("user_id")
+    if user_id:
+        registry = ReportRegistry()
+        registry.ensure_report(
+            activation_code=rec.code,
+            user_id=user_id,
+            session_id=rec.session_id,
+        )
 
     return ActivationResponse(
         code=200,

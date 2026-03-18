@@ -3,6 +3,7 @@ FastAPI应用主入口
 """
 import logging
 import sys
+import asyncio
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +12,7 @@ from app.api.middleware import AudioModeMiddleware, ErrorHandlerMiddleware
 from app.api.v1 import auth, users, sessions, questions, answers, chat, search, formula, audio, export, debug, admin, analytics
 from app.api.v1 import chat_optimized  # 新增：优化的对话API
 from app.api.v1 import simple_auth, simple_chat  # 新增：简单模式激活与对话
+from app.utils.simple_activation_manager import SimpleActivationManager
 
 # ========== 日志配置 ==========
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -50,6 +52,39 @@ app.add_middleware(
 # 添加自定义中间件
 app.add_middleware(ErrorHandlerMiddleware)
 app.add_middleware(AudioModeMiddleware)
+
+_recycle_cleanup_task: asyncio.Task | None = None
+
+
+async def _recycle_cleanup_loop():
+    """
+    垃圾桶自动清理循环：
+    每 12 小时执行一次，物理清理超过保留期（默认 30 天）的激活码数据。
+    """
+    while True:
+        try:
+            manager = SimpleActivationManager()
+            purged = manager.purge_recycle_bin()
+            if purged:
+                logging.getLogger(__name__).info("recycle bin auto-purge removed %d records", purged)
+        except Exception as e:
+            logging.getLogger(__name__).exception("recycle bin auto-purge failed: %s", e)
+        await asyncio.sleep(12 * 60 * 60)
+
+
+@app.on_event("startup")
+async def _start_background_tasks():
+    global _recycle_cleanup_task
+    if _recycle_cleanup_task is None or _recycle_cleanup_task.done():
+        _recycle_cleanup_task = asyncio.create_task(_recycle_cleanup_loop())
+
+
+@app.on_event("shutdown")
+async def _stop_background_tasks():
+    global _recycle_cleanup_task
+    if _recycle_cleanup_task and not _recycle_cleanup_task.done():
+        _recycle_cleanup_task.cancel()
+    _recycle_cleanup_task = None
 
 
 @app.get("/")
