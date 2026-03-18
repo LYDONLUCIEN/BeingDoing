@@ -78,6 +78,13 @@ class SimpleActivationManager:
             encoding="utf-8",
         )
 
+    def list_activations(self) -> Dict[str, ActivationRecord]:
+        """
+        返回所有激活码记录（仅后端 Admin 使用）。
+        注意：不会自动删除过期记录，status 字段中包含 active / expired / revoked。
+        """
+        return self._load_all()
+
     def create_activation(
         self,
         mode: str,

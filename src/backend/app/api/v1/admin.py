@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from app.api.v1.auth import get_current_user
 from app.utils.data_paths import get_debug_logs_dir, get_logs_dir
-from app.utils.simple_activation_manager import get_simple_base_dir
+from app.utils.simple_activation_manager import SimpleActivationManager, ActivationStatus, get_simple_base_dir
 import json
 from pathlib import Path
 
@@ -106,3 +106,55 @@ async def get_session_detail(
     if detail is None:
         return {"code": 404, "message": "未找到会话", "data": None}
     return {"code": 200, "message": "success", "data": detail}
+
+
+@router.get("/activations")
+async def list_activations(
+    status: Optional[str] = None,
+    mode: Optional[str] = None,
+    q: Optional[str] = None,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """
+    列出 simple 模式下的所有激活码记录（仅 super_admin）。
+    - status: active / expired / revoked，可选过滤
+    - mode: values / strengths / interests / combined，可选过滤
+    - q: 按 activation_code 或 session_id 进行模糊匹配
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+
+    manager = SimpleActivationManager()
+    records = manager.list_activations()
+
+    items = []
+    for code, rec in records.items():
+        if status and rec.status != status:
+            continue
+        if mode and rec.mode != mode:
+            continue
+        if q and (q not in rec.code and q not in rec.session_id):
+            continue
+        items.append(
+            {
+                "activation_code": rec.code,
+                "session_id": rec.session_id,
+                "mode": rec.mode,
+                "created_at": rec.created_at,
+                "expires_at": rec.expires_at,
+                "last_activity_at": rec.last_activity_at,
+                "status": rec.status,
+            }
+        )
+
+    # 按创建时间倒序
+    items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "items": items,
+            "total": len(items),
+        },
+    }

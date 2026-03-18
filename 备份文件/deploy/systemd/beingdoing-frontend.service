@@ -1,0 +1,22 @@
+[Unit]
+Description=BeingDoing Frontend (Next.js)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/gitclone/BeingDoing/src/frontend
+EnvironmentFile=/etc/beingdoing.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/bash -lc 'if [ ! -f .next/BUILD_ID ]; then npm run build; fi; npm run start -- -p 3000'
+Restart=always
+RestartSec=3
+TimeoutStartSec=120
+TimeoutStopSec=30
+KillMode=control-group
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

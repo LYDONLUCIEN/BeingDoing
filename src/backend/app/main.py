@@ -39,6 +39,8 @@ app.add_middleware(
         "http://47.96.75.69:3000",
         "https://career.soulhappylab.com",
         "http://career.soulhappylab.com",
+        "https://admin.soulhappylab.com",
+        "http://admin.soulhappylab.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],

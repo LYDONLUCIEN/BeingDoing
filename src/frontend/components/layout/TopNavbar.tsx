@@ -21,7 +21,7 @@ export default function TopNavbar() {
   useEffect(() => setMounted(true), []);
   const { t } = useLocale(mounted ? undefined : 'zh');
   const { isAuthenticated, user, logout, _hasHydrated } = useAuthStore();
-  const { colorScheme, toggleColorScheme } = useThemeStore();
+  const { colorScheme } = useThemeStore();
   const { locale, setLocale } = useLocaleStore();
   // 挂载后且已登录则显示头像；不依赖 _hasHydrated，避免登录后 persist 未完成时仍显示「登录/注册」
   const showAuth = mounted && !!isAuthenticated;
@@ -108,15 +108,6 @@ export default function TopNavbar() {
 
         {/* 右侧：主题 / 语言 / 登录注册（靠最右） */}
         <div className="hidden md:flex justify-end items-center gap-3 flex-shrink-0">
-          <button
-            type="button"
-            onClick={toggleColorScheme}
-            className="p-2 rounded-lg text-bd-muted hover:text-bd-fg hover:bg-bd-overlay transition-colors"
-            title={isDark ? '切换到浅色' : '切换到深色'}
-            aria-label={isDark ? 'Switch to light' : 'Switch to dark'}
-          >
-            {isDark ? <Moon size={18} /> : <Sun size={18} />}
-          </button>
           <select
             value={displayLocale}
             onChange={(e) => setLocale(e.target.value as 'zh' | 'en')}
@@ -230,13 +221,6 @@ export default function TopNavbar() {
             );
           })}
           <div className="pt-2 border-t border-bd-border flex items-center gap-2 mb-2">
-            <button
-              type="button"
-              onClick={toggleColorScheme}
-              className="p-2 rounded-lg text-bd-muted hover:text-bd-fg"
-            >
-              {isDark ? <Moon size={18} /> : <Sun size={18} />}
-            </button>
             <select
               value={displayLocale}
               onChange={(e) => setLocale(e.target.value as 'zh' | 'en')}
