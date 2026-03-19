@@ -41,6 +41,21 @@ class Settings(BaseSettings):
     DEEPSEEK_API_KEY: Optional[str] = None
     LLM_BASE_URL: Optional[str] = None  # 如 https://api.deepseek.com
 
+    # API 池与 VIP 模型（按 vip_level 选择）
+    # VIP1 = 基础（DeepSeek），VIP2 = 高级（Kimi/Qwen）
+    LLM_VIP1_PROVIDER: str = "deepseek"
+    LLM_VIP1_MODEL: Optional[str] = None  # 默认用 DEEPSEEK_API_KEY + deepseek-chat
+    LLM_VIP2_PROVIDER: str = "kimi"  # kimi | qwen
+    KIMI_API_KEY: Optional[str] = None
+    KIMI_BASE_URL: Optional[str] = "https://api.moonshot.cn/v1"
+    KIMI_MODEL: str = "moonshot-v1-8k"
+    QWEN_API_KEY: Optional[str] = None
+    QWEN_BASE_URL: Optional[str] = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    QWEN_MODEL: str = "qwen-plus"
+
+    # 并发限制：同时进行的 LLM 调用数（0=不限制）
+    LLM_MAX_CONCURRENT: int = 0
+
     # SMTP 邮件配置（忘记密码验证码）
     SMTP_HOST: Optional[str] = None
     SMTP_PORT: int = 465

@@ -2,7 +2,7 @@
 
 import type { PhaseKey } from '@/lib/explore/session';
 
-/** Dimension theme colors for gradient blobs - 信念蓝 / 禀赋绿 / 热忱红 / 使命黄 */
+/** Dimension theme colors for gradient blobs - 信念蓝 / 禀赋绿 / 热忱红 / 使命黄 / 沉淀紫 */
 const PHASE_BLOBS: Record<PhaseKey, [string, string, string, string]> = {
   values: [
     'rgba(91, 141, 184, 0.7)',
@@ -27,6 +27,12 @@ const PHASE_BLOBS: Record<PhaseKey, [string, string, string, string]> = {
     'rgba(215, 175, 90, 0.55)',
     'rgba(228, 195, 120, 0.6)',
     'rgba(240, 215, 150, 0.5)',
+  ],
+  rumination: [
+    'rgba(139, 92, 246, 0.7)',
+    'rgba(147, 51, 234, 0.55)',
+    'rgba(167, 139, 250, 0.6)',
+    'rgba(196, 181, 253, 0.5)',
   ],
 };
 

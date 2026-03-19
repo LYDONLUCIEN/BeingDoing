@@ -1,14 +1,17 @@
 """
 对话记录文件管理器
 对话记录使用JSON文件存储，不存数据库表
+
+并发：按 (report_id, category) 即按文件加锁，避免同一 thread 多请求并发写导致消息丢失。
 """
+import asyncio
 import json
-import os
 from pathlib import Path
-from typing import List, Dict, Optional  # Optional used for base_dir
+from typing import Any, Callable, Dict, List, Optional
 from datetime import datetime
 from enum import Enum
 import aiofiles
+from filelock import FileLock
 
 from app.utils.data_paths import get_conversation_dir
 
@@ -44,7 +47,32 @@ class ConversationFileManager:
         """获取文件路径"""
         session_dir = self._get_session_dir(session_id)
         return session_dir / f"{category}.json"
-    
+
+    def _get_lock_path(self, file_path: Path) -> Path:
+        """锁文件路径（与数据文件同目录）"""
+        return file_path.with_suffix(file_path.suffix + ".lock")
+
+    async def _with_file_lock(
+        self,
+        session_id: str,
+        category: str,
+        fn: Callable[[Path], Any],
+    ) -> Any:
+        """
+        在文件锁保护下执行 fn(file_path)。
+        锁粒度：按 (session_id, category) 即按文件，不同 report/thread 互不阻塞。
+        """
+        file_path = self._get_file_path(session_id, category)
+        lock_path = self._get_lock_path(file_path)
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+
+        def _do():
+            file_lock = FileLock(str(lock_path), timeout=30)
+            with file_lock:
+                return fn(file_path)
+
+        return await asyncio.to_thread(_do)
+
     async def append_message(
         self,
         session_id: str,
@@ -52,79 +80,57 @@ class ConversationFileManager:
         message: Dict
     ) -> Dict:
         """
-        添加消息到对话记录（异步）
-        
-        Args:
-            session_id: 会话ID
-            category: 对话分类（字符串）
-            message: 消息字典（必须包含role, content, created_at）
-        
-        Returns:
-            添加的消息字典
+        添加消息到对话记录（异步）。使用文件锁保证同一 thread 并发写不丢失。
         """
-        file_path = self._get_file_path(session_id, category)
-        
-        # 确保消息包含created_at
         if "created_at" not in message:
             message["created_at"] = datetime.utcnow().isoformat() + "Z"
-        
-        try:
-            # 读取现有文件
-            async with aiofiles.open(file_path, mode='r', encoding='utf-8') as f:
-                content = await f.read()
-                data = json.loads(content)
-        except FileNotFoundError:
-            # 文件不存在，创建新文件
-            data = {
-                "session_id": session_id,
-                "category": category,
-                "messages": [],
-                "metadata": {
-                    "created_at": datetime.utcnow().isoformat() + "Z",
-                    "updated_at": datetime.utcnow().isoformat() + "Z"
-                }
-            }
-        except json.JSONDecodeError:
-            # 文件损坏，重新创建
-            data = {
-                "session_id": session_id,
-                "category": category,
-                "messages": [],
-                "metadata": {
-                    "created_at": datetime.utcnow().isoformat() + "Z",
-                    "updated_at": datetime.utcnow().isoformat() + "Z"
-                }
-            }
-        
-        # 统一 message_id / id
-        if "message_id" not in message:
-            if "id" in message and message.get("id"):
-                message["message_id"] = str(message["id"])
-            else:
-                message["message_id"] = f"msg_{len(data.get('messages', [])) + 1}"
-        if "id" not in message or not message.get("id"):
-            message["id"] = message["message_id"]
 
-        # 常用结构字段，便于后续按 report/message 做检索
-        if "agent_id" not in message:
-            message["agent_id"] = "coach" if message.get("role") == "assistant" else None
-        if "event" not in message:
-            message["event"] = "assistant_reply" if message.get("role") == "assistant" else "user_message"
-        
-        # 添加消息
-        if "messages" not in data:
-            data["messages"] = []
-        data["messages"].append(message)
-        
-        # 更新元数据
-        data["metadata"]["updated_at"] = datetime.utcnow().isoformat() + "Z"
-        data["metadata"]["total_messages"] = len(data["messages"])
-        
-        # 保存文件
-        async with aiofiles.open(file_path, mode='w', encoding='utf-8') as f:
-            await f.write(json.dumps(data, indent=2, ensure_ascii=False))
-        
-        return message
+        def _do_append(fp: Path) -> Dict:
+            try:
+                with open(fp, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except FileNotFoundError:
+                data = {
+                    "session_id": session_id,
+                    "category": category,
+                    "messages": [],
+                    "metadata": {
+                        "created_at": datetime.utcnow().isoformat() + "Z",
+                        "updated_at": datetime.utcnow().isoformat() + "Z"
+                    }
+                }
+            except json.JSONDecodeError:
+                data = {
+                    "session_id": session_id,
+                    "category": category,
+                    "messages": [],
+                    "metadata": {
+                        "created_at": datetime.utcnow().isoformat() + "Z",
+                        "updated_at": datetime.utcnow().isoformat() + "Z"
+                    }
+                }
+
+            if "message_id" not in message:
+                message["message_id"] = f"msg_{len(data.get('messages', [])) + 1}"
+            if "id" not in message or not message.get("id"):
+                message["id"] = message["message_id"]
+            if "agent_id" not in message:
+                message["agent_id"] = "coach" if message.get("role") == "assistant" else None
+            if "event" not in message:
+                message["event"] = "assistant_reply" if message.get("role") == "assistant" else "user_message"
+
+            if "messages" not in data:
+                data["messages"] = []
+            data["messages"].append(message)
+            data["metadata"]["updated_at"] = datetime.utcnow().isoformat() + "Z"
+            data["metadata"]["total_messages"] = len(data["messages"])
+
+            fp.parent.mkdir(parents=True, exist_ok=True)
+            with open(fp, "w", encoding="utf-8") as f:
+                f.write(json.dumps(data, indent=2, ensure_ascii=False))
+            return message
+
+        return await self._with_file_lock(session_id, category, _do_append)
     
     async def get_conversation_data(
         self,
@@ -156,18 +162,22 @@ class ConversationFileManager:
         category: str,
         updates: Dict,
     ) -> None:
-        """更新指定对话的 metadata，合并 updates 到现有 metadata"""
-        file_path = self._get_file_path(session_id, category)
-        try:
-            async with aiofiles.open(file_path, mode='r', encoding='utf-8') as f:
-                data = json.loads(await f.read())
-        except (FileNotFoundError, json.JSONDecodeError):
-            return
-        meta = data.setdefault("metadata", {})
-        meta.update(updates)
-        meta["updated_at"] = datetime.utcnow().isoformat() + "Z"
-        async with aiofiles.open(file_path, mode='w', encoding='utf-8') as f:
-            await f.write(json.dumps(data, indent=2, ensure_ascii=False))
+        """更新指定对话的 metadata，合并 updates 到现有 metadata。使用文件锁。"""
+
+        def _do_update(fp: Path) -> None:
+            try:
+                with open(fp, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError):
+                return
+            meta = data.setdefault("metadata", {})
+            meta.update(updates)
+            meta["updated_at"] = datetime.utcnow().isoformat() + "Z"
+            fp.parent.mkdir(parents=True, exist_ok=True)
+            with open(fp, "w", encoding="utf-8") as f:
+                f.write(json.dumps(data, indent=2, ensure_ascii=False))
+
+        await self._with_file_lock(session_id, category, _do_update)
 
     async def get_messages(
         self,

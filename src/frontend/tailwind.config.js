@@ -81,6 +81,7 @@ module.exports = {
           'phase-strengths': 'var(--bd-phase-strengths, var(--bd-accent-3))',
           'phase-interests': 'var(--bd-phase-interests, var(--bd-accent-2))',
           'phase-purpose':   'var(--bd-phase-purpose, var(--bd-accent-warn))',
+          'phase-rumination':'var(--bd-phase-rumination, var(--bd-phase-report))',
           'phase-report':    'var(--bd-phase-report, var(--bd-accent-1))',
         },
       },

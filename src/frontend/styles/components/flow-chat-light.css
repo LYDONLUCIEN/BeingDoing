@@ -41,6 +41,11 @@
   --flow-dot: var(--flow-target);
   --flow-ai-border: var(--flow-target);
 }
+.flow-light[data-phase="rumination"] {
+  --flow-bg: #F5F3FA;
+  --flow-dot: #8B5CF6;
+  --flow-ai-border: #8B5CF6;
+}
 .flow-light {
   --flow-bg: #F7F4EE;
   --flow-dot: var(--flow-guide);
@@ -125,10 +130,11 @@
 .flow-light .flow-msg-ai-content::after {
   content: none;
 }
-.flow-light .flow-msg-ai-content.values   { border-left-color: var(--flow-values); }
-.flow-light .flow-msg-ai-content.strength { border-left-color: var(--flow-strength); }
-.flow-light .flow-msg-ai-content.interest { border-left-color: var(--flow-interest); }
-.flow-light .flow-msg-ai-content.purpose  { border-left-color: var(--flow-target); }
+.flow-light .flow-msg-ai-content.values     { border-left-color: var(--flow-values); }
+.flow-light .flow-msg-ai-content.strength   { border-left-color: var(--flow-strength); }
+.flow-light .flow-msg-ai-content.interest   { border-left-color: var(--flow-interest); }
+.flow-light .flow-msg-ai-content.purpose    { border-left-color: var(--flow-target); }
+.flow-light .flow-msg-ai-content.rumination { border-left-color: #8B5CF6; }
 
 .flow-light .flow-msg-ai-content .message-content,
 .flow-light .flow-msg-ai-content [data-color-mode],

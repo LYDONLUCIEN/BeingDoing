@@ -656,6 +656,224 @@ def _load_report_step_session(report_id: str, step_id: str, session_id: str) -> 
         return None
 
 
+def _save_report_step_session(report_id: str, step_id: str, session_id: str, data: dict) -> None:
+    """写入 report step session 对话文件"""
+    registry = ReportRegistry()
+    file = registry.get_step_session_file(report_id, step_id, session_id)
+    file.parent.mkdir(parents=True, exist_ok=True)
+    file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+class ConversationCloneRequest(BaseModel):
+    source_report_id: str
+    source_phase: str
+    source_thread_id: str
+    target_activation_code: str
+    target_phase: str
+    target_thread_id: Optional[str] = None
+
+
+class JumpToRuminationRequest(BaseModel):
+    activation_code: str
+    target_section: str = "opening"
+    target_filter_step: Optional[int] = None
+    seed_table: Optional[dict] = None
+
+
+class ApplyMockRequest(BaseModel):
+    activation_code: str
+
+
+class SaveAsMockRequest(BaseModel):
+    activation_code: Optional[str] = None
+    report_id: Optional[str] = None
+
+
+@router.get("/conversations/mock-info")
+async def get_mock_info(current_user: Optional[dict] = Depends(get_current_user)):
+    """获取 Admin Mock 数据信息"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    from app.utils.admin_mock import get_mock_info as _get
+    return {"code": 200, "message": "success", "data": _get()}
+
+
+@router.post("/conversations/init-mock")
+async def init_mock(current_user: Optional[dict] = Depends(get_current_user)):
+    """强制初始化 mock 数据（覆盖为默认模板），供 rumination 测试"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    from app.utils.admin_mock import init_mock_force
+    return {"code": 200, "message": "success", "data": init_mock_force()}
+
+
+@router.post("/conversations/apply-mock-to-activation")
+async def apply_mock_to_activation(
+    request: ApplyMockRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """将 mock 数据应用到指定激活码，满足进入 rumination 等阶段的前置要求"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    from app.utils.admin_mock import apply_mock_to_activation as _apply
+    try:
+        registry = ReportRegistry()
+        result = _apply(request.activation_code.strip().upper(), registry)
+        return {"code": 200, "message": "success", "data": result}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/conversations/save-as-mock")
+async def save_as_mock(
+    request: SaveAsMockRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """将指定 report 的 prior 数据保存为 mock，可用 data 中历史数据替换"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    from app.utils.admin_mock import save_report_as_mock
+    try:
+        result = save_report_as_mock(
+            activation_code=request.activation_code.strip().upper() if request.activation_code else None,
+            report_id=request.report_id,
+        )
+        return {"code": 200, "message": "success", "data": result}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/conversations/clone")
+async def clone_conversation(
+    request: ConversationCloneRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """
+    克隆会话：将源对话内容复制到目标 activation 的对应 phase。
+    仅 super_admin 可访问。
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+
+    registry = ReportRegistry()
+    manager = SimpleActivationManager()
+    reports_root = get_simple_base_dir() / "reports"
+
+    src_file = reports_root / request.source_report_id / f"{request.source_phase}__{request.source_thread_id}.json"
+    if not src_file.is_file():
+        raise HTTPException(status_code=404, detail="源会话不存在")
+
+    rec = manager.get_activation(request.target_activation_code.strip().upper())
+    if not rec:
+        raise HTTPException(status_code=404, detail="目标激活码不存在")
+
+    user_id = (current_user or {}).get("user_id") or f"unknown:{rec.code}"
+    target_report = registry.ensure_report(
+        activation_code=rec.code,
+        user_id=user_id,
+        session_id=rec.session_id,
+    )
+    target_report_id = target_report.get("report_id")
+    if not target_report_id:
+        raise HTTPException(status_code=500, detail="目标报告初始化失败")
+
+    target_thread_id = (request.target_thread_id or "").strip()
+    if not target_thread_id:
+        import uuid
+        target_thread_id = str(uuid.uuid4())
+
+    try:
+        data = json.loads(src_file.read_text(encoding="utf-8") or "{}")
+    except (OSError, json.JSONDecodeError):
+        raise HTTPException(status_code=500, detail="源会话文件读取失败")
+
+    _save_report_step_session(
+        target_report_id,
+        ReportRegistry.normalize_step_id(request.target_phase),
+        target_thread_id,
+        data,
+    )
+    registry.bind_session(target_report_id, request.target_phase, target_thread_id)
+
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "target_report_id": target_report_id,
+            "target_phase": request.target_phase,
+            "target_thread_id": target_thread_id,
+        },
+    }
+
+
+@router.post("/conversations/jump-to-rumination")
+async def jump_to_rumination(
+    request: JumpToRuminationRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """
+    跳步到 Rumination：设置进度并可选注入种子消息，供调试使用。
+    仅 super_admin 可访问。
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+
+    manager = SimpleActivationManager()
+    registry = ReportRegistry()
+    rec = manager.get_activation(request.activation_code.strip().upper())
+    if not rec:
+        raise HTTPException(status_code=404, detail="激活码不存在")
+
+    user_id = (current_user or {}).get("user_id") or f"unknown:{rec.code}"
+    report = registry.ensure_report(
+        activation_code=rec.code,
+        user_id=user_id,
+        session_id=rec.session_id,
+    )
+    report_id = report.get("report_id")
+    if not report_id:
+        raise HTTPException(status_code=500, detail="报告初始化失败")
+
+    # 使用 mock 数据预填未完成阶段（含 prior context），避免 init 报 400
+    try:
+        from app.utils.admin_mock import apply_mock_to_activation as _apply_mock
+        _apply_mock(request.activation_code.strip().upper(), registry)
+    except ValueError:
+        pass  # 激活码无 report 等，回退到原有逻辑
+    except Exception:
+        # 回退：仅预填 steps
+        placeholder = rec.session_id or str(report_id)
+        record = registry.get_report_by_id(report_id)
+        if record:
+            for step in ("values", "strengths", "interests", "purpose"):
+                st = (record.get("steps") or {}).get(step, {})
+                if st.get("selected_session_id"):
+                    continue
+                try:
+                    registry.bind_session(report_id, step, placeholder)
+                    registry.select_session(report_id, step, placeholder)
+                    registry.lock_step(report_id, step)
+                except ValueError:
+                    pass
+
+    from app.utils.rumination_progress import save_rumination_progress
+
+    reports_root = get_simple_base_dir() / "reports"
+    progress = save_rumination_progress(
+        reports_root,
+        report_id,
+        main_section=request.target_section,
+        filter_step=request.target_filter_step or 0,
+        filter_table=request.seed_table,
+    )
+
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {"progress": progress, "activation_code": rec.code},
+    }
+
+
 @router.get("/conversations")
 async def list_conversations(
     q: Optional[str] = None,

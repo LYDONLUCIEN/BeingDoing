@@ -8,6 +8,8 @@ import FlowAiMessage from '@/components/explore/FlowAiMessage';
 import DimensionConclusionCard, { type DimensionConclusionData } from '@/components/explore/DimensionConclusionCard';
 import ChatPhaseBackground from '@/components/explore/ChatPhaseBackground';
 import ChatPhaseSidebar from '@/components/explore/ChatPhaseSidebar';
+import RuminationSectionProgress from '@/components/explore/RuminationSectionProgress';
+import RuminationTableWidget from '@/components/explore/RuminationTableWidget';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { apiClient } from '@/lib/api/client';
 import {
@@ -30,29 +32,16 @@ import {
   type ChatThread,
   type ThreadMessage,
 } from '@/lib/explore/threads';
+import { ruminationApi } from '@/lib/api/rumination';
+import { useLocale } from '@/hooks/useLocale';
 
-// Phase metadata
-const PHASE_META: Record<PhaseKey, { color: string; desc: string; hint: string }> = {
-  values: {
-    color: 'text-bd-phase-values',
-    desc: '探索你最深层的信念。什么对你最重要？哪些原则是你绝不妥协的？',
-    hint: '这一步帮你发现5个核心价值观关键词。',
-  },
-  strengths: {
-    color: 'text-bd-phase-strengths',
-    desc: '探索你的天赋与禀赋。有些事你做起来不费力，却让别人惊叹。',
-    hint: '这一步帮你发现10件真正擅长的事。',
-  },
-  interests: {
-    color: 'text-bd-phase-interests',
-    desc: '探索你的热忱。什么话题让你停不下来？什么场景让时间消失？',
-    hint: '这一步帮你找到真正让你忘我的事。',
-  },
-  purpose: {
-    color: 'text-bd-phase-purpose',
-    desc: '探索你的使命。你想为谁而做？你希望在这个世界留下什么？',
-    hint: '这一步帮你找到职业背后更深的驱动力。',
-  },
+// Phase metadata (color only; desc/hint come from i18n)
+const PHASE_COLORS: Record<PhaseKey, string> = {
+  values: 'text-bd-phase-values',
+  strengths: 'text-bd-phase-strengths',
+  interests: 'text-bd-phase-interests',
+  purpose: 'text-bd-phase-purpose',
+  rumination: 'text-bd-phase-rumination',
 };
 
 const BACKEND_PHASE: Record<PhaseKey, string> = {
@@ -60,11 +49,13 @@ const BACKEND_PHASE: Record<PhaseKey, string> = {
   strengths: 'strengths',
   interests: 'interests',
   purpose: 'purpose',
+  rumination: 'rumination',
 };
 
 export default function ChatPhasePage() {
   const router = useRouter();
   const params = useParams();
+  const { t } = useLocale();
   const phase = (params.phase as string) as PhaseKey;
 
   const [session, setSession] = useState<ExploreSession | null>(null);
@@ -85,8 +76,13 @@ export default function ChatPhasePage() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const phaseMeta = PHASE_META[phase];
+  const phaseMeta = {
+    color: PHASE_COLORS[phase],
+    desc: t(`explore.chat.phaseMeta.${phase}.desc`),
+    hint: t(`explore.chat.phaseMeta.${phase}.hint`),
+  };
   const phaseInfo = PHASES.find((p) => p.key === phase);
+  const phaseLabel = t(`explore.chat.phaseLabels.${phase}`);
 
   // Auth & redirect
   useEffect(() => {
@@ -193,12 +189,20 @@ export default function ChatPhasePage() {
               saveSession({ ...s, sessionId: sessId });
             }
             if (!cancelled && history.length > 0) {
-              const baseMsgs: ThreadMessage[] = history.map((m, i) => ({
-                id: `h_${i}_${m.id ?? i}`,
-                role: m.role as 'user' | 'assistant',
-                content: m.content ?? '',
-                createdAt: m.created_at ? new Date(m.created_at).getTime() : undefined,
-              }));
+              const baseMsgs: ThreadMessage[] = history.map((m, i) => {
+                const role = (m.role === 'table_widget' ? 'assistant' : m.role) as 'user' | 'assistant';
+                const base: ThreadMessage = {
+                  id: `h_${i}_${m.id ?? i}`,
+                  role,
+                  content: m.content ?? '',
+                  createdAt: m.created_at ? new Date(m.created_at).getTime() : undefined,
+                };
+                if (m.role === 'table_widget' && m.card_payload) {
+                  base.type = 'table_widget';
+                  base.tablePayload = m.card_payload as ThreadMessage['tablePayload'];
+                }
+                return base;
+              });
               const concl = meta.dimension_conclusion as DimensionConclusionData | undefined;
               const msgs =
                 concl && !baseMsgs.some((x) => x.type === 'dimension_conclusion')
@@ -260,12 +264,20 @@ export default function ChatPhasePage() {
             saveSession({ ...s, sessionId: sessId });
           }
           if (!cancelled && history.length > 0 && firstId) {
-            const baseMsgs: ThreadMessage[] = history.map((m, i) => ({
-              id: `h_${i}_${m.id ?? i}`,
-              role: m.role as 'user' | 'assistant',
-              content: m.content ?? '',
-              createdAt: m.created_at ? new Date(m.created_at).getTime() : undefined,
-            }));
+            const baseMsgs: ThreadMessage[] = history.map((m, i) => {
+              const role = (m.role === 'table_widget' ? 'assistant' : m.role) as 'user' | 'assistant';
+              const base: ThreadMessage = {
+                id: `h_${i}_${m.id ?? i}`,
+                role,
+                content: m.content ?? '',
+                createdAt: m.created_at ? new Date(m.created_at).getTime() : undefined,
+              };
+              if (m.role === 'table_widget' && m.card_payload) {
+                base.type = 'table_widget';
+                base.tablePayload = m.card_payload as ThreadMessage['tablePayload'];
+              }
+              return base;
+            });
             const concl = meta.dimension_conclusion as DimensionConclusionData | undefined;
             const msgs =
               concl && !baseMsgs.some((x) => x.type === 'dimension_conclusion')
@@ -448,6 +460,18 @@ export default function ChatPhasePage() {
               };
               setMessages((prev) => [...prev, conclMsg]);
             }
+            if (payload.table_widget) {
+              const tablePayload = payload.table_widget as ThreadMessage['tablePayload'];
+              const tableMsg: ThreadMessage = {
+                id: `table_${Date.now()}`,
+                role: 'assistant',
+                content: '',
+                type: 'table_widget',
+                tablePayload: tablePayload ?? undefined,
+                createdAt: Date.now(),
+              };
+              setMessages((prev) => [...prev, tableMsg]);
+            }
             if (payload.done && payload.response != null) {
               fullReply = payload.response;
               const doneAt = Date.now();
@@ -629,11 +653,49 @@ export default function ChatPhasePage() {
 
   const handleStopStream = () => abortControllerRef.current?.abort();
 
+  const handleTableConfirm = useCallback(
+    async (_msgId: string, payload: { step?: number }, rows: Record<string, unknown>[]) => {
+      if (!activationCode || !activeThreadId || phase !== 'rumination' || sending) return;
+      try {
+        const res = await ruminationApi.submitTable(
+          activationCode,
+          activeThreadId,
+          payload.step ?? 1,
+          rows as Record<string, unknown>[]
+        );
+        const nextTable = (res?.data as { next_table_widget?: ThreadMessage['tablePayload'] })
+          ?.next_table_widget;
+        if (nextTable) {
+          const tableMsg: ThreadMessage = {
+            id: `table_${Date.now()}`,
+            role: 'assistant',
+            content: '',
+            type: 'table_widget',
+            tablePayload: nextTable,
+            createdAt: Date.now(),
+          };
+          setMessages((prev) => [...prev, tableMsg]);
+        }
+        handleSend('我已确认表格，请继续。', false);
+      } catch {
+        setChatError('提交失败，请重试');
+      }
+    },
+    [activationCode, activeThreadId, phase, sending, handleSend]
+  );
+
   if (!session || !phaseMeta || !phaseInfo) return null;
 
-  const dimName = { values: '信念', strengths: '禀赋', interests: '热忱', purpose: '使命' }[phase];
-  const phaseClass: 'values' | 'strength' | 'interest' | 'purpose' =
-    phase === 'values' ? 'values' : phase === 'strengths' ? 'strength' : phase === 'interests' ? 'interest' : 'purpose';
+  const phaseClass =
+    phase === 'values'
+      ? 'values'
+      : phase === 'strengths'
+        ? 'strength'
+        : phase === 'interests'
+          ? 'interest'
+          : phase === 'purpose'
+            ? 'purpose'
+            : 'rumination';
 
   return (
     <div className="flow-light h-screen flex flex-col overflow-hidden" data-phase={phase}>
@@ -641,7 +703,7 @@ export default function ChatPhasePage() {
       <div className="flex-1 flex min-h-0 relative z-10 pt-14 overflow-hidden">
         <ChatPhaseSidebar
           phase={phase}
-          phaseLabel={dimName}
+          phaseLabel={phaseLabel}
           threads={threads}
           activeThreadId={activeThreadId}
           onSelectThread={handleSelectThread}
@@ -650,39 +712,40 @@ export default function ChatPhasePage() {
           canNewChat={threads.length < 5}
         />
         <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
-          <header className="flex-shrink-0 backdrop-blur border-b border-black/[0.05] bg-white/70 px-6 py-4 flex items-center justify-between">
-            <h1 className={`text-lg font-semibold ${phaseMeta.color}`}>
-              {phaseInfo.num} {phaseInfo.label}
-            </h1>
-            <button
-              type="button"
-              onClick={handleCompleteAndContinue}
-              disabled={!canContinue}
-              title={!canContinue ? '请选中一个已完成的对话' : ''}
-              className={`px-5 py-2 rounded-full text-sm font-medium transition-all ${
-                canContinue ? 'bg-bd-ui-accent text-white' : 'opacity-50 cursor-not-allowed bg-neutral-300'
-              }`}
-            >
-              完成并继续 <ChevronRight size={14} className="inline" />
-            </button>
+          <header className="flex-shrink-0 backdrop-blur border-b border-black/[0.05] bg-white/70 px-6 py-4">
+            <div className="flex items-start justify-between gap-4 max-w-4xl mx-auto">
+              <div className="flex-1 min-w-0">
+                <h1 className={`text-lg font-semibold ${phaseMeta.color}`}>
+                  {phaseInfo.num} {phaseLabel}
+                </h1>
+                <p className="text-sm text-neutral-600 leading-relaxed mt-1">
+                  {phaseMeta.desc} {phaseMeta.hint}
+                </p>
+                {phase === 'rumination' && activationCode && (
+                  <RuminationSectionProgress activationCode={activationCode} className="mt-2" />
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={handleCompleteAndContinue}
+                disabled={!canContinue}
+                title={!canContinue ? t('explore.chat.selectCompletedHint') : ''}
+                className={`flex-shrink-0 px-5 py-2 rounded-full text-sm font-medium transition-all ${
+                  canContinue ? 'bg-bd-ui-accent text-white' : 'opacity-50 cursor-not-allowed bg-neutral-300'
+                }`}
+              >
+                {t('explore.chat.completeAndContinue')} <ChevronRight size={14} className="inline" />
+              </button>
+            </div>
           </header>
 
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden px-6 py-4">
-            <motion.div
-              key={phase}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="space-y-1 flex-shrink-0 mb-3 max-w-3xl mx-auto w-full"
-            >
-              <p className="text-sm text-neutral-600 leading-relaxed">{phaseMeta.desc}</p>
-              <p className="text-xs text-neutral-500 italic">{phaseMeta.hint}</p>
-            </motion.div>
             {/* 全宽对话区：滚动条贴右侧，消息气泡浮在背景之上 */}
             <div className="flow-chat-box flex-1 min-h-0 min-w-0 flex flex-col relative">
               <div ref={chatBodyRef} className="flow-chat-body flex-1 min-h-0 overflow-y-auto">
                 <div className="flow-dimension-label">
                   <span className="flow-dimension-dot" />
-                  正在探索 · {dimName}维度
+                  {t('explore.chat.exploringWithDim', { dim: phaseLabel })}
                 </div>
 
                 {initLoading ? (
@@ -699,11 +762,21 @@ export default function ChatPhasePage() {
                     </div>
                   </div>
                 ) : messages.length === 0 ? (
-                  <p className="flow-progress-text text-center py-8 text-sm">正在准备第一个问题…</p>
+                  <p className="flow-progress-text text-center py-8 text-sm">{t('explore.chat.preparingFirstQuestion')}</p>
                 ) : (
                   messages.map((m, idx) => (
                     <div key={m.id} className={m.role === 'user' || m.type === 'dimension_conclusion' ? (m.role === 'user' ? 'flow-msg-user' : '') : ''}>
-                      {m.type === 'dimension_conclusion' && m.conclusionData ? (
+                      {m.type === 'table_widget' && m.tablePayload ? (
+                        <div className="flow-msg-table-wrap my-3">
+                          <RuminationTableWidget
+                            payload={m.tablePayload}
+                            onConfirm={(rows) =>
+                              handleTableConfirm(m.id, m.tablePayload!, rows)
+                            }
+                            disabled={sending}
+                          />
+                        </div>
+                      ) : m.type === 'dimension_conclusion' && m.conclusionData ? (
                         <div className="flow-msg-conclusion-wrap">
                           <DimensionConclusionCard
                             phase={phaseClass}
@@ -813,10 +886,10 @@ export default function ChatPhasePage() {
                     }}
                     placeholder={
                       isReadOnly
-                        ? '此对话已完成'
+                        ? t('explore.chat.placeholderReadOnly')
                         : hasCollapsedConclusion
-                          ? '继续完善，说说你想补充或深化的…'
-                          : '说说你的想法...'
+                          ? t('explore.chat.placeholderRefine')
+                          : t('explore.chat.placeholder')
                     }
                     rows={1}
                     disabled={sending || isReadOnly}
@@ -837,7 +910,7 @@ export default function ChatPhasePage() {
               </form>
             </div>
             <div className="pt-2">
-              <p className="text-xs text-neutral-500">对话记录自动保存</p>
+              <p className="text-xs text-neutral-500">{t('explore.chat.autoSave')}</p>
             </div>
           </div>
         </div>

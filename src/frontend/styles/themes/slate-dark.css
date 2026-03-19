@@ -48,6 +48,8 @@
   --bd-phase-interests-dim: rgba(251,113,133,0.15);
   --bd-phase-purpose:   var(--bd-accent-warn);
   --bd-phase-purpose-dim:  rgba(251,191,36,0.15);
+  --bd-phase-rumination:   #a78bfa;
+  --bd-phase-rumination-dim: rgba(139,92,246,0.15);
   --bd-phase-report:    var(--bd-accent-1);
   --bd-accent-warn:     #fbbf24;
   --bd-accent-err:      #f87171;

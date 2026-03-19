@@ -93,9 +93,13 @@ def save_prior_context(session_id: str, phase: str, text: str, base_dir: str) ->
     (session_dir / filename).write_text(text, encoding="utf-8")
 
 
+PRIOR_CONTEXT_MAX_CHARS = 2000
+
+
 def load_prior_context(session_id: str, phase: str, base_dir: str) -> str:
     """
     加载某阶段的上一轮咨询结果文本。
+    总长度超过 PRIOR_CONTEXT_MAX_CHARS 时截断，避免 prompt 过长。
 
     默认加载规则：
       - strengths 阶段 → 先查 prior_context_strengths.txt；
@@ -111,11 +115,12 @@ def load_prior_context(session_id: str, phase: str, base_dir: str) -> str:
     path = session_dir / filename
     if path.exists():
         try:
-            return path.read_text(encoding="utf-8").strip()
+            text = path.read_text(encoding="utf-8").strip()
+            return _truncate_prior_context(text)
         except OSError:
             return ""
 
-    # purpose 阶段 → 合并所有前序阶段的 prior context
+    # purpose 阶段 → 合并 values, strengths, interests
     if phase == "purpose":
         parts: List[str] = []
         for prev_phase in ("values", "strengths", "interests"):
@@ -128,9 +133,33 @@ def load_prior_context(session_id: str, phase: str, base_dir: str) -> str:
                 except OSError:
                     pass
         if parts:
-            return "\n\n".join(parts)
+            return _truncate_prior_context("\n\n".join(parts))
+
+    # rumination 阶段 → 合并 values, strengths, interests, purpose
+    if phase == "rumination":
+        phase_labels = {"values": "信念", "strengths": "禀赋", "interests": "热忱", "purpose": "使命"}
+        parts = []
+        for prev_phase in ("values", "strengths", "interests", "purpose"):
+            prev_path = session_dir / _PRIOR_CONTEXT_FILENAME.format(phase=prev_phase)
+            if prev_path.exists():
+                try:
+                    text = prev_path.read_text(encoding="utf-8").strip()
+                    if text:
+                        label = phase_labels.get(prev_phase, prev_phase)
+                        parts.append(f"【{label} 阶段结果】\n{text}")
+                except OSError:
+                    pass
+        if parts:
+            return _truncate_prior_context("\n\n".join(parts))
 
     return ""
+
+
+def _truncate_prior_context(text: str) -> str:
+    """截断 prior context，避免 prompt 过长"""
+    if not text or len(text) <= PRIOR_CONTEXT_MAX_CHARS:
+        return text
+    return text[:PRIOR_CONTEXT_MAX_CHARS] + "\n\n[... 内容已截断 ...]"
 
 
 def format_basic_info_for_prompt(data: Optional[Dict[str, Any]]) -> str:

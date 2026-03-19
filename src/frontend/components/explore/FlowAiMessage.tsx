@@ -6,7 +6,7 @@ import MessageContent from './MessageContent';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { recordLike } from '@/lib/api/analytics';
 
-type PhaseClass = 'values' | 'strength' | 'interest' | 'purpose';
+type PhaseClass = 'values' | 'strength' | 'interest' | 'purpose' | 'rumination';
 
 function formatMessageTime(ms: number): string {
   const d = new Date(ms);

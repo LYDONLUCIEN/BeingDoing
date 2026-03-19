@@ -92,7 +92,9 @@ class ReportRegistry:
             return None
         if not isinstance(data, dict):
             return None
-        return self._normalize_record(data)
+        rec = self._normalize_record(data)
+        rec.setdefault("report_id", report_id)  # 确保旧格式 record 也有 report_id
+        return rec
 
     def _normalize_record(self, data: dict) -> dict:
         steps = data.setdefault("steps", {})
@@ -253,6 +255,20 @@ class ReportRegistry:
 
     def get_step_session_file(self, report_id: str, step_id: str, session_id: str) -> Path:
         return self._step_session_file(report_id, self.normalize_step_id(step_id), session_id)
+
+    def update_step_anchor_summary(self, report_id: str, step_id: str, anchor: dict) -> bool:
+        """更新指定阶段的锚点摘要"""
+        sid = self.normalize_step_id(step_id)
+        if sid not in STEP_IDS or sid == "rumination":
+            return False
+        record = self._load_record(report_id)
+        if not record:
+            return False
+        step = record["steps"][sid]
+        step["anchor_summary"] = anchor
+        step["anchor_updated_at"] = self._now_iso()
+        self._save_record(record)
+        return True
 
     def list_reports(self) -> List[dict]:
         return self._iter_records()

@@ -12,7 +12,7 @@ export interface DimensionConclusionData {
 }
 
 interface DimensionConclusionCardProps {
-  phase: 'values' | 'strength' | 'interest' | 'purpose';
+  phase: 'values' | 'strength' | 'interest' | 'purpose' | 'rumination';
   data: DimensionConclusionData;
   isCompleted?: boolean;
   /** 是否作为聊天记录内联展示（可折叠） */
@@ -32,6 +32,7 @@ const phaseBorderClass: Record<string, string> = {
   strength: 'flow-msg-ai-content strength',
   interest: 'flow-msg-ai-content interest',
   purpose: 'flow-msg-ai-content purpose',
+  rumination: 'flow-msg-ai-content rumination',
 };
 
 export default function DimensionConclusionCard({

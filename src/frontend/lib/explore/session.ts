@@ -3,13 +3,14 @@
  * Persisted in localStorage keyed by activation_code.
  */
 
-export type PhaseKey = 'values' | 'strengths' | 'interests' | 'purpose';
+export type PhaseKey = 'values' | 'strengths' | 'interests' | 'purpose' | 'rumination';
 
 export const PHASES: { key: PhaseKey; label: string; color: string; num: string }[] = [
   { key: 'values',    label: '信念',  color: 'blue',    num: '01' },
   { key: 'strengths', label: '禀赋',  color: 'amber',   num: '02' },
   { key: 'interests', label: '热忱',  color: 'rose',    num: '03' },
   { key: 'purpose',   label: '使命',  color: 'emerald', num: '04' },
+  { key: 'rumination', label: '沉淀', color: 'violet',  num: '05' },
 ];
 
 export interface ExploreSession {
@@ -23,9 +24,9 @@ export interface ExploreSession {
   sessionId?: string;
 }
 
-/** 检查是否有可查看的报告（完成全部四阶段探索） */
+/** 检查是否有可查看的报告（完成全部五阶段探索，含沉淀） */
 export function hasReportAvailable(session: ExploreSession): boolean {
-  return session.unlockedPhases.includes('purpose');
+  return session.unlockedPhases.includes('rumination');
 }
 
 const KEY = (code: string) => `explore_session_${code}`;

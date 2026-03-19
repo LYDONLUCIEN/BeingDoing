@@ -4,33 +4,35 @@ import { useState } from 'react';
 import { MessageSquare, Trash2 } from 'lucide-react';
 import type { PhaseKey } from '@/lib/explore/session';
 import type { ChatThread } from '@/lib/explore/threads';
+import { useLocale } from '@/hooks/useLocale';
 
-function formatLastTime(ms: number): string {
+function formatLastTime(ms: number, t: (k: string, p?: Record<string, string>) => string): string {
   const d = new Date(ms);
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const threadDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const timeStr = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
   if (threadDay.getTime() === today.getTime()) {
-    return `今天 ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+    return t('explore.chat.todayAt', { time: timeStr });
   }
   const diff = (today.getTime() - threadDay.getTime()) / (24 * 60 * 60 * 1000);
-  if (diff < 7) return `${Math.floor(diff)} 天前`;
-  return `${d.getMonth() + 1}月${d.getDate()}日`;
+  if (diff < 7) return t('explore.chat.daysAgo', { n: String(Math.floor(diff)) });
+  return t('explore.chat.monthDay', { m: String(d.getMonth() + 1), d: String(d.getDate()) });
 }
 
 /** 取第一条有内容的对话首行作为标题 */
-function getFirstLinePreview(thread: ChatThread): string {
+function getFirstLinePreview(thread: ChatThread, noContent: string): string {
   for (const m of thread.messages) {
     if (m.type === 'dimension_conclusion' && m.conclusionData?.summary) {
       const s = m.conclusionData.summary.trim().split('\n')[0].replace(/\s+/g, ' ');
-      return s.length > 24 ? s.slice(0, 24) + '…' : s || '暂无内容';
+      return s.length > 24 ? s.slice(0, 24) + '…' : s || noContent;
     }
     if (m.content?.trim()) {
       const s = m.content.trim().split('\n')[0].replace(/\s+/g, ' ');
       return s.length > 24 ? s.slice(0, 24) + '…' : s;
     }
   }
-  return '暂无内容';
+  return noContent;
 }
 
 /** 对话轮数：用户消息数 */
@@ -38,9 +40,9 @@ function getTurnCount(thread: ChatThread): number {
   return thread.messages.filter((m) => m.role === 'user').length;
 }
 
-function getLastMessagePreview(thread: ChatThread): string {
+function getLastMessagePreview(thread: ChatThread, noContent: string): string {
   const last = thread.messages[thread.messages.length - 1];
-  if (!last?.content) return '暂无内容';
+  if (!last?.content) return noContent;
   const s = last.content.trim().replace(/\s+/g, ' ');
   return s.length > 36 ? s.slice(0, 36) + '…' : s;
 }
@@ -72,6 +74,7 @@ export default function ChatPhaseSidebar({
   onDeleteThread,
   canNewChat,
 }: ChatPhaseSidebarProps) {
+  const { t } = useLocale();
   const [deleteTarget, setDeleteTarget] = useState<ChatThread | null>(null);
 
   const handleDeleteClick = (e: React.MouseEvent, thread: ChatThread) => {
@@ -98,7 +101,7 @@ export default function ChatPhaseSidebar({
     >
       <div className="p-5 border-b" style={{ borderColor: 'rgba(0,0,0,0.05)' }}>
         <p className="text-xs font-medium text-[var(--flow-text-muted)] mb-3 tracking-wider">
-          {phaseLabel} · 对话列表
+          {phaseLabel} · {t('explore.chat.threadList')}
         </p>
         <button
           type="button"
@@ -110,26 +113,28 @@ export default function ChatPhaseSidebar({
             boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
           }}
         >
-          + 新建对话
+          + {t('explore.chat.sidebarNewChat')}
         </button>
         {!canNewChat && (
-          <p className="text-[10px] text-[var(--flow-text-muted)] mt-2">已达上限（最多 5 个）</p>
+          <p className="text-[10px] text-[var(--flow-text-muted)] mt-2">{t('explore.chat.sidebarMaxReached')}</p>
         )}
       </div>
       <div className="flow-sidebar-threads flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4">
         <div className="space-y-2">
           {threads.length === 0 && (
-            <p className="text-xs text-[var(--flow-text-muted)] py-4 text-center">暂无对话，点击上方新建</p>
+            <p className="text-xs text-[var(--flow-text-muted)] py-4 text-center">{t('explore.chat.sidebarNoThreads')}</p>
           )}
-          {threads.map((t, i) => {
-            const isActive = t.id === activeThreadId;
-            const lastTime = getLastMessageTime(t);
-            const title = getFirstLinePreview(t);
-            const turnCount = getTurnCount(t);
-            const preview = getLastMessagePreview(t);
+          {threads.map((thread) => {
+            const isActive = thread.id === activeThreadId;
+            const lastTime = getLastMessageTime(thread);
+            const noContent = t('explore.chat.noContent');
+            const title = getFirstLinePreview(thread, noContent);
+            const turnCount = getTurnCount(thread);
+            const preview = getLastMessagePreview(thread, noContent);
+            const lastTimeStr = lastTime ? formatLastTime(lastTime, t) : '';
             return (
               <div
-                key={t.id}
+                key={thread.id}
                 className={`group relative w-full text-left px-4 py-3 rounded-xl transition-all cursor-pointer ${
                   isActive ? 'shadow-md scale-[1.02]' : 'hover:opacity-90'
                 }`}
@@ -139,8 +144,8 @@ export default function ChatPhaseSidebar({
                 }}
                 role="button"
                 tabIndex={0}
-                onClick={() => onSelectThread(t)}
-                onKeyDown={(e) => e.key === 'Enter' && onSelectThread(t)}
+                onClick={() => onSelectThread(thread)}
+                onKeyDown={(e) => e.key === 'Enter' && onSelectThread(thread)}
               >
                 <div className="flex items-start gap-2 mb-1.5">
                   <MessageSquare size={14} className="text-[var(--flow-text-muted)] flex-shrink-0 mt-0.5" />
@@ -152,10 +157,10 @@ export default function ChatPhaseSidebar({
                   </span>
                   <button
                     type="button"
-                    onClick={(e) => handleDeleteClick(e, t)}
+                    onClick={(e) => handleDeleteClick(e, thread)}
                     className="opacity-0 group-hover:opacity-60 hover:opacity-100 p-1 rounded-lg hover:bg-red-100 text-red-500 transition-all flex-shrink-0"
-                    title="删除对话"
-                    aria-label="删除对话"
+                    title={t('explore.chat.sidebarDeleteThread')}
+                    aria-label={t('explore.chat.sidebarDeleteThread')}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -165,16 +170,16 @@ export default function ChatPhaseSidebar({
                 </p>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[10px] text-[var(--flow-text-muted)]">
-                    {[turnCount > 0 && `${turnCount} 轮`, lastTime && formatLastTime(lastTime)].filter(Boolean).join(' · ')}
+                    {[turnCount > 0 && t('explore.chat.turns', { n: String(turnCount) }), lastTimeStr].filter(Boolean).join(' · ')}
                   </span>
                   <span
                     className={`px-2.5 py-0.5 rounded-full text-[10px] font-medium text-white ${
-                      t.status === 'completed'
+                      thread.status === 'completed'
                         ? 'bg-emerald-500'
                         : 'bg-amber-500'
                     }`}
                   >
-                    {t.status === 'completed' ? '已完成' : '进行中'}
+                    {thread.status === 'completed' ? t('explore.chat.statusCompleted') : t('explore.chat.statusInProgress')}
                   </span>
                 </div>
               </div>
@@ -198,10 +203,10 @@ export default function ChatPhaseSidebar({
             aria-labelledby="delete-confirm-title"
           >
             <h3 id="delete-confirm-title" className="text-lg font-semibold text-[var(--flow-text-body)] mb-2">
-              确认删除
+              {t('explore.chat.sidebarDeleteConfirm')}
             </h3>
             <p className="text-sm text-[var(--flow-text-muted)] mb-6">
-              确定要删除该对话吗？删除后无法恢复。
+              {t('explore.chat.sidebarDeleteMessage')}
             </p>
             <div className="flex gap-3 justify-end">
               <button
@@ -209,14 +214,14 @@ export default function ChatPhaseSidebar({
                 onClick={() => setDeleteTarget(null)}
                 className="px-4 py-2 rounded-xl text-sm font-medium text-[var(--flow-text-muted)] hover:bg-neutral-100 transition-colors"
               >
-                取消
+                {t('common.cancel')}
               </button>
               <button
                 type="button"
                 onClick={handleConfirmDelete}
                 className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-red-500 hover:bg-red-600 transition-colors"
               >
-                确认删除
+                {t('explore.chat.sidebarDeleteConfirm')}
               </button>
             </div>
           </div>

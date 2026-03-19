@@ -212,6 +212,7 @@ async def check_dimension_complete(
     phase: str,
     conversation_history: List[Dict[str, str]],
     prior_conclusion: Optional[Dict] = None,
+    vip_level: int = 1,
 ) -> Optional[Dict]:
     """
     判断对话是否已达到该维度的探索结论；若达到则生成结论卡片。
@@ -239,7 +240,7 @@ async def check_dimension_complete(
         f"{m.get('role', 'user')}: {m.get('content', '')}" for m in recent
     )
 
-    llm = get_default_llm_provider()
+    llm = get_default_llm_provider(vip_level=vip_level)
     label = config.get("label", phase)
     goal = config.get("goal", "")
     criteria = config.get("completion_criteria", "")
@@ -316,19 +317,31 @@ async def check_dimension_complete(
 3) 汇总文案可以润色，但关键词只能使用上述原词。
 """
 
-    summary_prompt = f"""基于以下对话，生成「{label}」维度的探索结论汇总。{prior_hint}{locked_hint}
+    values_extra = ""
+    if phase == "values":
+        values_extra = """
+
+【values 阶段特别要求】
+请从用户对话中寻找 5 个核心价值观关键词。
+1) 尽可能只使用用户亲口提到的原词，优先保留用户原话；
+2) 实在没有足够原词时，再进行同义词改写；
+3) 尽量是精准的 2~4 字词语（如：诚实、成长、家庭、自由）。"""
+
+    summary_prompt = f"""基于以下对话，生成「{label}」维度的探索结论汇总。{prior_hint}{locked_hint}{values_extra}
 
 该维度的目标：{goal}
 {summary_hint}
 {goal_hint}
 
-请用温暖、专业、包容的语气，像一位可靠的咨询师对用户说话。不要用冷冰冰的「AI 分析」口吻，而是表示这是对话的汇总。
+请用温暖、专业、包容的语气，像一位可靠的咨询师对用户说话。不要用冷冰冰的「AI 分析」口吻。
 
-请按以下结构输出（用 --- 分隔两部分）：
-1. 汇总文案：将「本环节目标」与「你的发现」合并成一段话，直接对用户说。例如：「在这个环节里，我们希望能了解你的核心价值观。通过对话，我们可以看到你拥有**诚实**、**持续成长**、**家庭优先**等特质。」——用 **关键词** 的 Markdown 格式标出核心词，方便前端渲染。语气温馨、可靠、有同理心。
-2. 关键词列表：用逗号分隔，如：诚实, 持续成长, 家庭优先（仅列出核心关键词，3-10 个）
+请**只输出一个 JSON 对象**，格式：
+{{
+  "keywords": ["词1", "词2", "词3", ...],
+  "summary": "汇总文案：将本环节目标与你的发现合并成一段话，直接对用户说。用 **关键词** 的 Markdown 格式标出核心词。"
+}}
 
-只输出内容，用 --- 分隔两部分。不要加标题或编号。"""
+不要输出任何其他内容，只输出上述 JSON。"""
 
     summary_messages = [
         LLMMessage(role="user", content=summary_prompt),
@@ -336,13 +349,26 @@ async def check_dimension_complete(
     summary_response = await llm.chat(summary_messages, temperature=0.3)
     summary_text = (summary_response.content or "").strip()
 
-    parts = [p.strip() for p in re.split(r"\n---+\n", summary_text, maxsplit=1)]
-    summary = parts[0] if len(parts) > 0 else summary_text
-    keywords_str = parts[1] if len(parts) > 1 else ""
-    keywords = [k.strip() for k in keywords_str.split(",") if k.strip()] if keywords_str else []
-    if not keywords and summary:
-        # 从 **x** 中解析关键词作为后备
-        keywords = re.findall(r"\*\*([^*]+)\*\*", summary)
+    summary = ""
+    keywords: List[str] = []
+    try:
+        text_clean = summary_text
+        if "```json" in summary_text:
+            text_clean = summary_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in summary_text:
+            text_clean = summary_text.split("```")[1].split("```")[0].strip()
+        obj = json.loads(text_clean)
+        if isinstance(obj, dict):
+            keywords = obj.get("keywords") or []
+            if isinstance(keywords, list):
+                keywords = [str(k).strip() for k in keywords if k]
+            else:
+                keywords = []
+            summary = (obj.get("summary") or "").strip()
+    except (json.JSONDecodeError, TypeError):
+        summary = summary_text
+        if summary:
+            keywords = re.findall(r"\*\*([^*]+)\*\*", summary)
 
     keywords = _validate_keywords_by_goal(phase, keywords, locked_keywords=locked_keywords)
 

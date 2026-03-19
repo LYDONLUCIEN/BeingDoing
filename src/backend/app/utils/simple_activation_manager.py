@@ -43,6 +43,7 @@ class ActivationRecord:
     deleted_at: Optional[str] = None
     purge_after: Optional[str] = None
     source: Optional[str] = None
+    vip_level: int = 1  # 1=DeepSeek, 2=Kimi/Qwen
 
 
 @dataclass
@@ -91,8 +92,10 @@ class SimpleActivationManager:
         records: Dict[str, ActivationRecord] = {}
         for code, data in raw.items():
             try:
+                data = dict(data)
+                data.setdefault("vip_level", 1)
                 records[code] = ActivationRecord(**data)
-            except TypeError:
+            except (TypeError, ValueError):
                 continue
         return records
 
@@ -168,6 +171,7 @@ class SimpleActivationManager:
             expires_at=expires_at.isoformat() + "Z",
             last_activity_at=now.isoformat() + "Z",
             status=ActivationStatus.ACTIVE,
+            vip_level=1,
         )
         records[code] = record
         self._save_all(records)
@@ -407,6 +411,7 @@ class SimpleActivationManager:
                 last_activity_at=row.get("last_activity_at") or now,
                 status=row.get("status") or ActivationStatus.REVOKED.value,
                 source="db_sync",
+                vip_level=int(row.get("vip_level") or 1),
             )
             changed += 1
         if changed:

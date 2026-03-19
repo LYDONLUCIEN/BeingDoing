@@ -7,7 +7,8 @@
 - 会话由「激活码」标识，对话历史保存在 data/simple 下
 """
 
-from typing import Optional, List, AsyncIterator
+from pathlib import Path
+from typing import AsyncIterator, Dict, List, Optional
 import asyncio
 import json
 import random
@@ -29,7 +30,22 @@ from app.core.dimension_completion_checker import (
     _should_run_completion_check,
 )
 from app.services.analytics_service import AnalyticsService
-from app.utils.report_registry import ReportRegistry
+from app.utils.report_registry import ReportRegistry, STEP_IDS, STEP_ORDER
+from app.utils.rumination_progress import (
+    load_rumination_progress,
+    save_rumination_progress,
+)
+from app.utils.rumination_ops import (
+    gen_table,
+    filter_strength,
+    filter_match,
+    extract_from_prior_context,
+)
+from app.utils.context_refiner import (
+    refine_and_save_anchor,
+    format_anchor_for_prompt,
+    load_anchor_for_phase,
+)
 from app.utils.survey_storage import (
     save_basic_info,
     load_basic_info,
@@ -40,11 +56,54 @@ from app.utils.survey_storage import (
 
 # 每阶段随机抽取的题目数量
 SIMPLE_QUESTION_SAMPLE_SIZE = 6
+# 发送给 LLM 的历史消息最大轮数（减少 token、加快响应）
+MAX_HISTORY_TURNS = 20
+# 并发 LLM 调用限制（0=不限制）
+_LLM_SEM = None
+
+
+def _get_llm_semaphore():
+    global _LLM_SEM
+    if _LLM_SEM is None:
+        n = getattr(settings, "LLM_MAX_CONCURRENT", 0) or 0
+        _LLM_SEM = asyncio.Semaphore(n) if n > 0 else None
+    return _LLM_SEM
 SIMPLE_BASE_DIR = str(get_simple_base_dir())
 REPORTS_BASE_DIR = str(get_simple_base_dir() / "reports")
 
 router = APIRouter(prefix="/simple-chat", tags=["简单模式对话"])
 logger = logging.getLogger(__name__)
+
+
+def _trigger_anchor_refiner(
+    report_id: str,
+    phase: str,
+    category: str,
+    conv_manager: ConversationFileManager,
+    dimension_conclusion: Optional[dict] = None,
+    round_count: Optional[int] = None,
+    vip_level: int = 1,
+) -> None:
+    """后台触发锚点摘要提炼（不阻塞）"""
+    prior = load_anchor_for_phase(report_id, phase, SIMPLE_BASE_DIR)
+
+    async def _run():
+        try:
+            await refine_and_save_anchor(
+                report_id=report_id,
+                phase=phase,
+                category=category,
+                conv_manager=conv_manager,
+                base_dir=SIMPLE_BASE_DIR,
+                dimension_conclusion=dimension_conclusion,
+                prior_anchor=prior,
+                round_count=round_count,
+                vip_level=vip_level,
+            )
+        except Exception as e:
+            logger.warning("anchor refiner failed: %s", e)
+
+    asyncio.create_task(_run())
 
 
 def _skip_expired_for_debug(rec, user: Optional[dict]) -> bool:
@@ -140,6 +199,8 @@ def _phase_to_loader_category(phase: str) -> str:
         return "interests"
     if phase == "purpose":
         return "values"  # purpose 阶段复用 values 题库，或可后续单独建
+    if phase == "rumination":
+        return "values"  # rumination 综合四维，复用 values 题库
     return "values"
 
 
@@ -169,6 +230,7 @@ def _build_fallback_opening_question(phase: str) -> str:
         "strengths": "我们先聊聊优势：在别人眼里，你最常被夸“做得自然且稳定”的一件事是什么？",
         "interests": "我们先聊热忱：哪类话题会让你不知不觉投入很久、并且越做越有能量？",
         "purpose": "我们先聊使命：如果你的工作能持续帮助一类人，你最希望他们发生什么改变？",
+        "rumination": "恭喜你进入最后一轮！我们将综合你的价值观、优势、热爱和使命，帮你确定三个职业发展方向。准备好开始了吗？",
     }
     return fallback_map.get(phase, fallback_map["values"])
 
@@ -344,6 +406,227 @@ async def save_survey(
         )
     save_basic_info(rec.session_id, request.survey_data or {}, SIMPLE_BASE_DIR)
     return SimpleChatResponse(code=200, message="success", data={})
+
+
+class RuminationProgressResponse(BaseModel):
+    main_section: str = "opening"
+    review_sub_index: int = 0
+    filter_step: int = 0
+    filter_table: Optional[dict] = None
+
+
+class RuminationProgressSaveRequest(BaseModel):
+    activation_code: str
+    main_section: Optional[str] = None
+    review_sub_index: Optional[int] = None
+    filter_step: Optional[int] = None
+    filter_table: Optional[dict] = None
+
+
+class RuminationTableSubmitRequest(BaseModel):
+    activation_code: str
+    thread_id: str
+    step: int
+    table_data: List[dict]
+
+
+@router.get("/rumination-progress", response_model=SimpleChatResponse)
+def get_rumination_progress(
+    activation_code: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """获取 rumination 阶段进度"""
+    try:
+        manager = SimpleActivationManager()
+        registry = ReportRegistry()
+        rec = _resolve_activation_for_user(manager, activation_code, current_user)
+        report = registry.ensure_report(
+            rec.code, (current_user or {}).get("user_id", ""), rec.session_id
+        )
+        report_id = report.get("report_id")
+        if not report_id:
+            raise HTTPException(status_code=500, detail="报告初始化失败")
+        reports_root = Path(REPORTS_BASE_DIR)
+        progress = load_rumination_progress(reports_root, report_id)
+        return SimpleChatResponse(code=200, message="success", data={"progress": progress})
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning("rumination-progress ensure_report failed: %s", e)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception:
+        raise
+
+
+@router.post("/rumination-progress", response_model=SimpleChatResponse)
+def save_rumination_progress_endpoint(
+    request: RuminationProgressSaveRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """保存 rumination 阶段进度"""
+    manager = SimpleActivationManager()
+    registry = ReportRegistry()
+    rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
+    if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(
+        rec, current_user
+    ):
+        raise HTTPException(status_code=400, detail="激活码已过期")
+    report = registry.ensure_report(
+        rec.code, (current_user or {}).get("user_id", ""), rec.session_id
+    )
+    report_id = report.get("report_id")
+    if not report_id:
+        raise HTTPException(status_code=500, detail="报告初始化失败")
+    reports_root = Path(REPORTS_BASE_DIR)
+    progress = save_rumination_progress(
+        reports_root,
+        report_id,
+        main_section=request.main_section,
+        review_sub_index=request.review_sub_index,
+        filter_step=request.filter_step,
+        filter_table=request.filter_table,
+    )
+    return SimpleChatResponse(code=200, message="success", data={"progress": progress})
+
+
+def _build_table_widget_payload(
+    step: int,
+    rows: List[dict],
+    columns: List[dict],
+    editable_cols: List[str],
+    guide_text: str = "",
+) -> dict:
+    """构建 table_widget 消息的 card_payload"""
+    return {
+        "columns": columns,
+        "rows": rows,
+        "editableCols": editable_cols,
+        "guideText": guide_text,
+        "step": step,
+    }
+
+
+@router.post("/rumination-table-submit", response_model=SimpleChatResponse)
+def rumination_table_submit(
+    request: RuminationTableSubmitRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """提交 rumination 筛选表格数据，更新 progress，并可能返回下一步表格。"""
+    manager = SimpleActivationManager()
+    registry = ReportRegistry()
+    rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
+    if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(
+        rec, current_user
+    ):
+        raise HTTPException(status_code=400, detail="激活码已过期")
+    report = registry.ensure_report(
+        rec.code, (current_user or {}).get("user_id", ""), rec.session_id
+    )
+    report_id = report.get("report_id")
+    if not report_id:
+        raise HTTPException(status_code=500, detail="报告初始化失败")
+    reports_root = Path(REPORTS_BASE_DIR)
+    step = max(1, min(9, request.step))
+    progress = save_rumination_progress(
+        reports_root, report_id, filter_step=step, filter_table=request.table_data
+    )
+
+    next_table = None
+    table_data = request.table_data
+    if step == 1 and table_data:
+        filtered = filter_strength(table_data)
+        if filtered:
+            step2_rows = filter_match(filtered)
+            next_table = _build_table_widget_payload(
+                step=2,
+                rows=step2_rows,
+                columns=[
+                    {"key": "id", "label": "id"},
+                    {"key": "热爱", "label": "热爱"},
+                    {"key": "优势", "label": "优势"},
+                    {"key": "匹配性", "label": "匹配性", "options": ["匹配", "不匹配"]},
+                    {"key": "匹配原因", "label": "匹配原因"},
+                ],
+                editable_cols=["匹配性"],
+                guide_text="这是匹配分析结果。如不同意某行标记，可直接修改。确认后我们将基于匹配结果提出假设。",
+            )
+            save_rumination_progress(
+                reports_root, report_id, filter_table=step2_rows
+            )
+
+    data: dict = {"progress": progress, "next_step": step}
+    if next_table:
+        data["next_table_widget"] = next_table
+
+    return SimpleChatResponse(code=200, message="success", data=data)
+
+
+@router.get("/rumination-get-table", response_model=SimpleChatResponse)
+def rumination_get_table(
+    activation_code: str,
+    step: Optional[int] = 1,
+    current_user: dict = Depends(get_current_user),
+):
+    """获取 rumination 筛选流程的当前步骤表格（进入筛选时或下一步）"""
+    manager = SimpleActivationManager()
+    registry = ReportRegistry()
+    rec = _resolve_activation_for_user(manager, activation_code, current_user)
+    report = registry.ensure_report(
+        rec.code, (current_user or {}).get("user_id", ""), rec.session_id
+    )
+    report_id = report.get("report_id")
+    if not report_id:
+        raise HTTPException(status_code=500, detail="报告初始化失败")
+    reports_root = Path(REPORTS_BASE_DIR)
+    progress = load_rumination_progress(reports_root, report_id)
+    prior_context = _load_prior_context_from_activation(activation_code, "rumination")
+    _, strengths_list, interests_list = extract_from_prior_context(prior_context)
+    passions = interests_list if interests_list else ["热爱1", "热爱2"]
+    strengths_list = strengths_list if strengths_list else ["优势1", "优势2"]
+
+    step = max(1, min(9, step or 1))
+    if step == 1:
+        rows = gen_table(strengths_list, passions)
+        payload = _build_table_widget_payload(
+            step=1,
+            rows=rows,
+            columns=[
+                {"key": "id", "label": "id"},
+                {"key": "热爱", "label": "热爱"},
+                {"key": "优势", "label": "优势"},
+                {
+                    "key": "优势标记",
+                    "label": "优势标记",
+                    "options": ["有充实感，与成功有关", "有充实感", "不确定"],
+                },
+            ],
+            editable_cols=["优势标记"],
+            guide_text="请确认您的热爱与优势列表。如需修改，可直接在表格中编辑标记。确认后我们将进行匹配分析。",
+        )
+    else:
+        prev_table = progress.get("filter_table") or []
+        if step == 2:
+            filtered = filter_strength(prev_table)
+            rows = filter_match(filtered)
+            payload = _build_table_widget_payload(
+                step=2,
+                rows=rows,
+                columns=[
+                    {"key": "id", "label": "id"},
+                    {"key": "热爱", "label": "热爱"},
+                    {"key": "优势", "label": "优势"},
+                    {"key": "匹配性", "label": "匹配性", "options": ["匹配", "不匹配"]},
+                    {"key": "匹配原因", "label": "匹配原因"},
+                ],
+                editable_cols=["匹配性"],
+                guide_text="这是匹配分析结果。如不同意某行标记，可直接修改。确认后我们将基于匹配结果提出假设。",
+            )
+        else:
+            payload = None
+
+    return SimpleChatResponse(
+        code=200, message="success", data={"table_widget": payload}
+    )
 
 
 def _build_system_prompt(
@@ -546,6 +829,29 @@ def _build_system_prompt(
 
 请直接用中文和用户继续这一轮对话。"""
 
+    if phase == "rumination":
+        return f"""你是一名专业的职业规划咨询师，正在进行最后一轮咨询——沉淀阶段。本轮的目标是：**综合用户之前探索的价值观、优势、热爱和使命，帮助用户确定三个最终职业发展方向**。
+
+### 咨询流程概览
+
+1. **开场白**：亲切问候，祝贺用户进入最后一轮，说明本次目标，询问是否准备好开始。
+2. **回顾**（按顺序）：回顾价值观、优势、热爱、工作目的，每项确认后再进入下一项，询问是否需要微调。
+3. **筛选**：回顾完成后，将进入表格筛选流程（热爱×优势匹配、假设生成、价值过滤、激情过滤、现实过滤、相似过滤），逐步缩小方向。
+4. **最终选择**：从筛选结果中引导用户选出最想做的三件事。
+5. **推荐与发展**：为每个方向推荐具体的职业发展可能性。
+6. **结束对话**：共情总结，询问下一步计划，调用结束流程。
+
+### 重要准则
+
+- 每次只提一个问题，给用户充分的回答空间。
+- 当用户卡顿时，提供温和的引导，而非直接给答案。
+- 判断对话结束条件：用户已选出 top 3 方向并确认。
+- 【对话续写】若对话已有历史，在已有基础上继续，禁止重复开场。
+
+来访者基本信息：{basic_info}{prior_block}
+
+请直接用中文和用户继续这一轮对话。"""
+
     return _build_system_prompt("values", question_bank, basic_info, prior_context)
 
 
@@ -699,6 +1005,16 @@ async def simple_init(
     - 如果该阶段已经有历史消息，则直接返回（不再重复生成）
     - 如果没有历史，则生成一条「首轮引导问题」的 assistant 消息
     """
+    try:
+        return await _simple_init_impl(request, current_user)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("simple-chat init 500: %s", e)
+        raise HTTPException(status_code=500, detail=f"初始化失败: {type(e).__name__}: {str(e)}")
+
+
+async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> SimpleChatResponse:
     manager = SimpleActivationManager()
     registry = ReportRegistry()
     phase = (request.phase or "values").strip() or "values"
@@ -882,6 +1198,7 @@ async def mark_thread_complete(
             },
         )
     await conv_manager.update_metadata(report["report_id"], category, {"thread_completed": True})
+    _trigger_anchor_refiner(report["report_id"], phase_step, category, conv_manager, dimension_conclusion=dimension_conclusion, vip_level=getattr(rec, "vip_level", 1) or 1)
     return SimpleChatResponse(code=200, message="success", data={})
 
 
@@ -964,9 +1281,10 @@ async def simple_chat_stream(
             detail="激活码已过期（历史记录已保留，可以用于回放或导出）",
         )
     session_id = report["report_id"]
+    vip_level = getattr(rec, "vip_level", 1) or 1
 
     async def event_stream() -> AsyncIterator[str]:
-        llm = get_default_llm_provider()
+        llm = get_default_llm_provider(vip_level=vip_level)
         # 避免复用 provider 时串用上一次流式 token 使用量
         if hasattr(llm, "_last_stream_usage"):
             try:
@@ -980,13 +1298,43 @@ async def simple_chat_stream(
             category=category,
         )
 
+        # 进入新阶段的首条消息时，为上一阶段触发锚点摘要（step 提交时）
+        user_msg_count = sum(1 for m in history_messages if m.get("role") == "user")
+        if phase_step != "values" and user_msg_count == 0:
+            idx = STEP_ORDER.get(phase_step, 0)
+            if idx > 0:
+                prev_phase = STEP_IDS[idx - 1]
+                prev_selected = (report.get("steps") or {}).get(prev_phase) or {}
+                prev_sess = prev_selected.get("selected_session_id")
+                if prev_sess:
+                    prev_cat = _storage_category(prev_phase, prev_sess)
+                    _trigger_anchor_refiner(session_id, prev_phase, prev_cat, conv_manager, vip_level=vip_level)
+
         question_bank = _get_random_questions_for_phase(phase_step)
         basic_info = _load_basic_info_from_activation(request.activation_code)
         prior_context = _load_prior_context_from_activation(request.activation_code, phase_step)
         system_prompt = _build_system_prompt(phase_step, question_bank=question_bank, basic_info=basic_info, prior_context=prior_context)
         llm_messages = [LLMMessage(role="system", content=system_prompt)]
 
-        for m in history_messages:
+        # 若有锚点摘要，插入 [此前对话要点] 再拼接最近 N 轮
+        anchor = load_anchor_for_phase(session_id, phase_step, SIMPLE_BASE_DIR)
+        anchor_text = format_anchor_for_prompt(anchor)
+        if anchor_text:
+            llm_messages.append(LLMMessage(role="assistant", content=f"[此前对话要点]\n{anchor_text}"))
+
+        # 仅保留最近 N 轮，减少 token 与延迟
+        turn_count = 0
+        trimmed: List[dict] = []
+        for m in reversed(history_messages):
+            role = m.get("role") or "user"
+            if role == "user":
+                turn_count += 1
+                if turn_count > MAX_HISTORY_TURNS:
+                    break
+            if role in {"user", "assistant", "system"}:
+                trimmed.insert(0, m)
+
+        for m in trimmed:
             role = m.get("role") or "user"
             if role not in {"user", "assistant", "system"}:
                 continue
@@ -1033,7 +1381,7 @@ async def simple_chat_stream(
             # 综合本轮用户输入 + 上一轮结论，重新生成确定性结论
             try:
                 dimension_conclusion = await check_dimension_complete(
-                    phase_step, conv_history, prior_conclusion=pending_conclusion
+                    phase_step, conv_history, prior_conclusion=pending_conclusion, vip_level=vip_level
                 )
             except Exception as e:
                 # 上游 LLM 异常时，降级为继续普通对话，避免流接口 500。
@@ -1079,6 +1427,7 @@ async def simple_chat_stream(
                     },
                 )
                 yield f"data: {{\"dimension_conclusion\": {json.dumps(dimension_conclusion, ensure_ascii=False)} }}\n\n"
+                _trigger_anchor_refiner(session_id, phase_step, category, conv_manager, dimension_conclusion=dimension_conclusion, vip_level=vip_level)
                 try:
                     await AnalyticsService.record_chat_turn(session_id=logical_session_id, dimension=phase_step, user_input_chars=len(user_content or ""), llm_input_tokens=0, llm_output_tokens=0, log_index=None)
                 except Exception:
@@ -1105,7 +1454,7 @@ async def simple_chat_stream(
             )
             if should_check:
                 try:
-                    dimension_conclusion = await check_dimension_complete(phase_step, conv_history)
+                    dimension_conclusion = await check_dimension_complete(phase_step, conv_history, vip_level=vip_level)
                 except Exception as e:
                     # 维度收敛检测失败时降级为继续普通对话，避免前端出现 500 卡死。
                     logger.exception("check_dimension_complete failed, continue chat stream: %s", e)
@@ -1148,6 +1497,7 @@ async def simple_chat_stream(
                 },
             )
             yield f"data: {{\"dimension_conclusion\": {json.dumps(dimension_conclusion, ensure_ascii=False)} }}\n\n"
+            _trigger_anchor_refiner(session_id, phase_step, category, conv_manager, dimension_conclusion=dimension_conclusion, vip_level=vip_level)
             try:
                 await AnalyticsService.record_chat_turn(session_id=logical_session_id, dimension=phase_step, user_input_chars=len(user_content or ""), llm_input_tokens=0, llm_output_tokens=0, log_index=None)
             except Exception:
@@ -1156,11 +1506,21 @@ async def simple_chat_stream(
             return
 
         try:
-            async for chunk in llm.chat_stream(llm_messages, temperature=0.7):
-                if not chunk:
-                    continue
-                full_reply += chunk
-                yield f"data: {{\"chunk\": {json.dumps(chunk, ensure_ascii=False)} }}\n\n"
+            sem = _get_llm_semaphore()
+            stream_coro = llm.chat_stream(llm_messages, temperature=0.7)
+            if sem:
+                async with sem:
+                    async for chunk in stream_coro:
+                        if not chunk:
+                            continue
+                        full_reply += chunk
+                        yield f"data: {{\"chunk\": {json.dumps(chunk, ensure_ascii=False)} }}\n\n"
+            else:
+                async for chunk in stream_coro:
+                    if not chunk:
+                        continue
+                    full_reply += chunk
+                    yield f"data: {{\"chunk\": {json.dumps(chunk, ensure_ascii=False)} }}\n\n"
         except Exception as e:
             err = str(e)
             yield f"data: {{\"error\": {json.dumps(err, ensure_ascii=False)} }}\n\n"
@@ -1217,7 +1577,7 @@ async def simple_chat_stream(
                         for m in conv_data_after_reply.get("messages", [])
                     ]
                     post_turn_conclusion = await check_dimension_complete(
-                        phase_step, conv_history_after_reply
+                        phase_step, conv_history_after_reply, vip_level=vip_level
                     )
                     if post_turn_conclusion:
                         await conv_manager.update_metadata(
@@ -1259,8 +1619,14 @@ async def simple_chat_stream(
                         )
                         yield f"data: {{\"chunk\": {json.dumps(transition_msg, ensure_ascii=False)} }}\n\n"
                         yield f"data: {{\"dimension_conclusion\": {json.dumps(post_turn_conclusion, ensure_ascii=False)} }}\n\n"
+                        _trigger_anchor_refiner(session_id, phase_step, category, conv_manager, dimension_conclusion=post_turn_conclusion, vip_level=vip_level)
         except Exception:
             post_turn_conclusion = None
+
+        # 每 20 轮触发后台锚点摘要
+        user_count_after = user_count + (1 if user_content else 0)
+        if user_count_after > 0 and user_count_after % 20 == 0 and phase_step != "rumination":
+            _trigger_anchor_refiner(session_id, phase_step, category, conv_manager, round_count=user_count_after, vip_level=vip_level)
 
         # 4) 后台异步检测：仅在本轮未产出结论卡时，更新 pending_conclusion 判定
         async def _background_completion_check() -> None:
@@ -1279,7 +1645,7 @@ async def simple_chat_stream(
                     {"role": m.get("role", "user"), "content": m.get("content", "")}
                     for m in conv_data.get("messages", [])
                 ]
-                conclusion = await check_dimension_complete(phase_step, conv_history)
+                conclusion = await check_dimension_complete(phase_step, conv_history, vip_level=vip_level)
                 if conclusion:
                     await conv_manager.update_metadata(
                         session_id, category, {"pending_conclusion": conclusion}

@@ -34,8 +34,10 @@ DIMENSION_COMPLETION_CONFIG: Dict[str, dict] = {
 
 
 def get_dimension_config(phase: str) -> Optional[dict]:
-    """获取指定阶段的维度完成配置。interests_goals 视为 interests 的别名（兼容旧数据）。"""
+    """获取指定阶段的维度完成配置。interests_goals 视为 interests 的别名（兼容旧数据）。rumination 无结论卡。"""
     normalized = "interests" if phase in ("interests_goals", "goals") else phase
+    if normalized == "rumination":
+        return None  # rumination 使用不同流程，不触发维度结论卡
     return DIMENSION_COMPLETION_CONFIG.get(normalized) or DIMENSION_COMPLETION_CONFIG.get(
         "values"
     )

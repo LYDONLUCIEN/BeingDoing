@@ -15,6 +15,7 @@
 .bd-chat-card[data-phase="strengths"] { background: var(--bd-phase-strengths-dim) !important; }
 .bd-chat-card[data-phase="interests"] { background: var(--bd-phase-interests-dim) !important; }
 .bd-chat-card[data-phase="purpose"] { background: var(--bd-phase-purpose-dim) !important; }
+.bd-chat-card[data-phase="rumination"] { background: var(--bd-phase-rumination-dim) !important; }
 
 /* 历史访谈消息（assistant）：斜体 */
 [data-theme="ideal"] .message-content.assistant,

@@ -11,6 +11,7 @@ const DIM_LABELS: Record<string, string> = {
   strengths: '禀赋',
   interests: '热忱',
   purpose: '使命',
+  rumination: '沉淀',
 };
 
 function TransitionContent() {

@@ -3,7 +3,7 @@ LLM API模块
 """
 from app.core.llmapi.base import BaseLLMProvider, LLMMessage, LLMResponse, LLMError
 from app.core.llmapi.openai_provider import OpenAIProvider
-from app.core.llmapi.factory import create_llm_provider, get_default_llm_provider
+from app.core.llmapi.factory import create_llm_provider, get_default_llm_provider, get_llm_provider_for_vip
 
 __all__ = [
     "BaseLLMProvider",
@@ -13,4 +13,5 @@ __all__ = [
     "OpenAIProvider",
     "create_llm_provider",
     "get_default_llm_provider",
+    "get_llm_provider_for_vip",
 ]

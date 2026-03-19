@@ -170,6 +170,62 @@ export async function fetchAdminConversationDetail(
   return res.data ?? null;
 }
 
+export async function cloneConversation(payload: {
+  source_report_id: string;
+  source_phase: string;
+  source_thread_id: string;
+  target_activation_code: string;
+  target_phase: string;
+  target_thread_id?: string;
+}): Promise<{ target_report_id: string; target_phase: string; target_thread_id: string }> {
+  const res = await apiClient.post('/admin/conversations/clone', payload);
+  return (res.data ?? {}) as { target_report_id: string; target_phase: string; target_thread_id: string };
+}
+
+export async function jumpToRumination(payload: {
+  activation_code: string;
+  target_section?: string;
+  target_filter_step?: number;
+  seed_table?: Record<string, unknown>;
+}): Promise<{ progress: unknown; activation_code: string }> {
+  const res = await apiClient.post('/admin/conversations/jump-to-rumination', payload);
+  return (res.data ?? {}) as { progress: unknown; activation_code: string };
+}
+
+export async function getMockInfo(): Promise<{
+  exists: boolean;
+  record_template_path: string;
+  prior_files: string[];
+}> {
+  const res = await apiClient.get('/admin/conversations/mock-info');
+  return ((res.data as any)?.data ?? {}) as { exists: boolean; record_template_path: string; prior_files: string[] };
+}
+
+export async function initMock(): Promise<{ exists: boolean; record_template_path: string; prior_files: string[] }> {
+  const res = await apiClient.post('/admin/conversations/init-mock');
+  return ((res.data as any)?.data ?? {}) as any;
+}
+
+export async function applyMockToActivation(activationCode: string): Promise<{
+  activation_code: string;
+  report_id: string;
+  applied_steps: string[];
+  copied_prior: string[];
+}> {
+  const res = await apiClient.post('/admin/conversations/apply-mock-to-activation', {
+    activation_code: activationCode,
+  });
+  return ((res.data as any)?.data ?? {}) as any;
+}
+
+export async function saveAsMock(payload: {
+  activation_code?: string;
+  report_id?: string;
+}): Promise<{ report_id: string; activation_code?: string; saved_prior_phases: string[] }> {
+  const res = await apiClient.post('/admin/conversations/save-as-mock', payload);
+  return ((res.data as any)?.data ?? {}) as any;
+}
+
 export interface AdminReportItem {
   report_id: string;
   activation_code: string;

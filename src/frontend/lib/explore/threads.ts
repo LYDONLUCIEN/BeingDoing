@@ -5,6 +5,15 @@
 
 import type { PhaseKey } from './session';
 
+/** Rumination 表格 Widget 载荷 */
+export interface RuminationTablePayload {
+  columns: { key: string; label: string; options?: string[] }[];
+  rows: Record<string, unknown>[];
+  editableCols: string[];
+  guideText?: string;
+  step?: number;
+}
+
 export interface ThreadMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -12,12 +21,14 @@ export interface ThreadMessage {
   /** Unix ms; last message time used in sidebar */
   createdAt?: number;
   /** 维度探索结论消息（与 content 二选一） */
-  type?: 'text' | 'dimension_conclusion';
+  type?: 'text' | 'dimension_conclusion' | 'table_widget';
   conclusionData?: DimensionConclusionData;
   /** 结论卡是否已折叠（用户点击「再聊聊」后折叠） */
   conclusionCollapsed?: boolean;
   /** 结论卡是否已确认（用于前端按钮状态兜底） */
   conclusionConfirmed?: boolean;
+  /** 表格 Widget 载荷（type=table_widget 时） */
+  tablePayload?: RuminationTablePayload;
 }
 
 /** 维度探索结论卡片（持久化，完成/重访时仍可查看） */
