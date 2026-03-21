@@ -1,14 +1,17 @@
 """
 调研问卷存储工具
 
-为 simple（激活码）和 complex（session）两种模式提供统一的 basic_info 存取。
-- Simple: data/simple/{session_id}/basic_info.json
-- Complex: data/conversations/{session_id}/basic_info.json
+basic_info 以用户维度存储：data/user/{user_id}/basic_info.json（仅保留最新 1 份）
+prior_context 以 report 维度存储：reports/{report_id}/prior_context_{phase}.txt
+
+保留旧 session_id 接口用于迁移期回退。
 """
 
 import json
 from pathlib import Path
 from typing import Optional, Dict, Any, List
+
+from app.utils.data_paths import get_user_data_dir
 
 # 调研字段到中文标签的映射（用于 format_basic_info_for_prompt）
 SURVEY_LABELS: Dict[str, str] = {
@@ -34,8 +37,94 @@ SURVEY_LABELS: Dict[str, str] = {
 }
 
 
+def _get_user_basic_info_path(user_id: str) -> Path:
+    """用户级 basic_info 路径：data/user/{user_id}/basic_info.json"""
+    root = get_user_data_dir()
+    root.mkdir(parents=True, exist_ok=True)
+    user_dir = root / user_id
+    user_dir.mkdir(parents=True, exist_ok=True)
+    return user_dir / "basic_info.json"
+
+
+def save_basic_info_by_user(user_id: str, data: Dict[str, Any]) -> None:
+    """
+    按用户保存调研问卷（主入口，仅保留最新 1 份）。
+
+    Args:
+        user_id: 用户 ID
+        data: 调研数据字典
+    """
+    path = _get_user_basic_info_path(user_id)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def load_basic_info_by_user(user_id: str) -> Optional[Dict[str, Any]]:
+    """
+    按用户加载调研问卷。
+
+    Returns:
+        调研数据字典，不存在或解析失败时返回 None
+    """
+    path = _get_user_basic_info_path(user_id)
+    if not path.exists():
+        return None
+    try:
+        content = path.read_text(encoding="utf-8")
+        return json.loads(content or "{}")
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def merge_basic_info_sources(
+    sources: List[Dict[str, Any]], strategy: str = "A"
+) -> Dict[str, Any]:
+    """
+    合并多个 basic_info 源。用于迁移时同一用户多份问卷合并。
+
+    Args:
+        sources: 多个 basic_info 字典列表（可按时间排序，0=最早）
+        strategy: A=最新覆盖 B=并集(非空优先) C=交集(仅所有源都有该 key 且非空)
+
+    Returns:
+        合并后的 basic_info
+    """
+    if not sources:
+        return {}
+    if len(sources) == 1:
+        return dict(sources[0] or {})
+    strategy = (strategy or "A").strip().upper()
+    if strategy == "A":
+        return dict(sources[-1] or {})
+    all_keys = set()
+    for s in sources:
+        if s:
+            all_keys.update(s.keys())
+    result: Dict[str, Any] = {}
+    if strategy == "B":
+        for k in all_keys:
+            for s in reversed(sources):
+                if s and k in s:
+                    v = s[k]
+                    if v is not None and v != "":
+                        result[k] = v
+                        break
+    elif strategy == "C":
+        for k in all_keys:
+            vals = []
+            for s in sources:
+                if not s or k not in s:
+                    break
+                v = s[k]
+                if v is None or v == "":
+                    break
+                vals.append(v)
+            if len(vals) == len(sources):
+                result[k] = vals[-1]
+    return result
+
+
 def _get_basic_info_path(session_id: str, base_dir: str) -> Path:
-    """获取 basic_info.json 的存储路径"""
+    """获取 basic_info.json 的存储路径（旧 session 维度，迁移期兼容）"""
     base = Path(base_dir)
     base.mkdir(parents=True, exist_ok=True)
     session_dir = base / session_id
@@ -74,6 +163,81 @@ def load_basic_info(session_id: str, base_dir: str) -> Optional[Dict[str, Any]]:
 
 
 _PRIOR_CONTEXT_FILENAME = "prior_context_{phase}.txt"
+
+
+def _get_prior_context_path_for_report(report_id: str, phase: str, reports_root: Path) -> Path:
+    """report 维度 prior_context 路径：reports/{report_id}/prior_context_{phase}.txt"""
+    root = Path(reports_root)
+    report_dir = root / report_id
+    report_dir.mkdir(parents=True, exist_ok=True)
+    return report_dir / _PRIOR_CONTEXT_FILENAME.format(phase=phase)
+
+
+def save_prior_context_for_report(
+    report_id: str, phase: str, text: str, reports_root: str
+) -> None:
+    """
+    按 report 保存上一轮咨询结果。
+
+    Args:
+        report_id: 报告 ID
+        phase: 目标阶段（values/strengths/interests/purpose/rumination）
+        text: 文本内容
+        reports_root: reports 目录根路径（如 data/simple/reports）
+    """
+    path = _get_prior_context_path_for_report(report_id, phase, Path(reports_root))
+    path.write_text(text, encoding="utf-8")
+
+
+def load_prior_context_for_report(report_id: str, phase: str, reports_root: str) -> str:
+    """
+    按 report 加载上一轮咨询结果。purpose/rumination 会合并前置阶段。
+
+    Returns:
+        文本内容，找不到返回空字符串
+    """
+    root = Path(reports_root)
+    report_dir = root / report_id
+    filename = _PRIOR_CONTEXT_FILENAME.format(phase=phase)
+    path = report_dir / filename
+    if path.exists():
+        try:
+            text = path.read_text(encoding="utf-8").strip()
+            return _truncate_prior_context(text)
+        except OSError:
+            return ""
+
+    if phase == "purpose":
+        parts: List[str] = []
+        for prev_phase in ("values", "strengths", "interests"):
+            prev_path = report_dir / _PRIOR_CONTEXT_FILENAME.format(phase=prev_phase)
+            if prev_path.exists():
+                try:
+                    text = prev_path.read_text(encoding="utf-8").strip()
+                    if text:
+                        parts.append(f"【{prev_phase} 阶段结果】\n{text}")
+                except OSError:
+                    pass
+        if parts:
+            return _truncate_prior_context("\n\n".join(parts))
+
+    if phase == "rumination":
+        phase_labels = {"values": "信念", "strengths": "禀赋", "interests": "热忱", "purpose": "使命"}
+        parts = []
+        for prev_phase in ("values", "strengths", "interests", "purpose"):
+            prev_path = report_dir / _PRIOR_CONTEXT_FILENAME.format(phase=prev_phase)
+            if prev_path.exists():
+                try:
+                    text = prev_path.read_text(encoding="utf-8").strip()
+                    if text:
+                        label = phase_labels.get(prev_phase, prev_phase)
+                        parts.append(f"【{label} 阶段结果】\n{text}")
+                except OSError:
+                    pass
+        if parts:
+            return _truncate_prior_context("\n\n".join(parts))
+
+    return ""
 
 
 def save_prior_context(session_id: str, phase: str, text: str, base_dir: str) -> None:

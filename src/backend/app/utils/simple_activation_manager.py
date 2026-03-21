@@ -11,6 +11,8 @@
 - activations.json 只作为索引，方便通过 code 找到 session_id 等元信息
 """
 
+from __future__ import annotations
+
 import json
 import uuid
 from dataclasses import dataclass, asdict
@@ -44,6 +46,14 @@ class ActivationRecord:
     purge_after: Optional[str] = None
     source: Optional[str] = None
     vip_level: int = 1  # 1=DeepSeek, 2=Kimi/Qwen
+    # 管理员调试沙箱：独立存储于 data/simple/sandboxes/{fork_id}/
+    is_sandbox: bool = False
+    sandbox_root: Optional[str] = None  # 相对 data/simple，如 sandboxes/uuid
+    fork_id: Optional[str] = None
+    forked_from_code: Optional[str] = None
+    forked_at: Optional[str] = None
+    forked_by_user_id: Optional[str] = None
+    sandbox_expires_at: Optional[str] = None
 
 
 @dataclass
@@ -62,6 +72,33 @@ def get_simple_base_dir() -> Path:
     """使用项目根目录下的 data/simple，避免依赖当前工作目录。供激活码、对话、调研等统一使用。"""
     project_root = Path(__file__).resolve().parents[4]
     return project_root / "data" / "simple"
+
+
+def get_effective_simple_root(rec: Optional["ActivationRecord"] = None) -> Path:
+    """
+    正式激活码使用 data/simple；沙箱激活码使用 data/simple/sandboxes/{fork_id}/。
+    """
+    base = get_simple_base_dir()
+    if rec is not None and getattr(rec, "is_sandbox", False) and rec.sandbox_root:
+        root = (base / rec.sandbox_root).resolve()
+        root.mkdir(parents=True, exist_ok=True)
+        return root
+    return base
+
+
+def bind_session_id_for_ensure_report(rec: Optional["ActivationRecord"]) -> Optional[str]:
+    """
+    供 ReportRegistry.ensure_report(..., session_id=...) 使用。
+
+    沙箱 Fork 已从源端完整克隆 record.json（含各 step 的 session_ids），不应再把
+    「问卷/附属目录用」的 rec.session_id 追加进 values，否则会污染克隆状态。
+    """
+    if rec is None:
+        return None
+    if getattr(rec, "is_sandbox", False):
+        return None
+    sid = (rec.session_id or "").strip()
+    return sid or None
 
 
 def _default_base_dir() -> Path:
@@ -94,6 +131,13 @@ class SimpleActivationManager:
             try:
                 data = dict(data)
                 data.setdefault("vip_level", 1)
+                data.setdefault("is_sandbox", False)
+                data.setdefault("sandbox_root", None)
+                data.setdefault("fork_id", None)
+                data.setdefault("forked_from_code", None)
+                data.setdefault("forked_at", None)
+                data.setdefault("forked_by_user_id", None)
+                data.setdefault("sandbox_expires_at", None)
                 records[code] = ActivationRecord(**data)
             except (TypeError, ValueError):
                 continue
@@ -353,6 +397,50 @@ class SimpleActivationManager:
             self._save_recycle_bin(recycle)
         return changed
 
+    def permanent_delete_from_recycle_bin(
+        self, codes: List[str], reports_root: Optional[Path] = None
+    ) -> int:
+        """
+        从垃圾桶立即永久删除指定激活码及其所有相关数据：
+        - report 目录
+        - flat session 目录
+        - 从 activations 和 recycle 移除
+        """
+        import shutil
+
+        recycle = self._load_recycle_bin()
+        records = self._load_all()
+        root = reports_root if reports_root is not None else (self.base_dir / "reports")
+        deleted_count = 0
+        for raw in codes or []:
+            code = (raw or "").strip().upper()
+            rec = recycle.get(code)
+            if not rec:
+                continue
+            if root.is_dir():
+                for d in root.iterdir():
+                    if not d.is_dir():
+                        continue
+                    rf = d / "record.json"
+                    if not rf.is_file():
+                        continue
+                    try:
+                        rec_data = json.loads(rf.read_text(encoding="utf-8"))
+                    except (OSError, json.JSONDecodeError, TypeError):
+                        continue
+                    if (rec_data.get("activation_code") or "").upper() == code:
+                        shutil.rmtree(d, ignore_errors=True)
+            sess_dir = self.base_dir / rec.session_id
+            if rec.session_id and sess_dir.exists() and sess_dir.is_dir():
+                shutil.rmtree(sess_dir, ignore_errors=True)
+            recycle.pop(code, None)
+            records.pop(code, None)
+            deleted_count += 1
+        if deleted_count:
+            self._save_recycle_bin(recycle)
+            self._save_all(records)
+        return deleted_count
+
     def purge_recycle_bin(self, now: Optional[datetime] = None) -> int:
         """
         物理清理垃圾桶过期数据：
@@ -386,6 +474,24 @@ class SimpleActivationManager:
                 self._save_all(records)
         self._save_recycle_bin(recycle)
         return len(to_delete_codes)
+
+    def put_activation(self, record: ActivationRecord) -> None:
+        """写入或覆盖一条激活码记录（用于沙箱注册等）。"""
+        records = self._load_all()
+        norm = (record.code or "").strip().upper()
+        record = ActivationRecord(**{**asdict(record), "code": norm})
+        records[norm] = record
+        self._save_all(records)
+
+    def remove_activation_code(self, code: str) -> bool:
+        """从 activations.json 永久移除一条记录（不经过回收站）。"""
+        records = self._load_all()
+        norm = (code or "").strip().upper()
+        if norm not in records:
+            return False
+        del records[norm]
+        self._save_all(records)
+        return True
 
     def upsert_from_db_rows(self, rows: List[dict]) -> int:
         """

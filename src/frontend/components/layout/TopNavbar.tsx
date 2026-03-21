@@ -146,22 +146,13 @@ export default function TopNavbar() {
                     {t('nav.personalHomepage')}
                   </Link>
                   {isAdmin && (
-                    <>
-                      <Link
-                        href="/settings/colors"
-                        onClick={() => setUserMenuOpen(false)}
-                        className="block w-full px-4 py-3 text-left text-sm text-bd-fg hover:bg-bd-overlay-md transition-colors"
-                      >
-                        {t('settings.colors')}
-                      </Link>
-                      <Link
-                        href="/settings/style-lab"
-                        onClick={() => setUserMenuOpen(false)}
-                        className="block w-full px-4 py-3 text-left text-sm text-bd-fg hover:bg-bd-overlay-md transition-colors"
-                      >
-                        {t('settings.effects')}
-                      </Link>
-                    </>
+                    <Link
+                      href="/admin/system"
+                      onClick={() => setUserMenuOpen(false)}
+                      className="block w-full px-4 py-3 text-left text-sm text-bd-fg hover:bg-bd-overlay-md transition-colors"
+                    >
+                      {t('settings.colors')}
+                    </Link>
                   )}
                   <button
                     type="button"
@@ -176,7 +167,7 @@ export default function TopNavbar() {
           ) : (
             <>
               {isAdmin && (
-                <Link href="/settings/colors" className="text-sm text-bd-muted hover:text-bd-fg transition-colors">
+                <Link href="/admin/system" className="text-sm text-bd-muted hover:text-bd-fg transition-colors">
                   {t('settings.colors')}
                 </Link>
               )}
@@ -241,22 +232,13 @@ export default function TopNavbar() {
                   {t('nav.personalHomepage')}
                 </Link>
                 {isAdmin && (
-                  <>
-                    <Link
-                      href="/settings/colors"
-                      onClick={() => setMobileOpen(false)}
-                      className={`block ${linkBase} ${linkInactive}`}
-                    >
-                      {t('nav.colorsMobile')}
-                    </Link>
-                    <Link
-                      href="/settings/style-lab"
-                      onClick={() => setMobileOpen(false)}
-                      className={`block ${linkBase} ${linkInactive}`}
-                    >
-                      {t('nav.effectsMobile')}
-                    </Link>
-                  </>
+                  <Link
+                    href="/admin/system"
+                    onClick={() => setMobileOpen(false)}
+                    className={`block ${linkBase} ${linkInactive}`}
+                  >
+                    {t('nav.colorsMobile')}
+                  </Link>
                 )}
                 <button
                   type="button"

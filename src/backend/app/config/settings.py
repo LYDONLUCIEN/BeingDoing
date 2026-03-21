@@ -98,6 +98,9 @@ class Settings(BaseSettings):
     # 对话文件存储目录（项目根 data/conversations）
     CONVERSATION_DIR: str = str(get_conversation_dir())
 
+    # basic_info 多源合并策略（迁移时用）：A=最新覆盖 B=并集(非空优先) C=A∩B 交集
+    BASIC_INFO_MERGE_STRATEGY: str = "A"
+
     class Config:
         #env_file = ".env"
         base_dir = Path(__file__).resolve().parents[4]  # 指向 /home/gitclone/BeingDoing

@@ -14,6 +14,15 @@ export interface AdminActivationItem {
   deleted_at?: string;
   purge_after?: string;
   source?: string;
+  /** 调试沙箱 Fork */
+  is_sandbox?: boolean;
+  /** 与列表筛选一致：fork=沙箱，normal=正式 */
+  activation_type?: 'normal' | 'fork';
+  sandbox_root?: string | null;
+  fork_id?: string | null;
+  forked_from_code?: string | null;
+  forked_at?: string | null;
+  sandbox_expires_at?: string | null;
 }
 
 export interface AdminActivationRecycleItem {
@@ -31,6 +40,8 @@ export async function fetchAdminActivations(params?: {
   status?: string;
   mode?: string;
   q?: string;
+  /** normal | fork，不传为全部 */
+  activation_type?: 'normal' | 'fork';
 }): Promise<AdminActivationItem[]> {
   const res = await apiClient.get('/admin/activations', { params });
   const items = res.data?.items ?? [];
@@ -67,6 +78,11 @@ export async function fetchActivationRecycleBin(): Promise<AdminActivationRecycl
 export async function restoreActivationsFromRecycle(payload: { codes: string[] }) {
   const res = await apiClient.post('/admin/activations/recycle-bin/restore', payload);
   return res.data ?? { changed: 0 };
+}
+
+export async function permanentDeleteFromRecycleBin(payload: { codes: string[] }) {
+  const res = await apiClient.post('/admin/activations/recycle-bin/permanent-delete', payload);
+  return res.data ?? { deleted: 0 };
 }
 
 export async function syncActivationsFromDb() {
@@ -280,7 +296,14 @@ export async function fetchAdminLikeDetail(sessionId: string, logIndex: number) 
 
 export async function fetchAdminSystemSettings() {
   const res = await apiClient.get('/admin/system/settings');
-  return res.data ?? {};
+  return (res.data?.data ?? res.data ?? {}) as Record<string, unknown>;
+}
+
+export async function patchAdminSystemSettings(payload: {
+  basic_info_merge_strategy?: 'A' | 'B' | 'C';
+}) {
+  const res = await apiClient.patch('/admin/system/settings', payload);
+  return (res.data?.data ?? res.data ?? {}) as Record<string, unknown>;
 }
 
 export interface AdminAnalyticsDashboard {
@@ -306,5 +329,59 @@ export interface AdminAnalyticsDashboard {
 export async function fetchAdminAnalyticsDashboard(): Promise<AdminAnalyticsDashboard> {
   const res = await apiClient.get('/admin/analytics');
   return (res.data ?? {}) as AdminAnalyticsDashboard;
+}
+
+/** Admin 调试沙箱（从正式激活码 Fork，独立目录） */
+export interface AdminSandboxItem {
+  activation_code: string;
+  fork_id?: string | null;
+  sandbox_root?: string | null;
+  session_id: string;
+  forked_from_code?: string | null;
+  forked_at?: string | null;
+  forked_by_user_id?: string | null;
+  sandbox_expires_at?: string | null;
+  status: string;
+  expired: boolean;
+  created_at?: string;
+  expires_at?: string;
+}
+
+export async function fetchAdminSandboxes(): Promise<{
+  items: AdminSandboxItem[];
+  total: number;
+  retention_days: number;
+}> {
+  const res = await apiClient.get<{
+    items: AdminSandboxItem[];
+    total: number;
+    retention_days: number;
+  }>('/admin/sandboxes');
+  const d = res.data ?? { items: [], total: 0, retention_days: 15 };
+  return d;
+}
+
+export async function forkAdminSandbox(source_activation_code: string): Promise<{
+  sandbox_activation_code: string;
+  fork_id: string;
+  sandbox_root: string;
+  report_id: string;
+  session_id: string;
+  source_activation_code: string;
+  source_report_id: string;
+  sandbox_expires_at: string;
+  retention_days: number;
+}> {
+  const res = await apiClient.post('/admin/sandboxes/fork', { source_activation_code });
+  return (res.data ?? {}) as any;
+}
+
+export async function deleteAdminSandbox(activation_code: string): Promise<void> {
+  await apiClient.delete('/admin/sandboxes', { params: { activation_code } });
+}
+
+export async function purgeExpiredAdminSandboxes(): Promise<{ removed: number }> {
+  const res = await apiClient.post('/admin/sandboxes/purge-expired', {});
+  return (res.data ?? { removed: 0 }) as { removed: number };
 }
 

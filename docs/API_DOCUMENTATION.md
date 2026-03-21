@@ -245,6 +245,54 @@
 }
 ```
 
+## 🧭 简单模式对话 API (Simple Chat)
+
+> 激活码模式下的对话与线程管理，**后端为数据源**，支持跨设备同步。
+
+### GET /simple-chat/threads
+获取某阶段的线程列表（后端主数据源，跨设备可见）
+
+**Query 参数**:
+- `activation_code`: 激活码
+- `phase`: 阶段 (values/strengths/interests/purpose/rumination)
+
+**响应**:
+```json
+{
+  "code": 200,
+  "data": {
+    "threads": [
+      {
+        "id": "t_1773119248061_4oxrs0r",
+        "title": "对话 1",
+        "status": "in-progress",
+        "createdAt": 1773119248061,
+        "dimensionConclusion": null,
+        "selected": false
+      }
+    ],
+    "report_id": "uuid",
+    "step_id": "values"
+  }
+}
+```
+
+### GET /simple-chat/history
+获取某线程的消息历史
+
+**Query 参数**:
+- `activation_code`: 激活码
+- `phase`: 阶段
+- `thread_id`: 线程 ID
+
+### POST /simple-chat/init
+新建线程并获取首条引导消息
+
+**请求体**:
+- `activation_code`: 激活码
+- `phase`: 阶段
+- `thread_id`: 新建的线程 ID（前端生成）
+
 ## 🔍 内容检索API
 
 ### POST /search

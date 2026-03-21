@@ -2,13 +2,24 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BarChart3, KeyRound, MessageSquare, FileText, Activity, TerminalSquare, Settings } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import {
+  BarChart3,
+  KeyRound,
+  MessageSquare,
+  FileText,
+  Activity,
+  TerminalSquare,
+  Settings,
+  FlaskConical,
+} from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useLocale } from '@/hooks/useLocale';
 
 const ADMIN_NAV_ITEMS = [
   { path: '/admin', icon: BarChart3, label: '总览 Dashboard' },
   { path: '/admin/activations', icon: KeyRound, label: '激活码管理' },
+  { path: '/admin/sandboxes', icon: FlaskConical, label: '调试沙箱 Fork' },
   { path: '/admin/conversations', icon: MessageSquare, label: '会话记录' },
   { path: '/admin/reports', icon: FileText, label: '报告概览' },
   { path: '/admin/analytics', icon: Activity, label: '埋点与 Token 统计' },
@@ -24,8 +35,23 @@ export default function AdminLayout({
   const pathname = usePathname();
   const { t } = useLocale();
   const { user, isAuthenticated } = useAuthStore();
+  const [mounted, setMounted] = useState(false);
 
   const isAdmin = !!(isAuthenticated && user?.is_super_admin);
+
+  // 首帧统一占位，避免 SSR/客户端 auth 状态不一致导致 React 418/423 水合错误
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return (
+      <div className="min-h-[calc(100vh-3.5rem)] flex items-center justify-center px-6">
+        <div className="text-sm text-bd-muted">加载中…</div>
+      </div>
+    );
+  }
+
   const displayName = user?.username || user?.email || t('common.user');
   const initials = (user?.username || user?.email || 'U')
     .slice(0, 2)

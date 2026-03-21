@@ -9,12 +9,14 @@ import {
   fetchActivationRecycleBin,
   fetchAdminActivations,
   restoreActivationsFromRecycle,
+  permanentDeleteFromRecycleBin,
   syncActivations,
   type AdminActivationItem,
   type AdminActivationRecycleItem,
 } from '@/lib/api/admin';
 
 type FilterStatus = 'all' | 'active' | 'expired' | 'revoked';
+type ActivationTypeFilter = 'all' | 'normal' | 'fork';
 type TabKey = 'active' | 'recycle';
 
 export default function AdminActivationsPage() {
@@ -23,6 +25,7 @@ export default function AdminActivationsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<FilterStatus>('all');
+  const [activationType, setActivationType] = useState<ActivationTypeFilter>('all');
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState<TabKey>('active');
   const [selectedCodes, setSelectedCodes] = useState<string[]>([]);
@@ -41,6 +44,7 @@ export default function AdminActivationsPage() {
     const res = await fetchAdminActivations({
       status: status === 'all' ? undefined : status,
       q: query || undefined,
+      activation_type: activationType === 'all' ? undefined : activationType,
     });
     setItems(res);
   };
@@ -60,6 +64,7 @@ export default function AdminActivationsPage() {
           const res = await fetchAdminActivations({
             status: status === 'all' ? undefined : status,
             q: query || undefined,
+            activation_type: activationType === 'all' ? undefined : activationType,
           });
           if (!cancelled) setItems(res);
         } else {
@@ -76,7 +81,7 @@ export default function AdminActivationsPage() {
     return () => {
       cancelled = true;
     };
-  }, [status, query, tab]);
+  }, [status, query, tab, activationType]);
 
   useEffect(() => {
     setSelectedCodes([]);
@@ -174,6 +179,29 @@ export default function AdminActivationsPage() {
       setNotice(`已恢复 ${selectedCodes.length} 条激活码`);
     } catch (e: any) {
       setError(e?.message || '恢复失败');
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const handlePermanentDelete = async () => {
+    if (!selectedCodes.length) return;
+    if (
+      !window.confirm(
+        `确认永久删除选中的 ${selectedCodes.length} 个激活码？此操作不可恢复，将清除报告、对话、日志等所有相关数据。`,
+      )
+    ) {
+      return;
+    }
+    setWorking(true);
+    setError(null);
+    try {
+      const res = await permanentDeleteFromRecycleBin({ codes: selectedCodes });
+      await loadRecycleList();
+      setSelectedCodes([]);
+      setNotice(`已永久删除 ${(res as { deleted?: number })?.deleted ?? selectedCodes.length} 条`);
+    } catch (e: any) {
+      setError(e?.message || '永久删除失败');
     } finally {
       setWorking(false);
     }
@@ -357,33 +385,58 @@ export default function AdminActivationsPage() {
       {/* 筛选区域 */}
       {tab === 'active' && (
       <section className="rounded-2xl bg-bd-card border border-bd-border px-6 py-4 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-bd-subtle">状态</span>
-          <button
-            type="button"
-            onClick={() => setStatus('all')}
-            className={`px-3 py-1.5 rounded-full border text-[11px] ${
-              status === 'all'
-                ? 'bg-bd-ui-accent text-bd-ui-accent-fg border-transparent'
-                : 'text-bd-muted border-bd-border hover:text-bd-fg hover:bg-bd-overlay-md'
-            }`}
-          >
-            全部
-          </button>
-          {(['active', 'expired', 'revoked'] as const).map((s) => (
+        <div className="flex flex-col gap-3 w-full">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-bd-subtle">状态</span>
             <button
-              key={s}
               type="button"
-              onClick={() => setStatus(s)}
+              onClick={() => setStatus('all')}
               className={`px-3 py-1.5 rounded-full border text-[11px] ${
-                status === s
+                status === 'all'
                   ? 'bg-bd-ui-accent text-bd-ui-accent-fg border-transparent'
                   : 'text-bd-muted border-bd-border hover:text-bd-fg hover:bg-bd-overlay-md'
               }`}
             >
-              {statusLabel[s]}
+              全部
             </button>
-          ))}
+            {(['active', 'expired', 'revoked'] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setStatus(s)}
+                className={`px-3 py-1.5 rounded-full border text-[11px] ${
+                  status === s
+                    ? 'bg-bd-ui-accent text-bd-ui-accent-fg border-transparent'
+                    : 'text-bd-muted border-bd-border hover:text-bd-fg hover:bg-bd-overlay-md'
+                }`}
+              >
+                {statusLabel[s]}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-bd-subtle">类型</span>
+            {(
+              [
+                { key: 'all' as const, label: '全部' },
+                { key: 'normal' as const, label: '正式' },
+                { key: 'fork' as const, label: 'Fork' },
+              ]
+            ).map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setActivationType(key)}
+                className={`px-3 py-1.5 rounded-full border text-[11px] ${
+                  activationType === key
+                    ? 'bg-violet-600 text-white border-transparent'
+                    : 'text-bd-muted border-bd-border hover:text-bd-fg hover:bg-bd-overlay-md'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="flex items-center gap-2 text-xs md:min-w-[220px]">
@@ -429,14 +482,24 @@ export default function AdminActivationsPage() {
             </button>
           </>
         ) : (
-          <button
-            type="button"
-            disabled={working || !selectedCodes.length}
-            onClick={handleBatchRestore}
-            className="px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 disabled:opacity-50"
-          >
-            从垃圾桶恢复
-          </button>
+          <>
+            <button
+              type="button"
+              disabled={working || !selectedCodes.length}
+              onClick={handleBatchRestore}
+              className="px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 disabled:opacity-50"
+            >
+              从垃圾桶恢复
+            </button>
+            <button
+              type="button"
+              disabled={working || !selectedCodes.length}
+              onClick={handlePermanentDelete}
+              className="px-3 py-1.5 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 disabled:opacity-50"
+            >
+              永久删除（不可恢复）
+            </button>
+          </>
         )}
       </section>
 
@@ -457,6 +520,7 @@ export default function AdminActivationsPage() {
                     <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
                   </th>
                   <th className="px-2 py-2 text-left font-medium">激活码</th>
+                  <th className="px-2 py-2 text-left font-medium">类型</th>
                   <th className="px-2 py-2 text-left font-medium">Session ID</th>
                   <th className="px-2 py-2 text-left font-medium">模式</th>
                   {tab === 'active' ? (
@@ -489,6 +553,19 @@ export default function AdminActivationsPage() {
                     </td>
                     <td className="px-2 py-2 font-mono text-[11px]" style={{ color: 'var(--bd-fg)' }}>
                       {item.activation_code}
+                    </td>
+                    <td className="px-2 py-2">
+                      {tab === 'active' && 'activation_type' in item ? (
+                        (item as AdminActivationItem).activation_type === 'fork' ? (
+                          <span className="inline-flex items-center rounded-full border border-violet-300 bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-700 px-2 py-0.5 text-[10px] font-medium">
+                            Fork
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-bd-muted">正式</span>
+                        )
+                      ) : (
+                        <span className="text-[10px] text-bd-subtle">—</span>
+                      )}
                     </td>
                     <td className="px-2 py-2 font-mono text-[11px] text-bd-subtle max-w-[160px] truncate">
                       {item.session_id}

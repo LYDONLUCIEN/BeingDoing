@@ -13,6 +13,7 @@
 - **[API文档](API_DOCUMENTATION.md)** - 完整API接口文档
 - **[架构设计](ARCHITECTURE.md)** - 系统架构和技术栈
 - **[数据库设计](DATABASE_SCHEMA.md)** - 数据库表结构
+- **[Simple 模式数据存储](DATA_STORAGE_SIMPLE.md)** - data/simple 目录、Thread 概念与同步逻辑
 
 ### 🚀 部署文档
 - **[部署指南](DEPLOYMENT.md)** - 本地和服务器部署

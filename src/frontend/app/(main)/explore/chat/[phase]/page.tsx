@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ChevronRight, ChevronDown, ArrowUp, Square, Copy } from 'lucide-react';
@@ -23,6 +23,7 @@ import {
 } from '@/lib/explore/session';
 import {
   getThreads,
+  setThreadsForPhase,
   saveThread,
   addThread,
   removeThread,
@@ -67,6 +68,7 @@ export default function ChatPhasePage() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [initLoading, setInitLoading] = useState(true);
+  const [threadsFetched, setThreadsFetched] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const [backendSessionId, setBackendSessionId] = useState<string | null>(null);
 
@@ -83,6 +85,15 @@ export default function ChatPhasePage() {
   };
   const phaseInfo = PHASES.find((p) => p.key === phase);
   const phaseLabel = t(`explore.chat.phaseLabels.${phase}`);
+
+  /** 仅在线程 id 集合变化时触发「加载消息」effect，避免因 threads 引用反复变（persist / save 后 getThreads）而重复 init */
+  const threadListSignature = useMemo(() => threads.map((t) => t.id).join('|'), [threads]);
+
+  /** 侧栏预览：当前选中线程的消息以 React state 为准（列表里的 thread 可能仍是 messages:[]） */
+  const threadsForSidebar = useMemo(() => {
+    if (!activeThreadId) return threads;
+    return threads.map((th) => (th.id === activeThreadId ? { ...th, messages } : th));
+  }, [threads, activeThreadId, messages]);
 
   // Auth & redirect
   useEffect(() => {
@@ -108,23 +119,65 @@ export default function ChatPhasePage() {
     }
   }, [phase, router]);
 
-  // Load threads for this phase
+  // 从后端同步线程列表（主数据源，支持跨设备）
   useEffect(() => {
     if (!activationCode || !phase) return;
-    const list = getThreads(activationCode, phase);
-    setThreads(list);
-    const activeId = getActiveThreadId(activationCode, phase);
-    setActiveThreadIdState(activeId);
+    setThreadsFetched(false);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiClient.get('/simple-chat/threads', {
+          params: { activation_code: activationCode, phase: BACKEND_PHASE[phase] },
+        });
+        const raw = (res.data?.threads ?? []) as Array<{
+          id: string;
+          title: string;
+          status: string;
+          createdAt: number;
+          dimensionConclusion?: DimensionConclusionData;
+        }>;
+        const list: ChatThread[] = raw.map((t) => ({
+          id: t.id,
+          title: t.title,
+          status: t.status as 'in-progress' | 'completed',
+          messages: [],
+          createdAt: t.createdAt,
+          dimensionConclusion: t.dimensionConclusion,
+        }));
+        // 先持久化（即便后续被 cancelled 也写入），供请求失败时 fallback
+        setThreadsForPhase(activationCode, phase, list);
+        if (cancelled) return;
+        setThreads(list);
+        const localActiveId = getActiveThreadId(activationCode, phase);
+        const activeId =
+          list.length > 0
+            ? (list.some((x) => x.id === localActiveId) ? localActiveId : list[0].id)
+            : null;
+        setActiveThreadIdState(activeId);
+        if (activeId) setActiveThreadId(activationCode, phase, activeId);
+      } catch {
+        // 网络失败时回退到 localStorage（离线兜底）
+        if (cancelled) return;
+        const list = getThreads(activationCode, phase);
+        setThreads(list);
+        const activeId = getActiveThreadId(activationCode, phase);
+        setActiveThreadIdState(activeId);
+      }
+      if (!cancelled) setThreadsFetched(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [activationCode, phase]);
 
-  // Load messages for active thread (from backend or from thread)
+  // Load messages for active thread (from backend or create new)
   useEffect(() => {
-    if (!activationCode || !phase) return;
+    if (!activationCode || !phase || !threadsFetched) return;
     let cancelled = false;
     setInitLoading(true);
 
-    const list = getThreads(activationCode, phase);
-    const activeId = getActiveThreadId(activationCode, phase);
+    const list = threads;
+    const activeId = activeThreadId;
 
     if (list.length === 0) {
       // No threads: 新建全新对话，后端按 thread_id 创建独立存储
@@ -315,9 +368,10 @@ export default function ChatPhasePage() {
     }
 
     return () => { cancelled = true; };
-  }, [activationCode, phase, threads.length]);
+  }, [activationCode, phase, threadsFetched, threadListSignature, activeThreadId]);
 
   // Persist messages + dimensionConclusion to active (backend-synced) thread when they change
+  // 注意：不要在此调用 setThreads(getThreads())，否则会改变 threads 引用并触发上方加载 effect，造成 initLoading 反复与界面闪烁
   useEffect(() => {
     if (!activationCode || !phase || !activeThreadId || initLoading || activeThreadId !== backendSyncedThreadId) return;
     const t = threads.find((x) => x.id === activeThreadId);
@@ -327,7 +381,6 @@ export default function ChatPhasePage() {
       const toSave: ChatThread = { ...t, messages };
       if (lastConcl?.conclusionData) toSave.dimensionConclusion = lastConcl.conclusionData;
       saveThread(activationCode, phase, toSave);
-      setThreads(getThreads(activationCode, phase));
     }
   }, [messages, activeThreadId, backendSyncedThreadId, initLoading, activationCode, phase, threads]);
 
@@ -704,7 +757,7 @@ export default function ChatPhasePage() {
         <ChatPhaseSidebar
           phase={phase}
           phaseLabel={phaseLabel}
-          threads={threads}
+          threads={threadsForSidebar}
           activeThreadId={activeThreadId}
           onSelectThread={handleSelectThread}
           onNewChat={handleNewChat}

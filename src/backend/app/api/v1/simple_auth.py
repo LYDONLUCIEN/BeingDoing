@@ -11,7 +11,13 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
-from app.utils.simple_activation_manager import SimpleActivationManager, ActivationStatus
+from app.utils.simple_activation_manager import (
+    SimpleActivationManager,
+    ActivationStatus,
+    bind_session_id_for_ensure_report,
+    get_effective_simple_root,
+)
+from app.utils.sandbox_fork import assert_sandbox_not_expired
 from app.api.v1.auth import get_current_user
 from fastapi import Depends
 from app.utils.report_registry import ReportRegistry
@@ -87,6 +93,10 @@ async def activate(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="激活码不存在",
         )
+    try:
+        assert_sandbox_not_expired(rec)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     # 首次激活绑定归属用户；已绑定则仅允许归属者使用
     if not manager.is_owner(rec, current_user):
@@ -107,11 +117,12 @@ async def activate(
     # 绑定/创建 report（activation_code + user_id -> report_id）
     user_id = (current_user or {}).get("user_id")
     if user_id:
-        registry = ReportRegistry()
+        root = get_effective_simple_root(rec)
+        registry = ReportRegistry(base_dir=str(root))
         registry.ensure_report(
             activation_code=rec.code,
             user_id=user_id,
-            session_id=rec.session_id,
+            session_id=bind_session_id_for_ensure_report(rec),
         )
 
     return ActivationResponse(

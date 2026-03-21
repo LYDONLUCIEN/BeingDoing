@@ -9,7 +9,11 @@ from app.services.session_service import SessionService
 from app.services.progress_service import ProgressService
 from app.domain import DEFAULT_CURRENT_STEP
 from app.config.settings import settings
-from app.utils.survey_storage import save_basic_info, load_basic_info
+from app.utils.survey_storage import (
+    save_basic_info_by_user,
+    load_basic_info_by_user,
+    load_basic_info,
+)
 
 router = APIRouter(prefix="/sessions", tags=["会话"])
 
@@ -55,9 +59,12 @@ async def get_session_survey(
     session_id: str,
     current_user: Optional[dict] = Depends(get_current_user),
 ):
-    """获取会话的调研问卷数据"""
-    await _check_session_access(session_id, current_user)
-    data = load_basic_info(session_id, CONVERSATION_DIR)
+    """获取会话的调研问卷数据（用户级 basic_info）"""
+    session = await _check_session_access(session_id, current_user)
+    user_id = (session.get("user_id") or (current_user or {}).get("user_id") or "").strip()
+    data = load_basic_info_by_user(user_id) if user_id else None
+    if not data:
+        data = load_basic_info(session_id, CONVERSATION_DIR)
     return StandardResponse(
         code=200,
         message="success",
@@ -71,9 +78,12 @@ async def save_session_survey(
     request: SurveySaveRequest,
     current_user: Optional[dict] = Depends(get_current_user),
 ):
-    """保存调研问卷数据到会话"""
-    await _check_session_access(session_id, current_user)
-    save_basic_info(session_id, request.survey_data or {}, CONVERSATION_DIR)
+    """保存调研问卷数据（用户级 basic_info）"""
+    session = await _check_session_access(session_id, current_user)
+    user_id = (session.get("user_id") or (current_user or {}).get("user_id") or "").strip()
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="请先登录")
+    save_basic_info_by_user(user_id, request.survey_data or {})
     return StandardResponse(code=200, message="success", data={})
 
 

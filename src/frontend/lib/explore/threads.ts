@@ -80,6 +80,13 @@ export function getThreads(code: string, phase: PhaseKey): ChatThread[] {
   return data[phase] ?? [];
 }
 
+/** 批量替换某阶段的线程列表（用于后端同步结果持久化，失败回退时可用） */
+export function setThreadsForPhase(code: string, phase: PhaseKey, threads: ChatThread[]) {
+  const data = loadRaw(code);
+  data[phase] = threads;
+  saveRaw(code, data);
+}
+
 export function saveThread(code: string, phase: PhaseKey, thread: ChatThread) {
   const data = loadRaw(code);
   const list = data[phase] ?? [];

@@ -145,7 +145,7 @@ class ConversationFileManager:
             async with aiofiles.open(file_path, mode='r', encoding='utf-8') as f:
                 content = await f.read()
                 return json.loads(content)
-        except (FileNotFoundError, json.JSONDecodeError):
+        except (FileNotFoundError, json.JSONDecodeError, OSError, IOError):
             return {
                 "session_id": session_id,
                 "category": category,

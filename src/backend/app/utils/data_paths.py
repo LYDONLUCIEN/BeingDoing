@@ -18,6 +18,11 @@ def get_project_data_dir() -> Path:
     return get_project_root() / "data"
 
 
+def get_user_data_dir() -> Path:
+    """data/user/ - 用户级数据（basic_info 等）"""
+    return get_project_data_dir() / "user"
+
+
 def get_conversation_dir() -> Path:
     """data/conversations/ - 对话记录"""
     return get_project_data_dir() / "conversations"

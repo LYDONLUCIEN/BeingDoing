@@ -1,6 +1,7 @@
 # BeingDoing 项目 - 核心API文档汇总
 
 > 分析时间：2026-03-19
+> 更新时间：2026-03-20（已同步.cursor架构变更）
 > 基础URL: `http://localhost:8000/api/v1`
 
 ---
@@ -12,11 +13,13 @@
 | 分类 | 前缀 | 说明 |
 |-----|------|------|
 | 简单模式对话 | `/simple-chat/*` | 当前主要使用的对话接口 |
+| **Rumination** | **`/simple-chat/rumination-*`** | **第五步沉淀（新增）** |
 | 完整模式对话 | `/chat/*` | LangGraph智能体对话（备用） |
 | 认证 | `/auth/*`, `/simple-auth/*` | 用户认证与激活码验证 |
 | 用户 | `/users/*` | 用户信息管理 |
 | 会话 | `/sessions/*` | 会话管理 |
 | 管理 | `/admin/*` | 后台管理接口 |
+| **Admin Mock** | **`/admin/conversations/*`** | **Mock数据管理（新增）** |
 | 其他 | `/formula/*`, `/export/*` 等 | 辅助功能接口 |
 
 ### 1.2 通用响应格式
@@ -51,7 +54,7 @@ POST /simple-chat/init
 ```typescript
 interface SimpleInitRequest {
   activation_code: string;    // 激活码
-  phase: string;              // 阶段: values | strengths | interests | purpose
+  phase: string;              // 阶段: values | strengths | interests | purpose | rumination
   thread_id?: string;         // 可选，指定对话线程ID
 }
 ```
@@ -752,7 +755,142 @@ Authorization: Bearer {admin_token}
 
 ---
 
-## 十、API调用示例
+### 9.5 Admin Mock 数据管理（新增）
+
+#### 获取 Mock 信息
+```http
+GET /admin/conversations/mock-info
+Authorization: Bearer {admin_token}
+```
+
+**响应：**
+```typescript
+{
+  exists: boolean;
+  record_template_path: string;
+  prior_files: string[];
+}
+```
+
+#### 初始化 Mock
+```http
+POST /admin/conversations/init-mock
+Authorization: Bearer {admin_token}
+```
+
+**说明：** 强制生成/覆盖默认 mock 模板
+
+#### 应用 Mock 到激活码
+```http
+POST /admin/conversations/apply-mock-to-activation
+Authorization: Bearer {admin_token}
+```
+
+**请求体：**
+```typescript
+{
+  activation_code: string;    // 目标激活码
+}
+```
+
+**说明：** 将 mock 数据应用到指定激活码，用于跳步测试
+
+#### 保存为 Mock
+```http
+POST /admin/conversations/save-as-mock
+Authorization: Bearer {admin_token}
+```
+
+**请求体：**
+```typescript
+{
+  activation_code?: string;   // 源激活码（二选一）
+  report_id?: string;         // 源报告ID（二选一）
+}
+```
+
+**说明：** 用指定 report/激活码的历史数据替换 mock
+
+#### 跳步到 Rumination
+```http
+POST /admin/conversations/jump-to-rumination
+Authorization: Bearer {admin_token}
+```
+
+**请求体：**
+```typescript
+{
+  activation_code: string;    // 目标激活码
+  target_section?: string;    // 目标section: opening/review/filter/final_choice/recommend/end
+  target_filter_step?: number; // 筛选步骤 1~9
+}
+```
+
+**说明：** 管理员跳步到 Rumination 阶段进行测试
+
+---
+
+## 十、Rumination API（新增）
+
+### 10.1 获取 Rumination 进度
+
+```http
+GET /simple-chat/rumination-progress?activation_code={code}
+Authorization: Bearer {token}
+```
+
+**响应：**
+```typescript
+{
+  main_section: string;       // opening/review/filter/final_choice/recommend/end
+  review_sub_index: number;   // 0=values 1=strengths 2=interests 3=purpose
+  filter_step: number;        // 0=未进入 1~9=筛选步骤
+  filter_table: object | null; // 当前表格数据
+}
+```
+
+### 10.2 保存 Rumination 进度
+
+```http
+POST /simple-chat/rumination-progress
+Authorization: Bearer {token}
+```
+
+**请求体：**
+```typescript
+{
+  activation_code: string;
+  main_section: string;
+  review_sub_index?: number;
+  filter_step?: number;
+  filter_table?: object;
+}
+```
+
+### 10.3 提交表格（Rumination 筛选）
+
+```http
+POST /simple-chat/rumination-table-submit
+Authorization: Bearer {token}
+```
+
+**请求体：**
+```typescript
+{
+  activation_code: string;
+  table_data: {
+    columns: string[];
+    rows: Array<Record<string, any>>;
+  };
+  current_step: number;       // 当前筛选步骤 1~9
+}
+```
+
+**说明：** 用户在前端确认表格后提交，后端执行对应筛选逻辑
+
+---
+
+## 十一、API调用示例
 
 ### 10.1 完整对话流程（简单模式）
 

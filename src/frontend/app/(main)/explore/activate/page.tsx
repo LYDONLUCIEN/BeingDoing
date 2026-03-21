@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { apiClient } from '@/lib/api/client';
 import { loadSession, saveSession, setLastActivationCode, getLastActivationCode, hasReportAvailable } from '@/lib/explore/session';
@@ -14,8 +14,9 @@ function useActivateBg() {
   }, []);
 }
 
-export default function ActivatePage() {
+function ActivatePageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   useActivateBg();
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -23,9 +24,14 @@ export default function ActivatePage() {
   const [showReport, setShowReport] = useState(false);
 
   useEffect(() => {
+    const fromUrl = searchParams.get('code')?.trim();
+    if (fromUrl) {
+      setCode(fromUrl);
+      return;
+    }
     const last = getLastActivationCode();
     if (last) setCode(last);
-  }, []);
+  }, [searchParams]);
 
   useEffect(() => {
     const trimmed = code.trim();
@@ -161,5 +167,13 @@ export default function ActivatePage() {
 
       </motion.div>
     </div>
+  );
+}
+
+export default function ActivatePage() {
+  return (
+    <Suspense fallback={null}>
+      <ActivatePageContent />
+    </Suspense>
   );
 }

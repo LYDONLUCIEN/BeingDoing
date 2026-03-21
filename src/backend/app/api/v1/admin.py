@@ -19,6 +19,13 @@ from app.utils.report_registry import ReportRegistry
 from app.config.settings import settings
 
 from app.services.analytics_service import AnalyticsService
+from app.utils.sandbox_fork import (
+    SANDBOX_RETENTION_DAYS,
+    delete_sandbox_by_code,
+    fork_activation_from_source,
+    list_sandboxes,
+    purge_expired_sandboxes,
+)
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -41,6 +48,12 @@ class ActivationSyncRequest(BaseModel):
     dry_run: bool = False
     mode: str = "insert_only"
     default_status: str = ActivationStatus.REVOKED.value
+
+
+class SandboxForkRequest(BaseModel):
+    """从正式激活码 Fork 调试沙箱（独立目录，默认保留 15 天）"""
+
+    source_activation_code: str = Field(..., min_length=1)
 
 
 _SYNC_SOURCES = ("analytics_reports", "reports_registry", "simple_activations_file")
@@ -253,6 +266,10 @@ async def list_activations(
     status: Optional[str] = None,
     mode: Optional[str] = None,
     q: Optional[str] = None,
+    activation_type: Optional[str] = Query(
+        None,
+        description="normal=正式激活码，fork=调试沙箱 Fork（SBX），不传则全部",
+    ),
     current_user: Optional[dict] = Depends(get_current_user),
 ):
     """
@@ -260,6 +277,7 @@ async def list_activations(
     - status: active / expired / revoked，可选过滤
     - mode: 兼容保留参数（激活码统一按 combined 处理）
     - q: 按 activation_code 或 session_id 进行模糊匹配
+    - activation_type: normal | fork（沙箱）
     """
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
@@ -267,6 +285,7 @@ async def list_activations(
     manager = SimpleActivationManager()
     records = manager.list_activations()
 
+    at = (activation_type or "").strip().lower()
     items = []
     for code, rec in records.items():
         # 删除到垃圾桶的激活码只在 recycle-bin 展示，不再出现在主列表
@@ -275,6 +294,11 @@ async def list_activations(
         if status and rec.status != status:
             continue
         if q and (q not in rec.code and q not in rec.session_id):
+            continue
+        is_fork = bool(getattr(rec, "is_sandbox", False))
+        if at == "fork" and not is_fork:
+            continue
+        if at == "normal" and is_fork:
             continue
         items.append(
             {
@@ -291,6 +315,13 @@ async def list_activations(
                 "deleted_at": rec.deleted_at,
                 "purge_after": rec.purge_after,
                 "source": rec.source,
+                "activation_type": "fork" if is_fork else "normal",
+                "is_sandbox": is_fork,
+                "sandbox_root": getattr(rec, "sandbox_root", None),
+                "fork_id": getattr(rec, "fork_id", None),
+                "forked_from_code": getattr(rec, "forked_from_code", None),
+                "forked_at": getattr(rec, "forked_at", None),
+                "sandbox_expires_at": getattr(rec, "sandbox_expires_at", None),
             }
         )
 
@@ -413,11 +444,28 @@ async def restore_activations_from_recycle(
 
 @router.post("/activations/recycle-bin/purge")
 async def purge_activation_recycle_bin(current_user: Optional[dict] = Depends(get_current_user)):
+    """清理过期垃圾桶条目（按 purge_after 自动）"""
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     manager = SimpleActivationManager()
     purged = manager.purge_recycle_bin()
     return {"code": 200, "message": "success", "data": {"purged": purged}}
+
+
+@router.post("/activations/recycle-bin/permanent-delete")
+async def permanent_delete_from_recycle_bin(
+    request: ActivationBatchActionRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """确认立即永久删除：移除激活码、report 目录、flat session 目录等所有相关数据"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    manager = SimpleActivationManager()
+    base = get_simple_base_dir()
+    deleted = manager.permanent_delete_from_recycle_bin(
+        request.codes, reports_root=base / "reports"
+    )
+    return {"code": 200, "message": "success", "data": {"deleted": deleted}}
 
 
 @router.post("/activations/sync-from-db")
@@ -622,8 +670,8 @@ async def download_report_json(
 async def sync_reports_from_activations(current_user: Optional[dict] = Depends(get_current_user)):
     """
     从 activations 反向补齐 report 注册表：
-    - 仅对缺失 report 的 activation 生成最小 report 结构
-    - user_id 取激活码 owner_user_id；缺失时使用 unknown:{activation_code}
+    - 仅对「已激活」（有 owner）且缺失 report 的 activation 生成 report
+    - 从未被使用过的激活码（无 owner）不创建 report
     """
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
@@ -632,7 +680,9 @@ async def sync_reports_from_activations(current_user: Optional[dict] = Depends(g
     activations = manager.list_activations()
     created = 0
     for rec in activations.values():
-        user_id = rec.owner_user_id or f"unknown:{rec.code}"
+        user_id = (rec.owner_user_id or rec.owner_email or "").strip()
+        if not user_id:
+            continue
         existed = registry.get_by_activation_user(rec.code, user_id)
         if existed:
             continue
@@ -1012,6 +1062,7 @@ async def get_system_settings(current_user: Optional[dict] = Depends(get_current
     """系统只读配置（脱敏）"""
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    from app.utils.admin_config import get_basic_info_merge_strategy
     return {
         "code": 200,
         "message": "success",
@@ -1023,5 +1074,91 @@ async def get_system_settings(current_user: Optional[dict] = Depends(get_current
             "AUDIO_MODE": getattr(settings, "AUDIO_MODE", None),
             "DEBUG_MODE": getattr(settings, "DEBUG_MODE", None),
             "SUPER_ADMIN_EMAILS_CONFIGURED": bool((getattr(settings, "SUPER_ADMIN_EMAILS", "") or "").strip()),
+            "BASIC_INFO_MERGE_STRATEGY": get_basic_info_merge_strategy(),
         },
     }
+
+
+class SystemSettingsPatchRequest(BaseModel):
+    basic_info_merge_strategy: Optional[str] = None
+
+
+@router.patch("/system/settings")
+async def patch_system_settings(
+    req: SystemSettingsPatchRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """更新可配置的系统设置（如 basic_info 合并策略）"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    from app.utils.admin_config import set_admin_config
+    if req.basic_info_merge_strategy is not None:
+        val = (req.basic_info_merge_strategy or "").strip().upper()
+        if val not in ("A", "B", "C"):
+            raise HTTPException(status_code=400, detail="basic_info_merge_strategy 须为 A/B/C")
+        set_admin_config("basic_info_merge_strategy", val)
+    return {"code": 200, "message": "success", "data": {}}
+
+
+@router.get("/sandboxes")
+async def admin_list_sandboxes(current_user: Optional[dict] = Depends(get_current_user)):
+    """列出所有调试沙箱 Fork"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    items = list_sandboxes()
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "items": items,
+            "total": len(items),
+            "retention_days": SANDBOX_RETENTION_DAYS,
+        },
+    }
+
+
+@router.post("/sandboxes/fork")
+async def admin_fork_sandbox(
+    req: SandboxForkRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """
+    从正式激活码复制报告与问卷到 data/simple/sandboxes/{fork_id}/，并生成新激活码（SBX 前缀）。
+    禁止从沙箱再次 Fork。
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    try:
+        _, summary = fork_activation_from_source(
+            req.source_activation_code.strip(),
+            current_user or {},
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"code": 200, "message": "success", "data": summary}
+
+
+@router.delete("/sandboxes")
+async def admin_delete_sandbox(
+    activation_code: str = Query(..., description="沙箱激活码，如 SBXxxxxxxxx"),
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """删除沙箱目录及 activations.json 中的记录"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    try:
+        ok = delete_sandbox_by_code(activation_code, current_user)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not ok:
+        raise HTTPException(status_code=404, detail="沙箱激活码不存在")
+    return {"code": 200, "message": "success", "data": {"deleted": True}}
+
+
+@router.post("/sandboxes/purge-expired")
+async def admin_purge_expired_sandboxes(current_user: Optional[dict] = Depends(get_current_user)):
+    """清理已超过 sandbox_expires_at 的沙箱（可挂定时任务调用）"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    n = purge_expired_sandboxes()
+    return {"code": 200, "message": "success", "data": {"removed": n}}

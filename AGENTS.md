@@ -320,6 +320,7 @@ python scripts/init_db.py
 ## 文档索引
 
 - `docs/QUICK_START.md` - 快速开始
+- `docs/DATA_STORAGE_SIMPLE.md` - Simple 模式 data 目录、Thread 概念与后端同步逻辑
 - `docs/DEVELOPMENT.md` - 开发指南
 - `docs/ARCHITECTURE.md` - 架构设计
 - `docs/DATABASE_SCHEMA.md` - 数据库设计
@@ -327,6 +328,7 @@ python scripts/init_db.py
 - `docs/TESTING.md` - 测试说明
 - `docs/DEPLOYMENT.md` - 部署指南
 - `docs/DOCKER.md` - Docker 使用
+- `docs/ADMIN_SANDBOX_FORK.md` - 管理员调试沙箱（Fork 正式激活码）
 
 ## 调试技巧
 

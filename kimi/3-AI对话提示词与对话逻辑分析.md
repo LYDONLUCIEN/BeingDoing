@@ -1,6 +1,7 @@
 # BeingDoing 项目 - AI对话提示词与对话逻辑分析
 
 > 分析时间：2026-03-19
+> 更新时间：2026-03-20（已同步.cursor架构变更：Rumination阶段、锚点摘要、Widget体系、并发锁）
 
 ---
 
@@ -12,6 +13,7 @@
 |-----|---------|------|---------|
 | **简单模式** | 直接LLM调用 + 长system_prompt | ✅ 主要使用 | 快速引导、标准化流程 |
 | **完整模式** | LangGraph ReAct智能体 | ⚠️ 备用 | 深度探索、复杂推理 |
+| **Rumination** | Python实现 + Widget交互 | 🆕 新增 | 第五步沉淀、表格筛选 |
 
 ---
 
@@ -21,7 +23,9 @@
 
 ```
 src/backend/app/api/v1/simple_chat.py          # API入口
-src/backend/app/api/v1/simple_chat.py          # system_prompt构建
+│                                               # 新增：rumination分支、锚点摘要、并发锁
+src/backend/app/utils/admin_mock.py            # 新增：Mock数据管理（跳步测试）
+src/backend/app/utils/context_refiner.py       # 新增：锚点摘要生成（规划中）
 ```
 
 ### 2.2 对话流程
@@ -44,7 +48,9 @@ src/backend/app/api/v1/simple_chat.py          # system_prompt构建
 │  2. 对话阶段                                                                 │
 │     ├─→ 接收用户输入                                                        │
 │     ├─→ 加载历史（当前thread）                                              │
-│     ├─→ 构造 messages: [system, ...history, user]                          │
+│     │      └─→ 文件级并发锁（防止多请求同时写丢失）                        │
+│     ├─→ 构造 messages: [system, anchor_summary, ...recent_history, user]   │
+│     │      └─→ 锚点摘要 + 最近20轮（替代完整历史）                         │
 │     ├─→ 流式调用 LLM.chat_stream()                                         │
 │     └─→ 保存 assistant 回复                                                │
 │                                                                             │
@@ -94,6 +100,7 @@ src/backend/app/api/v1/simple_chat.py          # system_prompt构建
   - question_bank: 随机抽取的6个题目
   - basic_info: 来访者基本信息
   - prior_context: 上一轮咨询结果（values阶段为空）
+  - anchor_summary: 锚点摘要（包含goals、性格、风格等，替代完整历史）
 ```
 
 #### Strengths 阶段 Prompt 结构
@@ -587,11 +594,19 @@ class StepProgress(BaseModel):
     current_question_index: int         # 当前题目索引
     is_intro_shown: bool                # 是否已展示介绍
 
+class RuminationProgress(BaseModel):
+    """Rumination阶段进度（新增）"""
+    main_section: str                   # 主页面: opening/review/filter/final_choice/recommend/end
+    review_sub_index: int               # 回顾子索引: 0=values 1=strengths 2=interests 3=purpose
+    filter_step: int                    # 筛选步骤: 0=未进入 1~9=筛选步骤
+    filter_table: Optional[Dict]        # 当前表格数据
+
 # 存储在 state["question_progress"] 中
 {
     "values_exploration": StepProgress(...),
     "strengths_exploration": StepProgress(...),
     "interests_exploration": StepProgress(...),
+    "rumination": RuminationProgress(...),  # 新增
 }
 ```
 
@@ -622,16 +637,16 @@ QUESTION_GOALS = {
 
 ### 6.1 简单模式 vs 完整模式对比
 
-| 特性 | 简单模式 | 完整模式 |
-|-----|---------|---------|
-| **实现** | 直接LLM调用 | LangGraph状态机 |
-| **Prompt** | 长system_prompt（完整流程） | 短system_prompt + 节点提示词 |
-| **状态管理** | 无状态/简单历史 | 复杂状态（AgentState） |
-| **工具使用** | 无 | search_tool, guide_tool等 |
-| **流式输出** | ✅ 支持 | ✅ 支持 |
-| **答题卡** | 基于关键词检测 | 基于充分性判断 |
-| **适用场景** | 标准化快速引导 | 深度个性化探索 |
-| **当前状态** | ✅ 主要使用 | ⚠️ 备用 |
+| 特性 | 简单模式 | 完整模式 | Rumination（新增） |
+|-----|---------|---------|-------------------|
+| **实现** | 直接LLM调用 | LangGraph状态机 | Python + Widget交互 |
+| **Prompt** | 长system_prompt（完整流程） | 短system_prompt + 节点提示词 | section级prompt |
+| **状态管理** | 无状态/简单历史 | 复杂状态（AgentState） | RuminationProgress |
+| **工具使用** | 无 | search_tool, guide_tool等 | gen_table, filter_match等 |
+| **流式输出** | ✅ 支持 | ✅ 支持 | ✅ 支持 |
+| **答题卡** | 基于关键词检测 | 基于充分性判断 | 表格Widget + Top3选择 |
+| **适用场景** | 标准化快速引导 | 深度个性化探索 | 第五步沉淀整合 |
+| **当前状态** | ✅ 主要使用 | ⚠️ 备用 | 🆕 新增 |
 
 ### 6.2 当前对话流程图（简单模式）
 
@@ -652,9 +667,12 @@ QUESTION_GOALS = {
   ▼
 发送消息（simple-chat/message/stream）
   ├─→ 加载历史消息
-  ├─→ 构造messages [system, ...history, user]
+  │      └─→ 文件级并发锁（防止并发写丢失）
+  ├─→ 构造messages [system, anchor_summary, ...recent_history, user]
+  │      └─→ 锚点摘要（含goals/性格/风格）+ 最近20轮
   ├─→ 流式调用LLM
   └─→ 保存assistant回复
+         └─→ 后台异步生成锚点摘要（每20轮/结论卡后）
   │
   ▼
 检测完成意图
@@ -672,11 +690,12 @@ QUESTION_GOALS = {
 
 ## 七、未来优化建议
 
-### 7.1 提示词优化
+### 7.1 提示词优化（已部分实现）
 
 1. **动态Prompt生成**：根据用户回答质量动态调整Prompt
-2. **多语言支持**：Prompt模板国际化
+2. **多语言支持**：✅ 已接入i18n，探索流程支持中英文切换
 3. **A/B测试**：不同Prompt版本效果对比
+4. **锚点摘要**：✅ 用结构化摘要替代完整历史，减少token消耗
 
 ### 7.2 对话逻辑优化
 
@@ -689,3 +708,4 @@ QUESTION_GOALS = {
 1. **重新启用LangGraph**：在简单模式基础上增加智能体能力
 2. **多Agent协作**：values/strengths/interests各一个专家Agent
 3. **A2A协议**：支持Agent间通信协作
+4. **Rumination Widget体系**：✅ 已规划表格Widget、筛选弹窗、Top3选择卡

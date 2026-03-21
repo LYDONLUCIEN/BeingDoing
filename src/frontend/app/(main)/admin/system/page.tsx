@@ -4,18 +4,20 @@ import { useEffect, useState } from 'react';
 import { useThemeStore } from '@/stores/themeStore';
 import { EFFECT_PRESET_IDS, useDesignEffectsStore } from '@/stores/designEffectsStore';
 import { DEFAULT_DARK, DEFAULT_LIGHT, useColorThemeStore, type SchemeColors } from '@/stores/colorThemeStore';
-import { fetchAdminSystemSettings } from '@/lib/api/admin';
+import { fetchAdminSystemSettings, patchAdminSystemSettings } from '@/lib/api/admin';
 
 interface BasicSettings {
   APP_ENV?: string;
   ARCHITECTURE_MODE?: string;
   LLM_PROVIDER?: string;
   LLM_MODEL?: string;
+  BASIC_INFO_MERGE_STRATEGY?: 'A' | 'B' | 'C';
 }
 
 export default function AdminSystemPage() {
   const [settings, setSettings] = useState<BasicSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mergeSaving, setMergeSaving] = useState(false);
   const { colorScheme, toggleColorScheme } = useThemeStore();
   const presetId = useDesignEffectsStore((s) => s.presetId);
   const setPreset = useDesignEffectsStore((s) => s.setPreset);
@@ -25,11 +27,28 @@ export default function AdminSystemPage() {
   const setDark = useColorThemeStore((s) => s.setDark);
   const resetAll = useColorThemeStore((s) => s.resetAll);
 
-  useEffect(() => {
+  const loadSettings = () => {
     fetchAdminSystemSettings()
       .then((res) => setSettings(res))
       .catch((e: any) => setError(e?.message || '加载系统设置失败'));
+  };
+
+  useEffect(() => {
+    loadSettings();
   }, []);
+
+  const handleMergeStrategyChange = async (val: 'A' | 'B' | 'C') => {
+    setMergeSaving(true);
+    setError(null);
+    try {
+      await patchAdminSystemSettings({ basic_info_merge_strategy: val });
+      setSettings((prev) => (prev ? { ...prev, BASIC_INFO_MERGE_STRATEGY: val } : prev));
+    } catch (e: any) {
+      setError(e?.message || '保存失败');
+    } finally {
+      setMergeSaving(false);
+    }
+  };
 
   const colorKeys: Array<keyof SchemeColors> = [
     'bg',
@@ -60,12 +79,28 @@ export default function AdminSystemPage() {
       )}
 
       <section className="rounded-2xl bg-bd-card border border-bd-border px-6 py-5 shadow-sm space-y-3 text-xs">
-        <h2 className="text-sm font-medium text-bd-fg">系统只读配置</h2>
+        <h2 className="text-sm font-medium text-bd-fg">系统配置</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>APP_ENV：<span className="text-bd-fg">{settings?.APP_ENV ?? '—'}</span></div>
           <div>ARCHITECTURE_MODE：<span className="text-bd-fg">{settings?.ARCHITECTURE_MODE ?? '—'}</span></div>
           <div>LLM_PROVIDER：<span className="text-bd-fg">{settings?.LLM_PROVIDER ?? '—'}</span></div>
           <div>LLM_MODEL：<span className="text-bd-fg">{settings?.LLM_MODEL ?? '—'}</span></div>
+        </div>
+        <div className="pt-3 border-t border-bd-border">
+          <label className="block font-medium text-bd-fg mb-2">问卷合并策略 (basic_info_merge_strategy)</label>
+          <p className="text-bd-muted mb-2">
+            A=最新覆盖；B=并集；C=交集。多来源时如何合并用户 basic_info。
+          </p>
+          <select
+            value={(settings?.BASIC_INFO_MERGE_STRATEGY ?? 'A') as string}
+            onChange={(e) => handleMergeStrategyChange((e.target.value || 'A') as 'A' | 'B' | 'C')}
+            disabled={mergeSaving}
+            className="rounded-lg border border-bd-border bg-bd-overlay px-3 py-1.5 text-sm"
+          >
+            <option value="A">A - 最新覆盖</option>
+            <option value="B">B - 并集</option>
+            <option value="C">C - 交集</option>
+          </select>
         </div>
       </section>
 

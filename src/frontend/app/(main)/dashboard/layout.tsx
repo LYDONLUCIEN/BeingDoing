@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { User, BarChart3, BookOpen, HelpCircle, Trash2, Settings } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useLocale } from '@/hooks/useLocale';
@@ -23,6 +24,20 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const { t } = useLocale();
   const { user } = useAuthStore();
+  const [mounted, setMounted] = useState(false);
+
+  // 首帧统一占位，避免 SSR/客户端 auth 状态不一致导致 React 418/423 水合错误
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return (
+      <div className="min-h-[calc(100vh-3.5rem)] flex items-center justify-center px-6">
+        <div className="text-sm text-bd-muted">加载中…</div>
+      </div>
+    );
+  }
 
   const displayName = user?.username || user?.email || t('common.user');
   const initials = (user?.username || user?.email || 'U')

@@ -7,6 +7,7 @@
 - 会话由「激活码」标识，对话历史保存在 data/simple 下
 """
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import AsyncIterator, Dict, List, Optional
 import asyncio
@@ -22,7 +23,13 @@ from app.core.llmapi import get_default_llm_provider, LLMMessage
 from app.api.v1.auth import get_current_user, _is_debug_admin
 from app.config.settings import settings
 from app.core.knowledge.loader import KnowledgeLoader
-from app.utils.simple_activation_manager import SimpleActivationManager, ActivationStatus, get_simple_base_dir
+from app.utils.simple_activation_manager import (
+    SimpleActivationManager,
+    ActivationStatus,
+    bind_session_id_for_ensure_report,
+    get_effective_simple_root,
+)
+from app.utils.sandbox_fork import assert_sandbox_not_expired
 from app.utils.conversation_file_manager import ConversationFileManager
 from app.core.dimension_completion_checker import (
     check_dimension_complete,
@@ -47,10 +54,12 @@ from app.utils.context_refiner import (
     load_anchor_for_phase,
 )
 from app.utils.survey_storage import (
-    save_basic_info,
+    save_basic_info_by_user,
+    load_basic_info_by_user,
     load_basic_info,
     format_basic_info_for_prompt,
-    save_prior_context,
+    save_prior_context_for_report,
+    load_prior_context_for_report,
     load_prior_context,
 )
 
@@ -68,8 +77,7 @@ def _get_llm_semaphore():
         n = getattr(settings, "LLM_MAX_CONCURRENT", 0) or 0
         _LLM_SEM = asyncio.Semaphore(n) if n > 0 else None
     return _LLM_SEM
-SIMPLE_BASE_DIR = str(get_simple_base_dir())
-REPORTS_BASE_DIR = str(get_simple_base_dir() / "reports")
+
 
 router = APIRouter(prefix="/simple-chat", tags=["简单模式对话"])
 logger = logging.getLogger(__name__)
@@ -80,12 +88,13 @@ def _trigger_anchor_refiner(
     phase: str,
     category: str,
     conv_manager: ConversationFileManager,
+    storage_root: str,
     dimension_conclusion: Optional[dict] = None,
     round_count: Optional[int] = None,
     vip_level: int = 1,
 ) -> None:
     """后台触发锚点摘要提炼（不阻塞）"""
-    prior = load_anchor_for_phase(report_id, phase, SIMPLE_BASE_DIR)
+    prior = load_anchor_for_phase(report_id, phase, storage_root)
 
     async def _run():
         try:
@@ -94,7 +103,7 @@ def _trigger_anchor_refiner(
                 phase=phase,
                 category=category,
                 conv_manager=conv_manager,
-                base_dir=SIMPLE_BASE_DIR,
+                base_dir=storage_root,
                 dimension_conclusion=dimension_conclusion,
                 prior_anchor=prior,
                 round_count=round_count,
@@ -118,6 +127,64 @@ def _skip_expired_for_debug(rec, user: Optional[dict]) -> bool:
 def _storage_category(phase: str, session_id: str) -> str:
     """存储用 category：每个 step-session 一份文件。"""
     return f"{phase}__{session_id}"
+
+
+def _step_session_message_count(
+    registry: ReportRegistry, report_id: str, phase_step: str, sid: str
+) -> int:
+    """某 step 下 thread 对话文件中的消息条数（文件不存在为 0）。"""
+    if not sid or not report_id:
+        return 0
+    path = registry.get_step_session_file(report_id, phase_step, sid)
+    if not path.is_file():
+        return 0
+    try:
+        data = json.loads(path.read_text(encoding="utf-8") or "{}")
+        return len(data.get("messages") or [])
+    except (OSError, json.JSONDecodeError, TypeError):
+        return 0
+
+
+def _resolve_default_logical_thread_id(
+    registry: ReportRegistry,
+    report: dict,
+    phase_step: str,
+    thread_id: Optional[str],
+    activation_storage_session_id: str,
+) -> str:
+    """
+    解析当前阶段使用的对话线程 id。
+
+    前端未传 thread_id 时，不能简单用 rec.session_id：该 id 是「问卷/附属文件」命名空间，
+    真实对话往往在 values__t_xxx.json。Fork 沙箱后 rec.session_id 为新 UUID，会误开空线程。
+    策略：优先显式 thread_id → 已选 selected_session_id → session_ids 中消息数最多的文件
+    → 再退到非 activation_storage_session_id 的候选 → 最后 rec.session_id。
+    """
+    tid = (thread_id or "").strip()
+    if tid:
+        return tid
+    rid = (report.get("report_id") or "").strip()
+    step = ((report.get("steps") or {}).get(phase_step)) or {}
+    sel = (step.get("selected_session_id") or "").strip()
+    if sel:
+        return sel
+    act_sid = (activation_storage_session_id or "").strip()
+    candidates = [str(s).strip() for s in (step.get("session_ids") or []) if str(s).strip()]
+    if not candidates:
+        return act_sid
+    best_sid = None
+    best_n = -1
+    for sid in candidates:
+        n = _step_session_message_count(registry, rid, phase_step, sid)
+        if n > best_n:
+            best_n = n
+            best_sid = sid
+    if best_n > 0 and best_sid:
+        return best_sid
+    non_act = [s for s in candidates if s != act_sid]
+    if non_act:
+        return non_act[0]
+    return act_sid
 
 
 def _resolve_activation_for_user(
@@ -144,12 +211,15 @@ def _resolve_activation_for_user(
         )
     if not rec.owner_user_id and not rec.owner_email:
         rec = manager.claim_owner(rec.code, current_user)
+    try:
+        assert_sandbox_not_expired(rec)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return rec
 
 
 def _resolve_report_context(
     manager: SimpleActivationManager,
-    registry: ReportRegistry,
     activation_code: str,
     current_user: dict,
     phase: str,
@@ -157,22 +227,31 @@ def _resolve_report_context(
 ):
     """
     统一解析：activation -> report -> step-session 存储上下文。
+    沙箱激活码使用 data/simple/sandboxes/{fork_id}/ 作为存储根。
     """
     rec = _resolve_activation_for_user(manager, activation_code, current_user)
     user_id = (current_user or {}).get("user_id")
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="请先登录")
 
+    root = get_effective_simple_root(rec)
+    registry = ReportRegistry(base_dir=str(root))
     report = registry.ensure_report(
         activation_code=rec.code,
         user_id=user_id,
-        session_id=rec.session_id,
+        session_id=bind_session_id_for_ensure_report(rec),
     )
     if not report:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="报告初始化失败")
 
     phase_step = ReportRegistry.normalize_step_id(phase)
-    logical_session_id = (thread_id or rec.session_id or "").strip()
+    logical_session_id = _resolve_default_logical_thread_id(
+        registry,
+        report,
+        phase_step,
+        thread_id,
+        rec.session_id,
+    )
     if not logical_session_id:
         logical_session_id = rec.session_id
 
@@ -185,7 +264,7 @@ def _resolve_report_context(
     # 将当前会话纳入 step 的会话池
     registry.bind_session(report["report_id"], phase_step, logical_session_id)
     category = _storage_category(phase_step, logical_session_id)
-    conv_manager = ConversationFileManager(base_dir=REPORTS_BASE_DIR)
+    conv_manager = ConversationFileManager(base_dir=str(root / "reports"))
     return rec, report, phase_step, logical_session_id, category, conv_manager
 
 
@@ -329,23 +408,48 @@ class ThreadCompleteRequest(BaseModel):
     thread_id: str
 
 
+def _get_user_id_from_activation(rec) -> Optional[str]:
+    """从激活码记录解析 user_id（owner_user_id 或 owner_email）"""
+    uid = (getattr(rec, "owner_user_id", None) or "").strip()
+    if uid:
+        return uid
+    email = (getattr(rec, "owner_email", None) or "").strip()
+    if email:
+        return email
+    return None
+
+
 def _load_basic_info_from_activation(activation_code: str) -> str:
-    """根据激活码加载 basic_info，格式化为提示词用文本"""
+    """根据激活码加载 basic_info（用户级），格式化为提示词用文本"""
     manager = SimpleActivationManager()
     rec = manager.get_activation(activation_code)
     if not rec:
         return "暂无"
-    data = load_basic_info(rec.session_id, SIMPLE_BASE_DIR)
+    user_id = _get_user_id_from_activation(rec)
+    if user_id:
+        data = load_basic_info_by_user(user_id)
+        if data:
+            return format_basic_info_for_prompt(data)
+    base = str(get_effective_simple_root(rec))
+    data = load_basic_info(rec.session_id, base)
     return format_basic_info_for_prompt(data)
 
 
-def _load_prior_context_from_activation(activation_code: str, phase: str) -> str:
-    """根据激活码和阶段加载上一轮咨询结果文本"""
+def _load_prior_context_from_activation(
+    activation_code: str, phase: str, report: Optional[dict] = None
+) -> str:
+    """根据激活码和阶段加载上一轮咨询结果（report 维度）"""
     manager = SimpleActivationManager()
     rec = manager.get_activation(activation_code)
     if not rec:
         return ""
-    return load_prior_context(rec.session_id, phase, SIMPLE_BASE_DIR)
+    root = get_effective_simple_root(rec)
+    reports_root = str(root / "reports")
+    if report and report.get("report_id"):
+        text = load_prior_context_for_report(report["report_id"], phase, reports_root)
+        if text:
+            return text
+    return load_prior_context(rec.session_id, phase, str(root))
 
 
 @router.get("/survey")
@@ -353,10 +457,13 @@ def get_survey(
     activation_code: str,
     current_user: dict = Depends(get_current_user),
 ):
-    """获取指定激活码下的调研问卷数据"""
+    """获取指定激活码下的调研问卷数据（用户级，仅 1 份）"""
     manager = SimpleActivationManager()
     rec = _resolve_activation_for_user(manager, activation_code, current_user)
-    data = load_basic_info(rec.session_id, SIMPLE_BASE_DIR)
+    user_id = (current_user or {}).get("user_id") or (current_user or {}).get("email") or ""
+    data = load_basic_info_by_user(user_id) if user_id else None
+    if not data:
+        data = load_basic_info(rec.session_id, str(get_effective_simple_root(rec)))
     return SimpleChatResponse(
         code=200,
         message="success",
@@ -370,10 +477,14 @@ def get_prior_context(
     phase: str,
     current_user: dict = Depends(get_current_user),
 ):
-    """获取指定阶段的上一轮咨询结果文本"""
+    """获取指定阶段的上一轮咨询结果文本（report 维度）"""
     manager = SimpleActivationManager()
     rec = _resolve_activation_for_user(manager, activation_code, current_user)
-    text = load_prior_context(rec.session_id, phase, SIMPLE_BASE_DIR)
+    user_id = (current_user or {}).get("user_id") or (current_user or {}).get("email") or ""
+    root = get_effective_simple_root(rec)
+    registry = ReportRegistry(base_dir=str(root))
+    report = registry.get_by_activation_user(rec.code, user_id) if user_id else None
+    text = _load_prior_context_from_activation(activation_code, phase, report)
     return SimpleChatResponse(code=200, message="success", data={"context_text": text})
 
 
@@ -382,12 +493,24 @@ async def save_prior_context_endpoint(
     request: PriorContextSaveRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """保存（上传）指定阶段的上一轮咨询结果文本"""
+    """保存（上传）指定阶段的上一轮咨询结果文本（report 维度）"""
     manager = SimpleActivationManager()
     rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
     if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="激活码已过期")
-    save_prior_context(rec.session_id, request.phase, request.context_text or "", SIMPLE_BASE_DIR)
+    user_id = (current_user or {}).get("user_id") or (current_user or {}).get("email") or ""
+    root = get_effective_simple_root(rec)
+    registry = ReportRegistry(base_dir=str(root))
+    report = registry.ensure_report(
+        rec.code, user_id or "", bind_session_id_for_ensure_report(rec)
+    )
+    if report and report.get("report_id"):
+        save_prior_context_for_report(
+            report["report_id"],
+            request.phase,
+            request.context_text or "",
+            str(root / "reports"),
+        )
     return SimpleChatResponse(code=200, message="success", data={})
 
 
@@ -396,7 +519,7 @@ async def save_survey(
     request: SurveySaveRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """保存调研问卷数据到指定激活码的会话下"""
+    """保存调研问卷数据（用户级，仅保留最新 1 份）"""
     manager = SimpleActivationManager()
     rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
     if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
@@ -404,7 +527,10 @@ async def save_survey(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="激活码已过期",
         )
-    save_basic_info(rec.session_id, request.survey_data or {}, SIMPLE_BASE_DIR)
+    user_id = (current_user or {}).get("user_id") or (current_user or {}).get("email") or ""
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="请先登录")
+    save_basic_info_by_user(user_id, request.survey_data or {})
     return SimpleChatResponse(code=200, message="success", data={})
 
 
@@ -438,15 +564,18 @@ def get_rumination_progress(
     """获取 rumination 阶段进度"""
     try:
         manager = SimpleActivationManager()
-        registry = ReportRegistry()
         rec = _resolve_activation_for_user(manager, activation_code, current_user)
+        root = get_effective_simple_root(rec)
+        registry = ReportRegistry(base_dir=str(root))
         report = registry.ensure_report(
-            rec.code, (current_user or {}).get("user_id", ""), rec.session_id
+            rec.code,
+            (current_user or {}).get("user_id", ""),
+            bind_session_id_for_ensure_report(rec),
         )
         report_id = report.get("report_id")
         if not report_id:
             raise HTTPException(status_code=500, detail="报告初始化失败")
-        reports_root = Path(REPORTS_BASE_DIR)
+        reports_root = root / "reports"
         progress = load_rumination_progress(reports_root, report_id)
         return SimpleChatResponse(code=200, message="success", data={"progress": progress})
     except HTTPException:
@@ -465,19 +594,22 @@ def save_rumination_progress_endpoint(
 ):
     """保存 rumination 阶段进度"""
     manager = SimpleActivationManager()
-    registry = ReportRegistry()
     rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
     if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(
         rec, current_user
     ):
         raise HTTPException(status_code=400, detail="激活码已过期")
+    root = get_effective_simple_root(rec)
+    registry = ReportRegistry(base_dir=str(root))
     report = registry.ensure_report(
-        rec.code, (current_user or {}).get("user_id", ""), rec.session_id
+        rec.code,
+        (current_user or {}).get("user_id", ""),
+        bind_session_id_for_ensure_report(rec),
     )
     report_id = report.get("report_id")
     if not report_id:
         raise HTTPException(status_code=500, detail="报告初始化失败")
-    reports_root = Path(REPORTS_BASE_DIR)
+    reports_root = root / "reports"
     progress = save_rumination_progress(
         reports_root,
         report_id,
@@ -513,19 +645,22 @@ def rumination_table_submit(
 ):
     """提交 rumination 筛选表格数据，更新 progress，并可能返回下一步表格。"""
     manager = SimpleActivationManager()
-    registry = ReportRegistry()
     rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
     if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(
         rec, current_user
     ):
         raise HTTPException(status_code=400, detail="激活码已过期")
+    root = get_effective_simple_root(rec)
+    registry = ReportRegistry(base_dir=str(root))
     report = registry.ensure_report(
-        rec.code, (current_user or {}).get("user_id", ""), rec.session_id
+        rec.code,
+        (current_user or {}).get("user_id", ""),
+        bind_session_id_for_ensure_report(rec),
     )
     report_id = report.get("report_id")
     if not report_id:
         raise HTTPException(status_code=500, detail="报告初始化失败")
-    reports_root = Path(REPORTS_BASE_DIR)
+    reports_root = root / "reports"
     step = max(1, min(9, request.step))
     progress = save_rumination_progress(
         reports_root, report_id, filter_step=step, filter_table=request.table_data
@@ -569,17 +704,20 @@ def rumination_get_table(
 ):
     """获取 rumination 筛选流程的当前步骤表格（进入筛选时或下一步）"""
     manager = SimpleActivationManager()
-    registry = ReportRegistry()
     rec = _resolve_activation_for_user(manager, activation_code, current_user)
+    root = get_effective_simple_root(rec)
+    registry = ReportRegistry(base_dir=str(root))
     report = registry.ensure_report(
-        rec.code, (current_user or {}).get("user_id", ""), rec.session_id
+        rec.code,
+        (current_user or {}).get("user_id", ""),
+        bind_session_id_for_ensure_report(rec),
     )
     report_id = report.get("report_id")
     if not report_id:
         raise HTTPException(status_code=500, detail="报告初始化失败")
-    reports_root = Path(REPORTS_BASE_DIR)
+    reports_root = root / "reports"
     progress = load_rumination_progress(reports_root, report_id)
-    prior_context = _load_prior_context_from_activation(activation_code, "rumination")
+    prior_context = _load_prior_context_from_activation(activation_code, "rumination", report)
     _, strengths_list, interests_list = extract_from_prior_context(prior_context)
     passions = interests_list if interests_list else ["热爱1", "热爱2"]
     strengths_list = strengths_list if strengths_list else ["优势1", "优势2"]
@@ -869,11 +1007,9 @@ async def simple_chat(
     - 将本轮 user / assistant 消息写入 data/simple 下
     """
     manager = SimpleActivationManager()
-    registry = ReportRegistry()
     phase = (request.phase or "values").strip() or "values"
     rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
         manager=manager,
-        registry=registry,
         activation_code=request.activation_code,
         current_user=current_user,
         phase=phase,
@@ -904,7 +1040,9 @@ async def simple_chat(
     # 从 question.md 按阶段随机抽取题目，动态注入提示词
     question_bank = _get_random_questions_for_phase(phase_step)
     basic_info = _load_basic_info_from_activation(request.activation_code)
-    prior_context = _load_prior_context_from_activation(request.activation_code, phase_step)
+    prior_context = _load_prior_context_from_activation(
+        request.activation_code, phase_step, report
+    )
     system_prompt = _build_system_prompt(phase_step, question_bank=question_bank, basic_info=basic_info, prior_context=prior_context)
     llm_messages = [LLMMessage(role="system", content=system_prompt)]
 
@@ -1016,11 +1154,9 @@ async def simple_init(
 
 async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> SimpleChatResponse:
     manager = SimpleActivationManager()
-    registry = ReportRegistry()
     phase = (request.phase or "values").strip() or "values"
     rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
         manager=manager,
-        registry=registry,
         activation_code=request.activation_code,
         current_user=current_user,
         phase=phase,
@@ -1061,7 +1197,9 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
     llm = get_default_llm_provider()
     question_bank = _get_random_questions_for_phase(phase_step)
     basic_info = _load_basic_info_from_activation(request.activation_code)
-    prior_context = _load_prior_context_from_activation(request.activation_code, phase_step)
+    prior_context = _load_prior_context_from_activation(
+        request.activation_code, phase_step, report
+    )
     system_prompt = _build_system_prompt(phase_step, question_bank=question_bank, basic_info=basic_info, prior_context=prior_context)
     llm_messages = [
         LLMMessage(role="system", content=system_prompt),
@@ -1133,11 +1271,9 @@ async def reopen_thread(
 ):
     """用户选择「再聊聊」完善答案时，清除完成状态以便继续对话"""
     manager = SimpleActivationManager()
-    registry = ReportRegistry()
     phase_val = (request.phase or "values").strip() or "values"
     rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
         manager=manager,
-        registry=registry,
         activation_code=request.activation_code,
         current_user=current_user,
         phase=phase_val,
@@ -1163,16 +1299,16 @@ async def mark_thread_complete(
 ):
     """标记某对话为已完成（用户点击「确认没有问题」后调用）"""
     manager = SimpleActivationManager()
-    registry = ReportRegistry()
     phase_val = (request.phase or "values").strip() or "values"
     rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
         manager=manager,
-        registry=registry,
         activation_code=request.activation_code,
         current_user=current_user,
         phase=phase_val,
         thread_id=request.thread_id,
     )
+    root = get_effective_simple_root(rec)
+    registry = ReportRegistry(base_dir=str(root))
     try:
         registry.select_session(report["report_id"], phase_step, logical_session_id)
     except ValueError as e:
@@ -1198,8 +1334,109 @@ async def mark_thread_complete(
             },
         )
     await conv_manager.update_metadata(report["report_id"], category, {"thread_completed": True})
-    _trigger_anchor_refiner(report["report_id"], phase_step, category, conv_manager, dimension_conclusion=dimension_conclusion, vip_level=getattr(rec, "vip_level", 1) or 1)
+    if dimension_conclusion:
+        summary = dimension_conclusion.get("summary") or dimension_conclusion.get("ai_summary", "")
+        keywords = dimension_conclusion.get("keywords") or []
+        if isinstance(keywords, list):
+            kw_text = "、".join(str(k) for k in keywords)
+        else:
+            kw_text = str(keywords)
+        prior_text = f"{summary}\n关键词：{kw_text}".strip() if (summary or kw_text) else ""
+        if prior_text:
+            phase_labels = {"values": "信念", "strengths": "禀赋", "interests": "热忱", "purpose": "使命"}
+            label = phase_labels.get(phase_step, phase_step)
+            prior_block = f"【{label} 阶段结果】\n{prior_text}"
+            next_phase = {"values": "strengths", "strengths": "interests", "interests": "purpose", "purpose": "rumination"}.get(phase_step)
+            if next_phase:
+                save_prior_context_for_report(
+                    report["report_id"], next_phase, prior_block, str(root / "reports")
+                )
+    _trigger_anchor_refiner(
+        report["report_id"],
+        phase_step,
+        category,
+        conv_manager,
+        str(root),
+        dimension_conclusion=dimension_conclusion,
+        vip_level=getattr(rec, "vip_level", 1) or 1,
+    )
     return SimpleChatResponse(code=200, message="success", data={})
+
+
+@router.get("/threads", response_model=SimpleHistoryResponse)
+async def list_threads(
+    activation_code: str,
+    phase: Optional[str] = "values",
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    获取某阶段下的线程列表（后端为数据源，支持跨设备同步）。
+    返回 record.json 中 steps[phase].session_ids 对应的线程元信息。
+    """
+    manager = SimpleActivationManager()
+    phase_val = (phase or "values").strip() or "values"
+    phase_step = ReportRegistry.normalize_step_id(phase_val)
+    rec = _resolve_activation_for_user(manager, activation_code, current_user)
+    user_id = (current_user or {}).get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="请先登录")
+
+    root = get_effective_simple_root(rec)
+    registry = ReportRegistry(base_dir=str(root))
+    report = registry.ensure_report(
+        activation_code=rec.code,
+        user_id=user_id,
+        session_id=bind_session_id_for_ensure_report(rec),
+    )
+    if not report:
+        raise HTTPException(status_code=500, detail="报告初始化失败")
+
+    step = (report.get("steps") or {}).get(phase_step) or {}
+    session_ids = step.get("session_ids") or []
+    conv_manager = ConversationFileManager(base_dir=str(root / "reports"))
+
+    threads: List[dict] = []
+    report_id = report.get("report_id")
+    if not report_id:
+        return SimpleHistoryResponse(code=200, message="success", data={"threads": []})
+
+    selected_id = step.get("selected_session_id")
+
+    for idx, tid in enumerate(session_ids):
+        tid = (tid or "").strip()
+        if not tid:
+            continue
+        category = _storage_category(phase_step, tid)
+        conv_data = await conv_manager.get_conversation_data(report_id, category)
+        meta = conv_data.get("metadata") or {}
+        messages = conv_data.get("messages") or []
+        created_at = meta.get("created_at") or ""
+        first_msg = messages[0] if messages else {}
+        msg_ts = first_msg.get("created_at") or created_at
+        try:
+            ts_ms = int(datetime.fromisoformat(msg_ts.replace("Z", "+00:00")).timestamp() * 1000) if msg_ts else 0
+        except (ValueError, TypeError):
+            ts_ms = 0
+        completed = bool(meta.get("thread_completed"))
+        threads.append({
+            "id": tid,
+            "title": f"对话 {idx + 1}",
+            "status": "completed" if completed else "in-progress",
+            "messages": [],  # 列表不返回消息体，由 /history 按需加载
+            "createdAt": ts_ms or int(datetime.now(timezone.utc).timestamp() * 1000),
+            "dimensionConclusion": meta.get("dimension_conclusion"),
+            "selected": tid == selected_id,
+        })
+
+    return SimpleHistoryResponse(
+        code=200,
+        message="success",
+        data={
+            "threads": threads,
+            "report_id": report_id,
+            "step_id": phase_step,
+        },
+    )
 
 
 @router.get("/history", response_model=SimpleHistoryResponse)
@@ -1212,44 +1449,55 @@ async def simple_history(
     """
     获取某个激活码 + 阶段下的全部历史消息
     """
-    manager = SimpleActivationManager()
-    registry = ReportRegistry()
-    phase_val = (phase or "values").strip() or "values"
-    rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
-        manager=manager,
-        registry=registry,
-        activation_code=activation_code,
-        current_user=current_user,
-        phase=phase_val,
-        thread_id=thread_id,
-    )
-    session_id = report["report_id"]
+    try:
+        manager = SimpleActivationManager()
+        phase_val = (phase or "values").strip() or "values"
+        rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
+            manager=manager,
+            activation_code=activation_code,
+            current_user=current_user,
+            phase=phase_val,
+            thread_id=thread_id,
+        )
+        session_id = report["report_id"]
 
-    conv_data = await conv_manager.get_conversation_data(session_id, category)
-    history_messages = conv_data.get("messages", [])
-    metadata = conv_data.get("metadata", {})
+        conv_data = await conv_manager.get_conversation_data(session_id, category)
+        history_messages = conv_data.get("messages", [])
+        metadata = conv_data.get("metadata", {})
 
-    return SimpleHistoryResponse(
-        code=200,
-        message="success",
-        data={
-            "messages": history_messages,
-            "metadata": {
-                "thread_completed": metadata.get("thread_completed", False),
-                "dimension_conclusion": metadata.get("dimension_conclusion"),
+        return SimpleHistoryResponse(
+            code=200,
+            message="success",
+            data={
+                "messages": history_messages,
+                "metadata": {
+                    "session_id": logical_session_id,
+                    "thread_completed": metadata.get("thread_completed", False),
+                    "dimension_conclusion": metadata.get("dimension_conclusion"),
+                },
+                "activation": {
+                    "activation_code": rec.code,
+                    "session_id": logical_session_id,
+                    "mode": rec.mode,
+                    "created_at": rec.created_at,
+                    "expires_at": rec.expires_at,
+                    "status": rec.status,
+                },
+                "report_id": report["report_id"],
+                "step_id": phase_step,
             },
-            "activation": {
-                "activation_code": rec.code,
-                "session_id": logical_session_id,
-                "mode": rec.mode,
-                "created_at": rec.created_at,
-                "expires_at": rec.expires_at,
-                "status": rec.status,
-            },
-            "report_id": report["report_id"],
-            "step_id": phase_step,
-        },
-    )
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(
+            "simple_history error: activation=%s phase=%s thread_id=%s: %s",
+            activation_code, phase, thread_id, e,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="加载历史消息失败，请稍后重试",
+        ) from e
 
 
 @router.post("/message/stream")
@@ -1265,11 +1513,9 @@ async def simple_chat_stream(
     - 结束时保存完整助手回复
     """
     manager = SimpleActivationManager()
-    registry = ReportRegistry()
     phase = (request.phase or "values").strip() or "values"
     rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
         manager=manager,
-        registry=registry,
         activation_code=request.activation_code,
         current_user=current_user,
         phase=phase,
@@ -1282,6 +1528,7 @@ async def simple_chat_stream(
         )
     session_id = report["report_id"]
     vip_level = getattr(rec, "vip_level", 1) or 1
+    storage_root = str(get_effective_simple_root(rec))
 
     async def event_stream() -> AsyncIterator[str]:
         llm = get_default_llm_provider(vip_level=vip_level)
@@ -1308,16 +1555,20 @@ async def simple_chat_stream(
                 prev_sess = prev_selected.get("selected_session_id")
                 if prev_sess:
                     prev_cat = _storage_category(prev_phase, prev_sess)
-                    _trigger_anchor_refiner(session_id, prev_phase, prev_cat, conv_manager, vip_level=vip_level)
+                    _trigger_anchor_refiner(
+                        session_id, prev_phase, prev_cat, conv_manager, storage_root, vip_level=vip_level
+                    )
 
         question_bank = _get_random_questions_for_phase(phase_step)
         basic_info = _load_basic_info_from_activation(request.activation_code)
-        prior_context = _load_prior_context_from_activation(request.activation_code, phase_step)
+        prior_context = _load_prior_context_from_activation(
+            request.activation_code, phase_step, report
+        )
         system_prompt = _build_system_prompt(phase_step, question_bank=question_bank, basic_info=basic_info, prior_context=prior_context)
         llm_messages = [LLMMessage(role="system", content=system_prompt)]
 
         # 若有锚点摘要，插入 [此前对话要点] 再拼接最近 N 轮
-        anchor = load_anchor_for_phase(session_id, phase_step, SIMPLE_BASE_DIR)
+        anchor = load_anchor_for_phase(session_id, phase_step, storage_root)
         anchor_text = format_anchor_for_prompt(anchor)
         if anchor_text:
             llm_messages.append(LLMMessage(role="assistant", content=f"[此前对话要点]\n{anchor_text}"))
@@ -1427,7 +1678,15 @@ async def simple_chat_stream(
                     },
                 )
                 yield f"data: {{\"dimension_conclusion\": {json.dumps(dimension_conclusion, ensure_ascii=False)} }}\n\n"
-                _trigger_anchor_refiner(session_id, phase_step, category, conv_manager, dimension_conclusion=dimension_conclusion, vip_level=vip_level)
+                _trigger_anchor_refiner(
+                    session_id,
+                    phase_step,
+                    category,
+                    conv_manager,
+                    storage_root,
+                    dimension_conclusion=dimension_conclusion,
+                    vip_level=vip_level,
+                )
                 try:
                     await AnalyticsService.record_chat_turn(session_id=logical_session_id, dimension=phase_step, user_input_chars=len(user_content or ""), llm_input_tokens=0, llm_output_tokens=0, log_index=None)
                 except Exception:
@@ -1497,7 +1756,15 @@ async def simple_chat_stream(
                 },
             )
             yield f"data: {{\"dimension_conclusion\": {json.dumps(dimension_conclusion, ensure_ascii=False)} }}\n\n"
-            _trigger_anchor_refiner(session_id, phase_step, category, conv_manager, dimension_conclusion=dimension_conclusion, vip_level=vip_level)
+            _trigger_anchor_refiner(
+                session_id,
+                phase_step,
+                category,
+                conv_manager,
+                storage_root,
+                dimension_conclusion=dimension_conclusion,
+                vip_level=vip_level,
+            )
             try:
                 await AnalyticsService.record_chat_turn(session_id=logical_session_id, dimension=phase_step, user_input_chars=len(user_content or ""), llm_input_tokens=0, llm_output_tokens=0, log_index=None)
             except Exception:
@@ -1619,14 +1886,30 @@ async def simple_chat_stream(
                         )
                         yield f"data: {{\"chunk\": {json.dumps(transition_msg, ensure_ascii=False)} }}\n\n"
                         yield f"data: {{\"dimension_conclusion\": {json.dumps(post_turn_conclusion, ensure_ascii=False)} }}\n\n"
-                        _trigger_anchor_refiner(session_id, phase_step, category, conv_manager, dimension_conclusion=post_turn_conclusion, vip_level=vip_level)
+                        _trigger_anchor_refiner(
+                            session_id,
+                            phase_step,
+                            category,
+                            conv_manager,
+                            storage_root,
+                            dimension_conclusion=post_turn_conclusion,
+                            vip_level=vip_level,
+                        )
         except Exception:
             post_turn_conclusion = None
 
         # 每 20 轮触发后台锚点摘要
         user_count_after = user_count + (1 if user_content else 0)
         if user_count_after > 0 and user_count_after % 20 == 0 and phase_step != "rumination":
-            _trigger_anchor_refiner(session_id, phase_step, category, conv_manager, round_count=user_count_after, vip_level=vip_level)
+            _trigger_anchor_refiner(
+                session_id,
+                phase_step,
+                category,
+                conv_manager,
+                storage_root,
+                round_count=user_count_after,
+                vip_level=vip_level,
+            )
 
         # 4) 后台异步检测：仅在本轮未产出结论卡时，更新 pending_conclusion 判定
         async def _background_completion_check() -> None:
