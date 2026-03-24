@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     # API 池与 VIP 模型（按 vip_level 选择）
     # VIP1 = 基础（DeepSeek），VIP2 = 高级（Kimi/Qwen）
     LLM_VIP1_PROVIDER: str = "deepseek"
-    LLM_VIP1_MODEL: Optional[str] = None  # 默认用 DEEPSEEK_API_KEY + deepseek-chat
+    LLM_VIP1_MODEL: Optional[str] = None  # 默认 deepseek-reasoner（推理模式），可设为 deepseek-chat 关闭
     LLM_VIP2_PROVIDER: str = "kimi"  # kimi | qwen
     KIMI_API_KEY: Optional[str] = None
     KIMI_BASE_URL: Optional[str] = "https://api.moonshot.cn/v1"

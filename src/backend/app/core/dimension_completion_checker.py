@@ -6,7 +6,11 @@ import re
 from typing import Dict, List, Optional
 
 from app.core.llmapi import get_default_llm_provider, LLMMessage
-from app.domain.conclusion_card_goals import get_conclusion_card_goal, get_goal_prompt_hint
+from app.domain.conclusion_card_goals import (
+    get_conclusion_card_goal,
+    get_goal_prompt_hint,
+    get_conclusion_rules,
+)
 from app.domain.dimension_completion import get_dimension_config
 
 
@@ -164,22 +168,29 @@ async def detect_explicit_completion(
 例如：用户说"就是这样了""我确定""没问题""这就是我的答案""可以了""就这些"；
 或"我已经明确答案了""我认为这个维度已经没有必要再聊了""请输出答题卡"等。
 若对话中已有实质内容，且用户明确表示无需再讨论，则返回 true。
-
-请严格判断，只有明确确认时才返回 true。
+请严格判断，只有明确确认时，或者用户针对探索目标内容给出了符合目标的结论性答案，才能返回 true。
 
 用 JSON 回复：{{"explicit_complete": true 或 false}}
 只输出 JSON。"""
 
     messages = [LLMMessage(role="user", content=prompt)]
-    response = await llm.chat(messages, temperature=0.1)
-    text = (response.content or "").strip()
-
     try:
-        obj = json.loads(text)
+        response = await llm.chat(messages, temperature=0.1, response_format={"type": "json_object"})
+    except TypeError:
+        response = await llm.chat(messages, temperature=0.1)
+    text = (response.content or "").strip()
+    text_clean = text
+    if "```json" in text:
+        text_clean = text.split("```json")[1].split("```")[0].strip()
+    elif "```" in text:
+        parts = text.split("```")
+        if len(parts) >= 2:
+            text_clean = parts[1].strip()
+    try:
+        obj = json.loads(text_clean)
         return bool(obj.get("explicit_complete"))
-    except json.JSONDecodeError:
-        json_match = re.search(r'"explicit_complete"\s*:\s*true', text)
-        return bool(json_match)
+    except (json.JSONDecodeError, TypeError):
+        return False
 
 
 def _should_run_completion_check(
@@ -244,7 +255,8 @@ async def check_dimension_complete(
     label = config.get("label", phase)
     goal = config.get("goal", "")
     criteria = config.get("completion_criteria", "")
-    locked_keywords = _extract_locked_values_keywords(conversation_history) if phase == "values" else None
+    # 不再使用正则提取关键词，全部交由 AI 从对话中判断
+    locked_keywords = None
 
     # 若有 prior_conclusion，则跳过完成判定，直接进入生成
     if not prior_conclusion:
@@ -263,27 +275,25 @@ async def check_dimension_complete(
 请用 JSON 回复，格式：{{"complete": true 或 false, "reason": "简短理由"}}
 只输出 JSON，不要其他内容。"""
 
-        messages = [
-            LLMMessage(role="user", content=check_prompt),
-        ]
-        response = await llm.chat(messages, temperature=0.1)
-        text = (response.content or "").strip()
-
+        messages = [LLMMessage(role="user", content=check_prompt)]
         try:
-            obj = json.loads(text)
+            response = await llm.chat(messages, temperature=0.1, response_format={"type": "json_object"})
+        except TypeError:
+            response = await llm.chat(messages, temperature=0.1)
+        text = (response.content or "").strip()
+        text_clean = text
+        if "```json" in text:
+            text_clean = text.split("```json")[1].split("```")[0].strip()
+        elif "```" in text:
+            parts = text.split("```")
+            if len(parts) >= 2:
+                text_clean = parts[1].strip()
+        try:
+            obj = json.loads(text_clean)
             if not obj.get("complete"):
                 return None
-        except json.JSONDecodeError:
-            json_match = re.search(r"\{[^{}]*\"complete\"\s*:\s*(?:true|false)[^{}]*\}", text)
-            if json_match:
-                try:
-                    obj = json.loads(json_match.group())
-                    if not obj.get("complete"):
-                        return None
-                except json.JSONDecodeError:
-                    return None
-            else:
-                return None
+        except (json.JSONDecodeError, TypeError):
+            return None
 
     # 已判定完成，生成结论卡片内容
     summary_hint = config.get("summary_prompt_hint", "")
@@ -304,19 +314,6 @@ async def check_dimension_complete(
 ---
 
 """
-
-    locked_hint = ""
-    if locked_keywords:
-        locked_text = "、".join(locked_keywords)
-        locked_hint = f"""
-
-【硬性约束（必须严格遵守）】
-用户已明确确认本维度关键词为：{locked_text}
-1) 关键词列表必须与上述词条完全一致，数量与顺序都不能改变；
-2) 严禁同义改写、抽象替换或新增任何未出现词条；
-3) 汇总文案可以润色，但关键词只能使用上述原词。
-"""
-
     values_extra = ""
     if phase == "values":
         values_extra = """
@@ -327,64 +324,66 @@ async def check_dimension_complete(
 2) 实在没有足够原词时，再进行同义词改写；
 3) 尽量是精准的 2~4 字词语（如：诚实、成长、家庭、自由）。"""
 
-    summary_prompt = f"""基于以下对话，生成「{label}」维度的探索结论汇总。{prior_hint}{locked_hint}{values_extra}
+    conclusion_rules = get_conclusion_rules(phase)
+    anti_fabrication = """
+【硬性约束 - 严禁杜撰】
+- keywords 必须且只能从对话中用户明确说出的词汇提取，严禁自创、同义替换或凭空添加
+- 若用户未提到足够关键词，宁可减少数量也不要杜撰
+- 结论内容必须符合本维度的 dimension_goal，且与用户实际表达一致"""
+    summary_prompt = f"""基于以下对话，生成「{label}」维度的探索结论汇总。{prior_hint}{values_extra}
 
 该维度的目标：{goal}
 {summary_hint}
 {goal_hint}
 
+【本阶段结论卡规则】
+{conclusion_rules}
+{anti_fabrication}
+
 请用温暖、专业、包容的语气，像一位可靠的咨询师对用户说话。不要用冷冰冰的「AI 分析」口吻。
 
-请**只输出一个 JSON 对象**，格式：
-{{
-  "keywords": ["词1", "词2", "词3", ...],
-  "summary": "汇总文案：将本环节目标与你的发现合并成一段话，直接对用户说。用 **关键词** 的 Markdown 格式标出核心词。"
-}}
-
-不要输出任何其他内容，只输出上述 JSON。"""
+请**只输出一个 JSON 对象**，严格按以下格式，不要输出任何其他内容（无前后说明、无 markdown 代码块标记）：
+{{"keywords": ["词1", "词2", ...], "summary": "汇总文案：用 **关键词** 标出核心词。"}}"""
 
     summary_messages = [
         LLMMessage(role="user", content=summary_prompt),
     ]
-    summary_response = await llm.chat(summary_messages, temperature=0.3)
+    try:
+        summary_response = await llm.chat(
+            summary_messages, temperature=0.3,
+            response_format={"type": "json_object"},
+        )
+    except TypeError:
+        summary_response = await llm.chat(summary_messages, temperature=0.3)
     summary_text = (summary_response.content or "").strip()
 
     summary = ""
     keywords: List[str] = []
+    text_clean = summary_text.strip()
+    if "```json" in text_clean:
+        text_clean = text_clean.split("```json")[1].split("```")[0].strip()
+    elif "```" in text_clean:
+        text_clean = text_clean.split("```")[1].split("```")[0].strip()
     try:
-        text_clean = summary_text
-        if "```json" in summary_text:
-            text_clean = summary_text.split("```json")[1].split("```")[0].strip()
-        elif "```" in summary_text:
-            text_clean = summary_text.split("```")[1].split("```")[0].strip()
         obj = json.loads(text_clean)
         if isinstance(obj, dict):
-            keywords = obj.get("keywords") or []
-            if isinstance(keywords, list):
-                keywords = [str(k).strip() for k in keywords if k]
-            else:
-                keywords = []
+            raw_kw = obj.get("keywords")
+            keywords = [str(k).strip() for k in raw_kw if k] if isinstance(raw_kw, list) else []
             summary = (obj.get("summary") or "").strip()
     except (json.JSONDecodeError, TypeError):
         summary = summary_text
-        if summary:
-            keywords = re.findall(r"\*\*([^*]+)\*\*", summary)
+        keywords = []
 
-    keywords = _validate_keywords_by_goal(phase, keywords, locked_keywords=locked_keywords)
+    keywords = _validate_keywords_by_goal(phase, keywords, locked_keywords=None)
 
-    if locked_keywords:
-        # 后端强校验：即使模型返回偏差，也强制对齐用户已确认关键词，防止改写。
-        keywords = locked_keywords
-        # 对 values 阶段使用稳定结构化文案，避免情绪词/口语残片污染总结文本。
-        summary = _build_goal_fallback_summary(phase, locked_keywords)
-    elif not summary:
+    if not summary:
         summary = _build_goal_fallback_summary(phase, keywords)
 
+    dimension_goal = config.get("goal", "") or ""
     return {
         "summary": summary,
         "keywords": keywords,
-        # 兼容旧字段
         "ai_summary": summary,
-        "dimension_goal": "",
+        "dimension_goal": dimension_goal,
         "final_answer": ", ".join(keywords) if keywords else summary,
     }

@@ -11,7 +11,7 @@ import ChatPhaseSidebar from '@/components/explore/ChatPhaseSidebar';
 import RuminationSectionProgress from '@/components/explore/RuminationSectionProgress';
 import RuminationTableWidget from '@/components/explore/RuminationTableWidget';
 import { copyToClipboard } from '@/lib/utils/clipboard';
-import { apiClient } from '@/lib/api/client';
+import { apiClient, getApiErrorMessage } from '@/lib/api/client';
 import {
   PHASES,
   loadSession,
@@ -71,6 +71,7 @@ export default function ChatPhasePage() {
   const [threadsFetched, setThreadsFetched] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const [backendSessionId, setBackendSessionId] = useState<string | null>(null);
+  const [conclusionLoading, setConclusionLoading] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatBodyRef = useRef<HTMLDivElement>(null);
@@ -94,6 +95,51 @@ export default function ChatPhasePage() {
     if (!activeThreadId) return threads;
     return threads.map((th) => (th.id === activeThreadId ? { ...th, messages } : th));
   }, [threads, activeThreadId, messages]);
+
+  const mapHistoryToThreadMessages = useCallback(
+    (history: any[], meta: any): ThreadMessage[] =>
+      history.map((m, i) => {
+        const id = `h_${i}_${m.id ?? i}`;
+        const createdAt = m.created_at ? new Date(m.created_at).getTime() : undefined;
+        if (m.role === 'conclusion_card') {
+          let conclusionData: DimensionConclusionData | undefined = undefined;
+          if (m.card_payload && typeof m.card_payload === 'object') {
+            conclusionData = m.card_payload as DimensionConclusionData;
+          } else if (typeof m.content === 'string' && m.content.trim()) {
+            try {
+              conclusionData = JSON.parse(m.content) as DimensionConclusionData;
+            } catch {
+              conclusionData = undefined;
+            }
+          }
+          return {
+            id,
+            role: 'assistant',
+            content: '',
+            type: 'dimension_conclusion',
+            conclusionData,
+            conclusionCollapsed: false,
+            conclusionConfirmed: !!meta?.thread_completed,
+            createdAt,
+          } satisfies ThreadMessage;
+        }
+
+        const role = (m.role === 'table_widget' ? 'assistant' : m.role) as 'user' | 'assistant';
+        const base: ThreadMessage = {
+          id,
+          role,
+          content: m.content ?? '',
+          thinkContent: m.think_content ?? undefined,
+          createdAt,
+        };
+        if (m.role === 'table_widget' && m.card_payload) {
+          base.type = 'table_widget';
+          base.tablePayload = m.card_payload as ThreadMessage['tablePayload'];
+        }
+        return base;
+      }),
+    []
+  );
 
   // Auth & redirect
   useEffect(() => {
@@ -144,20 +190,61 @@ export default function ChatPhasePage() {
           createdAt: t.createdAt,
           dimensionConclusion: t.dimensionConclusion,
         }));
+        // 进入页面时为每个会话预加载历史，侧栏可直接显示首行与轮数
+        const sessionIdByThread: Record<string, string> = {};
+        const hydratedList: ChatThread[] = await Promise.all(
+          list.map(async (th) => {
+            try {
+              const h = await apiClient.get('/simple-chat/history', {
+                params: { activation_code: activationCode, phase: BACKEND_PHASE[phase], thread_id: th.id },
+              });
+              const history: any[] = h.data.messages ?? [];
+              const meta = h.data?.metadata ?? {};
+              if (meta?.session_id) sessionIdByThread[th.id] = String(meta.session_id);
+              const msgs = mapHistoryToThreadMessages(history, meta);
+              const concl = meta.dimension_conclusion as DimensionConclusionData | undefined;
+              return {
+                ...th,
+                messages: msgs,
+                dimensionConclusion: concl ?? th.dimensionConclusion,
+                ...(meta.thread_completed ? { status: 'completed' as const } : {}),
+              };
+            } catch {
+              return th;
+            }
+          })
+        );
         // 先持久化（即便后续被 cancelled 也写入），供请求失败时 fallback
-        setThreadsForPhase(activationCode, phase, list);
+        setThreadsForPhase(activationCode, phase, hydratedList);
         if (cancelled) return;
-        setThreads(list);
+        setThreads(hydratedList);
         const localActiveId = getActiveThreadId(activationCode, phase);
         const activeId =
-          list.length > 0
-            ? (list.some((x) => x.id === localActiveId) ? localActiveId : list[0].id)
+          hydratedList.length > 0
+            ? (hydratedList.some((x) => x.id === localActiveId) ? localActiveId : hydratedList[0].id)
             : null;
         setActiveThreadIdState(activeId);
         if (activeId) setActiveThreadId(activationCode, phase, activeId);
-      } catch {
-        // 网络失败时回退到 localStorage（离线兜底）
+        const activeThread = hydratedList.find((x) => x.id === activeId) || null;
+        if (activeThread) {
+          setMessages(activeThread.messages);
+          setBackendSyncedThreadId(activeThread.id);
+          const sessId = sessionIdByThread[activeThread.id];
+          if (sessId) {
+            setBackendSessionId(sessId);
+            const s = loadSession(activationCode);
+            saveSession({ ...s, sessionId: sessId });
+          }
+        } else {
+          setMessages([]);
+          setBackendSyncedThreadId(null);
+        }
+      } catch (err: any) {
         if (cancelled) return;
+        if (err?.code === 'ERR_NETWORK' || err?.message?.includes('Network')) {
+          setChatError('网络连接失败，若后端正在重启请稍后刷新页面');
+        }
+        // 网络失败时回退到 localStorage（离线兜底）
         const list = getThreads(activationCode, phase);
         setThreads(list);
         const activeId = getActiveThreadId(activationCode, phase);
@@ -168,9 +255,9 @@ export default function ChatPhasePage() {
     return () => {
       cancelled = true;
     };
-  }, [activationCode, phase]);
+  }, [activationCode, phase, mapHistoryToThreadMessages]);
 
-  // Load messages for active thread (from backend or create new)
+  // 激活线程切换：优先直接使用已预加载内容；仅在“完全首次进入且无会话”时才触发 init。
   useEffect(() => {
     if (!activationCode || !phase || !threadsFetched) return;
     let cancelled = false;
@@ -180,45 +267,73 @@ export default function ChatPhasePage() {
     const activeId = activeThreadId;
 
     if (list.length === 0) {
-      // No threads: 新建全新对话，后端按 thread_id 创建独立存储
-      const tid = createThreadId();
+      // 若该 step 已有历史（无 thread_id 默认会话），优先恢复，不主动 init 创建新会话
       (async () => {
         try {
-          const initRes = await apiClient.post('/simple-chat/init', {
-            activation_code: activationCode,
-            phase: BACKEND_PHASE[phase],
-            thread_id: tid,
+          const historyRes = await apiClient.get('/simple-chat/history', {
+            params: { activation_code: activationCode, phase: BACKEND_PHASE[phase] },
           });
-          const initMsgs: any[] = initRes.data.messages ?? [];
-          const sessId = initRes.data?.activation?.session_id;
+          const history: any[] = historyRes.data.messages ?? [];
+          const meta = historyRes.data?.metadata ?? {};
+          const sessId = historyRes.data?.activation?.session_id || meta?.session_id;
           if (sessId && !cancelled) {
             setBackendSessionId(sessId);
             const s = loadSession(activationCode);
             saveSession({ ...s, sessionId: sessId });
           }
-          const now = Date.now();
-          const msgs: ThreadMessage[] = initMsgs.map((m, i) => ({
-            id: `init_${i}`,
-            role: m.role as 'user' | 'assistant',
-            content: m.content ?? '',
-            createdAt: now,
-          }));
-          const thread: ChatThread = {
-            id: tid,
-            title: '对话 1',
-            status: 'in-progress',
-            messages: msgs,
-            createdAt: Date.now(),
-          };
-          addThread(activationCode, phase, thread);
-          setActiveThreadId(activationCode, phase, tid);
-          if (!cancelled) {
+          if (!cancelled && history.length > 0) {
+            const recoveredId = getActiveThreadId(activationCode, phase) || createThreadId();
+            const msgs = mapHistoryToThreadMessages(history, meta);
+            const recoveredThread: ChatThread = {
+              id: recoveredId,
+              title: '对话 1',
+              status: meta.thread_completed ? 'completed' : 'in-progress',
+              messages: msgs,
+              createdAt: Date.now(),
+              dimensionConclusion: (meta.dimension_conclusion as DimensionConclusionData | undefined) || undefined,
+            };
+            addThread(activationCode, phase, recoveredThread);
+            const merged = getThreads(activationCode, phase);
+            setThreads(merged);
+            setActiveThreadIdState(recoveredId);
+            setActiveThreadId(activationCode, phase, recoveredId);
+            setBackendSyncedThreadId(recoveredId);
+            setMessages(msgs);
+          } else {
+            // 仅首次且无历史时才触发 init 生成首轮问题
+            const tid = createThreadId();
+            const initRes = await apiClient.post('/simple-chat/init', {
+              activation_code: activationCode,
+              phase: BACKEND_PHASE[phase],
+              thread_id: tid,
+            });
+            const initMsgs: any[] = initRes.data.messages ?? [];
+            const now = Date.now();
+            const msgs: ThreadMessage[] = initMsgs.map((m, i) => ({
+              id: `init_${i}`,
+              role: m.role as 'user' | 'assistant',
+              content: m.content ?? '',
+              createdAt: now,
+            }));
+            const thread: ChatThread = {
+              id: tid,
+              title: '对话 1',
+              status: 'in-progress',
+              messages: msgs,
+              createdAt: Date.now(),
+            };
+            addThread(activationCode, phase, thread);
             setThreads(getThreads(activationCode, phase));
+            setActiveThreadId(activationCode, phase, tid);
             setActiveThreadIdState(tid);
             setBackendSyncedThreadId(tid);
             setMessages(msgs);
           }
-        } catch {}
+        } catch (err: any) {
+          if (!cancelled && (err?.code === 'ERR_NETWORK' || err?.message?.includes('Network'))) {
+            setChatError('网络连接失败，若后端正在重启请稍后刷新页面');
+          }
+        }
         if (!cancelled) setInitLoading(false);
       })();
       return;
@@ -227,72 +342,9 @@ export default function ChatPhasePage() {
     if (activeId) {
       const thread = list.find((t) => t.id === activeId);
       if (thread) {
-        // Load from backend for active thread (backend is source of truth for active)
-        (async () => {
-          try {
-            const historyRes = await apiClient.get('/simple-chat/history', {
-              params: { activation_code: activationCode, phase: BACKEND_PHASE[phase], thread_id: activeId },
-            });
-            const history: any[] = historyRes.data.messages ?? [];
-            const meta = historyRes.data?.metadata ?? {};
-            const sessId = meta?.session_id;
-            if (sessId && !cancelled) {
-              setBackendSessionId(sessId);
-              const s = loadSession(activationCode);
-              saveSession({ ...s, sessionId: sessId });
-            }
-            if (!cancelled && history.length > 0) {
-              const baseMsgs: ThreadMessage[] = history.map((m, i) => {
-                const role = (m.role === 'table_widget' ? 'assistant' : m.role) as 'user' | 'assistant';
-                const base: ThreadMessage = {
-                  id: `h_${i}_${m.id ?? i}`,
-                  role,
-                  content: m.content ?? '',
-                  createdAt: m.created_at ? new Date(m.created_at).getTime() : undefined,
-                };
-                if (m.role === 'table_widget' && m.card_payload) {
-                  base.type = 'table_widget';
-                  base.tablePayload = m.card_payload as ThreadMessage['tablePayload'];
-                }
-                return base;
-              });
-              const concl = meta.dimension_conclusion as DimensionConclusionData | undefined;
-              const msgs =
-                concl && !baseMsgs.some((x) => x.type === 'dimension_conclusion')
-                  ? [
-                      ...baseMsgs,
-                      {
-                        id: `concl_${Date.now()}`,
-                        role: 'assistant' as const,
-                        content: '',
-                        type: 'dimension_conclusion' as const,
-                        conclusionData: concl,
-                        conclusionCollapsed: false,
-                        conclusionConfirmed: !!meta.thread_completed,
-                        createdAt: Date.now(),
-                      } satisfies ThreadMessage,
-                    ]
-                  : baseMsgs;
-              setMessages(msgs);
-              setBackendSyncedThreadId(activeId);
-              const updated = {
-                ...thread,
-                messages: msgs,
-                dimensionConclusion: concl ?? thread.dimensionConclusion,
-                ...(meta.thread_completed ? { status: 'completed' as const } : {}),
-              };
-              saveThread(activationCode, phase, updated);
-              setThreads(getThreads(activationCode, phase));
-            } else {
-              setMessages(thread.messages);
-              setBackendSyncedThreadId(activeId);
-            }
-          } catch {
-            setMessages(thread.messages);
-            setBackendSyncedThreadId(activeId);
-          }
-          if (!cancelled) setInitLoading(false);
-        })();
+        setMessages(thread.messages);
+        setBackendSyncedThreadId(activeId);
+        setInitLoading(false);
       } else {
         setMessages([]);
         setInitLoading(false);
@@ -303,72 +355,12 @@ export default function ChatPhasePage() {
       setActiveThreadIdState(firstId);
       setActiveThreadId(activationCode, phase, firstId);
       setBackendSyncedThreadId(firstId);
-      (async () => {
-        try {
-          const historyRes = await apiClient.get('/simple-chat/history', {
-            params: { activation_code: activationCode, phase: BACKEND_PHASE[phase], thread_id: firstId },
-          });
-          const history: any[] = historyRes.data.messages ?? [];
-          const meta = historyRes.data?.metadata ?? {};
-          const sessId = meta?.session_id;
-          if (sessId && !cancelled) {
-            setBackendSessionId(sessId);
-            const s = loadSession(activationCode);
-            saveSession({ ...s, sessionId: sessId });
-          }
-          if (!cancelled && history.length > 0 && firstId) {
-            const baseMsgs: ThreadMessage[] = history.map((m, i) => {
-              const role = (m.role === 'table_widget' ? 'assistant' : m.role) as 'user' | 'assistant';
-              const base: ThreadMessage = {
-                id: `h_${i}_${m.id ?? i}`,
-                role,
-                content: m.content ?? '',
-                createdAt: m.created_at ? new Date(m.created_at).getTime() : undefined,
-              };
-              if (m.role === 'table_widget' && m.card_payload) {
-                base.type = 'table_widget';
-                base.tablePayload = m.card_payload as ThreadMessage['tablePayload'];
-              }
-              return base;
-            });
-            const concl = meta.dimension_conclusion as DimensionConclusionData | undefined;
-            const msgs =
-              concl && !baseMsgs.some((x) => x.type === 'dimension_conclusion')
-                ? [
-                    ...baseMsgs,
-                    {
-                      id: `concl_${Date.now()}`,
-                      role: 'assistant' as const,
-                      content: '',
-                      type: 'dimension_conclusion' as const,
-                      conclusionData: concl,
-                      conclusionCollapsed: false,
-                      conclusionConfirmed: !!meta.thread_completed,
-                      createdAt: Date.now(),
-                    } satisfies ThreadMessage,
-                  ]
-                : baseMsgs;
-            setMessages(msgs);
-            const updated = {
-              ...first,
-              messages: msgs,
-              dimensionConclusion: concl ?? first.dimensionConclusion,
-              ...(meta.thread_completed ? { status: 'completed' as const } : {}),
-            };
-            saveThread(activationCode, phase, updated);
-            setThreads(getThreads(activationCode, phase));
-          } else if (first) {
-            setMessages(first.messages);
-          }
-        } catch {
-          if (first) setMessages(first.messages);
-        }
-        if (!cancelled) setInitLoading(false);
-      })();
+      if (first) setMessages(first.messages);
+      setInitLoading(false);
     }
 
     return () => { cancelled = true; };
-  }, [activationCode, phase, threadsFetched, threadListSignature, activeThreadId]);
+  }, [activationCode, phase, threadsFetched, threadListSignature, activeThreadId, mapHistoryToThreadMessages]);
 
   // Persist messages + dimensionConclusion to active (backend-synced) thread when they change
   // 注意：不要在此调用 setThreads(getThreads())，否则会改变 threads 引用并触发上方加载 effect，造成 initLoading 反复与界面闪烁
@@ -439,6 +431,7 @@ export default function ChatPhasePage() {
       : [userMsg, { id: assistantId, role: 'assistant' as const, content: '', createdAt: now }];
     setMessages((prev) => [...prev, ...toAdd]);
     setChatError(null);
+    setConclusionLoading(false);
     setSending(true);
 
     abortControllerRef.current = new AbortController();
@@ -491,6 +484,35 @@ export default function ChatPhasePage() {
               reader.cancel();
               break;
             }
+            if (payload.think_start) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId ? { ...m, thinkStreaming: true, thinkChunkContent: '' } : m
+                )
+              );
+            }
+            if (payload.think_chunk) {
+              const chunk = typeof payload.think_chunk === 'string' ? payload.think_chunk : '';
+              if (chunk) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? { ...m, thinkChunkContent: (m.thinkChunkContent || '') + chunk }
+                      : m
+                  )
+                );
+              }
+            }
+            if (payload.think_end != null) {
+              const thinkContent = typeof payload.think_end === 'string' ? payload.think_end : '';
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? { ...m, thinkContent, thinkStreaming: false, thinkChunkContent: undefined }
+                    : m
+                )
+              );
+            }
             if (payload.chunk) {
               fullReply += payload.chunk;
               setMessages((prev) =>
@@ -499,7 +521,11 @@ export default function ChatPhasePage() {
                 )
               );
             }
+            if (payload.conclusion_loading) {
+              setConclusionLoading(true);
+            }
             if (payload.dimension_conclusion) {
+              setConclusionLoading(false);
               const concl = payload.dimension_conclusion as DimensionConclusionData;
               const conclMsg: ThreadMessage = {
                 id: `concl_${Date.now()}`,
@@ -530,7 +556,9 @@ export default function ChatPhasePage() {
               const doneAt = Date.now();
               setMessages((prev) =>
                 prev.map((m) =>
-                  m.id === assistantId ? { ...m, content: fullReply, createdAt: m.createdAt ?? doneAt } : m
+                  m.id === assistantId
+                    ? { ...m, content: fullReply, thinkStreaming: false, createdAt: m.createdAt ?? doneAt }
+                    : m
                 )
               );
               break;
@@ -542,6 +570,12 @@ export default function ChatPhasePage() {
       if (err?.name !== 'AbortError') setChatError(err?.message || '发送失败，请重试');
     } finally {
       setSending(false);
+      setConclusionLoading(false);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId && m.thinkStreaming ? { ...m, thinkStreaming: false, thinkChunkContent: undefined } : m
+        )
+      );
       abortControllerRef.current = null;
       // 发送完成后将焦点还给输入框，支持连续 Enter 对话无需再点鼠标。
       requestAnimationFrame(() => {
@@ -660,14 +694,25 @@ export default function ChatPhasePage() {
         )
       );
     }
-    if (isSelectedCompleted && activationCode && phase && activeThreadId) {
+    if (activationCode && phase && activeThreadId) {
       try {
         await apiClient.post('/simple-chat/thread/reopen', {
           activation_code: activationCode,
           phase: BACKEND_PHASE[phase],
           thread_id: activeThreadId,
         });
-      } catch {}
+      } catch (err: any) {
+        if (err?.response?.status === 401 || err?.message?.includes('401')) {
+          setChatError(t('explore.chat.tokenExpired') || '登录已失效，请重新登录后刷新页面');
+          return;
+        }
+        if (err?.response?.status === 400) {
+          setChatError(getApiErrorMessage(err, '无法继续对话，请刷新页面后重试'));
+          return;
+        }
+        setChatError(getApiErrorMessage(err, '网络异常，请稍后重试'));
+        return;
+      }
       if (selectedThread) {
         const updated: ChatThread = { ...selectedThread, status: 'in-progress' };
         saveThread(activationCode, phase, updated);
@@ -882,6 +927,18 @@ export default function ChatPhasePage() {
                           content={m.content}
                           phase={phaseClass}
                           streaming={sending && idx === messages.length - 1}
+                          thinkContent={m.thinkContent}
+                          thinkStreaming={m.thinkStreaming}
+                          thinkChunkContent={m.thinkChunkContent}
+                          thinkPlaceholders={[
+                            t('explore.chat.thinkInProgress1'),
+                            t('explore.chat.thinkInProgress2'),
+                            t('explore.chat.thinkInProgress3'),
+                            t('explore.chat.thinkInProgress4'),
+                            t('explore.chat.thinkInProgress5'),
+                            t('explore.chat.thinkInProgress6'),
+                          ]}
+                          thinkLabel={t('explore.chat.thinkProcess')}
                           timestamp={m.createdAt}
                           onRegenerate={() => handleRegenerate(idx)}
                           sessionId={backendSessionId ?? undefined}
@@ -891,6 +948,14 @@ export default function ChatPhasePage() {
                       )}
                     </div>
                   ))
+                )}
+                {conclusionLoading && (
+                  <div className="flow-msg-conclusion-wrap my-3">
+                    <div className="rounded-xl border border-[var(--flow-border)] bg-[var(--flow-card-bg)] p-4 flex items-center gap-3 text-[var(--flow-text-muted)] text-sm animate-pulse">
+                      <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      <span>{t('explore.chat.conclusionLoading')}</span>
+                    </div>
+                  </div>
                 )}
                 {chatError && (
                   <div className="flow-msg-error">

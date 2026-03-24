@@ -74,3 +74,19 @@ def get_guide_prompt(context: Dict[str, Any]) -> str:
 def get_answer_card_prompt(context: Dict[str, Any]) -> str:
     """答题卡总结提示。context: question_content, category_label, question_goal, conversation_text"""
     return _get_loader().render("answer_card_summary", context)
+
+
+def get_pending_conclusion_injection(context: Dict[str, Any]) -> str:
+    """
+    结论卡待展示时的动态提示词注入（追加在对话消息末尾）。
+    context: prior_summary, prior_keywords, conclusion_rules_and_goals
+    """
+    return _get_loader().render("pending_conclusion_reply", context)
+
+
+def get_simple_chat_system_prompt(context: Dict[str, Any]) -> str:
+    """
+    simple_chat 系统提示词。
+    context: phase, question_bank, basic_info, prior_block
+    """
+    return _get_loader().render("simple_chat_system", context)

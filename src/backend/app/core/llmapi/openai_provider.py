@@ -1,7 +1,6 @@
 """
 OpenAI LLM Provider实现
 """
-import asyncio
 from typing import List, Dict, Optional, AsyncIterator
 from openai import AsyncOpenAI
 from app.core.llmapi.base import BaseLLMProvider, LLMMessage, LLMResponse, LLMError
@@ -108,54 +107,109 @@ class OpenAIProvider(BaseLLMProvider):
             # 错误处理
             raise LLMError(f"OpenAI API调用失败: {str(e)}")
     
+    def _is_reasoning_model(self) -> bool:
+        """是否推理模型（如 deepseek-reasoner），会输出 reasoning_content"""
+        return "reasoner" in (self.model or "").lower()
+
     async def chat_stream(
         self,
         messages: List[LLMMessage],
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         **kwargs
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[str | dict]:
         """
         发送流式聊天请求
 
-        Args:
-            messages: 消息列表
-            temperature: 温度参数
-            max_tokens: 最大token数
-            **kwargs: 其他参数
-
-        Yields:
-            流式响应文本片段
+        当模型为 deepseek-reasoner 时，会 yield 字典：
+        - {"_t": "think_start"} 开始思考
+        - {"_t": "think_end", "content": "..."} 思考结束，附完整思考内容
+        - 普通字符串为正式回复内容
         """
         try:
-            # 转换消息格式
             openai_messages = [
                 {"role": msg.role, "content": msg.content}
                 for msg in messages
             ]
 
-            # 调用OpenAI流式API（启用 stream_options 获取 usage）
-            stream = await self.client.chat.completions.create(
+            # deepseek-reasoner 不支持 temperature 等参数（会静默忽略）
+            create_kwargs = dict(
                 model=self.model,
                 messages=openai_messages,
-                temperature=temperature,
                 max_tokens=max_tokens,
                 stream=True,
                 stream_options={"include_usage": True},
                 **kwargs
             )
+            if not self._is_reasoning_model():
+                create_kwargs["temperature"] = temperature
 
-            # 流式返回
+            stream = await self.client.chat.completions.create(**create_kwargs)
+
+            if not self._is_reasoning_model():
+                # 普通模型：直接 yield 字符串
+                async for chunk in stream:
+                    if chunk.usage:
+                        u = {
+                            "prompt_tokens": chunk.usage.prompt_tokens,
+                            "completion_tokens": chunk.usage.completion_tokens,
+                            "total_tokens": chunk.usage.total_tokens,
+                        }
+                        if hasattr(chunk.usage, "prompt_cache_hit_tokens"):
+                            u["prompt_cache_hit_tokens"] = getattr(chunk.usage, "prompt_cache_hit_tokens", None)
+                        if hasattr(chunk.usage, "prompt_cache_miss_tokens"):
+                            u["prompt_cache_miss_tokens"] = getattr(chunk.usage, "prompt_cache_miss_tokens", None)
+                        self._last_stream_usage = u
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
+                return
+
+            # 推理模型：分离 reasoning_content 与 content
+            # 立即发送 think_start，让前端尽早显示“正在梳理”占位
+            yield {"_t": "think_start"}
+            think_buf: list[str] = []
+
+            def _get_rc_cc(delta) -> tuple[str, str]:
+                rc = getattr(delta, "reasoning_content", None)
+                cc = getattr(delta, "content", None)
+                if rc is None and hasattr(delta, "model_dump"):
+                    try:
+                        d = delta.model_dump()
+                        rc = d.get("reasoning_content") or ""
+                        cc = cc or d.get("content") or ""
+                    except Exception:
+                        pass
+                return (str(rc or ""), str(cc or ""))
+
             async for chunk in stream:
-                # 最后一个 chunk 携带 usage 信息
                 if chunk.usage:
-                    self._last_stream_usage = {
+                    usage_dict = {
                         "prompt_tokens": chunk.usage.prompt_tokens,
                         "completion_tokens": chunk.usage.completion_tokens,
                         "total_tokens": chunk.usage.total_tokens,
                     }
-                if chunk.choices and chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
+                    # DeepSeek Context Caching: 诊断 prefilling 延迟
+                    if hasattr(chunk.usage, "prompt_cache_hit_tokens"):
+                        usage_dict["prompt_cache_hit_tokens"] = getattr(chunk.usage, "prompt_cache_hit_tokens", None)
+                    if hasattr(chunk.usage, "prompt_cache_miss_tokens"):
+                        usage_dict["prompt_cache_miss_tokens"] = getattr(chunk.usage, "prompt_cache_miss_tokens", None)
+                    self._last_stream_usage = usage_dict
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                rc, cc = _get_rc_cc(delta)
+
+                if rc:
+                    think_buf.append(rc)
+                    yield {"_t": "think_chunk", "content": rc}
+                elif cc:
+                    if think_buf:
+                        yield {"_t": "think_end", "content": "".join(think_buf)}
+                        think_buf = []
+                    yield cc
+
+            if think_buf:
+                yield {"_t": "think_end", "content": "".join(think_buf)}
 
         except Exception as e:
             raise LLMError(f"OpenAI流式API调用失败: {str(e)}")

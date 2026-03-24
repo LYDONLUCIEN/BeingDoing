@@ -20,6 +20,12 @@ export interface ThreadMessage {
   content: string;
   /** Unix ms; last message time used in sidebar */
   createdAt?: number;
+  /** 推理模型思考过程（deepseek-reasoner 等），折叠展示 */
+  thinkContent?: string;
+  /** 思考中（流式时占位提示，不持久化） */
+  thinkStreaming?: boolean;
+  /** 思考过程实时输出预览（单行展示，不持久化） */
+  thinkChunkContent?: string;
   /** 维度探索结论消息（与 content 二选一） */
   type?: 'text' | 'dimension_conclusion' | 'table_widget';
   conclusionData?: DimensionConclusionData;

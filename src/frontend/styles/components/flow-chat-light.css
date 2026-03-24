@@ -136,7 +136,6 @@
 .flow-light .flow-msg-ai-content.purpose    { border-left-color: var(--flow-target); }
 .flow-light .flow-msg-ai-content.rumination { border-left-color: #8B5CF6; }
 
-.flow-light .flow-msg-ai-content .message-content,
 .flow-light .flow-msg-ai-content [data-color-mode],
 .flow-light .flow-msg-ai-content [data-color-mode] *,
 .flow-light .flow-msg-ai-content .wmde-markdown,
@@ -145,20 +144,120 @@
   font-style: normal !important;
 }
 
-/* 流式光标 */
-.flow-light .flow-stream-cursor {
-  display: inline-block;
-  width: 2px;
-  height: 1em;
-  background: var(--flow-guide);
-  margin-left: 2px;
-  vertical-align: text-bottom;
-  border-radius: 1px;
-  animation: flow-blink 0.9s step-end infinite;
+/* 推理模型思考过程：无色块，灰色小灯泡 → hover 变为 > 箭头，点击展开 */
+.flow-light .flow-msg-think-wrap {
+  margin-bottom: 8px;
+  max-width: min(860px, 88%);
 }
-@keyframes flow-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
+.flow-light .flow-msg-think-placeholder {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.flow-light .flow-msg-think-placeholder-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--flow-text-muted);
+}
+.flow-light .flow-msg-think-preview {
+  min-height: 1.5em;
+  max-height: 4.5em;
+  overflow-y: auto;
+  overflow-x: hidden;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #a8a29e;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 2px 0;
+}
+.flow-light .flow-msg-think-preview::-webkit-scrollbar {
+  width: 4px;
+}
+.flow-light .flow-msg-think-preview::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 2px;
+}
+.flow-light .flow-msg-think-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #a8a29e;
+  animation: flow-think-pulse 1.2s ease-in-out infinite;
+}
+@keyframes flow-think-pulse {
+  0%, 100% { opacity: 0.4; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+.flow-light .flow-msg-think-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--flow-text-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+  transition: color 0.2s;
+}
+.flow-light .flow-msg-think-toggle:hover {
+  color: var(--flow-text-body);
+}
+.flow-light .flow-msg-think-icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  flex-shrink: 0;
+  position: relative;
+}
+.flow-light .flow-msg-think-bulb {
+  color: #a8a29e;
+  transition: opacity 0.2s;
+}
+.flow-light .flow-msg-think-arrow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  color: var(--flow-text-muted);
+  transition: opacity 0.2s;
+}
+.flow-light .flow-msg-think-toggle:hover .flow-msg-think-bulb {
+  opacity: 0;
+}
+.flow-light .flow-msg-think-toggle:hover .flow-msg-think-arrow {
+  opacity: 1;
+}
+.flow-light .flow-msg-think-chevron {
+  flex-shrink: 0;
+  color: #a8a29e;
+}
+.flow-light .flow-msg-think-content {
+  margin-top: 6px;
+  padding: 10px 14px 12px 14px;
+  border-radius: 8px;
+  background: rgba(245, 245, 245, 0.9);
+  border: 1px solid #e5e5e5;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #a8a29e;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.flow-light .flow-msg-think-content [data-color-mode],
+.flow-light .flow-msg-think-content .wmde-markdown,
+.flow-light .flow-msg-think-content .wmde-markdown *,
+.flow-light .flow-msg-think-content p,
+.flow-light .flow-msg-think-content code {
+  font-size: 11px !important;
+  line-height: 1.5 !important;
+  color: #a8a29e !important;
+  background: transparent !important;
 }
 
 /* AI 工具栏：复制、重新生成、点赞 */
@@ -232,7 +331,7 @@
 }
 .flow-light .flow-msg-user-wrap:hover .flow-msg-user-toolbar { opacity: 1; }
 
-/* 结论卡内联展示（与 AI 消息同侧） */
+/* 结论卡内联展示（与 AI 消息同侧）：卡片式，横向不拉满 */
 .flow-light .flow-msg-conclusion-wrap {
   display: flex;
   justify-content: flex-start;
@@ -240,7 +339,7 @@
 }
 .flow-light .flow-conclusion-inline {
   width: 100%;
-  max-width: 85%;
+  max-width: 420px;  /* 卡片宽度限制，垂直方向可增高 */
 }
 .flow-light .flow-conclusion-header-clickable {
   cursor: pointer;
@@ -363,12 +462,14 @@
 }
 .flow-light .flow-conclusion-actions {
   display: flex;
+  flex-wrap: nowrap;
   gap: 12px;
   padding-top: 8px;
   border-top: 1px solid var(--flow-border);
 }
 .flow-light .flow-conclusion-btn {
-  flex: 1;
+  flex-shrink: 0;
+  white-space: nowrap;
   padding: 10px 16px;
   border-radius: 10px;
   font-size: 13px;
@@ -395,7 +496,8 @@
   transform: translateY(-1px);
 }
 .flow-light .flow-conclusion-btn-confirmed {
-  flex: 1;
+  flex-shrink: 0;
+  white-space: nowrap;
   padding: 10px 16px;
   border-radius: 10px;
   font-size: 13px;

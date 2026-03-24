@@ -1,0 +1,29 @@
+# 当 metadata.pending_conclusion 存在时，动态追加在对话消息末尾的提示词
+# 结构：system_prompt + 对话消息 + 本内容（prior_conclusion + rules_and_goals + 输出格式）
+# 微调位置：本文件 prompt 字段
+name: pending_conclusion_reply
+description: 结论卡待展示时，追加在对话末尾的指令（格式要求放最后）
+
+prompt: |
+  【系统指令 - 结论卡模式】检测到需要输出结论卡，请完成以下任务：
+
+  ---
+  【上一轮结论（供综合更新）】
+  摘要：{{ prior_summary }}
+  关键词：{{ prior_keywords }}
+  ---
+
+  【本阶段结论卡规则与目标】
+  {{ conclusion_rules_and_goals }}
+
+  【输出格式 - 必须严格遵守】
+  先回应用户消息，再输出结论 JSON。按以下格式输出，不可省略：
+
+  [REPLY]
+  （你对用户消息的自然语言回复，1-3句话）
+
+  [CONCLUSION_JSON]
+  {"keywords": ["词1", "词2", ...], "summary": "汇总文案：用 **关键词** 标出核心词。"}
+
+  【硬性约束】keywords 仅来自用户对话中亲口提到的词汇，严禁杜撰。宁可少写也不要编造。
+  【硬性约束】严禁在 [REPLY] 或 [CONCLUSION_JSON] 中提及、暗示下一阶段的目标、内容或流程；仅聚焦本阶段结论，不要开始下一轮的提问。

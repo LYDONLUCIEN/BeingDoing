@@ -7,6 +7,39 @@
 from typing import Dict
 
 
+# 各阶段结论卡重要原则（从主对话提示词「重要准则」提取，用于生成结论时的硬性约束）
+# 【通用】严禁在结论卡或回复中提及下一阶段的目标、流程或问题；仅聚焦本阶段结论。
+_COMMON_NO_NEXT_PHASE = "- 【硬性】严禁在输出中提及、暗示或提问下一阶段的目标、内容或流程；即便已知下一阶段信息，也绝不要开始下一轮的提问。仅输出本阶段结论。\n"
+
+CONCLUSION_RULES: Dict[str, str] = {
+    "values": (
+        _COMMON_NO_NEXT_PHASE
+        + "- keywords 提炼出五个价值观相关的词。必须仅使用用户在对话中亲自提到、并已确认的价值观词，严禁添加、改写或杜撰\n"
+        + "- 用户未明确确认的词汇不得写入 keywords\n"
+        + "- 用户若暂时答不上来，需通过有限引导帮助其思考后回答；结论卡只能基于用户实际说出的词"
+    ),
+    "strengths": (
+        _COMMON_NO_NEXT_PHASE
+        + "- 必须为 10 个彼此不同的能力优势\n"
+        + "- 每个优势需来自用户确认的描述，严禁杜撰"
+    ),
+    "interests": (
+        _COMMON_NO_NEXT_PHASE
+        + "- 必须为 3 个核心热爱方向，以名词形式呈现\n"
+        + "- 每个热爱需来自用户确认的领域，严禁杜撰"
+    ),
+    "purpose": (
+        _COMMON_NO_NEXT_PHASE
+        + "- 使命陈述必须来自用户确认的表达\n"
+        + "- 必须为用户为他人提供价值的10个行为或者经历。"
+    ),
+    "rumination": (
+        _COMMON_NO_NEXT_PHASE
+        + "- 整合信息需基于前面各阶段用户已确认的内容\n"
+        + "- 下一步行动需与用户选择的方向一致"
+    ),
+}
+
 CONCLUSION_CARD_GOALS: Dict[str, dict] = {
     "values": {
         "name": "价值观结论卡",
@@ -79,6 +112,23 @@ CONCLUSION_CARD_GOALS: Dict[str, dict] = {
 def get_conclusion_card_goal(step_id: str) -> dict:
     normalized = (step_id or "").strip().lower()
     return CONCLUSION_CARD_GOALS.get(normalized, CONCLUSION_CARD_GOALS["values"])
+
+
+def get_conclusion_rules(step_id: str) -> str:
+    """获取指定阶段的结论卡重要原则（用于提示词注入）"""
+    normalized = (step_id or "").strip().lower()
+    return CONCLUSION_RULES.get(normalized, CONCLUSION_RULES["values"])
+
+
+def get_conclusion_rules_and_goals(step_id: str) -> str:
+    """获取结论卡规则 + 目标（用于动态注入，包含 objective 与 must_capture）"""
+    rules = get_conclusion_rules(step_id)
+    goal = get_conclusion_card_goal(step_id)
+    objective = goal.get("objective", "")
+    must_capture = goal.get("must_capture") or []
+    capture_text = "、".join(must_capture) if isinstance(must_capture, list) else str(must_capture)
+    goals_block = f"本结论卡目标：{objective}\n必须覆盖：{capture_text}" if objective else ""
+    return f"{rules}\n\n{goals_block}".strip() if goals_block else rules
 
 
 def get_goal_prompt_hint(step_id: str) -> str:

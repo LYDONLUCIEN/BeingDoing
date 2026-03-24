@@ -20,6 +20,7 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.core.llmapi import get_default_llm_provider, LLMMessage
+from app.core.llmapi.factory import create_llm_provider
 from app.api.v1.auth import get_current_user, _is_debug_admin
 from app.config.settings import settings
 from app.core.knowledge.loader import KnowledgeLoader
@@ -62,11 +63,15 @@ from app.utils.survey_storage import (
     load_prior_context_for_report,
     load_prior_context,
 )
+from app.domain.prompts import get_pending_conclusion_injection, get_simple_chat_system_prompt
+from app.domain.conclusion_card_goals import get_conclusion_rules_and_goals
 
 # 每阶段随机抽取的题目数量
 SIMPLE_QUESTION_SAMPLE_SIZE = 6
 # 发送给 LLM 的历史消息最大轮数（减少 token、加快响应）
 MAX_HISTORY_TURNS = 20
+# 结论卡模式下的历史轮数上限（避免上下文膨胀）
+PENDING_CONCLUSION_MAX_TURNS = 20
 # 并发 LLM 调用限制（0=不限制）
 _LLM_SEM = None
 
@@ -77,6 +82,66 @@ def _get_llm_semaphore():
         n = getattr(settings, "LLM_MAX_CONCURRENT", 0) or 0
         _LLM_SEM = asyncio.Semaphore(n) if n > 0 else None
     return _LLM_SEM
+
+
+def _resolve_provider_and_key_for_vip(vip_level: int) -> tuple[str, Optional[str], Optional[str]]:
+    """按 vip_level 解析 provider/api_key/base_url。"""
+    level = 1 if vip_level not in (1, 2) else vip_level
+    if level == 2:
+        provider = (getattr(settings, "LLM_VIP2_PROVIDER", "kimi") or "kimi").lower()
+        if provider == "qwen":
+            return (
+                "qwen",
+                getattr(settings, "QWEN_API_KEY", None),
+                getattr(settings, "QWEN_BASE_URL", None),
+            )
+        return (
+            "kimi",
+            getattr(settings, "KIMI_API_KEY", None),
+            getattr(settings, "KIMI_BASE_URL", None),
+        )
+
+    provider = (getattr(settings, "LLM_VIP1_PROVIDER", "deepseek") or "deepseek").lower()
+    if provider == "deepseek":
+        return ("deepseek", getattr(settings, "DEEPSEEK_API_KEY", None), settings.LLM_BASE_URL)
+    if provider == "openai":
+        return ("openai", getattr(settings, "OPENAI_API_KEY", None), settings.LLM_BASE_URL)
+    return (provider, getattr(settings, "DEEPSEEK_API_KEY", None), settings.LLM_BASE_URL)
+
+
+def _to_non_reasoning_model(model: str) -> str:
+    """
+    将推理模型名转换为对话模型名。
+    示例：deepseek-reasoner -> deepseek-chat
+    """
+    m = (model or "").strip()
+    if not m:
+        return "deepseek-chat"
+    if "reasoner" in m.lower():
+        return re.sub(r"reasoner", "chat", m, flags=re.IGNORECASE)
+    return m
+
+
+def _get_dialogue_llm_provider(vip_level: int = 1):
+    """
+    普通对话使用非思考模型；结论卡生成链路再使用推理模型。
+    """
+    llm = get_default_llm_provider(vip_level=vip_level)
+    model = (getattr(llm, "model", "") or "").lower()
+    if "reasoner" not in model:
+        return llm
+    provider, api_key, base_url = _resolve_provider_and_key_for_vip(vip_level)
+    dialog_model = _to_non_reasoning_model(getattr(llm, "model", "") or "deepseek-chat")
+    try:
+        return create_llm_provider(
+            provider=provider,
+            model=dialog_model,
+            api_key=api_key,
+            base_url=base_url,
+        )
+    except Exception:
+        # 降级：保持可用性，避免因切换失败阻断主对话
+        return llm
 
 
 router = APIRouter(prefix="/simple-chat", tags=["简单模式对话"])
@@ -113,6 +178,36 @@ def _trigger_anchor_refiner(
             logger.warning("anchor refiner failed: %s", e)
 
     asyncio.create_task(_run())
+
+
+async def _get_or_create_thread_question_bank(
+    conv_manager: ConversationFileManager,
+    session_id: str,
+    category: str,
+    phase_step: str,
+) -> str:
+    """线程级固定 question_bank：首次生成并写入 metadata，后续复用。"""
+    conv_data = await conv_manager.get_conversation_data(session_id, category)
+    meta = conv_data.get("metadata") or {}
+    qb = meta.get("question_bank")
+    qb_phase = meta.get("question_bank_phase")
+    if isinstance(qb, str) and qb.strip() and qb_phase == phase_step:
+        return qb
+
+    qb = _get_random_questions_for_phase(phase_step)
+    try:
+        await conv_manager.update_metadata(
+            session_id,
+            category,
+            {
+                "question_bank": qb,
+                "question_bank_phase": phase_step,
+            },
+        )
+    except Exception:
+        # 仅优化项，失败时降级为本次使用，不影响主流程
+        pass
+    return qb
 
 
 def _skip_expired_for_debug(rec, user: Optional[dict]) -> bool:
@@ -314,6 +409,51 @@ def _build_fallback_opening_question(phase: str) -> str:
     return fallback_map.get(phase, fallback_map["values"])
 
 
+def _parse_reply_and_conclusion(raw: str) -> tuple[Optional[str], Optional[Dict]]:
+    """
+    解析主 LLM 在 pending_conclusion 模式下的输出。
+    期望格式：
+      [REPLY]
+      自然语言回复...
+      [CONCLUSION_JSON]
+      {"keywords": [...], "summary": "..."}
+    返回 (reply, conclusion_dict)，解析失败返回 (None, None)。
+    """
+    if not raw or not isinstance(raw, str):
+        return None, None
+    text = raw.strip()
+    if "[CONCLUSION_JSON]" not in text:
+        return None, None
+    parts = text.split("[CONCLUSION_JSON]", 1)
+    reply_part = (parts[0] or "").replace("[REPLY]", "").strip()
+    json_part = (parts[1] or "").strip()
+    # 去除可能的 markdown 代码块
+    if "```json" in json_part:
+        json_part = json_part.split("```json")[1].split("```")[0].strip()
+    elif "```" in json_part:
+        json_part = json_part.split("```")[1].split("```")[0].strip()
+    try:
+        obj = json.loads(json_part)
+        if not isinstance(obj, dict):
+            return None, None
+        keywords = obj.get("keywords")
+        if keywords is not None and not isinstance(keywords, list):
+            keywords = [str(k) for k in keywords] if hasattr(keywords, "__iter__") else []
+        summary = (obj.get("summary") or "").strip()
+        if not summary and not keywords:
+            return None, None
+        conclusion = {
+            "summary": summary or "本维度探索已完成。",
+            "keywords": [str(k).strip() for k in (keywords or []) if k],
+            "ai_summary": summary or "本维度探索已完成。",
+            "dimension_goal": "",
+            "final_answer": ", ".join(keywords or []) if keywords else summary,
+        }
+        return (reply_part or "好的，根据我们的对话，我为你整理出本维度的探索结论，请确认下方摘要是否准确。", conclusion)
+    except (json.JSONDecodeError, TypeError):
+        return None, None
+
+
 def _looks_like_markdown_table(text: str) -> bool:
     if not text:
         return False
@@ -352,11 +492,16 @@ def _normalize_token_usage(usage: Optional[dict]) -> dict:
     in_tokens = int(usage.get("prompt_tokens") or 0)
     out_tokens = int(usage.get("completion_tokens") or 0)
     total = int(usage.get("total_tokens") or (in_tokens + out_tokens))
-    return {
+    result = {
         "prompt_tokens": in_tokens,
         "completion_tokens": out_tokens,
         "total_tokens": total,
     }
+    if "prompt_cache_hit_tokens" in usage:
+        result["prompt_cache_hit_tokens"] = usage["prompt_cache_hit_tokens"]
+    if "prompt_cache_miss_tokens" in usage:
+        result["prompt_cache_miss_tokens"] = usage["prompt_cache_miss_tokens"]
+    return result
 
 
 class SimpleChatRequest(BaseModel):
@@ -773,224 +918,14 @@ def _build_system_prompt(
     basic_info: str = "暂无",
     prior_context: str = "",
 ) -> str:
-    """
-    根据阶段构建 system prompt。
-    phase: values | strengths | interests
-    question_bank: 从 question.md 随机抽取的题目文本
-    basic_info: 来访者基本信息（调研问卷）
-    prior_context: 上一阶段咨询结果（values → 空；strengths → values 结果；interests → strengths+values 结果）
-    """
+    """根据阶段构建 system prompt（通过模板渲染，避免超长硬编码）。"""
     prior_block = f"\n\n以下是该来访者在上一轮咨询中的谈话结果，供你参考：\n{prior_context}" if prior_context.strip() else ""
-
-    if phase == "values":
-        return f"""你是一名专业的职业规划咨询师，正在进行第一轮咨询。本轮咨询的目标是：**帮助用户发现并确认对其职业发展最重要的5个价值观关键词**。
-
-请严格遵循以下咨询流程和方法。
-
-### 咨询流程
-
-1. **开场提问**：直接询问用户："你能否直接告诉我，在你心中对你最重要的5个价值观关键词是什么？"（例如：成就感、稳定、创新、人际关系等）
-2. **记录初始答案**：
-   - 如果用户给出了任何关键词（无论数量多少），请全部记录下来，并标记为"用户自述"。
-   - 如果用户无法给出任何关键词，或给出的不足5个，请记录下来，并继续下一步。
-3. **深度提问探索**：进入正式的问题探索环节。
-   - **提问原则**：每次只向用户提出**一个**问题。问题可以不局限于工作，可以涉及生活、过往经历、未来畅想等，目的是从用户的回答中挖掘潜在的价值观。
-   - **追问技巧**：根据用户的回答进行追问，引导用户深入思考，直到用户自己能清晰地总结出："这对我来说，意味着[价值观关键词]很重要。"
-   - **记录关键词**：每从一个问题中提炼出关键词，就记录下来，并标记为"探索发现"。
-4. **整合与确认**：
-   - **对比初始答案**：将"探索发现"的关键词与第一步中用户"用户自述"的关键词进行对比。
-   - 如果重复出现，则在该关键词旁记录"权重+1"。
-   - 如果出现全新的关键词，向用户确认："通过刚才的讨论，我们发现了[新关键词]这个价值观，你觉得它对你来说重要吗？可以加入你的价值观列表吗？"
-5. **收敛判断**：持续进行提问探索，直到满足以下任一条件：
-   - **收敛条件**：无论再提出什么新问题，都无法从用户的回答中提炼出任何新的价值观关键词。
-   - **数量上限**：提出的独立新问题（不包括追问）累计达到10个。
-   - **注意**：达到5个关键词并不代表收敛，必须确认无法再发现新的关键词才算收敛。
-6. **排序与整合**：
-   - **引导排序**：当关键词收敛后，请用户对所有已确认的关键词（包括用户自述和探索发现的）进行优先级排序。
-   - **合并与删减**：如果关键词过多（超过5个），引导用户合并含义相近的词，或删减相对不重要的词，并请用户给出自己对每个关键词的理解和解释。如果合并后数量**少于5个**，则需继续重复步骤3-5的提问探索。
-   - **核对差异**：在用户给出排序后，将其排序结果与你记录过程中的"权重"进行对比。如果存在明显差异，向用户提问以澄清原因；如果无差异，则直接采用用户的排序。
-7. **最终确认**：向用户呈现最终结果："我们最终确定了对你最重要的5个价值观关键词，按优先级排序是：1. [关键词]（你的解释），2. [关键词]（你的解释）…… 你确认这个结果吗？"
-8. **结束对话**：用户确认后，本轮咨询结束。告知用户："恭喜你完成了第一轮价值观探索。下一轮我们将进入优势探索，帮助你发现你的核心能力。我们下次见。"
-
-### 重要准则
-
-- **引导而非灌输**：始终给用户思考和回答的空间，不要直接替用户下结论。
-- **一次一问**：严格遵守每轮对话只提一个问题。
-- **完整收敛**：务必确认无论问什么都无法再提取新词，才算收敛，不能因为凑够5个就停止。
-- **完成即引导答题卡**：当你判断用户已明确确认完成时，必须明确告知“将生成本维度答题卡总结”，不要只说“完成了”而不说明下一步。
-- 【对话续写】若对话已有历史，必须在已有探索基础上继续深挖，禁止重复开场式提问（如「你的价值观是什么」）或泛泛寒暄，应基于用户已有回答进行追问和深化。
-
-### 题库参考
-
-以下题库可供选择，你也可以根据对话情境灵活提问：
-{question_bank}
-
-来访者基本信息：{basic_info}{prior_block}
-
-请直接用中文和用户继续这一轮对话。"""
-
-    if phase == "strengths":
-        return f"""你是一名专业的职业规划咨询师，正在进行第二轮咨询。本轮咨询的目标是：**帮助用户发现并确认其最突出的10个优势**。
-
-请先以友好、专业的态度与用户打招呼，然后按照以下流程和方法开展咨询。
-
-### 咨询流程
-
-1. **开场提问**：直接询问用户："你自己认为你的优势有哪些？请尽量列举。"
-   - 如果用户给出了任何答案，请全部记录下来，标记为"用户自述"。
-   - 如果用户无法给出任何答案，或给出的数量不足，请记录下来，并继续下一步。
-2. **深度提问探索**：进入正式的问题探索环节。
-   - **提问原则**：每次只向用户提出**一个**问题。问题可以不局限于工作，可以涉及生活、过往经历、未来畅想等，目的是从用户的回答中挖掘潜在的优势。
-   - **追问技巧**：根据用户的回答进行追问，引导用户深入思考，直到用户自己能清晰地总结出："这对我来说，意味着[某项优势]是我的一个优势。"
-3. **记录与确认**：
-   - 每从一个问题中提炼出一个优势，就记录下来，并标记为"探索发现"。
-   - **对比初始答案**：将"探索发现"的优势与第一步中用户"用户自述"的优势进行对比。
-   - 如果重复出现，则在该优势旁记录"权重+1"。
-   - 如果出现全新的优势，向用户确认："通过刚才的讨论，我们发现[新优势]可能是你的一个优势，你认可吗？可以加入你的优势列表吗？"
-4. **重复提问直至达成10个**：持续进行提问探索，直到用户确认的优势累计达到**10个**。提取出的优势之间不能有重复。
-5. **标记优势**：当用户确认了10个优势后，向用户解释标记体系的含义，并引导用户对每个优势进行标记。
-   - **a. 有充实感，与成功有关**：你不仅做这件事时感到充实、有活力，而且它通常能带来好的结果或成就。
-   - **b. 有充实感**：你做这件事时感到充实、充满能量，但并不一定每次都带来成功。
-   - **c. 目前还不确定**：你对自己是否具备这个优势，或者使用时是否有充实感，还不太确定。
-6. **确认标记结果**：当所有10个优势都标记完毕后，向用户呈现最终列表及对应的标记，询问用户是否确认。
-7. **结束对话**：用户确认后，告知用户："恭喜你完成了第二轮优势探索。下一轮我们将进入热爱探索，帮助你发现你的激情所在。我们下次见！"
-
-### 重要准则
-
-- **引导而非灌输**：始终给用户思考和回答的空间，不要直接替用户下结论。
-- **一次一问**：严格遵守每轮对话只提一个问题。
-- **确保10个优势**：必须通过提问挖掘，直到用户认可并确认了10个不重复的优势。
-- **提问差异化**：避免重复问类似问题，要变换角度，防止用户思维僵化或"钻牛角尖"。
-- **完成即引导答题卡**：当你判断用户已明确确认完成时，必须明确告知“将生成本维度答题卡总结”，不要只说“完成了”而不说明下一步。
-- 【对话续写】若对话已有历史，必须在已有探索基础上继续深挖，禁止重复开场式提问（如「你的优势有哪些」）或泛泛寒暄，应基于用户已有回答进行追问和深化。
-
-### 题库参考
-
-以下题库可供选择，你也可以根据对话情境灵活提问：
-{question_bank}
-
-来访者基本信息：{basic_info}{prior_block}
-
-请直接用中文和用户继续这一轮对话。"""
-
-    if phase == "interests":
-        return f"""你是一名专业的职业规划咨询师，正在进行第三轮咨询。本轮咨询的目标是：**帮助用户发现3个"热爱"——即用户真正感兴趣、充满好奇的领域（以名词形式呈现，例如：自然环境、自我认知、足球、艺术创作等）**。
-
-请先以亲切、专业的语气向用户介绍本次咨询的主题，然后严格遵循以下流程和方法开展咨询。
-
-### 咨询流程
-
-1. **开场提问**：直接询问用户："你自己认为，你有哪些热爱的事情或领域？请列举一些你真正感兴趣、充满好奇的方向。"
-   - 如果用户给出了答案，请分析是否符合"热爱"的定义（感兴趣、好奇的领域，名词形式）。如果符合，记录下来，标记为"用户自述"。
-   - 如果用户无法给出任何答案，或给出的答案不符合定义，则记录下来，并继续下一步。
-2. **深度提问探索**：进入正式的问题探索环节。
-   - **提问原则**：每次只向用户提出**一个**问题。问题可以不局限于工作，可以涉及生活、过往经历、未来畅想等，目的是从用户的回答中挖掘潜在的热爱领域。
-   - **追问技巧**：根据用户的回答进行追问，引导用户深入思考，直到用户自己能清晰地总结出："我发现自己对[某个领域]真的很感兴趣/充满好奇。"
-3. **记录与确认**：
-   - 每从一个问题中提炼出一个热爱领域，就记录下来，并标记为"探索发现"。
-   - **对比初始答案**：将"探索发现"的热爱与第一步中用户"用户自述"的热爱进行对比。
-   - 如果重复出现，则在该热爱旁记录"权重+1"。
-   - 如果出现全新的热爱，向用户确认："通过刚才的讨论，我们发现你对[新领域]似乎很有热情，你觉得可以把它列入你的热爱清单吗？"
-4. **收集候选热爱清单**：
-   - 持续进行提问探索，直到收集到的热爱领域（包括用户自述和探索发现的）达到**至少6个**。
-   - 询问用户："目前我们列出了X个你热爱的领域（列出清单），你觉得这些是否全面表达了你所有的热爱？有没有什么重要的领域被遗漏了？"
-   - 如果用户认为有遗漏，继续提问帮助用户补充，直到用户觉得清单已基本全面（或总数量达到12个左右，作为上限参考）。
-   - **注意**：提取出的热爱领域不能重复，确保每个都是独特的。
-5. **引导用户选出TOP 3**：
-   - 当候选清单确定后（N≥6），请用户从中选出最重要的3个，作为"核心热爱"。
-   - 你可以这样引导："在这些热爱的领域中，哪三个是你最想深入探索、最不愿意放弃的？为什么？"
-   - 如果用户对选择感到困难，可以通过追问帮助其厘清优先级。
-   - 如果用户不认可某一项热爱，需要重新确认该热爱是否应保留在候选清单中，必要时通过提问重新挖掘替代项。
-6. **确认最终结果**：当用户明确选出TOP 3后，向用户呈现最终结果："你最终确认的3个核心热爱是：1. [热爱A]，2. [热爱B]，3. [热爱C]。你确认这个结果吗？"
-7. **结束对话**：用户确认后，告知用户："恭喜你完成了第三轮热爱探索。下一轮我们将进入使命探索，帮助你找到你的人生召唤。我们下次见！"
-
-### 重要准则
-
-- **引导而非灌输**：始终给用户思考和回答的空间，不要直接替用户下结论。
-- **一次一问**：严格遵守每轮对话只提一个问题。
-- **提问差异化**：避免重复问类似问题，要变换角度，防止用户思维僵化或"钻牛角尖"。
-- **热爱的形式**：确保提炼出的热爱是名词形式的领域，例如"人工智能"、"心理学"、"户外运动"等，而不是形容词或抽象感受。
-- **完成即引导答题卡**：当你判断用户已明确确认完成时，必须明确告知“将生成本维度答题卡总结”，不要只说“完成了”而不说明下一步。
-- 【对话续写】若对话已有历史，必须在已有探索基础上继续深挖，禁止重复开场式提问（如「你的热爱有哪些」）或泛泛寒暄，应基于用户已有回答进行追问和深化。
-
-### 题库参考
-
-以下题库可供选择，你也可以根据对话情境灵活提问：
-{question_bank}
-
-来访者基本信息：{basic_info}{prior_block}
-
-请直接用中文和用户继续这一轮对话。"""
-
-    if phase == "purpose":
-        return f"""你是一名专业的职业规划咨询师，正在进行第四轮咨询。本轮咨询的目标是：**帮助用户发现其工作使命——即用户最希望为他人提供的核心价值**。
-
-请先以祝贺和鼓励的语气开启对话，告知用户即将完成整个探索旅程，然后按照以下流程和方法开展咨询。
-
-### 咨询流程
-
-1. **开场与回顾**：
-   - 亲切地向用户表示恭喜："恭喜你即将完成整个职业探索旅程！本轮我们将一起发现你的工作使命——你内心深处最希望为他人提供的价值。"
-   - 帮助用户回忆第一轮咨询中确认的5个价值观关键词。参考下方"来访者上一轮咨询结果"中的价值观相关内容，向用户复述："还记得我们在第一轮一起探索出的对你最重要的5个价值观吗？它们是：[从上一轮结果中提取的5个价值观关键词]。在接下来的讨论中，我们会用到它们。"
-2. **梳理价值经历**：
-   - 引导用户梳理出**10个曾经为他人提供价值的经历**。这些经历可以来自工作、学习、志愿活动、日常生活等任何方面。
-   - 提问示例："请你回想一下，在过去的生活或工作中，有哪些你曾经为他人提供帮助、解决问题或带来积极影响的经历？可以列出10个，每个用一两句话简单描述。"
-   - 如果用户一时想不出10个，可以通过提问引导，但避免替用户决定。
-3. **匹配价值观（逐个经历进行）**：
-   - 针对每一段经历，与用户一起分析：在这段经历中，你提供或试图提供的价值，对应着第一轮中的哪个（或哪些）价值观关键词？
-   - 向用户确认匹配是否准确，如果用户认可则记录；如果不认可，继续引导用户思考更匹配的价值观，直到用户确认。
-   - 处理完一段经历后，继续下一段，直到10段经历全部匹配完成。（若用户实在想不出10段，可适当放宽至8-9段。）
-4. **统计与总结**：
-   - 完成经历分析后，统计每个价值观关键词出现的次数。
-   - 根据统计结果，为用户整理一份使命总结，内容包括：
-     - **（1）经历-价值观对应表格**：第一列是每段经历的简要概括，第二列是该经历对应的价值观关键词。
-     - **（2）核心使命陈述**：用一句话概括你最希望传递的核心价值观；对这句话进行展开说明；用一句话概括你希望通过工作传递的最终目的。
-5. **确认总结**：向用户展示上述总结，询问是否认可，有没有需要调整的地方。根据用户反馈调整，直到用户完全认可。
-6. **结束对话**：用户确认后，告知用户："太棒了！你已经完成了使命探索。接下来我们将进行最后一轮对话——帮助你整合所有发现，找到具体的职业发展方向。我们下次见！"
-
-### 重要准则
-
-- **引导而非灌输**：始终给用户思考和回答的空间，不要替用户下结论。
-- **一次一问**：严格遵守每轮对话只提一个问题。
-- **提问差异化**：在引导用户回忆经历时，变换提问角度，避免重复。
-- **经历数量**：尽量引导至10段经历，若用户实在想不出可适当放宽到8-9段。
-- **匹配准确**：在匹配价值观时，一定要得到用户的明确认可。
-- **完成即引导答题卡**：当你判断用户已明确确认完成时，必须明确告知“将生成本维度答题卡总结”，不要只说“完成了”而不说明下一步。
-- 【对话续写】若对话已有历史，必须在已有探索基础上继续深挖，禁止重复开场式提问（如「你为什么而工作」）或泛泛寒暄，应基于用户已有回答进行追问和深化。
-
-### 题库参考
-
-以下题库可供选择，你也可以根据对话情境灵活提问：
-{question_bank}
-
-来访者基本信息：{basic_info}{prior_block}
-
-请直接用中文和用户继续这一轮对话。"""
-
-    if phase == "rumination":
-        return f"""你是一名专业的职业规划咨询师，正在进行最后一轮咨询——沉淀阶段。本轮的目标是：**综合用户之前探索的价值观、优势、热爱和使命，帮助用户确定三个最终职业发展方向**。
-
-### 咨询流程概览
-
-1. **开场白**：亲切问候，祝贺用户进入最后一轮，说明本次目标，询问是否准备好开始。
-2. **回顾**（按顺序）：回顾价值观、优势、热爱、工作目的，每项确认后再进入下一项，询问是否需要微调。
-3. **筛选**：回顾完成后，将进入表格筛选流程（热爱×优势匹配、假设生成、价值过滤、激情过滤、现实过滤、相似过滤），逐步缩小方向。
-4. **最终选择**：从筛选结果中引导用户选出最想做的三件事。
-5. **推荐与发展**：为每个方向推荐具体的职业发展可能性。
-6. **结束对话**：共情总结，询问下一步计划，调用结束流程。
-
-### 重要准则
-
-- 每次只提一个问题，给用户充分的回答空间。
-- 当用户卡顿时，提供温和的引导，而非直接给答案。
-- 判断对话结束条件：用户已选出 top 3 方向并确认。
-- 【对话续写】若对话已有历史，在已有基础上继续，禁止重复开场。
-
-来访者基本信息：{basic_info}{prior_block}
-
-请直接用中文和用户继续这一轮对话。"""
-
-    return _build_system_prompt("values", question_bank, basic_info, prior_context)
+    return get_simple_chat_system_prompt({
+        "phase": phase,
+        "question_bank": question_bank,
+        "basic_info": basic_info,
+        "prior_block": prior_block,
+    })
 
 
 @router.post("/message", response_model=SimpleChatResponse)
@@ -1035,10 +970,16 @@ async def simple_chat(
         category=category,
     )
 
-    llm = get_default_llm_provider()
+    vip_level = getattr(rec, "vip_level", 1) or 1
+    llm = _get_dialogue_llm_provider(vip_level=vip_level)
 
-    # 从 question.md 按阶段随机抽取题目，动态注入提示词
-    question_bank = _get_random_questions_for_phase(phase_step)
+    # question_bank 在线程内固定：首次生成，后续复用，避免每轮变化导致 cache miss
+    question_bank = await _get_or_create_thread_question_bank(
+        conv_manager=conv_manager,
+        session_id=session_id,
+        category=category,
+        phase_step=phase_step,
+    )
     basic_info = _load_basic_info_from_activation(request.activation_code)
     prior_context = _load_prior_context_from_activation(
         request.activation_code, phase_step, report
@@ -1194,8 +1135,14 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
         )
 
     # 没有历史：生成一条首轮引导问题
-    llm = get_default_llm_provider()
-    question_bank = _get_random_questions_for_phase(phase_step)
+    vip_level = getattr(rec, "vip_level", 1) or 1
+    llm = _get_dialogue_llm_provider(vip_level=vip_level)
+    question_bank = await _get_or_create_thread_question_bank(
+        conv_manager=conv_manager,
+        session_id=session_id,
+        category=category,
+        phase_step=phase_step,
+    )
     basic_info = _load_basic_info_from_activation(request.activation_code)
     prior_context = _load_prior_context_from_activation(
         request.activation_code, phase_step, report
@@ -1272,16 +1219,24 @@ async def reopen_thread(
     """用户选择「再聊聊」完善答案时，清除完成状态以便继续对话"""
     manager = SimpleActivationManager()
     phase_val = (request.phase or "values").strip() or "values"
-    rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
-        manager=manager,
-        activation_code=request.activation_code,
-        current_user=current_user,
-        phase=phase_val,
-        thread_id=request.thread_id,
-    )
-    step_meta = ((report.get("steps") or {}).get(phase_step) or {})
-    if step_meta.get("locked"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="该阶段已锁定，不能再修改")
+    try:
+        rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
+            manager=manager,
+            activation_code=request.activation_code,
+            current_user=current_user,
+            phase=phase_val,
+            thread_id=request.thread_id,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("reopen_thread _resolve_report_context failed: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="解析会话上下文失败，请刷新页面后重试",
+        ) from e
+    # 允许在已锁定阶段继续对话：用户明确选择「再聊聊」时，可对当前线程补充完善
+    # locked 仅限制「切换会话」，不限制对已选线程的继续编辑
     await conv_manager.update_metadata(
         report["report_id"], category,
         {
@@ -1531,7 +1486,7 @@ async def simple_chat_stream(
     storage_root = str(get_effective_simple_root(rec))
 
     async def event_stream() -> AsyncIterator[str]:
-        llm = get_default_llm_provider(vip_level=vip_level)
+        llm = _get_dialogue_llm_provider(vip_level=vip_level)
         # 避免复用 provider 时串用上一次流式 token 使用量
         if hasattr(llm, "_last_stream_usage"):
             try:
@@ -1559,7 +1514,12 @@ async def simple_chat_stream(
                         session_id, prev_phase, prev_cat, conv_manager, storage_root, vip_level=vip_level
                     )
 
-        question_bank = _get_random_questions_for_phase(phase_step)
+        question_bank = await _get_or_create_thread_question_bank(
+            conv_manager=conv_manager,
+            session_id=session_id,
+            category=category,
+            phase_step=phase_step,
+        )
         basic_info = _load_basic_info_from_activation(request.activation_code)
         prior_context = _load_prior_context_from_activation(
             request.activation_code, phase_step, report
@@ -1629,15 +1589,71 @@ async def simple_chat_stream(
         conclusion_shown_at = meta.get("conclusion_shown_at_turn")
 
         if pending_conclusion and not meta.get("thread_completed"):
-            # 综合本轮用户输入 + 上一轮结论，重新生成确定性结论
-            try:
-                dimension_conclusion = await check_dimension_complete(
-                    phase_step, conv_history, prior_conclusion=pending_conclusion, vip_level=vip_level
+            # 结构：system_prompt + 对话消息 + prior_conclusion + conclusion_rules_and_goals + 输出格式（放最后）
+            logger.info(
+                "[pending_conclusion] 进入结论卡模式 phase=%s user_count=%s prior_summary_preview=%s",
+                phase_step, user_count,
+                (pending_conclusion.get("summary") or pending_conclusion.get("ai_summary") or "")[:80],
+            )
+            prior_summary = (
+                pending_conclusion.get("summary") or pending_conclusion.get("ai_summary") or ""
+            ).strip()
+            prior_kw = pending_conclusion.get("keywords") or []
+            prior_keywords_str = "、".join(str(k) for k in prior_kw) if isinstance(prior_kw, list) else str(prior_kw)
+            injection = get_pending_conclusion_injection({
+                "prior_summary": prior_summary or "（无）",
+                "prior_keywords": prior_keywords_str or "（无）",
+                "conclusion_rules_and_goals": get_conclusion_rules_and_goals(phase_step),
+            })
+            if getattr(settings, "DEBUG", False):
+                logger.debug("[pending_conclusion] 动态注入内容长度=%d\n---\n%s\n---", len(injection), injection)
+            # 用更多历史轮数重建消息（含本轮用户消息），再追加 injection 作为最后一条（格式要求放末尾）
+            all_msgs = conv_data.get("messages", [])
+            turn_count_pending = 0
+            trimmed_pending: List[dict] = []
+            for m in reversed(all_msgs):
+                role = m.get("role") or "user"
+                if role == "user":
+                    turn_count_pending += 1
+                    if turn_count_pending > PENDING_CONCLUSION_MAX_TURNS:
+                        break
+                if role in {"user", "assistant", "system"}:
+                    trimmed_pending.insert(0, m)
+            llm_messages_pending = [llm_messages[0]]  # system
+            if len(llm_messages) > 1 and "此前对话要点" in (llm_messages[1].content or ""):
+                llm_messages_pending.append(llm_messages[1])  # anchor
+            for m in trimmed_pending:
+                r = m.get("role") or "user"
+                if r in {"user", "assistant", "system"}:
+                    llm_messages_pending.append(LLMMessage(role=r, content=(m.get("content") or "")))
+            llm_messages_pending.append(LLMMessage(role="user", content=injection))
+            dimension_conclusion = None
+            reply_text = None
+            if getattr(settings, "DEBUG", False):
+                last_msg = llm_messages_pending[-1].content if llm_messages_pending else ""
+                logger.info(
+                    "[pending_conclusion] 调用 LLM 前 最后一条消息长度=%d 含 prior_summary=%s 含 CONCLUSION_JSON=%s",
+                    len(last_msg), "prior_summary" in (last_msg or ""), "[CONCLUSION_JSON]" in (last_msg or ""),
                 )
+            try:
+                resp = await llm.chat(llm_messages_pending, temperature=0.7)
+                raw_output = (resp.content or "").strip()
+                reply_text, dimension_conclusion = _parse_reply_and_conclusion(raw_output)
+                if not dimension_conclusion and raw_output:
+                    logger.info(
+                        "[pending_conclusion] LLM 输出解析失败 含 CONCLUSION_JSON=%s raw_len=%d preview=%s",
+                        "[CONCLUSION_JSON]" in raw_output, len(raw_output), raw_output[:200],
+                    )
             except Exception as e:
-                # 上游 LLM 异常时，降级为继续普通对话，避免流接口 500。
-                logger.exception("check_dimension_complete(regenerate) failed, continue chat stream: %s", e)
-                dimension_conclusion = None
+                logger.warning("pending_conclusion LLM parse failed, fallback to check_dimension_complete: %s", e)
+            if not dimension_conclusion:
+                try:
+                    dimension_conclusion = await check_dimension_complete(
+                        phase_step, conv_history, prior_conclusion=pending_conclusion, vip_level=vip_level
+                    )
+                    reply_text = reply_text or "好的，根据我们的对话，我为你整理出本维度的探索结论，请确认下方摘要是否准确。"
+                except Exception as e:
+                    logger.exception("check_dimension_complete(regenerate) failed, continue chat stream: %s", e)
             if dimension_conclusion:
                 await conv_manager.update_metadata(
                     session_id, category,
@@ -1647,9 +1663,101 @@ async def simple_chat_stream(
                         "pending_conclusion": None,
                     },
                 )
-                transition_msg = "好的，根据我们的对话，我为你整理出本维度的探索结论，请确认下方摘要是否准确。"
+                transition_msg = reply_text or "好的，根据我们的对话，我为你整理出本维度的探索结论，请确认下方摘要是否准确。"
                 yield f"data: {{\"chunk\": {json.dumps(transition_msg, ensure_ascii=False)} }}\n\n"
                 full_reply = transition_msg
+                yield f"data: {{\"conclusion_loading\": true}}\n\n"
+                yield f"data: {{\"dimension_conclusion\": {json.dumps(dimension_conclusion, ensure_ascii=False)} }}\n\n"
+                try:
+                    await conv_manager.append_message(
+                        session_id=session_id,
+                        category=category,
+                        message={
+                            "role": "assistant",
+                            "content": full_reply,
+                            "session_id": logical_session_id,
+                            "step_id": phase_step,
+                            "agent_id": "coach",
+                            "event": "assistant_reply",
+                            "token_usage": _normalize_token_usage(None),
+                        },
+                    )
+                    await conv_manager.append_message(
+                        session_id=session_id,
+                        category=category,
+                        message={
+                            "role": "conclusion_card",
+                            "content": json.dumps(dimension_conclusion, ensure_ascii=False),
+                            "session_id": logical_session_id,
+                            "step_id": phase_step,
+                            "agent_id": "coach",
+                            "event": "dimension_conclusion",
+                            "card_type": "dimension_conclusion",
+                            "card_payload": dimension_conclusion,
+                        },
+                    )
+                except Exception as e:
+                    logger.warning("append conclusion_card message failed: %s", e)
+                _trigger_anchor_refiner(
+                    session_id,
+                    phase_step,
+                    category,
+                    conv_manager,
+                    storage_root,
+                    dimension_conclusion=dimension_conclusion,
+                    vip_level=vip_level,
+                )
+                try:
+                    await AnalyticsService.record_chat_turn(session_id=logical_session_id, dimension=phase_step, user_input_chars=len(user_content or ""), llm_input_tokens=0, llm_output_tokens=0, log_index=None)
+                except Exception:
+                    pass
+                yield f"data: {{\"done\": true, \"response\": {json.dumps(full_reply, ensure_ascii=False)} }}\n\n"
+                return
+            # 若 regenerate 返回 None，清除 pending 并继续正常流程
+            if not dimension_conclusion:
+                logger.info("[pending_conclusion] LLM+fallback 均未产出结论，清除 pending 走正常流")
+            await conv_manager.update_metadata(session_id, category, {"pending_conclusion": None})
+
+        # 2) 无 pending 时：显式完成 或 轮数条件 → 同步检测
+        dimension_conclusion = None
+        if not meta.get("thread_completed"):
+            try: #检测是否用户说完成了，如果检测到了那么就直接生成结论卡
+                explicit_result = bool(
+                    user_content and await detect_explicit_completion(phase_step, user_content, conv_history)
+                )
+            except Exception as e:
+                # 显式完成检测是增强能力，不应因上游 LLM 异常中断主对话流。
+                logger.exception("detect_explicit_completion failed, continue chat stream: %s", e)
+                explicit_result = False
+            # 检测是否需要弹出结论卡了，除了用户说了完成了，还要满足轮数条件或者轮数满足（如 ≥5 轮）
+            should_check = _should_run_completion_check(
+                user_count, conclusion_shown_at,
+                include_explicit=True, explicit_result=explicit_result,
+            )
+            logger.info(
+                "[completion_check] 同步检测 user_count=%s conclusion_shown_at=%s explicit=%s should_check=%s",
+                user_count, conclusion_shown_at, explicit_result, should_check,
+            )
+            if should_check:
+                try:
+                    dimension_conclusion = await check_dimension_complete(phase_step, conv_history, vip_level=vip_level)
+                except Exception as e:
+                    # 维度收敛检测失败时降级为继续普通对话，避免前端出现 500 卡死。
+                    logger.exception("check_dimension_complete failed, continue chat stream: %s", e)
+                    dimension_conclusion = None
+                if dimension_conclusion:
+                    await conv_manager.update_metadata(
+                        session_id, category,
+                        {"conclusion_shown_at_turn": user_count, "dimension_conclusion": dimension_conclusion},
+                    )
+
+        if dimension_conclusion:
+            transition_msg = "好的，根据我们的对话，我为你整理出本维度的探索结论，请确认下方摘要是否准确。"
+            yield f"data: {{\"chunk\": {json.dumps(transition_msg, ensure_ascii=False)} }}\n\n"
+            full_reply = transition_msg
+            yield f"data: {{\"conclusion_loading\": true}}\n\n"
+            yield f"data: {{\"dimension_conclusion\": {json.dumps(dimension_conclusion, ensure_ascii=False)} }}\n\n"
+            try:
                 await conv_manager.append_message(
                     session_id=session_id,
                     category=category,
@@ -1677,85 +1785,8 @@ async def simple_chat_stream(
                         "card_payload": dimension_conclusion,
                     },
                 )
-                yield f"data: {{\"dimension_conclusion\": {json.dumps(dimension_conclusion, ensure_ascii=False)} }}\n\n"
-                _trigger_anchor_refiner(
-                    session_id,
-                    phase_step,
-                    category,
-                    conv_manager,
-                    storage_root,
-                    dimension_conclusion=dimension_conclusion,
-                    vip_level=vip_level,
-                )
-                try:
-                    await AnalyticsService.record_chat_turn(session_id=logical_session_id, dimension=phase_step, user_input_chars=len(user_content or ""), llm_input_tokens=0, llm_output_tokens=0, log_index=None)
-                except Exception:
-                    pass
-                yield f"data: {{\"done\": true, \"response\": {json.dumps(full_reply, ensure_ascii=False)} }}\n\n"
-                return
-            # 若 regenerate 返回 None，清除 pending 并继续正常流程
-            await conv_manager.update_metadata(session_id, category, {"pending_conclusion": None})
-
-        # 2) 无 pending 时：显式完成 或 轮数条件 → 同步检测
-        dimension_conclusion = None
-        if not meta.get("thread_completed"):
-            try:
-                explicit_result = bool(
-                    user_content and await detect_explicit_completion(phase_step, user_content, conv_history)
-                )
             except Exception as e:
-                # 显式完成检测是增强能力，不应因上游 LLM 异常中断主对话流。
-                logger.exception("detect_explicit_completion failed, continue chat stream: %s", e)
-                explicit_result = False
-            should_check = _should_run_completion_check(
-                user_count, conclusion_shown_at,
-                include_explicit=True, explicit_result=explicit_result,
-            )
-            if should_check:
-                try:
-                    dimension_conclusion = await check_dimension_complete(phase_step, conv_history, vip_level=vip_level)
-                except Exception as e:
-                    # 维度收敛检测失败时降级为继续普通对话，避免前端出现 500 卡死。
-                    logger.exception("check_dimension_complete failed, continue chat stream: %s", e)
-                    dimension_conclusion = None
-                if dimension_conclusion:
-                    await conv_manager.update_metadata(
-                        session_id, category,
-                        {"conclusion_shown_at_turn": user_count, "dimension_conclusion": dimension_conclusion},
-                    )
-
-        if dimension_conclusion:
-            transition_msg = "好的，根据我们的对话，我为你整理出本维度的探索结论，请确认下方摘要是否准确。"
-            yield f"data: {{\"chunk\": {json.dumps(transition_msg, ensure_ascii=False)} }}\n\n"
-            full_reply = transition_msg
-            await conv_manager.append_message(
-                session_id=session_id,
-                category=category,
-                message={
-                    "role": "assistant",
-                    "content": full_reply,
-                    "session_id": logical_session_id,
-                    "step_id": phase_step,
-                    "agent_id": "coach",
-                    "event": "assistant_reply",
-                        "token_usage": _normalize_token_usage(None),
-                },
-            )
-            await conv_manager.append_message(
-                session_id=session_id,
-                category=category,
-                message={
-                    "role": "conclusion_card",
-                    "content": json.dumps(dimension_conclusion, ensure_ascii=False),
-                    "session_id": logical_session_id,
-                    "step_id": phase_step,
-                    "agent_id": "coach",
-                    "event": "dimension_conclusion",
-                    "card_type": "dimension_conclusion",
-                    "card_payload": dimension_conclusion,
-                },
-            )
-            yield f"data: {{\"dimension_conclusion\": {json.dumps(dimension_conclusion, ensure_ascii=False)} }}\n\n"
+                logger.warning("append conclusion_card message failed: %s", e)
             _trigger_anchor_refiner(
                 session_id,
                 phase_step,
@@ -1775,39 +1806,69 @@ async def simple_chat_stream(
         try:
             sem = _get_llm_semaphore()
             stream_coro = llm.chat_stream(llm_messages, temperature=0.7)
+
+            full_think = ""
+
+            def _process_chunk(c):
+                nonlocal full_reply, full_think
+                out = []
+                if isinstance(c, dict):
+                    t = c.get("_t")
+                    if t == "think_start":
+                        out.append(f"data: {{\"think_start\": true}}\n\n")
+                    elif t == "think_chunk":
+                        tc = c.get("content", "")
+                        if tc:
+                            out.append(f"data: {{\"think_chunk\": {json.dumps(tc, ensure_ascii=False)} }}\n\n")
+                    elif t == "think_end":
+                        tc = c.get("content", "")
+                        full_think = tc
+                        out.append(f"data: {{\"think_end\": {json.dumps(tc, ensure_ascii=False)} }}\n\n")
+                elif c:
+                    full_reply += c
+                    out.append(f"data: {{\"chunk\": {json.dumps(c, ensure_ascii=False)} }}\n\n")
+                return out
+
             if sem:
                 async with sem:
                     async for chunk in stream_coro:
-                        if not chunk:
-                            continue
-                        full_reply += chunk
-                        yield f"data: {{\"chunk\": {json.dumps(chunk, ensure_ascii=False)} }}\n\n"
+                        for ev in _process_chunk(chunk):
+                            yield ev
             else:
                 async for chunk in stream_coro:
-                    if not chunk:
-                        continue
-                    full_reply += chunk
-                    yield f"data: {{\"chunk\": {json.dumps(chunk, ensure_ascii=False)} }}\n\n"
+                    for ev in _process_chunk(chunk):
+                        yield ev
         except Exception as e:
             err = str(e)
             yield f"data: {{\"error\": {json.dumps(err, ensure_ascii=False)} }}\n\n"
             return
         stream_usage = _normalize_token_usage(getattr(llm, "_last_stream_usage", None))
+        # 诊断 DeepSeek Context Cache：首 token 慢时查看 hit/miss
+        if stream_usage and (stream_usage.get("prompt_cache_hit_tokens") or stream_usage.get("prompt_cache_miss_tokens")):
+            logger.info(
+                "[llm_stream] cache hit=%s miss=%s prompt=%s",
+                stream_usage.get("prompt_cache_hit_tokens", 0),
+                stream_usage.get("prompt_cache_miss_tokens", 0),
+                stream_usage.get("prompt_tokens"),
+            )
 
-        # 保存完整助手回复
+        # 保存完整助手回复（含推理模型思考过程）
         if full_reply:
+            msg_payload = {
+                "role": "assistant",
+                "content": full_reply,
+                "session_id": logical_session_id,
+                "step_id": phase_step,
+                "agent_id": "coach",
+                "event": "assistant_reply",
+                "token_usage": stream_usage,
+            }
+            if full_think:
+                msg_payload["think_content"] = full_think
             await conv_manager.append_message(
                 session_id=session_id,
                 category=category,
-                message={
-                    "role": "assistant",
-                    "content": full_reply,
-                    "session_id": logical_session_id,
-                    "step_id": phase_step,
-                    "agent_id": "coach",
-                    "event": "assistant_reply",
-                    "token_usage": stream_usage,
-                },
+                message=msg_payload,
             )
             if phase_step == "rumination" and _looks_like_markdown_table(full_reply):
                 await conv_manager.append_message(
@@ -1857,35 +1918,39 @@ async def simple_chat_stream(
                             },
                         )
                         transition_msg = "好的，根据我们的对话，我为你整理出本维度的探索结论，请确认下方摘要是否准确。"
-                        await conv_manager.append_message(
-                            session_id=session_id,
-                            category=category,
-                            message={
-                                "role": "assistant",
-                                "content": transition_msg,
-                                "session_id": logical_session_id,
-                                "step_id": phase_step,
-                                "agent_id": "coach",
-                                "event": "assistant_reply",
-                                "token_usage": _normalize_token_usage(None),
-                            },
-                        )
-                        await conv_manager.append_message(
-                            session_id=session_id,
-                            category=category,
-                            message={
-                                "role": "conclusion_card",
-                                "content": json.dumps(post_turn_conclusion, ensure_ascii=False),
-                                "session_id": logical_session_id,
-                                "step_id": phase_step,
-                                "agent_id": "coach",
-                                "event": "dimension_conclusion",
-                                "card_type": "dimension_conclusion",
-                                "card_payload": post_turn_conclusion,
-                            },
-                        )
                         yield f"data: {{\"chunk\": {json.dumps(transition_msg, ensure_ascii=False)} }}\n\n"
+                        yield f"data: {{\"conclusion_loading\": true}}\n\n"
                         yield f"data: {{\"dimension_conclusion\": {json.dumps(post_turn_conclusion, ensure_ascii=False)} }}\n\n"
+                        try:
+                            await conv_manager.append_message(
+                                session_id=session_id,
+                                category=category,
+                                message={
+                                    "role": "assistant",
+                                    "content": transition_msg,
+                                    "session_id": logical_session_id,
+                                    "step_id": phase_step,
+                                    "agent_id": "coach",
+                                    "event": "assistant_reply",
+                                    "token_usage": _normalize_token_usage(None),
+                                },
+                            )
+                            await conv_manager.append_message(
+                                session_id=session_id,
+                                category=category,
+                                message={
+                                    "role": "conclusion_card",
+                                    "content": json.dumps(post_turn_conclusion, ensure_ascii=False),
+                                    "session_id": logical_session_id,
+                                    "step_id": phase_step,
+                                    "agent_id": "coach",
+                                    "event": "dimension_conclusion",
+                                    "card_type": "dimension_conclusion",
+                                    "card_payload": post_turn_conclusion,
+                                },
+                            )
+                        except Exception as e:
+                            logger.warning("append conclusion_card message failed: %s", e)
                         _trigger_anchor_refiner(
                             session_id,
                             phase_step,
@@ -1930,6 +1995,7 @@ async def simple_chat_stream(
                 ]
                 conclusion = await check_dimension_complete(phase_step, conv_history, vip_level=vip_level)
                 if conclusion:
+                    logger.info("[completion_check] 后台检测到完成 phase=%s 写入 pending_conclusion", phase_step)
                     await conv_manager.update_metadata(
                         session_id, category, {"pending_conclusion": conclusion}
                     )
