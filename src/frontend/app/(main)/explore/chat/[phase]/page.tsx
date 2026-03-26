@@ -1018,7 +1018,7 @@ export default function ChatPhasePage() {
                     <button
                       type="button"
                       onClick={sending ? handleStopStream : () => handleSend()}
-                      disabled={(sending || !input.trim() || isReadOnly) as boolean}
+                      disabled={((!sending && !input.trim()) || isReadOnly) as boolean}
                       className={`flow-send-btn ${sending ? 'is-stop' : ''}`}
                     >
                       {sending ? <Square size={16} strokeWidth={0} fill="white" /> : <ArrowUp size={16} strokeWidth={2.2} />}

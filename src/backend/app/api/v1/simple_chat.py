@@ -34,8 +34,6 @@ from app.utils.sandbox_fork import assert_sandbox_not_expired
 from app.utils.conversation_file_manager import ConversationFileManager
 from app.core.dimension_completion_checker import (
     check_dimension_complete,
-    detect_explicit_completion,
-    _should_run_completion_check,
 )
 from app.services.analytics_service import AnalyticsService
 from app.utils.report_registry import ReportRegistry, STEP_IDS, STEP_ORDER
@@ -63,17 +61,18 @@ from app.utils.survey_storage import (
     load_prior_context_for_report,
     load_prior_context,
 )
-from app.domain.prompts import get_pending_conclusion_injection, get_simple_chat_system_prompt
-from app.domain.conclusion_card_goals import get_conclusion_rules_and_goals
+from app.domain.prompts import get_simple_chat_system_prompt
 
 # 每阶段随机抽取的题目数量
 SIMPLE_QUESTION_SAMPLE_SIZE = 6
 # 发送给 LLM 的历史消息最大轮数（减少 token、加快响应）
-MAX_HISTORY_TURNS = 20
-# 结论卡模式下的历史轮数上限（避免上下文膨胀）
-PENDING_CONCLUSION_MAX_TURNS = 20
+MAX_HISTORY_TURNS = 30
 # 并发 LLM 调用限制（0=不限制）
 _LLM_SEM = None
+CONCLUSION_STATE_NONE = "none"
+CONCLUSION_STATE_PENDING = "pending"
+CONCLUSION_STATE_CONFIRMED = "confirmed"
+CONCLUSION_STATE_REJECTED = "rejected"
 
 
 def _get_llm_semaphore():
@@ -122,6 +121,21 @@ def _to_non_reasoning_model(model: str) -> str:
     return m
 
 
+def _to_reasoning_model(model: str) -> str:
+    """
+    将对话模型名转换为推理模型名。
+    示例：deepseek-chat -> deepseek-reasoner
+    """
+    m = (model or "").strip()
+    if not m:
+        return "deepseek-reasoner"
+    if "reasoner" in m.lower():
+        return m
+    if "chat" in m.lower():
+        return re.sub(r"chat", "reasoner", m, flags=re.IGNORECASE)
+    return "deepseek-reasoner"
+
+
 def _get_dialogue_llm_provider(vip_level: int = 1):
     """
     普通对话使用非思考模型；结论卡生成链路再使用推理模型。
@@ -141,6 +155,27 @@ def _get_dialogue_llm_provider(vip_level: int = 1):
         )
     except Exception:
         # 降级：保持可用性，避免因切换失败阻断主对话
+        return llm
+
+
+def _get_reasoning_llm_provider(vip_level: int = 1):
+    """
+    结论判定/结论卡生成使用推理模型；普通对话用 _get_dialogue_llm_provider。
+    """
+    llm = get_default_llm_provider(vip_level=vip_level)
+    model = (getattr(llm, "model", "") or "").lower()
+    if "reasoner" in model:
+        return llm
+    provider, api_key, base_url = _resolve_provider_and_key_for_vip(vip_level)
+    reasoning_model = _to_reasoning_model(getattr(llm, "model", "") or "deepseek-reasoner")
+    try:
+        return create_llm_provider(
+            provider=provider,
+            model=reasoning_model,
+            api_key=api_key,
+            base_url=base_url,
+        )
+    except Exception:
         return llm
 
 
@@ -208,6 +243,175 @@ async def _get_or_create_thread_question_bank(
         # 仅优化项，失败时降级为本次使用，不影响主流程
         pass
     return qb
+
+
+async def _append_note_json(
+    conv_manager: ConversationFileManager,
+    session_id: str,
+    category: str,
+    note_type: str,
+    payload: Dict,
+) -> None:
+    """
+    写入线程级额外结论文件（{report_id}/{category}__note/note.json），避免与主对话记录混写。
+    """
+    # 额外文件路径：{report_id}/{category}__note/note.json
+    note_category = f"{category}__note/note"
+
+    def _do(fp: Path) -> None:
+        now = datetime.utcnow().isoformat() + "Z"
+        try:
+            with open(fp, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            data = {
+                "session_id": session_id,
+                "category": note_category,
+                "notes": [],
+                "metadata": {"created_at": now, "updated_at": now, "total_notes": 0},
+            }
+        notes = data.get("notes") or []
+        notes.append(
+            {
+                "id": f"note_{len(notes) + 1}",
+                "type": note_type,
+                "payload": payload,
+                "created_at": now,
+            }
+        )
+        data["notes"] = notes
+        meta = data.setdefault("metadata", {})
+        meta["updated_at"] = now
+        meta["total_notes"] = len(notes)
+        fp.parent.mkdir(parents=True, exist_ok=True)
+        with open(fp, "w", encoding="utf-8") as f:
+            f.write(json.dumps(data, indent=2, ensure_ascii=False))
+
+    await conv_manager._with_file_lock(session_id, note_category, _do)
+
+
+def _read_conclusion_meta(meta: Dict) -> Dict:
+    """
+    统一读取结论状态（优先新字段，兼容旧字段）。
+    新字段：
+      - conclusion_state: none|pending|confirmed|rejected
+      - conclusion_draft: 待确认草案
+      - conclusion_final: 最终结论
+      - conclusion_feedback: 否定反馈
+    """
+    meta = meta or {}
+    state = (meta.get("conclusion_state") or "").strip().lower()
+    draft = meta.get("conclusion_draft")
+    final = meta.get("conclusion_final")
+    feedback = meta.get("conclusion_feedback")
+
+    if not isinstance(draft, dict):
+        legacy_draft = meta.get("pending_conclusion")
+        draft = legacy_draft if isinstance(legacy_draft, dict) else None
+    if not isinstance(final, dict):
+        legacy_final = meta.get("dimension_conclusion")
+        final = legacy_final if isinstance(legacy_final, dict) else None
+    if not isinstance(feedback, str):
+        legacy_rej = meta.get("pending_last_rejected") or {}
+        fb = legacy_rej.get("feedback")
+        feedback = fb if isinstance(fb, str) else ""
+
+    if state not in {
+        CONCLUSION_STATE_NONE,
+        CONCLUSION_STATE_PENDING,
+        CONCLUSION_STATE_CONFIRMED,
+        CONCLUSION_STATE_REJECTED,
+    }:
+        if meta.get("thread_completed") and final:
+            state = CONCLUSION_STATE_CONFIRMED
+        elif draft:
+            state = CONCLUSION_STATE_PENDING
+        elif feedback:
+            state = CONCLUSION_STATE_REJECTED
+        else:
+            state = CONCLUSION_STATE_NONE
+
+    return {
+        "state": state,
+        "draft": draft,
+        "final": final,
+        "feedback": feedback or "",
+        "thread_completed": bool(meta.get("thread_completed")),
+        "shown_at": meta.get("conclusion_shown_at_turn"),
+    }
+
+
+def _build_conclusion_meta_update(
+    *,
+    state: str,
+    draft: Optional[Dict] = None,
+    final: Optional[Dict] = None,
+    feedback: Optional[str] = None,
+    shown_at: Optional[int] = None,
+    thread_completed: Optional[bool] = None,
+) -> Dict:
+    """写入统一结论状态，同时镜像旧字段做兼容。"""
+    is_confirmed = state == CONCLUSION_STATE_CONFIRMED
+    is_pending = state == CONCLUSION_STATE_PENDING
+    is_rejected = state == CONCLUSION_STATE_REJECTED
+    update = {
+        "conclusion_state": state,
+        "conclusion_draft": draft if is_pending else None,
+        "conclusion_final": final if final else None,
+        "conclusion_feedback": (feedback or "") if is_rejected else "",
+        "thread_completed": (is_confirmed if thread_completed is None else bool(thread_completed)),
+        # 旧字段兼容
+        "pending_status": (
+            "awaiting_confirmation"
+            if is_pending
+            else "confirmed"
+            if is_confirmed
+            else "rejected"
+            if is_rejected
+            else "none"
+        ),
+        "pending_conclusion": draft if is_pending else None,
+        "dimension_conclusion": final if final else None,
+        "pending_last_rejected": {"feedback": feedback or ""} if is_rejected else {},
+    }
+    if shown_at is not None:
+        update["conclusion_shown_at_turn"] = shown_at
+    return update
+
+
+def _write_anchor_from_conclusion(
+    report_id: str,
+    phase_step: str,
+    storage_root: str,
+    conclusion: Optional[Dict],
+) -> None:
+    """
+    结论卡确认后，直接将结论写成最新锚点（同时保留常规异步锚点提炼机制）。
+    """
+    if not isinstance(conclusion, dict):
+        return
+    summary = (conclusion.get("summary") or conclusion.get("ai_summary") or "").strip()
+    keywords = conclusion.get("keywords") or []
+    kw_text = "、".join([str(k).strip() for k in keywords if str(k).strip()][:10])
+    goals = summary
+    if kw_text:
+        goals = f"{summary}\n关键词：{kw_text}".strip()
+    if not goals:
+        return
+    try:
+        registry = ReportRegistry(base_dir=storage_root)
+        registry.update_step_anchor_summary(
+            report_id,
+            phase_step,
+            {
+                "goals": goals,
+                "personality": "",
+                "style": "",
+                "conflicts": "",
+            },
+        )
+    except Exception:
+        pass
 
 
 def _skip_expired_for_debug(rec, user: Optional[dict]) -> bool:
@@ -409,49 +613,34 @@ def _build_fallback_opening_question(phase: str) -> str:
     return fallback_map.get(phase, fallback_map["values"])
 
 
-def _parse_reply_and_conclusion(raw: str) -> tuple[Optional[str], Optional[Dict]]:
-    """
-    解析主 LLM 在 pending_conclusion 模式下的输出。
-    期望格式：
-      [REPLY]
-      自然语言回复...
-      [CONCLUSION_JSON]
-      {"keywords": [...], "summary": "..."}
-    返回 (reply, conclusion_dict)，解析失败返回 (None, None)。
-    """
-    if not raw or not isinstance(raw, str):
-        return None, None
-    text = raw.strip()
-    if "[CONCLUSION_JSON]" not in text:
-        return None, None
-    parts = text.split("[CONCLUSION_JSON]", 1)
-    reply_part = (parts[0] or "").replace("[REPLY]", "").strip()
-    json_part = (parts[1] or "").strip()
-    # 去除可能的 markdown 代码块
-    if "```json" in json_part:
-        json_part = json_part.split("```json")[1].split("```")[0].strip()
-    elif "```" in json_part:
-        json_part = json_part.split("```")[1].split("```")[0].strip()
+def _extract_json_object(text: str) -> Optional[Dict]:
+    """从文本中提取首个 JSON object。"""
+    if not text:
+        return None
+    s = text.strip()
+    start = s.find("{")
+    end = s.rfind("}")
+    if start < 0 or end <= start:
+        return None
     try:
-        obj = json.loads(json_part)
-        if not isinstance(obj, dict):
-            return None, None
-        keywords = obj.get("keywords")
-        if keywords is not None and not isinstance(keywords, list):
-            keywords = [str(k) for k in keywords] if hasattr(keywords, "__iter__") else []
-        summary = (obj.get("summary") or "").strip()
-        if not summary and not keywords:
-            return None, None
-        conclusion = {
-            "summary": summary or "本维度探索已完成。",
-            "keywords": [str(k).strip() for k in (keywords or []) if k],
-            "ai_summary": summary or "本维度探索已完成。",
-            "dimension_goal": "",
-            "final_answer": ", ".join(keywords or []) if keywords else summary,
-        }
-        return (reply_part or "好的，根据我们的对话，我为你整理出本维度的探索结论，请确认下方摘要是否准确。", conclusion)
+        obj = json.loads(s[start : end + 1])
+        return obj if isinstance(obj, dict) else None
     except (json.JSONDecodeError, TypeError):
-        return None, None
+        return None
+
+
+def _extract_state_content_tokens(text: str) -> Optional[Dict]:
+    """从约定 token 中提取状态与展示文案。"""
+    if not text:
+        return None
+    s = text.strip()
+    state_match = re.search(r"<STATE>\s*(confirmed|rejected|continue)\s*</STATE>", s, flags=re.IGNORECASE)
+    content_match = re.search(r"<CONTENT>\s*(.*?)\s*</CONTENT>", s, flags=re.IGNORECASE | re.DOTALL)
+    if not state_match:
+        return None
+    state = (state_match.group(1) or "").strip().lower()
+    content = (content_match.group(1) or "").strip() if content_match else ""
+    return {"state": state, "content": content}
 
 
 def _looks_like_markdown_table(text: str) -> bool:
@@ -462,29 +651,154 @@ def _looks_like_markdown_table(text: str) -> bool:
     return has_row and has_sep
 
 
-def _assistant_indicates_completion(text: str) -> bool:
+async def _decide_pending_action_by_llm(
+    phase: str,
+    pending_conclusion: Dict,
+    user_reply: str,
+    *,
+    vip_level: int,
+) -> Dict:
     """
-    检测助手回复是否在语义上宣告“已完成/可出总结卡”。
-    用于兜底触发结论卡生成，避免用户看到“完成了”却没有卡片。
+    使用推理模型判断用户对 pending_conclusion 的态度，返回 JSON：
+    {"state":"confirmed|rejected|continue","content":"..."}
     """
-    if not text:
-        return False
-    lowered = text.lower()
-    completion_markers = [
-        "完成了",
-        "已完成",
-        "完成本轮",
-        "可以结束",
-        "输出答题卡",
-        "生成答题卡",
-        "总结如下",
-        "探索结论",
-        "最终结论",
-        "请确认下方摘要",
-    ]
-    return any(marker in text for marker in completion_markers) or any(
-        marker in lowered for marker in ["conclusion", "summary card", "final summary"]
+    llm = _get_reasoning_llm_provider(vip_level=vip_level)
+    model_name = str(getattr(llm, "model", "") or "")
+    is_reasoner = "reasoner" in model_name.lower()
+    logger.info(
+        "[pending_judge] phase=%s vip=%s model=%s is_reasoner=%s",
+        phase,
+        vip_level,
+        model_name or "unknown",
+        is_reasoner,
     )
+    summary = (pending_conclusion or {}).get("summary") or (pending_conclusion or {}).get("ai_summary") or ""
+    keywords = (pending_conclusion or {}).get("keywords") or []
+    kw_text = "、".join([str(k).strip() for k in keywords if str(k).strip()][:10]) or "（无）"
+    prompt = f"""你是职业咨询系统中的“确认状态判定器”。
+
+当前阶段：{phase}
+待确认总结摘要：{summary}
+待确认关键词：{kw_text}
+用户最新回复：{(user_reply or "").strip()}
+
+请仅基于语义判断用户态度，输出 JSON（不要任何额外文字）：
+{{
+  "state": "confirmed | rejected | continue",
+  "content": "给用户展示的一句话（20-80字）"
+}}
+
+判定要求：
+1) 只有当用户明确同意当前总结内容时，state 才能是 confirmed。
+2) 当用户表达不认可、希望调整、继续讨论时，state 为 rejected。
+3) 无法明确同意或否定时，state 为 continue。
+4) 像“嗯/好/行”等口头语，若缺乏明确语义，优先判为 continue。
+"""
+    token_prompt = f"""你是职业咨询系统中的“确认状态判定器”。
+
+当前阶段：{phase}
+待确认总结摘要：{summary}
+待确认关键词：{kw_text}
+用户最新回复：{(user_reply or "").strip()}
+
+请严格输出以下两行，不要输出任何其他内容：
+<STATE>confirmed|rejected|continue</STATE>
+<CONTENT>给用户展示的一句话（20-80字）</CONTENT>
+
+判定要求：
+1) 只有当用户明确同意当前总结内容时，state 才能是 confirmed。
+2) 当用户表达不认可、希望调整、继续讨论时，state 为 rejected。
+3) 无法明确同意或否定时，state 为 continue。
+4) 像“嗯/好/行”等口头语，若缺乏明确语义，优先判为 continue。
+"""
+    resp = None
+    try:
+        resp = await llm.chat(
+            [LLMMessage(role="user", content=prompt)],
+            temperature=0.1,
+            response_format={"type": "json_object"},
+        )
+    except Exception as e:
+        # 某些 OpenAI-compatible 网关/SDK 对 response_format 支持不一致，降级为纯文本 JSON 提取
+        logger.warning(
+            "[pending_judge] JSON mode failed model=%s err_type=%s err=%s; fallback to plain text",
+            model_name or "unknown",
+            type(e).__name__,
+            e,
+        )
+    if resp is None:
+        try:
+            resp = await llm.chat([LLMMessage(role="user", content=token_prompt)], temperature=0.1)
+        except Exception as e:
+            logger.warning(
+                "[pending_judge] reasoner plain mode failed model=%s err_type=%s err=%s",
+                model_name or "unknown",
+                type(e).__name__,
+                e,
+            )
+            resp = None
+
+    raw_text = (resp.content or "").strip() if resp else ""
+    obj = _extract_json_object(raw_text) or _extract_state_content_tokens(raw_text) or {}
+    state = str(obj.get("state") or "continue").strip().lower()
+    if state not in {"confirmed", "rejected", "continue"}:
+        state = "continue"
+    content = str(obj.get("content") or "").strip()
+    if not content:
+        # reasoner 在部分场景会出现空 content，退化到 chat 模型 + token 输出
+        dialog_llm = _get_dialogue_llm_provider(vip_level=vip_level)
+        dialog_model = str(getattr(dialog_llm, "model", "") or "")
+        try:
+            logger.info("[pending_judge] fallback_to_dialogue model=%s", dialog_model or "unknown")
+            dialog_resp = await dialog_llm.chat(
+                [LLMMessage(role="user", content=token_prompt)],
+                temperature=0.1,
+            )
+            dialog_text = (dialog_resp.content or "").strip()
+            dialog_obj = _extract_json_object(dialog_text) or _extract_state_content_tokens(dialog_text) or {}
+            dialog_state = str(dialog_obj.get("state") or "").strip().lower()
+            dialog_content = str(dialog_obj.get("content") or "").strip()
+            if dialog_state in {"confirmed", "rejected", "continue"}:
+                state = dialog_state
+            if dialog_content:
+                content = dialog_content
+        except Exception as e:
+            logger.warning(
+                "[pending_judge] dialogue fallback failed model=%s err_type=%s err=%s",
+                dialog_model or "unknown",
+                type(e).__name__,
+                e,
+            )
+    if not content:
+        fallback = {
+            "confirmed": "收到你的确认，我将生成结论卡。",
+            "rejected": "明白了，我们继续补充完善这个维度。",
+            "continue": "我还不确定你是否确认，我们继续聊一聊更稳妥。",
+        }
+        content = fallback[state]
+    return {"state": state, "content": content}
+
+
+def _build_pending_confirmation_text(phase: str, conclusion: dict) -> str:
+    """在用户确认前先给可读摘要，不直接输出结论卡。"""
+    summary = (conclusion or {}).get("summary") or ""
+    keywords = (conclusion or {}).get("keywords") or []
+    keyword_line = "、".join([str(k).strip() for k in keywords if str(k).strip()][:8])
+    phase_label_map = {
+        "values": "价值观",
+        "strengths": "禀赋",
+        "interests": "热忱",
+        "purpose": "使命",
+        "rumination": "沉淀",
+    }
+    phase_label = phase_label_map.get(phase, "本阶段")
+    parts = [f"我先整理了你的{phase_label}阶段总结，请你确认是否准确。"]
+    if summary:
+        parts.append(summary)
+    if keyword_line:
+        parts.append(f"当前提炼关键词：{keyword_line}")
+    parts.append("如果你确认无误，我会基于这份确认结果生成结论卡；如果你觉得不准确，我们继续聊。")
+    return "\n\n".join(parts)
 
 
 def _normalize_token_usage(usage: Optional[dict]) -> dict:
@@ -920,12 +1234,51 @@ def _build_system_prompt(
 ) -> str:
     """根据阶段构建 system prompt（通过模板渲染，避免超长硬编码）。"""
     prior_block = f"\n\n以下是该来访者在上一轮咨询中的谈话结果，供你参考：\n{prior_context}" if prior_context.strip() else ""
-    return get_simple_chat_system_prompt({
+    base_prompt = get_simple_chat_system_prompt({
         "phase": phase,
         "question_bank": question_bank,
         "basic_info": basic_info,
         "prior_block": prior_block,
     })
+    # 机器协议：每轮回复末尾输出状态 JSON，后端据此驱动 pending 状态机（不会展示给前端）。
+    protocol = """
+
+[输出协议 - 必须遵守]
+在你的自然语言回复末尾，追加如下块（严格 JSON）：
+[STATE_JSON]
+{"state":"continue|pending_ready","draft":{"summary":"...","keywords":["..."]}}
+[/STATE_JSON]
+
+规则：
+1) 仅当你判断“已可进入结论确认”时，state 才能是 pending_ready。
+2) state=continue 时，draft 置为 null。
+3) state=pending_ready 时，draft.summary 必填，draft.keywords 为数组（可为空但应尽量给出）。
+4) [STATE_JSON] 块之外只写给用户看的自然语言，不要解释本协议。
+"""
+    return f"{base_prompt}\n{protocol}"
+
+
+def _split_visible_reply_and_state(raw_text: str) -> tuple[str, Optional[Dict]]:
+    """
+    从模型输出中拆分用户可见文本和状态 JSON。
+    格式：
+      ...用户可见文本...
+      [STATE_JSON]
+      {...}
+      [/STATE_JSON]
+    """
+    if not raw_text:
+        return "", None
+    m = re.search(r"\[STATE_JSON\]\s*(\{.*?\})\s*\[/STATE_JSON\]\s*$", raw_text, flags=re.DOTALL)
+    if not m:
+        return raw_text.strip(), None
+    json_part = m.group(1).strip()
+    visible = raw_text[:m.start()].rstrip()
+    try:
+        obj = json.loads(json_part)
+        return visible, obj if isinstance(obj, dict) else None
+    except (json.JSONDecodeError, TypeError):
+        return visible, None
 
 
 @router.post("/message", response_model=SimpleChatResponse)
@@ -1005,6 +1358,7 @@ async def simple_chat(
     try:
         response = await llm.chat(llm_messages, temperature=0.7)
         reply_text = (response.content or "").strip()
+        reply_text, _ = _split_visible_reply_and_state(reply_text)
         token_usage = _normalize_token_usage(getattr(response, "usage", None))
     except Exception as e:
         # 避免因为上游 LLM 配置/网络问题导致初始化 500，保证问答流程可继续。
@@ -1156,6 +1510,7 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
     try:
         response = await llm.chat(llm_messages, temperature=0.7)
         reply_text = (response.content or "").strip()
+        reply_text, _ = _split_visible_reply_and_state(reply_text)
         token_usage = _normalize_token_usage(getattr(response, "usage", None))
     except Exception as e:
         # 避免初始化阶段因上游 LLM 失败直接 500，先返回本地兜底问题保证流程可继续。
@@ -1237,12 +1592,28 @@ async def reopen_thread(
         ) from e
     # 允许在已锁定阶段继续对话：用户明确选择「再聊聊」时，可对当前线程补充完善
     # locked 仅限制「切换会话」，不限制对已选线程的继续编辑
+    conv_data = await conv_manager.get_conversation_data(report["report_id"], category)
+    meta = conv_data.get("metadata") or {}
+    cmeta = _read_conclusion_meta(meta)
+    last_conclusion = cmeta.get("final")
+    pending_rejected = {
+        "summary": (last_conclusion or {}).get("summary", ""),
+        "keywords": (last_conclusion or {}).get("keywords", []),
+        "feedback": "用户选择再聊聊",
+    } if isinstance(last_conclusion, dict) else {
+        "summary": "",
+        "keywords": [],
+        "feedback": "用户选择再聊聊",
+    }
     await conv_manager.update_metadata(
-        report["report_id"], category,
-        {
-            "thread_completed": False,
-            "pending_conclusion": None,
-        },
+        report["report_id"],
+        category,
+        _build_conclusion_meta_update(
+            state=CONCLUSION_STATE_REJECTED,
+            final=last_conclusion if isinstance(last_conclusion, dict) else None,
+            feedback=pending_rejected.get("feedback", "用户选择再聊聊"),
+            thread_completed=False,
+        ),
     )
     return SimpleChatResponse(code=200, message="success", data={})
 
@@ -1270,7 +1641,8 @@ async def mark_thread_complete(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     conv_data = await conv_manager.get_conversation_data(report["report_id"], category)
     metadata = conv_data.get("metadata", {})
-    dimension_conclusion = metadata.get("dimension_conclusion")
+    cmeta = _read_conclusion_meta(metadata)
+    dimension_conclusion = cmeta.get("final") or cmeta.get("draft")
     messages = conv_data.get("messages") or []
     has_conclusion_card = any((m or {}).get("role") == "conclusion_card" for m in messages)
     if dimension_conclusion and not has_conclusion_card:
@@ -1288,8 +1660,34 @@ async def mark_thread_complete(
                 "card_payload": dimension_conclusion,
             },
         )
-    await conv_manager.update_metadata(report["report_id"], category, {"thread_completed": True})
+    await conv_manager.update_metadata(
+        report["report_id"],
+        category,
+        _build_conclusion_meta_update(
+            state=CONCLUSION_STATE_CONFIRMED,
+            final=dimension_conclusion if isinstance(dimension_conclusion, dict) else None,
+            shown_at=metadata.get("conclusion_shown_at_turn"),
+            thread_completed=True,
+        ),
+    )
     if dimension_conclusion:
+        await _append_note_json(
+            conv_manager,
+            report["report_id"],
+            category,
+            "dimension_conclusion_confirmed",
+            {
+                "phase": phase_step,
+                "thread_id": logical_session_id,
+                "dimension_conclusion": dimension_conclusion,
+            },
+        )
+        _write_anchor_from_conclusion(
+            report_id=report["report_id"],
+            phase_step=phase_step,
+            storage_root=str(root),
+            conclusion=dimension_conclusion,
+        )
         summary = dimension_conclusion.get("summary") or dimension_conclusion.get("ai_summary", "")
         keywords = dimension_conclusion.get("keywords") or []
         if isinstance(keywords, list):
@@ -1372,14 +1770,15 @@ async def list_threads(
             ts_ms = int(datetime.fromisoformat(msg_ts.replace("Z", "+00:00")).timestamp() * 1000) if msg_ts else 0
         except (ValueError, TypeError):
             ts_ms = 0
-        completed = bool(meta.get("thread_completed"))
+        cmeta = _read_conclusion_meta(meta)
+        completed = bool(cmeta.get("thread_completed"))
         threads.append({
             "id": tid,
             "title": f"对话 {idx + 1}",
             "status": "completed" if completed else "in-progress",
             "messages": [],  # 列表不返回消息体，由 /history 按需加载
             "createdAt": ts_ms or int(datetime.now(timezone.utc).timestamp() * 1000),
-            "dimensionConclusion": meta.get("dimension_conclusion"),
+            "dimensionConclusion": cmeta.get("final"),
             "selected": tid == selected_id,
         })
 
@@ -1419,6 +1818,7 @@ async def simple_history(
         conv_data = await conv_manager.get_conversation_data(session_id, category)
         history_messages = conv_data.get("messages", [])
         metadata = conv_data.get("metadata", {})
+        cmeta = _read_conclusion_meta(metadata)
 
         return SimpleHistoryResponse(
             code=200,
@@ -1427,8 +1827,8 @@ async def simple_history(
                 "messages": history_messages,
                 "metadata": {
                     "session_id": logical_session_id,
-                    "thread_completed": metadata.get("thread_completed", False),
-                    "dimension_conclusion": metadata.get("dimension_conclusion"),
+                    "thread_completed": cmeta.get("thread_completed", False),
+                    "dimension_conclusion": cmeta.get("final"),
                 },
                 "activation": {
                     "activation_code": rec.code,
@@ -1487,6 +1887,7 @@ async def simple_chat_stream(
 
     async def event_stream() -> AsyncIterator[str]:
         llm = _get_dialogue_llm_provider(vip_level=vip_level)
+        reasoning_llm = _get_reasoning_llm_provider(vip_level=vip_level)
         # 避免复用 provider 时串用上一次流式 token 使用量
         if hasattr(llm, "_last_stream_usage"):
             try:
@@ -1577,231 +1978,175 @@ async def simple_chat_stream(
         # 发送 started 事件
         yield f"data: {{\"started\": true}}\n\n"
 
-        # 1) 若有上一轮后台检测的 pending_conclusion，综合本轮输入重新生成并展示
+        # 1) pending 草案处理：由推理模型输出 JSON state（confirmed/rejected/continue）
         conv_data = await conv_manager.get_conversation_data(session_id, category)
         meta = conv_data.get("metadata", {})
-        pending_conclusion = meta.get("pending_conclusion")
+        cmeta = _read_conclusion_meta(meta)
+        pending_conclusion = cmeta.get("draft")
+        rejected_feedback = cmeta.get("feedback") or ""
         conv_history = [
             {"role": m.get("role", "user"), "content": m.get("content", "")}
             for m in conv_data.get("messages", [])
         ]
         user_count = sum(1 for m in conv_data.get("messages", []) if m.get("role") == "user")
-        conclusion_shown_at = meta.get("conclusion_shown_at_turn")
+        conclusion_shown_at = cmeta.get("shown_at")
 
-        if pending_conclusion and not meta.get("thread_completed"):
-            # 结构：system_prompt + 对话消息 + prior_conclusion + conclusion_rules_and_goals + 输出格式（放最后）
-            logger.info(
-                "[pending_conclusion] 进入结论卡模式 phase=%s user_count=%s prior_summary_preview=%s",
-                phase_step, user_count,
-                (pending_conclusion.get("summary") or pending_conclusion.get("ai_summary") or "")[:80],
-            )
-            prior_summary = (
-                pending_conclusion.get("summary") or pending_conclusion.get("ai_summary") or ""
-            ).strip()
-            prior_kw = pending_conclusion.get("keywords") or []
-            prior_keywords_str = "、".join(str(k) for k in prior_kw) if isinstance(prior_kw, list) else str(prior_kw)
-            injection = get_pending_conclusion_injection({
-                "prior_summary": prior_summary or "（无）",
-                "prior_keywords": prior_keywords_str or "（无）",
-                "conclusion_rules_and_goals": get_conclusion_rules_and_goals(phase_step),
-            })
-            if getattr(settings, "DEBUG", False):
-                logger.debug("[pending_conclusion] 动态注入内容长度=%d\n---\n%s\n---", len(injection), injection)
-            # 用更多历史轮数重建消息（含本轮用户消息），再追加 injection 作为最后一条（格式要求放末尾）
-            all_msgs = conv_data.get("messages", [])
-            turn_count_pending = 0
-            trimmed_pending: List[dict] = []
-            for m in reversed(all_msgs):
-                role = m.get("role") or "user"
-                if role == "user":
-                    turn_count_pending += 1
-                    if turn_count_pending > PENDING_CONCLUSION_MAX_TURNS:
-                        break
-                if role in {"user", "assistant", "system"}:
-                    trimmed_pending.insert(0, m)
-            llm_messages_pending = [llm_messages[0]]  # system
-            if len(llm_messages) > 1 and "此前对话要点" in (llm_messages[1].content or ""):
-                llm_messages_pending.append(llm_messages[1])  # anchor
-            for m in trimmed_pending:
-                r = m.get("role") or "user"
-                if r in {"user", "assistant", "system"}:
-                    llm_messages_pending.append(LLMMessage(role=r, content=(m.get("content") or "")))
-            llm_messages_pending.append(LLMMessage(role="user", content=injection))
-            dimension_conclusion = None
-            reply_text = None
-            if getattr(settings, "DEBUG", False):
-                last_msg = llm_messages_pending[-1].content if llm_messages_pending else ""
-                logger.info(
-                    "[pending_conclusion] 调用 LLM 前 最后一条消息长度=%d 含 prior_summary=%s 含 CONCLUSION_JSON=%s",
-                    len(last_msg), "prior_summary" in (last_msg or ""), "[CONCLUSION_JSON]" in (last_msg or ""),
-                )
-            try:
-                resp = await llm.chat(llm_messages_pending, temperature=0.7)
-                raw_output = (resp.content or "").strip()
-                reply_text, dimension_conclusion = _parse_reply_and_conclusion(raw_output)
-                if not dimension_conclusion and raw_output:
-                    logger.info(
-                        "[pending_conclusion] LLM 输出解析失败 含 CONCLUSION_JSON=%s raw_len=%d preview=%s",
-                        "[CONCLUSION_JSON]" in raw_output, len(raw_output), raw_output[:200],
-                    )
-            except Exception as e:
-                logger.warning("pending_conclusion LLM parse failed, fallback to check_dimension_complete: %s", e)
-            if not dimension_conclusion:
-                try:
-                    dimension_conclusion = await check_dimension_complete(
-                        phase_step, conv_history, prior_conclusion=pending_conclusion, vip_level=vip_level
-                    )
-                    reply_text = reply_text or "好的，根据我们的对话，我为你整理出本维度的探索结论，请确认下方摘要是否准确。"
-                except Exception as e:
-                    logger.exception("check_dimension_complete(regenerate) failed, continue chat stream: %s", e)
-            if dimension_conclusion:
-                await conv_manager.update_metadata(
-                    session_id, category,
-                    {
-                        "conclusion_shown_at_turn": user_count,
-                        "dimension_conclusion": dimension_conclusion,
-                        "pending_conclusion": None,
-                    },
-                )
-                transition_msg = reply_text or "好的，根据我们的对话，我为你整理出本维度的探索结论，请确认下方摘要是否准确。"
-                yield f"data: {{\"chunk\": {json.dumps(transition_msg, ensure_ascii=False)} }}\n\n"
-                full_reply = transition_msg
-                yield f"data: {{\"conclusion_loading\": true}}\n\n"
-                yield f"data: {{\"dimension_conclusion\": {json.dumps(dimension_conclusion, ensure_ascii=False)} }}\n\n"
-                try:
-                    await conv_manager.append_message(
-                        session_id=session_id,
-                        category=category,
-                        message={
-                            "role": "assistant",
-                            "content": full_reply,
-                            "session_id": logical_session_id,
-                            "step_id": phase_step,
-                            "agent_id": "coach",
-                            "event": "assistant_reply",
-                            "token_usage": _normalize_token_usage(None),
-                        },
-                    )
-                    await conv_manager.append_message(
-                        session_id=session_id,
-                        category=category,
-                        message={
-                            "role": "conclusion_card",
-                            "content": json.dumps(dimension_conclusion, ensure_ascii=False),
-                            "session_id": logical_session_id,
-                            "step_id": phase_step,
-                            "agent_id": "coach",
-                            "event": "dimension_conclusion",
-                            "card_type": "dimension_conclusion",
-                            "card_payload": dimension_conclusion,
-                        },
-                    )
-                except Exception as e:
-                    logger.warning("append conclusion_card message failed: %s", e)
-                _trigger_anchor_refiner(
-                    session_id,
-                    phase_step,
-                    category,
-                    conv_manager,
-                    storage_root,
-                    dimension_conclusion=dimension_conclusion,
-                    vip_level=vip_level,
-                )
-                try:
-                    await AnalyticsService.record_chat_turn(session_id=logical_session_id, dimension=phase_step, user_input_chars=len(user_content or ""), llm_input_tokens=0, llm_output_tokens=0, log_index=None)
-                except Exception:
-                    pass
-                yield f"data: {{\"done\": true, \"response\": {json.dumps(full_reply, ensure_ascii=False)} }}\n\n"
-                return
-            # 若 regenerate 返回 None，清除 pending 并继续正常流程
-            if not dimension_conclusion:
-                logger.info("[pending_conclusion] LLM+fallback 均未产出结论，清除 pending 走正常流")
-            await conv_manager.update_metadata(session_id, category, {"pending_conclusion": None})
-
-        # 2) 无 pending 时：显式完成 或 轮数条件 → 同步检测
-        dimension_conclusion = None
-        if not meta.get("thread_completed"):
-            try: #检测是否用户说完成了，如果检测到了那么就直接生成结论卡
-                explicit_result = bool(
-                    user_content and await detect_explicit_completion(phase_step, user_content, conv_history)
-                )
-            except Exception as e:
-                # 显式完成检测是增强能力，不应因上游 LLM 异常中断主对话流。
-                logger.exception("detect_explicit_completion failed, continue chat stream: %s", e)
-                explicit_result = False
-            # 检测是否需要弹出结论卡了，除了用户说了完成了，还要满足轮数条件或者轮数满足（如 ≥5 轮）
-            should_check = _should_run_completion_check(
-                user_count, conclusion_shown_at,
-                include_explicit=True, explicit_result=explicit_result,
-            )
-            logger.info(
-                "[completion_check] 同步检测 user_count=%s conclusion_shown_at=%s explicit=%s should_check=%s",
-                user_count, conclusion_shown_at, explicit_result, should_check,
-            )
-            if should_check:
-                try:
-                    dimension_conclusion = await check_dimension_complete(phase_step, conv_history, vip_level=vip_level)
-                except Exception as e:
-                    # 维度收敛检测失败时降级为继续普通对话，避免前端出现 500 卡死。
-                    logger.exception("check_dimension_complete failed, continue chat stream: %s", e)
-                    dimension_conclusion = None
-                if dimension_conclusion:
-                    await conv_manager.update_metadata(
-                        session_id, category,
-                        {"conclusion_shown_at_turn": user_count, "dimension_conclusion": dimension_conclusion},
-                    )
-
-        if dimension_conclusion:
-            transition_msg = "好的，根据我们的对话，我为你整理出本维度的探索结论，请确认下方摘要是否准确。"
-            yield f"data: {{\"chunk\": {json.dumps(transition_msg, ensure_ascii=False)} }}\n\n"
-            full_reply = transition_msg
-            yield f"data: {{\"conclusion_loading\": true}}\n\n"
-            yield f"data: {{\"dimension_conclusion\": {json.dumps(dimension_conclusion, ensure_ascii=False)} }}\n\n"
-            try:
-                await conv_manager.append_message(
-                    session_id=session_id,
-                    category=category,
-                    message={
-                        "role": "assistant",
-                        "content": full_reply,
-                        "session_id": logical_session_id,
-                        "step_id": phase_step,
-                        "agent_id": "coach",
-                        "event": "assistant_reply",
-                        "token_usage": _normalize_token_usage(None),
-                    },
-                )
-                await conv_manager.append_message(
-                    session_id=session_id,
-                    category=category,
-                    message={
-                        "role": "conclusion_card",
-                        "content": json.dumps(dimension_conclusion, ensure_ascii=False),
-                        "session_id": logical_session_id,
-                        "step_id": phase_step,
-                        "agent_id": "coach",
-                        "event": "dimension_conclusion",
-                        "card_type": "dimension_conclusion",
-                        "card_payload": dimension_conclusion,
-                    },
-                )
-            except Exception as e:
-                logger.warning("append conclusion_card message failed: %s", e)
-            _trigger_anchor_refiner(
-                session_id,
+        if pending_conclusion and not cmeta.get("thread_completed"):
+            decision = await _decide_pending_action_by_llm(
                 phase_step,
-                category,
-                conv_manager,
-                storage_root,
-                dimension_conclusion=dimension_conclusion,
+                pending_conclusion if isinstance(pending_conclusion, dict) else {},
+                user_content,
                 vip_level=vip_level,
             )
-            try:
-                await AnalyticsService.record_chat_turn(session_id=logical_session_id, dimension=phase_step, user_input_chars=len(user_content or ""), llm_input_tokens=0, llm_output_tokens=0, log_index=None)
-            except Exception:
-                pass
-            yield f"data: {{\"done\": true, \"response\": {json.dumps(full_reply, ensure_ascii=False)} }}\n\n"
-            return
+            pending_state = decision.get("state", "continue")
+            pending_msg = decision.get("content", "")
+
+            if pending_state == "confirmed":
+                reasoning_llm = _get_reasoning_llm_provider(vip_level=vip_level)
+                dimension_conclusion = await check_dimension_complete(
+                    phase_step,
+                    conv_history,
+                    prior_conclusion=pending_conclusion if isinstance(pending_conclusion, dict) else None,
+                    vip_level=vip_level,
+                    llm_provider=reasoning_llm,
+                )
+                if not dimension_conclusion and isinstance(pending_conclusion, dict):
+                    dimension_conclusion = pending_conclusion
+
+                if dimension_conclusion:
+                    await conv_manager.update_metadata(
+                        session_id,
+                        category,
+                        _build_conclusion_meta_update(
+                            state=CONCLUSION_STATE_CONFIRMED,
+                            final=dimension_conclusion,
+                            shown_at=user_count,
+                            thread_completed=False,
+                        ),
+                    )
+                    transition_msg = pending_msg or "收到你的确认，我将生成结论卡。"
+                    yield f"data: {{\"chunk\": {json.dumps(transition_msg, ensure_ascii=False)} }}\n\n"
+                    full_reply = transition_msg
+                    yield f"data: {{\"conclusion_loading\": true}}\n\n"
+                    yield f"data: {{\"dimension_conclusion\": {json.dumps(dimension_conclusion, ensure_ascii=False)} }}\n\n"
+                    try:
+                        await conv_manager.append_message(
+                            session_id=session_id,
+                            category=category,
+                            message={
+                                "role": "assistant",
+                                "content": full_reply,
+                                "session_id": logical_session_id,
+                                "step_id": phase_step,
+                                "agent_id": "coach",
+                                "event": "assistant_reply",
+                                "token_usage": _normalize_token_usage(None),
+                            },
+                        )
+                        await conv_manager.append_message(
+                            session_id=session_id,
+                            category=category,
+                            message={
+                                "role": "conclusion_card",
+                                "content": json.dumps(dimension_conclusion, ensure_ascii=False),
+                                "session_id": logical_session_id,
+                                "step_id": phase_step,
+                                "agent_id": "coach",
+                                "event": "dimension_conclusion",
+                                "card_type": "dimension_conclusion",
+                                "card_payload": dimension_conclusion,
+                            },
+                        )
+                        await _append_note_json(
+                            conv_manager,
+                            session_id,
+                            category,
+                            "dimension_conclusion_confirmed",
+                            {
+                                "phase": phase_step,
+                                "thread_id": logical_session_id,
+                                "dimension_conclusion": dimension_conclusion,
+                            },
+                        )
+                    except Exception as e:
+                        logger.warning("append conclusion_card/note failed: %s", e)
+
+                    _write_anchor_from_conclusion(
+                        report_id=session_id,
+                        phase_step=phase_step,
+                        storage_root=storage_root,
+                        conclusion=dimension_conclusion,
+                    )
+                    # 保留异步提炼（补充 personality/style/conflicts），不影响当前结论锚点直写
+                    _trigger_anchor_refiner(
+                        session_id,
+                        phase_step,
+                        category,
+                        conv_manager,
+                        storage_root,
+                        dimension_conclusion=dimension_conclusion,
+                        vip_level=vip_level,
+                    )
+                    try:
+                        await AnalyticsService.record_chat_turn(
+                            session_id=logical_session_id,
+                            dimension=phase_step,
+                            user_input_chars=len(user_content or ""),
+                            llm_input_tokens=0,
+                            llm_output_tokens=0,
+                            log_index=None,
+                        )
+                    except Exception:
+                        pass
+                    yield f"data: {{\"done\": true, \"response\": {json.dumps(full_reply, ensure_ascii=False)} }}\n\n"
+                    return
+
+            elif pending_state == "rejected":
+                rejected_snapshot = {
+                    "summary": (pending_conclusion or {}).get("summary", ""),
+                    "keywords": (pending_conclusion or {}).get("keywords", []),
+                    "feedback": user_content,
+                }
+                await conv_manager.update_metadata(
+                    session_id,
+                    category,
+                    _build_conclusion_meta_update(
+                        state=CONCLUSION_STATE_REJECTED,
+                        final=cmeta.get("final"),
+                        feedback=user_content,
+                        shown_at=conclusion_shown_at,
+                        thread_completed=False,
+                    ),
+                )
+                try:
+                    await _append_note_json(
+                        conv_manager,
+                        session_id,
+                        category,
+                        "pending_conclusion_rejected",
+                        {
+                            "phase": phase_step,
+                            "thread_id": logical_session_id,
+                            "pending": pending_conclusion,
+                            "feedback": user_content,
+                            "decision_msg": pending_msg,
+                        },
+                    )
+                except Exception:
+                    pass
+                pending_conclusion = None
+                rejected_feedback = user_content
+
+        # 用户否定后：保留轻量反馈上下文（不做关键词规则）
+        if rejected_feedback and not pending_conclusion:
+            llm_messages.append(
+                LLMMessage(
+                    role="assistant",
+                    content=f"[上一版结论未获认可] 用户反馈：{rejected_feedback[:200]}",
+                )
+            )
+
+        # 2) 无 pending 时，不再走额外同步完成检测；仅依赖模型输出的 STATE_JSON 驱动 pending。
 
         try:
             sem = _get_llm_semaphore()
@@ -1885,83 +2230,41 @@ async def simple_chat_stream(
                     },
                 )
 
-        # 3) 本轮结束前再做一次同步检测（兜底）：若判定完成，必须当轮弹出答题卡
-        post_turn_conclusion = None
-        try:
-            conv_data_after_reply = await conv_manager.get_conversation_data(session_id, category)
-            meta_after_reply = conv_data_after_reply.get("metadata", {})
-            if not meta_after_reply.get("thread_completed"):
-                user_count_after_reply = sum(
-                    1 for m in conv_data_after_reply.get("messages", []) if m.get("role") == "user"
+        # 3) 解析模型状态输出（STATE_JSON）并驱动 pending 状态
+        visible_reply, state_obj = _split_visible_reply_and_state(full_reply)
+        full_reply = visible_reply
+        if state_obj and not cmeta.get("thread_completed"):
+            state_name = str(state_obj.get("state") or "").strip().lower()
+            draft = state_obj.get("draft")
+            if state_name == "pending_ready" and isinstance(draft, dict):
+                await conv_manager.update_metadata(
+                    session_id,
+                    category,
+                    _build_conclusion_meta_update(
+                        state=CONCLUSION_STATE_PENDING,
+                        draft=draft,
+                        final=cmeta.get("final"),
+                        shown_at=user_count,
+                        thread_completed=False,
+                    ),
                 )
-                shown_at_after_reply = meta_after_reply.get("conclusion_shown_at_turn")
-                should_check_after_reply = (
-                    _should_run_completion_check(user_count_after_reply, shown_at_after_reply)
-                    or _assistant_indicates_completion(full_reply)
-                )
-                if should_check_after_reply:
-                    conv_history_after_reply = [
-                        {"role": m.get("role", "user"), "content": m.get("content", "")}
-                        for m in conv_data_after_reply.get("messages", [])
-                    ]
-                    post_turn_conclusion = await check_dimension_complete(
-                        phase_step, conv_history_after_reply, vip_level=vip_level
+                try:
+                    await _append_note_json(
+                        conv_manager,
+                        session_id,
+                        category,
+                        "pending_conclusion_created",
+                        {
+                            "phase": phase_step,
+                            "thread_id": logical_session_id,
+                            "pending_conclusion": draft,
+                        },
                     )
-                    if post_turn_conclusion:
-                        await conv_manager.update_metadata(
-                            session_id,
-                            category,
-                            {
-                                "conclusion_shown_at_turn": user_count_after_reply,
-                                "dimension_conclusion": post_turn_conclusion,
-                                "pending_conclusion": None,
-                            },
-                        )
-                        transition_msg = "好的，根据我们的对话，我为你整理出本维度的探索结论，请确认下方摘要是否准确。"
-                        yield f"data: {{\"chunk\": {json.dumps(transition_msg, ensure_ascii=False)} }}\n\n"
-                        yield f"data: {{\"conclusion_loading\": true}}\n\n"
-                        yield f"data: {{\"dimension_conclusion\": {json.dumps(post_turn_conclusion, ensure_ascii=False)} }}\n\n"
-                        try:
-                            await conv_manager.append_message(
-                                session_id=session_id,
-                                category=category,
-                                message={
-                                    "role": "assistant",
-                                    "content": transition_msg,
-                                    "session_id": logical_session_id,
-                                    "step_id": phase_step,
-                                    "agent_id": "coach",
-                                    "event": "assistant_reply",
-                                    "token_usage": _normalize_token_usage(None),
-                                },
-                            )
-                            await conv_manager.append_message(
-                                session_id=session_id,
-                                category=category,
-                                message={
-                                    "role": "conclusion_card",
-                                    "content": json.dumps(post_turn_conclusion, ensure_ascii=False),
-                                    "session_id": logical_session_id,
-                                    "step_id": phase_step,
-                                    "agent_id": "coach",
-                                    "event": "dimension_conclusion",
-                                    "card_type": "dimension_conclusion",
-                                    "card_payload": post_turn_conclusion,
-                                },
-                            )
-                        except Exception as e:
-                            logger.warning("append conclusion_card message failed: %s", e)
-                        _trigger_anchor_refiner(
-                            session_id,
-                            phase_step,
-                            category,
-                            conv_manager,
-                            storage_root,
-                            dimension_conclusion=post_turn_conclusion,
-                            vip_level=vip_level,
-                        )
-        except Exception:
-            post_turn_conclusion = None
+                except Exception:
+                    pass
+            elif state_name == "continue":
+                # 无状态迁移，保持当前会话态
+                pass
 
         # 每 20 轮触发后台锚点摘要
         user_count_after = user_count + (1 if user_content else 0)
@@ -1976,39 +2279,7 @@ async def simple_chat_stream(
                 vip_level=vip_level,
             )
 
-        # 4) 后台异步检测：仅在本轮未产出结论卡时，更新 pending_conclusion 判定
-        async def _background_completion_check() -> None:
-            try:
-                if post_turn_conclusion:
-                    return
-                conv_data = await conv_manager.get_conversation_data(session_id, category)
-                meta = conv_data.get("metadata", {})
-                if meta.get("thread_completed"):
-                    return
-                user_count = sum(1 for m in conv_data.get("messages", []) if m.get("role") == "user")
-                conclusion_shown_at = meta.get("conclusion_shown_at_turn")
-                if not _should_run_completion_check(user_count, conclusion_shown_at):
-                    return
-                conv_history = [
-                    {"role": m.get("role", "user"), "content": m.get("content", "")}
-                    for m in conv_data.get("messages", [])
-                ]
-                conclusion = await check_dimension_complete(phase_step, conv_history, vip_level=vip_level)
-                if conclusion:
-                    logger.info("[completion_check] 后台检测到完成 phase=%s 写入 pending_conclusion", phase_step)
-                    await conv_manager.update_metadata(
-                        session_id, category, {"pending_conclusion": conclusion}
-                    )
-                else:
-                    await conv_manager.update_metadata(
-                        session_id, category, {"pending_conclusion": None}
-                    )
-            except Exception:
-                pass
-
-        asyncio.create_task(_background_completion_check())
-
-        # 埋点：记录对话轮次
+        # 4) 埋点：记录对话轮次
         try:
             await AnalyticsService.record_chat_turn(
                 session_id=logical_session_id,

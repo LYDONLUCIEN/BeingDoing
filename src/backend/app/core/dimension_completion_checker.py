@@ -142,6 +142,8 @@ async def detect_explicit_completion(
     phase: str,
     user_message: str,
     conversation_history: List[Dict[str, str]],
+    llm_provider=None,
+    vip_level: int = 1,
 ) -> bool:
     """
     检测用户输入是否明确表示该维度答案已确定、无需再讨论。
@@ -157,7 +159,7 @@ async def detect_explicit_completion(
     label = config.get("label", phase)
     goal = config.get("goal", "")
 
-    llm = get_default_llm_provider()
+    llm = llm_provider or get_default_llm_provider(vip_level=vip_level)
     prompt = f"""你是一位职业咨询师。用户刚才的回复是：
 「{user_message.strip()}」
 
@@ -224,6 +226,7 @@ async def check_dimension_complete(
     conversation_history: List[Dict[str, str]],
     prior_conclusion: Optional[Dict] = None,
     vip_level: int = 1,
+    llm_provider=None,
 ) -> Optional[Dict]:
     """
     判断对话是否已达到该维度的探索结论；若达到则生成结论卡片。
@@ -251,7 +254,7 @@ async def check_dimension_complete(
         f"{m.get('role', 'user')}: {m.get('content', '')}" for m in recent
     )
 
-    llm = get_default_llm_provider(vip_level=vip_level)
+    llm = llm_provider or get_default_llm_provider(vip_level=vip_level)
     label = config.get("label", phase)
     goal = config.get("goal", "")
     criteria = config.get("completion_criteria", "")
