@@ -17,6 +17,7 @@ from app.models.database import AsyncSessionLocal
 from app.models.analytics import AnalyticsReport
 from app.utils.report_registry import ReportRegistry
 from app.config.settings import settings
+from app.utils.super_admin import is_super_admin_user
 
 from app.services.analytics_service import AnalyticsService
 from app.utils.sandbox_fork import (
@@ -25,6 +26,21 @@ from app.utils.sandbox_fork import (
     fork_activation_from_source,
     list_sandboxes,
     purge_expired_sandboxes,
+)
+from app.utils.admin_workspace import ensure_admin_resident_workspace
+from app.utils.admin_policy import (
+    is_admin_debug_workspace_enabled,
+    is_admin_sandbox_enabled,
+)
+from app.utils.admin_prompt_lab import (
+    add_profile_version,
+    bind_profile_to_activation,
+    create_profile,
+    export_current_profile_payload,
+    get_profile,
+    list_bindings as list_prompt_bindings,
+    list_profiles as list_prompt_profiles,
+    set_current_version,
 )
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -60,16 +76,17 @@ _SYNC_SOURCES = ("analytics_reports", "reports_registry", "simple_activations_fi
 
 
 def _is_super_admin(user: Optional[dict]) -> bool:
-    from app.config.settings import settings
-    if not user:
-        return False
-    ids_str = (getattr(settings, "SUPER_ADMIN_USER_IDS", None) or "").strip()
-    emails_str = (getattr(settings, "SUPER_ADMIN_EMAILS", None) or "").strip()
-    if ids_str and user.get("user_id") in [x.strip() for x in ids_str.split(",") if x.strip()]:
-        return True
-    if emails_str and user.get("email") in [x.strip() for x in emails_str.split(",") if x.strip()]:
-        return True
-    return False
+    return is_super_admin_user(user)
+
+
+def _assert_admin_debug_workspace_enabled() -> None:
+    if not is_admin_debug_workspace_enabled():
+        raise HTTPException(status_code=403, detail="当前环境未开启管理员常驻工作区功能")
+
+
+def _assert_admin_sandbox_enabled() -> None:
+    if not is_admin_sandbox_enabled():
+        raise HTTPException(status_code=403, detail="当前环境未开启管理员调试沙箱功能")
 
 
 async def _rows_from_analytics_reports(default_status: str) -> List[Dict[str, Any]]:
@@ -322,6 +339,8 @@ async def list_activations(
                 "forked_from_code": getattr(rec, "forked_from_code", None),
                 "forked_at": getattr(rec, "forked_at", None),
                 "sandbox_expires_at": getattr(rec, "sandbox_expires_at", None),
+                "workspace_kind": getattr(rec, "workspace_kind", None),
+                "workspace_root": getattr(rec, "workspace_root", None),
             }
         )
 
@@ -739,11 +758,31 @@ class SaveAsMockRequest(BaseModel):
     report_id: Optional[str] = None
 
 
+class PromptProfileCreateRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+
+class PromptProfileVersionCreateRequest(BaseModel):
+    simple_chat_system_prompt_template: str
+    extra_goal_hint: Optional[str] = None
+
+
+class PromptProfileActivateVersionRequest(BaseModel):
+    version_id: str
+
+
+class PromptActivationBindRequest(BaseModel):
+    activation_code: str
+    profile_id: str
+
+
 @router.get("/conversations/mock-info")
 async def get_mock_info(current_user: Optional[dict] = Depends(get_current_user)):
     """获取 Admin Mock 数据信息"""
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
     from app.utils.admin_mock import get_mock_info as _get
     return {"code": 200, "message": "success", "data": _get()}
 
@@ -753,6 +792,7 @@ async def init_mock(current_user: Optional[dict] = Depends(get_current_user)):
     """强制初始化 mock 数据（覆盖为默认模板），供 rumination 测试"""
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
     from app.utils.admin_mock import init_mock_force
     return {"code": 200, "message": "success", "data": init_mock_force()}
 
@@ -765,6 +805,7 @@ async def apply_mock_to_activation(
     """将 mock 数据应用到指定激活码，满足进入 rumination 等阶段的前置要求"""
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
     from app.utils.admin_mock import apply_mock_to_activation as _apply
     try:
         registry = ReportRegistry()
@@ -782,6 +823,7 @@ async def save_as_mock(
     """将指定 report 的 prior 数据保存为 mock，可用 data 中历史数据替换"""
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
     from app.utils.admin_mock import save_report_as_mock
     try:
         result = save_report_as_mock(
@@ -804,6 +846,7 @@ async def clone_conversation(
     """
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
 
     registry = ReportRegistry()
     manager = SimpleActivationManager()
@@ -867,6 +910,7 @@ async def jump_to_rumination(
     """
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
 
     manager = SimpleActivationManager()
     registry = ReportRegistry()
@@ -1073,6 +1117,9 @@ async def get_system_settings(current_user: Optional[dict] = Depends(get_current
             "LLM_MODEL": getattr(settings, "LLM_MODEL", None),
             "AUDIO_MODE": getattr(settings, "AUDIO_MODE", None),
             "DEBUG_MODE": getattr(settings, "DEBUG_MODE", None),
+            "ADMIN_DEBUG_POLICY_ENABLED": getattr(settings, "ADMIN_DEBUG_POLICY_ENABLED", False),
+            "ADMIN_DEBUG_WORKSPACE_ENABLED": getattr(settings, "ADMIN_DEBUG_WORKSPACE_ENABLED", True),
+            "ADMIN_SANDBOX_ENABLED": getattr(settings, "ADMIN_SANDBOX_ENABLED", True),
             "SUPER_ADMIN_EMAILS_CONFIGURED": bool((getattr(settings, "SUPER_ADMIN_EMAILS", "") or "").strip()),
             "BASIC_INFO_MERGE_STRATEGY": get_basic_info_merge_strategy(),
         },
@@ -1100,11 +1147,141 @@ async def patch_system_settings(
     return {"code": 200, "message": "success", "data": {}}
 
 
+@router.get("/prompt-lab/profiles")
+async def admin_list_prompt_profiles(current_user: Optional[dict] = Depends(get_current_user)):
+    """
+    Prompt Lab profile 列表（sandbox_only）。
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    return {"code": 200, "message": "success", "data": {"items": list_prompt_profiles()}}
+
+
+@router.post("/prompt-lab/profiles")
+async def admin_create_prompt_profile(
+    req: PromptProfileCreateRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    try:
+        item = create_profile(req.name, req.description or "")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"code": 200, "message": "success", "data": item}
+
+
+@router.get("/prompt-lab/profiles/{profile_id}")
+async def admin_get_prompt_profile(
+    profile_id: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    item = get_profile(profile_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="profile 不存在")
+    return {"code": 200, "message": "success", "data": item}
+
+
+@router.get("/prompt-lab/profiles/{profile_id}/export-current")
+async def admin_export_prompt_profile_current(
+    profile_id: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    try:
+        payload = export_current_profile_payload(profile_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"code": 200, "message": "success", "data": payload}
+
+
+@router.post("/prompt-lab/profiles/{profile_id}/versions")
+async def admin_add_prompt_profile_version(
+    profile_id: str,
+    req: PromptProfileVersionCreateRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    try:
+        ver = add_profile_version(
+            profile_id,
+            simple_chat_system_prompt_template=req.simple_chat_system_prompt_template,
+            extra_goal_hint=req.extra_goal_hint or "",
+            created_by=current_user or {},
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"code": 200, "message": "success", "data": ver}
+
+
+@router.post("/prompt-lab/profiles/{profile_id}/activate-version")
+async def admin_activate_prompt_profile_version(
+    profile_id: str,
+    req: PromptProfileActivateVersionRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    try:
+        item = set_current_version(profile_id, req.version_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"code": 200, "message": "success", "data": item}
+
+
+@router.get("/prompt-lab/bindings")
+async def admin_list_prompt_bindings(current_user: Optional[dict] = Depends(get_current_user)):
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    return {"code": 200, "message": "success", "data": {"items": list_prompt_bindings()}}
+
+
+@router.post("/prompt-lab/bindings")
+async def admin_bind_prompt_profile_to_activation(
+    req: PromptActivationBindRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """
+    sandbox_only：仅允许绑定到管理员调试工作区激活码（SBX / ADM）。
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    manager = SimpleActivationManager()
+    rec = manager.get_activation((req.activation_code or "").strip().upper())
+    if not rec:
+        raise HTTPException(status_code=404, detail="激活码不存在")
+    kind = (getattr(rec, "workspace_kind", None) or "").strip().lower()
+    if kind not in {"fork", "resident"} and not bool(getattr(rec, "is_sandbox", False)):
+        raise HTTPException(status_code=400, detail="仅支持绑定到管理员调试工作区激活码（SBX/ADM）")
+    try:
+        result = bind_profile_to_activation(
+            req.activation_code,
+            req.profile_id,
+            actor=current_user or {},
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"code": 200, "message": "success", "data": result}
+
+
 @router.get("/sandboxes")
 async def admin_list_sandboxes(current_user: Optional[dict] = Depends(get_current_user)):
     """列出所有调试沙箱 Fork"""
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
     items = list_sandboxes()
     return {
         "code": 200,
@@ -1113,6 +1290,33 @@ async def admin_list_sandboxes(current_user: Optional[dict] = Depends(get_curren
             "items": items,
             "total": len(items),
             "retention_days": SANDBOX_RETENTION_DAYS,
+        },
+    }
+
+
+@router.post("/workspace/ensure")
+async def admin_ensure_workspace(current_user: Optional[dict] = Depends(get_current_user)):
+    """
+    确保当前超级管理员存在常驻调试工作区（长期激活码，独立目录）。
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_debug_workspace_enabled()
+    try:
+        rec, created = ensure_admin_resident_workspace(current_user or {})
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "created": created,
+            "activation_code": rec.code,
+            "session_id": rec.session_id,
+            "workspace_kind": getattr(rec, "workspace_kind", None),
+            "workspace_root": getattr(rec, "workspace_root", None),
+            "status": rec.status,
+            "expires_at": rec.expires_at,
         },
     }
 
@@ -1128,6 +1332,7 @@ async def admin_fork_sandbox(
     """
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
     try:
         _, summary = fork_activation_from_source(
             req.source_activation_code.strip(),
@@ -1146,6 +1351,7 @@ async def admin_delete_sandbox(
     """删除沙箱目录及 activations.json 中的记录"""
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
     try:
         ok = delete_sandbox_by_code(activation_code, current_user)
     except ValueError as e:
@@ -1160,5 +1366,6 @@ async def admin_purge_expired_sandboxes(current_user: Optional[dict] = Depends(g
     """清理已超过 sandbox_expires_at 的沙箱（可挂定时任务调用）"""
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
     n = purge_expired_sandboxes()
     return {"code": 200, "message": "success", "data": {"removed": n}}

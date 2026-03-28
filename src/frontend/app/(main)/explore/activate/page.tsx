@@ -6,6 +6,8 @@ import { motion } from 'framer-motion';
 import { apiClient } from '@/lib/api/client';
 import { loadSession, saveSession, setLastActivationCode, getLastActivationCode, hasReportAvailable } from '@/lib/explore/session';
 import { surveyApi } from '@/lib/api/survey';
+import { useAuthStore } from '@/stores/authStore';
+import { fetchAdminSystemSettings } from '@/lib/api/admin';
 
 function useActivateBg() {
   useEffect(() => {
@@ -22,6 +24,7 @@ function ActivatePageContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showReport, setShowReport] = useState(false);
+  const { user } = useAuthStore();
 
   useEffect(() => {
     const fromUrl = searchParams.get('code')?.trim();
@@ -56,6 +59,12 @@ function ActivatePageContent() {
       const res = await apiClient.post('/simple-auth/activate', { code: trimmed });
       const activationCode: string = res.data.activation_code;
       const sessionId: string | undefined = res.data.session_id;
+      const workspaceKind = String(res.data.workspace_kind || '').toLowerCase();
+      const isWorkspaceActivation =
+        workspaceKind === 'resident' ||
+        workspaceKind === 'fork' ||
+        String(activationCode || '').toUpperCase().startsWith('ADM') ||
+        String(activationCode || '').toUpperCase().startsWith('SBX');
       setLastActivationCode(activationCode);
 
       // Load existing session state (preserves unlocked phases on revisit)
@@ -63,6 +72,22 @@ function ActivatePageContent() {
 
       // Check if survey already completed
       let surveyDone = session.surveyCompleted;
+      let adminBypass = false;
+      if (user?.is_super_admin && isWorkspaceActivation) {
+        try {
+          const sys = await fetchAdminSystemSettings();
+          adminBypass =
+            Boolean((sys as any)?.ADMIN_DEBUG_POLICY_ENABLED) &&
+            Boolean((sys as any)?.ADMIN_DEBUG_WORKSPACE_ENABLED);
+        } catch {
+          adminBypass = false;
+        }
+      }
+
+      if (adminBypass) {
+        surveyDone = true;
+      }
+
       if (!surveyDone) {
         try {
           const sv = await surveyApi.getForActivation(activationCode);
@@ -75,9 +100,27 @@ function ActivatePageContent() {
         } catch {}
       }
 
-      saveSession({ ...session, activationCode, surveyCompleted: surveyDone, sessionId: sessionId ?? session.sessionId });
+      const allPhaseKeys = ['values', 'strengths', 'interests', 'purpose', 'rumination'] as const;
+      const bypassSession = adminBypass
+        ? {
+            ...session,
+            activationCode,
+            surveyCompleted: true,
+            unlockedPhases: [...allPhaseKeys],
+            currentPhase: session.currentPhase || 'values',
+            sessionId: sessionId ?? session.sessionId,
+          }
+        : {
+            ...session,
+            activationCode,
+            surveyCompleted: surveyDone,
+            sessionId: sessionId ?? session.sessionId,
+          };
+      saveSession(bypassSession);
 
-      if (surveyDone) {
+      if (adminBypass) {
+        router.push(`/explore/chat/${bypassSession.currentPhase}`);
+      } else if (surveyDone) {
         router.push(`/explore/chat/${session.currentPhase}`);
       } else {
         router.push('/explore/survey');

@@ -18,6 +18,7 @@ interface AuthState {
   _hasHydrated: boolean;
   setUser: (user: User | null) => void;
   setToken: (token: string | null) => void;
+  setTokens: (token: string | null) => void;
   setHasHydrated: (v: boolean) => void;
   logout: () => void;
 }
@@ -31,8 +32,16 @@ export const useAuthStore = create<AuthState>()(
       _hasHydrated: false,
       setUser: (user) => set({ user, isAuthenticated: !!user }),
       setToken: (token) => {
-        if (typeof window !== 'undefined' && token) {
-          localStorage.setItem('token', token);
+        if (typeof window !== 'undefined') {
+          if (token) localStorage.setItem('token', token);
+          else localStorage.removeItem('token');
+        }
+        set({ token });
+      },
+      setTokens: (token) => {
+        if (typeof window !== 'undefined') {
+          if (token) localStorage.setItem('token', token);
+          else localStorage.removeItem('token');
         }
         set({ token });
       },
@@ -49,11 +58,15 @@ export const useAuthStore = create<AuthState>()(
       storage: typeof window !== 'undefined' ? createJSONStorage(() => localStorage) : undefined,
       onRehydrateStorage: () => (state) => {
         useAuthStore.getState().setHasHydrated(true);
-        if (state?.token && typeof window !== 'undefined') {
-          localStorage.setItem('token', state.token);
+        if (typeof window !== 'undefined') {
+          if (state?.token) localStorage.setItem('token', state.token);
         }
       },
-      partialize: (state) => ({ user: state.user, token: state.token, isAuthenticated: state.isAuthenticated }),
+      partialize: (state) => ({
+        user: state.user,
+        token: state.token,
+        isAuthenticated: state.isAuthenticated,
+      }),
     }
   )
 );

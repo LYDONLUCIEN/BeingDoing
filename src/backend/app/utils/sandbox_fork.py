@@ -260,6 +260,8 @@ def fork_activation_from_source(
         forked_by_user_id=admin_uid,
         sandbox_expires_at=expires_iso,
         source="admin_sandbox_fork",
+        workspace_kind="fork",
+        workspace_root=sandbox_rel,
     )
 
     manager.put_activation(new_rec)

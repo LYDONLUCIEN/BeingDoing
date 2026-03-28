@@ -23,6 +23,8 @@ export interface AdminActivationItem {
   forked_from_code?: string | null;
   forked_at?: string | null;
   sandbox_expires_at?: string | null;
+  workspace_kind?: 'fork' | 'resident' | null;
+  workspace_root?: string | null;
 }
 
 export interface AdminActivationRecycleItem {
@@ -361,6 +363,21 @@ export async function fetchAdminSandboxes(): Promise<{
   return d;
 }
 
+export interface AdminResidentWorkspace {
+  created: boolean;
+  activation_code: string;
+  session_id: string;
+  workspace_kind?: 'resident' | null;
+  workspace_root?: string | null;
+  status: string;
+  expires_at?: string;
+}
+
+export async function ensureAdminWorkspace(): Promise<AdminResidentWorkspace> {
+  const res = await apiClient.post('/admin/workspace/ensure', {});
+  return (res.data ?? {}) as AdminResidentWorkspace;
+}
+
 export async function forkAdminSandbox(source_activation_code: string): Promise<{
   sandbox_activation_code: string;
   fork_id: string;
@@ -383,5 +400,117 @@ export async function deleteAdminSandbox(activation_code: string): Promise<void>
 export async function purgeExpiredAdminSandboxes(): Promise<{ removed: number }> {
   const res = await apiClient.post('/admin/sandboxes/purge-expired', {});
   return (res.data ?? { removed: 0 }) as { removed: number };
+}
+
+export interface PromptLabProfileSummary {
+  profile_id: string;
+  name: string;
+  description: string;
+  current_version_id?: string | null;
+  version_count: number;
+  updated_at?: string;
+  created_at?: string;
+}
+
+export interface PromptLabVersion {
+  version_id: string;
+  created_at: string;
+  created_by?: { user_id?: string; email?: string };
+  simple_chat_system_prompt_template: string;
+  extra_goal_hint?: string;
+}
+
+export interface PromptLabProfileDetail {
+  profile_id: string;
+  name: string;
+  description: string;
+  current_version_id?: string | null;
+  versions: PromptLabVersion[];
+  updated_at?: string;
+  created_at?: string;
+}
+
+export interface PromptLabBinding {
+  activation_code: string;
+  profile_id: string;
+  created_at?: string;
+  updated_at?: string;
+  updated_by?: { user_id?: string; email?: string };
+}
+
+export async function listPromptLabProfiles(): Promise<PromptLabProfileSummary[]> {
+  const res = await apiClient.get('/admin/prompt-lab/profiles');
+  return (res.data?.items ?? []) as PromptLabProfileSummary[];
+}
+
+export async function createPromptLabProfile(payload: {
+  name: string;
+  description?: string;
+}): Promise<PromptLabProfileDetail> {
+  const res = await apiClient.post('/admin/prompt-lab/profiles', payload);
+  return (res.data ?? {}) as PromptLabProfileDetail;
+}
+
+export async function getPromptLabProfile(profileId: string): Promise<PromptLabProfileDetail> {
+  const res = await apiClient.get(`/admin/prompt-lab/profiles/${encodeURIComponent(profileId)}`);
+  return (res.data ?? {}) as PromptLabProfileDetail;
+}
+
+export interface PromptLabExportPayload {
+  profile_id: string;
+  profile_name: string;
+  current_version_id: string;
+  template: string;
+  extra_goal_hint?: string;
+  merged_for_copy: string;
+  copied_from?: {
+    created_at?: string;
+    created_by?: { user_id?: string; email?: string };
+  };
+}
+
+export async function exportPromptLabCurrent(profileId: string): Promise<PromptLabExportPayload> {
+  const res = await apiClient.get(
+    `/admin/prompt-lab/profiles/${encodeURIComponent(profileId)}/export-current`,
+  );
+  return (res.data ?? {}) as PromptLabExportPayload;
+}
+
+export async function addPromptLabProfileVersion(
+  profileId: string,
+  payload: {
+    simple_chat_system_prompt_template: string;
+    extra_goal_hint?: string;
+  },
+): Promise<PromptLabVersion> {
+  const res = await apiClient.post(
+    `/admin/prompt-lab/profiles/${encodeURIComponent(profileId)}/versions`,
+    payload,
+  );
+  return (res.data ?? {}) as PromptLabVersion;
+}
+
+export async function activatePromptLabVersion(
+  profileId: string,
+  versionId: string,
+): Promise<PromptLabProfileDetail> {
+  const res = await apiClient.post(
+    `/admin/prompt-lab/profiles/${encodeURIComponent(profileId)}/activate-version`,
+    { version_id: versionId },
+  );
+  return (res.data ?? {}) as PromptLabProfileDetail;
+}
+
+export async function listPromptLabBindings(): Promise<PromptLabBinding[]> {
+  const res = await apiClient.get('/admin/prompt-lab/bindings');
+  return (res.data?.items ?? []) as PromptLabBinding[];
+}
+
+export async function bindPromptLabProfile(payload: {
+  activation_code: string;
+  profile_id: string;
+}): Promise<{ activation_code: string; profile_id: string }> {
+  const res = await apiClient.post('/admin/prompt-lab/bindings', payload);
+  return (res.data ?? {}) as { activation_code: string; profile_id: string };
 }
 

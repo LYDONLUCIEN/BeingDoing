@@ -62,6 +62,11 @@ from app.utils.survey_storage import (
     load_prior_context,
 )
 from app.domain.prompts import get_simple_chat_system_prompt
+from app.utils.admin_policy import is_admin_debug_policy_enabled
+from app.utils.admin_prompt_lab import resolve_simple_chat_prompt_override
+from app.utils.admin_policy import is_admin_sandbox_enabled
+from app.utils.super_admin import is_super_admin_user
+from jinja2 import Environment
 
 # 每阶段随机抽取的题目数量
 SIMPLE_QUESTION_SAMPLE_SIZE = 6
@@ -423,6 +428,50 @@ def _skip_expired_for_debug(rec, user: Optional[dict]) -> bool:
     )
 
 
+def _is_super_admin_user(user: Optional[dict]) -> bool:
+    return is_super_admin_user(user)
+
+
+def _can_bypass_flow_limits(current_user: Optional[dict], rec) -> bool:
+    """
+    管理员调试豁免（受统一 policy 开关控制）：
+    - 用户必须是 super_admin
+    - 激活码必须是调试工作区（fork/resident）
+    """
+    if not is_admin_debug_policy_enabled():
+        return False
+    if not _is_super_admin_user(current_user):
+        return False
+    workspace_kind = (getattr(rec, "workspace_kind", None) or "").strip().lower()
+    if workspace_kind in {"fork", "resident"}:
+        return True
+    # 兼容旧沙箱记录（尚未回填 workspace_kind）
+    return bool(getattr(rec, "is_sandbox", False))
+
+
+def _resolve_prompt_lab_override_for_request(rec, current_user: Optional[dict]) -> Optional[Dict]:
+    """
+    sandbox_only：仅 super_admin + 调试工作区 + policy 开启时生效。
+    """
+    if not is_admin_sandbox_enabled():
+        return None
+    if not _is_super_admin_user(current_user):
+        return None
+    workspace_kind = (getattr(rec, "workspace_kind", None) or "").strip().lower()
+    is_workspace = workspace_kind in {"fork", "resident"} or bool(getattr(rec, "is_sandbox", False))
+    if not is_workspace:
+        return None
+    resolved = resolve_simple_chat_prompt_override(getattr(rec, "code", ""))
+    if not resolved:
+        return None
+    template, extra_goal_hint, meta = resolved
+    return {
+        "template": template,
+        "extra_goal_hint": extra_goal_hint,
+        "meta": meta,
+    }
+
+
 def _storage_category(phase: str, session_id: str) -> str:
     """存储用 category：每个 step-session 一份文件。"""
     return f"{phase}__{session_id}"
@@ -554,11 +603,12 @@ def _resolve_report_context(
     if not logical_session_id:
         logical_session_id = rec.session_id
 
-    # 进入新阶段前，锁定上一阶段（提交进入下一步后不可修改）
-    try:
-        registry.lock_previous_step_when_entering(report["report_id"], phase_step)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    # 进入新阶段前，锁定上一阶段（管理员调试工作区可豁免，支持回退/跳步）
+    if not _can_bypass_flow_limits(current_user, rec):
+        try:
+            registry.lock_previous_step_when_entering(report["report_id"], phase_step)
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     # 将当前会话纳入 step 的会话池
     registry.bind_session(report["report_id"], phase_step, logical_session_id)
@@ -1231,15 +1281,24 @@ def _build_system_prompt(
     question_bank: str = "",
     basic_info: str = "暂无",
     prior_context: str = "",
+    template_override: Optional[str] = None,
+    extra_goal_hint: str = "",
 ) -> str:
     """根据阶段构建 system prompt（通过模板渲染，避免超长硬编码）。"""
     prior_block = f"\n\n以下是该来访者在上一轮咨询中的谈话结果，供你参考：\n{prior_context}" if prior_context.strip() else ""
-    base_prompt = get_simple_chat_system_prompt({
+    context = {
         "phase": phase,
         "question_bank": question_bank,
         "basic_info": basic_info,
         "prior_block": prior_block,
-    })
+    }
+    if (template_override or "").strip():
+        env = Environment(trim_blocks=True, lstrip_blocks=True)
+        base_prompt = env.from_string(template_override).render(**context)
+    else:
+        base_prompt = get_simple_chat_system_prompt(context)
+    if (extra_goal_hint or "").strip():
+        base_prompt = f"{base_prompt}\n\n[管理员调试目标补充]\n{extra_goal_hint.strip()}"
     # 机器协议：每轮回复末尾输出状态 JSON，后端据此驱动 pending 状态机（不会展示给前端）。
     protocol = """
 
@@ -1337,7 +1396,15 @@ async def simple_chat(
     prior_context = _load_prior_context_from_activation(
         request.activation_code, phase_step, report
     )
-    system_prompt = _build_system_prompt(phase_step, question_bank=question_bank, basic_info=basic_info, prior_context=prior_context)
+    override_cfg = _resolve_prompt_lab_override_for_request(rec, current_user)
+    system_prompt = _build_system_prompt(
+        phase_step,
+        question_bank=question_bank,
+        basic_info=basic_info,
+        prior_context=prior_context,
+        template_override=(override_cfg or {}).get("template"),
+        extra_goal_hint=(override_cfg or {}).get("extra_goal_hint", ""),
+    )
     llm_messages = [LLMMessage(role="system", content=system_prompt)]
 
     # 把历史文件中的 role/content 转成 LLMMessage
@@ -1501,7 +1568,15 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
     prior_context = _load_prior_context_from_activation(
         request.activation_code, phase_step, report
     )
-    system_prompt = _build_system_prompt(phase_step, question_bank=question_bank, basic_info=basic_info, prior_context=prior_context)
+    override_cfg = _resolve_prompt_lab_override_for_request(rec, current_user)
+    system_prompt = _build_system_prompt(
+        phase_step,
+        question_bank=question_bank,
+        basic_info=basic_info,
+        prior_context=prior_context,
+        template_override=(override_cfg or {}).get("template"),
+        extra_goal_hint=(override_cfg or {}).get("extra_goal_hint", ""),
+    )
     llm_messages = [
         LLMMessage(role="system", content=system_prompt),
         LLMMessage(role="user", content="我是来访者，你需要向我提问。以下是我的基本信息：暂无。请给出第一轮温柔而具体的引导问题，让我开始思考。"),
@@ -1925,7 +2000,15 @@ async def simple_chat_stream(
         prior_context = _load_prior_context_from_activation(
             request.activation_code, phase_step, report
         )
-        system_prompt = _build_system_prompt(phase_step, question_bank=question_bank, basic_info=basic_info, prior_context=prior_context)
+        override_cfg = _resolve_prompt_lab_override_for_request(rec, current_user)
+        system_prompt = _build_system_prompt(
+            phase_step,
+            question_bank=question_bank,
+            basic_info=basic_info,
+            prior_context=prior_context,
+            template_override=(override_cfg or {}).get("template"),
+            extra_goal_hint=(override_cfg or {}).get("extra_goal_hint", ""),
+        )
         llm_messages = [LLMMessage(role="system", content=system_prompt)]
 
         # 若有锚点摘要，插入 [此前对话要点] 再拼接最近 N 轮

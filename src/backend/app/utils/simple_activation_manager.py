@@ -54,6 +54,9 @@ class ActivationRecord:
     forked_at: Optional[str] = None
     forked_by_user_id: Optional[str] = None
     sandbox_expires_at: Optional[str] = None
+    # 通用工作区字段（兼容后续 admin 常驻工作区）
+    workspace_kind: Optional[str] = None  # fork | resident
+    workspace_root: Optional[str] = None  # 相对 data/simple，如 admin_workspaces/{admin_user_id}
 
 
 @dataclass
@@ -79,6 +82,10 @@ def get_effective_simple_root(rec: Optional["ActivationRecord"] = None) -> Path:
     正式激活码使用 data/simple；沙箱激活码使用 data/simple/sandboxes/{fork_id}/。
     """
     base = get_simple_base_dir()
+    if rec is not None and getattr(rec, "workspace_root", None):
+        root = (base / rec.workspace_root).resolve()
+        root.mkdir(parents=True, exist_ok=True)
+        return root
     if rec is not None and getattr(rec, "is_sandbox", False) and rec.sandbox_root:
         root = (base / rec.sandbox_root).resolve()
         root.mkdir(parents=True, exist_ok=True)
@@ -138,6 +145,8 @@ class SimpleActivationManager:
                 data.setdefault("forked_at", None)
                 data.setdefault("forked_by_user_id", None)
                 data.setdefault("sandbox_expires_at", None)
+                data.setdefault("workspace_kind", None)
+                data.setdefault("workspace_root", None)
                 records[code] = ActivationRecord(**data)
             except (TypeError, ValueError):
                 continue

@@ -7,6 +7,7 @@ import { useAuthModalStore } from '@/stores/authModalStore';
 import { useThemeStore } from '@/stores/themeStore';
 import { useLocaleStore } from '@/stores/localeStore';
 import { onAuthRequired } from '@/lib/api/client';
+import { authApi } from '@/lib/api/auth';
 import { NAV_ITEMS } from '@/lib/nav';
 import { useLocale } from '@/hooks/useLocale';
 import { useState, useEffect, useRef } from 'react';
@@ -30,7 +31,10 @@ export default function TopNavbar() {
   const displayLocale = mounted ? locale : 'zh';
   const { isOpen: authModalOpen, redirectTo, openAuthModal, closeAuthModal } = useAuthModalStore();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [idleExpired, setIdleExpired] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const lastActiveAtRef = useRef<number>(Date.now());
+  const IDLE_REFRESH_MINUTES = Number(process.env.NEXT_PUBLIC_IDLE_REFRESH_MINUTES || 30);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -51,6 +55,45 @@ export default function TopNavbar() {
     });
   }, [openAuthModal]);
 
+  useEffect(() => {
+    if (!showAuth) {
+      setIdleExpired(false);
+      return;
+    }
+    const markActive = () => {
+      lastActiveAtRef.current = Date.now();
+      if (idleExpired) setIdleExpired(false);
+    };
+    const onVisibilityChange = () => {
+      if (!document.hidden) {
+        const idleMs = Date.now() - lastActiveAtRef.current;
+        if (idleMs >= IDLE_REFRESH_MINUTES * 60 * 1000) {
+          setIdleExpired(true);
+        }
+      }
+    };
+    const timer = window.setInterval(() => {
+      const idleMs = Date.now() - lastActiveAtRef.current;
+      if (idleMs >= IDLE_REFRESH_MINUTES * 60 * 1000) {
+        setIdleExpired(true);
+      }
+    }, 60 * 1000);
+
+    window.addEventListener('mousemove', markActive);
+    window.addEventListener('keydown', markActive);
+    window.addEventListener('click', markActive);
+    window.addEventListener('scroll', markActive, { passive: true });
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('mousemove', markActive);
+      window.removeEventListener('keydown', markActive);
+      window.removeEventListener('click', markActive);
+      window.removeEventListener('scroll', markActive);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [IDLE_REFRESH_MINUTES, idleExpired, showAuth]);
+
   const handleNavClick = (item: typeof NAV_ITEMS[number], e: React.MouseEvent) => {
     if (item.requiresAuth && !showAuth) {
       e.preventDefault();
@@ -61,7 +104,15 @@ export default function TopNavbar() {
 
   const handleLoginClick = () => { openAuthModal('/explore/intro'); };
   const handleAuthModalClose = () => { closeAuthModal(); };
-  const handleLogout = () => { logout(); router.push('/'); };
+  const handleLogout = async () => {
+    try {
+      await authApi.logout();
+    } catch {
+      // 忽略后端退出失败，仍确保本地登出
+    }
+    logout();
+    router.push('/');
+  };
 
   const linkBase = 'px-3 py-1.5 rounded-lg text-sm transition-colors';
   const linkActive = isDark ? 'bg-white/10 text-white' : 'bg-black/5 text-black';
@@ -69,6 +120,20 @@ export default function TopNavbar() {
 
   return (
     <>
+    {idleExpired && showAuth && (
+      <div className="fixed top-16 right-4 z-[70] max-w-sm rounded-lg border border-amber-400/40 bg-amber-50 dark:bg-amber-900/30 px-3 py-2 text-sm text-amber-900 dark:text-amber-100 shadow-lg">
+        <div className="flex items-center justify-between gap-3">
+          <span>页面长时间未操作，建议刷新以保持会话最新状态。</span>
+          <button
+            type="button"
+            className="rounded-md bg-amber-500 px-2 py-1 text-xs font-medium text-white hover:bg-amber-600"
+            onClick={() => window.location.reload()}
+          >
+            立即刷新
+          </button>
+        </div>
+      </div>
+    )}
     <nav
       className="bd-nav-glass fixed top-0 left-0 right-0 z-50 h-14"
       style={{ backgroundColor: 'var(--bd-nav-bg)', borderBottom: '1px solid var(--bd-nav-border)' }}
@@ -156,7 +221,7 @@ export default function TopNavbar() {
                   )}
                   <button
                     type="button"
-                    onClick={() => { setUserMenuOpen(false); handleLogout(); }}
+                    onClick={() => { setUserMenuOpen(false); void handleLogout(); }}
                     className="block w-full px-4 py-3 text-left text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                   >
                     {t('common.logout')}
@@ -242,7 +307,7 @@ export default function TopNavbar() {
                 )}
                 <button
                   type="button"
-                  onClick={() => { handleLogout(); setMobileOpen(false); }}
+                  onClick={() => { void handleLogout(); setMobileOpen(false); }}
                   className={`block w-full text-left px-4 py-3 rounded-lg text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20`}
                 >
                   {t('common.logout')}

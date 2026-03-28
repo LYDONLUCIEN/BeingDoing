@@ -80,14 +80,19 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intr
     else router.refresh();
   };
 
+  const normalizeEmail = (email?: string) => {
+    const normalized = (email || '').trim().toLowerCase();
+    return normalized || undefined;
+  };
+
   const onLoginSubmit = async (data: LoginFormData) => {
     setError('');
     setSuccessMsg('');
     setLoading(true);
     try {
       const response = await authApi.login({
-        email: data.email || undefined,
-        phone: data.phone || undefined,
+        email: normalizeEmail(data.email),
+        phone: data.phone?.trim() || undefined,
         password: data.password,
       });
       const resData = response?.data;
@@ -108,6 +113,7 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intr
             email: resData.email,
             phone: resData.phone,
             username: resData.username,
+            is_super_admin: false,
           });
         }
         setToken(resData.token);
@@ -133,15 +139,33 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intr
     setLoading(true);
     try {
       const response = await authApi.register({
-        email: data.email || undefined,
-        phone: data.phone || undefined,
-        username: data.username || undefined,
+        email: normalizeEmail(data.email),
+        phone: data.phone?.trim() || undefined,
+        username: data.username?.trim() || undefined,
         password: data.password,
       });
       const resData = response?.data;
       if (response?.code === 200 && resData?.token) {
-        setUser({ user_id: resData.user_id, email: resData.email, phone: resData.phone, username: resData.username });
         setToken(resData.token);
+        try {
+          const me = await authApi.getCurrentUser();
+          const userData = me?.data || resData;
+          setUser({
+            user_id: userData?.user_id ?? resData.user_id,
+            email: userData?.email ?? resData.email,
+            phone: userData?.phone ?? resData.phone,
+            username: userData?.username ?? resData.username,
+            is_super_admin: userData?.is_super_admin,
+          });
+        } catch {
+          setUser({
+            user_id: resData.user_id,
+            email: resData.email,
+            phone: resData.phone,
+            username: resData.username,
+            is_super_admin: false,
+          });
+        }
         setSuccessMsg('注册成功！');
         setTimeout(() => {
           setLoading(false);
@@ -156,7 +180,8 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intr
   };
 
   const sendResetCode = async () => {
-    if (!resetEmail) {
+    const normalizedEmail = normalizeEmail(resetEmail);
+    if (!normalizedEmail) {
       setError('请输入邮箱');
       return;
     }
@@ -168,7 +193,7 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intr
     setSuccessMsg('');
     setLoading(true);
     try {
-      await authApi.requestPasswordResetCode({ email: resetEmail });
+      await authApi.requestPasswordResetCode({ email: normalizedEmail });
       setSuccessMsg('验证码已发送到该账号的注册邮箱（5分钟有效）');
       setResetCooldown(60);
     } catch (err: unknown) {
@@ -179,7 +204,8 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intr
   };
 
   const confirmReset = async () => {
-    if (!resetEmail || !resetCode || !newPassword || !confirmNewPassword) {
+    const normalizedEmail = normalizeEmail(resetEmail);
+    if (!normalizedEmail || !resetCode || !newPassword || !confirmNewPassword) {
       setError('请完整填写邮箱、验证码和两次新密码');
       return;
     }
@@ -192,8 +218,8 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intr
     setLoading(true);
     try {
       await authApi.confirmPasswordReset({
-        email: resetEmail,
-        code: resetCode,
+        email: normalizedEmail,
+        code: resetCode.trim(),
         new_password: newPassword,
       });
       setSuccessMsg('密码重置成功，请使用新密码登录');

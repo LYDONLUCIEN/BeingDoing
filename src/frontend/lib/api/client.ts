@@ -56,10 +56,20 @@ function emitAuthRequired(redirectTo: string) {
 
 class ApiClient {
   private client: AxiosInstance;
+  private refreshClient: AxiosInstance;
+  private refreshPromise: Promise<string | null> | null = null;
 
   constructor() {
     this.client = axios.create({
       baseURL: API_BASE,
+      withCredentials: true,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    this.refreshClient = axios.create({
+      baseURL: API_BASE,
+      withCredentials: true,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -82,15 +92,28 @@ class ApiClient {
     // 响应拦截器：处理错误
     this.client.interceptors.response.use(
       (response) => response,
-      (error: AxiosError) => {
+      async (error: AxiosError) => {
         if (error.response?.status === 401) {
           const requestUrl = error.config?.url ?? '';
           const isAuthRequest =
             typeof requestUrl === 'string' &&
-            (requestUrl.includes('/auth/login') || requestUrl.includes('/auth/register'));
-          // 登录/注册接口返回 401 时不跳转，让页面显示错误、用户可重试；其他接口 401 弹登录弹窗
+            (
+              requestUrl.includes('/auth/login') ||
+              requestUrl.includes('/auth/register') ||
+              requestUrl.includes('/auth/refresh')
+            );
+          const originalConfig = (error.config || {}) as any;
+          if (!isAuthRequest && !originalConfig._retry) {
+            originalConfig._retry = true;
+            const nextAccessToken = await this.refreshAccessTokenSingleFlight();
+            if (nextAccessToken) {
+              originalConfig.headers = originalConfig.headers || {};
+              originalConfig.headers.Authorization = `Bearer ${nextAccessToken}`;
+              return this.client.request(originalConfig);
+            }
+          }
           if (!isAuthRequest && typeof window !== 'undefined') {
-            this.clearToken();
+            this.clearTokens();
             useAuthStore.getState().logout();
             const currentPath = window.location.pathname;
             emitAuthRequired(currentPath);
@@ -106,7 +129,7 @@ class ApiClient {
     return localStorage.getItem('token');
   }
 
-  private clearToken(): void {
+  private clearTokens(): void {
     if (typeof window === 'undefined') return;
     localStorage.removeItem('token');
   }
@@ -114,6 +137,40 @@ class ApiClient {
   setToken(token: string): void {
     if (typeof window === 'undefined') return;
     localStorage.setItem('token', token);
+  }
+
+  setTokens(accessToken: string): void {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('token', accessToken);
+  }
+
+  private async refreshAccessTokenSingleFlight(): Promise<string | null> {
+    if (this.refreshPromise) {
+      return this.refreshPromise;
+    }
+
+    this.refreshPromise = (async () => {
+      try {
+        const response = await this.refreshClient.post<ApiResponse<{
+          token: string;
+          expires_in: number;
+        }>>('/auth/refresh', {});
+        const data = response.data?.data;
+        if (!data?.token) {
+          return null;
+        }
+        this.setToken(data.token);
+        const authStore = useAuthStore.getState();
+        authStore.setTokens(data.token);
+        return data.token;
+      } catch {
+        return null;
+      } finally {
+        this.refreshPromise = null;
+      }
+    })();
+
+    return this.refreshPromise;
   }
 
   async get<T = any>(url: string, config?: any): Promise<ApiResponse<T>> {

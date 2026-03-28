@@ -12,6 +12,9 @@ interface BasicSettings {
   LLM_PROVIDER?: string;
   LLM_MODEL?: string;
   BASIC_INFO_MERGE_STRATEGY?: 'A' | 'B' | 'C';
+  ADMIN_DEBUG_POLICY_ENABLED?: boolean;
+  ADMIN_DEBUG_WORKSPACE_ENABLED?: boolean;
+  ADMIN_SANDBOX_ENABLED?: boolean;
 }
 
 export default function AdminSystemPage() {
@@ -85,6 +88,18 @@ export default function AdminSystemPage() {
           <div>ARCHITECTURE_MODE：<span className="text-bd-fg">{settings?.ARCHITECTURE_MODE ?? '—'}</span></div>
           <div>LLM_PROVIDER：<span className="text-bd-fg">{settings?.LLM_PROVIDER ?? '—'}</span></div>
           <div>LLM_MODEL：<span className="text-bd-fg">{settings?.LLM_MODEL ?? '—'}</span></div>
+          <div>
+            ADMIN_DEBUG_POLICY_ENABLED：
+            <span className="text-bd-fg">{String(settings?.ADMIN_DEBUG_POLICY_ENABLED ?? false)}</span>
+          </div>
+          <div>
+            ADMIN_DEBUG_WORKSPACE_ENABLED：
+            <span className="text-bd-fg">{String(settings?.ADMIN_DEBUG_WORKSPACE_ENABLED ?? true)}</span>
+          </div>
+          <div>
+            ADMIN_SANDBOX_ENABLED：
+            <span className="text-bd-fg">{String(settings?.ADMIN_SANDBOX_ENABLED ?? true)}</span>
+          </div>
         </div>
         <div className="pt-3 border-t border-bd-border">
           <label className="block font-medium text-bd-fg mb-2">问卷合并策略 (basic_info_merge_strategy)</label>

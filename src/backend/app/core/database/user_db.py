@@ -2,7 +2,7 @@
 用户数据操作
 """
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from typing import Optional, List
 from app.models.user import User, UserProfile, WorkHistory, ProjectExperience
@@ -42,8 +42,11 @@ class UserDB:
     
     async def get_user_by_email(self, email: str) -> Optional[User]:
         """根据邮箱获取用户"""
+        normalized_email = (email or "").strip().lower()
+        if not normalized_email:
+            return None
         result = await self.session.execute(
-            select(User).where(User.email == email)
+            select(User).where(func.lower(func.trim(User.email)) == normalized_email)
         )
         return result.scalar_one_or_none()
     

@@ -13,8 +13,21 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     DEBUG: bool = True
     SECRET_KEY: str = "your-secret-key-here-change-in-production"
-    # JWT 登录态有效期（分钟），如 60=1 小时内免登录，1440=24 小时
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    # JWT access token 有效期（分钟）
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    # refresh token 有效期（天）
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+    # refresh token 轮换（每次 refresh 后签发新 refresh，并废弃旧 refresh）
+    REFRESH_TOKEN_ROTATE: bool = True
+    # 可选：refresh token 独立密钥（不配置时回退 SECRET_KEY）
+    REFRESH_TOKEN_SECRET_KEY: Optional[str] = None
+    # refresh cookie 配置（HttpOnly）
+    REFRESH_COOKIE_NAME: str = "bd_refresh_token"
+    REFRESH_COOKIE_DOMAIN: Optional[str] = None
+    REFRESH_COOKIE_PATH: str = "/api/v1/auth"
+    REFRESH_COOKIE_SAMESITE: str = "lax"  # lax | strict | none
+    # 本地 http 调试建议 False；生产 https 必须 True
+    REFRESH_COOKIE_SECURE: bool = False
 
     # 超级管理员（用于查看调试日志等，仅后端权限控制使用）
     # 说明：
@@ -26,6 +39,13 @@ class Settings(BaseSettings):
     # Debug 模式：仅当 DEBUG_MODE=true 且当前用户在 SUPER_ADMIN_USER_IDS/SUPER_ADMIN_EMAILS 内时生效
     # 启用后：可载入过期激活码、解锁全部探索阶段、直接查看报告
     DEBUG_MODE: bool = False
+
+    # Admin 调试特权总开关（生产建议关闭）
+    # - 关闭时：常驻工作区、SBX 沙箱等管理员调试特权全部不可用
+    # - 开启时：再由各子开关控制具体能力
+    ADMIN_DEBUG_POLICY_ENABLED: bool = False
+    ADMIN_DEBUG_WORKSPACE_ENABLED: bool = True
+    ADMIN_SANDBOX_ENABLED: bool = True
     
     # 数据库
     DATABASE_URL: str = "sqlite+aiosqlite:///./app.db"

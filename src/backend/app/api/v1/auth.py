@@ -1,11 +1,12 @@
 """
 认证API
 """
-from fastapi import APIRouter, HTTPException, Depends, status, Header
+from fastapi import APIRouter, HTTPException, Depends, status, Header, Response, Cookie
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 from app.services.auth_service import AuthService
 from app.config.settings import settings
+from app.utils.super_admin import is_super_admin_user
 
 router = APIRouter(prefix="/auth", tags=["认证"])
 
@@ -49,11 +50,40 @@ class PasswordResetSMSConfirmRequest(BaseModel):
     new_password: str
 
 
+class RefreshTokenRequest(BaseModel):
+    refresh_token: Optional[str] = None
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: Optional[str] = None
+
+
 class AuthResponse(BaseModel):
     """认证响应"""
     code: int = 200
     message: str = "success"
     data: dict
+
+
+def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
+    response.set_cookie(
+        key=getattr(settings, "REFRESH_COOKIE_NAME", "bd_refresh_token"),
+        value=refresh_token,
+        max_age=int(getattr(settings, "REFRESH_TOKEN_EXPIRE_DAYS", 30) * 24 * 60 * 60),
+        httponly=True,
+        secure=bool(getattr(settings, "REFRESH_COOKIE_SECURE", True)),
+        samesite=str(getattr(settings, "REFRESH_COOKIE_SAMESITE", "lax")).lower(),
+        domain=getattr(settings, "REFRESH_COOKIE_DOMAIN", None),
+        path=getattr(settings, "REFRESH_COOKIE_PATH", "/api/v1/auth"),
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=getattr(settings, "REFRESH_COOKIE_NAME", "bd_refresh_token"),
+        domain=getattr(settings, "REFRESH_COOKIE_DOMAIN", None),
+        path=getattr(settings, "REFRESH_COOKIE_PATH", "/api/v1/auth"),
+    )
 
 
 def get_token_from_header(authorization: Optional[str] = Header(None)) -> Optional[str]:
@@ -117,15 +147,7 @@ async def get_current_user_optional(token: Optional[str] = Depends(get_token_fro
 
 def _is_super_admin(user: Optional[dict]) -> bool:
     """是否超级管理员（仅超级管理员可看 debug 日志等）"""
-    if not user:
-        return False
-    ids_str = (getattr(settings, "SUPER_ADMIN_USER_IDS", None) or "").strip()
-    emails_str = (getattr(settings, "SUPER_ADMIN_EMAILS", None) or "").strip()
-    if ids_str and user.get("user_id") in [x.strip() for x in ids_str.split(",") if x.strip()]:
-        return True
-    if emails_str and user.get("email") in [x.strip() for x in emails_str.split(",") if x.strip()]:
-        return True
-    return False
+    return is_super_admin_user(user)
 
 
 def _is_debug_admin(user: Optional[dict]) -> bool:
@@ -136,7 +158,7 @@ def _is_debug_admin(user: Optional[dict]) -> bool:
 
 
 @router.post("/register", response_model=AuthResponse)
-async def register(request: RegisterRequest):
+async def register(request: RegisterRequest, response: Response):
     """
     用户注册
     
@@ -154,6 +176,9 @@ async def register(request: RegisterRequest):
             password=request.password
         )
         
+        refresh_token = (result or {}).pop("refresh_token", None)
+        if refresh_token:
+            _set_refresh_cookie(response, refresh_token)
         return AuthResponse(
             code=200,
             message="注册成功",
@@ -168,7 +193,7 @@ async def register(request: RegisterRequest):
 
 
 @router.post("/login", response_model=AuthResponse)
-async def login(request: LoginRequest):
+async def login(request: LoginRequest, response: Response):
     """
     用户登录
     
@@ -185,6 +210,9 @@ async def login(request: LoginRequest):
             password=request.password
         )
         
+        refresh_token = (result or {}).pop("refresh_token", None)
+        if refresh_token:
+            _set_refresh_cookie(response, refresh_token)
         return AuthResponse(
             code=200,
             message="登录成功",
@@ -297,3 +325,56 @@ async def get_me(current_user: dict = Depends(get_current_user)):
     """
     data = {**current_user, "is_super_admin": _is_super_admin(current_user)}
     return AuthResponse(code=200, message="success", data=data)
+
+
+@router.post("/refresh", response_model=AuthResponse)
+async def refresh_token(
+    response: Response,
+    request: Optional[RefreshTokenRequest] = None,
+    refresh_cookie: Optional[str] = Cookie(
+        default=None,
+        alias=getattr(settings, "REFRESH_COOKIE_NAME", "bd_refresh_token"),
+    ),
+):
+    """使用 refresh token 换取新的 access token（并按配置轮换 refresh token）。"""
+    try:
+        input_refresh_token = (
+            (request.refresh_token if request else None)
+            or refresh_cookie
+            or ""
+        )
+        data = await AuthService.refresh_access_token(input_refresh_token)
+        rotated_refresh_token = (data or {}).pop("refresh_token", None)
+        if rotated_refresh_token:
+            _set_refresh_cookie(response, rotated_refresh_token)
+        return AuthResponse(code=200, message="success", data=data)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(e),
+        )
+
+
+@router.post("/logout", response_model=AuthResponse)
+async def logout(
+    response: Response,
+    request: Optional[LogoutRequest] = None,
+    refresh_cookie: Optional[str] = Cookie(
+        default=None,
+        alias=getattr(settings, "REFRESH_COOKIE_NAME", "bd_refresh_token"),
+    ),
+):
+    """
+    退出登录：
+    - 若传入 refresh_token，则后端撤销该 refresh token
+    - 前端仍需清理本地 access/refresh token
+    """
+    try:
+        input_refresh_token = (
+            ((request.refresh_token if request else None) or refresh_cookie or "").strip()
+        )
+        await AuthService.revoke_refresh_token(input_refresh_token)
+        _clear_refresh_cookie(response)
+        return AuthResponse(code=200, message="success", data={"logged_out": True})
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

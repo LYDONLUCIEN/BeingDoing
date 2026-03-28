@@ -7,6 +7,7 @@ from app.models.session import Session, Progress
 from app.models.answer import Question, Answer
 from app.models.selection import UserSelection, GuidePreference, ExplorationResult
 from app.models.analytics import AnalyticsChatTurn, AnalyticsReport, AnalyticsLike
+from app.models.refresh_token import RefreshToken
 
 __all__ = [
     "Base",
@@ -27,4 +28,5 @@ __all__ = [
     "AnalyticsChatTurn",
     "AnalyticsReport",
     "AnalyticsLike",
+    "RefreshToken",
 ]

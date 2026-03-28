@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   deleteAdminSandbox,
+  ensureAdminWorkspace,
   fetchAdminSandboxes,
   forkAdminSandbox,
   purgeExpiredAdminSandboxes,
@@ -71,6 +72,24 @@ export default function AdminSandboxesPage() {
       await load();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Fork 失败');
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const handleEnterResidentWorkspace = async () => {
+    setWorking(true);
+    setError(null);
+    try {
+      const data = await ensureAdminWorkspace();
+      setNotice(
+        data.created
+          ? `已创建常驻调试工作区：${data.activation_code}`
+          : `已进入常驻调试工作区：${data.activation_code}`
+      );
+      window.location.href = `/explore/activate?code=${encodeURIComponent(data.activation_code)}`;
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : '进入常驻工作区失败');
     } finally {
       setWorking(false);
     }
@@ -158,6 +177,14 @@ export default function AdminSandboxesPage() {
             className="rounded-xl px-4 py-2 text-sm font-medium bg-violet-600 text-white hover:bg-violet-500 disabled:opacity-50"
           >
             {working ? '处理中…' : 'Fork 沙箱'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleEnterResidentWorkspace()}
+            disabled={working}
+            className="rounded-xl px-4 py-2 text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50"
+          >
+            进入我的常驻调试工作区
           </button>
           <button
             type="button"

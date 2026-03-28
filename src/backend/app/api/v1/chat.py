@@ -22,6 +22,7 @@ from app.utils.conversation_file_manager import ConversationFileManager, Convers
 from datetime import datetime
 from app.config.settings import settings
 from app.utils.data_paths import get_question_progress_dir, get_debug_logs_dir, get_logs_dir
+from app.utils.super_admin import is_super_admin_user
 
 logger = logging.getLogger(__name__)
 
@@ -295,15 +296,7 @@ def _chunk_response_for_stream(text: str, chunk_size: int = 20) -> Generator[str
 
 def _is_super_admin(user: Optional[dict]) -> bool:
     """是否超级管理员（仅超级管理员可看 debug 日志）"""
-    if not user:
-        return False
-    ids_str = (getattr(settings, "SUPER_ADMIN_USER_IDS", None) or "").strip()
-    emails_str = (getattr(settings, "SUPER_ADMIN_EMAILS", None) or "").strip()
-    if ids_str and user.get("user_id") in [x.strip() for x in ids_str.split(",") if x.strip()]:
-        return True
-    if emails_str and user.get("email") in [x.strip() for x in emails_str.split(",") if x.strip()]:
-        return True
-    return False
+    return is_super_admin_user(user)
 
 
 def _save_debug_logs(

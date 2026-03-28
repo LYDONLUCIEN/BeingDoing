@@ -135,6 +135,9 @@ async def activate(
             "created_at": rec.created_at,
             "expires_at": rec.expires_at,
             "status": rec.status,
+            "is_sandbox": getattr(rec, "is_sandbox", False),
+            "workspace_kind": getattr(rec, "workspace_kind", None),
+            "workspace_root": getattr(rec, "workspace_root", None),
         },
     )
 

@@ -35,6 +35,8 @@ import {
 } from '@/lib/explore/threads';
 import { ruminationApi } from '@/lib/api/rumination';
 import { useLocale } from '@/hooks/useLocale';
+import { useAuthStore } from '@/stores/authStore';
+import { fetchAdminSystemSettings } from '@/lib/api/admin';
 
 // Phase metadata (color only; desc/hint come from i18n)
 const PHASE_COLORS: Record<PhaseKey, string> = {
@@ -72,6 +74,9 @@ export default function ChatPhasePage() {
   const [chatError, setChatError] = useState<string | null>(null);
   const [backendSessionId, setBackendSessionId] = useState<string | null>(null);
   const [conclusionLoading, setConclusionLoading] = useState(false);
+  const [adminDebugBypass, setAdminDebugBypass] = useState(false);
+  const [adminPolicyLoaded, setAdminPolicyLoaded] = useState(false);
+  const { user } = useAuthStore();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatBodyRef = useRef<HTMLDivElement>(null);
@@ -86,6 +91,7 @@ export default function ChatPhasePage() {
   };
   const phaseInfo = PHASES.find((p) => p.key === phase);
   const phaseLabel = t(`explore.chat.phaseLabels.${phase}`);
+  const canCreateMoreThreads = adminDebugBypass || threads.length < 5;
 
   /** 仅在线程 id 集合变化时触发「加载消息」effect，避免因 threads 引用反复变（persist / save 后 getThreads）而重复 init */
   const threadListSignature = useMemo(() => threads.map((t) => t.id).join('|'), [threads]);
@@ -141,8 +147,38 @@ export default function ChatPhasePage() {
     []
   );
 
+  // 管理员调试策略（仅 super_admin 尝试读取）
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!user?.is_super_admin) {
+        if (!cancelled) {
+          setAdminDebugBypass(false);
+          setAdminPolicyLoaded(true);
+        }
+        return;
+      }
+      try {
+        const sys = await fetchAdminSystemSettings();
+        const enabled =
+          Boolean((sys as any)?.ADMIN_DEBUG_POLICY_ENABLED) &&
+          Boolean((sys as any)?.ADMIN_DEBUG_WORKSPACE_ENABLED);
+        if (!cancelled) setAdminDebugBypass(enabled);
+      } catch {
+        if (!cancelled) setAdminDebugBypass(false);
+      } finally {
+        if (!cancelled) setAdminPolicyLoaded(true);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.is_super_admin]);
+
   // Auth & redirect
   useEffect(() => {
+    if (!adminPolicyLoaded) return;
     if (!PHASES.find((p) => p.key === phase)) {
       router.replace('/explore/activate');
       return;
@@ -159,11 +195,11 @@ export default function ChatPhasePage() {
       router.replace('/explore/survey');
       return;
     }
-    if (!s.unlockedPhases.includes(phase)) {
+    if (!adminDebugBypass && !s.unlockedPhases.includes(phase)) {
       router.replace(`/explore/chat/${s.currentPhase}`);
       return;
     }
-  }, [phase, router]);
+  }, [phase, router, adminPolicyLoaded, adminDebugBypass]);
 
   // 从后端同步线程列表（主数据源，支持跨设备）
   useEffect(() => {
@@ -606,7 +642,7 @@ export default function ChatPhasePage() {
   const handleNewChat = async () => {
     if (!activationCode || !phase) return;
     const list = getThreads(activationCode, phase);
-    if (list.length >= 5) return;
+    if (!adminDebugBypass && list.length >= 5) return;
 
     // Save current thread if has messages
     if (selectedThread && messages.length > 0) {
@@ -807,7 +843,7 @@ export default function ChatPhasePage() {
           onSelectThread={handleSelectThread}
           onNewChat={handleNewChat}
           onDeleteThread={handleDeleteThread}
-          canNewChat={threads.length < 5}
+          canNewChat={canCreateMoreThreads}
         />
         <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
           <header className="flex-shrink-0 backdrop-blur border-b border-black/[0.05] bg-white/70 px-6 py-4">
