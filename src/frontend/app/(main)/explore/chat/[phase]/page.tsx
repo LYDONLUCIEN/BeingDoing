@@ -563,7 +563,8 @@ export default function ChatPhasePage() {
     setConclusionLoading(false);
     setSending(true);
 
-    abortControllerRef.current = new AbortController();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     let assistantHasVisibleOutput = false;
     try {
       const apiBase = (process.env.NEXT_PUBLIC_API_URL || '').trim();
@@ -586,7 +587,7 @@ export default function ChatPhasePage() {
             phase: BACKEND_PHASE[phase],
             thread_id: effectiveThreadId,
           }),
-          signal: abortControllerRef.current.signal,
+          signal: controller.signal,
         });
 
       let res = await doStreamFetch(token);
