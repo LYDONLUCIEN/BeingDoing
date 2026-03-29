@@ -49,13 +49,19 @@ export default function RuminationSectionProgress({
   const sectionOrder = ['opening', 'review', 'filter', 'final_choice', 'recommend', 'end'];
   const currentIdx = sectionOrder.indexOf(progress.main_section);
   const inFilter = progress.main_section === 'filter' && progress.filter_step > 0;
+  const cursor = progress.filter_row_cursor ?? 0;
+  const totalHint =
+    inFilter && Array.isArray(progress.filter_table)
+      ? progress.filter_table.length
+      : 0;
 
   return (
     <div className={`flex items-center gap-2 text-xs text-neutral-500 ${className}`}>
       <span className="font-medium text-neutral-600">当前进度：</span>
       <span>
         {SECTION_LABELS[progress.main_section] || progress.main_section}
-        {inFilter && ` (步骤 ${progress.filter_step}/9)`}
+        {inFilter &&
+          ` (步骤 ${progress.filter_step}/9${totalHint > 0 ? ` · 行 ${Math.min(cursor + 1, totalHint)}/${totalHint}` : ''})`}
       </span>
       <div className="flex-1 max-w-[120px] h-1 rounded-full bg-neutral-200 overflow-hidden">
         <div

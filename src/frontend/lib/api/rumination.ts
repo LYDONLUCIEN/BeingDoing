@@ -13,10 +13,15 @@ export type RuminationMainSection =
   | 'end';
 
 export interface RuminationProgress {
+  schema_version?: number;
   main_section: RuminationMainSection;
   review_sub_index: number;
   filter_step: number;
-  filter_table: Record<string, unknown> | null;
+  filter_row_cursor?: number;
+  hypothesis_round?: number;
+  filter_table: Record<string, unknown>[] | null;
+  filter_early_terminated?: boolean;
+  filter_terminate_reason?: string | null;
 }
 
 export interface RuminationTablePayload {
@@ -25,13 +30,39 @@ export interface RuminationTablePayload {
   editableCols: string[];
   guideText?: string;
   step?: number;
+  singleRowMode?: boolean;
+  rowCursor?: number;
+  totalRows?: number;
 }
 
 export interface RuminationProgressSaveParams {
   main_section?: RuminationMainSection;
   review_sub_index?: number;
   filter_step?: number;
-  filter_table?: Record<string, unknown> | null;
+  filter_table?: Record<string, unknown>[] | null;
+  filter_row_cursor?: number;
+  hypothesis_round?: number;
+  filter_early_terminated?: boolean;
+  filter_terminate_reason?: string | null;
+}
+
+export type RuminationSubmitMode = 'full_step' | 'single_row';
+
+export interface RuminationTableSubmitOptions {
+  mode?: RuminationSubmitMode;
+  rowId?: string;
+  patch?: Record<string, unknown>;
+  preferSingleRow?: boolean;
+}
+
+export interface RuminationSubmitData {
+  progress: RuminationProgress;
+  next_step: number;
+  next_action?: string;
+  next_table_widget?: RuminationTablePayload;
+  full_table_preview?: Record<string, unknown>[];
+  early_terminated?: boolean;
+  terminate_reason?: string;
 }
 
 export const ruminationApi = {
@@ -60,13 +91,22 @@ export const ruminationApi = {
   /** 获取 rumination 筛选表格（进入筛选或下一步） */
   getTable: async (
     activationCode: string,
-    step = 1
+    step?: number,
+    opts?: { singleRowMode?: boolean; preferSingleRow?: boolean }
   ): Promise<
-    ApiResponse<{ table_widget: RuminationTablePayload | null }>
+    ApiResponse<{
+      table_widget: RuminationTablePayload | null;
+      progress?: RuminationProgress;
+      filter_complete?: boolean;
+    }>
   > => {
-    const res = await apiClient.get('/simple-chat/rumination-get-table', {
-      params: { activation_code: activationCode, step },
-    });
+    const params: Record<string, string | number | boolean> = {
+      activation_code: activationCode,
+    };
+    if (step !== undefined) params.step = step;
+    if (opts?.singleRowMode) params.single_row_mode = true;
+    if (opts?.preferSingleRow) params.prefer_single_row = true;
+    const res = await apiClient.get('/simple-chat/rumination-get-table', { params });
     return res;
   },
 
@@ -75,14 +115,20 @@ export const ruminationApi = {
     activationCode: string,
     threadId: string,
     step: number,
-    tableData: Record<string, unknown>[]
-  ): Promise<ApiResponse<{ progress: RuminationProgress; next_step: number }>> => {
-    const res = await apiClient.post('/simple-chat/rumination-table-submit', {
+    tableData: Record<string, unknown>[] | null | undefined,
+    options?: RuminationTableSubmitOptions
+  ): Promise<ApiResponse<RuminationSubmitData>> => {
+    const body: Record<string, unknown> = {
       activation_code: activationCode,
       thread_id: threadId,
       step,
-      table_data: tableData,
-    });
+      table_data: tableData ?? null,
+      mode: options?.mode ?? 'full_step',
+    };
+    if (options?.rowId != null) body.row_id = options.rowId;
+    if (options?.patch != null) body.patch = options.patch;
+    if (options?.preferSingleRow != null) body.prefer_single_row = options.preferSingleRow;
+    const res = await apiClient.post('/simple-chat/rumination-table-submit', body);
     return res;
   },
 };

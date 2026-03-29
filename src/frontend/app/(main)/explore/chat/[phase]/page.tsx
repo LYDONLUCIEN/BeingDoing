@@ -34,7 +34,7 @@ import {
   type ChatThread,
   type ThreadMessage,
 } from '@/lib/explore/threads';
-import { ruminationApi } from '@/lib/api/rumination';
+import { ruminationApi, type RuminationSubmitData } from '@/lib/api/rumination';
 import { useLocale } from '@/hooks/useLocale';
 import { useAuthStore } from '@/stores/authStore';
 import { fetchAdminSystemSettings } from '@/lib/api/admin';
@@ -82,6 +82,8 @@ export default function ChatPhasePage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatBodyRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<ThreadMessage[]>([]);
+  messagesRef.current = messages;
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -548,6 +550,50 @@ export default function ChatPhasePage() {
     return () => window.clearTimeout(timer);
   }, [initLoading]);
 
+  // 沉淀阶段已进入筛选且对话中尚无表格控件时，从后端拉取当前步（默认单行展示）
+  useEffect(() => {
+    if (phase !== 'rumination' || !activationCode || initLoading) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await ruminationApi.get(activationCode);
+        const p = res?.data?.progress;
+        if (
+          !p ||
+          p.main_section !== 'filter' ||
+          !(p.filter_step > 0) ||
+          p.filter_early_terminated
+        ) {
+          return;
+        }
+        if (messagesRef.current.some((m) => m.type === 'table_widget')) return;
+        const tb = await ruminationApi.getTable(activationCode, undefined, {
+          singleRowMode: true,
+          preferSingleRow: true,
+        });
+        if (cancelled || !tb?.data?.table_widget) return;
+        const w = tb.data.table_widget;
+        setMessages((prev) => {
+          if (prev.some((m) => m.type === 'table_widget')) return prev;
+          const tableMsg: ThreadMessage = {
+            id: `table_fetch_${Date.now()}`,
+            role: 'assistant',
+            content: '',
+            type: 'table_widget',
+            tablePayload: w as ThreadMessage['tablePayload'],
+            createdAt: Date.now(),
+          };
+          return [...prev, tableMsg];
+        });
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [phase, activationCode, initLoading]);
+
   const handleSend = async (prefill?: string, skipAddUser?: boolean) => {
     const text = prefill ?? input.trim();
     if (!activationCode || !text || sending || isReadOnly) return;
@@ -947,29 +993,60 @@ export default function ChatPhasePage() {
   const handleStopStream = () => abortControllerRef.current?.abort();
 
   const handleTableConfirm = useCallback(
-    async (_msgId: string, payload: { step?: number }, rows: Record<string, unknown>[]) => {
+    async (
+      _msgId: string,
+      payload: NonNullable<ThreadMessage['tablePayload']>,
+      rows: Record<string, unknown>[]
+    ) => {
       if (!activationCode || !activeThreadId || phase !== 'rumination' || sending) return;
       try {
+        const single = Boolean(payload.singleRowMode && rows.length === 1);
+        const patch: Record<string, unknown> = {};
+        if (single) {
+          for (const k of payload.editableCols || []) {
+            patch[k] = rows[0][k];
+          }
+        }
         const res = await ruminationApi.submitTable(
           activationCode,
           activeThreadId,
           payload.step ?? 1,
-          rows as Record<string, unknown>[]
+          single ? null : rows,
+          {
+            mode: single ? 'single_row' : 'full_step',
+            rowId: single ? String(rows[0].id ?? '') : undefined,
+            patch: single ? patch : undefined,
+            preferSingleRow: single,
+          }
         );
-        const nextTable = (res?.data as { next_table_widget?: ThreadMessage['tablePayload'] })
-          ?.next_table_widget;
+        const data = res?.data as RuminationSubmitData | undefined;
+        if (data?.early_terminated || data?.next_action === 'early_terminated') {
+          setChatError('当前筛选无剩余行，请回到回顾或前序阶段补充后再试。');
+          return;
+        }
+        const nextTable = data?.next_table_widget;
         if (nextTable) {
           const tableMsg: ThreadMessage = {
             id: `table_${Date.now()}`,
             role: 'assistant',
             content: '',
             type: 'table_widget',
-            tablePayload: nextTable,
+            tablePayload: nextTable as ThreadMessage['tablePayload'],
             createdAt: Date.now(),
           };
-          setMessages((prev) => [...prev, tableMsg]);
+          setMessages((prev) => [
+            ...prev.filter((m) => m.type !== 'table_widget'),
+            tableMsg,
+          ]);
         }
-        handleSend('我已确认表格，请继续。', false);
+        if (data?.next_action === 'same_step_next_row') {
+          return;
+        }
+        const follow =
+          data?.next_action === 'show_full_table'
+            ? '筛选表格已更新为最终结果，请结合列表做最终选择。'
+            : '我已确认表格，请继续。';
+        handleSend(follow, false);
       } catch {
         setChatError('提交失败，请重试');
       }

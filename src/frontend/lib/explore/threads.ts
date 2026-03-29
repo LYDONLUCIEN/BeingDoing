@@ -12,6 +12,10 @@ export interface RuminationTablePayload {
   editableCols: string[];
   guideText?: string;
   step?: number;
+  /** 后端单行确认模式 */
+  singleRowMode?: boolean;
+  rowCursor?: number;
+  totalRows?: number;
 }
 
 export interface ThreadMessage {

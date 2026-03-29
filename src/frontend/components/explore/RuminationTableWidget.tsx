@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 
 export interface RuminationTableColumn {
   key: string;
@@ -17,6 +17,9 @@ export interface RuminationTablePayload {
   guideText?: string;
   /** 可选：步骤标识 */
   step?: number;
+  singleRowMode?: boolean;
+  rowCursor?: number;
+  totalRows?: number;
 }
 
 interface RuminationTableWidgetProps {
@@ -35,6 +38,16 @@ export default function RuminationTableWidget({
   const [rows, setRows] = useState<Record<string, unknown>[]>(
     () => JSON.parse(JSON.stringify(payload.rows)) || []
   );
+
+  useEffect(() => {
+    setRows(JSON.parse(JSON.stringify(payload.rows)) || []);
+  }, [
+    payload.step,
+    payload.rowCursor,
+    payload.totalRows,
+    JSON.stringify(payload.rows),
+  ]);
+
   const editableSet = new Set(payload.editableCols || []);
   const colMap = new Map(payload.columns.map((c) => [c.key, c]));
 

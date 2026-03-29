@@ -9,6 +9,8 @@ const nextConfig = {
     'http://career.soulhappylab.com',
     'http://47.96.75.69:3000',
     'http://47.96.75.69',
+    'http://60.205.194.159:3000',
+    "http://60.205.194.159",
   ],
   async rewrites() {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
