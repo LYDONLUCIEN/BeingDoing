@@ -16,6 +16,7 @@ from app.utils.simple_activation_manager import (
     ActivationStatus,
     bind_session_id_for_ensure_report,
     get_effective_simple_root,
+    get_activation_with_manager,
 )
 from app.utils.sandbox_fork import assert_sandbox_not_expired
 from app.api.v1.auth import get_current_user
@@ -86,8 +87,7 @@ async def activate(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="请输入激活码",
         )
-    manager = SimpleActivationManager()
-    rec = manager.get_activation(code)
+    manager, rec = get_activation_with_manager(code)
     if not rec:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

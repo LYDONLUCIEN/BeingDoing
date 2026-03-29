@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.utils.simple_activation_manager import get_simple_base_dir
+from app.utils.simple_activation_manager import get_simple_test_base_dir
 
 
 def _now_iso() -> str:
@@ -24,7 +24,7 @@ def _now_iso() -> str:
 
 
 def _lab_root() -> Path:
-    root = get_simple_base_dir() / "admin_prompt_lab"
+    root = get_simple_test_base_dir() / "admin_prompt_lab"
     root.mkdir(parents=True, exist_ok=True)
     return root
 

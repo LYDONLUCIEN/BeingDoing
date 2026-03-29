@@ -8,7 +8,12 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from app.api.v1.auth import get_current_user
 from app.utils.data_paths import get_debug_logs_dir, get_logs_dir
-from app.utils.simple_activation_manager import SimpleActivationManager, ActivationStatus, get_simple_base_dir
+from app.utils.simple_activation_manager import (
+    SimpleActivationManager,
+    ActivationStatus,
+    get_simple_base_dir,
+    get_activation_with_manager,
+)
 import json
 from pathlib import Path
 from datetime import datetime
@@ -1258,8 +1263,7 @@ async def admin_bind_prompt_profile_to_activation(
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     _assert_admin_sandbox_enabled()
-    manager = SimpleActivationManager()
-    rec = manager.get_activation((req.activation_code or "").strip().upper())
+    _manager, rec = get_activation_with_manager((req.activation_code or "").strip().upper())
     if not rec:
         raise HTTPException(status_code=404, detail="激活码不存在")
     kind = (getattr(rec, "workspace_kind", None) or "").strip().lower()
@@ -1327,7 +1331,7 @@ async def admin_fork_sandbox(
     current_user: Optional[dict] = Depends(get_current_user),
 ):
     """
-    从正式激活码复制报告与问卷到 data/simple/sandboxes/{fork_id}/，并生成新激活码（SBX 前缀）。
+    从正式激活码复制报告与问卷到 data/test/simple/sandboxes/{fork_id}/，并生成新激活码（SBX 前缀）。
     禁止从沙箱再次 Fork。
     """
     if not _is_super_admin(current_user):

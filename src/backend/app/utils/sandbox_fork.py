@@ -1,9 +1,10 @@
 """
 管理员调试沙箱：从正式激活码 Fork 独立存储目录，便于在隔离环境中继续对话测试。
 
-目录结构（相对 data/simple）：
-  sandboxes/{fork_id}/
-    reports/{report_id}/   # 与正式环境相同的 report 布局
+目录结构：
+  源数据（只读）：data/simple/
+  沙箱数据（写入）：data/test/simple/sandboxes/{fork_id}/
+    reports/{report_id}/      # 与正式环境相同的 report 布局
     {activation_session_id}/  # 问卷 basic_info、prior_context 等
 """
 
@@ -25,6 +26,7 @@ from app.utils.simple_activation_manager import (
     ActivationStatus,
     SimpleActivationManager,
     get_simple_base_dir,
+    get_simple_test_base_dir,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,7 +41,7 @@ def _now_iso() -> str:
 
 
 def _sandbox_audit_path() -> Path:
-    return get_simple_base_dir() / AUDIT_LOG_FILENAME
+    return get_simple_test_base_dir() / AUDIT_LOG_FILENAME
 
 
 def append_fork_audit(entry: Dict[str, Any]) -> None:
@@ -50,13 +52,14 @@ def append_fork_audit(entry: Dict[str, Any]) -> None:
         f.write(line)
 
 
-def _generate_sandbox_code(manager: SimpleActivationManager) -> str:
+def _generate_sandbox_code(manager: SimpleActivationManager, extra_records: Optional[Dict[str, Any]] = None) -> str:
     records = manager.list_activations()
+    extra = extra_records or {}
     alphabet = string.ascii_uppercase + string.digits
     for _ in range(200):
         suffix = "".join(random.choices(alphabet, k=8))
         code = f"{SANDBOX_CODE_PREFIX}{suffix}"
-        if code not in records:
+        if code not in records and code not in extra:
             return code
     raise RuntimeError("无法生成唯一沙箱激活码")
 
@@ -70,7 +73,7 @@ def find_main_report_for_activation(activation_code: str) -> Optional[Dict[str, 
     if not code_u:
         return None
     registry = ReportRegistry(base_dir=str(get_simple_base_dir()))
-    manager = SimpleActivationManager()
+    manager = SimpleActivationManager(base_dir=str(get_simple_base_dir()))
     act = manager.get_activation(code_u)
     if act and act.owner_user_id:
         got = registry.get_by_activation_user(code_u, act.owner_user_id)
@@ -155,12 +158,13 @@ def fork_activation_from_source(
     Returns:
         (新 ActivationRecord, 摘要信息 dict)
     """
-    manager = SimpleActivationManager()
+    source_manager = SimpleActivationManager(base_dir=str(get_simple_base_dir()))
+    target_manager = SimpleActivationManager(base_dir=str(get_simple_test_base_dir()))
     src_code = (source_activation_code or "").strip().upper()
     if not src_code:
         raise ValueError("请提供源激活码")
 
-    src_act = manager.get_activation(src_code)
+    src_act = source_manager.get_activation(src_code)
     if not src_act:
         raise ValueError("源激活码不存在")
 
@@ -173,19 +177,20 @@ def fork_activation_from_source(
 
     src_report_id = report["report_id"]
     main_base = get_simple_base_dir()
+    test_base = get_simple_test_base_dir()
     src_report_dir = main_base / "reports" / src_report_id
     if not src_report_dir.is_dir():
         raise ValueError(f"报告目录不存在: {src_report_id}")
 
     fork_id = str(uuid.uuid4())
     sandbox_rel = f"sandboxes/{fork_id}"
-    sandbox_base = main_base / sandbox_rel
+    sandbox_base = test_base / sandbox_rel
     if sandbox_base.exists():
         raise ValueError("沙箱目录冲突，请重试")
 
     new_report_id = str(uuid.uuid4())
     new_session_id = str(uuid.uuid4())
-    new_code = _generate_sandbox_code(manager)
+    new_code = _generate_sandbox_code(target_manager, extra_records=source_manager.list_activations())
 
     dst_report_dir = sandbox_base / "reports" / new_report_id
     dst_report_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -264,7 +269,7 @@ def fork_activation_from_source(
         workspace_root=sandbox_rel,
     )
 
-    manager.put_activation(new_rec)
+    target_manager.put_activation(new_rec)
 
     summary = {
         "sandbox_activation_code": new_code,
@@ -298,7 +303,7 @@ def fork_activation_from_source(
 
 def delete_sandbox_by_code(activation_code: str, admin_user: Optional[Dict[str, Any]] = None) -> bool:
     """删除沙箱磁盘目录并从 activations.json 移除记录。"""
-    manager = SimpleActivationManager()
+    manager = SimpleActivationManager(base_dir=str(get_simple_test_base_dir()))
     code = (activation_code or "").strip().upper()
     if not code:
         return False
@@ -308,7 +313,7 @@ def delete_sandbox_by_code(activation_code: str, admin_user: Optional[Dict[str, 
     if not getattr(rec, "is_sandbox", False):
         raise ValueError("该激活码不是沙箱，拒绝按沙箱逻辑删除")
 
-    main_base = get_simple_base_dir()
+    main_base = get_simple_test_base_dir()
     root = getattr(rec, "sandbox_root", None) or ""
     if root:
         full = main_base / root
@@ -331,7 +336,7 @@ def delete_sandbox_by_code(activation_code: str, admin_user: Optional[Dict[str, 
 
 
 def list_sandboxes() -> List[Dict[str, Any]]:
-    manager = SimpleActivationManager()
+    manager = SimpleActivationManager(base_dir=str(get_simple_test_base_dir()))
     out: List[Dict[str, Any]] = []
     for code, rec in manager.list_activations().items():
         if not getattr(rec, "is_sandbox", False):
@@ -359,7 +364,7 @@ def list_sandboxes() -> List[Dict[str, Any]]:
 
 def purge_expired_sandboxes() -> int:
     """删除已超过 sandbox_expires_at 的沙箱（数据与激活记录）。"""
-    manager = SimpleActivationManager()
+    manager = SimpleActivationManager(base_dir=str(get_simple_test_base_dir()))
     removed = 0
     for code, rec in list(manager.list_activations().items()):
         if not getattr(rec, "is_sandbox", False):

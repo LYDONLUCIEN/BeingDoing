@@ -63,6 +63,11 @@ export default function FlowAiMessage({
   const [thinkPlaceholderIdx, setThinkPlaceholderIdx] = useState(0);
   const thinkPreviewRef = useRef<HTMLDivElement>(null);
   const placeholders = thinkPlaceholders.length > 0 ? thinkPlaceholders : ['请稍等…'];
+  const thinkPreviewLine =
+    (thinkChunkContent || '')
+      .split(/\r?\n/)
+      .filter((s) => s.trim().length > 0)
+      .slice(-1)[0] || thinkChunkContent || '\u00A0';
 
   useEffect(() => {
     if (thinkChunkContent && thinkPreviewRef.current) {
@@ -121,7 +126,7 @@ export default function FlowAiMessage({
                   role="log"
                   aria-live="polite"
                 >
-                  {thinkChunkContent || '\u00A0'}
+                  {thinkPreviewLine}
                 </div>
               )}
             </div>

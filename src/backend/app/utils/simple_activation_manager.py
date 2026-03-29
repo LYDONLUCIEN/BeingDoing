@@ -19,7 +19,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Tuple
 import shutil
 
 
@@ -46,9 +46,9 @@ class ActivationRecord:
     purge_after: Optional[str] = None
     source: Optional[str] = None
     vip_level: int = 1  # 1=DeepSeek, 2=Kimi/Qwen
-    # 管理员调试沙箱：独立存储于 data/simple/sandboxes/{fork_id}/
+    # 管理员调试沙箱：独立存储于 data/test/simple/sandboxes/{fork_id}/
     is_sandbox: bool = False
-    sandbox_root: Optional[str] = None  # 相对 data/simple，如 sandboxes/uuid
+    sandbox_root: Optional[str] = None  # 相对 data/test/simple，如 sandboxes/uuid
     fork_id: Optional[str] = None
     forked_from_code: Optional[str] = None
     forked_at: Optional[str] = None
@@ -56,7 +56,7 @@ class ActivationRecord:
     sandbox_expires_at: Optional[str] = None
     # 通用工作区字段（兼容后续 admin 常驻工作区）
     workspace_kind: Optional[str] = None  # fork | resident
-    workspace_root: Optional[str] = None  # 相对 data/simple，如 admin_workspaces/{admin_user_id}
+    workspace_root: Optional[str] = None  # 相对 data/test/simple，如 admin_workspaces/{admin_user_id}
 
 
 @dataclass
@@ -72,16 +72,71 @@ class ActivationRecycleRecord:
 
 
 def get_simple_base_dir() -> Path:
-    """使用项目根目录下的 data/simple，避免依赖当前工作目录。供激活码、对话、调研等统一使用。"""
+    """生产业务数据根目录（真实用户数据）。"""
     project_root = Path(__file__).resolve().parents[4]
     return project_root / "data" / "simple"
 
 
+def get_simple_test_base_dir() -> Path:
+    """测试/调试数据根目录（admin sandbox/workspace/replay）。"""
+    project_root = Path(__file__).resolve().parents[4]
+    return project_root / "data" / "test" / "simple"
+
+
+def _looks_like_debug_activation_code(code: Optional[str]) -> bool:
+    c = (code or "").strip().upper()
+    return c.startswith("SBX") or c.startswith("ADM")
+
+
+def is_debug_workspace_record(rec: Optional["ActivationRecord"]) -> bool:
+    if rec is None:
+        return False
+    if bool(getattr(rec, "is_sandbox", False)):
+        return True
+    kind = (getattr(rec, "workspace_kind", None) or "").strip().lower()
+    if kind in {"fork", "resident"}:
+        return True
+    return _looks_like_debug_activation_code(getattr(rec, "code", None))
+
+
+def get_activation_manager_for_code(code: Optional[str]) -> "SimpleActivationManager":
+    """
+    按激活码前缀选择索引：
+    - SBX/ADM 默认走 test 根
+    - 其他走 prod 根
+    """
+    if _looks_like_debug_activation_code(code):
+        return SimpleActivationManager(base_dir=str(get_simple_test_base_dir()))
+    return SimpleActivationManager(base_dir=str(get_simple_base_dir()))
+
+
+def get_activation_with_manager(code: str) -> Tuple["SimpleActivationManager", Optional["ActivationRecord"]]:
+    """
+    兼容双根读取：
+    - 若前缀看起来是 debug code，优先 test 后回退 prod
+    - 否则优先 prod 后回退 test（兼容迁移期）
+    """
+    c = (code or "").strip().upper()
+    prod_mgr = SimpleActivationManager(base_dir=str(get_simple_base_dir()))
+    test_mgr = SimpleActivationManager(base_dir=str(get_simple_test_base_dir()))
+    if _looks_like_debug_activation_code(c):
+        rec = test_mgr.get_activation(c)
+        if rec:
+            return test_mgr, rec
+        return prod_mgr, prod_mgr.get_activation(c)
+    rec = prod_mgr.get_activation(c)
+    if rec:
+        return prod_mgr, rec
+    return test_mgr, test_mgr.get_activation(c)
+
+
 def get_effective_simple_root(rec: Optional["ActivationRecord"] = None) -> Path:
     """
-    正式激活码使用 data/simple；沙箱激活码使用 data/simple/sandboxes/{fork_id}/。
+    解析激活码记录对应的数据根：
+    - 业务激活码：data/simple
+    - 调试激活码（SBX/ADM/fork/resident）：data/test/simple
     """
-    base = get_simple_base_dir()
+    base = get_simple_test_base_dir() if is_debug_workspace_record(rec) else get_simple_base_dir()
     if rec is not None and getattr(rec, "workspace_root", None):
         root = (base / rec.workspace_root).resolve()
         root.mkdir(parents=True, exist_ok=True)

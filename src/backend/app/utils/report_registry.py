@@ -185,6 +185,23 @@ class ReportRegistry:
         self._save_record(record)
         return record
 
+    def remove_session(self, report_id: str, step_id: str, session_id: str) -> Optional[dict]:
+        sid = self.normalize_step_id(step_id)
+        sess = (session_id or "").strip()
+        if not sess:
+            return None
+        record = self._load_record(report_id)
+        if not record:
+            return None
+        step = record["steps"][sid]
+        sessions = [s for s in (step.get("session_ids") or []) if s != sess]
+        step["session_ids"] = sessions
+        if (step.get("selected_session_id") or "") == sess:
+            step["selected_session_id"] = sessions[0] if sessions else None
+        step["updated_at"] = self._now_iso()
+        self._save_record(record)
+        return record
+
     def select_session(self, report_id: str, step_id: str, session_id: str) -> Optional[dict]:
         sid = self.normalize_step_id(step_id)
         sess = (session_id or "").strip()

@@ -1,7 +1,7 @@
 """
 管理员常驻调试工作区：
 - 每个 super_admin 绑定一个长期可复用的激活码
-- 数据目录隔离在 data/simple/admin_workspaces/{admin_user_id}/
+- 数据目录隔离在 data/test/simple/admin_workspaces/{admin_user_id}/
 - 与 SBX Fork 并行，不替代既有 Fork 机制
 """
 
@@ -19,7 +19,7 @@ from app.utils.simple_activation_manager import (
     ActivationRecord,
     ActivationStatus,
     SimpleActivationManager,
-    get_simple_base_dir,
+    get_simple_test_base_dir,
 )
 
 
@@ -57,7 +57,7 @@ def _owner_match(rec: ActivationRecord, user: Dict[str, Any]) -> bool:
 
 
 def _ensure_workspace_dir(workspace_root: str) -> Path:
-    base = get_simple_base_dir()
+    base = get_simple_test_base_dir()
     root = (base / workspace_root).resolve()
     (root / "reports").mkdir(parents=True, exist_ok=True)
     return root
@@ -70,7 +70,7 @@ def ensure_admin_resident_workspace(admin_user: Dict[str, Any]) -> Tuple[Activat
     Returns:
         (record, created)
     """
-    manager = SimpleActivationManager()
+    manager = SimpleActivationManager(base_dir=str(get_simple_test_base_dir()))
     records = manager.list_activations()
 
     # 1) 优先复用已存在的 resident workspace

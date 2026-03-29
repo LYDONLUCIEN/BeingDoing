@@ -12,6 +12,7 @@ import RuminationSectionProgress from '@/components/explore/RuminationSectionPro
 import RuminationTableWidget from '@/components/explore/RuminationTableWidget';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { apiClient, getApiErrorMessage } from '@/lib/api/client';
+import { authApi } from '@/lib/api/auth';
 import {
   PHASES,
   loadSession,
@@ -76,7 +77,8 @@ export default function ChatPhasePage() {
   const [conclusionLoading, setConclusionLoading] = useState(false);
   const [adminDebugBypass, setAdminDebugBypass] = useState(false);
   const [adminPolicyLoaded, setAdminPolicyLoaded] = useState(false);
-  const { user } = useAuthStore();
+  const [stepLocked, setStepLocked] = useState(false);
+  const { user, setTokens } = useAuthStore();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatBodyRef = useRef<HTMLDivElement>(null);
@@ -91,7 +93,7 @@ export default function ChatPhasePage() {
   };
   const phaseInfo = PHASES.find((p) => p.key === phase);
   const phaseLabel = t(`explore.chat.phaseLabels.${phase}`);
-  const canCreateMoreThreads = adminDebugBypass || threads.length < 5;
+  const canCreateMoreThreads = !stepLocked && (adminDebugBypass || threads.length < 5);
 
   /** 仅在线程 id 集合变化时触发「加载消息」effect，避免因 threads 引用反复变（persist / save 后 getThreads）而重复 init */
   const threadListSignature = useMemo(() => threads.map((t) => t.id).join('|'), [threads]);
@@ -205,18 +207,21 @@ export default function ChatPhasePage() {
   useEffect(() => {
     if (!activationCode || !phase) return;
     setThreadsFetched(false);
+    setStepLocked(false);
     let cancelled = false;
     (async () => {
       try {
         const res = await apiClient.get('/simple-chat/threads', {
           params: { activation_code: activationCode, phase: BACKEND_PHASE[phase] },
         });
+        setStepLocked(Boolean(res.data?.step_locked));
         const raw = (res.data?.threads ?? []) as Array<{
           id: string;
           title: string;
           status: string;
           createdAt: number;
           dimensionConclusion?: DimensionConclusionData;
+          step_locked?: boolean;
         }>;
         const list: ChatThread[] = raw.map((t) => ({
           id: t.id,
@@ -236,6 +241,9 @@ export default function ChatPhasePage() {
               });
               const history: any[] = h.data.messages ?? [];
               const meta = h.data?.metadata ?? {};
+              if (typeof meta?.step_locked === 'boolean') {
+                setStepLocked(Boolean(meta.step_locked));
+              }
               if (meta?.session_id) sessionIdByThread[th.id] = String(meta.session_id);
               const msgs = mapHistoryToThreadMessages(history, meta);
               const concl = meta.dimension_conclusion as DimensionConclusionData | undefined;
@@ -306,11 +314,45 @@ export default function ChatPhasePage() {
       // 若该 step 已有历史（无 thread_id 默认会话），优先恢复，不主动 init 创建新会话
       (async () => {
         try {
+          // 防止刷新竞态导致误判为空：先再次确认后端 threads。
+          const threadsRes = await apiClient.get('/simple-chat/threads', {
+            params: { activation_code: activationCode, phase: BACKEND_PHASE[phase] },
+          });
+          const backendThreads = (threadsRes.data?.threads ?? []) as Array<{
+            id: string;
+            title: string;
+            status: string;
+            createdAt: number;
+            dimensionConclusion?: DimensionConclusionData;
+          }>;
+          if (!cancelled && backendThreads.length > 0) {
+            const syncedThreads: ChatThread[] = backendThreads.map((t) => ({
+              id: t.id,
+              title: t.title,
+              status: t.status as 'in-progress' | 'completed',
+              messages: [],
+              createdAt: t.createdAt,
+              dimensionConclusion: t.dimensionConclusion,
+            }));
+            setThreadsForPhase(activationCode, phase, syncedThreads);
+            setThreads(syncedThreads);
+            const first = syncedThreads[0];
+            setActiveThreadIdState(first.id);
+            setActiveThreadId(activationCode, phase, first.id);
+            setBackendSyncedThreadId(first.id);
+            setMessages([]);
+            setInitLoading(false);
+            return;
+          }
+
           const historyRes = await apiClient.get('/simple-chat/history', {
             params: { activation_code: activationCode, phase: BACKEND_PHASE[phase] },
           });
           const history: any[] = historyRes.data.messages ?? [];
           const meta = historyRes.data?.metadata ?? {};
+          if (typeof meta?.step_locked === 'boolean') {
+            setStepLocked(Boolean(meta.step_locked));
+          }
           const sessId = historyRes.data?.activation?.session_id || meta?.session_id;
           if (sessId && !cancelled) {
             setBackendSessionId(sessId);
@@ -318,7 +360,8 @@ export default function ChatPhasePage() {
             saveSession({ ...s, sessionId: sessId });
           }
           if (!cancelled && history.length > 0) {
-            const recoveredId = getActiveThreadId(activationCode, phase) || createThreadId();
+            // 仅用于前端展示历史，不绑定后端 thread_id，避免刷新时误创建新会话
+            const recoveredId = getActiveThreadId(activationCode, phase) || `__history_fallback__${phase}`;
             const msgs = mapHistoryToThreadMessages(history, meta);
             const recoveredThread: ChatThread = {
               id: recoveredId,
@@ -333,7 +376,7 @@ export default function ChatPhasePage() {
             setThreads(merged);
             setActiveThreadIdState(recoveredId);
             setActiveThreadId(activationCode, phase, recoveredId);
-            setBackendSyncedThreadId(recoveredId);
+            setBackendSyncedThreadId(null);
             setMessages(msgs);
           } else {
             // 仅首次且无历史时才触发 init 生成首轮问题
@@ -378,9 +421,46 @@ export default function ChatPhasePage() {
     if (activeId) {
       const thread = list.find((t) => t.id === activeId);
       if (thread) {
-        setMessages(thread.messages);
-        setBackendSyncedThreadId(activeId);
-        setInitLoading(false);
+        // 兜底：若后端线程已存在但消息为空（常见于首次激活被预绑定空会话），
+        // 则对该线程补一次 init，确保首轮问题可见。
+        if ((thread.messages || []).length === 0) {
+          (async () => {
+            try {
+              const initRes = await apiClient.post('/simple-chat/init', {
+                activation_code: activationCode,
+                phase: BACKEND_PHASE[phase],
+                thread_id: activeId,
+              });
+              const initMsgs: any[] = initRes.data.messages ?? [];
+              const now = Date.now();
+              const msgs: ThreadMessage[] = initMsgs.map((m, i) => ({
+                id: `init_existing_${now}_${i}`,
+                role: m.role as 'user' | 'assistant',
+                content: m.content ?? '',
+                createdAt: now,
+              }));
+              if (!cancelled) {
+                const mergedThread: ChatThread = { ...thread, messages: msgs };
+                saveThread(activationCode, phase, mergedThread);
+                setThreads(getThreads(activationCode, phase));
+                setMessages(msgs);
+                setBackendSyncedThreadId(activeId);
+              }
+            } catch (err: any) {
+              if (!cancelled) {
+                setChatError(getApiErrorMessage(err, '初始化失败，请刷新后重试'));
+                setMessages(thread.messages || []);
+                setBackendSyncedThreadId(activeId);
+              }
+            } finally {
+              if (!cancelled) setInitLoading(false);
+            }
+          })();
+        } else {
+          setMessages(thread.messages);
+          setBackendSyncedThreadId(activeId);
+          setInitLoading(false);
+        }
       } else {
         setMessages([]);
         setInitLoading(false);
@@ -416,14 +496,17 @@ export default function ChatPhasePage() {
   // 输入锁定规则：1) 从未出现过结论卡 → 可输入；2) 结论卡出现且用户已确认完成 → 锁定；
   // 3) 用户选择「继续完善」后 → 折叠结论卡，可输入
   const isSelectedCompleted = selectedThread?.status === 'completed';
-  const isBackendSynced = activeThreadId === backendSyncedThreadId;
+  const isBackendSynced =
+    !activeThreadId || !backendSyncedThreadId || activeThreadId === backendSyncedThreadId;
   const hasCollapsedConclusion = messages.some(
     (m) => m.type === 'dimension_conclusion' && m.conclusionCollapsed
   );
   const isReadOnly =
     isSelectedCompleted || // 用户已确认完成，锁定
+    (stepLocked && !adminDebugBypass) || // 阶段已锁定，普通用户只读
     (!isBackendSynced && !!activeThreadId); // 切到其它 thread 时暂不输入（未同步）
-  const canContinue = !!selectedThread && isSelectedCompleted;
+  const canContinue =
+    !!selectedThread && (isSelectedCompleted || (stepLocked && !adminDebugBypass));
 
   const checkScrollPosition = useCallback(() => {
     const el = chatBodyRef.current;
@@ -455,6 +538,16 @@ export default function ChatPhasePage() {
     ta.style.overflowY = ta.scrollHeight > 24 * 7 ? 'auto' : 'hidden';
   }, [input]);
 
+  // 兜底：避免初始化请求异常时长期停留在“正在准备中”
+  useEffect(() => {
+    if (!initLoading) return;
+    const timer = window.setTimeout(() => {
+      setInitLoading(false);
+      setChatError((prev) => prev || '准备时间较长，请刷新页面后重试');
+    }, 45000);
+    return () => window.clearTimeout(timer);
+  }, [initLoading]);
+
   const handleSend = async (prefill?: string, skipAddUser?: boolean) => {
     const text = prefill ?? input.trim();
     if (!activationCode || !text || sending || isReadOnly) return;
@@ -471,24 +564,46 @@ export default function ChatPhasePage() {
     setSending(true);
 
     abortControllerRef.current = new AbortController();
+    let assistantHasVisibleOutput = false;
     try {
       const apiBase = (process.env.NEXT_PUBLIC_API_URL || '').trim();
       const streamUrl = `${apiBase ? apiBase.replace(/\/+$/, '') : ''}/api/v1/simple-chat/message/stream`;
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-      const res = await fetch(streamUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          activation_code: activationCode,
-          message: userMsg.content,
-          phase: BACKEND_PHASE[phase],
-          thread_id: activeThreadId || undefined,
-        }),
-        signal: abortControllerRef.current.signal,
-      });
+      const effectiveThreadId =
+        activeThreadId && backendSyncedThreadId && activeThreadId === backendSyncedThreadId
+          ? activeThreadId
+          : undefined;
+      const doStreamFetch = async (accessToken: string | null) =>
+        fetch(streamUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          },
+          body: JSON.stringify({
+            activation_code: activationCode,
+            message: userMsg.content,
+            phase: BACKEND_PHASE[phase],
+            thread_id: effectiveThreadId,
+          }),
+          signal: abortControllerRef.current.signal,
+        });
+
+      let res = await doStreamFetch(token);
+      if (res.status === 401) {
+        try {
+          const refreshed = await authApi.refresh();
+          const nextToken = refreshed?.data?.token || null;
+          if (nextToken) {
+            apiClient.setToken(nextToken);
+            setTokens(nextToken);
+            res = await doStreamFetch(nextToken);
+          }
+        } catch {
+          // refresh 失败后继续走统一 401 提示
+        }
+      }
+
       if (!res.ok) {
         if (res.status === 401) {
           throw new Error('登录状态已失效，请重新登录后继续对话');
@@ -533,7 +648,7 @@ export default function ChatPhasePage() {
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === assistantId
-                      ? { ...m, thinkChunkContent: (m.thinkChunkContent || '') + chunk }
+                      ? { ...m, thinkChunkContent: chunk }
                       : m
                   )
                 );
@@ -551,6 +666,7 @@ export default function ChatPhasePage() {
             }
             if (payload.chunk) {
               fullReply += payload.chunk;
+              if (String(payload.chunk || '').trim()) assistantHasVisibleOutput = true;
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === assistantId ? { ...m, content: (m.content || '') + payload.chunk } : m
@@ -561,6 +677,7 @@ export default function ChatPhasePage() {
               setConclusionLoading(true);
             }
             if (payload.dimension_conclusion) {
+              assistantHasVisibleOutput = true;
               setConclusionLoading(false);
               const concl = payload.dimension_conclusion as DimensionConclusionData;
               const conclMsg: ThreadMessage = {
@@ -576,6 +693,7 @@ export default function ChatPhasePage() {
               setMessages((prev) => [...prev, conclMsg]);
             }
             if (payload.table_widget) {
+              assistantHasVisibleOutput = true;
               const tablePayload = payload.table_widget as ThreadMessage['tablePayload'];
               const tableMsg: ThreadMessage = {
                 id: `table_${Date.now()}`,
@@ -589,6 +707,7 @@ export default function ChatPhasePage() {
             }
             if (payload.done && payload.response != null) {
               fullReply = payload.response;
+              if (String(payload.response || '').trim()) assistantHasVisibleOutput = true;
               const doneAt = Date.now();
               setMessages((prev) =>
                 prev.map((m) =>
@@ -607,11 +726,26 @@ export default function ChatPhasePage() {
     } finally {
       setSending(false);
       setConclusionLoading(false);
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantId && m.thinkStreaming ? { ...m, thinkStreaming: false, thinkChunkContent: undefined } : m
-        )
-      );
+      setMessages((prev) => {
+        const normalized = prev.map((m) =>
+          m.id === assistantId && m.thinkStreaming
+            ? { ...m, thinkStreaming: false, thinkChunkContent: undefined }
+            : m
+        );
+        // 避免后端失败时遗留空 assistant 气泡
+        if (!assistantHasVisibleOutput) {
+          return normalized.filter(
+            (m) =>
+              !(
+                m.id === assistantId &&
+                !(m.content || '').trim() &&
+                !m.thinkContent &&
+                !m.thinkChunkContent
+              )
+          );
+        }
+        return normalized;
+      });
       abortControllerRef.current = null;
       // 发送完成后将焦点还给输入框，支持连续 Enter 对话无需再点鼠标。
       requestAnimationFrame(() => {
@@ -641,6 +775,7 @@ export default function ChatPhasePage() {
 
   const handleNewChat = async () => {
     if (!activationCode || !phase) return;
+    if (stepLocked && !adminDebugBypass) return;
     const list = getThreads(activationCode, phase);
     if (!adminDebugBypass && list.length >= 5) return;
 
@@ -767,22 +902,36 @@ export default function ChatPhasePage() {
 
   const handleDeleteThread = (thread: ChatThread) => {
     if (!activationCode || !phase) return;
-    const list = removeThread(activationCode, phase, thread.id);
-    setThreads(list);
-    if (thread.id === activeThreadId) {
-      if (list.length > 0) {
-        const next = list[0];
-        setActiveThreadIdState(next.id);
-        setActiveThreadId(activationCode, phase, next.id);
-        setMessages(next.messages);
-        setBackendSyncedThreadId(next.id);
-      } else {
-        setActiveThreadIdState(null);
-        setMessages([]);
-        setBackendSyncedThreadId(null);
-        handleNewChat();
+    if (stepLocked && !adminDebugBypass) return;
+    void (async () => {
+      try {
+        await apiClient.post('/simple-chat/thread/delete', {
+          activation_code: activationCode,
+          phase: BACKEND_PHASE[phase],
+          thread_id: thread.id,
+        });
+      } catch (err: any) {
+        setChatError(getApiErrorMessage(err, '删除失败，请稍后重试'));
+        return;
       }
-    }
+      const list = removeThread(activationCode, phase, thread.id);
+      setThreads(list);
+      if (thread.id === activeThreadId) {
+        if (list.length > 0) {
+          const next = list[0];
+          setActiveThreadIdState(next.id);
+          setActiveThreadId(activationCode, phase, next.id);
+          setMessages(next.messages);
+          setBackendSyncedThreadId(next.id);
+        } else {
+          setActiveThreadIdState(null);
+          setMessages([]);
+          setBackendSyncedThreadId(null);
+          // A 方案：不在删除回调里主动创建，统一交给「list.length===0」初始化 effect 处理，
+          // 避免删除后与 effect 同时触发造成重复创建会话。
+        }
+      }
+    })();
   };
 
   const handleStopStream = () => abortControllerRef.current?.abort();

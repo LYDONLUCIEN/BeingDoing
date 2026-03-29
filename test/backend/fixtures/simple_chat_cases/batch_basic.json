@@ -1,0 +1,43 @@
+{
+  "cases": [
+    {
+      "name": "batch_continue",
+      "seed_fixture": {
+        "report_dir": "test/backend/fixtures/simple_chat_reports/mock_values_pending",
+        "ttl_minutes": 180
+      },
+      "phase": "values",
+      "thread_id": "t_mock_pending_001",
+      "message": "继续聊聊",
+      "mock": {
+        "stream_reply": "收到，我们继续。\n[STATE_JSON]{\"state\":\"continue\",\"draft\":null}[/STATE_JSON]"
+      }
+    },
+    {
+      "name": "batch_pending_confirmed_emit_card",
+      "seed_fixture": {
+        "report_dir": "test/backend/fixtures/simple_chat_reports/mock_values_pending",
+        "ttl_minutes": 180
+      },
+      "phase": "values",
+      "thread_id": "t_mock_pending_001",
+      "message": "我确认总结无误",
+      "mock": {
+        "pending_decision": {
+          "state": "confirmed",
+          "content": "收到确认，开始生成结论卡。"
+        },
+        "dimension_conclusion": {
+          "summary": "你重视成长、关系和身心平衡，并追求长期稳定投入。",
+          "keywords": [
+            "成长",
+            "关系",
+            "平衡",
+            "稳定投入"
+          ]
+        }
+      }
+    }
+  ]
+}
+

@@ -163,14 +163,13 @@
 }
 .flow-light .flow-msg-think-preview {
   min-height: 1.5em;
-  max-height: 4.5em;
-  overflow-y: auto;
-  overflow-x: hidden;
+  max-height: 1.5em;
+  overflow: hidden;
   font-size: 11px;
   line-height: 1.5;
   color: #a8a29e;
-  white-space: pre-wrap;
-  word-break: break-word;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   padding: 2px 0;
 }
 .flow-light .flow-msg-think-preview::-webkit-scrollbar {

@@ -1,0 +1,14 @@
+{
+  "name": "single_values_continue",
+  "seed_fixture": {
+    "report_dir": "test/backend/fixtures/simple_chat_reports/mock_values_pending",
+    "ttl_minutes": 180
+  },
+  "phase": "values",
+  "thread_id": "t_mock_pending_001",
+  "message": "我想继续补充细节",
+  "mock": {
+    "stream_reply": "好的，我们继续。\n[STATE_JSON]{\"state\":\"continue\",\"draft\":null}[/STATE_JSON]"
+  }
+}
+

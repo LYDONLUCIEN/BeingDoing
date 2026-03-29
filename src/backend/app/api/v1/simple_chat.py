@@ -9,7 +9,7 @@
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import AsyncIterator, Dict, List, Optional
+from typing import AsyncIterator, Dict, List, Optional, Sequence, Tuple, Callable
 import asyncio
 import json
 import random
@@ -29,6 +29,8 @@ from app.utils.simple_activation_manager import (
     ActivationStatus,
     bind_session_id_for_ensure_report,
     get_effective_simple_root,
+    get_activation_manager_for_code,
+    get_activation_with_manager,
 )
 from app.utils.sandbox_fork import assert_sandbox_not_expired
 from app.utils.conversation_file_manager import ConversationFileManager
@@ -74,6 +76,9 @@ SIMPLE_QUESTION_SAMPLE_SIZE = 6
 MAX_HISTORY_TURNS = 30
 # 并发 LLM 调用限制（0=不限制）
 _LLM_SEM = None
+PENDING_JUDGE_TIMEOUT_SECONDS = 20
+CONCLUSION_GEN_TIMEOUT_SECONDS = 25
+PENDING_HEARTBEAT_SECONDS = 2.0
 CONCLUSION_STATE_NONE = "none"
 CONCLUSION_STATE_PENDING = "pending"
 CONCLUSION_STATE_CONFIRMED = "confirmed"
@@ -575,7 +580,7 @@ def _resolve_report_context(
 ):
     """
     统一解析：activation -> report -> step-session 存储上下文。
-    沙箱激活码使用 data/simple/sandboxes/{fork_id}/ 作为存储根。
+    沙箱激活码使用 data/test/simple/sandboxes/{fork_id}/ 作为存储根。
     """
     rec = _resolve_activation_for_user(manager, activation_code, current_user)
     user_id = (current_user or {}).get("user_id")
@@ -829,6 +834,84 @@ async def _decide_pending_action_by_llm(
     return {"state": state, "content": content}
 
 
+async def _decide_pending_action_by_llm_streaming(
+    phase: str,
+    pending_conclusion: Dict,
+    user_reply: str,
+    *,
+    vip_level: int,
+    emit_event,
+) -> Dict:
+    """
+    pending 判定的流式版本：
+    - reasoner 模型走 chat_stream，实时透传 think_start/think_chunk/think_end
+    - 同时收集 content 作为最终判定 JSON 文本
+    - 若流式失败，降级到非流式判定逻辑
+    """
+    llm = _get_reasoning_llm_provider(vip_level=vip_level)
+    model_name = str(getattr(llm, "model", "") or "")
+    is_reasoner = "reasoner" in model_name.lower()
+    summary = (pending_conclusion or {}).get("summary") or (pending_conclusion or {}).get("ai_summary") or ""
+    keywords = (pending_conclusion or {}).get("keywords") or []
+    kw_text = "、".join([str(k).strip() for k in keywords if str(k).strip()][:10]) or "（无）"
+    token_prompt = f"""你是职业咨询系统中的“确认状态判定器”。
+
+当前阶段：{phase}
+待确认总结摘要：{summary}
+待确认关键词：{kw_text}
+用户最新回复：{(user_reply or "").strip()}
+
+请严格输出以下两行，不要输出任何其他内容：
+<STATE>confirmed|rejected|continue</STATE>
+<CONTENT>给用户展示的一句话（20-80字）</CONTENT>
+
+判定要求：
+1) 只有当用户明确同意当前总结内容时，state 才能是 confirmed。
+2) 当用户表达不认可、希望调整、继续讨论时，state 为 rejected。
+3) 无法明确同意或否定时，state 为 continue。
+4) 像“嗯/好/行”等口头语，若缺乏明确语义，优先判为 continue。
+"""
+
+    if is_reasoner:
+        try:
+            out_parts: List[str] = []
+            async for item in llm.chat_stream([LLMMessage(role="user", content=token_prompt)], temperature=0.1):
+                if isinstance(item, dict):
+                    t = str(item.get("_t") or "")
+                    if t == "think_start":
+                        await emit_event({"think_start": True})
+                    elif t == "think_chunk":
+                        c = str(item.get("content") or "")
+                        if c:
+                            await emit_event({"think_chunk": c})
+                    elif t == "think_end":
+                        await emit_event({"think_end": str(item.get("content") or "")})
+                    continue
+                out_parts.append(str(item or ""))
+            raw = "".join(out_parts).strip()
+            obj = _extract_json_object(raw) or _extract_state_content_tokens(raw) or {}
+            state = str(obj.get("state") or "continue").strip().lower()
+            if state not in {"confirmed", "rejected", "continue"}:
+                state = "continue"
+            content = str(obj.get("content") or "").strip()
+            if content:
+                return {"state": state, "content": content}
+        except Exception as e:
+            logger.warning(
+                "[pending_judge] reasoner stream failed model=%s err_type=%s err=%s; fallback to non-stream",
+                model_name or "unknown",
+                type(e).__name__,
+                e,
+            )
+
+    return await _decide_pending_action_by_llm(
+        phase,
+        pending_conclusion,
+        user_reply,
+        vip_level=vip_level,
+    )
+
+
 def _build_pending_confirmation_text(phase: str, conclusion: dict) -> str:
     """在用户确认前先给可读摘要，不直接输出结论卡。"""
     summary = (conclusion or {}).get("summary") or ""
@@ -917,6 +1000,12 @@ class ThreadCompleteRequest(BaseModel):
     thread_id: str
 
 
+class ThreadDeleteRequest(BaseModel):
+    activation_code: str
+    phase: str
+    thread_id: str
+
+
 def _get_user_id_from_activation(rec) -> Optional[str]:
     """从激活码记录解析 user_id（owner_user_id 或 owner_email）"""
     uid = (getattr(rec, "owner_user_id", None) or "").strip()
@@ -930,8 +1019,7 @@ def _get_user_id_from_activation(rec) -> Optional[str]:
 
 def _load_basic_info_from_activation(activation_code: str) -> str:
     """根据激活码加载 basic_info（用户级），格式化为提示词用文本"""
-    manager = SimpleActivationManager()
-    rec = manager.get_activation(activation_code)
+    _manager, rec = get_activation_with_manager(activation_code)
     if not rec:
         return "暂无"
     user_id = _get_user_id_from_activation(rec)
@@ -948,8 +1036,7 @@ def _load_prior_context_from_activation(
     activation_code: str, phase: str, report: Optional[dict] = None
 ) -> str:
     """根据激活码和阶段加载上一轮咨询结果（report 维度）"""
-    manager = SimpleActivationManager()
-    rec = manager.get_activation(activation_code)
+    _manager, rec = get_activation_with_manager(activation_code)
     if not rec:
         return ""
     root = get_effective_simple_root(rec)
@@ -961,13 +1048,37 @@ def _load_prior_context_from_activation(
     return load_prior_context(rec.session_id, phase, str(root))
 
 
+def _is_step_locked(registry: ReportRegistry, report_id: str, phase_step: str) -> bool:
+    record = registry.get_report_by_id(report_id) or {}
+    step = ((record.get("steps") or {}).get(phase_step)) or {}
+    return bool(step.get("locked", False))
+
+
+def _assert_step_editable(
+    *,
+    registry: ReportRegistry,
+    report_id: str,
+    phase_step: str,
+    current_user: Optional[dict],
+    rec,
+) -> None:
+    # 管理员调试工作区可豁免（用于 sandbox/ADM 定向调试）
+    if _can_bypass_flow_limits(current_user, rec):
+        return
+    if _is_step_locked(registry, report_id, phase_step):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="该阶段已提交并锁定，不能再修改，请继续下一阶段",
+        )
+
+
 @router.get("/survey")
 def get_survey(
     activation_code: str,
     current_user: dict = Depends(get_current_user),
 ):
     """获取指定激活码下的调研问卷数据（用户级，仅 1 份）"""
-    manager = SimpleActivationManager()
+    manager = get_activation_manager_for_code(activation_code)
     rec = _resolve_activation_for_user(manager, activation_code, current_user)
     user_id = (current_user or {}).get("user_id") or (current_user or {}).get("email") or ""
     data = load_basic_info_by_user(user_id) if user_id else None
@@ -987,7 +1098,7 @@ def get_prior_context(
     current_user: dict = Depends(get_current_user),
 ):
     """获取指定阶段的上一轮咨询结果文本（report 维度）"""
-    manager = SimpleActivationManager()
+    manager = get_activation_manager_for_code(activation_code)
     rec = _resolve_activation_for_user(manager, activation_code, current_user)
     user_id = (current_user or {}).get("user_id") or (current_user or {}).get("email") or ""
     root = get_effective_simple_root(rec)
@@ -1003,7 +1114,7 @@ async def save_prior_context_endpoint(
     current_user: dict = Depends(get_current_user),
 ):
     """保存（上传）指定阶段的上一轮咨询结果文本（report 维度）"""
-    manager = SimpleActivationManager()
+    manager = get_activation_manager_for_code(request.activation_code)
     rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
     if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="激活码已过期")
@@ -1029,7 +1140,7 @@ async def save_survey(
     current_user: dict = Depends(get_current_user),
 ):
     """保存调研问卷数据（用户级，仅保留最新 1 份）"""
-    manager = SimpleActivationManager()
+    manager = get_activation_manager_for_code(request.activation_code)
     rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
     if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
         raise HTTPException(
@@ -1072,7 +1183,7 @@ def get_rumination_progress(
 ):
     """获取 rumination 阶段进度"""
     try:
-        manager = SimpleActivationManager()
+        manager = get_activation_manager_for_code(activation_code)
         rec = _resolve_activation_for_user(manager, activation_code, current_user)
         root = get_effective_simple_root(rec)
         registry = ReportRegistry(base_dir=str(root))
@@ -1102,7 +1213,7 @@ def save_rumination_progress_endpoint(
     current_user: dict = Depends(get_current_user),
 ):
     """保存 rumination 阶段进度"""
-    manager = SimpleActivationManager()
+    manager = get_activation_manager_for_code(request.activation_code)
     rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
     if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(
         rec, current_user
@@ -1153,7 +1264,7 @@ def rumination_table_submit(
     current_user: dict = Depends(get_current_user),
 ):
     """提交 rumination 筛选表格数据，更新 progress，并可能返回下一步表格。"""
-    manager = SimpleActivationManager()
+    manager = get_activation_manager_for_code(request.activation_code)
     rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
     if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(
         rec, current_user
@@ -1212,7 +1323,7 @@ def rumination_get_table(
     current_user: dict = Depends(get_current_user),
 ):
     """获取 rumination 筛选流程的当前步骤表格（进入筛选时或下一步）"""
-    manager = SimpleActivationManager()
+    manager = get_activation_manager_for_code(activation_code)
     rec = _resolve_activation_for_user(manager, activation_code, current_user)
     root = get_effective_simple_root(rec)
     registry = ReportRegistry(base_dir=str(root))
@@ -1340,6 +1451,63 @@ def _split_visible_reply_and_state(raw_text: str) -> tuple[str, Optional[Dict]]:
         return visible, None
 
 
+def _strip_hidden_blocks_for_stream(
+    raw_text: str,
+    block_markers: Sequence[Tuple[str, str]],
+) -> str:
+    """
+    流式展示时隐藏协议块（可配置起止标记）：
+    - 去掉已闭合 start...end
+    - 若出现未闭合 start，从 start 起全部截断
+    - 末尾若是 start 的前缀片段，先暂存不输出，避免闪现
+    """
+    if not raw_text:
+        return ""
+    txt = raw_text
+    for start_marker, end_marker in block_markers:
+        if not start_marker or not end_marker:
+            continue
+        txt = re.sub(
+            f"{re.escape(start_marker)}.*?{re.escape(end_marker)}",
+            "",
+            txt,
+            flags=re.DOTALL,
+        )
+        start = txt.find(start_marker)
+        if start >= 0:
+            txt = txt[:start]
+        hold = 0
+        max_k = min(len(start_marker) - 1, len(txt))
+        for k in range(max_k, 0, -1):
+            if txt.endswith(start_marker[:k]):
+                hold = k
+                break
+        if hold:
+            txt = txt[:-hold]
+    return txt
+
+
+def _build_stream_hidden_block_filter(
+    block_markers: Sequence[Tuple[str, str]],
+) -> Callable[[str], str]:
+    """
+    构建“累计文本 -> 本次可见增量”的过滤器。
+    通过闭包持有已输出内容，确保 SSE chunk 增量一致。
+    """
+    emitted_visible = ""
+
+    def consume(cumulative_raw_text: str) -> str:
+        nonlocal emitted_visible
+        visible = _strip_hidden_blocks_for_stream(cumulative_raw_text, block_markers)
+        if len(visible) <= len(emitted_visible):
+            return ""
+        delta = visible[len(emitted_visible) :]
+        emitted_visible = visible
+        return delta
+
+    return consume
+
+
 @router.post("/message", response_model=SimpleChatResponse)
 async def simple_chat(
     request: SimpleChatRequest,
@@ -1353,7 +1521,7 @@ async def simple_chat(
     - 调用 LLM 得到回复
     - 将本轮 user / assistant 消息写入 data/simple 下
     """
-    manager = SimpleActivationManager()
+    manager = get_activation_manager_for_code(request.activation_code)
     phase = (request.phase or "values").strip() or "values"
     rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
         manager=manager,
@@ -1375,6 +1543,14 @@ async def simple_chat(
 
     # 使用 report 目录保存对话
     session_id = report["report_id"]
+    registry = ReportRegistry(base_dir=str(get_effective_simple_root(rec)))
+    _assert_step_editable(
+        registry=registry,
+        report_id=report["report_id"],
+        phase_step=phase_step,
+        current_user=current_user,
+        rec=rec,
+    )
 
     # 读取历史消息（只取当前分类）
     history_messages: List[dict] = await conv_manager.get_messages(
@@ -1515,7 +1691,7 @@ async def simple_init(
 
 
 async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> SimpleChatResponse:
-    manager = SimpleActivationManager()
+    manager = get_activation_manager_for_code(request.activation_code)
     phase = (request.phase or "values").strip() or "values"
     rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
         manager=manager,
@@ -1554,6 +1730,14 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
                 "step_id": phase_step,
             },
         )
+    registry = ReportRegistry(base_dir=str(get_effective_simple_root(rec)))
+    _assert_step_editable(
+        registry=registry,
+        report_id=report["report_id"],
+        phase_step=phase_step,
+        current_user=current_user,
+        rec=rec,
+    )
 
     # 没有历史：生成一条首轮引导问题
     vip_level = getattr(rec, "vip_level", 1) or 1
@@ -1647,7 +1831,7 @@ async def reopen_thread(
     current_user: dict = Depends(get_current_user),
 ):
     """用户选择「再聊聊」完善答案时，清除完成状态以便继续对话"""
-    manager = SimpleActivationManager()
+    manager = get_activation_manager_for_code(request.activation_code)
     phase_val = (request.phase or "values").strip() or "values"
     try:
         rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
@@ -1665,6 +1849,14 @@ async def reopen_thread(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="解析会话上下文失败，请刷新页面后重试",
         ) from e
+    registry = ReportRegistry(base_dir=str(get_effective_simple_root(rec)))
+    _assert_step_editable(
+        registry=registry,
+        report_id=report["report_id"],
+        phase_step=phase_step,
+        current_user=current_user,
+        rec=rec,
+    )
     # 允许在已锁定阶段继续对话：用户明确选择「再聊聊」时，可对当前线程补充完善
     # locked 仅限制「切换会话」，不限制对已选线程的继续编辑
     conv_data = await conv_manager.get_conversation_data(report["report_id"], category)
@@ -1699,7 +1891,7 @@ async def mark_thread_complete(
     current_user: dict = Depends(get_current_user),
 ):
     """标记某对话为已完成（用户点击「确认没有问题」后调用）"""
-    manager = SimpleActivationManager()
+    manager = get_activation_manager_for_code(request.activation_code)
     phase_val = (request.phase or "values").strip() or "values"
     rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
         manager=manager,
@@ -1801,7 +1993,7 @@ async def list_threads(
     获取某阶段下的线程列表（后端为数据源，支持跨设备同步）。
     返回 record.json 中 steps[phase].session_ids 对应的线程元信息。
     """
-    manager = SimpleActivationManager()
+    manager = get_activation_manager_for_code(activation_code)
     phase_val = (phase or "values").strip() or "values"
     phase_step = ReportRegistry.normalize_step_id(phase_val)
     rec = _resolve_activation_for_user(manager, activation_code, current_user)
@@ -1811,10 +2003,12 @@ async def list_threads(
 
     root = get_effective_simple_root(rec)
     registry = ReportRegistry(base_dir=str(root))
+    # 注意：threads 列表是只读入口，不在这里自动绑定默认 session，
+    # 否则首次激活会出现“有线程但无消息”，前端误判为已初始化。
     report = registry.ensure_report(
         activation_code=rec.code,
         user_id=user_id,
-        session_id=bind_session_id_for_ensure_report(rec),
+        session_id=None,
     )
     if not report:
         raise HTTPException(status_code=500, detail="报告初始化失败")
@@ -1855,6 +2049,7 @@ async def list_threads(
             "createdAt": ts_ms or int(datetime.now(timezone.utc).timestamp() * 1000),
             "dimensionConclusion": cmeta.get("final"),
             "selected": tid == selected_id,
+            "step_locked": bool(step.get("locked", False)),
         })
 
     return SimpleHistoryResponse(
@@ -1864,6 +2059,7 @@ async def list_threads(
             "threads": threads,
             "report_id": report_id,
             "step_id": phase_step,
+            "step_locked": bool(step.get("locked", False)),
         },
     )
 
@@ -1879,7 +2075,7 @@ async def simple_history(
     获取某个激活码 + 阶段下的全部历史消息
     """
     try:
-        manager = SimpleActivationManager()
+        manager = get_activation_manager_for_code(activation_code)
         phase_val = (phase or "values").strip() or "values"
         rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
             manager=manager,
@@ -1889,11 +2085,15 @@ async def simple_history(
             thread_id=thread_id,
         )
         session_id = report["report_id"]
+        root = get_effective_simple_root(rec)
+        registry = ReportRegistry(base_dir=str(root))
 
         conv_data = await conv_manager.get_conversation_data(session_id, category)
         history_messages = conv_data.get("messages", [])
         metadata = conv_data.get("metadata", {})
         cmeta = _read_conclusion_meta(metadata)
+        record = registry.get_report_by_id(report["report_id"]) or {}
+        step_payload = ((record.get("steps") or {}).get(phase_step)) or {}
 
         return SimpleHistoryResponse(
             code=200,
@@ -1904,6 +2104,7 @@ async def simple_history(
                     "session_id": logical_session_id,
                     "thread_completed": cmeta.get("thread_completed", False),
                     "dimension_conclusion": cmeta.get("final"),
+                    "step_locked": bool(step_payload.get("locked", False)),
                 },
                 "activation": {
                     "activation_code": rec.code,
@@ -1942,7 +2143,7 @@ async def simple_chat_stream(
     - 使用 chat_stream 按块返回助手回复
     - 结束时保存完整助手回复
     """
-    manager = SimpleActivationManager()
+    manager = get_activation_manager_for_code(request.activation_code)
     phase = (request.phase or "values").strip() or "values"
     rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
         manager=manager,
@@ -1959,6 +2160,14 @@ async def simple_chat_stream(
     session_id = report["report_id"]
     vip_level = getattr(rec, "vip_level", 1) or 1
     storage_root = str(get_effective_simple_root(rec))
+    registry = ReportRegistry(base_dir=storage_root)
+    _assert_step_editable(
+        registry=registry,
+        report_id=report["report_id"],
+        phase_step=phase_step,
+        current_user=current_user,
+        rec=rec,
+    )
 
     async def event_stream() -> AsyncIterator[str]:
         llm = _get_dialogue_llm_provider(vip_level=vip_level)
@@ -2075,24 +2284,95 @@ async def simple_chat_stream(
         conclusion_shown_at = cmeta.get("shown_at")
 
         if pending_conclusion and not cmeta.get("thread_completed"):
-            decision = await _decide_pending_action_by_llm(
-                phase_step,
-                pending_conclusion if isinstance(pending_conclusion, dict) else {},
-                user_content,
-                vip_level=vip_level,
+            pending_events_q: asyncio.Queue = asyncio.Queue()
+
+            async def _emit_pending_event(evt: Dict) -> None:
+                await pending_events_q.put(evt)
+
+            pending_task = asyncio.create_task(
+                _decide_pending_action_by_llm_streaming(
+                    phase_step,
+                    pending_conclusion if isinstance(pending_conclusion, dict) else {},
+                    user_content,
+                    vip_level=vip_level,
+                    emit_event=_emit_pending_event,
+                )
             )
+            pending_timed_out = False
+            elapsed = 0.0
+            while True:
+                if pending_task.done() and pending_events_q.empty():
+                    break
+                try:
+                    evt = await asyncio.wait_for(pending_events_q.get(), timeout=PENDING_HEARTBEAT_SECONDS)
+                    yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+                except asyncio.TimeoutError:
+                    elapsed += PENDING_HEARTBEAT_SECONDS
+                    yield (
+                        f"data: {{\"heartbeat\": \"pending_judge\", \"elapsed\": {int(elapsed)} }}\n\n"
+                    )
+                    if elapsed >= PENDING_JUDGE_TIMEOUT_SECONDS:
+                        pending_timed_out = True
+                        pending_task.cancel()
+                        logger.warning(
+                            "[pending_judge] timeout degrade after %.1fs phase=%s thread=%s",
+                            elapsed,
+                            phase_step,
+                            logical_session_id,
+                        )
+                        break
+
+            if pending_timed_out:
+                try:
+                    await pending_task
+                except Exception:
+                    pass
+                decision = {
+                    "state": "continue",
+                    "content": "当前网络较慢，我们先继续补充，再为你生成结论卡。",
+                }
+            else:
+                try:
+                    decision = await pending_task
+                except asyncio.CancelledError:
+                    decision = {
+                        "state": "continue",
+                        "content": "当前网络较慢，我们先继续补充，再为你生成结论卡。",
+                    }
+                except Exception as e:
+                    logger.warning(
+                        "[pending_judge] streaming task failed err_type=%s err=%s",
+                        type(e).__name__,
+                        e,
+                    )
+                    decision = {
+                        "state": "continue",
+                        "content": "我还不确定你是否确认，我们继续聊一聊更稳妥。",
+                    }
             pending_state = decision.get("state", "continue")
             pending_msg = decision.get("content", "")
 
             if pending_state == "confirmed":
                 reasoning_llm = _get_reasoning_llm_provider(vip_level=vip_level)
-                dimension_conclusion = await check_dimension_complete(
-                    phase_step,
-                    conv_history,
-                    prior_conclusion=pending_conclusion if isinstance(pending_conclusion, dict) else None,
-                    vip_level=vip_level,
-                    llm_provider=reasoning_llm,
-                )
+                try:
+                    dimension_conclusion = await asyncio.wait_for(
+                        check_dimension_complete(
+                            phase_step,
+                            conv_history,
+                            prior_conclusion=pending_conclusion if isinstance(pending_conclusion, dict) else None,
+                            vip_level=vip_level,
+                            llm_provider=reasoning_llm,
+                        ),
+                        timeout=CONCLUSION_GEN_TIMEOUT_SECONDS,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "[conclusion_gen] timeout degrade after %ss phase=%s thread=%s",
+                        CONCLUSION_GEN_TIMEOUT_SECONDS,
+                        phase_step,
+                        logical_session_id,
+                    )
+                    dimension_conclusion = None
                 if not dimension_conclusion and isinstance(pending_conclusion, dict):
                     dimension_conclusion = pending_conclusion
 
@@ -2236,6 +2516,9 @@ async def simple_chat_stream(
             stream_coro = llm.chat_stream(llm_messages, temperature=0.7)
 
             full_think = ""
+            stream_hidden_filter = _build_stream_hidden_block_filter(
+                block_markers=[("[STATE_JSON]", "[/STATE_JSON]")]
+            )
 
             def _process_chunk(c):
                 nonlocal full_reply, full_think
@@ -2254,7 +2537,9 @@ async def simple_chat_stream(
                         out.append(f"data: {{\"think_end\": {json.dumps(tc, ensure_ascii=False)} }}\n\n")
                 elif c:
                     full_reply += c
-                    out.append(f"data: {{\"chunk\": {json.dumps(c, ensure_ascii=False)} }}\n\n")
+                    delta = stream_hidden_filter(full_reply)
+                    if delta:
+                        out.append(f"data: {{\"chunk\": {json.dumps(delta, ensure_ascii=False)} }}\n\n")
                 return out
 
             if sem:
@@ -2280,7 +2565,12 @@ async def simple_chat_stream(
                 stream_usage.get("prompt_tokens"),
             )
 
-        # 保存完整助手回复（含推理模型思考过程）
+        # 3) 解析模型状态输出（STATE_JSON）并驱动 pending 状态
+        raw_full_reply = full_reply
+        visible_reply, state_obj = _split_visible_reply_and_state(raw_full_reply)
+        full_reply = visible_reply
+
+        # 保存助手回复（只保存用户可见文本）
         if full_reply:
             msg_payload = {
                 "role": "assistant",
@@ -2312,10 +2602,6 @@ async def simple_chat_stream(
                         "table_format": "markdown",
                     },
                 )
-
-        # 3) 解析模型状态输出（STATE_JSON）并驱动 pending 状态
-        visible_reply, state_obj = _split_visible_reply_and_state(full_reply)
-        full_reply = visible_reply
         if state_obj and not cmeta.get("thread_completed"):
             state_name = str(state_obj.get("state") or "").strip().lower()
             draft = state_obj.get("draft")
@@ -2387,6 +2673,63 @@ async def simple_chat_stream(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post("/thread/delete", response_model=SimpleChatResponse)
+async def delete_thread(
+    request: ThreadDeleteRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    删除某个线程：同时删除后端 report 中的会话文件与 session 绑定，保证前后端一致。
+    """
+    manager = get_activation_manager_for_code(request.activation_code)
+    phase_val = (request.phase or "values").strip() or "values"
+    phase_step = ReportRegistry.normalize_step_id(phase_val)
+    rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
+    user_id = (current_user or {}).get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="请先登录")
+    root = get_effective_simple_root(rec)
+    registry = ReportRegistry(base_dir=str(root))
+    report = registry.get_by_activation_user(rec.code, user_id)
+    if not report or not report.get("report_id"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="报告不存在")
+    report_id = report["report_id"]
+
+    _assert_step_editable(
+        registry=registry,
+        report_id=report_id,
+        phase_step=phase_step,
+        current_user=current_user,
+        rec=rec,
+    )
+
+    thread_id = (request.thread_id or "").strip()
+    if not thread_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="thread_id 不能为空")
+
+    file = registry.get_step_session_file(report_id, phase_step, thread_id)
+    try:
+        if file.is_file():
+            file.unlink()
+    except OSError as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"删除会话文件失败: {e}")
+
+    updated = registry.remove_session(report_id, phase_step, thread_id) or {}
+    step_payload = ((updated.get("steps") or {}).get(phase_step)) or {}
+    return SimpleChatResponse(
+        code=200,
+        message="success",
+        data={
+            "deleted": True,
+            "step_id": phase_step,
+            "thread_id": thread_id,
+            "remaining_thread_ids": step_payload.get("session_ids") or [],
+            "selected_thread_id": step_payload.get("selected_session_id"),
+            "step_locked": bool(step_payload.get("locked", False)),
         },
     )
 
