@@ -691,7 +691,16 @@ export default function ChatPhasePage() {
                 conclusionConfirmed: false,
                 createdAt: Date.now(),
               };
-              setMessages((prev) => [...prev, conclMsg]);
+              // pending 草案已有一张卡时，确认流会再次推送：替换同一张，避免双卡
+              setMessages((prev) => {
+                const lastIdx = [...prev].map((x) => x.type).lastIndexOf('dimension_conclusion');
+                if (lastIdx >= 0) {
+                  const next = [...prev];
+                  next[lastIdx] = { ...next[lastIdx], conclusionData: concl, createdAt: Date.now() };
+                  return next;
+                }
+                return [...prev, conclMsg];
+              });
             }
             if (payload.table_widget) {
               assistantHasVisibleOutput = true;
@@ -1091,16 +1100,25 @@ export default function ChatPhasePage() {
                             </span>
                           )}
                           <div className="flow-msg-user-content">
-                            <span className="flow-msg-user-text">
-                              {(() => {
-                                const s = m.content || '';
-                                const lines = s.split(/\r?\n/);
-                                if (lines.length > 1 && lines.every((l) => l.length <= 2)) {
-                                  return lines.join('');
-                                }
-                                return s;
-                              })()}
-                            </span>
+                            {(() => {
+                              const s = m.content || '';
+                              const lines = s.split(/\r?\n/);
+                              const display =
+                                lines.length > 1 && lines.every((l) => l.length <= 2)
+                                  ? lines.join('')
+                                  : s;
+                              const charCount = [...display].length;
+                              const hasManualBreak = /\r|\n/.test(display);
+                              const compact =
+                                charCount > 0 && charCount < 25 && !hasManualBreak;
+                              return (
+                                <span
+                                  className={`flow-msg-user-text${compact ? ' flow-msg-user-text--compact' : ''}`}
+                                >
+                                  {display}
+                                </span>
+                              );
+                            })()}
                           </div>
                           <div className="flow-msg-user-toolbar">
                             <button type="button" className="flow-toolbar-btn" title="复制" onClick={() => copyToClipboard(m.content)}>

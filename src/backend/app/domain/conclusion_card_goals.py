@@ -11,32 +11,48 @@ from typing import Dict
 # 【通用】严禁在结论卡或回复中提及下一阶段的目标、流程或问题；仅聚焦本阶段结论。
 _COMMON_NO_NEXT_PHASE = "- 【硬性】严禁在输出中提及、暗示或提问下一阶段的目标、内容或流程；即便已知下一阶段信息，也绝不要开始下一轮的提问。仅输出本阶段结论。\n"
 
+# 与 simple_chat 系统提示、[STATE_JSON] draft、结论卡 summary_prompt 保持一致
+_NAMING_SINGLE_CONCEPT = (
+    "- 【命名约束】每条必须是单一概念词（或本阶段要求的单一短语），不得使用「/、或、以及、&、|」并列多个候选。"
+    "若存在近义词，须在对话中与用户探讨差异并明确更想保留哪一个后再记录。"
+)
+
 CONCLUSION_RULES: Dict[str, str] = {
     "values": (
         _COMMON_NO_NEXT_PHASE
         + "- keywords 提炼出五个价值观相关的词。必须仅使用用户在对话中亲自提到、并已确认的价值观词，严禁添加、改写或杜撰\n"
         + "- 用户未明确确认的词汇不得写入 keywords\n"
-        + "- 用户若暂时答不上来，需通过有限引导帮助其思考后回答；结论卡只能基于用户实际说出的词"
+        + "- 用户若暂时答不上来，需通过有限引导帮助其思考后回答；结论卡只能基于用户实际说出的词\n"
+        + _NAMING_SINGLE_CONCEPT
+        + "\n"
     ),
     "strengths": (
         _COMMON_NO_NEXT_PHASE
         + "- 必须为 10 个彼此不同的能力优势\n"
-        + "- 每个优势需来自用户确认的描述，严禁杜撰"
+        + "- 每个优势需来自用户确认的描述，严禁杜撰\n"
+        + _NAMING_SINGLE_CONCEPT
+        + "\n"
     ),
     "interests": (
         _COMMON_NO_NEXT_PHASE
         + "- 必须为 3 个核心热爱方向，以名词形式呈现\n"
-        + "- 每个热爱需来自用户确认的领域，严禁杜撰"
+        + "- 每个热爱需来自用户确认的领域，严禁杜撰\n"
+        + _NAMING_SINGLE_CONCEPT
+        + "\n"
     ),
     "purpose": (
         _COMMON_NO_NEXT_PHASE
         + "- 使命陈述必须来自用户确认的表达\n"
-        + "- 必须为用户为他人提供价值的10个行为或者经历。"
+        + "- 必须为用户为他人提供价值的10个行为或者经历。\n"
+        + _NAMING_SINGLE_CONCEPT
+        + "\n"
     ),
     "rumination": (
         _COMMON_NO_NEXT_PHASE
         + "- 整合信息需基于前面各阶段用户已确认的内容\n"
-        + "- 下一步行动需与用户选择的方向一致"
+        + "- 下一步行动需与用户选择的方向一致\n"
+        + _NAMING_SINGLE_CONCEPT
+        + "\n"
     ),
 }
 

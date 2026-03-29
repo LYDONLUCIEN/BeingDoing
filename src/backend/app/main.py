@@ -84,6 +84,10 @@ async def _stop_background_tasks():
     global _recycle_cleanup_task
     if _recycle_cleanup_task and not _recycle_cleanup_task.done():
         _recycle_cleanup_task.cancel()
+        try:
+            await _recycle_cleanup_task
+        except asyncio.CancelledError:
+            pass
     _recycle_cleanup_task = None
 
 

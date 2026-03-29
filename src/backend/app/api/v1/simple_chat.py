@@ -351,6 +351,27 @@ def _read_conclusion_meta(meta: Dict) -> Dict:
     }
 
 
+def _normalize_draft_for_dimension_card(draft: Dict) -> Dict:
+    """将 STATE_JSON draft 规范为与结论卡 API 一致的结构，供前端展示与落盘。"""
+    summary = (draft.get("summary") or draft.get("ai_summary") or "").strip()
+    raw_kw = draft.get("keywords") or []
+    if not isinstance(raw_kw, list):
+        raw_kw = []
+    keywords = [str(k).strip() for k in raw_kw if str(k).strip()]
+    if not summary:
+        summary = "请先确认以下总结是否准确。"
+    fa = draft.get("final_answer")
+    if not (isinstance(fa, str) and fa.strip()):
+        fa = ", ".join(keywords) if keywords else summary
+    return {
+        "summary": summary,
+        "keywords": keywords,
+        "ai_summary": summary,
+        "dimension_goal": (draft.get("dimension_goal") or "").strip(),
+        "final_answer": fa,
+    }
+
+
 def _build_conclusion_meta_update(
     *,
     state: str,
@@ -1411,7 +1432,20 @@ def _build_system_prompt(
     if (extra_goal_hint or "").strip():
         base_prompt = f"{base_prompt}\n\n[管理员调试目标补充]\n{extra_goal_hint.strip()}"
     # 机器协议：每轮回复末尾输出状态 JSON，后端据此驱动 pending 状态机（不会展示给前端）。
-    protocol = """
+    phase_key = (phase or "values").strip().lower()
+    if phase_key == "rumination":
+        protocol = """
+
+[输出协议 - 必须遵守]
+沉淀阶段不使用维度结论卡。在自然语言回复末尾追加如下块（严格 JSON）：
+[STATE_JSON]
+{"state":"continue","draft":null}
+[/STATE_JSON]
+规则：state 必须为 continue，draft 必须为 null；禁止 pending_ready。
+[STATE_JSON] 块之外只写给用户看的自然语言，不要解释本协议。
+"""
+    else:
+        protocol = """
 
 [输出协议 - 必须遵守]
 在你的自然语言回复末尾，追加如下块（严格 JSON）：
@@ -1423,7 +1457,9 @@ def _build_system_prompt(
 1) 仅当你判断“已可进入结论确认”时，state 才能是 pending_ready。
 2) state=continue 时，draft 置为 null。
 3) state=pending_ready 时，draft.summary 必填，draft.keywords 为数组（可为空但应尽量给出）。
-4) [STATE_JSON] 块之外只写给用户看的自然语言，不要解释本协议。
+4) draft.keywords 中每一项必须是单一概念词（或本阶段要求的单一短语），不得使用「/、或、以及、&、|」并列多个候选；近义词须先在对话中与用户确认取舍后再写入。
+5) values / strengths / interests / purpose：当用户已按该阶段流程完成确认（如价值观 5 词与排序、禀赋 10 条优势与标记、热忱 top3、使命宣言等）后，必须输出 pending_ready 并给出合格 draft，以便系统展示结论卡供用户最终确认；不得仅口头说“完成”而省略 STATE_JSON。
+6) [STATE_JSON] 块之外只写给用户看的自然语言，不要解释本协议。
 """
     return f"{base_prompt}\n{protocol}"
 
@@ -2041,13 +2077,16 @@ async def list_threads(
             ts_ms = 0
         cmeta = _read_conclusion_meta(meta)
         completed = bool(cmeta.get("thread_completed"))
+        dim_preview = cmeta.get("final") or (
+            cmeta.get("draft") if cmeta.get("state") == CONCLUSION_STATE_PENDING else None
+        )
         threads.append({
             "id": tid,
             "title": f"对话 {idx + 1}",
             "status": "completed" if completed else "in-progress",
             "messages": [],  # 列表不返回消息体，由 /history 按需加载
             "createdAt": ts_ms or int(datetime.now(timezone.utc).timestamp() * 1000),
-            "dimensionConclusion": cmeta.get("final"),
+            "dimensionConclusion": dim_preview,
             "selected": tid == selected_id,
             "step_locked": bool(step.get("locked", False)),
         })
@@ -2094,6 +2133,9 @@ async def simple_history(
         cmeta = _read_conclusion_meta(metadata)
         record = registry.get_report_by_id(report["report_id"]) or {}
         step_payload = ((record.get("steps") or {}).get(phase_step)) or {}
+        dim_for_meta = cmeta.get("final") or (
+            cmeta.get("draft") if cmeta.get("state") == CONCLUSION_STATE_PENDING else None
+        )
 
         return SimpleHistoryResponse(
             code=200,
@@ -2103,7 +2145,7 @@ async def simple_history(
                 "metadata": {
                     "session_id": logical_session_id,
                     "thread_completed": cmeta.get("thread_completed", False),
-                    "dimension_conclusion": cmeta.get("final"),
+                    "dimension_conclusion": dim_for_meta,
                     "step_locked": bool(step_payload.get("locked", False)),
                 },
                 "activation": {
@@ -2406,20 +2448,24 @@ async def simple_chat_stream(
                                 "token_usage": _normalize_token_usage(None),
                             },
                         )
-                        await conv_manager.append_message(
-                            session_id=session_id,
-                            category=category,
-                            message={
-                                "role": "conclusion_card",
-                                "content": json.dumps(dimension_conclusion, ensure_ascii=False),
-                                "session_id": logical_session_id,
-                                "step_id": phase_step,
-                                "agent_id": "coach",
-                                "event": "dimension_conclusion",
-                                "card_type": "dimension_conclusion",
-                                "card_payload": dimension_conclusion,
-                            },
+                        updated_card = await conv_manager.update_last_conclusion_card_payload(
+                            session_id, category, dimension_conclusion
                         )
+                        if not updated_card:
+                            await conv_manager.append_message(
+                                session_id=session_id,
+                                category=category,
+                                message={
+                                    "role": "conclusion_card",
+                                    "content": json.dumps(dimension_conclusion, ensure_ascii=False),
+                                    "session_id": logical_session_id,
+                                    "step_id": phase_step,
+                                    "agent_id": "coach",
+                                    "event": "dimension_conclusion",
+                                    "card_type": "dimension_conclusion",
+                                    "card_payload": dimension_conclusion,
+                                },
+                            )
                         await _append_note_json(
                             conv_manager,
                             session_id,
@@ -2497,6 +2543,11 @@ async def simple_chat_stream(
                     )
                 except Exception:
                     pass
+                if phase_step != "rumination":
+                    try:
+                        await conv_manager.remove_last_conclusion_card(session_id, category)
+                    except Exception as e:
+                        logger.warning("remove_last_conclusion_card on reject failed: %s", e)
                 pending_conclusion = None
                 rejected_feedback = user_content
 
@@ -2605,6 +2656,9 @@ async def simple_chat_stream(
         if state_obj and not cmeta.get("thread_completed"):
             state_name = str(state_obj.get("state") or "").strip().lower()
             draft = state_obj.get("draft")
+            if phase_step == "rumination" and state_name == "pending_ready":
+                state_name = "continue"
+                draft = None
             if state_name == "pending_ready" and isinstance(draft, dict):
                 await conv_manager.update_metadata(
                     session_id,
@@ -2631,6 +2685,32 @@ async def simple_chat_stream(
                     )
                 except Exception:
                     pass
+                # 四阶段（非 rumination）立即推送结论卡草案，与前端 dimension_conclusion 事件对齐
+                if phase_step != "rumination" and isinstance(draft, dict):
+                    card_data = _normalize_draft_for_dimension_card(draft)
+                    try:
+                        yield "data: {\"conclusion_loading\": true}\n\n"
+                        yield (
+                            "data: "
+                            + json.dumps({"dimension_conclusion": card_data}, ensure_ascii=False)
+                            + "\n\n"
+                        )
+                        await conv_manager.append_message(
+                            session_id=session_id,
+                            category=category,
+                            message={
+                                "role": "conclusion_card",
+                                "content": json.dumps(card_data, ensure_ascii=False),
+                                "session_id": logical_session_id,
+                                "step_id": phase_step,
+                                "agent_id": "coach",
+                                "event": "dimension_conclusion",
+                                "card_type": "dimension_conclusion",
+                                "card_payload": card_data,
+                            },
+                        )
+                    except Exception as e:
+                        logger.warning("pending_ready append conclusion_card failed: %s", e)
             elif state_name == "continue":
                 # 无状态迁移，保持当前会话态
                 pass

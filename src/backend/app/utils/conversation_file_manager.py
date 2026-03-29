@@ -179,6 +179,63 @@ class ConversationFileManager:
 
         await self._with_file_lock(session_id, category, _do_update)
 
+    async def update_last_conclusion_card_payload(
+        self,
+        session_id: str,
+        category: str,
+        card_payload: Dict[str, Any],
+    ) -> bool:
+        """将文件中最后一条 conclusion_card 的 content / card_payload 更新为最终结论。不存在则返回 False。"""
+
+        def _do(fp: Path) -> bool:
+            try:
+                with open(fp, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError, OSError):
+                return False
+            msgs = data.get("messages") or []
+            for i in range(len(msgs) - 1, -1, -1):
+                if (msgs[i] or {}).get("role") != "conclusion_card":
+                    continue
+                js = json.dumps(card_payload, ensure_ascii=False)
+                msgs[i]["content"] = js
+                msgs[i]["card_payload"] = card_payload
+                data["messages"] = msgs
+                meta = data.setdefault("metadata", {})
+                meta["updated_at"] = datetime.utcnow().isoformat() + "Z"
+                meta["total_messages"] = len(msgs)
+                with open(fp, "w", encoding="utf-8") as f:
+                    f.write(json.dumps(data, indent=2, ensure_ascii=False))
+                return True
+            return False
+
+        return bool(await self._with_file_lock(session_id, category, _do))
+
+    async def remove_last_conclusion_card(self, session_id: str, category: str) -> bool:
+        """删除文件中最后一条 conclusion_card（用户否定待确认结论时使用）。"""
+
+        def _do(fp: Path) -> bool:
+            try:
+                with open(fp, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError, OSError):
+                return False
+            msgs = data.get("messages") or []
+            for i in range(len(msgs) - 1, -1, -1):
+                if (msgs[i] or {}).get("role") != "conclusion_card":
+                    continue
+                del msgs[i]
+                data["messages"] = msgs
+                meta = data.setdefault("metadata", {})
+                meta["updated_at"] = datetime.utcnow().isoformat() + "Z"
+                meta["total_messages"] = len(msgs)
+                with open(fp, "w", encoding="utf-8") as f:
+                    f.write(json.dumps(data, indent=2, ensure_ascii=False))
+                return True
+            return False
+
+        return bool(await self._with_file_lock(session_id, category, _do))
+
     async def get_messages(
         self,
         session_id: str,

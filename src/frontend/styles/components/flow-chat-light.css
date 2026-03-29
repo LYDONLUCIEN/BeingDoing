@@ -43,8 +43,9 @@
 }
 .flow-light[data-phase="rumination"] {
   --flow-bg: #F5F3FA;
-  --flow-dot: #8B5CF6;
-  --flow-ai-border: #8B5CF6;
+  --flow-rumination: #8B5CF6;
+  --flow-dot: var(--flow-rumination);
+  --flow-ai-border: var(--flow-rumination);
 }
 .flow-light {
   --flow-bg: #F7F4EE;
@@ -311,18 +312,43 @@
   font-size: 14.5px;
   line-height: 1.7;
   color: var(--flow-user-text);
-  /* 短句不轻易换行：默认至少约 15 个字符宽，超长再折行 */
-  min-width: 15ch;
+  /* 短句不轻易换行：至少约 25ch 宽再允许折行（与 --compact 策略配合） */
+  min-width: min(25ch, 100%);
   max-width: min(820px, 86%);
   width: fit-content;
   box-shadow: 0 6px 18px rgba(67, 97, 238, 0.12), 0 2px 6px rgba(30, 41, 59, 0.05);
   overflow-wrap: anywhere;
   word-break: keep-all;
 }
+/* 各 step 用户气泡：纯色填充 + 主题色描边（与默认气泡体量一致，无渐变） */
+.flow-light[data-phase="values"] .flow-msg-user-content {
+  background: color-mix(in srgb, var(--flow-values) 12%, #ffffff);
+  border-color: color-mix(in srgb, var(--flow-values) 28%, #ffffff);
+}
+.flow-light[data-phase="strengths"] .flow-msg-user-content {
+  background: color-mix(in srgb, var(--flow-strength) 12%, #ffffff);
+  border-color: color-mix(in srgb, var(--flow-strength) 28%, #ffffff);
+}
+.flow-light[data-phase="interests"] .flow-msg-user-content {
+  background: color-mix(in srgb, var(--flow-interest) 12%, #ffffff);
+  border-color: color-mix(in srgb, var(--flow-interest) 28%, #ffffff);
+}
+.flow-light[data-phase="purpose"] .flow-msg-user-content {
+  background: color-mix(in srgb, var(--flow-target) 12%, #ffffff);
+  border-color: color-mix(in srgb, var(--flow-target) 28%, #ffffff);
+}
+.flow-light[data-phase="rumination"] .flow-msg-user-content {
+  background: color-mix(in srgb, var(--flow-rumination) 12%, #ffffff);
+  border-color: color-mix(in srgb, var(--flow-rumination) 28%, #ffffff);
+}
 .flow-light .flow-msg-user-text {
   white-space: pre-wrap;
   word-break: keep-all;
   overflow-wrap: anywhere;
+}
+/* 少于 25 字且无手动换行：单行展示，避免被浏览器过早折行 */
+.flow-light .flow-msg-user-text.flow-msg-user-text--compact {
+  white-space: nowrap;
 }
 .flow-light .flow-msg-user-toolbar {
   opacity: 0;
