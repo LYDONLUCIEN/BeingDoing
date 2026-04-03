@@ -27,6 +27,7 @@
 @import '../styles/components/landing-mesh.css';
 @import '../styles/components/dimension-cards.css';
 @import '../styles/components/explore-intro.css';
+@import '../styles/components/rumination-beautiful.css';
 
 /* ── Tailwind (must come after @import) ─────────────── */
 @tailwind base;

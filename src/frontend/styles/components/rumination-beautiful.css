@@ -1,0 +1,94 @@
+/* ══════════════════════════════════════════
+   沉淀阶段：对齐 uidesign/beautiful/rumination.html 毛玻璃双卡 +
+   背景与 /explore/activate 一致（landing mesh）
+   ══════════════════════════════════════════ */
+
+.rumination-beautiful-root {
+  color: var(--bd-fg, #1a1a24);
+}
+
+/* 与激活页一致：暖米底 + mesh 可见度 */
+html[data-rumination-mesh-page='true']:not([data-color-scheme='dark'])
+  [class*='bd-aurora-bg'],
+html[data-rumination-mesh-page='true']:not([data-color-scheme='dark'])
+  [class*='bd-eff-bg'] {
+  background-color: #faf9f8 !important;
+}
+
+.rumination-beautiful-root .landing-mesh-blob {
+  opacity: 1;
+}
+.rumination-beautiful-root .landing-mesh-noise {
+  opacity: 0.06;
+}
+
+.rumination-beautiful-card {
+  background: rgba(255, 255, 255, 0.85);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.rumination-beautiful-card--chat {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+/* 右侧对话区内：弱化 flow 标签与留白 */
+.rumination-beautiful-chat-panel .flow-dimension-label {
+  margin-bottom: 0.75rem;
+}
+
+/* 底部输入区：接近稿中圆角白底 pill */
+.rumination-beautiful-input-shell {
+  border-top: none;
+  background: transparent !important;
+  padding-left: 0.25rem;
+  padding-right: 0.25rem;
+  padding-bottom: 0.75rem;
+  padding-top: 0.5rem;
+}
+
+.rumination-beautiful-input-shell .flow-input-area {
+  background: #fff;
+  border-radius: 9999px;
+  padding: 0.35rem 0.5rem;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.rumination-beautiful-input-shell .flow-input-box {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  gap: 0.35rem;
+}
+
+.rumination-beautiful-input-shell .flow-input-field {
+  background: transparent;
+  min-height: 2.25rem;
+}
+
+/* 发送钮：与黑色主按钮同系，圆形 */
+.rumination-beautiful-input-shell .flow-send-btn {
+  background-color: #1d1d1f !important;
+  box-shadow: 0 4px 12px -4px rgba(0, 0, 0, 0.25);
+}
+.rumination-beautiful-input-shell .flow-send-btn:hover:not(:disabled) {
+  background-color: #333 !important;
+}
+.rumination-beautiful-input-shell .flow-send-btn.is-stop {
+  background-color: #444 !important;
+}
+
+/* 左栏表格滚动条（WebKit） */
+.rumination-beautiful-table-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.rumination-beautiful-table-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.rumination-beautiful-table-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}

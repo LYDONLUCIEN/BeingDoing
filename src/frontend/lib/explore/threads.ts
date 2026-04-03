@@ -90,6 +90,21 @@ export function getThreads(code: string, phase: PhaseKey): ChatThread[] {
   return data[phase] ?? [];
 }
 
+/**
+ * 沉淀（rumination）阶段仅保留一条对话线程：取 createdAt 最新；相同时取消息条数更多者。
+ * 用于消除历史多条线程与产品设计「单线程」不一致。
+ */
+export function collapseRuminationThreadsToOne(threads: ChatThread[]): ChatThread[] {
+  if (threads.length <= 1) return threads;
+  const len = (x: ChatThread) => x.messages?.length ?? 0;
+  const best = threads.reduce((a, b) => {
+    if (b.createdAt > a.createdAt) return b;
+    if (b.createdAt < a.createdAt) return a;
+    return len(b) >= len(a) ? b : a;
+  });
+  return [best];
+}
+
 /** 批量替换某阶段的线程列表（用于后端同步结果持久化，失败回退时可用） */
 export function setThreadsForPhase(code: string, phase: PhaseKey, threads: ChatThread[]) {
   const data = loadRaw(code);

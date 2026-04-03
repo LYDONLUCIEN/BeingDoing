@@ -12,6 +12,12 @@ export type RuminationMainSection =
   | 'recommend'
   | 'end';
 
+/** 每步表格快照：initial=首次生成；submitted=确认后（用于回退查看） */
+export type RuminationStepSnapshot = {
+  initial?: Record<string, unknown>[] | null;
+  submitted?: Record<string, unknown>[] | null;
+};
+
 export interface RuminationProgress {
   schema_version?: number;
   main_section: RuminationMainSection;
@@ -22,6 +28,7 @@ export interface RuminationProgress {
   filter_table: Record<string, unknown>[] | null;
   filter_early_terminated?: boolean;
   filter_terminate_reason?: string | null;
+  filter_step_snapshots?: Record<string, RuminationStepSnapshot>;
 }
 
 export interface RuminationTablePayload {
@@ -63,13 +70,16 @@ export interface RuminationSubmitData {
   full_table_preview?: Record<string, unknown>[];
   early_terminated?: boolean;
   terminate_reason?: string;
+  max_reached_filter_step?: number;
 }
 
 export const ruminationApi = {
   /** 获取 rumination 进度 */
   get: async (
     activationCode: string
-  ): Promise<ApiResponse<{ progress: RuminationProgress }>> => {
+  ): Promise<
+    ApiResponse<{ progress: RuminationProgress; max_reached_filter_step?: number }>
+  > => {
     const res = await apiClient.get('/simple-chat/rumination-progress', {
       params: { activation_code: activationCode },
     });
@@ -92,12 +102,17 @@ export const ruminationApi = {
   getTable: async (
     activationCode: string,
     step?: number,
-    opts?: { singleRowMode?: boolean; preferSingleRow?: boolean }
+    opts?: {
+      singleRowMode?: boolean;
+      preferSingleRow?: boolean;
+      resetInitial?: boolean;
+    }
   ): Promise<
     ApiResponse<{
       table_widget: RuminationTablePayload | null;
       progress?: RuminationProgress;
       filter_complete?: boolean;
+      max_reached_filter_step?: number;
     }>
   > => {
     const params: Record<string, string | number | boolean> = {
@@ -106,6 +121,7 @@ export const ruminationApi = {
     if (step !== undefined) params.step = step;
     if (opts?.singleRowMode) params.single_row_mode = true;
     if (opts?.preferSingleRow) params.prefer_single_row = true;
+    if (opts?.resetInitial) params.reset_initial = true;
     const res = await apiClient.get('/simple-chat/rumination-get-table', { params });
     return res;
   },

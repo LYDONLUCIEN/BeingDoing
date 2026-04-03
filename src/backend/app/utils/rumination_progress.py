@@ -22,6 +22,8 @@ DEFAULT_PROGRESS: Dict[str, Any] = {
     "filter_table": None,
     "filter_early_terminated": False,
     "filter_terminate_reason": None,
+    # 每步表格：initial=该步首次生成；submitted=用户确认后（用于回退查看，不删行）
+    "filter_step_snapshots": {},
 }
 
 
@@ -41,7 +43,24 @@ def _normalize_loaded(data: Dict[str, Any]) -> Dict[str, Any]:
         out["filter_early_terminated"] = False
     if "filter_terminate_reason" not in data:
         out["filter_terminate_reason"] = None
+    raw_snap = out.get("filter_step_snapshots")
+    out["filter_step_snapshots"] = raw_snap if isinstance(raw_snap, dict) else {}
     return out
+
+
+def max_reached_filter_step(snapshots: Any) -> int:
+    """有已提交表格的最高 filter_step（1–9），无则 0。"""
+    if not isinstance(snapshots, dict):
+        return 0
+    m = 0
+    for k, v in snapshots.items():
+        try:
+            sk = int(str(k))
+        except (TypeError, ValueError):
+            continue
+        if isinstance(v, dict) and v.get("submitted") is not None:
+            m = max(m, sk)
+    return m
 
 
 def load_rumination_progress(reports_root: Path, report_id: str) -> Dict[str, Any]:
@@ -69,6 +88,7 @@ def save_rumination_progress(
     hypothesis_round: Optional[int] = None,
     filter_early_terminated: Optional[bool] = None,
     filter_terminate_reason: Optional[str] = None,
+    filter_step_snapshots: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """保存 rumination 进度，未传字段保持原值。"""
     current = load_rumination_progress(reports_root, report_id)
@@ -88,6 +108,8 @@ def save_rumination_progress(
         current["filter_early_terminated"] = bool(filter_early_terminated)
     if filter_terminate_reason is not None:
         current["filter_terminate_reason"] = filter_terminate_reason
+    if filter_step_snapshots is not None:
+        current["filter_step_snapshots"] = filter_step_snapshots
 
     path = _rumination_progress_file(reports_root, report_id)
     path.parent.mkdir(parents=True, exist_ok=True)

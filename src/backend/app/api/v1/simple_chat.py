@@ -9,7 +9,7 @@
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import AsyncIterator, Dict, List, Optional, Sequence, Tuple, Callable
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Sequence, Tuple
 import asyncio
 import json
 import random
@@ -39,10 +39,14 @@ from app.core.dimension_completion_checker import (
 )
 from app.services.analytics_service import AnalyticsService
 from app.utils.report_registry import ReportRegistry, STEP_IDS, STEP_ORDER
+from copy import deepcopy
+
 from app.utils.rumination_progress import (
     load_rumination_progress,
+    max_reached_filter_step,
     save_rumination_progress,
 )
+from app.utils.rumination_table_widgets import build_table_widget_payload
 from app.utils.rumination_ops import (
     gen_table,
     filter_strength,
@@ -1197,7 +1201,10 @@ def get_rumination_progress(
             raise HTTPException(status_code=500, detail="报告初始化失败")
         reports_root = root / "reports"
         progress = load_rumination_progress(reports_root, report_id)
-        return SimpleChatResponse(code=200, message="success", data={"progress": progress})
+        mr = max_reached_filter_step(progress.get("filter_step_snapshots") or {})
+        return SimpleChatResponse(
+            code=200, message="success", data={"progress": progress, "max_reached_filter_step": mr}
+        )
     except HTTPException:
         raise
     except ValueError as e:
@@ -1241,6 +1248,27 @@ def save_rumination_progress_endpoint(
     return SimpleChatResponse(code=200, message="success", data={"progress": progress})
 
 
+def _rumination_snapshots_copy(progress: Dict[str, Any]) -> Dict[str, Any]:
+    s = progress.get("filter_step_snapshots") or {}
+    return deepcopy(s) if isinstance(s, dict) else {}
+
+
+def _rumination_get_table_response(
+    progress: Dict[str, Any],
+    payload: Optional[dict],
+) -> SimpleChatResponse:
+    mr = max_reached_filter_step(progress.get("filter_step_snapshots") or {})
+    return SimpleChatResponse(
+        code=200,
+        message="success",
+        data={
+            "table_widget": payload,
+            "progress": progress,
+            "max_reached_filter_step": mr,
+        },
+    )
+
+
 def _build_table_widget_payload(
     step: int,
     rows: List[dict],
@@ -1282,12 +1310,26 @@ def rumination_table_submit(
         raise HTTPException(status_code=500, detail="报告初始化失败")
     reports_root = root / "reports"
     step = max(1, min(9, request.step))
+    progress0 = load_rumination_progress(reports_root, report_id)
+    snapshots = _rumination_snapshots_copy(progress0)
+    sk = str(step)
+    ent = snapshots.setdefault(sk, {})
+    table_data = request.table_data
+    if table_data is not None:
+        if ent.get("initial") is None:
+            ent["initial"] = deepcopy(table_data)
+        ent["submitted"] = deepcopy(table_data)
+        snapshots[sk] = ent
+
     progress = save_rumination_progress(
-        reports_root, report_id, filter_step=step, filter_table=request.table_data
+        reports_root,
+        report_id,
+        filter_step=step,
+        filter_table=table_data,
+        filter_step_snapshots=snapshots,
     )
 
     next_table = None
-    table_data = request.table_data
     if step == 1 and table_data:
         filtered = filter_strength(table_data)
         if filtered:
@@ -1305,11 +1347,23 @@ def rumination_table_submit(
                 editable_cols=["匹配性"],
                 guide_text="这是匹配分析结果。如不同意某行标记，可直接修改。确认后我们将基于匹配结果提出假设。",
             )
-            save_rumination_progress(
-                reports_root, report_id, filter_table=step2_rows
+            s2 = snapshots.setdefault("2", {})
+            if step2_rows and s2.get("initial") is None:
+                s2["initial"] = deepcopy(step2_rows)
+            progress = save_rumination_progress(
+                reports_root,
+                report_id,
+                filter_step=2,
+                filter_table=step2_rows,
+                filter_step_snapshots=snapshots,
             )
 
-    data: dict = {"progress": progress, "next_step": step}
+    snaps = progress.get("filter_step_snapshots") or {}
+    data: dict = {
+        "progress": progress,
+        "next_step": step,
+        "max_reached_filter_step": max_reached_filter_step(snaps),
+    }
     if next_table:
         data["next_table_widget"] = next_table
 
@@ -1320,9 +1374,10 @@ def rumination_table_submit(
 def rumination_get_table(
     activation_code: str,
     step: Optional[int] = 1,
+    reset_initial: bool = False,
     current_user: dict = Depends(get_current_user),
 ):
-    """获取 rumination 筛选流程的当前步骤表格（进入筛选时或下一步）"""
+    """获取 rumination 筛选流程指定步的表格；支持快照恢复与 reset_initial 回到该步初始表。"""
     manager = get_activation_manager_for_code(activation_code)
     rec = _resolve_activation_for_user(manager, activation_code, current_user)
     root = get_effective_simple_root(rec)
@@ -1338,53 +1393,79 @@ def rumination_get_table(
     reports_root = root / "reports"
     progress = load_rumination_progress(reports_root, report_id)
     prior_context = _load_prior_context_from_activation(activation_code, "rumination", report)
-    _, strengths_list, interests_list = extract_from_prior_context(prior_context)
+    values_list, strengths_list, interests_list, _purpose = extract_from_prior_context(
+        prior_context
+    )
     passions = interests_list if interests_list else ["热爱1", "热爱2"]
     strengths_list = strengths_list if strengths_list else ["优势1", "优势2"]
 
-    step = max(1, min(9, step or 1))
+    step = max(1, min(9, int(step or 1)))
+    snapshots = _rumination_snapshots_copy(progress)
+    sk = str(step)
+
+    def _persist(rows: List[dict], snap: Dict[str, Any]) -> Dict[str, Any]:
+        return save_rumination_progress(
+            reports_root,
+            report_id,
+            filter_step=step,
+            filter_table=rows,
+            filter_step_snapshots=snap,
+        )
+
+    if reset_initial:
+        ent = snapshots.get(sk) or {}
+        initial = ent.get("initial")
+        if initial is not None:
+            rows = deepcopy(initial)
+            ent = {**ent, "submitted": None}
+            snapshots[sk] = ent
+            prog = _persist(rows, snapshots)
+            payload = build_table_widget_payload(step, rows, values_list)
+            return _rumination_get_table_response(prog, payload)
+
+    ent_sub = snapshots.get(sk) or {}
+    if ent_sub.get("submitted") is not None:
+        rows = deepcopy(ent_sub["submitted"])
+        prog = _persist(rows, snapshots)
+        payload = build_table_widget_payload(step, rows, values_list)
+        return _rumination_get_table_response(prog, payload)
+
     if step == 1:
         rows = gen_table(strengths_list, passions)
-        payload = _build_table_widget_payload(
-            step=1,
-            rows=rows,
-            columns=[
-                {"key": "id", "label": "id"},
-                {"key": "热爱", "label": "热爱"},
-                {"key": "优势", "label": "优势"},
-                {
-                    "key": "优势标记",
-                    "label": "优势标记",
-                    "options": ["有充实感，与成功有关", "有充实感", "不确定"],
-                },
-            ],
-            editable_cols=["优势标记"],
-            guide_text="请确认您的热爱与优势列表。如需修改，可直接在表格中编辑标记。确认后我们将进行匹配分析。",
-        )
-    else:
-        prev_table = progress.get("filter_table") or []
-        if step == 2:
-            filtered = filter_strength(prev_table)
-            rows = filter_match(filtered)
-            payload = _build_table_widget_payload(
-                step=2,
-                rows=rows,
-                columns=[
-                    {"key": "id", "label": "id"},
-                    {"key": "热爱", "label": "热爱"},
-                    {"key": "优势", "label": "优势"},
-                    {"key": "匹配性", "label": "匹配性", "options": ["匹配", "不匹配"]},
-                    {"key": "匹配原因", "label": "匹配原因"},
-                ],
-                editable_cols=["匹配性"],
-                guide_text="这是匹配分析结果。如不同意某行标记，可直接修改。确认后我们将基于匹配结果提出假设。",
-            )
-        else:
-            payload = None
+        ent = snapshots.setdefault(sk, {})
+        if ent.get("initial") is None:
+            ent["initial"] = deepcopy(rows)
+            snapshots[sk] = ent
+        prog = _persist(rows, snapshots)
+        payload = build_table_widget_payload(step, rows, values_list)
+        return _rumination_get_table_response(prog, payload)
 
-    return SimpleChatResponse(
-        code=200, message="success", data={"table_widget": payload}
-    )
+    if step == 2:
+        prev_source = snapshots.get("1", {}).get("submitted")
+        if prev_source is None:
+            prev_source = progress.get("filter_table") or []
+        filtered = filter_strength(prev_source)
+        rows = filter_match(filtered)
+        if not rows:
+            return _rumination_get_table_response(progress, None)
+        ent = snapshots.setdefault(sk, {})
+        if ent.get("initial") is None:
+            ent["initial"] = deepcopy(rows)
+            snapshots[sk] = ent
+        prog = _persist(rows, snapshots)
+        payload = build_table_widget_payload(step, rows, values_list)
+        return _rumination_get_table_response(prog, payload)
+
+    ent_any = snapshots.get(sk) or {}
+    for key in ("submitted", "initial"):
+        r0 = ent_any.get(key)
+        if r0 is not None:
+            rows = deepcopy(r0)
+            prog = _persist(rows, snapshots)
+            payload = build_table_widget_payload(step, rows, values_list)
+            return _rumination_get_table_response(prog, payload)
+
+    return _rumination_get_table_response(progress, None)
 
 
 def _build_system_prompt(
