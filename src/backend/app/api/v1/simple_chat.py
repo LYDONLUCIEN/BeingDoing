@@ -9,14 +9,14 @@
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import AsyncIterator, Dict, List, Optional, Sequence, Tuple, Callable
 import asyncio
 import json
 import random
 import logging
 import re
 
-from fastapi import APIRouter, HTTPException, Query, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.core.llmapi import get_default_llm_provider, LLMMessage
@@ -44,24 +44,10 @@ from app.utils.rumination_progress import (
     save_rumination_progress,
 )
 from app.utils.rumination_ops import (
-    build_prior_keywords_summary,
-    extract_from_prior_context,
-    filter_match,
-    filter_strength,
     gen_table,
-    generate_hypotheses_round2_table,
-    generate_hypotheses_round3_finalize,
-    merge_row_by_id,
-    passion_filter,
-    reality_filter,
-    similar_filter,
-    structure_hypothesis_round1_table,
-    value_filter,
-)
-from app.utils.rumination_hypothesis_service import fill_hypothesis_columns_for_table
-from app.utils.rumination_table_widgets import (
-    build_table_widget_payload,
-    slice_rows_for_display,
+    filter_strength,
+    filter_match,
+    extract_from_prior_context,
 )
 from app.utils.context_refiner import (
     refine_and_save_anchor,
@@ -246,24 +232,6 @@ async def _get_or_create_thread_question_bank(
     phase_step: str,
 ) -> str:
     """线程级固定 question_bank：首次生成并写入 metadata，后续复用。"""
-    if phase_step == "rumination":
-        conv_data = await conv_manager.get_conversation_data(session_id, category)
-        meta = conv_data.get("metadata") or {}
-        qb = meta.get("question_bank")
-        qb_phase = meta.get("question_bank_phase")
-        if isinstance(qb, str) and qb_phase == phase_step:
-            return qb
-        qb = ""
-        try:
-            await conv_manager.update_metadata(
-                session_id,
-                category,
-                {"question_bank": qb, "question_bank_phase": phase_step},
-            )
-        except Exception:
-            pass
-        return qb
-
     conv_data = await conv_manager.get_conversation_data(session_id, category)
     meta = conv_data.get("metadata") or {}
     qb = meta.get("question_bank")
@@ -380,27 +348,6 @@ def _read_conclusion_meta(meta: Dict) -> Dict:
         "feedback": feedback or "",
         "thread_completed": bool(meta.get("thread_completed")),
         "shown_at": meta.get("conclusion_shown_at_turn"),
-    }
-
-
-def _normalize_draft_for_dimension_card(draft: Dict) -> Dict:
-    """将 STATE_JSON draft 规范为与结论卡 API 一致的结构，供前端展示与落盘。"""
-    summary = (draft.get("summary") or draft.get("ai_summary") or "").strip()
-    raw_kw = draft.get("keywords") or []
-    if not isinstance(raw_kw, list):
-        raw_kw = []
-    keywords = [str(k).strip() for k in raw_kw if str(k).strip()]
-    if not summary:
-        summary = "请先确认以下总结是否准确。"
-    fa = draft.get("final_answer")
-    if not (isinstance(fa, str) and fa.strip()):
-        fa = ", ".join(keywords) if keywords else summary
-    return {
-        "summary": summary,
-        "keywords": keywords,
-        "ai_summary": summary,
-        "dimension_goal": (draft.get("dimension_goal") or "").strip(),
-        "final_answer": fa,
     }
 
 
@@ -686,8 +633,7 @@ def _phase_to_loader_category(phase: str) -> str:
     if phase == "purpose":
         return "values"  # purpose 阶段复用 values 题库，或可后续单独建
     if phase == "rumination":
-        # 不在此加载题库；_get_or_create_thread_question_bank 对 rumination 直接返回空
-        return "values"
+        return "values"  # rumination 综合四维，复用 values 题库
     return "values"
 
 
@@ -1220,22 +1166,14 @@ class RuminationProgressSaveRequest(BaseModel):
     main_section: Optional[str] = None
     review_sub_index: Optional[int] = None
     filter_step: Optional[int] = None
-    filter_table: Optional[Any] = None
-    filter_row_cursor: Optional[int] = None
-    hypothesis_round: Optional[int] = None
-    filter_early_terminated: Optional[bool] = None
-    filter_terminate_reason: Optional[str] = None
+    filter_table: Optional[dict] = None
 
 
 class RuminationTableSubmitRequest(BaseModel):
     activation_code: str
     thread_id: str
     step: int
-    table_data: Optional[List[dict]] = None
-    mode: Optional[str] = "full_step"
-    row_id: Optional[str] = None
-    patch: Optional[dict] = None
-    prefer_single_row: Optional[bool] = None
+    table_data: List[dict]
 
 
 @router.get("/rumination-progress", response_model=SimpleChatResponse)
@@ -1299,155 +1237,33 @@ def save_rumination_progress_endpoint(
         review_sub_index=request.review_sub_index,
         filter_step=request.filter_step,
         filter_table=request.filter_table,
-        filter_row_cursor=request.filter_row_cursor,
-        hypothesis_round=request.hypothesis_round,
-        filter_early_terminated=request.filter_early_terminated,
-        filter_terminate_reason=request.filter_terminate_reason,
     )
     return SimpleChatResponse(code=200, message="success", data={"progress": progress})
 
 
-async def _rumination_advance_after_step_confirm(
+def _build_table_widget_payload(
     step: int,
-    table: List[dict],
-    *,
-    values_list: List[str],
-    llm: Any,
-) -> Tuple[int, List[dict], Dict[str, Any]]:
-    """
-    用户已确认当前筛选步骤（全量表）。返回 (下一 filter_step, 新表, 元信息)。
-    filter_step 为 0 表示筛选管道已结束并将进入 final_choice。
-    """
-    meta: Dict[str, Any] = {}
-
-    if step == 1:
-        ft = filter_strength(table)
-        if not ft:
-            meta["early_terminated"] = True
-            meta["terminate_reason"] = "no_rows_after_strength"
-            return (1, table, meta)
-        nxt = filter_match(ft)
-        return (2, nxt, meta)
-
-    if step == 2:
-        base = structure_hypothesis_round1_table(table)
-        if not base:
-            meta["early_terminated"] = True
-            meta["terminate_reason"] = "no_matching_rows"
-            return (2, table, meta)
-        vhint = "、".join(values_list[:8]) if values_list else ""
-        filled = await fill_hypothesis_columns_for_table(
-            llm, base, values_hint=vhint, only_empty_hypothesis_slots=False
-        )
-        return (3, filled, meta)
-
-    if step == 3:
-        any_empty = any(not (r.get("用户确认的假设") or "").strip() for r in table)
-        if any_empty:
-            r2 = generate_hypotheses_round2_table(table)
-            vhint = "、".join(values_list[:8]) if values_list else ""
-            filled = await fill_hypothesis_columns_for_table(
-                llm, r2, values_hint=vhint, only_empty_hypothesis_slots=True
-            )
-            return (4, filled, meta)
-        vt = value_filter(table, values_list)
-        if not vt:
-            meta["early_terminated"] = True
-            meta["terminate_reason"] = "no_rows_value_filter"
-            return (6, [], meta)
-        return (6, vt, meta)
-
-    if step == 4:
-        any_empty = any(not (r.get("用户确认的假设") or "").strip() for r in table)
-        if any_empty:
-            r2 = generate_hypotheses_round2_table(table)
-            vhint = "、".join(values_list[:8]) if values_list else ""
-            filled = await fill_hypothesis_columns_for_table(
-                llm, r2, values_hint=vhint, only_empty_hypothesis_slots=True
-            )
-            return (5, filled, meta)
-        vt = value_filter(table, values_list)
-        if not vt:
-            meta["early_terminated"] = True
-            meta["terminate_reason"] = "no_rows_value_filter"
-            return (6, [], meta)
-        return (6, vt, meta)
-
-    if step == 5:
-        fin = generate_hypotheses_round3_finalize(table)
-        vt = value_filter(fin, values_list)
-        if not vt:
-            meta["early_terminated"] = True
-            meta["terminate_reason"] = "no_rows_value_filter"
-            return (6, [], meta)
-        return (6, vt, meta)
-
-    if step == 6:
-        pt = passion_filter(table)
-        if not pt:
-            meta["early_terminated"] = True
-            meta["terminate_reason"] = "no_rows_passion_filter"
-            return (7, [], meta)
-        return (7, pt, meta)
-
-    if step == 7:
-        rt = reality_filter(table)
-        if not rt:
-            meta["early_terminated"] = True
-            meta["terminate_reason"] = "no_rows_reality_filter"
-            return (8, [], meta)
-        return (8, rt, meta)
-
-    if step == 8:
-        st = similar_filter(table)
-        if not st:
-            meta["early_terminated"] = True
-            meta["terminate_reason"] = "no_rows_similar_filter"
-            return (9, [], meta)
-        return (9, st, meta)
-
-    if step == 9:
-        meta["filter_complete"] = True
-        meta["main_section"] = "final_choice"
-        return (0, table, meta)
-
-    return (step, table, meta)
-
-
-def _rumination_next_widget(
-    next_step: int,
-    table: List[dict],
-    values_list: List[str],
-    *,
-    single_row_mode: bool,
-    cursor: int,
-) -> Optional[dict]:
-    if next_step == 0:
-        return build_table_widget_payload(
-            9,
-            table,
-            values_list,
-            single_row_mode=False,
-            row_cursor=0,
-            total_rows=len(table),
-        )
-    disp, rc, tot = slice_rows_for_display(table, cursor, single_row_mode=single_row_mode)
-    return build_table_widget_payload(
-        next_step,
-        disp,
-        values_list,
-        single_row_mode=single_row_mode and tot > 0,
-        row_cursor=rc,
-        total_rows=tot,
-    )
+    rows: List[dict],
+    columns: List[dict],
+    editable_cols: List[str],
+    guide_text: str = "",
+) -> dict:
+    """构建 table_widget 消息的 card_payload"""
+    return {
+        "columns": columns,
+        "rows": rows,
+        "editableCols": editable_cols,
+        "guideText": guide_text,
+        "step": step,
+    }
 
 
 @router.post("/rumination-table-submit", response_model=SimpleChatResponse)
-async def rumination_table_submit(
+def rumination_table_submit(
     request: RuminationTableSubmitRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """提交 rumination 筛选表格：更新 rumination_progress.json 中的全量 filter_table，不修改各 phase 结论文件。"""
+    """提交 rumination 筛选表格数据，更新 progress，并可能返回下一步表格。"""
     manager = get_activation_manager_for_code(request.activation_code)
     rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
     if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(
@@ -1465,154 +1281,48 @@ async def rumination_table_submit(
     if not report_id:
         raise HTTPException(status_code=500, detail="报告初始化失败")
     reports_root = root / "reports"
-    prior_context = _load_prior_context_from_activation(
-        request.activation_code, "rumination", report
-    )
-    values_list, strengths_list, interests_list, _ = extract_from_prior_context(prior_context)
-    passions = interests_list if interests_list else ["热爱1", "热爱2"]
-    strengths_list = strengths_list if strengths_list else ["优势1", "优势2"]
-
-    vip_level = getattr(rec, "vip_level", 1) or 1
-    llm = _get_dialogue_llm_provider(vip_level=vip_level)
-
-    step = max(1, min(9, int(request.step)))
-    mode = (request.mode or "full_step").strip().lower()
-    use_single = bool(request.prefer_single_row) or mode == "single_row"
-    progress = load_rumination_progress(reports_root, report_id)
-
-    merged_table: List[dict] = []
-    if mode == "single_row":
-        if not request.row_id:
-            raise HTTPException(status_code=400, detail="single_row 模式需要 row_id")
-        base = list(progress.get("filter_table") or [])
-        if not base and step == 1:
-            base = gen_table(strengths_list, passions)
-        patch = dict(request.patch or {})
-        merged_table = merge_row_by_id(base, str(request.row_id), patch)
-        cur = int(progress.get("filter_row_cursor", 0))
-        nrows = len(merged_table)
-        if cur + 1 < nrows:
-            progress = save_rumination_progress(
-                reports_root,
-                report_id,
-                filter_step=step,
-                filter_table=merged_table,
-                filter_row_cursor=cur + 1,
-                hypothesis_round=1,
-                filter_early_terminated=False,
-                filter_terminate_reason=None,
-            )
-            w = _rumination_next_widget(
-                step, merged_table, values_list, single_row_mode=use_single, cursor=cur + 1
-            )
-            return SimpleChatResponse(
-                code=200,
-                message="success",
-                data={
-                    "progress": progress,
-                    "next_step": step,
-                    "next_action": "same_step_next_row",
-                    "next_table_widget": w,
-                    "full_table_preview": merged_table,
-                },
-            )
-        table_for_advance = merged_table
-    else:
-        table_for_advance = list(request.table_data or [])
-        if not table_for_advance and step == 1:
-            table_for_advance = gen_table(strengths_list, passions)
-
-    next_step, new_table, meta = await _rumination_advance_after_step_confirm(
-        step, table_for_advance, values_list=values_list, llm=llm
-    )
-
-    early = bool(meta.get("early_terminated"))
-    if early:
-        progress = save_rumination_progress(
-            reports_root,
-            report_id,
-            filter_step=0,
-            filter_table=new_table,
-            filter_row_cursor=0,
-            hypothesis_round=1,
-            filter_early_terminated=True,
-            filter_terminate_reason=str(meta.get("terminate_reason") or "early"),
-        )
-        return SimpleChatResponse(
-            code=200,
-            message="success",
-            data={
-                "progress": progress,
-                "next_step": 0,
-                "next_action": "early_terminated",
-                "early_terminated": True,
-                "terminate_reason": meta.get("terminate_reason"),
-                "full_table_preview": new_table,
-            },
-        )
-
-    if meta.get("filter_complete"):
-        progress = save_rumination_progress(
-            reports_root,
-            report_id,
-            main_section="final_choice",
-            filter_step=0,
-            filter_table=new_table,
-            filter_row_cursor=0,
-            hypothesis_round=1,
-            filter_early_terminated=False,
-            filter_terminate_reason=None,
-        )
-        w = _rumination_next_widget(
-            0, new_table, values_list, single_row_mode=False, cursor=0
-        )
-        return SimpleChatResponse(
-            code=200,
-            message="success",
-            data={
-                "progress": progress,
-                "next_step": 0,
-                "next_action": "show_full_table",
-                "next_table_widget": w,
-                "full_table_preview": new_table,
-            },
-        )
-
+    step = max(1, min(9, request.step))
     progress = save_rumination_progress(
-        reports_root,
-        report_id,
-        filter_step=next_step,
-        filter_table=new_table,
-        filter_row_cursor=0,
-        hypothesis_round=1,
-        filter_early_terminated=False,
-        filter_terminate_reason=None,
+        reports_root, report_id, filter_step=step, filter_table=request.table_data
     )
-    w = _rumination_next_widget(
-        next_step, new_table, values_list, single_row_mode=use_single, cursor=0
-    )
-    return SimpleChatResponse(
-        code=200,
-        message="success",
-        data={
-            "progress": progress,
-            "next_step": next_step,
-            "next_action": "advance_step",
-            "next_table_widget": w,
-            "full_table_preview": new_table,
-        },
-    )
+
+    next_table = None
+    table_data = request.table_data
+    if step == 1 and table_data:
+        filtered = filter_strength(table_data)
+        if filtered:
+            step2_rows = filter_match(filtered)
+            next_table = _build_table_widget_payload(
+                step=2,
+                rows=step2_rows,
+                columns=[
+                    {"key": "id", "label": "id"},
+                    {"key": "热爱", "label": "热爱"},
+                    {"key": "优势", "label": "优势"},
+                    {"key": "匹配性", "label": "匹配性", "options": ["匹配", "不匹配"]},
+                    {"key": "匹配原因", "label": "匹配原因"},
+                ],
+                editable_cols=["匹配性"],
+                guide_text="这是匹配分析结果。如不同意某行标记，可直接修改。确认后我们将基于匹配结果提出假设。",
+            )
+            save_rumination_progress(
+                reports_root, report_id, filter_table=step2_rows
+            )
+
+    data: dict = {"progress": progress, "next_step": step}
+    if next_table:
+        data["next_table_widget"] = next_table
+
+    return SimpleChatResponse(code=200, message="success", data=data)
 
 
 @router.get("/rumination-get-table", response_model=SimpleChatResponse)
 def rumination_get_table(
     activation_code: str,
-    step: Optional[int] = None,
-    single_row_mode: bool = Query(False),
-    prefer_single_row: bool = Query(False),
+    step: Optional[int] = 1,
     current_user: dict = Depends(get_current_user),
 ):
-    """获取 rumination 筛选当前步骤表格（全量存 progress，可单行展示）。"""
+    """获取 rumination 筛选流程的当前步骤表格（进入筛选时或下一步）"""
     manager = get_activation_manager_for_code(activation_code)
     rec = _resolve_activation_for_user(manager, activation_code, current_user)
     root = get_effective_simple_root(rec)
@@ -1628,79 +1338,52 @@ def rumination_get_table(
     reports_root = root / "reports"
     progress = load_rumination_progress(reports_root, report_id)
     prior_context = _load_prior_context_from_activation(activation_code, "rumination", report)
-    values_list, strengths_list, interests_list, _ = extract_from_prior_context(prior_context)
+    _, strengths_list, interests_list = extract_from_prior_context(prior_context)
     passions = interests_list if interests_list else ["热爱1", "热爱2"]
     strengths_list = strengths_list if strengths_list else ["优势1", "优势2"]
 
-    use_single = bool(single_row_mode or prefer_single_row)
-    fs = int(progress.get("filter_step") or 0)
-    ms = str(progress.get("main_section") or "opening")
-    if step is not None:
-        eff_step = max(0, min(9, int(step)))
-    elif ms == "final_choice" and fs == 0:
-        eff_step = 0
-    elif fs > 0:
-        eff_step = fs
-    else:
-        eff_step = 1
-
-    payload: Optional[dict] = None
-    filter_complete = False
-
-    if eff_step == 0:
-        rows = list(progress.get("filter_table") or [])
-        payload = build_table_widget_payload(
-            9, rows, values_list, single_row_mode=False, row_cursor=0, total_rows=len(rows)
+    step = max(1, min(9, step or 1))
+    if step == 1:
+        rows = gen_table(strengths_list, passions)
+        payload = _build_table_widget_payload(
+            step=1,
+            rows=rows,
+            columns=[
+                {"key": "id", "label": "id"},
+                {"key": "热爱", "label": "热爱"},
+                {"key": "优势", "label": "优势"},
+                {
+                    "key": "优势标记",
+                    "label": "优势标记",
+                    "options": ["有充实感，与成功有关", "有充实感", "不确定"],
+                },
+            ],
+            editable_cols=["优势标记"],
+            guide_text="请确认您的热爱与优势列表。如需修改，可直接在表格中编辑标记。确认后我们将进行匹配分析。",
         )
-        filter_complete = True
-    elif eff_step == 1:
-        ft = progress.get("filter_table")
-        fs_cur = int(progress.get("filter_step") or 0)
-        if not ft or fs_cur == 0:
-            rows = gen_table(strengths_list, passions)
-            progress = save_rumination_progress(
-                reports_root,
-                report_id,
-                filter_step=1,
-                filter_table=rows,
-                filter_row_cursor=0,
+    else:
+        prev_table = progress.get("filter_table") or []
+        if step == 2:
+            filtered = filter_strength(prev_table)
+            rows = filter_match(filtered)
+            payload = _build_table_widget_payload(
+                step=2,
+                rows=rows,
+                columns=[
+                    {"key": "id", "label": "id"},
+                    {"key": "热爱", "label": "热爱"},
+                    {"key": "优势", "label": "优势"},
+                    {"key": "匹配性", "label": "匹配性", "options": ["匹配", "不匹配"]},
+                    {"key": "匹配原因", "label": "匹配原因"},
+                ],
+                editable_cols=["匹配性"],
+                guide_text="这是匹配分析结果。如不同意某行标记，可直接修改。确认后我们将基于匹配结果提出假设。",
             )
         else:
-            rows = list(ft)
-        cur = int(progress.get("filter_row_cursor", 0))
-        disp, rc, tot = slice_rows_for_display(rows, cur, single_row_mode=use_single)
-        payload = build_table_widget_payload(
-            1,
-            disp,
-            values_list,
-            single_row_mode=use_single and tot > 0,
-            row_cursor=rc,
-            total_rows=tot,
-        )
-    else:
-        rows = list(progress.get("filter_table") or [])
-        if not rows:
             payload = None
-        else:
-            cur = int(progress.get("filter_row_cursor", 0))
-            disp, rc, tot = slice_rows_for_display(rows, cur, single_row_mode=use_single)
-            payload = build_table_widget_payload(
-                eff_step,
-                disp,
-                values_list,
-                single_row_mode=use_single and tot > 0,
-                row_cursor=rc,
-                total_rows=tot,
-            )
 
     return SimpleChatResponse(
-        code=200,
-        message="success",
-        data={
-            "table_widget": payload,
-            "progress": progress,
-            "filter_complete": filter_complete,
-        },
+        code=200, message="success", data={"table_widget": payload}
     )
 
 
@@ -1728,25 +1411,7 @@ def _build_system_prompt(
     if (extra_goal_hint or "").strip():
         base_prompt = f"{base_prompt}\n\n[管理员调试目标补充]\n{extra_goal_hint.strip()}"
     # 机器协议：每轮回复末尾输出状态 JSON，后端据此驱动 pending 状态机（不会展示给前端）。
-    phase_key = (phase or "values").strip().lower()
-    if phase_key == "rumination" and (prior_context or "").strip():
-        base_prompt = (
-            f"{base_prompt}\n\n[四维关键词摘要 — 提问与回顾须结合此处与前文 prior，不使用固定选择题库]\n"
-            f"{build_prior_keywords_summary(prior_context)}"
-        )
-    if phase_key == "rumination":
-        protocol = """
-
-[输出协议 - 必须遵守]
-沉淀阶段不使用维度结论卡。在自然语言回复末尾追加如下块（严格 JSON）：
-[STATE_JSON]
-{"state":"continue","draft":null}
-[/STATE_JSON]
-规则：state 必须为 continue，draft 必须为 null；禁止 pending_ready。
-[STATE_JSON] 块之外只写给用户看的自然语言，不要解释本协议。
-"""
-    else:
-        protocol = """
+    protocol = """
 
 [输出协议 - 必须遵守]
 在你的自然语言回复末尾，追加如下块（严格 JSON）：
@@ -1758,9 +1423,7 @@ def _build_system_prompt(
 1) 仅当你判断“已可进入结论确认”时，state 才能是 pending_ready。
 2) state=continue 时，draft 置为 null。
 3) state=pending_ready 时，draft.summary 必填，draft.keywords 为数组（可为空但应尽量给出）。
-4) draft.keywords 中每一项必须是单一概念词（或本阶段要求的单一短语），不得使用「/、或、以及、&、|」并列多个候选；近义词须先在对话中与用户确认取舍后再写入。
-5) values / strengths / interests / purpose：当用户已按该阶段流程完成确认（如价值观 5 词与排序、禀赋 10 条优势与标记、热忱 top3、使命宣言等）后，必须输出 pending_ready 并给出合格 draft，以便系统展示结论卡供用户最终确认；不得仅口头说“完成”而省略 STATE_JSON。
-6) [STATE_JSON] 块之外只写给用户看的自然语言，不要解释本协议。
+4) [STATE_JSON] 块之外只写给用户看的自然语言，不要解释本协议。
 """
     return f"{base_prompt}\n{protocol}"
 
@@ -2378,16 +2041,13 @@ async def list_threads(
             ts_ms = 0
         cmeta = _read_conclusion_meta(meta)
         completed = bool(cmeta.get("thread_completed"))
-        dim_preview = cmeta.get("final") or (
-            cmeta.get("draft") if cmeta.get("state") == CONCLUSION_STATE_PENDING else None
-        )
         threads.append({
             "id": tid,
             "title": f"对话 {idx + 1}",
             "status": "completed" if completed else "in-progress",
             "messages": [],  # 列表不返回消息体，由 /history 按需加载
             "createdAt": ts_ms or int(datetime.now(timezone.utc).timestamp() * 1000),
-            "dimensionConclusion": dim_preview,
+            "dimensionConclusion": cmeta.get("final"),
             "selected": tid == selected_id,
             "step_locked": bool(step.get("locked", False)),
         })
@@ -2434,9 +2094,6 @@ async def simple_history(
         cmeta = _read_conclusion_meta(metadata)
         record = registry.get_report_by_id(report["report_id"]) or {}
         step_payload = ((record.get("steps") or {}).get(phase_step)) or {}
-        dim_for_meta = cmeta.get("final") or (
-            cmeta.get("draft") if cmeta.get("state") == CONCLUSION_STATE_PENDING else None
-        )
 
         return SimpleHistoryResponse(
             code=200,
@@ -2446,7 +2103,7 @@ async def simple_history(
                 "metadata": {
                     "session_id": logical_session_id,
                     "thread_completed": cmeta.get("thread_completed", False),
-                    "dimension_conclusion": dim_for_meta,
+                    "dimension_conclusion": cmeta.get("final"),
                     "step_locked": bool(step_payload.get("locked", False)),
                 },
                 "activation": {
@@ -2749,24 +2406,20 @@ async def simple_chat_stream(
                                 "token_usage": _normalize_token_usage(None),
                             },
                         )
-                        updated_card = await conv_manager.update_last_conclusion_card_payload(
-                            session_id, category, dimension_conclusion
+                        await conv_manager.append_message(
+                            session_id=session_id,
+                            category=category,
+                            message={
+                                "role": "conclusion_card",
+                                "content": json.dumps(dimension_conclusion, ensure_ascii=False),
+                                "session_id": logical_session_id,
+                                "step_id": phase_step,
+                                "agent_id": "coach",
+                                "event": "dimension_conclusion",
+                                "card_type": "dimension_conclusion",
+                                "card_payload": dimension_conclusion,
+                            },
                         )
-                        if not updated_card:
-                            await conv_manager.append_message(
-                                session_id=session_id,
-                                category=category,
-                                message={
-                                    "role": "conclusion_card",
-                                    "content": json.dumps(dimension_conclusion, ensure_ascii=False),
-                                    "session_id": logical_session_id,
-                                    "step_id": phase_step,
-                                    "agent_id": "coach",
-                                    "event": "dimension_conclusion",
-                                    "card_type": "dimension_conclusion",
-                                    "card_payload": dimension_conclusion,
-                                },
-                            )
                         await _append_note_json(
                             conv_manager,
                             session_id,
@@ -2844,11 +2497,6 @@ async def simple_chat_stream(
                     )
                 except Exception:
                     pass
-                if phase_step != "rumination":
-                    try:
-                        await conv_manager.remove_last_conclusion_card(session_id, category)
-                    except Exception as e:
-                        logger.warning("remove_last_conclusion_card on reject failed: %s", e)
                 pending_conclusion = None
                 rejected_feedback = user_content
 
@@ -2957,9 +2605,6 @@ async def simple_chat_stream(
         if state_obj and not cmeta.get("thread_completed"):
             state_name = str(state_obj.get("state") or "").strip().lower()
             draft = state_obj.get("draft")
-            if phase_step == "rumination" and state_name == "pending_ready":
-                state_name = "continue"
-                draft = None
             if state_name == "pending_ready" and isinstance(draft, dict):
                 await conv_manager.update_metadata(
                     session_id,
@@ -2986,32 +2631,6 @@ async def simple_chat_stream(
                     )
                 except Exception:
                     pass
-                # 四阶段（非 rumination）立即推送结论卡草案，与前端 dimension_conclusion 事件对齐
-                if phase_step != "rumination" and isinstance(draft, dict):
-                    card_data = _normalize_draft_for_dimension_card(draft)
-                    try:
-                        yield "data: {\"conclusion_loading\": true}\n\n"
-                        yield (
-                            "data: "
-                            + json.dumps({"dimension_conclusion": card_data}, ensure_ascii=False)
-                            + "\n\n"
-                        )
-                        await conv_manager.append_message(
-                            session_id=session_id,
-                            category=category,
-                            message={
-                                "role": "conclusion_card",
-                                "content": json.dumps(card_data, ensure_ascii=False),
-                                "session_id": logical_session_id,
-                                "step_id": phase_step,
-                                "agent_id": "coach",
-                                "event": "dimension_conclusion",
-                                "card_type": "dimension_conclusion",
-                                "card_payload": card_data,
-                            },
-                        )
-                    except Exception as e:
-                        logger.warning("pending_ready append conclusion_card failed: %s", e)
             elif state_name == "continue":
                 # 无状态迁移，保持当前会话态
                 pass

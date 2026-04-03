@@ -9,6 +9,11 @@
 注意：
 - 激活码过期后，历史文件仍然保留在 data/simple 下
 - activations.json 只作为索引，方便通过 code 找到 session_id 等元信息
+
+产品策略（探索 report）：
+- 用户一旦开始探索并生成 report 目录后，终端用户不得自助删除激活码及关联报告数据。
+- soft_delete / permanent_delete / 回收站永久删除 仅供管理员、系统任务或运维脚本调用；
+  调用时传入 caller_role='end_user' 将显式拒绝。默认 caller_role='admin' 以保持脚本与现有行为兼容。
 """
 
 from __future__ import annotations
@@ -28,6 +33,23 @@ class ActivationStatus(str, Enum):
     EXPIRED = "expired"
     REVOKED = "revoked"
     DELETED = "deleted"
+
+
+# 允许执行「软删/回收站永久删」等破坏探索数据的调用方角色（默认走 admin，兼容历史脚本）
+_ACTIVATION_DELETE_CALLER_ROLES = frozenset({"admin", "system", "script", "migration"})
+
+
+def assert_activation_delete_caller_allowed(caller_role: str) -> None:
+    """
+    终端用户不得删除已生成的探索 report 及激活索引。
+    管理员/系统/脚本应使用 admin、system、script 或 migration。
+    """
+    role = (caller_role or "").strip().lower()
+    if role in _ACTIVATION_DELETE_CALLER_ROLES:
+        return
+    if role == "end_user":
+        raise PermissionError("产品策略：终端用户不可删除已生成的探索报告及激活数据，请联系管理员。")
+    raise PermissionError(f"不允许的激活数据删除调用角色: {caller_role!r}")
 
 
 @dataclass
@@ -390,12 +412,23 @@ class SimpleActivationManager:
             return True
         return False
 
-    def soft_delete_to_recycle_bin(self, codes: List[str], deleted_by: Optional[dict] = None, retention_days: int = 30) -> int:
+    def soft_delete_to_recycle_bin(
+        self,
+        codes: List[str],
+        deleted_by: Optional[dict] = None,
+        retention_days: int = 30,
+        *,
+        caller_role: str = "admin",
+    ) -> int:
         """
         删除激活码到垃圾桶（软删除）：
         - 从 activations.json 移除
         - 写入 activations_recycle_bin.json
+
+        产品策略：禁止终端用户删除；caller_role='end_user' 将抛出 PermissionError。
+        管理员/脚本请使用默认 caller_role='admin'。
         """
+        assert_activation_delete_caller_allowed(caller_role)
         records = self._load_all()
         recycle = self._load_recycle_bin()
         now = datetime.utcnow()
@@ -462,14 +495,21 @@ class SimpleActivationManager:
         return changed
 
     def permanent_delete_from_recycle_bin(
-        self, codes: List[str], reports_root: Optional[Path] = None
+        self,
+        codes: List[str],
+        reports_root: Optional[Path] = None,
+        *,
+        caller_role: str = "admin",
     ) -> int:
         """
         从垃圾桶立即永久删除指定激活码及其所有相关数据：
         - report 目录
         - flat session 目录
         - 从 activations 和 recycle 移除
+
+        产品策略：禁止终端用户删除；caller_role='end_user' 将抛出 PermissionError。
         """
+        assert_activation_delete_caller_allowed(caller_role)
         import shutil
 
         recycle = self._load_recycle_bin()

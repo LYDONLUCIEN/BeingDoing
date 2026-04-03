@@ -5,20 +5,90 @@ report 注册表（目录版）
 data/simple/reports/{report_id}/
   - record.json                       # report 元信息 + 每个 step 的会话池 + 最终选中
   - {step_id}__{session_id}.json      # 该 step 下某个会话的完整消息
+
+同一 (activation_code, user_id) 在同一 reports_root 下仅保留一份目录：
+ensure_report 在文件锁内双检，多余目录按 canonical 规则保留一份后 rmtree 其余。
+
+bind_session / select_session 禁止将同一会话 ID 绑定到「不同激活码+用户」的两份 report（同对重复目录除外；admin_mock 豁免）。
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
+import shutil
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+try:
+    from filelock import FileLock as _FileLock
+except ImportError:  # 精简 venv 时仍可跑通（如仅跑部分测试）
+    _FileLock = None  # type: ignore[misc, assignment]
+
 from app.utils.simple_activation_manager import get_simple_base_dir
+
+logger = logging.getLogger(__name__)
+
+
+class _FcntlPairLock:
+    """POSIX 文件锁后备（无 filelock 包时使用）。"""
+
+    def __init__(self, path: Path) -> None:
+        self._path = path
+        self._fp = None
+
+    def __enter__(self) -> "_FcntlPairLock":
+        import fcntl
+
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._fp = open(self._path, "a", encoding="utf-8")
+        fcntl.flock(self._fp.fileno(), fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        import fcntl
+
+        if self._fp is not None:
+            try:
+                fcntl.flock(self._fp.fileno(), fcntl.LOCK_UN)
+            finally:
+                self._fp.close()
+                self._fp = None
+
+
+def _pair_file_lock(lock_path: Path):
+    if _FileLock is not None:
+        return _FileLock(str(lock_path), timeout=30)
+    if sys.platform == "win32":
+        raise ImportError("请安装 filelock 依赖（Windows 上 report 锁需要）")
+    return _FcntlPairLock(lock_path)
 
 
 STEP_IDS = ["values", "strengths", "interests", "purpose", "rumination"]
 STEP_ORDER = {k: i for i, k in enumerate(STEP_IDS)}
+
+# Admin mock 等多 report 共用的占位会话（与 admin_mock.MOCK_SESSION_ID 一致）
+_SESSION_ID_CROSS_REPORT_EXEMPT = frozenset({"admin_mock"})
+
+
+def compute_explore_resume(record: dict) -> dict:
+    """
+    根据 record.json 推断用户应回到的「当前未完成阶段」及可访问阶段列表。
+    规则：按顺序找到第一个未 lock 的 step；之前（含当前）的 step 均视为已解锁可回看。
+    若全部 lock，则回到最后一步（沉淀），由前端或报告页收口。
+    """
+    steps = record.get("steps") or {}
+    unlocked: List[str] = []
+    for sid in STEP_IDS:
+        unlocked.append(sid)
+        st = steps.get(sid) or {}
+        if not st.get("locked"):
+            return {"resume_phase": sid, "unlocked_phases": unlocked}
+    return {"resume_phase": STEP_IDS[-1], "unlocked_phases": list(STEP_IDS)}
+
 
 STEP_ALIASES = {
     "values": "values",
@@ -60,6 +130,16 @@ class ReportRegistry:
     def _step_session_file(self, report_id: str, step_id: str, session_id: str) -> Path:
         return self._report_dir(report_id) / f"{step_id}__{session_id}.json"
 
+    def _locks_dir(self) -> Path:
+        p = self.reports_root / ".locks"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    def _pair_lock_path(self, activation_code: str, user_id: str) -> Path:
+        raw = f"{activation_code}|{user_id}".encode("utf-8")
+        h = hashlib.sha256(raw).hexdigest()
+        return self._locks_dir() / f"report_{h}.lock"
+
     def _default_record(self, report_id: str, activation_code: str, user_id: str, created_at: Optional[str] = None) -> dict:
         ts = created_at or self._now_iso()
         return {
@@ -93,7 +173,7 @@ class ReportRegistry:
         if not isinstance(data, dict):
             return None
         rec = self._normalize_record(data)
-        rec.setdefault("report_id", report_id)  # 确保旧格式 record 也有 report_id
+        rec.setdefault("report_id", report_id)
         return rec
 
     def _normalize_record(self, data: dict) -> dict:
@@ -130,18 +210,100 @@ class ReportRegistry:
         file = self._record_file(report_id)
         file.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    def _iter_records(self) -> List[dict]:
+    def _iter_records_raw(self) -> List[dict]:
         items: List[dict] = []
         if not self.reports_root.is_dir():
             return items
         for d in self.reports_root.iterdir():
-            if not d.is_dir():
+            if not d.is_dir() or d.name.startswith("."):
                 continue
             rec = self._load_record(d.name)
             if rec:
                 items.append(rec)
+        return items
+
+    @staticmethod
+    def _total_session_ids(record: dict) -> int:
+        steps = record.get("steps") or {}
+        n = 0
+        for sid in STEP_IDS:
+            n += len((steps.get(sid) or {}).get("session_ids") or [])
+        return n
+
+    def _iter_records(self) -> List[dict]:
+        items = self._iter_records_raw()
         items.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
         return items
+
+    def _matches_activation_user(self, code: str, uid: str) -> List[dict]:
+        matches: List[dict] = []
+        for rec in self._iter_records_raw():
+            if (rec.get("activation_code") or "").upper() == code and rec.get("user_id") == uid:
+                matches.append(rec)
+        return matches
+
+    def _sort_canonical_matches(self, matches: List[dict]) -> List[dict]:
+        if len(matches) <= 1:
+            return matches
+        ids = [m.get("report_id") for m in matches]
+        logger.warning(
+            "同一激活码与用户存在多份 report 目录，将固定选用一份: activation_code=%s user_id=%s report_ids=%s",
+            matches[0].get("activation_code"),
+            matches[0].get("user_id"),
+            ids,
+        )
+        return sorted(
+            matches,
+            key=lambda r: (
+                r.get("created_at") or "9999-12-31T23:59:59.999999Z",
+                -self._total_session_ids(r),
+                r.get("report_id") or "",
+            ),
+        )
+
+    def _prune_duplicate_dirs(self, ordered: List[dict]) -> None:
+        if len(ordered) <= 1:
+            return
+        keep_id = (ordered[0].get("report_id") or "").strip()
+        for rec in ordered[1:]:
+            rid = (rec.get("report_id") or "").strip()
+            if not rid or rid == keep_id:
+                continue
+            d = self._report_dir(rid)
+            if d.is_dir():
+                logger.error(
+                    "删除重复 report 目录: removed_report_id=%s kept_report_id=%s",
+                    rid,
+                    keep_id,
+                )
+                shutil.rmtree(d, ignore_errors=True)
+
+    def _session_bound_to_other_activation(
+        self, session_id: str, except_report_id: str, same_code: str, same_uid: str
+    ) -> Optional[str]:
+        """若 session 已出现在「另一组 activation+user」的 report 中，返回对方 report_id。"""
+        sess = (session_id or "").strip()
+        if not sess or sess in _SESSION_ID_CROSS_REPORT_EXEMPT:
+            return None
+        ex = (except_report_id or "").strip()
+        for rec in self._iter_records_raw():
+            rid = (rec.get("report_id") or "").strip()
+            if not rid or rid == ex:
+                continue
+            ocode = (rec.get("activation_code") or "").upper()
+            ouid = rec.get("user_id") or ""
+            if ocode == same_code and ouid == same_uid:
+                continue
+            for sid in STEP_IDS:
+                sessions = ((rec.get("steps") or {}).get(sid) or {}).get("session_ids") or []
+                if sess in sessions:
+                    logger.warning(
+                        "session_id 已绑定到其他探索报告: session_id=%s other_report_id=%s",
+                        sess,
+                        rid,
+                    )
+                    return rid
+        return None
 
     def ensure_report(self, activation_code: str, user_id: str, session_id: Optional[str] = None) -> dict:
         code = (activation_code or "").strip().upper()
@@ -149,26 +311,39 @@ class ReportRegistry:
         if not code or not uid:
             raise ValueError("activation_code 与 user_id 不能为空")
 
-        existed = self.get_by_activation_user(code, uid)
-        if existed:
-            if session_id:
-                self.bind_session(existed["report_id"], "values", session_id)
-            return existed
+        lock = _pair_file_lock(self._pair_lock_path(code, uid))
+        with lock:
+            matches = self._matches_activation_user(code, uid)
+            if len(matches) > 1:
+                ordered = self._sort_canonical_matches(matches)
+                self._prune_duplicate_dirs(ordered)
+                matches = self._matches_activation_user(code, uid)
 
-        report_id = str(uuid.uuid4())
-        record = self._default_record(report_id=report_id, activation_code=code, user_id=uid)
-        self._save_record(record)
-        if session_id:
-            self.bind_session(report_id, "values", session_id)
-        return self._load_record(report_id) or record
+            if matches:
+                ordered = self._sort_canonical_matches(matches)
+                record = ordered[0]
+                rid = record.get("report_id")
+                if not rid:
+                    raise ValueError("record 缺少 report_id")
+                if session_id:
+                    self.bind_session(rid, "values", session_id)
+                return self._load_record(rid) or record
+
+            report_id = str(uuid.uuid4())
+            record = self._default_record(report_id=report_id, activation_code=code, user_id=uid)
+            self._save_record(record)
+            if session_id:
+                self.bind_session(report_id, "values", session_id)
+            return self._load_record(report_id) or record
 
     def get_by_activation_user(self, activation_code: str, user_id: str) -> Optional[dict]:
         code = (activation_code or "").strip().upper()
         uid = (user_id or "").strip()
-        for rec in self._iter_records():
-            if (rec.get("activation_code") or "").upper() == code and rec.get("user_id") == uid:
-                return rec
-        return None
+        matches = self._matches_activation_user(code, uid)
+        if not matches:
+            return None
+        ordered = self._sort_canonical_matches(matches)
+        return ordered[0]
 
     def bind_session(self, report_id: str, step_id: str, session_id: str) -> Optional[dict]:
         sid = self.normalize_step_id(step_id)
@@ -178,6 +353,13 @@ class ReportRegistry:
         record = self._load_record(report_id)
         if not record:
             return None
+        code = (record.get("activation_code") or "").upper()
+        uid = record.get("user_id") or ""
+        conflict = self._session_bound_to_other_activation(sess, report_id, code, uid)
+        if conflict:
+            raise ValueError(
+                f"会话 {sess} 已绑定到其他探索报告（report_id={conflict}），拒绝重复绑定"
+            )
         step = record["steps"][sid]
         if sess not in step["session_ids"]:
             step["session_ids"].append(sess)
@@ -213,7 +395,14 @@ class ReportRegistry:
             selected = step.get("selected_session_id")
             if selected and selected != sess:
                 raise ValueError("该阶段已锁定，不能切换会话")
+        code = (record.get("activation_code") or "").upper()
+        uid = record.get("user_id") or ""
         if sess not in step["session_ids"]:
+            conflict = self._session_bound_to_other_activation(sess, report_id, code, uid)
+            if conflict:
+                raise ValueError(
+                    f"会话 {sess} 已绑定到其他探索报告（report_id={conflict}），拒绝选用"
+                )
             step["session_ids"].append(sess)
         step["selected_session_id"] = sess
         step["updated_at"] = self._now_iso()

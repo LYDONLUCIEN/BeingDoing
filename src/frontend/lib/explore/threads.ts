@@ -157,6 +157,10 @@ export function setActiveThreadId(code: string, phase: PhaseKey, threadId: strin
   } catch {}
 }
 
+/** 与后端 `allocate_simple_chat_thread_id` 同思路：t_ + 高熵 id，降低碰撞（Simple/report 绑定更安全） */
 export function createThreadId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `t_${crypto.randomUUID().replace(/-/g, '')}`;
+  }
   return `t_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
