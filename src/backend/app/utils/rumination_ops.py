@@ -6,7 +6,8 @@ Rumination 筛选流程的表格操作函数
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 # 与 survey_storage / prior 块标题一致：【信念/禀赋/热忱/使命 阶段结果】
 _RE_VALUES = re.compile(r"【信念[^】]*阶段结果】\s*\n(.*?)(?=【|$)", re.DOTALL)
@@ -206,6 +207,77 @@ def similar_filter(table: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return result
 
 
+def extract_keywords_from_anchor_goals(goals: str, limit: int = 12) -> List[str]:
+    """
+    从 record.json 里 anchor_summary.goals 抽取短语（顿号/逗号/斜杠分隔）。
+    优先匹配「包括…等，」式列举，否则最后一个全角冒号后的片段。
+    """
+    if not goals or not goals.strip():
+        return []
+    chunk = ""
+    m_inc = re.search(r"包括(.+?)等[，,]", goals)
+    if m_inc:
+        chunk = m_inc.group(1).strip()
+    if not chunk:
+        m_inc2 = re.search(r"包括([^。]+?)(?:。|$)", goals)
+        if m_inc2:
+            chunk = m_inc2.group(1).strip()
+    if not chunk:
+        for sep in ("：", ":"):
+            idx = goals.rfind(sep)
+            if idx >= 0:
+                tail = goals[idx + 1 :].split("。")[0].strip()
+                if len(tail) >= 2:
+                    chunk = tail
+                    break
+    if not chunk:
+        q = re.search(r"「([^」]{2,120})」", goals)
+        if q:
+            return [q.group(1).strip()]
+        return _extract_keywords(goals, limit)
+    chunk = chunk.replace("/", "、")
+    parts = re.split(r"[，、；;]", chunk)
+    out: List[str] = []
+    for p in parts:
+        w = re.sub(r"^[\s\d\.、]+", "", p.strip())
+        w = re.sub(r"[\s「」\"'（）\(\)]+$", "", w)
+        if not w or len(w) > 50:
+            continue
+        if w not in out:
+            out.append(w)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def extract_lists_from_report_record(
+    record: Optional[Dict[str, Any]],
+) -> Tuple[List[str], List[str], List[str], List[str]]:
+    """从 report 的 record.json（steps.*.anchor_summary.goals）补全四维关键词。"""
+    if not record or not isinstance(record, dict):
+        return [], [], [], []
+    steps = record.get("steps") or {}
+
+    def one(phase: str) -> List[str]:
+        st = steps.get(phase) or {}
+        if not isinstance(st, dict):
+            return []
+        anchor = st.get("anchor_summary") or {}
+        g = str(anchor.get("goals") or "")
+        if phase == "purpose":
+            q = re.search(r"[「“]([^」”]{2,120})[」”]", g)
+            if q:
+                return [q.group(1).strip()]
+        return extract_keywords_from_anchor_goals(g, 12)
+
+    return (
+        one("values"),
+        one("strengths"),
+        one("interests"),
+        one("purpose"),
+    )
+
+
 def extract_from_prior_context(prior_context: str) -> Tuple[List[str], List[str], List[str], List[str]]:
     """
     从 prior_context 文本中提取 价值观、优势、热爱、使命 关键词列表。
@@ -228,6 +300,43 @@ def extract_from_prior_context(prior_context: str) -> Tuple[List[str], List[str]
     if mp:
         purpose = _extract_keywords(mp.group(1), 8)
     return (values, strengths, interests, purpose)
+
+
+def extract_dimension_lists_for_rumination_table(
+    reports_root: str,
+    report_id: str,
+    record_obj: Optional[Dict[str, Any]],
+) -> Tuple[List[str], List[str], List[str], List[str]]:
+    """
+    为筛选表生成「热爱×优势」等行数据用的关键词列表。
+
+    优先用 report record.json 中各维 anchor_summary.goals；不足时按阶段读取
+    prior_context_{phase}.txt 全文摘词（单文件上限约 12k），避免依赖合并 prior 再被
+    PRIOR_CONTEXT_MAX_CHARS 截断后正则拿不到「热忱/禀赋」段落。
+    """
+    v, s, i, p = extract_lists_from_report_record(record_obj)
+    report_dir = Path(reports_root) / report_id
+
+    def _read_phase_file(phase_key: str) -> str:
+        path = report_dir / f"prior_context_{phase_key}.txt"
+        if not path.is_file():
+            return ""
+        try:
+            raw = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return ""
+        return raw[:12000] if len(raw) > 12000 else raw
+
+    if not v:
+        v = _extract_keywords(_read_phase_file("values"), 12)
+    if not s:
+        s = _extract_keywords(_read_phase_file("strengths"), 12)
+    if not i:
+        i = _extract_keywords(_read_phase_file("interests"), 8)
+    purpose_out: List[str] = list(p) if p else []
+    if not purpose_out:
+        purpose_out = _extract_keywords(_read_phase_file("purpose"), 8)
+    return (v, s, i, purpose_out)
 
 
 def merge_row_by_id(table: List[Dict[str, Any]], row_id: str, patch: Dict[str, Any]) -> List[Dict[str, Any]]:

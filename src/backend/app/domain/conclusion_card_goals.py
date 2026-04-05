@@ -28,7 +28,7 @@ CONCLUSION_RULES: Dict[str, str] = {
     ),
     "strengths": (
         _COMMON_NO_NEXT_PHASE
-        + "- 必须为 10 个彼此不同的能力优势\n"
+        + "- 必须为 5 个彼此不同的能力优势\n"
         + "- 每个优势需来自用户确认的描述，严禁杜撰\n"
         + _NAMING_SINGLE_CONCEPT
         + "\n"
@@ -78,8 +78,8 @@ CONCLUSION_CARD_GOALS: Dict[str, dict] = {
             "strength_tags_optional",
         ],
         "validation": {
-            "min_keywords": 3,
-            "max_keywords": 12,
+            "min_keywords": 5,
+            "max_keywords": 5,
             "strict_match_user_confirmed_keywords": False,
         },
     },

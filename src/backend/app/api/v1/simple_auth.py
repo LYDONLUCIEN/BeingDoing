@@ -21,7 +21,7 @@ from app.utils.simple_activation_manager import (
 from app.utils.sandbox_fork import assert_sandbox_not_expired
 from app.api.v1.auth import get_current_user
 from fastapi import Depends
-from app.utils.report_registry import ReportRegistry
+from app.utils.report_registry import ReportRegistry, compute_explore_resume
 
 
 router = APIRouter(prefix="/simple-auth", tags=["简单模式认证"])
@@ -116,28 +116,30 @@ async def activate(
 
     # 绑定/创建 report（activation_code + user_id -> report_id）
     user_id = (current_user or {}).get("user_id")
+    data = {
+        "activation_code": rec.code,
+        "session_id": rec.session_id,
+        "mode": rec.mode,
+        "created_at": rec.created_at,
+        "expires_at": rec.expires_at,
+        "status": rec.status,
+        "is_sandbox": getattr(rec, "is_sandbox", False),
+        "workspace_kind": getattr(rec, "workspace_kind", None),
+        "workspace_root": getattr(rec, "workspace_root", None),
+    }
     if user_id:
         root = get_effective_simple_root(rec)
         registry = ReportRegistry(base_dir=str(root))
-        registry.ensure_report(
+        record = registry.ensure_report(
             activation_code=rec.code,
             user_id=user_id,
             session_id=bind_session_id_for_ensure_report(rec),
         )
+        data["explore_resume"] = compute_explore_resume(record)
 
     return ActivationResponse(
         code=200,
         message="success",
-        data={
-            "activation_code": rec.code,
-            "session_id": rec.session_id,
-            "mode": rec.mode,
-            "created_at": rec.created_at,
-            "expires_at": rec.expires_at,
-            "status": rec.status,
-            "is_sandbox": getattr(rec, "is_sandbox", False),
-            "workspace_kind": getattr(rec, "workspace_kind", None),
-            "workspace_root": getattr(rec, "workspace_root", None),
-        },
+        data=data,
     )
 

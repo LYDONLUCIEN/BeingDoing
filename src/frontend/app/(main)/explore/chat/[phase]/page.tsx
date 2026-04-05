@@ -1,9 +1,17 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ChevronRight, ChevronDown, ArrowUp, Square, Copy, FileText } from 'lucide-react';
+import {
+  ChevronRight,
+  ChevronDown,
+  ArrowUp,
+  Square,
+  Copy,
+  FileText,
+  ListFilter,
+} from 'lucide-react';
 import FlowAiMessage from '@/components/explore/FlowAiMessage';
 import DimensionConclusionCard, { type DimensionConclusionData } from '@/components/explore/DimensionConclusionCard';
 import ChatPhaseBackground from '@/components/explore/ChatPhaseBackground';
@@ -33,9 +41,16 @@ import {
   setActiveThreadId,
   createThreadId,
   collapseRuminationThreadsToOne,
+  pickCanonicalRuminationThread,
   type ChatThread,
   type ThreadMessage,
 } from '@/lib/explore/threads';
+import {
+  loadRuminationStepBoundaries,
+  saveRuminationStepBoundaries,
+  ensureDefaultStepOne,
+  sliceMessagesForRuminationStep,
+} from '@/lib/explore/ruminationStepBoundaries';
 import {
   ruminationApi,
   type RuminationProgress,
@@ -106,6 +121,16 @@ export default function ChatPhasePage() {
     useState<RuminationProgress | null>(null);
   const [ruminationViewStep, setRuminationViewStep] = useState(1);
   const [ruminationMaxReached, setRuminationMaxReached] = useState(0);
+  const [ruminationStepBoundaries, setRuminationStepBoundaries] = useState<Record<string, number>>(
+    {}
+  );
+  const [ruminationWorkbenchStacked, setRuminationWorkbenchStacked] = useState(false);
+  const [ruminationTableSubmitting, setRuminationTableSubmitting] = useState(false);
+  const [ruminationRowContext, setRuminationRowContext] = useState<{
+    rowIndex: number;
+    label: string;
+  } | null>(null);
+  const ruminationWorkbenchRef = useRef<HTMLDivElement>(null);
   const { user, setTokens } = useAuthStore();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -137,14 +162,29 @@ export default function ChatPhasePage() {
     return threads.map((th) => (th.id === activeThreadId ? { ...th, messages } : th));
   }, [threads, activeThreadId, messages]);
 
-  /** 沉淀左表右聊：右侧不渲染 table_widget（表格只在左栏） */
-  const displayMessages = useMemo(
-    () =>
-      phase === 'rumination'
-        ? messages.filter((m) => m.type !== 'table_widget')
-        : messages,
-    [phase, messages]
-  );
+  /** 沉淀：按筛选子步切片同一线程消息（localStorage 持久化下标，见 ruminationStepBoundaries） */
+  const displayMessages = useMemo(() => {
+    if (phase !== 'rumination') return messages;
+    const fs = ruminationProgressState?.filter_step ?? 0;
+    const inFilterSection =
+      ruminationProgressState?.main_section === 'filter' && fs > 0;
+    return sliceMessagesForRuminationStep(
+      messages,
+      ruminationViewStep,
+      ruminationStepBoundaries,
+      {
+        inFilterSection,
+        activeFilterStep: inFilterSection ? fs : null,
+      }
+    );
+  }, [
+    phase,
+    messages,
+    ruminationViewStep,
+    ruminationStepBoundaries,
+    ruminationProgressState?.main_section,
+    ruminationProgressState?.filter_step,
+  ]);
 
   const mapHistoryToThreadMessages = useCallback(
     (history: any[], meta: any): ThreadMessage[] =>
@@ -227,6 +267,44 @@ export default function ChatPhasePage() {
     return () => document.documentElement.removeAttribute('data-rumination-mesh-page');
   }, [phase]);
 
+  /** 子步与消息下标映射：按激活码 + thread 持久化 */
+  useEffect(() => {
+    if (phase !== 'rumination' || !activationCode || !activeThreadId) return;
+    const loaded = ensureDefaultStepOne(
+      loadRuminationStepBoundaries(activationCode, activeThreadId)
+    );
+    setRuminationStepBoundaries(loaded);
+  }, [phase, activationCode, activeThreadId]);
+
+  /** 工作台宽度 < 视口 2/3 时改为上下堆叠（上表下聊） */
+  useLayoutEffect(() => {
+    if (phase !== 'rumination') return;
+    let ro: ResizeObserver | null = null;
+    let update: (() => void) | undefined;
+    const t = window.setTimeout(() => {
+      const el = ruminationWorkbenchRef.current;
+      if (!el) return;
+      update = () => {
+        const vw = window.innerWidth;
+        const w = el.getBoundingClientRect().width;
+        setRuminationWorkbenchStacked(w < (vw * 2) / 3);
+      };
+      update();
+      ro = new ResizeObserver(update);
+      ro.observe(el);
+      window.addEventListener('resize', update);
+    }, 0);
+    return () => {
+      window.clearTimeout(t);
+      ro?.disconnect();
+      if (update) window.removeEventListener('resize', update);
+    };
+  }, [phase, initLoading]);
+
+  useEffect(() => {
+    if (phase === 'rumination') setRuminationRowContext(null);
+  }, [phase, ruminationTablePayload?.step, ruminationTablePayload?.rows]);
+
   // Auth & redirect
   useEffect(() => {
     if (!adminPolicyLoaded) return;
@@ -280,40 +358,51 @@ export default function ChatPhasePage() {
           createdAt: t.createdAt,
           dimensionConclusion: t.dimensionConclusion,
         }));
-        // 进入页面时为每个会话预加载历史，侧栏可直接显示首行与轮数
+        // 前四维：为每个会话预加载历史，侧栏显示首行与轮数。
+        // 沉淀（rumination）：产品为单线程、无多会话侧栏，只拉「主线程」一条 history，与 collapse 规则一致。
         const sessionIdByThread: Record<string, string> = {};
-        const hydratedList: ChatThread[] = await Promise.all(
-          list.map(async (th) => {
-            try {
-              const h = await apiClient.get('/simple-chat/history', {
-                params: { activation_code: activationCode, phase: BACKEND_PHASE[phase], thread_id: th.id },
-              });
-              const history: any[] = h.data.messages ?? [];
-              const meta = h.data?.metadata ?? {};
-              if (typeof meta?.step_locked === 'boolean') {
-                setStepLocked(Boolean(meta.step_locked));
-              }
-              if (meta?.session_id) sessionIdByThread[th.id] = String(meta.session_id);
-              const msgs = mapHistoryToThreadMessages(history, meta);
-              const concl = meta.dimension_conclusion as DimensionConclusionData | undefined;
-              return {
-                ...th,
-                messages: msgs,
-                dimensionConclusion: concl ?? th.dimensionConclusion,
-                ...(meta.thread_completed ? { status: 'completed' as const } : {}),
-              };
-            } catch {
-              return th;
+        const hydrateThreadFromHistory = async (th: ChatThread): Promise<ChatThread> => {
+          try {
+            const h = await apiClient.get('/simple-chat/history', {
+              params: { activation_code: activationCode, phase: BACKEND_PHASE[phase], thread_id: th.id },
+            });
+            const history: any[] = h.data.messages ?? [];
+            const meta = h.data?.metadata ?? {};
+            if (typeof meta?.step_locked === 'boolean') {
+              setStepLocked(Boolean(meta.step_locked));
             }
-          })
-        );
+            if (meta?.session_id) sessionIdByThread[th.id] = String(meta.session_id);
+            const msgs = mapHistoryToThreadMessages(history, meta);
+            const concl = meta.dimension_conclusion as DimensionConclusionData | undefined;
+            return {
+              ...th,
+              messages: msgs,
+              dimensionConclusion: concl ?? th.dimensionConclusion,
+              ...(meta.thread_completed ? { status: 'completed' as const } : {}),
+            };
+          } catch {
+            return th;
+          }
+        };
+
+        let hydratedList: ChatThread[];
+        if (phase === 'rumination') {
+          if (list.length === 0) {
+            hydratedList = [];
+          } else {
+            const canonical = pickCanonicalRuminationThread(list);
+            hydratedList =
+              canonical != null ? [await hydrateThreadFromHistory(canonical)] : [];
+          }
+        } else {
+          hydratedList = await Promise.all(list.map((th) => hydrateThreadFromHistory(th)));
+        }
+
         let mergedList = hydratedList;
         if (phase === 'rumination' && hydratedList.length > 1) {
           mergedList = collapseRuminationThreadsToOne(hydratedList);
-          setThreadsForPhase(activationCode, phase, mergedList);
-        } else {
-          setThreadsForPhase(activationCode, phase, hydratedList);
         }
+        setThreadsForPhase(activationCode, phase, mergedList);
         if (cancelled) return;
         setThreads(mergedList);
         const localActiveId = getActiveThreadId(activationCode, phase);
@@ -340,7 +429,7 @@ export default function ChatPhasePage() {
       } catch (err: any) {
         if (cancelled) return;
         if (err?.code === 'ERR_NETWORK' || err?.message?.includes('Network')) {
-          setChatError('网络连接失败，若后端正在重启请稍后刷新页面');
+          setChatError(t('explore.chat.networkError'));
         }
         // 网络失败时回退到 localStorage（离线兜底）
         let list = getThreads(activationCode, phase);
@@ -357,7 +446,7 @@ export default function ChatPhasePage() {
     return () => {
       cancelled = true;
     };
-  }, [activationCode, phase, mapHistoryToThreadMessages]);
+  }, [activationCode, phase, mapHistoryToThreadMessages, t]);
 
   // 激活线程切换：优先直接使用已预加载内容；仅在“完全首次进入且无会话”时才触发 init。
   useEffect(() => {
@@ -471,7 +560,7 @@ export default function ChatPhasePage() {
           }
         } catch (err: any) {
           if (!cancelled && (err?.code === 'ERR_NETWORK' || err?.message?.includes('Network'))) {
-            setChatError('网络连接失败，若后端正在重启请稍后刷新页面');
+            setChatError(t('explore.chat.networkError'));
           }
         }
         if (!cancelled) setInitLoading(false);
@@ -537,7 +626,7 @@ export default function ChatPhasePage() {
     }
 
     return () => { cancelled = true; };
-  }, [activationCode, phase, threadsFetched, threadListSignature, activeThreadId, mapHistoryToThreadMessages]);
+  }, [activationCode, phase, threadsFetched, threadListSignature, activeThreadId, mapHistoryToThreadMessages, t]);
 
   // Persist messages + dimensionConclusion to active (backend-synced) thread when they change
   // 注意：不要在此调用 setThreads(getThreads())，否则会改变 threads 引用并触发上方加载 effect，造成 initLoading 反复与界面闪烁
@@ -604,10 +693,10 @@ export default function ChatPhasePage() {
     if (!initLoading) return;
     const timer = window.setTimeout(() => {
       setInitLoading(false);
-      setChatError((prev) => prev || '准备时间较长，请刷新页面后重试');
+      setChatError((prev) => prev || t('explore.chat.initTimeout'));
     }, 45000);
     return () => window.clearTimeout(timer);
-  }, [initLoading]);
+  }, [initLoading, t]);
 
   useEffect(() => {
     if (phase !== 'rumination') setRuminationTablePayload(null);
@@ -627,8 +716,6 @@ export default function ChatPhasePage() {
       try {
         setChatError(null);
         const res = await ruminationApi.getTable(activationCode, step, {
-          singleRowMode: true,
-          preferSingleRow: true,
           resetInitial: opts?.resetInitial,
         });
         const p = res.data?.progress;
@@ -640,6 +727,18 @@ export default function ChatPhasePage() {
         if (w) {
           setRuminationTablePayload(w as ThreadMessage['tablePayload']);
           setRuminationViewStep(w.step ?? step);
+          const stepKey = String(w.step ?? step);
+          queueMicrotask(() => {
+            setRuminationStepBoundaries((b) => {
+              if (b[stepKey] !== undefined) return b;
+              const len = messagesRef.current.length;
+              const nb = { ...b, [stepKey]: len };
+              if (activationCode && activeThreadId) {
+                saveRuminationStepBoundaries(activationCode, activeThreadId, nb);
+              }
+              return nb;
+            });
+          });
         } else {
           setChatError(
             opts?.resetInitial
@@ -651,34 +750,26 @@ export default function ChatPhasePage() {
         setChatError(t('explore.chat.ruminationTableLoadError'));
       }
     },
-    [activationCode, phase, t]
+    [activationCode, activeThreadId, phase, t]
   );
 
-  /** 与后端进度、max_reached 同步（提交表格后 nonce 递增也会刷新） */
-  useEffect(() => {
-    if (phase !== 'rumination' || !activationCode) return;
-    let cancelled = false;
-    ruminationApi.get(activationCode).then((res) => {
-      if (cancelled) return;
-      const p = res.data?.progress;
-      const mr =
-        res.data?.max_reached_filter_step ?? computeMaxReachedFromSnapshots(p ?? null);
-      if (p) setRuminationProgressState(p);
-      setRuminationMaxReached(mr);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [phase, activationCode, ruminationProgressNonce]);
-
-  // 沉淀阶段已进入筛选且左栏尚无表格时，从后端拉取当前 filter_step（默认单行展示）
+  /**
+   * 沉淀：单次 GET rumination-progress 更新进度与 max_reached；必要时再 GET get-table 补左栏表。
+   * 原实现拆成两个 effect 会对同一接口连打多次；标题区 RuminationSectionProgress 已 externalProgressOnly，不再重复请求。
+   */
   useEffect(() => {
     if (phase !== 'rumination' || !activationCode || initLoading) return;
     let cancelled = false;
     (async () => {
       try {
         const res = await ruminationApi.get(activationCode);
+        if (cancelled) return;
         const p = res?.data?.progress;
+        const mr =
+          res?.data?.max_reached_filter_step ?? computeMaxReachedFromSnapshots(p ?? null);
+        if (p) setRuminationProgressState(p);
+        setRuminationMaxReached(mr);
+
         if (
           !p ||
           p.main_section !== 'filter' ||
@@ -688,18 +779,9 @@ export default function ChatPhasePage() {
           return;
         }
         if (messagesRef.current.some((m) => m.type === 'table_widget')) return;
-        const mr =
-          res?.data?.max_reached_filter_step ??
-          computeMaxReachedFromSnapshots(p ?? null);
         const stepToLoad = Math.min(9, Math.max(1, p.filter_step || 1));
-        if (cancelled) return;
-        setRuminationProgressState(p);
-        setRuminationMaxReached(mr);
         setRuminationViewStep(stepToLoad);
-        const tb = await ruminationApi.getTable(activationCode, stepToLoad, {
-          singleRowMode: true,
-          preferSingleRow: true,
-        });
+        const tb = await ruminationApi.getTable(activationCode, stepToLoad);
         if (cancelled || !tb?.data?.table_widget) return;
         if (tb.data.progress) setRuminationProgressState(tb.data.progress);
         if (typeof tb.data.max_reached_filter_step === 'number') {
@@ -708,6 +790,20 @@ export default function ChatPhasePage() {
         const w = tb.data.table_widget;
         setRuminationTablePayload(w as ThreadMessage['tablePayload']);
         if (w?.step != null) setRuminationViewStep(w.step);
+        if (w) {
+          const stepKey = String(w.step ?? stepToLoad);
+          queueMicrotask(() => {
+            setRuminationStepBoundaries((b) => {
+              if (b[stepKey] !== undefined) return b;
+              const len = messagesRef.current.length;
+              const nb = { ...b, [stepKey]: len };
+              if (activationCode && activeThreadId) {
+                saveRuminationStepBoundaries(activationCode, activeThreadId, nb);
+              }
+              return nb;
+            });
+          });
+        }
       } catch {
         /* ignore */
       }
@@ -715,14 +811,37 @@ export default function ChatPhasePage() {
     return () => {
       cancelled = true;
     };
-  }, [phase, activationCode, initLoading]);
+  }, [phase, activationCode, activeThreadId, initLoading, ruminationProgressNonce]);
 
-  const handleSend = async (prefill?: string, skipAddUser?: boolean) => {
+  const handleSend = async (
+    prefill?: string,
+    skipAddUser?: boolean,
+    /** 重新生成时沿用原用户消息的表格行摘要（避免闭包读到旧 messages） */
+    regenerateRowLabel?: string
+  ) => {
     const text = prefill ?? input.trim();
     if (!activationCode || !text || sending || isReadOnly) return;
     if (!prefill) setInput('');
     const now = Date.now();
-    const userMsg: ThreadMessage = { id: `u_${now}`, role: 'user', content: text, createdAt: now };
+    const rowSnap =
+      phase === 'rumination'
+        ? skipAddUser
+          ? regenerateRowLabel != null && regenerateRowLabel !== ''
+            ? { label: regenerateRowLabel }
+            : null
+          : ruminationRowContext
+        : null;
+    const messageForApi =
+      phase === 'rumination' && rowSnap
+        ? `${t('explore.chat.ruminationUi.messageRowContextPrefix', { label: rowSnap.label })}\n\n${text}`
+        : text;
+    const userMsg: ThreadMessage = {
+      id: `u_${now}`,
+      role: 'user',
+      content: text,
+      createdAt: now,
+      ...(rowSnap ? { ruminationRowLabel: rowSnap.label } : {}),
+    };
     const assistantId = `a_${now}`;
     const toAdd = skipAddUser
       ? [{ id: assistantId, role: 'assistant' as const, content: '', createdAt: now }]
@@ -752,7 +871,7 @@ export default function ChatPhasePage() {
           },
           body: JSON.stringify({
             activation_code: activationCode,
-            message: userMsg.content,
+            message: messageForApi,
             phase: BACKEND_PHASE[phase],
             thread_id: effectiveThreadId,
           }),
@@ -776,7 +895,7 @@ export default function ChatPhasePage() {
 
       if (!res.ok) {
         if (res.status === 401) {
-          throw new Error('登录状态已失效，请重新登录后继续对话');
+          throw new Error(t('explore.chat.streamAuthExpired'));
         }
         let detail = '';
         try {
@@ -944,7 +1063,7 @@ export default function ChatPhasePage() {
       if (!lastUser) return;
       setMessages((prev) => prev.slice(0, aiIdx));
       setChatError(null);
-      handleSend(lastUser.content, true);
+      handleSend(lastUser.content, true, lastUser.ruminationRowLabel);
     },
     [messages, sending, isReadOnly]
   );
@@ -1127,6 +1246,7 @@ export default function ChatPhasePage() {
       rows: Record<string, unknown>[]
     ) => {
       if (!activationCode || !activeThreadId || phase !== 'rumination' || sending) return;
+      setRuminationTableSubmitting(true);
       try {
         const single = Boolean(payload.singleRowMode && rows.length === 1);
         const patch: Record<string, unknown> = {};
@@ -1149,7 +1269,7 @@ export default function ChatPhasePage() {
         );
         const data = res?.data as RuminationSubmitData | undefined;
         if (data?.early_terminated || data?.next_action === 'early_terminated') {
-          setChatError('当前筛选无剩余行，请回到回顾或前序阶段补充后再试。');
+          setChatError(t('explore.chat.ruminationUi.tableEarlyTerminated'));
           return;
         }
         const nextTable = data?.next_table_widget;
@@ -1158,26 +1278,28 @@ export default function ChatPhasePage() {
           setRuminationMaxReached(data.max_reached_filter_step);
         }
         if (nextTable) {
+          const newStep = nextTable.step ?? (payload.step ?? 1) + 1;
+          const filtered = messages.filter((m) => m.type !== 'table_widget');
+          setRuminationStepBoundaries((b) => {
+            const nb = ensureDefaultStepOne({ ...b, [String(newStep)]: filtered.length });
+            saveRuminationStepBoundaries(activationCode, activeThreadId, nb);
+            return nb;
+          });
           setRuminationTablePayload(nextTable as ThreadMessage['tablePayload']);
-          setRuminationViewStep(nextTable.step ?? (payload.step ?? 1) + 1);
-          setMessages((prev) => prev.filter((m) => m.type !== 'table_widget'));
+          setRuminationViewStep(newStep);
+          setMessages(filtered);
         } else if (data?.progress?.filter_step != null && data.progress.filter_step >= 1) {
           setRuminationViewStep(Math.min(9, Math.max(1, data.progress.filter_step)));
         }
         setRuminationProgressNonce((n) => n + 1);
-        if (data?.next_action === 'same_step_next_row') {
-          return;
-        }
-        const follow =
-          data?.next_action === 'show_full_table'
-            ? '筛选表格已更新为最终结果，请结合列表做最终选择。'
-            : '我已确认表格，请继续。';
-        handleSend(follow, false);
+        /* 整表确认后由左侧表格直接进入下一步，不再自动往对话区插入跟进句，避免「一条条弹出」 */
       } catch {
-        setChatError('提交失败，请重试');
+        setChatError(t('explore.chat.ruminationUi.tableSubmitError'));
+      } finally {
+        setRuminationTableSubmitting(false);
       }
     },
-    [activationCode, activeThreadId, phase, sending, handleSend]
+    [activationCode, activeThreadId, phase, sending, messages, t]
   );
 
   const ruminationStepHasSubmitted = useMemo(() => {
@@ -1192,15 +1314,20 @@ export default function ChatPhasePage() {
   }, [ruminationViewStep, loadRuminationTableStep]);
 
   const handleRuminationFilterNext = useCallback(() => {
-    if (ruminationViewStep >= ruminationMaxReached) return;
+    const fs = ruminationProgressState?.filter_step ?? 0;
+    const furthest = Math.max(ruminationMaxReached, fs, 1);
+    if (ruminationViewStep >= furthest) return;
     void loadRuminationTableStep(ruminationViewStep + 1);
-  }, [ruminationViewStep, ruminationMaxReached, loadRuminationTableStep]);
+  }, [
+    ruminationViewStep,
+    ruminationMaxReached,
+    ruminationProgressState?.filter_step,
+    loadRuminationTableStep,
+  ]);
 
   const handleRuminationRefill = useCallback(() => {
     void loadRuminationTableStep(ruminationViewStep, { resetInitial: true });
   }, [ruminationViewStep, loadRuminationTableStep]);
-
-  if (!session || !phaseMeta || !phaseInfo) return null;
 
   const phaseClass =
     phase === 'values'
@@ -1213,11 +1340,22 @@ export default function ChatPhasePage() {
             ? 'purpose'
             : 'rumination';
 
+  /** 沉淀对话区：助手气泡样式与前四步一致（values 蓝条白底），用户气泡仍用紫色主题 */
+  const flowAiPhaseClass = phase === 'rumination' ? 'values' : phaseClass;
+
+  /** 筛选子步可浏览上界：已提交到的最远步 与 当前工作 filter_step 的较大者 */
+  const ruminationFurthestNavigableStep = useMemo(() => {
+    const fs = ruminationProgressState?.filter_step ?? 0;
+    return Math.max(ruminationMaxReached, fs, 1);
+  }, [ruminationMaxReached, ruminationProgressState?.filter_step]);
+
+  if (!session || !phaseMeta || !phaseInfo) return null;
+
   return (
     <div
       className={
         phase === 'rumination'
-          ? 'rumination-beautiful-root relative h-screen flex flex-col overflow-hidden'
+          ? 'rumination-beautiful-root flow-light relative h-screen flex flex-col overflow-hidden'
           : 'flow-light h-screen flex flex-col overflow-hidden'
       }
       data-phase={phase}
@@ -1269,6 +1407,8 @@ export default function ChatPhasePage() {
                     variant="beautiful"
                     activationCode={activationCode}
                     refreshNonce={ruminationProgressNonce}
+                    externalProgressOnly
+                    serverProgress={ruminationProgressState}
                     filterStepNav={
                       ruminationProgressState?.main_section === 'filter' &&
                       ruminationTablePayload
@@ -1277,12 +1417,7 @@ export default function ChatPhasePage() {
                             onNext: handleRuminationFilterNext,
                             prevDisabled: ruminationViewStep <= 1 || sending,
                             nextDisabled:
-                              sending ||
-                              ruminationViewStep >=
-                                Math.max(
-                                  ruminationMaxReached,
-                                  ruminationProgressState?.filter_step ?? 0
-                                ),
+                              sending || ruminationViewStep >= ruminationFurthestNavigableStep,
                           }
                         : undefined
                     }
@@ -1292,14 +1427,19 @@ export default function ChatPhasePage() {
             </>
           )}
           <div
+            ref={phase === 'rumination' ? ruminationWorkbenchRef : undefined}
             className={`flex min-h-0 min-w-0 flex-1 ${
               phase === 'rumination'
-                ? 'mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-3 pb-3 sm:flex-row sm:gap-6 sm:px-6'
+                ? `rumination-workbench flex w-full min-h-0 gap-4 px-3 pb-3 sm:gap-6 sm:px-6 ${ruminationWorkbenchStacked ? 'flex-col' : 'flex-row'}`
                 : 'flex-col'
             }`}
           >
             {phase === 'rumination' && (
-              <aside className="rumination-beautiful-card flex min-h-0 min-w-0 flex-[1.15] flex-col py-4 pl-4 pr-3 sm:py-5 sm:pl-5 sm:pr-4">
+              <aside
+                className={`rumination-beautiful-card flex min-h-0 min-w-0 flex-col py-4 pl-4 pr-3 sm:min-h-[min(52vh,560px)] sm:py-5 sm:pl-5 sm:pr-4 ${
+                  ruminationWorkbenchStacked ? 'w-full flex-none' : 'w-full flex-1 sm:w-auto'
+                }`}
+              >
                 {ruminationTablePayload ? (
                   <RuminationTableWidget
                     uiVariant="glass"
@@ -1307,8 +1447,13 @@ export default function ChatPhasePage() {
                     payload={ruminationTablePayload}
                     confirmLabel={t('explore.chat.ruminationTable.confirm')}
                     refillLabel={t('explore.chat.ruminationTable.refill')}
+                    selectPlaceholder={t('explore.chat.ruminationUi.tableSelectPlaceholder')}
+                    inputPlaceholder={t('explore.chat.ruminationUi.tableInputPlaceholder')}
+                    loadingLabel={t('explore.chat.ruminationUi.tableSubmitting')}
                     tableRefillMode={ruminationStepHasSubmitted}
                     onRefill={handleRuminationRefill}
+                    onRowContextChange={setRuminationRowContext}
+                    submitting={ruminationTableSubmitting}
                     onConfirm={(rows) =>
                       handleTableConfirm(
                         'rumination_left_panel',
@@ -1316,18 +1461,26 @@ export default function ChatPhasePage() {
                         rows
                       )
                     }
-                    disabled={sending}
+                    disabled={sending || ruminationTableSubmitting}
                   />
                 ) : (
                   <div className="flex flex-1 flex-col items-center justify-center py-10 text-center">
                     <p className="px-2 text-sm text-neutral-500">
-                      筛选表格将显示在此处；进入筛选步骤后自动加载。
+                      {t('explore.chat.ruminationUi.tableEmptyHint')}
                     </p>
                   </div>
                 )}
               </aside>
             )}
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div
+              className={`flex min-h-0 min-w-0 flex-col overflow-hidden ${
+                phase === 'rumination'
+                  ? ruminationWorkbenchStacked
+                    ? 'w-full flex-none min-h-[min(40vh,420px)]'
+                    : 'w-full flex-1 sm:w-auto'
+                  : 'flex-1'
+              }`}
+            >
               {phase !== 'rumination' && (
                 <header className="flex-shrink-0 border-b border-black/[0.05] bg-white/70 px-6 py-4 backdrop-blur">
                   <div className="mx-auto flex max-w-4xl items-start justify-between gap-4">
@@ -1410,7 +1563,7 @@ export default function ChatPhasePage() {
                   <p className="flow-progress-text text-center py-8 text-sm">{t('explore.chat.preparingFirstQuestion')}</p>
                 ) : (
                   displayMessages.map((m, idx) => {
-                    const msgIdxInFull = messages.indexOf(m);
+                    const msgIdxInFull = messages.findIndex((x) => x.id === m.id);
                     const aiIndexForHandlers = msgIdxInFull >= 0 ? msgIdxInFull : idx;
                     return (
                     <div key={m.id} className={m.role === 'user' || m.type === 'dimension_conclusion' ? (m.role === 'user' ? 'flow-msg-user' : '') : ''}>
@@ -1444,29 +1597,54 @@ export default function ChatPhasePage() {
                               {`${new Date(m.createdAt).getHours().toString().padStart(2, '0')}:${new Date(m.createdAt).getMinutes().toString().padStart(2, '0')}`}
                             </span>
                           )}
-                          <div className="flow-msg-user-content">
-                            {(() => {
-                              const s = m.content || '';
-                              const lines = s.split(/\r?\n/);
-                              const display =
-                                lines.length > 1 && lines.every((l) => l.length <= 2)
-                                  ? lines.join('')
-                                  : s;
-                              const charCount = [...display].length;
-                              const hasManualBreak = /\r|\n/.test(display);
-                              const compact =
-                                charCount > 0 && charCount < 25 && !hasManualBreak;
-                              return (
-                                <span
-                                  className={`flow-msg-user-text${compact ? ' flow-msg-user-text--compact' : ''}`}
-                                >
-                                  {display}
+                          <div
+                            className={`flow-msg-user-anchor${m.ruminationRowLabel ? ' has-row-context' : ''}`}
+                          >
+                            {m.ruminationRowLabel ? (
+                              <div
+                                className="flow-msg-user-context-bar"
+                                title={m.ruminationRowLabel}
+                              >
+                                <ListFilter
+                                  size={14}
+                                  strokeWidth={2}
+                                  className="flow-msg-user-context-icon shrink-0 text-violet-700"
+                                  aria-hidden
+                                />
+                                <span className="flow-msg-user-context-text">
+                                  {m.ruminationRowLabel}
                                 </span>
-                              );
-                            })()}
+                              </div>
+                            ) : null}
+                            <div className="flow-msg-user-content">
+                              {(() => {
+                                const s = m.content || '';
+                                const lines = s.split(/\r?\n/);
+                                const display =
+                                  lines.length > 1 && lines.every((l) => l.length <= 2)
+                                    ? lines.join('')
+                                    : s;
+                                const charCount = [...display].length;
+                                const hasManualBreak = /\r|\n/.test(display);
+                                const compact =
+                                  charCount > 0 && charCount < 25 && !hasManualBreak;
+                                return (
+                                  <span
+                                    className={`flow-msg-user-text${compact ? ' flow-msg-user-text--compact' : ''}`}
+                                  >
+                                    {display}
+                                  </span>
+                                );
+                              })()}
+                            </div>
                           </div>
                           <div className="flow-msg-user-toolbar">
-                            <button type="button" className="flow-toolbar-btn" title="复制" onClick={() => copyToClipboard(m.content)}>
+                            <button
+                              type="button"
+                              className="flow-toolbar-btn"
+                              title={t('explore.chat.messageToolbar.copy')}
+                              onClick={() => copyToClipboard(m.content)}
+                            >
                               <Copy size={14} strokeWidth={1.6} />
                             </button>
                           </div>
@@ -1474,7 +1652,8 @@ export default function ChatPhasePage() {
                       ) : (
                         <FlowAiMessage
                           content={m.content}
-                          phase={phaseClass}
+                          phase={flowAiPhaseClass}
+                          variant={phase === 'rumination' ? 'ruminationWorkbench' : undefined}
                           streaming={sending && idx === displayMessages.length - 1}
                           thinkContent={m.thinkContent}
                           thinkStreaming={m.thinkStreaming}
@@ -1489,6 +1668,9 @@ export default function ChatPhasePage() {
                           ]}
                           thinkLabel={t('explore.chat.thinkProcess')}
                           timestamp={m.createdAt}
+                          toolbarCopyTitle={t('explore.chat.messageToolbar.copy')}
+                          toolbarRegenerateTitle={t('explore.chat.messageToolbar.regenerate')}
+                          toolbarLikeTitle={t('explore.chat.messageToolbar.like')}
                           onRegenerate={() => handleRegenerate(aiIndexForHandlers)}
                           sessionId={backendSessionId ?? undefined}
                           logIndex={messages
@@ -1522,7 +1704,7 @@ export default function ChatPhasePage() {
                         if (lastUser) handleSend(lastUser.content, true);
                       }}
                     >
-                      重新尝试
+                      {t('explore.chat.retry')}
                     </button>
                   </div>
                 )}
@@ -1531,7 +1713,7 @@ export default function ChatPhasePage() {
 
               <button
                 type="button"
-                aria-label="滚动到底部"
+                aria-label={t('explore.chat.scrollToBottom')}
                 className={`flow-scroll-bottom-btn ${showScrollBottom ? 'visible' : ''}`}
                 onClick={scrollToBottom}
               >
@@ -1548,7 +1730,9 @@ export default function ChatPhasePage() {
                 : 'flex-shrink-0 w-full border-t border-black/[0.05] bg-bd-bg/95 px-6 pb-5 pt-3 backdrop-blur-sm'
             }
           >
-            <div className="flow-input-area">
+            <div
+              className={`flow-input-area${phase === 'rumination' && ruminationRowContext ? ' rumination-input-focused-context' : ''}`}
+            >
               <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="w-full">
                 <div className="flow-input-box">
                   <textarea
@@ -1566,7 +1750,11 @@ export default function ChatPhasePage() {
                         ? t('explore.chat.placeholderReadOnly')
                         : hasCollapsedConclusion
                           ? t('explore.chat.placeholderRefine')
-                          : t('explore.chat.placeholder')
+                          : phase === 'rumination' && ruminationRowContext
+                            ? t('explore.chat.ruminationUi.placeholderWithRow', {
+                                label: ruminationRowContext.label,
+                              })
+                            : t('explore.chat.placeholder')
                     }
                     rows={1}
                     disabled={sending || isReadOnly}

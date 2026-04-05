@@ -203,9 +203,10 @@ def load_prior_context_for_report(report_id: str, phase: str, reports_root: str)
     if path.exists():
         try:
             text = path.read_text(encoding="utf-8").strip()
-            return _truncate_prior_context(text)
+            if text:
+                return _truncate_prior_context(text)
         except OSError:
-            return ""
+            pass
 
     if phase == "purpose":
         parts: List[str] = []

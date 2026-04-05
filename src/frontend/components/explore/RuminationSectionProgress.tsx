@@ -17,41 +17,53 @@ const SECTION_ORDER: RuminationMainSection[] = [
   'end',
 ];
 
-/** 与后端 MAIN_SECTIONS、filter_step(0–9)、review_sub_index(0–3) 对齐的整体完成度 0–100 */
+/** 各主阶段在总进度条中占的权重（合计 100，避免一进入筛选就跳到 ~35%） */
+const SECTION_SPAN: Record<RuminationMainSection, number> = {
+  opening: 10,
+  review: 14,
+  filter: 46,
+  final_choice: 12,
+  recommend: 10,
+  end: 8,
+};
+
+/** 当前阶段内部完成比例 0–1（与后端 main_section / review_sub_index / filter_step 对齐） */
+function withinCurrentSection(progress: RuminationProgress): number {
+  switch (progress.main_section) {
+    case 'opening':
+      return 0.12;
+    case 'review': {
+      const ri = Math.max(0, Math.min(3, progress.review_sub_index));
+      return (ri + 1) / 4;
+    }
+    case 'filter': {
+      /** 筛选子步 1–9 线性映射；filter_step 与后端 rumination 进度一致 */
+      const fs = Number(progress.filter_step) || 0;
+      if (fs <= 0) return 1 / 18;
+      return Math.min(1, fs / 9);
+    }
+    case 'final_choice':
+      return 0.45;
+    case 'recommend':
+      return 0.55;
+    case 'end':
+      return 1;
+    default:
+      return 0.06;
+  }
+}
+
+/** 整体完成度 0–100：先累加已完成阶段权重，再叠加当前阶段内进度 */
 export function computeRuminationJourneyPercent(progress: RuminationProgress): number {
   const idx = SECTION_ORDER.indexOf(progress.main_section);
   const safeIdx = idx < 0 ? 0 : idx;
-  let within = 0;
-
-  switch (progress.main_section) {
-    case 'opening':
-      within = 0.38;
-      break;
-    case 'review': {
-      const ri = Math.max(0, Math.min(3, progress.review_sub_index));
-      within = (ri + 1) / 4;
-      break;
-    }
-    case 'filter': {
-      const fs = progress.filter_step;
-      if (fs <= 0) within = 0.08;
-      else within = Math.min(1, fs / 9);
-      break;
-    }
-    case 'final_choice':
-      within = 0.82;
-      break;
-    case 'recommend':
-      within = 0.9;
-      break;
-    case 'end':
-      within = 1;
-      break;
-    default:
-      within = 0.15;
+  let base = 0;
+  for (let i = 0; i < safeIdx; i++) {
+    base += SECTION_SPAN[SECTION_ORDER[i]];
   }
-
-  const pct = ((safeIdx + within) / SECTION_ORDER.length) * 100;
+  const span = SECTION_SPAN[progress.main_section] ?? SECTION_SPAN.opening;
+  const w = withinCurrentSection(progress);
+  const pct = base + w * span;
   return Math.min(100, Math.max(0, pct));
 }
 
@@ -76,6 +88,16 @@ interface RuminationSectionProgressProps {
   variant?: 'default' | 'beautiful';
   /** 筛选子步（filter_step 1–9）上一阶段 / 下一阶段 */
   filterStepNav?: RuminationFilterStepNavConfig;
+  /**
+   * 与对话页同源进度（getTable / submit 后立即更新），避免仅依赖本组件轮询时百分比滞后。
+   * 有值时优先用于百分比与文案。
+   */
+  serverProgress?: RuminationProgress | null;
+  /**
+   * 为 true 时不发起 rumination-progress GET，仅用父组件传入的 serverProgress。
+   * 对话页父级已统一拉取，避免同屏重复请求（含 refreshNonce 触发的二次拉取）。
+   */
+  externalProgressOnly?: boolean;
 }
 
 export default function RuminationSectionProgress({
@@ -84,13 +106,15 @@ export default function RuminationSectionProgress({
   refreshNonce = 0,
   variant = 'default',
   filterStepNav,
+  serverProgress = null,
+  externalProgressOnly = false,
 }: RuminationSectionProgressProps) {
   const { t } = useLocale();
   const [progress, setProgress] = useState<RuminationProgress | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!activationCode) return;
+    if (!activationCode || externalProgressOnly) return;
     let cancelled = false;
     setLoading(true);
     ruminationApi
@@ -109,29 +133,36 @@ export default function RuminationSectionProgress({
     return () => {
       cancelled = true;
     };
-  }, [activationCode, refreshNonce]);
+  }, [activationCode, refreshNonce, externalProgressOnly]);
+
+  const displayProgress = serverProgress ?? progress;
 
   const fillPercent = useMemo(
-    () => (progress ? computeRuminationJourneyPercent(progress) : 0),
-    [progress]
+    () => (displayProgress ? computeRuminationJourneyPercent(displayProgress) : 0),
+    [displayProgress]
   );
 
-  const currentIdx = progress ? SECTION_ORDER.indexOf(progress.main_section) : -1;
+  const currentIdx = displayProgress
+    ? SECTION_ORDER.indexOf(displayProgress.main_section)
+    : -1;
   const safeCurrentIdx = currentIdx < 0 ? 0 : currentIdx;
 
-  const inFilter = progress?.main_section === 'filter' && (progress.filter_step ?? 0) > 0;
-  const cursor = progress?.filter_row_cursor ?? 0;
+  const inFilter =
+    displayProgress?.main_section === 'filter' && (displayProgress.filter_step ?? 0) > 0;
+  const cursor = displayProgress?.filter_row_cursor ?? 0;
   const totalRows =
-    inFilter && Array.isArray(progress?.filter_table) ? progress.filter_table.length : 0;
+    inFilter && Array.isArray(displayProgress?.filter_table)
+      ? displayProgress.filter_table.length
+      : 0;
 
   const detailLine = useMemo(() => {
-    if (!progress) return '';
-    const sectionKey = `explore.chat.ruminationProgress.sections.${progress.main_section}`;
+    if (!displayProgress) return '';
+    const sectionKey = `explore.chat.ruminationProgress.sections.${displayProgress.main_section}`;
     const sectionLabel = t(sectionKey);
     let extra = '';
     if (inFilter) {
       extra += t('explore.chat.ruminationProgress.filterDetail', {
-        step: String(progress.filter_step),
+        step: String(displayProgress.filter_step),
       });
       if (totalRows > 0) {
         extra += t('explore.chat.ruminationProgress.rowDetail', {
@@ -141,7 +172,7 @@ export default function RuminationSectionProgress({
       }
     }
     return extra ? `${sectionLabel} ${extra}` : sectionLabel;
-  }, [progress, inFilter, cursor, totalRows, t]);
+  }, [displayProgress, inFilter, cursor, totalRows, t]);
 
   if (!activationCode) return null;
 
@@ -149,7 +180,11 @@ export default function RuminationSectionProgress({
     variant === 'beautiful' ? BAR_GRADIENT_BEAUTIFUL : BAR_GRADIENT_DEFAULT;
   const showSegments = variant !== 'beautiful';
 
-  if (loading) {
+  const showProgressSkeleton = externalProgressOnly
+    ? serverProgress == null
+    : loading && !serverProgress;
+
+  if (showProgressSkeleton) {
     return (
       <div
         className={`w-full space-y-2 ${className}`}
@@ -173,7 +208,7 @@ export default function RuminationSectionProgress({
     );
   }
 
-  if (!progress) return null;
+  if (!displayProgress) return null;
 
   if (variant === 'beautiful') {
     const navBtnClass =

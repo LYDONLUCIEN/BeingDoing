@@ -47,6 +47,40 @@ export function saveSession(session: ExploreSession): void {
   localStorage.setItem(KEY(session.activationCode), JSON.stringify(session));
 }
 
+/** 激活接口返回：根据 report record.json 推断应回到的阶段（字段可能部分缺失） */
+export interface ExploreResumePayload {
+  resume_phase?: string;
+  unlocked_phases?: string[];
+}
+
+/**
+ * 用后端 explore_resume 覆盖 currentPhase / unlockedPhases（重新登录时与服务器进度对齐）。
+ */
+export function applyExploreResumeToSession(
+  session: ExploreSession,
+  resume: ExploreResumePayload | null | undefined
+): ExploreSession {
+  if (!resume?.resume_phase) return session;
+  const rp = resume.resume_phase as PhaseKey;
+  if (!PHASES.some((p) => p.key === rp)) return session;
+  const raw = resume.unlocked_phases;
+  let unlocked: PhaseKey[] = [];
+  if (Array.isArray(raw)) {
+    unlocked = raw.filter((k): k is PhaseKey =>
+      PHASES.some((p) => p.key === k)
+    );
+  }
+  if (unlocked.length === 0) {
+    const idx = PHASES.findIndex((p) => p.key === rp);
+    unlocked = PHASES.slice(0, idx + 1).map((p) => p.key);
+  }
+  return {
+    ...session,
+    currentPhase: rp,
+    unlockedPhases: unlocked,
+  };
+}
+
 export function unlockNextPhase(session: ExploreSession): ExploreSession {
   const keys = PHASES.map((p) => p.key);
   const currentIdx = keys.indexOf(session.currentPhase);

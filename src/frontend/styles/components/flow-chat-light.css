@@ -304,6 +304,51 @@
   align-items: flex-end;
   flex-shrink: 0;
 }
+
+/* 用户气泡 + 表格行 Floating Header（对齐 rumination-finall user-above-bar） */
+.flow-light .flow-msg-user-anchor {
+  position: relative;
+  display: inline-block;
+  max-width: min(820px, 86%);
+  vertical-align: top;
+}
+.flow-light .flow-msg-user-anchor.has-row-context .flow-msg-user-content {
+  margin-top: 22px;
+  border-top-right-radius: 6px;
+  min-width: min(100px, 100%);
+}
+.flow-light .flow-msg-user-context-bar {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% - 1px);
+  left: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #5b21b6;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid #d4c7f0;
+  border-bottom: none;
+  border-radius: 12px 12px 4px 4px;
+  box-sizing: border-box;
+  box-shadow: 0 2px 8px rgba(212, 199, 240, 0.35);
+}
+.flow-light .flow-msg-user-context-icon {
+  margin-top: -1px;
+}
+.flow-light .flow-msg-user-context-text {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .flow-light .flow-msg-user-content {
   background: var(--flow-user-bg);
   border: 1px solid var(--flow-user-border);
@@ -338,8 +383,13 @@
   border-color: color-mix(in srgb, var(--flow-target) 28%, #ffffff);
 }
 .flow-light[data-phase="rumination"] .flow-msg-user-content {
-  background: color-mix(in srgb, var(--flow-rumination) 12%, #ffffff);
-  border-color: color-mix(in srgb, var(--flow-rumination) 28%, #ffffff);
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--flow-rumination) 20%, #ffffff) 0%,
+    color-mix(in srgb, var(--flow-rumination) 12%, #faf8ff) 100%
+  );
+  border-color: color-mix(in srgb, var(--flow-rumination) 42%, #e9e0ff);
+  color: #3b2f55;
 }
 .flow-light .flow-msg-user-text {
   white-space: pre-wrap;
@@ -591,7 +641,7 @@
 /* 输入区（llmchat 风格，宽度与 flow-chat-box 完全一致） */
 .flow-light .flow-input-area {
   flex-shrink: 0;
-  padding: 8px 0 34px;
+  padding: 6px 0 28px;
   width: 100%;
   max-width: 100%;
 }
@@ -599,11 +649,11 @@
 .flow-light .flow-input-box {
   display: flex;
   align-items: flex-end;
-  gap: 12px;
+  gap: 10px;
   background: #FFFFFF;
-  border: 1px solid rgba(0,0,0,0.09);
-  border-radius: 22px;
-  padding: 14px 14px 14px 18px;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 20px;
+  padding: 8px 10px 8px 14px;
   box-shadow: var(--flow-shadow-input);
   transition: border-color 0.3s, box-shadow 0.3s;
 }
@@ -617,14 +667,14 @@
   border: none;
   outline: none;
   background: transparent;
-  font-size: 15px;
-  line-height: 1.75;
+  font-size: 14px;
+  line-height: 1.55;
   color: var(--flow-text-body);
   resize: none;
-  min-height: 40px;
-  max-height: 13.5em; /* 约 7-8 行，超出后显示滚动条 */
-  padding: 2px 0;
-  padding-right: 8px; /* 滚动条贴右，与展示框同逻辑 */
+  min-height: 34px;
+  max-height: 12em;
+  padding: 1px 0;
+  padding-right: 6px;
   align-self: center;
   overflow-y: auto;
 }
@@ -639,8 +689,8 @@
 .flow-light .flow-send-btn-wrap {
   position: relative;
   flex-shrink: 0;
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -661,8 +711,8 @@
 }
 
 .flow-light .flow-send-btn {
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   border: none;
   background: var(--flow-guide);

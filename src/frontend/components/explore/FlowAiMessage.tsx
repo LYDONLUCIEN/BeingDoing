@@ -5,6 +5,7 @@ import { Copy, RefreshCw, ThumbsUp, ChevronDown, ChevronRight, Lightbulb } from 
 import MessageContent from './MessageContent';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { recordLike } from '@/lib/api/analytics';
+import { useLocale } from '@/hooks/useLocale';
 
 type PhaseClass = 'values' | 'strength' | 'interest' | 'purpose' | 'rumination';
 
@@ -16,6 +17,8 @@ function formatMessageTime(ms: number): string {
 interface FlowAiMessageProps {
   content: string;
   phase: PhaseClass;
+  /** 沉淀工作台右栏：薰衣草磨砂气泡 */
+  variant?: 'default' | 'ruminationWorkbench';
   /** 是否流式输出中 */
   streaming?: boolean;
   /** 推理模型思考过程（折叠展示） */
@@ -36,6 +39,9 @@ interface FlowAiMessageProps {
   sessionId?: string;
   logIndex?: number;
   dimension?: string;
+  toolbarCopyTitle?: string;
+  toolbarRegenerateTitle?: string;
+  toolbarLikeTitle?: string;
 }
 
 /**
@@ -45,6 +51,7 @@ interface FlowAiMessageProps {
 export default function FlowAiMessage({
   content,
   phase,
+  variant = 'default',
   streaming = false,
   thinkContent,
   thinkStreaming = false,
@@ -57,7 +64,11 @@ export default function FlowAiMessage({
   sessionId,
   logIndex,
   dimension,
+  toolbarCopyTitle,
+  toolbarRegenerateTitle,
+  toolbarLikeTitle,
 }: FlowAiMessageProps) {
+  const { t } = useLocale();
   const [liked, setLiked] = useState(false);
   const [thinkExpanded, setThinkExpanded] = useState(false);
   const [thinkPlaceholderIdx, setThinkPlaceholderIdx] = useState(0);
@@ -103,8 +114,16 @@ export default function FlowAiMessage({
     }
   };
 
+  const copyTitle = toolbarCopyTitle ?? t('explore.chat.messageToolbar.copy');
+  const regenTitle = toolbarRegenerateTitle ?? t('explore.chat.messageToolbar.regenerate');
+  const likeTitle = toolbarLikeTitle ?? t('explore.chat.messageToolbar.like');
+  const wrapClass =
+    variant === 'ruminationWorkbench'
+      ? 'flow-msg-ai-wrap flow-msg-ai-wrap--rumination-wb'
+      : 'flow-msg-ai-wrap';
+
   return (
-    <div className="flow-msg-ai-wrap">
+    <div className={wrapClass}>
       {timestamp !== undefined && (
         <span className="flow-msg-time text-[10px] text-[var(--flow-text-muted)] mb-1">
           {formatMessageTime(timestamp)}
@@ -112,7 +131,9 @@ export default function FlowAiMessage({
       )}
       {/* 思考过程：占位或折叠区。streaming 且 content 为空时也显示占位（首包前的等待） */}
       {(thinkStreaming || thinkContent || (streaming && !content)) && (
-        <div className="flow-msg-think-wrap">
+        <div
+          className={`flow-msg-think-wrap${variant === 'ruminationWorkbench' ? ' flow-msg-think-wrap--rumination-wb' : ''}`}
+        >
           {showPlaceholder ? (
             <div className="flow-msg-think-placeholder">
               <div className="flow-msg-think-placeholder-text">
@@ -156,7 +177,9 @@ export default function FlowAiMessage({
         </div>
       )}
       {showContentBubble && (
-        <div className={`flow-msg-ai-content ${phase}`}>
+        <div
+          className={`flow-msg-ai-content ${phase}${variant === 'ruminationWorkbench' ? ' flow-msg-ai-content--rumination-wb' : ''}`}
+        >
           <MessageContent content={content} markdown colorMode="light" />
         </div>
       )}
@@ -164,7 +187,7 @@ export default function FlowAiMessage({
         <button
           type="button"
           className="flow-toolbar-btn"
-          title="复制"
+          title={copyTitle}
           onClick={handleCopy}
         >
           <Copy size={14} strokeWidth={1.6} />
@@ -173,7 +196,7 @@ export default function FlowAiMessage({
           <button
             type="button"
             className="flow-toolbar-btn"
-            title="重新生成"
+            title={regenTitle}
             onClick={onRegenerate}
           >
             <RefreshCw size={14} strokeWidth={1.6} />
@@ -182,7 +205,7 @@ export default function FlowAiMessage({
         <button
           type="button"
           className={`flow-toolbar-btn ${liked ? 'liked' : ''}`}
-          title="点赞"
+          title={likeTitle}
           onClick={handleLike}
         >
           <ThumbsUp size={14} strokeWidth={1.6} />

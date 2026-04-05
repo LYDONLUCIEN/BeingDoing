@@ -39,6 +39,8 @@ export interface ThreadMessage {
   conclusionConfirmed?: boolean;
   /** 表格 Widget 载荷（type=table_widget 时） */
   tablePayload?: RuminationTablePayload;
+  /** 沉淀：发送时绑定的表格行摘要（展示在气泡上方） */
+  ruminationRowLabel?: string;
 }
 
 /** 维度探索结论卡片（持久化，完成/重访时仍可查看） */
@@ -91,18 +93,27 @@ export function getThreads(code: string, phase: PhaseKey): ChatThread[] {
 }
 
 /**
+ * 沉淀阶段在多条后端线程中选出唯一「主线程」（与 collapse 规则一致）。
+ * 未加载 messages 时各线程 length 视为 0，仍与 collapse 在「全空」时的择优顺序一致。
+ */
+export function pickCanonicalRuminationThread(threads: ChatThread[]): ChatThread | null {
+  if (threads.length === 0) return null;
+  const len = (x: ChatThread) => x.messages?.length ?? 0;
+  return threads.reduce((a, b) => {
+    if (b.createdAt > a.createdAt) return b;
+    if (b.createdAt < a.createdAt) return a;
+    return len(b) >= len(a) ? b : a;
+  });
+}
+
+/**
  * 沉淀（rumination）阶段仅保留一条对话线程：取 createdAt 最新；相同时取消息条数更多者。
  * 用于消除历史多条线程与产品设计「单线程」不一致。
  */
 export function collapseRuminationThreadsToOne(threads: ChatThread[]): ChatThread[] {
   if (threads.length <= 1) return threads;
-  const len = (x: ChatThread) => x.messages?.length ?? 0;
-  const best = threads.reduce((a, b) => {
-    if (b.createdAt > a.createdAt) return b;
-    if (b.createdAt < a.createdAt) return a;
-    return len(b) >= len(a) ? b : a;
-  });
-  return [best];
+  const best = pickCanonicalRuminationThread(threads);
+  return best ? [best] : threads;
 }
 
 /** 批量替换某阶段的线程列表（用于后端同步结果持久化，失败回退时可用） */

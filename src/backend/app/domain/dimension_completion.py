@@ -14,8 +14,8 @@ DIMENSION_COMPLETION_CONFIG: Dict[str, dict] = {
     },
     "strengths": {
         "label": "禀赋",
-        "goal": "发现用户10件真正擅长的事，并对每件事完成「有充实感/与成功有关」等标记",
-        "completion_criteria": "用户已确认10件擅长的事及其标签，或明确表示认可当前提炼结果",
+        "goal": "发现用户5件真正擅长的事，并对每件事完成「有充实感/与成功有关」等标记",
+        "completion_criteria": "用户已确认5件擅长的事及其标签，或明确表示认可当前提炼结果",
         "summary_prompt_hint": "用1-2段话概括用户的核心才能与优势，突出做起来轻松自然、他人有反馈的领域",
     },
     "interests": {

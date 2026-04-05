@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback } from 'react';
 import { useLocaleStore } from '@/stores/localeStore';
 import { locales, getByPath, type LocaleId } from '@/lib/i18n';
 
@@ -20,7 +21,8 @@ export function useLocale(overrideLocale?: LocaleId) {
   const effectiveLocale = overrideLocale ?? locale;
   const dict = locales[effectiveLocale] as Record<string, unknown>;
 
-  function t(path: string, params?: Record<string, string>): string {
+  /** 稳定引用，避免依赖 t 的 useEffect（如 chat 页线程同步）在每次渲染时重复跑 */
+  const t = useCallback((path: string, params?: Record<string, string>): string => {
     const val = resolvePath(path, dict);
     if (val == null) return path;
     let s = String(val);
@@ -30,7 +32,7 @@ export function useLocale(overrideLocale?: LocaleId) {
       }
     }
     return s;
-  }
+  }, [dict]);
 
   return { t, locale: effectiveLocale, setLocale, dict };
 }

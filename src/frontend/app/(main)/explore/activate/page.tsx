@@ -4,7 +4,15 @@ import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { apiClient } from '@/lib/api/client';
-import { loadSession, saveSession, setLastActivationCode, getLastActivationCode, hasReportAvailable } from '@/lib/explore/session';
+import {
+  loadSession,
+  saveSession,
+  setLastActivationCode,
+  getLastActivationCode,
+  hasReportAvailable,
+  applyExploreResumeToSession,
+  type ExploreSession,
+} from '@/lib/explore/session';
 import { surveyApi } from '@/lib/api/survey';
 import { useAuthStore } from '@/stores/authStore';
 import { fetchAdminSystemSettings } from '@/lib/api/admin';
@@ -101,27 +109,40 @@ function ActivatePageContent() {
       }
 
       const allPhaseKeys = ['values', 'strengths', 'interests', 'purpose', 'rumination'] as const;
-      const bypassSession = adminBypass
-        ? {
-            ...session,
-            activationCode,
-            surveyCompleted: true,
-            unlockedPhases: [...allPhaseKeys],
-            currentPhase: session.currentPhase || 'values',
-            sessionId: sessionId ?? session.sessionId,
-          }
-        : {
-            ...session,
-            activationCode,
-            surveyCompleted: surveyDone,
-            sessionId: sessionId ?? session.sessionId,
-          };
-      saveSession(bypassSession);
+      const exploreResume = res.data?.explore_resume as
+        | { resume_phase?: string; unlocked_phases?: string[] }
+        | undefined;
+
+      let nextSession: ExploreSession = {
+        ...session,
+        activationCode,
+        surveyCompleted: surveyDone,
+        sessionId: sessionId ?? session.sessionId,
+      };
 
       if (adminBypass) {
-        router.push(`/explore/chat/${bypassSession.currentPhase}`);
+        nextSession = {
+          ...nextSession,
+          surveyCompleted: true,
+          ...(exploreResume
+            ? {}
+            : {
+                unlockedPhases: [...allPhaseKeys],
+                currentPhase: nextSession.currentPhase || 'values',
+              }),
+        };
+      }
+
+      if (exploreResume) {
+        nextSession = applyExploreResumeToSession(nextSession, exploreResume);
+      }
+
+      saveSession(nextSession);
+
+      if (adminBypass) {
+        router.push(`/explore/chat/${nextSession.currentPhase}`);
       } else if (surveyDone) {
-        router.push(`/explore/chat/${session.currentPhase}`);
+        router.push(`/explore/chat/${nextSession.currentPhase}`);
       } else {
         router.push('/explore/survey');
       }

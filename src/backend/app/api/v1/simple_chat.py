@@ -51,7 +51,7 @@ from app.utils.rumination_ops import (
     gen_table,
     filter_strength,
     filter_match,
-    extract_from_prior_context,
+    extract_dimension_lists_for_rumination_table,
 )
 from app.utils.context_refiner import (
     refine_and_save_anchor,
@@ -1392,9 +1392,17 @@ def rumination_get_table(
         raise HTTPException(status_code=500, detail="报告初始化失败")
     reports_root = root / "reports"
     progress = load_rumination_progress(reports_root, report_id)
-    prior_context = _load_prior_context_from_activation(activation_code, "rumination", report)
-    values_list, strengths_list, interests_list, _purpose = extract_from_prior_context(
-        prior_context
+    record_path = reports_root / report_id / "record.json"
+    record_obj: Optional[dict] = None
+    if record_path.is_file():
+        try:
+            raw = json.loads(record_path.read_text(encoding="utf-8") or "{}")
+            if isinstance(raw, dict):
+                record_obj = raw
+        except (json.JSONDecodeError, OSError, TypeError):
+            record_obj = None
+    values_list, strengths_list, interests_list, _purpose = extract_dimension_lists_for_rumination_table(
+        str(reports_root), report_id, record_obj
     )
     passions = interests_list if interests_list else ["热爱1", "热爱2"]
     strengths_list = strengths_list if strengths_list else ["优势1", "优势2"]
