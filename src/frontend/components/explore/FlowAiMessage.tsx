@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Copy, RefreshCw, ThumbsUp, ChevronDown, ChevronRight, Lightbulb } from 'lucide-react';
+import { Copy, ThumbsUp, ChevronDown, ChevronRight, Lightbulb } from 'lucide-react';
 import MessageContent from './MessageContent';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { recordLike } from '@/lib/api/analytics';
@@ -17,8 +17,10 @@ function formatMessageTime(ms: number): string {
 interface FlowAiMessageProps {
   content: string;
   phase: PhaseClass;
-  /** 沉淀工作台右栏：薰衣草磨砂气泡 */
-  variant?: 'default' | 'ruminationWorkbench';
+  /** 沉淀工作台右栏：薰衣草磨砂气泡；careeringMatte：前四维 newchat6 哑光 + 顶栏 meta */
+  variant?: 'default' | 'ruminationWorkbench' | 'careeringMatte';
+  /** careeringMatte 时 AI 身份文案，如「AI 职业教练」 */
+  careeringAiRoleLabel?: string;
   /** 是否流式输出中 */
   streaming?: boolean;
   /** 推理模型思考过程（折叠展示） */
@@ -34,24 +36,23 @@ interface FlowAiMessageProps {
   /** 消息时间戳（Unix ms） */
   timestamp?: number;
   onCopy?: () => void;
-  onRegenerate?: () => void;
   /** 埋点：session_id、log_index、dimension，点赞时上报 */
   sessionId?: string;
   logIndex?: number;
   dimension?: string;
   toolbarCopyTitle?: string;
-  toolbarRegenerateTitle?: string;
   toolbarLikeTitle?: string;
 }
 
 /**
- * 复刻 llmchat：AI 消息无气泡，左侧色条 + 工具栏（复制、重新生成、点赞）
+ * 复刻 llmchat：AI 消息气泡 + 工具栏（复制、点赞；探索对话不提供重新生成）
  * 支持推理模型思考过程：思考中显示占位，完成后折叠展示
  */
 export default function FlowAiMessage({
   content,
   phase,
   variant = 'default',
+  careeringAiRoleLabel = 'AI',
   streaming = false,
   thinkContent,
   thinkStreaming = false,
@@ -60,12 +61,10 @@ export default function FlowAiMessage({
   thinkLabel = '思考过程',
   timestamp,
   onCopy,
-  onRegenerate,
   sessionId,
   logIndex,
   dimension,
   toolbarCopyTitle,
-  toolbarRegenerateTitle,
   toolbarLikeTitle,
 }: FlowAiMessageProps) {
   const { t } = useLocale();
@@ -115,16 +114,27 @@ export default function FlowAiMessage({
   };
 
   const copyTitle = toolbarCopyTitle ?? t('explore.chat.messageToolbar.copy');
-  const regenTitle = toolbarRegenerateTitle ?? t('explore.chat.messageToolbar.regenerate');
   const likeTitle = toolbarLikeTitle ?? t('explore.chat.messageToolbar.like');
   const wrapClass =
     variant === 'ruminationWorkbench'
       ? 'flow-msg-ai-wrap flow-msg-ai-wrap--rumination-wb'
       : 'flow-msg-ai-wrap';
 
+  const showCareeringMeta = variant === 'careeringMatte';
+
   return (
     <div className={wrapClass}>
-      {timestamp !== undefined && (
+      {showCareeringMeta && timestamp !== undefined && (
+        <div className="flow-msg-careering-meta">
+          <div className="flow-msg-careering-avatar flow-msg-careering-avatar--ai" aria-hidden>
+            ✨
+          </div>
+          <span>
+            {careeringAiRoleLabel} · {formatMessageTime(timestamp)}
+          </span>
+        </div>
+      )}
+      {!showCareeringMeta && timestamp !== undefined && (
         <span className="flow-msg-time text-[10px] text-[var(--flow-text-muted)] mb-1">
           {formatMessageTime(timestamp)}
         </span>
@@ -132,7 +142,9 @@ export default function FlowAiMessage({
       {/* 思考过程：占位或折叠区。streaming 且 content 为空时也显示占位（首包前的等待） */}
       {(thinkStreaming || thinkContent || (streaming && !content)) && (
         <div
-          className={`flow-msg-think-wrap${variant === 'ruminationWorkbench' ? ' flow-msg-think-wrap--rumination-wb' : ''}`}
+          className={`flow-msg-think-wrap${
+            variant === 'ruminationWorkbench' ? ' flow-msg-think-wrap--rumination-wb' : ''
+          }`}
         >
           {showPlaceholder ? (
             <div className="flow-msg-think-placeholder">
@@ -178,7 +190,9 @@ export default function FlowAiMessage({
       )}
       {showContentBubble && (
         <div
-          className={`flow-msg-ai-content ${phase}${variant === 'ruminationWorkbench' ? ' flow-msg-ai-content--rumination-wb' : ''}`}
+          className={`flow-msg-ai-content ${phase}${
+            variant === 'ruminationWorkbench' ? ' flow-msg-ai-content--rumination-wb' : ''
+          }`}
         >
           <MessageContent content={content} markdown colorMode="light" />
         </div>
@@ -192,16 +206,6 @@ export default function FlowAiMessage({
         >
           <Copy size={14} strokeWidth={1.6} />
         </button>
-        {onRegenerate && (
-          <button
-            type="button"
-            className="flow-toolbar-btn"
-            title={regenTitle}
-            onClick={onRegenerate}
-          >
-            <RefreshCw size={14} strokeWidth={1.6} />
-          </button>
-        )}
         <button
           type="button"
           className={`flow-toolbar-btn ${liked ? 'liked' : ''}`}

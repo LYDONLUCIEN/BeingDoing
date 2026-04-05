@@ -132,6 +132,7 @@ export default function ChatPhasePage() {
   } | null>(null);
   const ruminationWorkbenchRef = useRef<HTMLDivElement>(null);
   const { user, setTokens } = useAuthStore();
+  const userChatAvatarInitials = (user?.username || user?.email || 'U').slice(0, 2).toUpperCase();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatBodyRef = useRef<HTMLDivElement>(null);
@@ -1056,18 +1057,6 @@ export default function ChatPhasePage() {
     }
   };
 
-  const handleRegenerate = useCallback(
-    (aiIdx: number) => {
-      if (sending || isReadOnly) return;
-      const lastUser = messages.slice(0, aiIdx).filter((m) => m.role === 'user').pop();
-      if (!lastUser) return;
-      setMessages((prev) => prev.slice(0, aiIdx));
-      setChatError(null);
-      handleSend(lastUser.content, true, lastUser.ruminationRowLabel);
-    },
-    [messages, sending, isReadOnly]
-  );
-
   const handleSelectThread = (thread: ChatThread) => {
     setActiveThreadId(activationCode!, phase, thread.id);
     setActiveThreadIdState(thread.id);
@@ -1351,21 +1340,24 @@ export default function ChatPhasePage() {
 
   if (!session || !phaseMeta || !phaseInfo) return null;
 
+  const useCareeringMatte = phase !== 'rumination';
+
   return (
     <div
       className={
         phase === 'rumination'
           ? 'rumination-beautiful-root flow-light relative h-screen flex flex-col overflow-hidden'
-          : 'flow-light h-screen flex flex-col overflow-hidden'
+          : 'flow-light careering-matte h-screen flex flex-col overflow-hidden'
       }
       data-phase={phase}
     >
       {phase === 'rumination' ? (
         <ExploreLandingMeshLayers />
       ) : (
-        <ChatPhaseBackground phase={phase} />
+        <ChatPhaseBackground phase={phase} engine="silk" />
       )}
-      <div className="flex-1 flex min-h-0 relative z-10 pt-14 overflow-hidden">
+      {/* 顶栏留白由 (main)/layout.tsx 的 pt-14 承担，此处勿再 pt-14，否则侧栏与主区会出现双倍空白 */}
+      <div className="flex min-h-0 flex-1 overflow-hidden relative z-10">
         {phase !== 'rumination' && (
           <ChatPhaseSidebar
             phase={phase}
@@ -1376,6 +1368,7 @@ export default function ChatPhasePage() {
             onNewChat={handleNewChat}
             onDeleteThread={handleDeleteThread}
             canNewChat={canCreateMoreThreads}
+            careeringMatte
           />
         )}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -1482,29 +1475,23 @@ export default function ChatPhasePage() {
               }`}
             >
               {phase !== 'rumination' && (
-                <header className="flex-shrink-0 border-b border-black/[0.05] bg-white/70 px-6 py-4 backdrop-blur">
-                  <div className="mx-auto flex max-w-4xl items-start justify-between gap-4">
-                    <div className="min-w-0 flex-1">
-                      <h1 className={`text-lg font-semibold ${phaseMeta.color}`}>
-                        {phaseInfo.num} {phaseLabel}
-                      </h1>
-                      <p className="mt-1 text-sm leading-relaxed text-neutral-600">
-                        {phaseMeta.desc} {phaseMeta.hint}
-                      </p>
-                    </div>
+                <header className="careering-chat-header">
+                  <h2 className="careering-chat-phase-title">
+                    {phaseInfo.num} {phaseLabel}
+                  </h2>
+                  <div className="careering-chat-header-actions">
                     <button
                       type="button"
                       onClick={handleCompleteAndContinue}
                       disabled={!canContinue}
                       title={!canContinue ? t('explore.chat.selectCompletedHint') : ''}
-                      className={`flex-shrink-0 rounded-full px-5 py-2 text-sm font-medium transition-all ${
-                        canContinue
-                          ? 'bg-bd-ui-accent text-white'
-                          : 'cursor-not-allowed bg-neutral-300 opacity-50'
+                      className={`bd-btn-black inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold text-white transition-all sm:px-5 ${
+                        canContinue ? '' : 'cursor-not-allowed opacity-40'
                       }`}
                     >
-                      {t('explore.chat.completeAndContinue')}{' '}
-                      <ChevronRight size={14} className="inline" />
+                      <FileText size={15} strokeWidth={2} className="hidden sm:inline" aria-hidden />
+                      <span>{t('explore.chat.completeAndContinue')}</span>
+                      <ChevronRight size={16} strokeWidth={2} className="inline" aria-hidden />
                     </button>
                   </div>
                 </header>
@@ -1529,7 +1516,7 @@ export default function ChatPhasePage() {
                 )}
                 <div
                   className={`flex min-h-0 flex-1 flex-col overflow-hidden ${
-                    phase === 'rumination' ? 'py-1' : 'px-6 py-4'
+                    phase === 'rumination' ? 'py-1' : useCareeringMatte ? 'py-4' : 'px-6 py-4'
                   }`}
                 >
                   {/* 对话区：沉淀阶段表格在左侧栏，此处仅文本与结论卡 */}
@@ -1537,14 +1524,30 @@ export default function ChatPhasePage() {
                     className={`flow-chat-box relative flex min-h-0 min-w-0 flex-1 flex-col ${
                       phase === 'rumination'
                         ? 'rumination-beautiful-chat-panel w-full max-w-none'
-                        : 'mx-auto w-full max-w-3xl'
+                        : useCareeringMatte
+                          ? 'w-full max-w-none'
+                          : 'mx-auto w-full max-w-3xl'
                     }`}
                   >
-              <div ref={chatBodyRef} className="flow-chat-body flex-1 min-h-0 overflow-y-auto">
-                <div className="flow-dimension-label">
-                  <span className="flow-dimension-dot" />
-                  {t('explore.chat.exploringWithDim', { dim: phaseLabel })}
-                </div>
+              <div
+                ref={chatBodyRef}
+                className={`flow-chat-body min-h-0 flex-1 overflow-y-auto ${
+                  useCareeringMatte ? 'min-w-0 w-full' : ''
+                }`}
+              >
+                <div
+                  className={
+                    useCareeringMatte
+                      ? 'careering-chat-messages-inner min-w-0 w-full max-w-none px-4 sm:px-6 lg:px-12'
+                      : 'contents'
+                  }
+                >
+                {!useCareeringMatte && (
+                  <div className="flow-dimension-label">
+                    <span className="flow-dimension-dot" />
+                    {t('explore.chat.exploringWithDim', { dim: phaseLabel })}
+                  </div>
+                )}
 
                 {initLoading ? (
                   <div className="flex justify-center py-12">
@@ -1592,7 +1595,31 @@ export default function ChatPhasePage() {
                         </div>
                       ) : m.role === 'user' ? (
                         <div className="flow-msg-user-wrap">
-                          {m.createdAt !== undefined && (
+                          {useCareeringMatte && m.createdAt !== undefined && (
+                            <div className="flow-msg-careering-meta flow-msg-careering-meta--user">
+                              <div
+                                className="flow-msg-careering-avatar flow-msg-careering-avatar--user text-xs font-semibold text-white"
+                                style={
+                                  user?.avatar_url
+                                    ? {
+                                        background: `url(${user.avatar_url}) center/cover no-repeat`,
+                                      }
+                                    : {
+                                        background:
+                                          'linear-gradient(135deg, var(--bd-phase-values), var(--bd-phase-strengths))',
+                                      }
+                                }
+                                aria-hidden
+                              >
+                                {!user?.avatar_url ? userChatAvatarInitials : null}
+                              </div>
+                              <span>
+                                {t('explore.chat.careeringUser')} ·{' '}
+                                {`${new Date(m.createdAt).getHours().toString().padStart(2, '0')}:${new Date(m.createdAt).getMinutes().toString().padStart(2, '0')}`}
+                              </span>
+                            </div>
+                          )}
+                          {!useCareeringMatte && m.createdAt !== undefined && (
                             <span className="flow-msg-time text-[10px] text-[var(--flow-text-muted)] mb-1 block">
                               {`${new Date(m.createdAt).getHours().toString().padStart(2, '0')}:${new Date(m.createdAt).getMinutes().toString().padStart(2, '0')}`}
                             </span>
@@ -1617,25 +1644,31 @@ export default function ChatPhasePage() {
                               </div>
                             ) : null}
                             <div className="flow-msg-user-content">
-                              {(() => {
-                                const s = m.content || '';
-                                const lines = s.split(/\r?\n/);
-                                const display =
-                                  lines.length > 1 && lines.every((l) => l.length <= 2)
-                                    ? lines.join('')
-                                    : s;
-                                const charCount = [...display].length;
-                                const hasManualBreak = /\r|\n/.test(display);
-                                const compact =
-                                  charCount > 0 && charCount < 25 && !hasManualBreak;
-                                return (
-                                  <span
-                                    className={`flow-msg-user-text${compact ? ' flow-msg-user-text--compact' : ''}`}
-                                  >
-                                    {display}
-                                  </span>
-                                );
-                              })()}
+                              {useCareeringMatte ? (
+                                <span className="flow-msg-user-text flow-msg-user-text--careering-plain">
+                                  {m.content ?? ''}
+                                </span>
+                              ) : (
+                                (() => {
+                                  const s = m.content || '';
+                                  const lines = s.split(/\r?\n/);
+                                  const display =
+                                    lines.length > 1 && lines.every((l) => l.length <= 2)
+                                      ? lines.join('')
+                                      : s;
+                                  const charCount = [...display].length;
+                                  const hasManualBreak = /\r|\n/.test(display);
+                                  const compact =
+                                    charCount > 0 && charCount < 25 && !hasManualBreak;
+                                  return (
+                                    <span
+                                      className={`flow-msg-user-text${compact ? ' flow-msg-user-text--compact' : ''}`}
+                                    >
+                                      {display}
+                                    </span>
+                                  );
+                                })()
+                              )}
                             </div>
                           </div>
                           <div className="flow-msg-user-toolbar">
@@ -1653,7 +1686,14 @@ export default function ChatPhasePage() {
                         <FlowAiMessage
                           content={m.content}
                           phase={flowAiPhaseClass}
-                          variant={phase === 'rumination' ? 'ruminationWorkbench' : undefined}
+                          variant={
+                            phase === 'rumination'
+                              ? 'ruminationWorkbench'
+                              : useCareeringMatte
+                                ? 'careeringMatte'
+                                : undefined
+                          }
+                          careeringAiRoleLabel={t('explore.chat.careeringAiRole')}
                           streaming={sending && idx === displayMessages.length - 1}
                           thinkContent={m.thinkContent}
                           thinkStreaming={m.thinkStreaming}
@@ -1669,9 +1709,7 @@ export default function ChatPhasePage() {
                           thinkLabel={t('explore.chat.thinkProcess')}
                           timestamp={m.createdAt}
                           toolbarCopyTitle={t('explore.chat.messageToolbar.copy')}
-                          toolbarRegenerateTitle={t('explore.chat.messageToolbar.regenerate')}
                           toolbarLikeTitle={t('explore.chat.messageToolbar.like')}
-                          onRegenerate={() => handleRegenerate(aiIndexForHandlers)}
                           sessionId={backendSessionId ?? undefined}
                           logIndex={messages
                             .slice(0, aiIndexForHandlers)
@@ -1709,6 +1747,7 @@ export default function ChatPhasePage() {
                   </div>
                 )}
                 <div ref={messagesEndRef} />
+                </div>
               </div>
 
               <button
@@ -1727,7 +1766,9 @@ export default function ChatPhasePage() {
             className={
               phase === 'rumination'
                 ? 'rumination-beautiful-input-shell w-full flex-shrink-0 px-1 pb-2 pt-1'
-                : 'flex-shrink-0 w-full border-t border-black/[0.05] bg-bd-bg/95 px-6 pb-5 pt-3 backdrop-blur-sm'
+                : useCareeringMatte
+                  ? 'careering-input-dock w-full flex-shrink-0'
+                  : 'flex-shrink-0 w-full border-t border-black/[0.05] bg-bd-bg/95 px-6 pb-5 pt-3 backdrop-blur-sm'
             }
           >
             <div
@@ -1754,7 +1795,9 @@ export default function ChatPhasePage() {
                             ? t('explore.chat.ruminationUi.placeholderWithRow', {
                                 label: ruminationRowContext.label,
                               })
-                            : t('explore.chat.placeholder')
+                            : useCareeringMatte
+                              ? t('explore.chat.inputPlaceholderCareering')
+                              : t('explore.chat.placeholder')
                     }
                     rows={1}
                     disabled={sending || isReadOnly}
@@ -1774,7 +1817,7 @@ export default function ChatPhasePage() {
                 </div>
               </form>
             </div>
-            <div className="pt-2">
+            <div className={useCareeringMatte ? 'careering-auto-save-hint' : 'pt-2'}>
               <p className="text-xs text-neutral-500">{t('explore.chat.autoSave')}</p>
             </div>
           </div>

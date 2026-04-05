@@ -1,0 +1,373 @@
+/* ══════════════════════════════════════════
+   Careering 探索对话 · newchat6 对齐
+   Silk 背景 + Clean 无噪点 + 哑光实体气泡 + 底部输入融于背景
+   作用域：.flow-light.careering-matte（不含 rumination）
+
+   阶段 → data-careering-theme（由 ChatPhaseBackground.tsx 的 SILK_THEME_KEY 写入）：
+   - values（信念）    → blue
+   - strengths（禀赋） → green
+   - interests（热忱）→ pink
+   - purpose（使命）   → yellow
+   ══════════════════════════════════════════ */
+
+/* —— 主题色（与 uidesign/beautiful/newchat6.html theme-* 一致）—— */
+.careering-bg-root[data-careering-theme='blue'] {
+  --cbg: #f4f8fc;
+  --cc1: rgba(162, 194, 232, 0.9);
+  --cc2: rgba(140, 180, 226, 0.8);
+  --cc3: rgba(205, 224, 245, 0.9);
+}
+.careering-bg-root[data-careering-theme='yellow'] {
+  --cbg: #fffcf5;
+  --cc1: rgba(253, 224, 147, 0.9);
+  --cc2: rgba(252, 209, 98, 0.8);
+  --cc3: rgba(254, 237, 184, 0.9);
+}
+.careering-bg-root[data-careering-theme='green'] {
+  --cbg: #f6fbf8;
+  --cc1: rgba(181, 216, 198, 0.9);
+  --cc2: rgba(155, 204, 179, 0.8);
+  --cc3: rgba(210, 232, 221, 0.9);
+}
+.careering-bg-root[data-careering-theme='pink'] {
+  --cbg: #fef8f8;
+  --cc1: rgba(244, 179, 179, 0.9);
+  --cc2: rgba(240, 153, 153, 0.8);
+  --cc3: rgba(249, 209, 209, 0.9);
+}
+
+.careering-bg-root {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.careering-bg-solid {
+  position: absolute;
+  inset: 0;
+  background-color: var(--cbg);
+  transition: background-color 0.8s ease;
+}
+
+/* Silk 涟漪面（newchat6 .style-silk，仅 3 个色块） */
+.careering-silk-blob {
+  position: absolute;
+  width: 80vw;
+  height: 80vw;
+  border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
+  filter: blur(90px);
+  will-change: transform;
+  animation: careering-silk-pulse 25s linear infinite;
+}
+.careering-silk-blob--1 {
+  top: -20%;
+  left: -10%;
+  background: var(--cc1);
+  opacity: 0.6;
+}
+.careering-silk-blob--2 {
+  bottom: -20%;
+  right: -10%;
+  background: var(--cc2);
+  opacity: 0.5;
+  animation-direction: reverse;
+}
+.careering-silk-blob--3 {
+  top: 20%;
+  left: 30%;
+  background: var(--cc3);
+  opacity: 0.7;
+  animation-delay: -12s;
+}
+
+@keyframes careering-silk-pulse {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    transform: rotate(180deg) scale(1.1);
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+  }
+}
+
+/* 页面根：去掉纸张噪点（Clean） */
+.flow-light.careering-matte[data-phase='values'],
+.flow-light.careering-matte[data-phase='strengths'],
+.flow-light.careering-matte[data-phase='interests'],
+.flow-light.careering-matte[data-phase='purpose'] {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+/* 侧栏哑光实体（Stripe/Notion） */
+.flow-light.careering-matte .careering-sidebar {
+  background: #ffffff !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-right: 1px solid rgba(0, 0, 0, 0.06) !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+}
+
+.flow-light.careering-matte .careering-sidebar-header {
+  border-bottom-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+/* 顶栏：仅「01 信念」与「完成并继续」同一行、垂直居中（无会话主题/说明文案） */
+.careering-chat-header {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-width: 0;
+  padding: 1.25rem 1.5rem 0.875rem;
+}
+@media (min-width: 640px) {
+  .careering-chat-header {
+    padding: 1.5rem 3rem 1rem;
+  }
+}
+.careering-chat-phase-title {
+  margin: 0;
+  min-width: 0;
+  flex: 1;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #1d1d1f;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+@media (min-width: 640px) {
+  .careering-chat-phase-title {
+    font-size: 1.4rem;
+  }
+}
+.careering-chat-header-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/*
+ * 对话区：flow-chat-box / flow-chat-body 与主栏同宽（左贴侧栏右缘、右贴视口），
+ * 仅 .careering-chat-messages-inner 负责水平内边距（对齐 newchat6 .chat-window 的 48px）。
+ * 滚动渐隐：对齐 newchat6 输入区上沿渐变 + 视口上下软边界，避免气泡被硬切。
+ */
+.flow-light.careering-matte .flow-chat-body {
+  --careering-scroll-fade-top: 2rem;
+  --careering-scroll-fade-bottom: 5.5rem;
+  padding: 1.25rem 0 10rem;
+  padding-right: 0 !important;
+  gap: 2rem;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 var(--careering-scroll-fade-top),
+    #000 calc(100% - var(--careering-scroll-fade-bottom)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 var(--careering-scroll-fade-top),
+    #000 calc(100% - var(--careering-scroll-fade-bottom)),
+    transparent 100%
+  );
+  mask-repeat: no-repeat;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+}
+@media (min-width: 640px) {
+  .flow-light.careering-matte .flow-chat-body {
+    padding-top: 1.5rem;
+    padding-bottom: 10rem;
+    padding-left: 0;
+    padding-right: 0 !important;
+    gap: 2rem;
+  }
+}
+
+/* 内层全宽：不再 max-w-3xl，气泡宽度由 .flow-msg-ai-wrap / .flow-msg-user-anchor 各自上限约束 */
+.careering-chat-messages-inner {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+}
+
+/* 与 newchat6 .msg-container：AI 左内缩 60px、用户右内缩 60px */
+.flow-light.careering-matte .flow-msg-ai-wrap {
+  margin-left: 60px;
+  margin-right: 0;
+  max-width: min(960px, 92%);
+}
+.flow-light.careering-matte .flow-msg-user .flow-msg-user-wrap {
+  margin-right: 60px;
+  margin-left: 0;
+}
+
+/* 用户气泡：勿用 min-width:0，否则窄父级会把「确认!」压成一字一行；与全局 flow 短句策略一致 */
+.flow-light.careering-matte .flow-msg-user-anchor {
+  max-width: min(960px, calc(100% - 0.5rem));
+  min-width: min-content;
+}
+.flow-light.careering-matte .flow-msg-user-content {
+  min-width: min(25ch, 100%) !important;
+  max-width: 100%;
+  width: fit-content;
+  word-break: keep-all !important;
+  overflow-wrap: anywhere;
+  word-wrap: break-word;
+}
+/* 中文不按字硬断行；超长无空格串仍可由 overflow-wrap 处理 */
+.flow-light.careering-matte .flow-msg-user-text.flow-msg-user-text--careering-plain {
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+/* AI / 用户 顶栏 meta（头像 + 时间） */
+.flow-msg-careering-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+.flow-msg-careering-meta--user {
+  justify-content: flex-end;
+}
+.flow-msg-careering-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: #fff;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+}
+.flow-msg-careering-avatar--ai {
+  background: #38bdf8;
+}
+/* 背景色由页面内联样式提供（头像 URL 或与顶栏一致的双色渐变 + 首字母） */
+.flow-msg-careering-avatar--user {
+  background-color: #1d1d1f;
+}
+
+.flow-light.careering-matte .flow-msg-ai-wrap .flow-msg-time {
+  display: none;
+}
+.flow-light.careering-matte .flow-msg-ai-content {
+  padding: 1.125rem 1.5rem;
+  border-radius: 20px;
+  border-top-left-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-left: 1px solid rgba(0, 0, 0, 0.05) !important;
+  background: #f9fafb !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif !important;
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: #1d1d1f;
+  max-width: 100%;
+}
+
+/* 哑光用户气泡 */
+.flow-light.careering-matte .flow-msg-user-wrap .flow-msg-time {
+  display: none;
+}
+.flow-light.careering-matte .flow-msg-user-content {
+  background: #1d1d1f !important;
+  border: 1px solid transparent !important;
+  color: #ffffff !important;
+  border-radius: 20px;
+  border-top-right-radius: 4px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  padding: 1.125rem 1.5rem;
+}
+.flow-light.careering-matte[data-phase='values'] .flow-msg-user-content,
+.flow-light.careering-matte[data-phase='strengths'] .flow-msg-user-content,
+.flow-light.careering-matte[data-phase='interests'] .flow-msg-user-content,
+.flow-light.careering-matte[data-phase='purpose'] .flow-msg-user-content {
+  background: #1d1d1f !important;
+  border-color: transparent !important;
+  color: #fff !important;
+}
+.flow-light.careering-matte .flow-msg-user-text {
+  color: inherit;
+}
+
+/* 行上下文条：哑光 */
+.flow-light.careering-matte .flow-msg-user-context-bar {
+  right: 0;
+  width: 100%;
+  bottom: 100%;
+  border: none !important;
+  box-shadow: none !important;
+  background: #ffffff !important;
+  color: #6b46c1 !important;
+  border-radius: 12px 12px 4px 4px !important;
+}
+
+.flow-light.careering-matte .flow-msg-think-wrap {
+  max-width: min(960px, 92%);
+}
+
+/* 结论卡：哑光白卡，与 AI 气泡一致 */
+.flow-light.careering-matte .flow-conclusion-card {
+  background: #ffffff !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  border-radius: 20px;
+}
+
+/* 底部输入：无顶部分割线，渐变融底 + 胶囊（newchat6） */
+.careering-input-dock {
+  flex-shrink: 0;
+  width: 100%;
+  padding: 1.5rem 1.5rem 1.75rem;
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0) 100%);
+  border-top: none !important;
+}
+@media (min-width: 640px) {
+  .careering-input-dock {
+    padding: 1.5rem 3rem 2.25rem;
+  }
+}
+.flow-light.careering-matte .careering-input-dock .flow-input-area {
+  padding-top: 0;
+  padding-bottom: 0;
+  max-width: 1000px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.flow-light.careering-matte .careering-input-dock .flow-input-box {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 30px;
+  padding: 10px 10px 10px 22px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+}
+.flow-light.careering-matte .careering-input-dock .flow-input-box:focus-within {
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.flow-light.careering-matte .careering-auto-save-hint {
+  text-align: center;
+  padding-top: 0.5rem;
+}
+
+/* 主栏全宽滚动时，回底按钮靠近视口右缘（仍在 flow-chat-box 内） */
+.flow-light.careering-matte .flow-chat-box .flow-scroll-bottom-btn {
+  right: 10px;
+}

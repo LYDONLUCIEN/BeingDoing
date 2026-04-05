@@ -62,6 +62,8 @@ interface ChatPhaseSidebarProps {
   onNewChat: () => void;
   onDeleteThread: (thread: ChatThread) => void;
   canNewChat: boolean;
+  /** newchat6 哑光侧栏（前四维对话页） */
+  careeringMatte?: boolean;
 }
 
 export default function ChatPhaseSidebar({
@@ -73,6 +75,7 @@ export default function ChatPhaseSidebar({
   onNewChat,
   onDeleteThread,
   canNewChat,
+  careeringMatte = false,
 }: ChatPhaseSidebarProps) {
   const { t } = useLocale();
   const [deleteTarget, setDeleteTarget] = useState<ChatThread | null>(null);
@@ -91,15 +94,22 @@ export default function ChatPhaseSidebar({
 
   return (
     <aside
-      className="w-72 flex-shrink-0 flex flex-col min-h-0 border-r"
-      style={{
-        background: 'rgba(255, 255, 255, 0.6)',
-        backdropFilter: 'blur(24px)',
-        WebkitBackdropFilter: 'blur(24px)',
-        borderColor: 'rgba(0, 0, 0, 0.06)',
-      }}
+      className={`w-72 flex-shrink-0 flex flex-col min-h-0 border-r ${careeringMatte ? 'careering-sidebar' : ''}`}
+      style={
+        careeringMatte
+          ? undefined
+          : {
+              background: 'rgba(255, 255, 255, 0.6)',
+              backdropFilter: 'blur(24px)',
+              WebkitBackdropFilter: 'blur(24px)',
+              borderColor: 'rgba(0, 0, 0, 0.06)',
+            }
+      }
     >
-      <div className="p-5 border-b" style={{ borderColor: 'rgba(0,0,0,0.05)' }}>
+      <div
+        className={`p-5 border-b ${careeringMatte ? 'careering-sidebar-header' : ''}`}
+        style={careeringMatte ? undefined : { borderColor: 'rgba(0,0,0,0.05)' }}
+      >
         <p className="text-xs font-medium text-[var(--flow-text-muted)] mb-3 tracking-wider">
           {phaseLabel} · {t('explore.chat.threadList')}
         </p>
@@ -148,7 +158,27 @@ export default function ChatPhaseSidebar({
                 onKeyDown={(e) => e.key === 'Enter' && onSelectThread(thread)}
               >
                 <div className="flex items-start gap-2 mb-1.5">
-                  <MessageSquare size={14} className="text-[var(--flow-text-muted)] flex-shrink-0 mt-0.5" />
+                  {careeringMatte ? (
+                    <span
+                      className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full"
+                      style={{
+                        backgroundColor:
+                          thread.status === 'completed' ? '#22c55e' : '#fbbf24',
+                        boxShadow:
+                          thread.status === 'completed'
+                            ? '0 0 0 1px rgba(34,197,94,0.25)'
+                            : '0 0 0 1px rgba(251,191,36,0.35)',
+                      }}
+                      title={
+                        thread.status === 'completed'
+                          ? t('explore.chat.statusCompleted')
+                          : t('explore.chat.statusInProgress')
+                      }
+                      aria-hidden
+                    />
+                  ) : (
+                    <MessageSquare size={14} className="text-[var(--flow-text-muted)] flex-shrink-0 mt-0.5" />
+                  )}
                   <span
                     className="text-sm font-medium truncate flex-1 leading-tight"
                     style={{ color: 'var(--flow-text-body)' }}

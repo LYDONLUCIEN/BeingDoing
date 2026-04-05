@@ -2,7 +2,7 @@
 
 import type { PhaseKey } from '@/lib/explore/session';
 
-/** Dimension theme colors for gradient blobs - 信念蓝 / 禀赋绿 / 热忱红 / 使命黄 / 沉淀紫 */
+/** rumination：保留原悬浮球光晕 */
 const PHASE_BLOBS: Record<PhaseKey, [string, string, string, string]> = {
   values: [
     'rgba(91, 141, 184, 0.7)',
@@ -36,11 +36,40 @@ const PHASE_BLOBS: Record<PhaseKey, [string, string, string, string]> = {
   ],
 };
 
+/**
+ * Silk 背景主题键（与 careering-chat-matte.css 中 data-careering-theme 对应）
+ * 约定：信念 Blue · 禀赋 Green · 热忱 Pink · 使命 Yellow
+ */
+const SILK_THEME_KEY: Partial<Record<PhaseKey, 'blue' | 'yellow' | 'green' | 'pink'>> = {
+  values: 'blue',
+  strengths: 'green',
+  interests: 'pink',
+  purpose: 'yellow',
+};
+
 interface ChatPhaseBackgroundProps {
   phase: PhaseKey;
+  /** mesh：原四球；silk：newchat6 苍蓝/奶黄/薄荷/樱红 + 涟漪面（仅前四维） */
+  engine?: 'mesh' | 'silk';
 }
 
-export default function ChatPhaseBackground({ phase }: ChatPhaseBackgroundProps) {
+export default function ChatPhaseBackground({ phase, engine = 'mesh' }: ChatPhaseBackgroundProps) {
+  if (engine === 'silk' && SILK_THEME_KEY[phase]) {
+    const tk = SILK_THEME_KEY[phase]!;
+    return (
+      <div
+        className="careering-bg-root"
+        data-careering-theme={tk}
+        aria-hidden
+      >
+        <div className="careering-bg-solid" />
+        <div className="careering-silk-blob careering-silk-blob--1" />
+        <div className="careering-silk-blob careering-silk-blob--2" />
+        <div className="careering-silk-blob careering-silk-blob--3" />
+      </div>
+    );
+  }
+
   const blobs = PHASE_BLOBS[phase];
   return (
     <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden" aria-hidden>
@@ -60,7 +89,6 @@ export default function ChatPhaseBackground({ phase }: ChatPhaseBackgroundProps)
         className="flow-phase-blob flow-phase-blob-4 absolute w-[28vw] h-[28vw] rounded-full blur-[80px] opacity-80"
         style={{ background: blobs[3], top: '-5%', right: '18%' }}
       />
-      {/* 磨砂基底：保留阶段色倾向，叠加白色保证可读性 */}
       <div
         className="absolute inset-0 opacity-90"
         style={{
