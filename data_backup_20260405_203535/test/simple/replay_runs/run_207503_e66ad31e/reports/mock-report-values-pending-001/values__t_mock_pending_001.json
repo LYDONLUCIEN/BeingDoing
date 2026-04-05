@@ -1,0 +1,109 @@
+{
+  "session_id": "mock-report-values-pending-001",
+  "category": "values__t_mock_pending_001",
+  "messages": [
+    {
+      "id": "m1",
+      "message_id": "m1",
+      "role": "assistant",
+      "content": "我们先整理一下你最近最在意的三件事。",
+      "session_id": "t_mock_pending_001",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "created_at": "2026-03-28T00:00:00Z"
+    },
+    {
+      "id": "m2",
+      "message_id": "m2",
+      "role": "user",
+      "content": "我最在意成长、关系、身心平衡。",
+      "session_id": "t_mock_pending_001",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-03-28T00:01:00Z"
+    },
+    {
+      "role": "user",
+      "content": "我确认总结无误",
+      "session_id": "t_mock_pending_001",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-03-29T02:04:13.564790Z",
+      "message_id": "msg_3",
+      "id": "msg_3"
+    },
+    {
+      "role": "assistant",
+      "content": "收到确认，开始生成结论卡。",
+      "session_id": "t_mock_pending_001",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0
+      },
+      "created_at": "2026-03-29T02:04:13.566986Z",
+      "message_id": "msg_4",
+      "id": "msg_4"
+    },
+    {
+      "role": "conclusion_card",
+      "content": "{\"summary\": \"你重视成长、关系和身心平衡，并追求长期稳定投入。\", \"keywords\": [\"成长\", \"关系\", \"平衡\", \"稳定投入\"]}",
+      "session_id": "t_mock_pending_001",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "dimension_conclusion",
+      "card_type": "dimension_conclusion",
+      "card_payload": {
+        "summary": "你重视成长、关系和身心平衡，并追求长期稳定投入。",
+        "keywords": [
+          "成长",
+          "关系",
+          "平衡",
+          "稳定投入"
+        ]
+      },
+      "created_at": "2026-03-29T02:04:13.567901Z",
+      "message_id": "msg_5",
+      "id": "msg_5"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-28T00:00:00Z",
+    "updated_at": "2026-03-29T02:04:13.568264Z",
+    "total_messages": 5,
+    "conclusion_state": "confirmed",
+    "pending_status": "confirmed",
+    "thread_completed": false,
+    "conclusion_draft": null,
+    "question_bank": "1. ### 29. 你会忍不住对什么说脏话，感到十分不满？\n2. ### 9. 在职场或生活里，谁是你最不尊敬的人？\n3. 那个人的哪些特征让你深受震撼？那些特征跟你的哪些价值观有关？\n4. ### 3. 对于父亲的生活方式，哪些地方你喜欢，哪些地方你不喜欢？\n5. 你喜欢那本书的哪个部分？从中可以发现你有什么样的价值观？\n6. 当时你最重视的判断标准是什么？从中可以发现你有什么样的价值观？",
+    "question_bank_phase": "values",
+    "conclusion_final": {
+      "summary": "你重视成长、关系和身心平衡，并追求长期稳定投入。",
+      "keywords": [
+        "成长",
+        "关系",
+        "平衡",
+        "稳定投入"
+      ]
+    },
+    "conclusion_feedback": "",
+    "pending_conclusion": null,
+    "dimension_conclusion": {
+      "summary": "你重视成长、关系和身心平衡，并追求长期稳定投入。",
+      "keywords": [
+        "成长",
+        "关系",
+        "平衡",
+        "稳定投入"
+      ]
+    },
+    "pending_last_rejected": {},
+    "conclusion_shown_at_turn": 2
+  }
+}

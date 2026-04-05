@@ -1,0 +1,30 @@
+{
+  "session_id": "mock-report-values-pending-001",
+  "category": "values__t_mock_pending_001__note/note",
+  "notes": [
+    {
+      "id": "note_1",
+      "type": "pending_conclusion_rejected",
+      "payload": {
+        "phase": "values",
+        "thread_id": "t_mock_pending_001",
+        "pending": {
+          "summary": "你关注成长、关系和身心平衡。",
+          "keywords": [
+            "成长",
+            "关系",
+            "身心平衡"
+          ]
+        },
+        "feedback": "不太准确，继续聊",
+        "decision_msg": "先不确认，我们继续"
+      },
+      "created_at": "2026-03-29T02:08:37.618960Z"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-29T02:08:37.618960Z",
+    "updated_at": "2026-03-29T02:08:37.618960Z",
+    "total_notes": 1
+  }
+}

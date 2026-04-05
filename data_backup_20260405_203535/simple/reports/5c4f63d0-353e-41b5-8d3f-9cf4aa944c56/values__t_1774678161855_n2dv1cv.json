@@ -1,0 +1,29 @@
+{
+  "session_id": "5c4f63d0-353e-41b5-8d3f-9cf4aa944c56",
+  "category": "values__t_1774678161855_n2dv1cv",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "你好，HAPPY。很高兴能和你一起开启这次职业规划的探索。我们的第一步，是希望找到那些对你而言真正重要、能为你提供内在动力的价值观。它们就像是职业选择中的“指南针”。\n\n那么，我们直接开始吧。你能否直接告诉我，在你心中对你最重要的5个价值观关键词是什么？（例如：成就感、稳定、创新、人际关系等）",
+      "session_id": "t_1774678161855_n2dv1cv",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 1333,
+        "completion_tokens": 98,
+        "total_tokens": 1431,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 1333
+      },
+      "created_at": "2026-03-28T06:09:28.999608Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-28T06:09:29.000270Z",
+    "updated_at": "2026-03-28T06:09:29.000293Z",
+    "total_messages": 1
+  }
+}

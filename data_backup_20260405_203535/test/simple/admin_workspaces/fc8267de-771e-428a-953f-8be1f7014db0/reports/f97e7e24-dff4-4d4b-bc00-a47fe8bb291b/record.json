@@ -1,0 +1,54 @@
+{
+  "steps": {
+    "values": {
+      "step_id": "values",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [
+        "5e54335f-eb5b-4433-a971-e1b05f724137"
+      ],
+      "updated_at": "2026-04-02T12:46:18.996482Z"
+    },
+    "strengths": {
+      "step_id": "strengths",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [],
+      "updated_at": "2026-04-02T12:46:18.996468Z"
+    },
+    "interests": {
+      "step_id": "interests",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [],
+      "updated_at": "2026-04-02T12:46:18.996468Z"
+    },
+    "purpose": {
+      "step_id": "purpose",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [],
+      "updated_at": "2026-04-02T12:46:18.996468Z"
+    },
+    "rumination": {
+      "step_id": "rumination",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [],
+      "updated_at": "2026-04-02T12:46:18.996468Z"
+    }
+  },
+  "status": "in_progress",
+  "final_conclusion": null,
+  "updated_at": "2026-04-02T12:46:18.996533Z",
+  "report_id": "f97e7e24-dff4-4d4b-bc00-a47fe8bb291b"
+}elected_session_id": null,
+      "locked": false,
+      "session_ids": [
+        "5e54335f-eb5b-4433-a971-e1b05f724137",
+        "t_1775133973834_d68ouar"
+      ],
+      "updated_at": "2026-04-02T12:46:13.865231Z"
+    }
+  }
+}

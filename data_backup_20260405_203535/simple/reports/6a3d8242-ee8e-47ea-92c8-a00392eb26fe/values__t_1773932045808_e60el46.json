@@ -1,0 +1,27 @@
+{
+  "session_id": "6a3d8242-ee8e-47ea-92c8-a00392eb26fe",
+  "category": "values__t_1773932045808_e60el46",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "你好，欢迎来到我们的职业规划咨询。我是你的咨询师。\n\n在开始探索你的职业方向之前，我们首先需要了解你的内在驱动力——也就是你的价值观。价值观就像你内心的指南针，它会指引你在众多选择中，找到那条让你感到充实和满足的道路。\n\n那么，我们直接开始吧。**你能否直接告诉我，在你心中，对你最重要的5个价值观关键词是什么？**（例如：成就感、稳定、创新、人际关系、自由等）",
+      "session_id": "t_1773932045808_e60el46",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 1009,
+        "completion_tokens": 97,
+        "total_tokens": 1106
+      },
+      "created_at": "2026-03-19T14:54:11.259826Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-19T14:54:11.260364Z",
+    "updated_at": "2026-03-19T14:54:11.260383Z",
+    "total_messages": 1
+  }
+}

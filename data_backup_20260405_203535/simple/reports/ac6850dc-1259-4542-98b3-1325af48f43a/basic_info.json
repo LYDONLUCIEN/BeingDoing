@@ -1,0 +1,30 @@
+{
+  "nickname": "happy",
+  "gender": "男",
+  "age": "31-36",
+  "education_school": "",
+  "education_degree": "硕士",
+  "education_major": "自动化控制",
+  "city": "北京",
+  "family_status": [
+    "未婚"
+  ],
+  "family_affects_career": "会",
+  "career_status": "在职",
+  "industry": "IT通信",
+  "position": "算法工程师",
+  "work_years_total": "6",
+  "work_history": "网易，快手，",
+  "company_types": [
+    "国企"
+  ],
+  "salary_level": "40~50万",
+  "core_needs": [
+    "薪资与晋升",
+    "职业方向不清晰",
+    "职业倦怠",
+    "想转型但不知道如何开始"
+  ],
+  "core_needs_other": "",
+  "past_consultation": "有"
+}

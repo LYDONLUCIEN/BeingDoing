@@ -1,0 +1,27 @@
+{
+  "OORQ2QG7U3": {
+    "code": "OORQ2QG7U3",
+    "session_id": "51750bfe-5ea4-4198-ae5c-2d813447f80b",
+    "mode": "values",
+    "created_at": "2026-03-29T02:03:37.896619Z",
+    "expires_at": "2026-03-29T05:03:37.896619Z",
+    "last_activity_at": "2026-03-29T02:03:37.896886Z",
+    "status": "active",
+    "owner_user_id": "replay-user",
+    "owner_email": "replay@example.com",
+    "claimed_at": "2026-03-29T02:03:37.896886Z",
+    "deleted_at": null,
+    "purge_after": null,
+    "source": null,
+    "vip_level": 1,
+    "is_sandbox": false,
+    "sandbox_root": null,
+    "fork_id": null,
+    "forked_from_code": null,
+    "forked_at": null,
+    "forked_by_user_id": null,
+    "sandbox_expires_at": null,
+    "workspace_kind": null,
+    "workspace_root": null
+  }
+}

@@ -1373,3 +1373,92 @@ async def admin_purge_expired_sandboxes(current_user: Optional[dict] = Depends(g
     _assert_admin_sandbox_enabled()
     n = purge_expired_sandboxes()
     return {"code": 200, "message": "success", "data": {"removed": n}}
+
+
+@router.get("/activation-data-inspect")
+async def activation_data_inspect(
+    activation_code: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """
+    调试端点：输入激活码，返回该激活码关联的所有数据位置、文件列表、metadata 摘要。
+    仅超级管理员可访问。
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+
+    from app.utils.simple_activation_manager import get_effective_simple_root
+
+    manager, rec = get_activation_with_manager(activation_code)
+    if not rec:
+        raise HTTPException(status_code=404, detail="激活码不存在")
+
+    root = get_effective_simple_root(rec)
+    registry = ReportRegistry(base_dir=str(root))
+    user_id = getattr(rec, "owner_user_id", None) or getattr(rec, "owner_email", None) or ""
+    report = registry.get_by_activation_user(activation_code, user_id) if user_id else None
+
+    result: Dict[str, Any] = {
+        "activation": {
+            "code": rec.code,
+            "status": rec.status,
+            "mode": rec.mode,
+            "session_id": rec.session_id,
+            "owner_user_id": getattr(rec, "owner_user_id", None),
+            "owner_email": getattr(rec, "owner_email", None),
+            "workspace_kind": getattr(rec, "workspace_kind", None),
+            "is_sandbox": getattr(rec, "is_sandbox", False),
+            "created_at": rec.created_at,
+            "expires_at": rec.expires_at,
+        },
+        "storage_root": str(root),
+        "report": None,
+        "files": [],
+    }
+
+    if report and report.get("report_id"):
+        rid = report["report_id"]
+        result["report"] = {
+            "report_id": rid,
+            "status": report.get("status"),
+            "steps": {},
+        }
+        for step_id, step_data in (report.get("steps") or {}).items():
+            step_info = {
+                "locked": step_data.get("locked", False),
+                "selected_session_id": step_data.get("selected_session_id"),
+                "session_ids": step_data.get("session_ids", []),
+                "has_anchor": bool(step_data.get("anchor_summary")),
+            }
+            result["report"]["steps"][step_id] = step_info
+
+        report_dir = root / "reports" / rid
+        if report_dir.is_dir():
+            for fp in sorted(report_dir.iterdir()):
+                entry: Dict[str, Any] = {
+                    "name": fp.name,
+                    "size_bytes": fp.stat().st_size if fp.is_file() else 0,
+                }
+                if fp.is_file() and fp.suffix == ".json" and fp.name != "record.json":
+                    try:
+                        data = json.loads(fp.read_text(encoding="utf-8") or "{}")
+                        meta = data.get("metadata") or {}
+                        msgs = data.get("messages") or []
+                        entry["message_count"] = len(msgs)
+                        entry["metadata_keys"] = sorted(meta.keys())
+                        cs = meta.get("conclusion_state")
+                        if cs:
+                            entry["conclusion_state"] = cs
+                        tc = meta.get("thread_completed")
+                        if tc:
+                            entry["thread_completed"] = tc
+                    except Exception:
+                        entry["parse_error"] = True
+                result["files"].append(entry)
+
+    # 用户级数据
+    user_data_dir = Path("data/user") / (user_id or "_none_")
+    if user_data_dir.is_dir():
+        result["user_data_files"] = [f.name for f in user_data_dir.iterdir()]
+
+    return {"code": 200, "message": "success", "data": result}

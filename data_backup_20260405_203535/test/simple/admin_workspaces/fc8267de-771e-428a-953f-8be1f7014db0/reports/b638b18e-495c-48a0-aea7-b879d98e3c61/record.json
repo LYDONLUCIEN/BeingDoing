@@ -1,0 +1,87 @@
+{
+  "report_id": "b638b18e-495c-48a0-aea7-b879d98e3c61",
+  "activation_code": "ADMBS6N8STU",
+  "user_id": "fc8267de-771e-428a-953f-8be1f7014db0",
+  "created_at": "2026-03-28T07:01:37.371042Z",
+  "updated_at": "2026-04-05T12:35:30.157728Z",
+  "status": "in_progress",
+  "final_conclusion": null,
+  "steps": {
+    "values": {
+      "step_id": "values",
+      "selected_session_id": "t_1774748897913_5zdev8e",
+      "locked": false,
+      "session_ids": [
+        "t_1774748897913_5zdev8e",
+        "5e54335f-eb5b-4433-a971-e1b05f724137"
+      ],
+      "updated_at": "2026-04-05T12:35:30.157690Z",
+      "anchor_summary": {
+        "goals": "本阶段已成功沉淀用户最终确认的5个核心价值观词，按优先级排序为：意义/精神追求、自由、自主、成长、创新。用户多次确认该排序及相关解释，目标已达成。",
+        "personality": "直率、真诚、追求真实、重视精神成长",
+        "style": "简洁有力、情感强烈、常用感叹号",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-03-29T03:43:19.433548Z"
+    },
+    "strengths": {
+      "step_id": "strengths",
+      "selected_session_id": "t_1774755591556_s3m1mey",
+      "locked": false,
+      "session_ids": [
+        "t_1774755591556_s3m1mey"
+      ],
+      "updated_at": "2026-04-04T13:50:07.975884Z",
+      "anchor_summary": {
+        "goals": "用户已确认并沉淀了多个核心优势，包括追求卓越、非传统思维、本质驱动学习、抽象建模能力、深度分析与顾问视角、独立闭环执行能力、战略式学习等，探索发现优势累计达9个，接近完成10个优势的探索目标。",
+        "personality": "理性、果断、追求本质，沟通直接明确。",
+        "style": "文字简洁、直接，常用感叹号强调。",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-03-29T07:02:20.853670Z"
+    },
+    "interests": {
+      "step_id": "interests",
+      "selected_session_id": "t_1774767599147_etafjo8",
+      "locked": false,
+      "session_ids": [
+        "t_1774767599147_etafjo8",
+        "t_5dfb05e102784a04aacafdd520e0b7bf"
+      ],
+      "updated_at": "2026-04-04T13:50:09.666960Z",
+      "anchor_summary": {
+        "goals": "本阶段成功沉淀用户确认的三个核心热爱方向：科技与艺术跨界融合、创造跨感官体验、探索终极规律与统一性。用户表现出强烈的投入感和持续性，通过对话从广泛兴趣中聚焦并验证了这些方向，目标已达成。",
+        "personality": "富有创意、好奇心强、追求本质与跨界创新",
+        "style": "表达直接、热情洋溢、使用感叹号强调情感",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-03-29T07:15:09.129027Z"
+    },
+    "purpose": {
+      "step_id": "purpose",
+      "selected_session_id": "t_1774768344843_ry762d8",
+      "locked": false,
+      "session_ids": [
+        "5e54335f-eb5b-4433-a971-e1b05f724137",
+        "t_1774768344843_ry762d8"
+      ],
+      "updated_at": "2026-04-04T13:51:05.311881Z",
+      "anchor_summary": {
+        "goals": "本阶段成功帮助用户确认其使命表达为“为好奇之心，开拓认知与体验的新边疆”，核心聚焦于通过开拓认知与体验的新边疆来服务好奇的探索者。目标达成，用户表示认同。",
+        "personality": "坦诚、鼓励他人、对卓越有高要求、有探索精神",
+        "style": "简洁直接，情感丰富，使用感叹号表达情绪",
+        "conflicts": "用户提及既想教别人又不希望自己被超越的矛盾，涉及影响力与自我价值确认的纠结"
+      },
+      "anchor_updated_at": "2026-04-02T10:58:17.198315Z"
+    },
+    "rumination": {
+      "step_id": "rumination",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [
+        "5e54335f-eb5b-4433-a971-e1b05f724137"
+      ],
+      "updated_at": "2026-04-04T14:26:02.078484Z"
+    }
+  }
+}

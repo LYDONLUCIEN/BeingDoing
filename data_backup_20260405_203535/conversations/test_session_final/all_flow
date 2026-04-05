@@ -1,0 +1,21 @@
+{
+  "session_id": "test_session_final",
+  "category": "all_flow",
+  "messages": [
+    {
+      "role": "user",
+      "content": "test",
+      "type": "user_input",
+      "created_at": "2026-02-12T09:58:12.901288Z",
+      "metadata": {
+        "current_step": "values_exploration"
+      },
+      "id": "msg_1770861492.90139"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-02-12T09:58:12.901288Z",
+    "updated_at": "2026-02-12T09:58:12.901288Z",
+    "total_messages": 1
+  }
+}

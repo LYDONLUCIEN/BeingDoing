@@ -1,0 +1,30 @@
+{
+  "nickname": "HAPPY",
+  "gender": "男",
+  "age": "31-36",
+  "education_school": "浙江大学",
+  "education_degree": "硕士",
+  "education_major": "自动化控制",
+  "city": "北京",
+  "family_status": [
+    "未婚"
+  ],
+  "family_affects_career": "会",
+  "career_status": "在职",
+  "industry": "通信运营商",
+  "position": "AI系统",
+  "work_years_total": "6",
+  "work_history": "网易云音乐、快手、",
+  "company_types": [
+    "国企"
+  ],
+  "salary_level": "50w",
+  "core_needs": [
+    "职业倦怠",
+    "想转型但不知道如何开始",
+    "其他",
+    "工作与生活平衡"
+  ],
+  "core_needs_other": "感觉现在的工作很让人烦躁内耗！觉得做的事情无意义",
+  "past_consultation": "有"
+}

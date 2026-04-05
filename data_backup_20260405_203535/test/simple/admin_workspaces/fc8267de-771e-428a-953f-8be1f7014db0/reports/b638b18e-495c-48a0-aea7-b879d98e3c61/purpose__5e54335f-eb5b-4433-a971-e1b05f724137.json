@@ -1,0 +1,29 @@
+{
+  "session_id": "b638b18e-495c-48a0-aea7-b879d98e3c61",
+  "category": "purpose__5e54335f-eb5b-4433-a971-e1b05f724137",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "HAPPY你好，欢迎回来。在上一轮，我们深入探讨了你的热爱，最终聚焦于三个充满创造力的方向：**科技与艺术跨界融合**、**创造跨感官体验**、**探索终极规律与统一性**。这非常棒，它们清晰地描绘了你内心真正被点燃的领域。\n\n今天，我们的目标是向前再迈出关键一步：将这些热爱与你对他人提供的**核心价值**联系起来，也就是你的**工作使命感**。简单来说，就是“你希望用你的热爱，为世界带来什么独特的贡献？”\n\n为了找到这个答案，我想邀请你回顾一段具体的经历。这能帮助我们更具体地看到你的价值是如何体现的。\n\n**那么，迄今为止，你最努力、付出最多的一段经历是什么？（可以是工作项目、学习过程，或是任何你全身心投入过的事情）**\n\n---",
+      "session_id": "5e54335f-eb5b-4433-a971-e1b05f724137",
+      "step_id": "purpose",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 867,
+        "completion_tokens": 193,
+        "total_tokens": 1060,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 867
+      },
+      "created_at": "2026-04-02T10:57:20.246973Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-04-02T10:57:20.247491Z",
+    "updated_at": "2026-04-02T10:57:20.247513Z",
+    "total_messages": 1
+  }
+}

@@ -30,7 +30,6 @@
     "updated_at": "2026-03-28T00:02:00Z",
     "total_messages": 2,
     "conclusion_state": "pending",
-    "pending_status": "pending",
     "thread_completed": false,
     "conclusion_draft": {
       "summary": "你关注成长、关系和身心平衡。",
@@ -42,4 +41,3 @@
     }
   }
 }
-

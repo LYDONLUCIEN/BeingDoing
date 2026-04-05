@@ -1,0 +1,45 @@
+{
+  "session_id": "b638b18e-495c-48a0-aea7-b879d98e3c61",
+  "category": "purpose__t_1774768344843_ry762d8__note/note",
+  "notes": [
+    {
+      "id": "note_1",
+      "type": "pending_conclusion_created",
+      "payload": {
+        "phase": "purpose",
+        "thread_id": "t_1774768344843_ry762d8",
+        "pending_conclusion": {
+          "summary": "为好奇之心，开拓认知与体验的新边疆",
+          "keywords": [
+            "开拓新边疆",
+            "认知与体验",
+            "好奇之心"
+          ]
+        }
+      },
+      "created_at": "2026-03-29T07:21:46.176119Z"
+    },
+    {
+      "id": "note_2",
+      "type": "dimension_conclusion_confirmed",
+      "payload": {
+        "phase": "purpose",
+        "thread_id": "t_1774768344843_ry762d8",
+        "dimension_conclusion": {
+          "summary": "为好奇之心，开拓认知与体验的新边疆",
+          "keywords": [
+            "开拓新边疆",
+            "认知与体验",
+            "好奇之心"
+          ]
+        }
+      },
+      "created_at": "2026-03-29T07:21:48.516209Z"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-29T07:21:46.176119Z",
+    "updated_at": "2026-03-29T07:21:48.516209Z",
+    "total_notes": 2
+  }
+}

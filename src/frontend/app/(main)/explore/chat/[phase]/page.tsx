@@ -42,6 +42,7 @@ import {
   createThreadId,
   collapseRuminationThreadsToOne,
   pickCanonicalRuminationThread,
+  isCacheStale,
   type ChatThread,
   type ThreadMessage,
 } from '@/lib/explore/threads';
@@ -432,15 +433,21 @@ export default function ChatPhasePage() {
         if (err?.code === 'ERR_NETWORK' || err?.message?.includes('Network')) {
           setChatError(t('explore.chat.networkError'));
         }
-        // 网络失败时回退到 localStorage（离线兜底）
-        let list = getThreads(activationCode, phase);
-        if (phase === 'rumination' && list.length > 1) {
-          list = collapseRuminationThreadsToOne(list);
-          setThreadsForPhase(activationCode, phase, list);
+        // 网络失败时：仅在缓存未过期时回退到 localStorage（避免使用过期数据）
+        if (!isCacheStale(activationCode)) {
+          let list = getThreads(activationCode, phase);
+          if (phase === 'rumination' && list.length > 1) {
+            list = collapseRuminationThreadsToOne(list);
+            setThreadsForPhase(activationCode, phase, list);
+          }
+          setThreads(list);
+          const activeId = getActiveThreadId(activationCode, phase);
+          setActiveThreadIdState(activeId);
+        } else {
+          // 缓存过期，显示空状态，不使用可能不一致的旧数据
+          setThreads([]);
+          setActiveThreadIdState(null);
         }
-        setThreads(list);
-        const activeId = getActiveThreadId(activationCode, phase);
-        setActiveThreadIdState(activeId);
       }
       if (!cancelled) setThreadsFetched(true);
     })();

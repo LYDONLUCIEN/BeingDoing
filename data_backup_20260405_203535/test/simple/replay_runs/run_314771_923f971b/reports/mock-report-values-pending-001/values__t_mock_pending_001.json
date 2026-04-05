@@ -1,0 +1,73 @@
+{
+  "session_id": "mock-report-values-pending-001",
+  "category": "values__t_mock_pending_001",
+  "messages": [
+    {
+      "id": "m1",
+      "message_id": "m1",
+      "role": "assistant",
+      "content": "我们先整理一下你最近最在意的三件事。",
+      "session_id": "t_mock_pending_001",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "created_at": "2026-03-28T00:00:00Z"
+    },
+    {
+      "id": "m2",
+      "message_id": "m2",
+      "role": "user",
+      "content": "我最在意成长、关系、身心平衡。",
+      "session_id": "t_mock_pending_001",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-03-28T00:01:00Z"
+    },
+    {
+      "role": "user",
+      "content": "我想继续补充细节",
+      "session_id": "t_mock_pending_001",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-03-29T02:14:01.636491Z",
+      "message_id": "msg_3",
+      "id": "msg_3"
+    },
+    {
+      "role": "assistant",
+      "content": "好的，我们继续。",
+      "session_id": "t_mock_pending_001",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0
+      },
+      "created_at": "2026-03-29T02:14:39.767820Z",
+      "message_id": "msg_4",
+      "id": "msg_4"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-28T00:00:00Z",
+    "updated_at": "2026-03-29T02:14:39.768667Z",
+    "total_messages": 4,
+    "conclusion_state": "pending",
+    "pending_status": "pending",
+    "thread_completed": false,
+    "conclusion_draft": {
+      "summary": "你关注成长、关系和身心平衡。",
+      "keywords": [
+        "成长",
+        "关系",
+        "身心平衡"
+      ]
+    },
+    "question_bank": "1. ### 18. 你什么时候感到最幸福？\n2. 从中可以发现你有什么样的价值观？\n3. ### 7. 因为哪些事会感动？\n4. ### 4. 对于母亲的生活方式，哪些地方你喜欢，哪些地方你不喜欢？\n5. （人们按照价值观行动时，会感到骄傲。）从中可以发现你有什么样的价值观？\n6. ### 20. 迄今为止你做过什么重要的决策吗？",
+    "question_bank_phase": "values"
+  }
+}

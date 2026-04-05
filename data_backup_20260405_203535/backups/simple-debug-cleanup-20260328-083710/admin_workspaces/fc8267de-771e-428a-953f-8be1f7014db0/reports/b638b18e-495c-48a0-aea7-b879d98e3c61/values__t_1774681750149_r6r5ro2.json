@@ -1,0 +1,29 @@
+{
+  "session_id": "b638b18e-495c-48a0-aea7-b879d98e3c61",
+  "category": "values__t_1774681750149_r6r5ro2",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "HAPPY你好，很高兴能和你一起探索对你职业发展至关重要的价值观。这是一个帮助我们更清晰认识自己内在驱动力的过程，能为你后续的转型思考提供坚实的锚点。\n\n那么，我们直接开始吧。**你能否直接告诉我，在你心中对你最重要的5个价值观关键词是什么？**（例如：成就感、稳定、创新、人际关系等）",
+      "session_id": "t_1774681750149_r6r5ro2",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 1335,
+        "completion_tokens": 94,
+        "total_tokens": 1429,
+        "prompt_cache_hit_tokens": 832,
+        "prompt_cache_miss_tokens": 503
+      },
+      "created_at": "2026-03-28T07:09:17.240130Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-28T07:09:17.240627Z",
+    "updated_at": "2026-03-28T07:09:17.240647Z",
+    "total_messages": 1
+  }
+}

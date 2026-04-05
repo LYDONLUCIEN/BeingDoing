@@ -1,0 +1,45 @@
+{
+  "session_id": "b638b18e-495c-48a0-aea7-b879d98e3c61",
+  "category": "interests__t_1774767599147_etafjo8__note/note",
+  "notes": [
+    {
+      "id": "note_1",
+      "type": "pending_conclusion_created",
+      "payload": {
+        "phase": "interests",
+        "thread_id": "t_1774767599147_etafjo8",
+        "pending_conclusion": {
+          "summary": "用户通过深度对话，从广泛的兴趣领域（音乐、科技、舞蹈、艺术）中，逐步聚焦并确认了其最核心的3个热爱方向。这些方向均体现了其追求深度、创新、本质与跨界的特质，并与之前梳理的价值观与优势高度契合。",
+          "keywords": [
+            "科技与艺术跨界融合",
+            "创造跨感官体验",
+            "探索终极规律与统一性"
+          ]
+        }
+      },
+      "created_at": "2026-03-29T07:12:18.418537Z"
+    },
+    {
+      "id": "note_2",
+      "type": "dimension_conclusion_confirmed",
+      "payload": {
+        "phase": "interests",
+        "thread_id": "t_1774767599147_etafjo8",
+        "dimension_conclusion": {
+          "summary": "用户通过深度对话，从广泛的兴趣领域（音乐、科技、舞蹈、艺术）中，逐步聚焦并确认了其最核心的3个热爱方向。这些方向均体现了其追求深度、创新、本质与跨界的特质，并与之前梳理的价值观与优势高度契合。",
+          "keywords": [
+            "科技与艺术跨界融合",
+            "创造跨感官体验",
+            "探索终极规律与统一性"
+          ]
+        }
+      },
+      "created_at": "2026-03-29T07:12:21.337183Z"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-29T07:12:18.418537Z",
+    "updated_at": "2026-03-29T07:12:21.337183Z",
+    "total_notes": 2
+  }
+}

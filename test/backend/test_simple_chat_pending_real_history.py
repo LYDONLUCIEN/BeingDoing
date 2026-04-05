@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 
 from app.api.v1.auth import get_current_user
 from app.main import app
-import app.api.v1.simple_chat as simple_chat_api
+import app.api.v1.simple_chat_routes as simple_chat_api
 import app.utils.simple_activation_manager as activation_manager_mod
 from app.utils.simple_activation_manager import SimpleActivationManager
 
@@ -230,7 +230,6 @@ def test_flow_3_pending_rejected_then_continue_chat(seeded_env, monkeypatch):
     )
     meta = _read_json(thread_file).get("metadata", {})
     assert meta.get("conclusion_state") == "rejected"
-    assert meta.get("pending_status") == "rejected"
     assert (meta.get("conclusion_feedback") or "") != ""
 
 

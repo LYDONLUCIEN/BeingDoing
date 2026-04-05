@@ -71,7 +71,10 @@ export interface PhaseThreads {
 
 const STORAGE_KEY = (code: string) => `explore_threads_${code}`;
 const ACTIVE_KEY = (code: string) => `explore_active_thread_${code}`;
+const SYNC_TS_KEY = (code: string) => `explore_threads_sync_ts_${code}`;
 const MAX_THREADS = 5;
+/** localStorage 缓存最大有效期（毫秒），超过后强制从后端拉取 */
+const CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 分钟
 
 function loadRaw(code: string): PhaseThreads {
   if (typeof window === 'undefined') return {};
@@ -121,6 +124,40 @@ export function setThreadsForPhase(code: string, phase: PhaseKey, threads: ChatT
   const data = loadRaw(code);
   data[phase] = threads;
   saveRaw(code, data);
+  // 记录最后同步时间
+  markSynced(code);
+}
+
+/** 记录最后一次从后端成功同步的时间戳 */
+export function markSynced(code: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(SYNC_TS_KEY(code), String(Date.now()));
+  } catch {}
+}
+
+/** 判断 localStorage 缓存是否过期（超过 CACHE_MAX_AGE_MS 未从后端同步） */
+export function isCacheStale(code: string): boolean {
+  if (typeof window === 'undefined') return true;
+  try {
+    const raw = localStorage.getItem(SYNC_TS_KEY(code));
+    if (!raw) return true;
+    const ts = parseInt(raw, 10);
+    if (isNaN(ts)) return true;
+    return Date.now() - ts > CACHE_MAX_AGE_MS;
+  } catch {
+    return true;
+  }
+}
+
+/** 清除指定激活码的所有 localStorage 缓存（用于激活码切换、登出等场景） */
+export function clearThreadCache(code: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(STORAGE_KEY(code));
+    localStorage.removeItem(ACTIVE_KEY(code));
+    localStorage.removeItem(SYNC_TS_KEY(code));
+  } catch {}
 }
 
 export function saveThread(code: string, phase: PhaseKey, thread: ChatThread) {

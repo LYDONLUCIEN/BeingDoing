@@ -1,0 +1,64 @@
+{
+  "report_id": "36d1141f-52a7-4ce1-92fe-aaabd7f2b9df",
+  "activation_code": "SBX3ZZNI141",
+  "user_id": "fc8267de-771e-428a-953f-8be1f7014db0",
+  "created_at": "2026-03-20T03:29:16.919967Z",
+  "updated_at": "2026-03-23T07:57:05.696864Z",
+  "status": "in_progress",
+  "final_conclusion": null,
+  "steps": {
+    "values": {
+      "step_id": "values",
+      "selected_session_id": "t_1773991329563_6v3x7ds",
+      "locked": true,
+      "session_ids": [
+        "08140779-2821-43f2-9ab7-a9d5cd1f8e90",
+        "t_1773991329563_6v3x7ds",
+        "t_1773993092939_3amoe1p",
+        "t_1774152093989_j9ly2yf",
+        "t_1774152554228_u6lgs9b"
+      ],
+      "updated_at": "2026-03-23T07:57:05.696403Z",
+      "anchor_summary": {
+        "goals": "本阶段已成功沉淀用户最终确认的5个核心价值观词，并按用户指定的顺序记录：成长、意义感、公正、自我实现、认可。价值观探索环节已正式完成，咨询目标达成。",
+        "personality": "坚持、明确、目标导向",
+        "style": "简短、重复强调、行动派",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-03-22T01:54:32.524366Z"
+    },
+    "strengths": {
+      "step_id": "strengths",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [
+        "t_1774093660330_metvwga"
+      ],
+      "updated_at": "2026-03-23T07:57:05.696823Z"
+    },
+    "interests": {
+      "step_id": "interests",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [],
+      "updated_at": "2026-03-20T03:29:16.919967Z"
+    },
+    "purpose": {
+      "step_id": "purpose",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [],
+      "updated_at": "2026-03-20T03:29:16.919967Z"
+    },
+    "rumination": {
+      "step_id": "rumination",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [],
+      "updated_at": "2026-03-20T03:29:16.919967Z"
+    }
+  },
+  "forked_from_activation_code": "3CBFATFCIR",
+  "forked_at": "2026-03-21T08:46:51.114827Z",
+  "is_sandbox_fork": true
+}

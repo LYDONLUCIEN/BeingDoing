@@ -1,0 +1,49 @@
+{
+  "report_id": "mock-report-values-pending-001",
+  "activation_code": "V9R3NISYSX",
+  "user_id": "replay-user",
+  "created_at": "2026-03-28T00:00:00Z",
+  "updated_at": "2026-03-29T02:08:37.664906Z",
+  "status": "in_progress",
+  "final_conclusion": null,
+  "steps": {
+    "values": {
+      "step_id": "values",
+      "selected_session_id": "t_mock_pending_001",
+      "locked": false,
+      "session_ids": [
+        "t_mock_pending_001",
+        "183b928e-757f-40ba-a066-613f5097333b"
+      ],
+      "updated_at": "2026-03-29T02:08:37.664877Z"
+    },
+    "strengths": {
+      "step_id": "strengths",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [],
+      "updated_at": "2026-03-28T00:00:00Z"
+    },
+    "interests": {
+      "step_id": "interests",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [],
+      "updated_at": "2026-03-28T00:00:00Z"
+    },
+    "purpose": {
+      "step_id": "purpose",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [],
+      "updated_at": "2026-03-28T00:00:00Z"
+    },
+    "rumination": {
+      "step_id": "rumination",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [],
+      "updated_at": "2026-03-28T00:00:00Z"
+    }
+  }
+}

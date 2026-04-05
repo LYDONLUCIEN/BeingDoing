@@ -74,6 +74,43 @@ from app.utils.admin_policy import is_admin_sandbox_enabled
 from app.utils.super_admin import is_super_admin_user
 from jinja2 import Environment
 
+# ── 从子模块导入已拆分的函数 ──────────────────────────────────────────
+from app.api.v1.simple_chat.stream_utils import (
+    extract_json_object as _extract_json_object,
+    extract_state_content_tokens as _extract_state_content_tokens,
+    looks_like_markdown_table as _looks_like_markdown_table,
+    split_visible_reply_and_state as _split_visible_reply_and_state,
+    strip_hidden_blocks_for_stream as _strip_hidden_blocks_for_stream,
+    build_stream_hidden_block_filter as _build_stream_hidden_block_filter,
+    normalize_token_usage as _normalize_token_usage,
+)
+from app.api.v1.simple_chat.llm_providers import (
+    get_dialogue_llm_provider as _get_dialogue_llm_provider,
+    get_reasoning_llm_provider as _get_reasoning_llm_provider,
+    to_non_reasoning_model as _to_non_reasoning_model,
+    to_reasoning_model as _to_reasoning_model,
+)
+from app.api.v1.simple_chat.prompt_builder import (
+    build_system_prompt as _build_system_prompt,
+    build_fallback_opening_question as _build_fallback_opening_question,
+    get_or_create_thread_question_bank as _get_or_create_thread_question_bank,
+    get_random_questions_for_phase as _get_random_questions_for_phase,
+)
+from app.api.v1.simple_chat.context_resolver import (
+    storage_category as _storage_category,
+    resolve_report_context as _resolve_report_context,
+    resolve_activation_for_user as _resolve_activation_for_user,
+    resolve_default_logical_thread_id as _resolve_default_logical_thread_id,
+    skip_expired_for_debug as _skip_expired_for_debug,
+    can_bypass_flow_limits as _can_bypass_flow_limits,
+    resolve_prompt_lab_override_for_request as _resolve_prompt_lab_override_for_request,
+    get_user_id_from_activation as _get_user_id_from_activation,
+    load_basic_info_from_activation as _load_basic_info_from_activation,
+    load_prior_context_from_activation as _load_prior_context_from_activation,
+    is_step_locked as _is_step_locked,
+    assert_step_editable as _assert_step_editable,
+)
+
 # 每阶段随机抽取的题目数量
 SIMPLE_QUESTION_SAMPLE_SIZE = 6
 # 发送给 LLM 的历史消息最大轮数（减少 token、加快响应）
@@ -364,7 +401,7 @@ def _build_conclusion_meta_update(
     shown_at: Optional[int] = None,
     thread_completed: Optional[bool] = None,
 ) -> Dict:
-    """写入统一结论状态，同时镜像旧字段做兼容。"""
+    """写入结论状态（仅新字段）。"""
     is_confirmed = state == CONCLUSION_STATE_CONFIRMED
     is_pending = state == CONCLUSION_STATE_PENDING
     is_rejected = state == CONCLUSION_STATE_REJECTED
@@ -374,19 +411,6 @@ def _build_conclusion_meta_update(
         "conclusion_final": final if final else None,
         "conclusion_feedback": (feedback or "") if is_rejected else "",
         "thread_completed": (is_confirmed if thread_completed is None else bool(thread_completed)),
-        # 旧字段兼容
-        "pending_status": (
-            "awaiting_confirmation"
-            if is_pending
-            else "confirmed"
-            if is_confirmed
-            else "rejected"
-            if is_rejected
-            else "none"
-        ),
-        "pending_conclusion": draft if is_pending else None,
-        "dimension_conclusion": final if final else None,
-        "pending_last_rejected": {"feedback": feedback or ""} if is_rejected else {},
     }
     if shown_at is not None:
         update["conclusion_shown_at_turn"] = shown_at
@@ -1597,18 +1621,14 @@ def _build_stream_hidden_block_filter(
     return consume
 
 
-@router.post("/message", response_model=SimpleChatResponse)
+@router.post("/message", response_model=SimpleChatResponse, deprecated=True)
 async def simple_chat(
     request: SimpleChatRequest,
     current_user: dict = Depends(get_current_user),
 ):
     """
-    简单模式的单轮对话：
-    - 使用 activation_code 找到对应的会话与模式
-    - 读取历史消息
-    - 构造 system_prompt + 历史 + 当前用户消息
-    - 调用 LLM 得到回复
-    - 将本轮 user / assistant 消息写入 data/simple 下
+    [DEPRECATED] 简单模式的单轮对话（同步版本）。
+    前端已全部迁移到 /message/stream 流式端点，此端点仅作降级保留。
     """
     manager = get_activation_manager_for_code(request.activation_code)
     phase = (request.phase or "values").strip() or "values"

@@ -1,0 +1,21 @@
+{
+  "session_id": "758cf69d-ef13-4bc6-8bcd-913671b7d60f",
+  "category": "interests_goals",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "你好，欢迎来到我们的第三次咨询。今天，我们将一起探索那些让你感到充满热情和意义的事情。首先，我想请你回想一下：在日常生活中，你喜欢做哪些事情？哪些事情会让你感到投入、充满能量，甚至忘记了时间的流逝？",
+      "created_at": "2026-03-01T04:18:44.783162Z",
+      "id": "msg_1",
+      "message_id": "msg_1",
+      "agent_id": "coach",
+      "event": "assistant_reply"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-01T04:18:44.783395Z",
+    "updated_at": "2026-03-01T04:18:44.783408Z",
+    "total_messages": 1,
+    "migrated_at": "2026-03-18T12:17:22.787700Z"
+  }
+}

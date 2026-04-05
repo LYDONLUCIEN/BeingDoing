@@ -1,0 +1,75 @@
+{
+  "session_id": "79e2642a-ac09-4ed7-9975-0ff64f051419",
+  "category": "purpose",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "happy你好，很高兴能继续陪伴你探索。在之前的交流中，我们聊到了你的技能、兴趣和价值观。今天，我们想一起触及一个更深层的话题：**对你而言，工作除了谋生之外，是否承载着某种更深的意义或目的？** \n\n不妨先从这个简单的问题开始：**回顾你的日常工作与生活，你觉得你“为什么而工作”？** 可以想到什么就说什么，没有对错之分。",
+      "created_at": "2026-03-04T03:42:48.357193Z",
+      "id": "msg_1",
+      "message_id": "msg_1",
+      "agent_id": "coach",
+      "event": "assistant_reply"
+    },
+    {
+      "role": "user",
+      "content": "我觉得要帮助别人，成为自己！",
+      "created_at": "2026-03-04T05:37:49.009572Z",
+      "id": "msg_2",
+      "message_id": "msg_2",
+      "agent_id": null,
+      "event": "user_message"
+    },
+    {
+      "role": "assistant",
+      "content": "“帮助别人，成为自己”——这句话很有力量。能具体说说吗？**当你想到“帮助别人”时，你脑海中浮现的是什么样的场景或画面？** （比如是帮助特定的人群？解决某类问题？还是通过某种具体的方式？）",
+      "created_at": "2026-03-04T05:37:52.636108Z",
+      "id": "msg_3",
+      "message_id": "msg_3",
+      "agent_id": "coach",
+      "event": "assistant_reply"
+    },
+    {
+      "role": "user",
+      "content": "hello我很开心，我成圣了",
+      "created_at": "2026-03-08T15:25:53.026379Z",
+      "id": "msg_4",
+      "message_id": "msg_4",
+      "agent_id": null,
+      "event": "user_message"
+    },
+    {
+      "role": "assistant",
+      "content": "（注意到你情绪高涨，但“成圣”的表述比较抽象。为了将这种积极的感受与职业使命感连接起来，需要引导你具体化。）  \n\n听起来你此刻充满喜悦和成就感，这种状态非常宝贵。为了帮你理清这种感受背后的深层动力，我想请你具体描述一下：**在你看来，“成圣”具体意味着你做到了什么，或者成为了什么样的人？** （例如：是克服了某个重大挑战？帮助他人突破了困境？还是实现了某种自我突破？）",
+      "created_at": "2026-03-08T15:25:58.504893Z",
+      "id": "msg_5",
+      "message_id": "msg_5",
+      "agent_id": "coach",
+      "event": "assistant_reply"
+    },
+    {
+      "role": "user",
+      "content": "就是一种伟大的状态非常棒！！",
+      "created_at": "2026-03-08T15:26:10.349804Z",
+      "id": "msg_6",
+      "message_id": "msg_6",
+      "agent_id": null,
+      "event": "user_message"
+    },
+    {
+      "role": "assistant",
+      "content": "我能感受到你正处在一个充满能量和满足感的时刻，这种“伟大的状态”非常珍贵。为了将这种状态与你工作的深层意义联系起来，我们可以试着将它具体化一些。\n\n**如果让你用一个具体的行动或成就来描述这种“伟大的状态”，你会想到什么？** （例如：是攻克了一个技术难题后团队欢呼的时刻？还是用你的专业知识帮助他人解决了燃眉之急？）",
+      "created_at": "2026-03-08T15:26:15.752045Z",
+      "id": "msg_7",
+      "message_id": "msg_7",
+      "agent_id": "coach",
+      "event": "assistant_reply"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-04T03:42:48.357611Z",
+    "updated_at": "2026-03-08T15:26:15.752767Z",
+    "total_messages": 7,
+    "migrated_at": "2026-03-18T12:17:22.726336Z"
+  }
+}

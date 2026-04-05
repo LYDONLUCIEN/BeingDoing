@@ -60,12 +60,6 @@ def test_passion_reality_similar_chain():
     assert set(s[0].keys()) == {"id", "用户确认的假设"}
 
 
-def test_merge_row_by_id():
-    t = [{"id": "1", "x": 1}, {"id": "2", "x": 2}]
-    out = ro.merge_row_by_id(t, "2", {"x": 3})
-    assert out[1]["x"] == 3
-
-
 def test_extract_from_prior_context_four_sections():
     text = """
 【信念 阶段结果】

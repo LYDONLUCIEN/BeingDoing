@@ -1,0 +1,109 @@
+{
+  "session_id": "mock-report-values-pending-001",
+  "category": "values__t_mock_pending_001",
+  "messages": [
+    {
+      "id": "m1",
+      "message_id": "m1",
+      "role": "assistant",
+      "content": "我们先整理一下你最近最在意的三件事。",
+      "session_id": "t_mock_pending_001",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "created_at": "2026-03-28T00:00:00Z"
+    },
+    {
+      "id": "m2",
+      "message_id": "m2",
+      "role": "user",
+      "content": "我最在意成长、关系、身心平衡。",
+      "session_id": "t_mock_pending_001",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-03-28T00:01:00Z"
+    },
+    {
+      "role": "user",
+      "content": "我确认这个总结",
+      "session_id": "t_mock_pending_001",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-03-29T02:08:14.470791Z",
+      "message_id": "msg_3",
+      "id": "msg_3"
+    },
+    {
+      "role": "assistant",
+      "content": "收到确认，准备结论卡",
+      "session_id": "t_mock_pending_001",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0
+      },
+      "created_at": "2026-03-29T02:08:14.472901Z",
+      "message_id": "msg_4",
+      "id": "msg_4"
+    },
+    {
+      "role": "conclusion_card",
+      "content": "{\"summary\": \"你重视成长、关系与平衡，并倾向长期主义投入。\", \"keywords\": [\"成长\", \"关系\", \"平衡\", \"长期主义\"]}",
+      "session_id": "t_mock_pending_001",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "dimension_conclusion",
+      "card_type": "dimension_conclusion",
+      "card_payload": {
+        "summary": "你重视成长、关系与平衡，并倾向长期主义投入。",
+        "keywords": [
+          "成长",
+          "关系",
+          "平衡",
+          "长期主义"
+        ]
+      },
+      "created_at": "2026-03-29T02:08:14.473629Z",
+      "message_id": "msg_5",
+      "id": "msg_5"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-28T00:00:00Z",
+    "updated_at": "2026-03-29T02:08:14.473997Z",
+    "total_messages": 5,
+    "conclusion_state": "confirmed",
+    "pending_status": "confirmed",
+    "thread_completed": false,
+    "conclusion_draft": null,
+    "question_bank": "1. ---\n2. **注：标[插图]的问题是让你从价值观思考\"工作目的\"的问题。**\n3. ### 11. 迄今为止的人生中，你做过什么关键的决定吗？\n4. ### 3. 对于父亲的生活方式，哪些地方你喜欢，哪些地方你不喜欢？\n5. 那个人做了什么让你这样认为？从中可以发现你有什么样的价值观？\n6. ### 5. 当你死后，你希望被周围的人如何评价呢？",
+    "question_bank_phase": "values",
+    "conclusion_final": {
+      "summary": "你重视成长、关系与平衡，并倾向长期主义投入。",
+      "keywords": [
+        "成长",
+        "关系",
+        "平衡",
+        "长期主义"
+      ]
+    },
+    "conclusion_feedback": "",
+    "pending_conclusion": null,
+    "dimension_conclusion": {
+      "summary": "你重视成长、关系与平衡，并倾向长期主义投入。",
+      "keywords": [
+        "成长",
+        "关系",
+        "平衡",
+        "长期主义"
+      ]
+    },
+    "pending_last_rejected": {},
+    "conclusion_shown_at_turn": 2
+  }
+}

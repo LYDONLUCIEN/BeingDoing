@@ -1,0 +1,27 @@
+{
+  "session_id": "36d1141f-52a7-4ce1-92fe-aaabd7f2b9df",
+  "category": "strengths__t_1774093660330_metvwga",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "你好，xinyu。很高兴再次与你见面。上一轮我们深入探讨了你的核心价值观，它们是你内心深处的指南针。这一轮，我们的目标是**发现并确认你最突出的10个优势**。\n\n优势是你自然而然、反复出现，并能带来高效表现和积极感受的思维、感受或行为模式。了解它们，能让你在未来的职业选择中，更清晰地看到自己可以如何发光发热。\n\n那么，我们直接开始吧。\n\n**首先，我想请你凭直觉想一想：你自己认为你的优势有哪些？请尽量列举，想到什么就说什么，不用考虑是否“足够好”。**",
+      "session_id": "t_1774093660330_metvwga",
+      "step_id": "strengths",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 1118,
+        "completion_tokens": 124,
+        "total_tokens": 1242
+      },
+      "created_at": "2026-03-21T11:47:45.691077Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-21T11:47:45.691622Z",
+    "updated_at": "2026-03-21T11:47:45.691638Z",
+    "total_messages": 1
+  }
+}

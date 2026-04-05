@@ -1,0 +1,17 @@
+{
+  "session_id": "63a7f607-d5fa-467e-9c95-b38fd0b6305d",
+  "category": "interests_goals",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "你好，很高兴能继续和你一起探索。  \n我们先从一个小问题开始吧：  \n\n**在你平常的生活或工作中，有没有哪件事让你做起来特别投入，甚至忘记了时间？可以是一件具体的事，也可以是某一类活动。**",
+      "created_at": "2026-03-01T04:26:00.839744Z",
+      "id": "msg_1"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-01T04:26:00.839992Z",
+    "updated_at": "2026-03-01T04:26:00.840005Z",
+    "total_messages": 1
+  }
+}

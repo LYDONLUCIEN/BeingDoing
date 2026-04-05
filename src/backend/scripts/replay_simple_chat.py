@@ -82,7 +82,7 @@ def _bootstrap_backend() -> None:
 
     from app.api.v1.auth import get_current_user as _get_current_user
     from app.main import app as _app
-    import app.api.v1.simple_chat as _simple_chat_api
+    import app.api.v1.simple_chat_routes as _simple_chat_api
     import app.utils.simple_activation_manager as _activation_manager_mod
     from app.utils.admin_prompt_lab import (
         bind_profile_to_activation as _bind_profile_to_activation,

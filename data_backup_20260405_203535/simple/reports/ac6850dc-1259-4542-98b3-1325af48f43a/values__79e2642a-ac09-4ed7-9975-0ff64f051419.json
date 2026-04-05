@@ -1,0 +1,174 @@
+{
+  "session_id": "79e2642a-ac09-4ed7-9975-0ff64f051419",
+  "category": "values",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "你好，欢迎来到我们的职业规划咨询。在开始之前，我想先了解一下：你能否直接告诉我，在你心目中，职业或生活中最重要的5个价值观关键词是什么？比如成就感、自由、家庭、成长等等。",
+      "created_at": "2026-03-01T13:19:50.323809Z",
+      "id": "msg_1",
+      "message_id": "msg_1",
+      "agent_id": "coach",
+      "event": "assistant_reply"
+    },
+    {
+      "role": "user",
+      "content": "你好",
+      "created_at": "2026-03-04T04:01:34.419071Z",
+      "id": "msg_2",
+      "message_id": "msg_2",
+      "agent_id": null,
+      "event": "user_message"
+    },
+    {
+      "role": "assistant",
+      "content": "你好！很高兴和你一起探索你的职业价值观。为了更有效地开始，我想先请你直接告诉我：在你心目中，职业或生活中最重要的5个价值观关键词是什么？比如成就感、自由、家庭、成长等等。你可以先试着说出想到的几个词，不用追求完美。",
+      "created_at": "2026-03-04T04:01:38.510238Z",
+      "id": "msg_3",
+      "message_id": "msg_3",
+      "agent_id": "coach",
+      "event": "assistant_reply"
+    },
+    {
+      "role": "user",
+      "content": "我觉得是自由，利它，成长，学习，公平",
+      "created_at": "2026-03-04T04:03:23.150324Z",
+      "id": "msg_4",
+      "message_id": "msg_4",
+      "agent_id": null,
+      "event": "user_message"
+    },
+    {
+      "role": "assistant",
+      "content": "感谢你的分享，我已经记下了你提到的五个关键词：**自由、利他、成长、学习、公平**。接下来，我们会通过一些问题来进一步探索这些价值观，并确认它们是否真正代表了你内心最看重的东西。\n\n现在，请回想一下：**从出生到小学阶段，最令你开心的一件事是什么？** 可以描述具体的事件和感受。",
+      "created_at": "2026-03-04T04:03:27.190577Z",
+      "id": "msg_5",
+      "message_id": "msg_5",
+      "agent_id": "coach",
+      "event": "assistant_reply"
+    },
+    {
+      "role": "user",
+      "content": "应该是演出的时候活的别人的赞美，以及我自己在把一些知识进行了梳理，串通成了一个体系！非常快乐！",
+      "created_at": "2026-03-04T04:04:15.918968Z",
+      "id": "msg_6",
+      "message_id": "msg_6",
+      "agent_id": null,
+      "event": "user_message"
+    },
+    {
+      "role": "assistant",
+      "content": "从你的描述中，我感受到这件事带来的快乐可能源于两个方面：一是**获得他人的认可和赞美**，二是**通过梳理知识、构建体系而获得的成就感**。这反映出你可能重视 **“认可/赞赏”** 和 **“成就感”**。\n\n你提到的“梳理知识、串通体系”也与你最初提出的 **“学习”** 和 **“成长”** 相关。那么，对于这个事件，你认为它最能代表你价值观中的哪个关键词呢？或者是否有新的关键词你想补充？",
+      "created_at": "2026-03-04T04:04:21.267031Z",
+      "id": "msg_7",
+      "message_id": "msg_7",
+      "agent_id": "coach",
+      "event": "assistant_reply"
+    },
+    {
+      "role": "user",
+      "content": "你好",
+      "created_at": "2026-03-04T04:16:40.624192Z",
+      "id": "msg_8",
+      "message_id": "msg_8",
+      "agent_id": null,
+      "event": "user_message"
+    },
+    {
+      "role": "assistant",
+      "content": "你好！我们继续探索。根据上一轮你的回答，我们初步发现了 **“认可/赞赏”** 和 **“成就感”** 这两个可能的价值观点。它们与你最初提出的“学习”“成长”有联系，但侧重点略有不同。\n\n现在，我想请你进一步思考：**在你提到的那次演出和知识梳理的经历中，让你感到最满足、最核心的部分是什么？** 是外界给予的赞美，还是自己内心构建体系的掌控感？这可以帮助我们更精确地定位你的价值观关键词。",
+      "created_at": "2026-03-04T04:16:46.027594Z",
+      "id": "msg_9",
+      "message_id": "msg_9",
+      "agent_id": "coach",
+      "event": "assistant_reply"
+    },
+    {
+      "role": "user",
+      "content": "真的可以吗？",
+      "created_at": "2026-03-04T04:32:40.709962Z",
+      "id": "msg_10",
+      "message_id": "msg_10",
+      "agent_id": null,
+      "event": "user_message"
+    },
+    {
+      "role": "user",
+      "content": "asda",
+      "created_at": "2026-03-04T15:10:31.298478Z",
+      "id": "msg_11",
+      "message_id": "msg_11",
+      "agent_id": null,
+      "event": "user_message"
+    },
+    {
+      "role": "assistant",
+      "content": "当然可以，我们慢慢来。你不需要立刻给出“正确”答案，重要的是感受自己的真实反应。\n\n那么，我们回到那个问题：**在那次经历中，让你感到最满足、最核心的部分，是外界给予的赞美，还是自己内心构建体系的掌控感？** 或者两者都有，但比重不同？",
+      "created_at": "2026-03-04T15:10:36.182971Z",
+      "id": "msg_12",
+      "message_id": "msg_12",
+      "agent_id": "coach",
+      "event": "assistant_reply"
+    },
+    {
+      "role": "user",
+      "content": "asda",
+      "created_at": "2026-03-04T15:37:28.578986Z",
+      "id": "msg_13",
+      "message_id": "msg_13",
+      "agent_id": null,
+      "event": "user_message"
+    },
+    {
+      "role": "assistant",
+      "content": "我注意到你似乎有些不确定或难以表达。没关系，我们可以换个角度。\n\n请回想一下：**在职场或生活里，哪些人是你最尊敬的？** 可以是一位具体的人，也可以是某一类人。",
+      "created_at": "2026-03-04T15:37:32.128516Z",
+      "id": "msg_14",
+      "message_id": "msg_14",
+      "agent_id": "coach",
+      "event": "assistant_reply"
+    },
+    {
+      "role": "user",
+      "content": "应该是演出的时候活的别人的赞美，以及我自己在把一些知识进行了梳理，串通成了一个体系！非常快乐！你是这么觉得吗？",
+      "created_at": "2026-03-04T15:45:52.733092Z",
+      "id": "msg_15",
+      "message_id": "msg_15",
+      "agent_id": null,
+      "event": "user_message"
+    },
+    {
+      "role": "assistant",
+      "content": "是的，我理解你的快乐同时来自**外界的赞美（认可）**和**自己构建知识体系的成就感**。这两者都很重要。\n\n那么，基于这个理解，我想请你确认：从这件事中，除了你最初提到的“学习”和“成长”，是否还有**“认可”**或**“成就感”**这两个价值观对你来说也很关键？你愿意把它们加入你的关键词列表中吗？",
+      "created_at": "2026-03-04T15:45:58.617693Z",
+      "id": "msg_16",
+      "message_id": "msg_16",
+      "agent_id": "coach",
+      "event": "assistant_reply"
+    },
+    {
+      "role": "user",
+      "content": "可以啊！",
+      "created_at": "2026-03-04T15:46:02.188629Z",
+      "id": "msg_17",
+      "message_id": "msg_17",
+      "agent_id": null,
+      "event": "user_message"
+    },
+    {
+      "role": "assistant",
+      "content": "好的，我已经将 **“认可”** 和 **“成就感”** 加入你的价值观关键词列表。目前列表中有：自由、利他、成长、学习、公平、认可、成就感（共7个）。\n\n接下来，我们继续探索。请回想：**在你过去的工作经历中，哪个项目或任务让你感到最有意义？为什么？**",
+      "created_at": "2026-03-04T15:46:07.379432Z",
+      "id": "msg_18",
+      "message_id": "msg_18",
+      "agent_id": "coach",
+      "event": "assistant_reply"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-01T13:19:50.324034Z",
+    "updated_at": "2026-03-04T15:46:07.380146Z",
+    "total_messages": 18,
+    "migrated_at": "2026-03-18T12:17:22.732614Z"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "session_id": "b638b18e-495c-48a0-aea7-b879d98e3c61",
+  "category": "interests__t_5dfb05e102784a04aacafdd520e0b7bf",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "HAPPY，你好！很高兴能继续陪伴你探索。上一轮我们清晰地梳理了你的价值观和优势，这就像拥有了精准的“导航仪”和“工具箱”。现在，我们要用它们来寻找你真正热爱的“目的地”。\n\n为了帮你发现那些能点燃你热情、让你沉浸其中的方向，我想先从一个简单的问题开始：\n\n**回想一下，无论是工作、学习还是生活中，有哪些事情能让你全神贯注、忘记时间，并且做完后感到由衷的满足和快乐？可以是很具体的一件事，也可以是一个宽泛的领域。**\n\n（比如：是深入研究一个技术难题？是设计一个清晰的系统框架？是向别人清晰地讲解一个复杂概念？还是创作一些独特的内容？）",
+      "session_id": "t_5dfb05e102784a04aacafdd520e0b7bf",
+      "step_id": "interests",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 836,
+        "completion_tokens": 169,
+        "total_tokens": 1005,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 836
+      },
+      "created_at": "2026-04-03T23:54:46.210835Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-04-03T23:54:46.211531Z",
+    "updated_at": "2026-04-03T23:54:46.211555Z",
+    "total_messages": 1
+  }
+}

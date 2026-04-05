@@ -1,0 +1,21 @@
+{
+  "session_id": "79e2642a-ac09-4ed7-9975-0ff64f051419",
+  "category": "strengths",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "你好，很高兴能继续我们的职业探索之旅。  \n在上一轮咨询中，我们初步探讨了你的兴趣方向；今天，我们将一起聚焦于你的优势，发现那些你擅长的事。  \n\n首先，我想请你轻松地想一想：**你自己认为，你在生活或工作中，有哪些比较明显的优势或长处呢？**  \n（可以是任何小事，比如“我做事很有耐心”“朋友常说我善于倾听”等等）",
+      "created_at": "2026-03-01T13:19:52.038899Z",
+      "id": "msg_1",
+      "message_id": "msg_1",
+      "agent_id": "coach",
+      "event": "assistant_reply"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-01T13:19:52.039143Z",
+    "updated_at": "2026-03-01T13:19:52.039155Z",
+    "total_messages": 1,
+    "migrated_at": "2026-03-18T12:17:22.737311Z"
+  }
+}

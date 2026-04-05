@@ -132,19 +132,6 @@ def _get_basic_info_path(session_id: str, base_dir: str) -> Path:
     return session_dir / "basic_info.json"
 
 
-def save_basic_info(session_id: str, data: Dict[str, Any], base_dir: str) -> None:
-    """
-    保存调研问卷数据到 basic_info.json
-
-    Args:
-        session_id: 会话 ID
-        data: 调研数据字典
-        base_dir: 存储根目录（data/simple 或 data/conversations）
-    """
-    path = _get_basic_info_path(session_id, base_dir)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
 def load_basic_info(session_id: str, base_dir: str) -> Optional[Dict[str, Any]]:
     """
     从 basic_info.json 加载调研数据

@@ -1,0 +1,22 @@
+{
+  "mode": "apply",
+  "manifest_id": "20260328-082636",
+  "started_at": "2026-03-28T08:26:36.225212Z",
+  "prod_root": "/home/gitclone/BeingDoing/data/simple",
+  "test_root": "/home/gitclone/BeingDoing/data/test/simple",
+  "copied_dirs": [
+    "sandboxes",
+    "admin_workspaces",
+    "admin_prompt_lab"
+  ],
+  "copied_files": [
+    "sandbox_fork_audit.jsonl"
+  ],
+  "debug_activation_codes_migrated": [
+    "ADMBS6N8STU",
+    "SBX3ZZNI141"
+  ],
+  "debug_recycle_codes_migrated": [],
+  "warnings": [],
+  "manifest_path": "/home/gitclone/BeingDoing/data/test/simple/migration_manifests/migrate-simple-debug-20260328-082636.json"
+}

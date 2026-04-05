@@ -1,0 +1,25 @@
+{
+  "nickname": "xinyu",
+  "gender": "女",
+  "age": "31-36",
+  "education_school": "天津商业大学",
+  "education_degree": "本科",
+  "education_major": "电子商务",
+  "city": "济南 北京 天津",
+  "family_status": [
+    "已婚"
+  ],
+  "family_affects_career": "不确定",
+  "career_status": "离职待业",
+  "industry": "互联网/电商",
+  "position": "营销策划",
+  "work_years_total": "12",
+  "work_history": "京东等电商平台营销策划",
+  "company_types": [
+    "民企"
+  ],
+  "salary_level": "",
+  "core_needs": [],
+  "core_needs_other": "",
+  "past_consultation": ""
+}

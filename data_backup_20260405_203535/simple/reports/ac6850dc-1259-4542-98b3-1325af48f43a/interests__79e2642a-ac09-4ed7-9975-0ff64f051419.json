@@ -1,0 +1,21 @@
+{
+  "session_id": "79e2642a-ac09-4ed7-9975-0ff64f051419",
+  "category": "interests_goals",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "你好，很高兴能继续陪伴你探索职业发展的可能性。今天，我们一起来聊聊那些让你感到热情和意义的事情。  \n\n首先，我想请你回想一下：**你喜欢做哪些事情？哪些事情让你感到充满热情和意义？**（可以是很具体的事，比如阅读、帮助他人、创作，也可以是某种状态或感受）  \n\n不用着急，我们可以慢慢梳理。",
+      "created_at": "2026-03-01T13:19:51.287156Z",
+      "id": "msg_1",
+      "message_id": "msg_1",
+      "agent_id": "coach",
+      "event": "assistant_reply"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-01T13:19:51.287404Z",
+    "updated_at": "2026-03-01T13:19:51.287416Z",
+    "total_messages": 1,
+    "migrated_at": "2026-03-18T12:17:22.733265Z"
+  }
+}

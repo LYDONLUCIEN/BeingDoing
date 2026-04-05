@@ -907,12 +907,12 @@ Step 9: 最终筛选 (similar_filter)
 
 ### Phase 2: 代码治理（2 周）
 
-- [ ] 拆分 `simple_chat.py` 为 6 个子模块
+- [x] ~~拆分 `simple_chat.py` 为子模块~~ → 已完成：拆分为 `simple_chat/` 包 + `simple_chat_routes.py`，含 4 个子模块（stream_utils, llm_providers, prompt_builder, context_resolver）
 - [ ] 拆分前端 `page.tsx` 为 hooks + 子组件
-- [ ] 删除已确认的死代码（`detect_explicit_completion`、`save_basic_info`、`merge_basic_info_sources`）
+- [x] ~~删除已确认的死代码~~ → 已删除：`detect_explicit_completion`、`_should_run_completion_check`、`save_basic_info`(session级)、`merge_row_by_id`
 - [ ] 合并 `conclusion_card_goals.py` + `dimension_completion.py` 为 `step_definitions.py`
 - [ ] 提取公共 JSON 提取函数到 `utils/json_utils.py`
-- [ ] 标记 `/message` 同步端点为 deprecated
+- [x] ~~标记 `/message` 同步端点为 deprecated~~ → 已标记 `deprecated=True`
 
 ### Phase 3: 稳定性提升（2 周）
 
@@ -930,5 +930,245 @@ Step 9: 最终筛选 (similar_filter)
 - [ ] 会话级 survey_storage API 清理
 - [ ] 考虑将对话存储从文件系统迁移到数据库（支持并发和查询）
 
+---
 
+## 十二、已执行的变更记录（2026-04-05）
+
+### 12.1 已删除的死代码
+
+| 删除项 | 文件 | 说明 |
+|--------|------|------|
+| `detect_explicit_completion()` | dimension_completion_checker.py | 全项目无调用方 |
+| `_should_run_completion_check()` | dimension_completion_checker.py | 全项目无调用方 |
+| `save_basic_info()` (session 级) | survey_storage.py | 全项目无调用方，`save_basic_info_by_user()` 已替代 |
+| `merge_row_by_id()` | rumination_ops.py | 全项目无调用方 |
+| `/message` 同步端点 | simple_chat.py | 标记为 `deprecated=True`，前端已全部使用 `/message/stream` |
+| `test_merge_row_by_id` | test_rumination_ops.py | 对应函数已删除 |
+
+### 12.2 已恢复的提示词内容
+
+| 阶段 | 恢复内容 | 原因 |
+|------|----------|------|
+| **strengths** | 完整标记体系说明（a.有充实感与成功有关 b.有充实感 c.不确定） | 原版有详细标记定义，当前版本只写了"向用户解释标记体系"但未给出具体内容 |
+| **interests** | 完整 7 步流程（开场→探索→记录→收集至少6个→筛选TOP3→确认→结束） | 原版有详细的候选清单收集流程（至少6个，上限12个），当前版本过度简化为4行 |
+| **purpose** | 完整 6 步流程（开场回顾→梳理10个经历→逐个匹配价值观→统计总结→确认→结束） | 原版要求10个经历+逐个匹配+统计频次+使命陈述，当前版本简化为5行概要 |
+
+### 12.3 已完成的模块拆分
+
+**simple_chat.py → simple_chat 包 + simple_chat_routes.py**
+
+```
+src/backend/app/api/v1/
+├── simple_chat/                     # 新建包
+│   ├── __init__.py                  # 导出 router（从 simple_chat_routes）
+│   ├── stream_utils.py              # SSE 流处理、STATE_JSON 解析、token 统计
+│   ├── llm_providers.py             # LLM 模型选择（对话/推理）、VIP 路由
+│   ├── prompt_builder.py            # system prompt 构建、题库加载、兜底问题
+│   └── context_resolver.py          # 激活码校验、报告上下文、权限检查、数据加载
+└── simple_chat_routes.py            # 路由定义（原 simple_chat.py 重命名）
+```
+
+已更新引用：`app/main.py`、`test/backend/test_simple_chat_*.py`、`scripts/replay_simple_chat.py`
+测试验证：9 个 simple_chat 测试全部通过
+
+---
+
+## 十三、原版提示词 vs 当前实现 差异对照
+
+### 13.1 Values 阶段 — 基本一致 ✅
+
+| 原版要素 | 当前实现 | 状态 |
+|----------|----------|------|
+| 开场直接询问5个关键词 | ✅ 保留 | 一致 |
+| 记录"用户自述"/"探索发现" | ✅ 保留 | 一致 |
+| 权重+1 对比机制 | ✅ 保留 | 一致 |
+| 收敛判断（无新词 或 10个独立问题） | ✅ 保留 | 一致 |
+| 排序与整合（合并到5个） | ✅ 保留 | 一致 |
+| 核对差异（权重 vs 排序） | ✅ 保留 | 一致 |
+| 最终确认 | ✅ 保留 | 一致 |
+| `end_conversation` 调用 | ⚠️ 改为 STATE_JSON 协议 | 合理变更（程序化实现） |
+| 价值观报告生成 | ⚠️ 改为结论卡 | 合理变更（UI 实现） |
+| 新增：命名约束（单一概念词） | ✅ 增强 | 改进 |
+| 新增：对话续写约束 | ✅ 增强 | 改进 |
+
+### 13.2 Strengths 阶段 — 已修复 ✅
+
+| 原版要素 | 修复前 | 修复后 |
+|----------|--------|--------|
+| 10个优势目标 | ✅ 保留 | ✅ |
+| 标记体系 a/b/c 具体说明 | ❌ 缺失（只写了"解释标记体系"） | ✅ 已恢复完整说明 |
+| 一次只标记一个 | ❌ 缺失 | ✅ 已恢复 |
+| 不认可则放弃继续挖掘 | ❌ 缺失 | ✅ 已恢复 |
+| 提问差异化 | ✅ 保留 | ✅ |
+
+### 13.3 Interests（热爱）阶段 — 已修复 ✅
+
+| 原版要素 | 修复前 | 修复后 |
+|----------|--------|--------|
+| 热爱定义（名词形式） | ❌ 缺失 | ✅ 已恢复 |
+| 开场询问已有热爱 | ✅ 简略保留 | ✅ 完整恢复 |
+| 分析是否符合"热爱"定义 | ❌ 缺失 | ✅ 已恢复 |
+| 收集候选至少6个 | ✅ 简略保留 | ✅ 完整恢复 |
+| 上限12个参考 | ❌ 缺失 | ✅ 已恢复 |
+| 全面性确认（"有没有遗漏"） | ❌ 缺失 | ✅ 已恢复 |
+| TOP3 选择引导（3个追问示例） | ❌ 缺失 | ✅ 已恢复 |
+| 不认可时重新挖掘替代项 | ❌ 缺失 | ✅ 已恢复 |
+| 热爱形式约束（名词） | ❌ 缺失 | ✅ 已恢复 |
+
+### 13.4 Purpose（使命）阶段 — 已修复 ✅
+
+| 原版要素 | 修复前 | 修复后 |
+|----------|--------|--------|
+| 祝贺开场 + 回顾价值观 | ❌ 简化为"开场与回顾" | ✅ 完整恢复 |
+| 梳理10个为他人提供价值的经历 | ❌ 简化为"梳理价值经历" | ✅ 完整恢复 |
+| 逐个经历匹配价值观 | ❌ 简化为"对应价值观" | ✅ 完整恢复 |
+| 统计频次 | ❌ 缺失 | ✅ 已恢复 |
+| 经历-价值观对应表格 | ❌ 缺失 | ✅ 已恢复 |
+| 核心使命陈述（核心价值+详细解释+最终目的） | ❌ 简化为"总结使命表达" | ✅ 完整恢复 |
+| 经历数量要求（10段，最少8-9段） | ❌ 缺失 | ✅ 已恢复 |
+| 匹配准确性要求 | ❌ 缺失 | ✅ 已恢复 |
+
+### 13.5 Rumination（沉淀）阶段 — 特殊情况
+
+Rumination 的原版设计（`new-rumination.md`）是一个**表格驱动的多步筛选流程**，与前四个阶段的纯对话模式完全不同。当前实现中：
+- 对话部分由 `simple_chat_system.yaml` 的 rumination 分支处理（简短引导）
+- 表格筛选部分由 `rumination_ops.py` + `rumination_table_widgets.py` + 前端表格组件处理
+- 这种拆分是合理的，因为 rumination 的核心交互是表格编辑而非纯对话
+
+**原版 vs 当前实现的关键差异**：
+
+| 原版设计 | 当前实现 | 评估 |
+|----------|----------|------|
+| 8步筛选（开场→优势标记→匹配分析→假设生成→价值过滤→激情过滤→现实过滤→最终选择） | 9步筛选（gen_table→filter_match→hypothesis×3→value_filter→passion_filter→reality_filter→similar_filter） | 基本对应，步骤拆分更细 |
+| 每步有独立的 PROMPT 引导语 | 引导语在 `rumination_table_widgets.py` 的 GUIDE_TEXT 中 | 实现方式不同但效果等价 |
+| 假设生成有"自由职业"和"公司职业"两种 | 当前实现中假设生成逻辑在 `rumination_hypothesis_service.py` | 需确认是否保留双假设 |
+| 行点击对话（选中行与AI讨论） | 前端 `ruminationRowContext` 支持 | ✅ 已实现 |
+| Regenerate 按钮 | 需确认前端是否实现 | 待验证 |
+
+---
+
+## 十四、模块拆分与解耦详细计划
+
+### 14.1 拆分原则
+
+1. **按业务域拆分**：每个文件对应一个清晰的业务职责
+2. **保持向后兼容**：路由路径不变，只是代码组织变化
+3. **渐进式重构**：可以分批执行，每批独立可测试
+4. **最小改动原则**：只移动代码，不改逻辑
+
+### 14.2 后端 simple_chat.py 拆分方案
+
+```
+src/backend/app/api/v1/
+├── simple_chat/                    # 新建包目录
+│   ├── __init__.py                 # 导出 router（合并所有子路由）
+│   ├── router_chat.py              # 核心对话端点 (/init, /message, /message/stream)
+│   ├── router_threads.py           # 线程管理 (/threads, /thread/complete, /thread/reopen, /thread/delete)
+│   ├── router_survey.py            # 问卷相关 (/survey, /prior-context)
+│   ├── router_rumination.py        # Rumination 端点 (/rumination-*)
+│   ├── prompt_builder.py           # _build_system_prompt + 提示词相关
+│   ├── conclusion_state.py         # 结论状态机 (_read_conclusion_meta, _build_conclusion_meta_update, pending 判定)
+│   ├── context_resolver.py         # _resolve_report_context + 激活码校验 + 权限检查
+│   ├── llm_providers.py            # _get_dialogue_llm_provider, _get_reasoning_llm_provider, VIP 路由
+│   └── stream_utils.py             # SSE 流处理 (_strip_hidden_blocks, _build_stream_hidden_block_filter)
+└── simple_chat.py                  # 保留为兼容入口，import 并 re-export router
+```
+
+**各文件职责与行数估算**：
+
+| 文件 | 职责 | 估算行数 | 从 simple_chat.py 迁移的函数 |
+|------|------|----------|------------------------------|
+| `router_chat.py` | 核心对话 | ~350 | `simple_chat()`, `simple_init()`, `_simple_init_impl()`, `simple_chat_stream()` + `event_stream()` |
+| `router_threads.py` | 线程管理 | ~250 | `list_threads()`, `simple_history()`, `reopen_thread()`, `mark_thread_complete()`, `delete_thread()` |
+| `router_survey.py` | 问卷 | ~120 | `get_survey()`, `save_survey()`, `get_prior_context()`, `save_prior_context_endpoint()` |
+| `router_rumination.py` | Rumination | ~300 | 所有 `rumination_*` 端点 + `_build_table_widget_payload()` |
+| `prompt_builder.py` | 提示词 | ~100 | `_build_system_prompt()`, `_get_random_questions_for_phase()`, `_build_fallback_opening_question()`, `_get_or_create_thread_question_bank()` |
+| `conclusion_state.py` | 结论状态机 | ~250 | `_read_conclusion_meta()`, `_build_conclusion_meta_update()`, `_decide_pending_action_by_llm()`, `_decide_pending_action_by_llm_streaming()`, `_build_pending_confirmation_text()`, `_write_anchor_from_conclusion()` |
+| `context_resolver.py` | 上下文解析 | ~200 | `_resolve_report_context()`, `_resolve_activation_for_user()`, `_resolve_default_logical_thread_id()`, `_resolve_prompt_lab_override_for_request()`, `_can_bypass_flow_limits()`, `_assert_step_editable()` |
+| `llm_providers.py` | LLM 路由 | ~80 | `_get_dialogue_llm_provider()`, `_get_reasoning_llm_provider()`, `_resolve_provider_and_key_for_vip()`, `_to_non_reasoning_model()`, `_to_reasoning_model()` |
+| `stream_utils.py` | 流处理 | ~80 | `_split_visible_reply_and_state()`, `_strip_hidden_blocks_for_stream()`, `_build_stream_hidden_block_filter()`, `_extract_json_object()`, `_extract_state_content_tokens()` |
+| `__init__.py` | 路由合并 | ~20 | 合并所有子 router |
+
+### 14.3 执行步骤
+
+**Step 1: 创建包结构**（无风险）
+```bash
+mkdir -p src/backend/app/api/v1/simple_chat
+touch src/backend/app/api/v1/simple_chat/__init__.py
+```
+
+**Step 2: 提取无依赖的工具模块**（低风险）
+- `stream_utils.py` — 纯函数，无外部依赖
+- `llm_providers.py` — 仅依赖 settings 和 llmapi
+
+**Step 3: 提取业务逻辑模块**（中风险）
+- `prompt_builder.py` — 依赖 domain/prompts 和 knowledge/loader
+- `conclusion_state.py` — 依赖 llmapi 和 dimension_completion_checker
+- `context_resolver.py` — 依赖 activation_manager 和 report_registry
+
+**Step 4: 提取路由模块**（高风险，需仔细测试）
+- `router_survey.py` — 最简单的路由，先迁移
+- `router_rumination.py` — 独立性强
+- `router_threads.py` — 依赖 conclusion_state
+- `router_chat.py` — 最复杂，最后迁移
+
+**Step 5: 更新入口**
+- `simple_chat.py` 改为 import 并 re-export router
+- 更新 `api/v1/__init__.py` 中的 include_router
+
+### 14.4 前端 page.tsx 拆分方案
+
+```
+src/frontend/app/(main)/explore/chat/[phase]/
+├── page.tsx                        # 容器组件 (~200行)
+├── hooks/
+│   ├── useSimpleChat.ts            # 核心对话逻辑 + SSE 流处理 (~400行)
+│   ├── useThreadManager.ts         # 线程 CRUD + 同步 (~200行)
+│   ├── useConclusionState.ts       # 结论卡状态管理 (~150行)
+│   └── useRuminationFlow.ts        # Rumination 表格交互 (~200行)
+├── components/
+│   ├── ChatMessageList.tsx         # 消息列表渲染 (~200行)
+│   ├── ChatInput.tsx               # 输入框 + 发送按钮 (~150行)
+│   ├── ThreadSidebar.tsx           # 线程侧边栏 (~150行)
+│   └── ConclusionCard.tsx          # 结论卡组件 (~100行)
+└── utils/
+    └── sseParser.ts                # SSE 流解析 (~80行)
+```
+
+### 14.5 配置模块合并方案
+
+将分散的步骤定义合并为单一数据源：
+
+```
+src/backend/app/domain/
+├── step_definitions.py             # 合并自:
+│   │                               #   conclusion_card_goals.py (结论卡规则)
+│   │                               #   dimension_completion.py (完成标准)
+│   │                               #   rumination_table_widgets.py 中的 GUIDE_TEXT
+│   └── STEP_DEFINITIONS = {
+│       "values": {
+│           "label": "价值观",
+│           "goal": "...",
+│           "completion_criteria": "...",
+│           "conclusion_rules": "...",
+│           "conclusion_validation": {...},
+│           "prompt_hint": "...",
+│       },
+│       ...
+│   }
+├── conclusion_card_goals.py        # 保留，改为从 step_definitions 读取
+└── dimension_completion.py         # 保留，改为从 step_definitions 读取
+```
+
+---
+
+## 十五、待确认事项
+
+以下事项需要与产品/团队确认后再执行：
+
+1. **Rumination 假设生成**：原版设计有"自由职业导向"和"公司职业导向"两种假设，当前 `rumination_hypothesis_service.py` 的实现是否保留了这个双假设机制？
+2. **Rumination Regenerate 按钮**：原版设计中每行假设旁有 Regenerate 按钮，前端是否已实现？
+3. **旧 metadata 字段**：`pending_status`、`pending_conclusion` 等旧字段的兼容层何时可以移除？需要确认是否还有使用旧格式的历史数据。
+4. **`/message` 同步端点**：已标记 deprecated，计划在哪个版本正式删除？
+5. **前端 localStorage 线程数据**：是否需要迁移策略？当前前后端线程状态可能不一致。
 

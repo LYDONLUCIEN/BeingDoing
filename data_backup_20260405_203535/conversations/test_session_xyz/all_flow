@@ -1,0 +1,31 @@
+{
+  "session_id": "test_session_xyz",
+  "category": "all_flow",
+  "messages": [
+    {
+      "role": "user",
+      "content": "test",
+      "type": "user_input",
+      "created_at": "2026-02-12T09:54:45.696803Z",
+      "metadata": {
+        "current_step": "values_exploration"
+      },
+      "id": "msg_1770861285.696916"
+    },
+    {
+      "role": "user",
+      "content": "test",
+      "type": "user_input",
+      "created_at": "2026-02-12T09:57:48.932746Z",
+      "metadata": {
+        "current_step": "values_exploration"
+      },
+      "id": "msg_1770861468.932816"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-02-12T09:54:45.696803Z",
+    "updated_at": "2026-02-12T09:57:48.932746Z",
+    "total_messages": 2
+  }
+}

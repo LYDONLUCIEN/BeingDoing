@@ -1,0 +1,30 @@
+{
+  "session_id": "5fc2439b-3bba-4652-a339-2362ccdef475",
+  "category": "values__t_1773729388879_5cott7m",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "我们先从价值观开始：最近一次让你“很有意义感”的事情是什么？为什么它对你重要？",
+      "created_at": "2026-03-17T06:36:37.766841Z",
+      "id": "msg_1",
+      "message_id": "msg_1",
+      "agent_id": "coach",
+      "event": "assistant_reply"
+    },
+    {
+      "role": "user",
+      "content": "我觉得最重要的是家人和成就感！",
+      "created_at": "2026-03-17T06:38:45.119727Z",
+      "id": "msg_2",
+      "message_id": "msg_2",
+      "agent_id": null,
+      "event": "user_message"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-17T06:36:37.767103Z",
+    "updated_at": "2026-03-17T06:38:45.120097Z",
+    "total_messages": 2,
+    "migrated_at": "2026-03-18T12:17:22.464401Z"
+  }
+}

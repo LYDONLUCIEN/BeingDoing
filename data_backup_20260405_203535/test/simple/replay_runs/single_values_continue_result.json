@@ -1,0 +1,26 @@
+{
+  "total": 1,
+  "passed": 1,
+  "failed": 0,
+  "failures": [],
+  "results": [
+    {
+      "name": "single",
+      "activation_code": "TFLM05IBNH",
+      "phase": "values",
+      "thread_id": "t_mock_pending_001",
+      "message": "我想继续补充细节",
+      "events_count": 3,
+      "done": true,
+      "chunks_preview": "好的，我们继续。",
+      "has_state_json_leak": false,
+      "history_metadata": {
+        "session_id": "t_mock_pending_001",
+        "thread_completed": false,
+        "dimension_conclusion": null,
+        "step_locked": false
+      },
+      "history_messages_count": 4
+    }
+  ]
+}

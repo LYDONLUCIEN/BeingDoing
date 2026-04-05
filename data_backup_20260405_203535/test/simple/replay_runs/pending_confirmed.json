@@ -1,0 +1,34 @@
+{
+  "total": 1,
+  "passed": 1,
+  "failed": 0,
+  "failures": [],
+  "results": [
+    {
+      "name": "single",
+      "activation_code": "E0HUV1XJYS",
+      "phase": "values",
+      "thread_id": "t_mock_pending_001",
+      "message": "我确认这个总结",
+      "events_count": 5,
+      "done": true,
+      "chunks_preview": "收到确认，准备结论卡",
+      "has_state_json_leak": false,
+      "history_metadata": {
+        "session_id": "t_mock_pending_001",
+        "thread_completed": false,
+        "dimension_conclusion": {
+          "summary": "你重视成长、关系与平衡，并倾向长期主义投入。",
+          "keywords": [
+            "成长",
+            "关系",
+            "平衡",
+            "长期主义"
+          ]
+        },
+        "step_locked": false
+      },
+      "history_messages_count": 5
+    }
+  ]
+}

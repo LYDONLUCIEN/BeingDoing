@@ -1,0 +1,30 @@
+{
+  "session_id": "5c4f63d0-353e-41b5-8d3f-9cf4aa944c56",
+  "category": "values__t_1774270521244_djka2wr__note/note",
+  "notes": [
+    {
+      "id": "note_1",
+      "type": "pending_conclusion_created",
+      "payload": {
+        "phase": "values",
+        "thread_id": "t_1774270521244_djka2wr",
+        "pending_conclusion": {
+          "summary": "经过探索与澄清，确认用户最核心的5个职业价值观为：1.成长（持续进化）、2.创新（跨界创造）、3.意义感（助人与影响）、4.身心健康（心理平衡）、5.心流（深度专注）。该排序解释了其当前职业倦怠（缺乏前三点）与对工作生活平衡的渴望（后两点）。",
+          "keywords": [
+            "成长",
+            "创新",
+            "意义感",
+            "身心健康",
+            "心流"
+          ]
+        }
+      },
+      "created_at": "2026-03-26T14:49:04.492691Z"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-26T14:49:04.492691Z",
+    "updated_at": "2026-03-26T14:49:04.492691Z",
+    "total_notes": 1
+  }
+}

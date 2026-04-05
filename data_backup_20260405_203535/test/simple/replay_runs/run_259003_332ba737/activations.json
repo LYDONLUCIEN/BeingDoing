@@ -1,0 +1,27 @@
+{
+  "V9R3NISYSX": {
+    "code": "V9R3NISYSX",
+    "session_id": "183b928e-757f-40ba-a066-613f5097333b",
+    "mode": "values",
+    "created_at": "2026-03-29T02:08:37.567138Z",
+    "expires_at": "2026-03-29T05:08:37.567138Z",
+    "last_activity_at": "2026-03-29T02:08:37.567438Z",
+    "status": "active",
+    "owner_user_id": "replay-user",
+    "owner_email": "replay@example.com",
+    "claimed_at": "2026-03-29T02:08:37.567438Z",
+    "deleted_at": null,
+    "purge_after": null,
+    "source": null,
+    "vip_level": 1,
+    "is_sandbox": false,
+    "sandbox_root": null,
+    "fork_id": null,
+    "forked_from_code": null,
+    "forked_at": null,
+    "forked_by_user_id": null,
+    "sandbox_expires_at": null,
+    "workspace_kind": null,
+    "workspace_root": null
+  }
+}

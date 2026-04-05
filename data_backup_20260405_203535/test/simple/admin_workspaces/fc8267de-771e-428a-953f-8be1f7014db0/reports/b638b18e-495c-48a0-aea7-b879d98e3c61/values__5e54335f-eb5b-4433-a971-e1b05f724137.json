@@ -1,0 +1,111 @@
+{
+  "session_id": "b638b18e-495c-48a0-aea7-b879d98e3c61",
+  "category": "values__5e54335f-eb5b-4433-a971-e1b05f724137",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "你好，HAPPY。很高兴能和你一起开启这次职业规划的探索。我们第一步的目标很聚焦：找到对你职业发展最重要的5个价值观关键词。价值观就像你内心的指南针，能帮你判断一份工作、一个选择是否真正适合你，尤其是在你感到倦怠和想转型的时候。\n\n那么，我们直接开始吧。**你能否直接告诉我，在你心中对你最重要的5个价值观关键词是什么？**（例如：成就感、稳定、创新、人际关系等）",
+      "session_id": "5e54335f-eb5b-4433-a971-e1b05f724137",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 1337,
+        "completion_tokens": 118,
+        "total_tokens": 1455,
+        "prompt_cache_hit_tokens": 832,
+        "prompt_cache_miss_tokens": 505
+      },
+      "created_at": "2026-03-29T03:37:09.711380Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    },
+    {
+      "role": "user",
+      "content": "确认！",
+      "session_id": "5e54335f-eb5b-4433-a971-e1b05f724137",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-04-05T09:53:50.681161Z",
+      "message_id": "msg_2",
+      "id": "msg_2"
+    },
+    {
+      "role": "assistant",
+      "content": "好的，收到你的确认。那么，我们继续。\n\n既然你已经确认了这五个关键词，接下来我们需要对它们进行最终的排序和整合，以确保它们能最准确地代表你内心的优先级。\n\n**请你现在对这五个价值观关键词，按照对你职业发展的重要性，进行从高到低的排序。**\n\n1. 意义/精神追求\n2. 自由\n3. 自主\n4. 成长\n5. 创新\n\n请告诉我你的排序结果。",
+      "session_id": "5e54335f-eb5b-4433-a971-e1b05f724137",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 1612,
+        "completion_tokens": 114,
+        "total_tokens": 1726,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 1612
+      },
+      "created_at": "2026-04-05T09:53:54.220775Z",
+      "message_id": "msg_3",
+      "id": "msg_3"
+    },
+    {
+      "role": "user",
+      "content": "确认",
+      "session_id": "5e54335f-eb5b-4433-a971-e1b05f724137",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-04-05T10:00:54.733959Z",
+      "message_id": "msg_4",
+      "id": "msg_4"
+    },
+    {
+      "role": "user",
+      "content": "确认！",
+      "session_id": "5e54335f-eb5b-4433-a971-e1b05f724137",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-04-05T10:00:57.468334Z",
+      "message_id": "msg_5",
+      "id": "msg_5"
+    },
+    {
+      "role": "user",
+      "content": "你好！",
+      "session_id": "5e54335f-eb5b-4433-a971-e1b05f724137",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-04-05T11:25:00.289588Z",
+      "message_id": "msg_6",
+      "id": "msg_6"
+    },
+    {
+      "role": "assistant",
+      "content": "好的，HAPPY，我理解你的意思了。你刚才已经确认了这五个关键词，现在需要你对它们进行排序。\n\n**请你现在对这五个价值观关键词，按照对你职业发展的重要性，进行从高到低的排序。**\n\n1. 意义/精神追求\n2. 自由\n3. 自主\n4. 成长\n5. 创新\n\n请直接告诉我你的排序结果，例如：1. 意义/精神追求，2. 自由，3. 自主，4. 成长，5. 创新。",
+      "session_id": "5e54335f-eb5b-4433-a971-e1b05f724137",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 1716,
+        "completion_tokens": 114,
+        "total_tokens": 1830,
+        "prompt_cache_hit_tokens": 1664,
+        "prompt_cache_miss_tokens": 52
+      },
+      "created_at": "2026-04-05T11:25:03.774506Z",
+      "message_id": "msg_7",
+      "id": "msg_7"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-29T03:37:09.711969Z",
+    "updated_at": "2026-04-05T11:25:03.775536Z",
+    "total_messages": 7,
+    "question_bank": "1. ### 30. 请举出10个让你感叹\"要是〇〇就好了\"的例子，对于自己、他人、组织、社会上的任何事情，使用任何视角都可以。\n2. 当时你最重视的判断标准是什么？从中可以发现你有什么样的价值观？\n3. ### 28. 目前存在，但你认为在今后的人生中不需要存在的事物是什么？\n4. 那个人的哪些行为、发言对你产生了影响？\n5. ### 8. 假设你已经80岁了，请在（　　）内填上相应的词句。\n6. 从中可以发现你有什么样的价值观？",
+    "question_bank_phase": "values"
+  }
+}

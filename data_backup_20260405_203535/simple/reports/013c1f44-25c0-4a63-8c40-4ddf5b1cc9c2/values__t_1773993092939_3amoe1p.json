@@ -1,0 +1,27 @@
+{
+  "session_id": "013c1f44-25c0-4a63-8c40-4ddf5b1cc9c2",
+  "category": "values__t_1773993092939_3amoe1p",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "你好，xinyu。很高兴能和你一起开启这次职业探索的旅程。我们的第一步，是向内看，找到那些真正驱动你、让你感到满足和有意义的核心价值观。这就像为你未来的职业选择绘制一张内在的“导航图”。\n\n那么，我们直接开始吧。**你能否直接告诉我，在你心中，对你最重要的5个价值观关键词是什么？**（例如：成就感、稳定、创新、人际关系、自由等）",
+      "session_id": "t_1773993092939_3amoe1p",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 1113,
+        "completion_tokens": 91,
+        "total_tokens": 1204
+      },
+      "created_at": "2026-03-20T07:51:38.769407Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-20T07:51:38.770028Z",
+    "updated_at": "2026-03-20T07:51:38.770045Z",
+    "total_messages": 1
+  }
+}

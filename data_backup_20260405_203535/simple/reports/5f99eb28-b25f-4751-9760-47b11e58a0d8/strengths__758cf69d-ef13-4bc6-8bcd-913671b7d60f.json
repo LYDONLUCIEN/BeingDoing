@@ -1,0 +1,21 @@
+{
+  "session_id": "758cf69d-ef13-4bc6-8bcd-913671b7d60f",
+  "category": "strengths",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "你好，很高兴能和你一起探索你的优势。首先，我想请你思考一下：你自己认为你的优势有哪些？可以是你工作中表现出的能力，也可以是生活中让你感到得心应手的事情。不用着急，想到什么都可以告诉我。",
+      "created_at": "2026-03-01T04:18:44.693936Z",
+      "id": "msg_1",
+      "message_id": "msg_1",
+      "agent_id": "coach",
+      "event": "assistant_reply"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-01T04:18:44.694184Z",
+    "updated_at": "2026-03-01T04:18:44.694196Z",
+    "total_messages": 1,
+    "migrated_at": "2026-03-18T12:17:22.788339Z"
+  }
+}

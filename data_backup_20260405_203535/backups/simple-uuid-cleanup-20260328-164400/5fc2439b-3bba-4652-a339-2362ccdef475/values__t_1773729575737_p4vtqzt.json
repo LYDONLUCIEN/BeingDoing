@@ -1,0 +1,47 @@
+{
+  "session_id": "5fc2439b-3bba-4652-a339-2362ccdef475",
+  "category": "values__t_1773729575737_p4vtqzt",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "我们先从价值观开始：最近一次让你“很有意义感”的事情是什么？为什么它对你重要？",
+      "created_at": "2026-03-17T06:39:39.630988Z",
+      "id": "msg_1"
+    },
+    {
+      "role": "user",
+      "content": "我觉得帮助别人很有意义！",
+      "created_at": "2026-03-17T06:39:59.650363Z",
+      "id": "msg_2"
+    },
+    {
+      "role": "user",
+      "content": "帮助别人很有意义",
+      "created_at": "2026-03-17T06:49:03.116945Z",
+      "id": "msg_3"
+    },
+    {
+      "role": "user",
+      "content": "我想帮助别人",
+      "created_at": "2026-03-17T07:23:25.228769Z",
+      "id": "msg_4"
+    },
+    {
+      "role": "user",
+      "content": "我想帮助别人",
+      "created_at": "2026-03-17T09:48:20.814249Z",
+      "id": "msg_5"
+    },
+    {
+      "role": "assistant",
+      "content": "（记录：用户自述关键词 - “帮助他人”）\n\n很好，帮助他人让你感到有意义。那么，具体来说，你希望帮助别人达成什么？或者，你理想中“帮助”带来的最好结果是什么样的？",
+      "created_at": "2026-03-17T09:48:25.366662Z",
+      "id": "msg_6"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-17T06:39:39.631228Z",
+    "updated_at": "2026-03-17T09:48:25.370700Z",
+    "total_messages": 6
+  }
+}

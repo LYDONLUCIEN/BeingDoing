@@ -1,0 +1,52 @@
+{
+  "total": 2,
+  "passed": 2,
+  "failed": 0,
+  "failures": [],
+  "results": [
+    {
+      "name": "batch_continue",
+      "activation_code": "OORQ2QG7U3",
+      "phase": "values",
+      "thread_id": "t_mock_pending_001",
+      "message": "继续聊聊",
+      "events_count": 3,
+      "done": true,
+      "chunks_preview": "收到，我们继续。\n",
+      "has_state_json_leak": false,
+      "history_metadata": {
+        "session_id": "t_mock_pending_001",
+        "thread_completed": false,
+        "dimension_conclusion": null,
+        "step_locked": false
+      },
+      "history_messages_count": 4
+    },
+    {
+      "name": "batch_pending_confirmed_emit_card",
+      "activation_code": "VLX3O8LNDA",
+      "phase": "values",
+      "thread_id": "t_mock_pending_001",
+      "message": "我确认总结无误",
+      "events_count": 5,
+      "done": true,
+      "chunks_preview": "收到确认，开始生成结论卡。",
+      "has_state_json_leak": false,
+      "history_metadata": {
+        "session_id": "t_mock_pending_001",
+        "thread_completed": false,
+        "dimension_conclusion": {
+          "summary": "你重视成长、关系和身心平衡，并追求长期稳定投入。",
+          "keywords": [
+            "成长",
+            "关系",
+            "平衡",
+            "稳定投入"
+          ]
+        },
+        "step_locked": false
+      },
+      "history_messages_count": 5
+    }
+  ]
+}

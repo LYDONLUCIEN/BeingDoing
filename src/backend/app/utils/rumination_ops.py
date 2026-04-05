@@ -339,26 +339,6 @@ def extract_dimension_lists_for_rumination_table(
     return (v, s, i, purpose_out)
 
 
-def merge_row_by_id(table: List[Dict[str, Any]], row_id: str, patch: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """将 patch 合并到指定 id 的行，找不到则追加（不应发生）。"""
-    rid = str(row_id).strip()
-    found = False
-    out: List[Dict[str, Any]] = []
-    for r in table:
-        if str(r.get("id", "")).strip() == rid:
-            merged = dict(r)
-            for k, v in patch.items():
-                if v is not None:
-                    merged[k] = v
-            out.append(merged)
-            found = True
-        else:
-            out.append(dict(r))
-    if not found and patch:
-        out.append({"id": rid, **patch})
-    return out
-
-
 def build_prior_keywords_summary(prior_context: str) -> str:
     """供 system prompt 使用的四维关键词摘要（短）。"""
     v, s, i, p = extract_from_prior_context(prior_context)
