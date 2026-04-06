@@ -1211,7 +1211,8 @@ class RuminationTableSubmitRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     activation_code: str
-    thread_id: str
+    # 表格进度按 report 落库，不依赖 thread；允许空串避免前端会话竞态导致无法提交
+    thread_id: str = ""
     step: int
     table_data: Optional[List[Dict[str, Any]]] = None
 
@@ -1470,8 +1471,8 @@ async def rumination_table_submit(
                 )
 
         elif step == 5 and table_data:
-            # step 5 → 6: 价值观筛选
-            step6_rows = value_filter(table_data)
+            # step 5 → 6: 价值观筛选（value_filter 需传入价值观关键词列表供前端下拉配置）
+            step6_rows = value_filter(table_data, values_list)
             if step6_rows:
                 next_table = build_table_widget_payload(6, step6_rows, values_list)
                 next_step_val = 6
@@ -1525,6 +1526,18 @@ async def rumination_table_submit(
                     filter_step=9, filter_table=step9_rows, filter_step_snapshots=snapshots,
                 )
 
+        elif step == 9 and table_data is not None:
+            # 第 9 步整表确认：筛选表结束，进入后续主线（前端可跳转过渡页）
+            progress = save_rumination_progress(
+                reports_root,
+                report_id,
+                main_section="final_choice",
+                filter_step=9,
+                filter_table=table_data,
+                filter_step_snapshots=snapshots,
+            )
+            next_step_val = 9
+
         snaps = progress.get("filter_step_snapshots") or {}
         data: dict = {
             "progress": progress,
@@ -1533,6 +1546,8 @@ async def rumination_table_submit(
         }
         if next_table:
             data["next_table_widget"] = next_table
+        if step == 9 and table_data is not None:
+            data["next_action"] = "rumination_filter_complete"
 
         return SimpleChatResponse(code=200, message="success", data=data)
     except HTTPException:
@@ -1675,7 +1690,7 @@ async def rumination_get_table(
     elif step == 5:
         rows = generate_hypotheses_round3_finalize(prev_submitted)
     elif step == 6:
-        rows = value_filter(prev_submitted)
+        rows = value_filter(prev_submitted, values_list)
     elif step == 7:
         rows = passion_filter(prev_submitted)
     elif step == 8:
@@ -2043,6 +2058,45 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
         current_user=current_user,
         rec=rec,
     )
+
+    # 沉淀阶段：主交互在左侧筛选表，右侧仅补充说明；不写「请向我提问」式首轮 LLM
+    if phase == "rumination":
+        reply_text = (
+            "已进入沉淀阶段：请从左侧表格按步骤完成筛选与确认；需要时可在右侧补充想法，不必先发言。"
+        )
+        token_usage = _normalize_token_usage(None)
+        await conv_manager.append_message(
+            session_id=session_id,
+            category=category,
+            message={
+                "role": "assistant",
+                "content": reply_text,
+                "session_id": logical_session_id,
+                "step_id": phase_step,
+                "agent_id": "coach",
+                "event": "init_rumination_intro",
+                "token_usage": token_usage,
+            },
+        )
+        return SimpleChatResponse(
+            code=200,
+            message="success",
+            data={
+                "messages": [{"role": "assistant", "content": reply_text}],
+                "activation": {
+                    "activation_code": rec.code,
+                    "session_id": logical_session_id,
+                    "mode": rec.mode,
+                    "created_at": rec.created_at,
+                    "expires_at": rec.expires_at,
+                    "status": rec.status,
+                },
+                "report_id": report["report_id"],
+                "step_id": phase_step,
+                "step_intro": get_step_copy(phase_step, "intro"),
+                "token_usage": token_usage,
+            },
+        )
 
     # 没有历史：生成一条首轮引导问题
     vip_level = getattr(rec, "vip_level", 1) or 1

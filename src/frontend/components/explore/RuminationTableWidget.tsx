@@ -139,8 +139,21 @@ export default function RuminationTableWidget({
     });
   }, []);
 
+  /** 「请选择」仅作空值 label，不得出现在可选项里（含后端误下发的选项） */
+  const optionsWithoutPlaceholder = useCallback(
+    (opts: string[]) => opts.filter((o) => o !== selectPlaceholder && String(o).trim() !== ''),
+    [selectPlaceholder]
+  );
+
   const handleConfirm = useCallback(() => {
-    onConfirm(rows);
+    const sanitized = rows.map((row) => {
+      const next = { ...row };
+      for (const k of Object.keys(next)) {
+        if (next[k] === OTHER_SELECT_VALUE) next[k] = '';
+      }
+      return next;
+    });
+    onConfirm(sanitized);
   }, [rows, onConfirm]);
 
   if (!payload.columns?.length) return null;
@@ -192,16 +205,29 @@ export default function RuminationTableWidget({
 
   /** 从假设1–3 去重得到下拉项，并附「待定」「其他」 */
   const hypothesisPresetForRow = (row: Record<string, unknown>) => {
-    const raw = ['假设1', '假设2', '假设3'].map((k) => String(row[k] ?? '').trim()).filter(Boolean);
+    const raw = ['假设1', '假设2', '假设3']
+      .map((k) => String(row[k] ?? '').trim())
+      .filter(Boolean)
+      .filter((p) => p !== selectPlaceholder);
     return [...new Set(raw)];
   };
 
   const renderHypothesisConfirmCell = (row: Record<string, unknown>, rowIdx: number, strVal: string) => {
     const presets = hypothesisPresetForRow(row);
-    const fixedChoices = [...presets, hypothesisPendingLabel];
+    const fixedChoices = [
+      ...presets,
+      ...(hypothesisPendingLabel !== selectPlaceholder ? [hypothesisPendingLabel] : []),
+    ];
     const known = new Set(fixedChoices);
-    const isKnown = strVal !== '' && known.has(strVal);
-    const selectVal = strVal === '' ? '' : isKnown ? strVal : OTHER_SELECT_VALUE;
+    const selectVal =
+      strVal === ''
+        ? ''
+        : strVal === OTHER_SELECT_VALUE
+          ? OTHER_SELECT_VALUE
+          : known.has(strVal)
+            ? strVal
+            : OTHER_SELECT_VALUE;
+    const otherTextareaValue = strVal === OTHER_SELECT_VALUE ? '' : strVal;
 
     const stopRow = (e: MouseEvent) => {
       if (isGlass) e.stopPropagation();
@@ -214,7 +240,7 @@ export default function RuminationTableWidget({
           disabled={disabled}
           onChange={(e) => {
             const v = e.target.value;
-            if (v === OTHER_SELECT_VALUE) handleCellChange(rowIdx, HYP_CONFIRM_KEY, '');
+            if (v === OTHER_SELECT_VALUE) handleCellChange(rowIdx, HYP_CONFIRM_KEY, OTHER_SELECT_VALUE);
             else handleCellChange(rowIdx, HYP_CONFIRM_KEY, v);
           }}
           className={selectShellClass}
@@ -230,7 +256,7 @@ export default function RuminationTableWidget({
         </select>
         {selectVal === OTHER_SELECT_VALUE && (
           <textarea
-            value={strVal}
+            value={otherTextareaValue}
             disabled={disabled}
             onChange={(e) => handleCellChange(rowIdx, HYP_CONFIRM_KEY, e.target.value)}
             placeholder={otherTextPlaceholder}
@@ -249,11 +275,18 @@ export default function RuminationTableWidget({
     strVal: string,
     otherLabel: string,
   ) => {
-    const opts = col.options ?? [];
+    const opts = optionsWithoutPlaceholder(col.options ?? []);
     const rest = opts.filter((o) => o !== otherLabel);
     const known = new Set(opts);
-    const isKnown = strVal !== '' && known.has(strVal);
-    const selectVal = strVal === '' ? '' : isKnown ? strVal : OTHER_SELECT_VALUE;
+    const selectVal =
+      strVal === ''
+        ? ''
+        : strVal === OTHER_SELECT_VALUE
+          ? OTHER_SELECT_VALUE
+          : known.has(strVal)
+            ? strVal
+            : OTHER_SELECT_VALUE;
+    const otherTextareaValue = strVal === OTHER_SELECT_VALUE ? '' : strVal;
 
     const stopRow = (e: MouseEvent) => {
       if (isGlass) e.stopPropagation();
@@ -266,7 +299,7 @@ export default function RuminationTableWidget({
           disabled={disabled}
           onChange={(e) => {
             const v = e.target.value;
-            if (v === OTHER_SELECT_VALUE) handleCellChange(rowIdx, col.key, '');
+            if (v === OTHER_SELECT_VALUE) handleCellChange(rowIdx, col.key, OTHER_SELECT_VALUE);
             else handleCellChange(rowIdx, col.key, v);
           }}
           className={selectShellClass}
@@ -282,7 +315,7 @@ export default function RuminationTableWidget({
         </select>
         {selectVal === OTHER_SELECT_VALUE && (
           <textarea
-            value={strVal}
+            value={otherTextareaValue}
             disabled={disabled}
             onChange={(e) => handleCellChange(rowIdx, col.key, e.target.value)}
             placeholder={otherTextPlaceholder}
@@ -388,7 +421,7 @@ export default function RuminationTableWidget({
                         style={selectArrowStyle}
                       >
                         <option value="">{selectPlaceholder}</option>
-                        {col.options.map((opt) => (
+                        {optionsWithoutPlaceholder(col.options ?? []).map((opt) => (
                           <option key={opt} value={opt}>
                             {opt}
                           </option>

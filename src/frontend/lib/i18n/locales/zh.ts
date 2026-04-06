@@ -167,6 +167,8 @@ export const zh = {
         rumination: { desc: '综合四维探索结果，通过系统化筛选确定三个最终职业发展方向。', hint: '回顾、匹配、假设生成、价值与激情过滤，最终选出你最想做的事。' },
       },
       ruminationUi: {
+        chatEmptyHint: '可从左侧筛选表开始；需要时在下方补充说明即可。',
+        tableSubmitNoThread: '会话未就绪，请刷新页面后重试。',
         tableCardTitle: '你的方向',
         chatTitle: '对话',
         chatSubtitle: 'AI 协助你完成表格筛选与决策',

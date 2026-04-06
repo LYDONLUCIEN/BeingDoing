@@ -37,10 +37,12 @@ function withinCurrentSection(progress: RuminationProgress): number {
       return (ri + 1) / 4;
     }
     case 'filter': {
-      /** 筛选子步 1–9：step 1 开始 = 0%，step 9 完成 = 100% */
+      /** 第 9 步表格已提交：筛选表流程结束，总条视为满（避免一直停在 ~70%） */
+      const snaps = progress.filter_step_snapshots || {};
+      if (snaps['9']?.submitted != null) return 1;
+      /** 筛选子步 1–9：step 1 开始 = 0%，step 9 在途 = 100% 本段内进度 */
       const fs = Number(progress.filter_step) || 0;
       if (fs <= 1) return 0;
-      // step 2 完成 = 1/8, step 3 = 2/8, ..., step 9 = 8/8 = 1
       return Math.min(1, (fs - 1) / 8);
     }
     case 'final_choice':
@@ -56,6 +58,10 @@ function withinCurrentSection(progress: RuminationProgress): number {
 
 /** 整体完成度 0–100：先累加已完成阶段权重，再叠加当前阶段内进度 */
 export function computeRuminationJourneyPercent(progress: RuminationProgress): number {
+  const snaps = progress.filter_step_snapshots || {};
+  if (snaps['9']?.submitted != null) {
+    return 100;
+  }
   const idx = SECTION_ORDER.indexOf(progress.main_section);
   const safeIdx = idx < 0 ? 0 : idx;
   let base = 0;

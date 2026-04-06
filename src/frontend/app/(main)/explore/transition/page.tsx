@@ -47,6 +47,7 @@ function TransitionContent() {
 
   const fromLabel = DIM_LABELS[from] || from;
   const nextLabel = nextPhase ? DIM_LABELS[nextPhase.key] || nextPhase.label : '查看报告';
+  const ruminationFilterDone = from === 'rumination';
 
   return (
     <div
@@ -85,14 +86,18 @@ function TransitionContent() {
             </div>
             <div>
               <p className="text-xs tracking-widest uppercase text-bd-primary font-medium">阶段完成</p>
-              <h1 className="text-xl font-semibold text-bd-fg">{fromLabel}探索完成</h1>
+              <h1 className="text-xl font-semibold text-bd-fg">
+                {ruminationFilterDone ? '沉淀筛选已全部完成' : `${fromLabel}探索完成`}
+              </h1>
             </div>
           </div>
 
           <div className="bd-intro-rule-full mb-6" />
 
           <p className="bd-intro-premise mb-6">
-            你已完成了「{fromLabel}」维度的探索。休息一下，或直接进入下一步。
+            {ruminationFilterDone
+              ? '九步筛选表已确认，你的选择已写入探索档案。接下来可以生成成长报告，回顾信念、禀赋、热忱与使命如何交汇。'
+              : `你已完成了「${fromLabel}」维度的探索。休息一下，或直接进入下一步。`}
           </p>
 
           <div className="space-y-4 mb-8">
@@ -116,9 +121,11 @@ function TransitionContent() {
           </div>
 
           <p className="bd-intro-soul mb-8">
-            {nextPhase
-              ? `下一步将探索「${nextLabel}」——${nextPhase.label}。准备好了就继续吧。`
-              : '所有探索已完成，即将为你生成报告。'}
+            {ruminationFilterDone
+              ? '这是探索闭环的最后一站：把沉淀落成一页可读的成长报告，随时回来翻阅。'
+              : nextPhase
+                ? `下一步将探索「${nextLabel}」——${nextPhase.label}。准备好了就继续吧。`
+                : '所有探索已完成，即将为你生成报告。'}
           </p>
 
           <div className="bd-intro-cta-row">
@@ -127,7 +134,7 @@ function TransitionContent() {
               onClick={handleContinue}
               className="bd-intro-btn-begin"
             >
-              {nextPhase ? `继续探索 ${nextLabel}` : '查看报告'}
+              {nextPhase ? `继续探索 ${nextLabel}` : ruminationFilterDone ? '查看成长报告' : '查看报告'}
               <svg className="bd-intro-btn-arrow" width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path
                   d="M1 7h12M8 2l5 5-5 5"

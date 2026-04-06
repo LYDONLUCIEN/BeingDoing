@@ -173,6 +173,8 @@ export const en = {
         rumination: { desc: 'Synthesize your four dimensions and identify three final career directions through systematic filtering.', hint: 'Review, match, hypothesis generation, value and passion filters — then choose what you want most.' },
       },
       ruminationUi: {
+        chatEmptyHint: 'Start with the table on the left; add notes below whenever you need.',
+        tableSubmitNoThread: 'Session not ready. Please refresh and try again.',
         tableCardTitle: 'Your directions',
         chatTitle: 'Chat',
         chatSubtitle: 'AI guides your table filtering and choices',
