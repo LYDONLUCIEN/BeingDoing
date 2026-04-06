@@ -62,6 +62,8 @@ interface ChatPhaseSidebarProps {
   onNewChat: () => void;
   onDeleteThread: (thread: ChatThread) => void;
   canNewChat: boolean;
+  /** 本阶段已提交锁定：新建/删除等置灰（仍保留「完成并继续」在主区） */
+  phaseInteractionLocked?: boolean;
   /** newchat6 哑光侧栏（前四维对话页） */
   careeringMatte?: boolean;
 }
@@ -75,6 +77,7 @@ export default function ChatPhaseSidebar({
   onNewChat,
   onDeleteThread,
   canNewChat,
+  phaseInteractionLocked = false,
   careeringMatte = false,
 }: ChatPhaseSidebarProps) {
   const { t } = useLocale();
@@ -116,8 +119,10 @@ export default function ChatPhaseSidebar({
         <button
           type="button"
           onClick={onNewChat}
-          disabled={!canNewChat}
-          className="w-full px-5 py-2.5 rounded-full text-sm font-medium text-white transition-all hover:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={!canNewChat || phaseInteractionLocked}
+          className={`w-full px-5 py-2.5 rounded-full text-sm font-medium text-white transition-all hover:scale-[0.98] disabled:cursor-not-allowed ${
+            phaseInteractionLocked ? 'opacity-35' : 'disabled:opacity-50'
+          }`}
           style={{
             background: 'var(--flow-guide, #1d1d1f)',
             boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
@@ -125,9 +130,13 @@ export default function ChatPhaseSidebar({
         >
           + {t('explore.chat.sidebarNewChat')}
         </button>
-        {!canNewChat && (
+        {phaseInteractionLocked ? (
+          <p className="text-[10px] text-[var(--flow-text-muted)] mt-2 leading-snug">
+            {t('explore.chat.sidebarPhaseLockedHint')}
+          </p>
+        ) : !canNewChat ? (
           <p className="text-[10px] text-[var(--flow-text-muted)] mt-2">{t('explore.chat.sidebarMaxReached')}</p>
-        )}
+        ) : null}
       </div>
       <div className="flow-sidebar-threads flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4">
         <div className="space-y-2">
@@ -188,7 +197,8 @@ export default function ChatPhaseSidebar({
                   <button
                     type="button"
                     onClick={(e) => handleDeleteClick(e, thread)}
-                    className="opacity-0 group-hover:opacity-60 hover:opacity-100 p-1 rounded-lg hover:bg-red-100 text-red-500 transition-all flex-shrink-0"
+                    disabled={phaseInteractionLocked}
+                    className="opacity-0 group-hover:opacity-60 hover:opacity-100 p-1 rounded-lg hover:bg-red-100 text-red-500 transition-all flex-shrink-0 disabled:opacity-25 disabled:pointer-events-none disabled:hover:opacity-25"
                     title={t('explore.chat.sidebarDeleteThread')}
                     aria-label={t('explore.chat.sidebarDeleteThread')}
                   >

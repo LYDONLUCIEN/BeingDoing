@@ -357,13 +357,12 @@
   font-size: 14.5px;
   line-height: 1.7;
   color: var(--flow-user-text);
-  /* 短句不轻易换行：至少约 25ch 宽再允许折行（与 --compact 策略配合） */
-  min-width: min(25ch, 100%);
   max-width: min(820px, 86%);
   width: fit-content;
   box-shadow: 0 6px 18px rgba(67, 97, 238, 0.12), 0 2px 6px rgba(30, 41, 59, 0.05);
-  overflow-wrap: anywhere;
-  word-break: keep-all;
+  word-break: normal;
+  overflow-wrap: break-word;
+  line-break: strict;
 }
 /* 各 step 用户气泡：纯色填充 + 主题色描边（与默认气泡体量一致，无渐变） */
 .flow-light[data-phase="values"] .flow-msg-user-content {
@@ -392,13 +391,20 @@
   color: #3b2f55;
 }
 .flow-light .flow-msg-user-text {
-  white-space: pre-wrap;
-  word-break: keep-all;
-  overflow-wrap: anywhere;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+  line-break: strict;
 }
 /* 少于 25 字且无手动换行：单行展示，避免被浏览器过早折行 */
 .flow-light .flow-msg-user-text.flow-msg-user-text--compact {
   white-space: nowrap;
+}
+
+@supports (text-wrap: pretty) {
+  .flow-light .flow-msg-user-text:not(.flow-msg-user-text--compact) {
+    text-wrap: pretty;
+  }
 }
 .flow-light .flow-msg-user-toolbar {
   opacity: 0;
@@ -444,36 +450,59 @@
 }
 .flow-light .flow-msg-error-text { flex: 1; }
 
-/* 维度探索结论卡片 */
+/* 维度探索结论卡片 — Glass-Morphism 设计 */
 .flow-light .flow-conclusion-card {
-  padding: 20px 24px;
-  border-radius: 16px;
-  border-left: 4px solid var(--flow-ai-border);
-  background: rgba(255, 255, 255, 0.85);
-  box-shadow: var(--flow-shadow-card);
+  width: 100%;
+  max-width: 680px;
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 20px;
+  padding: 28px 32px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.04), inset 0 2px 0 rgba(255,255,255,0.5);
   display: flex;
   flex-direction: column;
   gap: 18px;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
-.flow-light .flow-conclusion-card.values   { border-left-color: var(--flow-values); }
-.flow-light .flow-conclusion-card.strength { border-left-color: var(--flow-strength); }
-.flow-light .flow-conclusion-card.interest { border-left-color: var(--flow-interest); }
-.flow-light .flow-conclusion-card.purpose  { border-left-color: var(--flow-target); }
+.flow-light .flow-conclusion-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 15px 50px rgba(0,0,0,0.06), inset 0 2px 0 rgba(255,255,255,0.6);
+}
+.flow-light .flow-conclusion-card.values   { --cc-accent: var(--flow-values); --cc-accent-light: color-mix(in srgb, var(--flow-values) 10%, #ffffff); --cc-shadow: color-mix(in srgb, var(--flow-values) 25%, transparent); }
+.flow-light .flow-conclusion-card.strength { --cc-accent: var(--flow-strength); --cc-accent-light: color-mix(in srgb, var(--flow-strength) 10%, #ffffff); --cc-shadow: color-mix(in srgb, var(--flow-strength) 25%, transparent); }
+.flow-light .flow-conclusion-card.interest { --cc-accent: var(--flow-interest); --cc-accent-light: color-mix(in srgb, var(--flow-interest) 10%, #ffffff); --cc-shadow: color-mix(in srgb, var(--flow-interest) 25%, transparent); }
+.flow-light .flow-conclusion-card.purpose  { --cc-accent: var(--flow-target); --cc-accent-light: color-mix(in srgb, var(--flow-target) 10%, #ffffff); --cc-shadow: color-mix(in srgb, var(--flow-target) 25%, transparent); }
 
 .flow-light .flow-conclusion-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
 }
-.flow-light .flow-conclusion-icon { color: var(--flow-ai-border); flex-shrink: 0; }
-.flow-light .flow-conclusion-card.values .flow-conclusion-icon   { color: var(--flow-values); }
-.flow-light .flow-conclusion-card.strength .flow-conclusion-icon { color: var(--flow-strength); }
-.flow-light .flow-conclusion-card.interest .flow-conclusion-icon { color: var(--flow-interest); }
-.flow-light .flow-conclusion-card.purpose .flow-conclusion-icon  { color: var(--flow-target); }
-.flow-light .flow-conclusion-title {
-  font-size: 14px;
+.flow-light .flow-conclusion-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--cc-accent, var(--flow-ai-border));
   font-weight: 600;
-  color: var(--flow-text-body);
+  font-size: 15px;
+}
+.flow-light .flow-conclusion-icon-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--cc-accent-light, rgba(0,0,0,0.04));
+  border-radius: 10px;
+  color: var(--cc-accent, var(--flow-ai-border));
+}
+.flow-light .flow-conclusion-icon { color: inherit; flex-shrink: 0; }
+.flow-light .flow-conclusion-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--cc-accent, var(--flow-text-body));
 }
 .flow-light .flow-conclusion-section { display: flex; flex-direction: column; gap: 6px; }
 .flow-light .flow-conclusion-label {
@@ -485,98 +514,87 @@
 }
 .flow-light .flow-conclusion-text {
   font-size: 14px;
-  line-height: 1.75;
-  color: var(--flow-text-body);
+  line-height: 1.8;
+  color: #374151;
   margin: 0;
+  text-align: justify;
 }
 .flow-light .flow-conclusion-goal { font-style: italic; color: var(--flow-text-muted); }
 .flow-light .flow-conclusion-answer { font-weight: 500; }
 .flow-light .flow-conclusion-summary { margin-bottom: 4px; }
 .flow-light .flow-conclusion-markdown {
   font-size: 14px;
-  line-height: 1.75;
-  color: var(--flow-text-body);
+  line-height: 1.8;
+  color: #374151;
 }
 .flow-light .flow-conclusion-markdown .message-content { font-size: inherit; }
 .flow-light .flow-conclusion-keywords { margin-top: 8px; }
 .flow-light .flow-conclusion-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
 }
 .flow-light .flow-conclusion-tag {
   display: inline-flex;
   align-items: center;
-  padding: 6px 12px;
-  border-radius: 999px;
+  padding: 6px 14px;
+  border-radius: 20px;
   font-size: 13px;
   font-weight: 500;
-  background: rgba(0, 0, 0, 0.06);
-  color: var(--flow-text-body);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--cc-accent-light, rgba(0,0,0,0.08));
+  color: var(--cc-accent, var(--flow-text-body));
+  box-shadow: 0 2px 10px rgba(0,0,0,0.02);
+  transition: all 0.3s ease;
+  cursor: default;
 }
-.flow-light .flow-conclusion-card.values .flow-conclusion-tag {
-  background: color-mix(in srgb, var(--flow-values) 15%, transparent);
-  border-color: color-mix(in srgb, var(--flow-values) 35%, transparent);
-  color: var(--flow-values);
-}
-.flow-light .flow-conclusion-card.strength .flow-conclusion-tag {
-  background: color-mix(in srgb, var(--flow-strength) 15%, transparent);
-  border-color: color-mix(in srgb, var(--flow-strength) 35%, transparent);
-  color: var(--flow-strength);
-}
-.flow-light .flow-conclusion-card.interest .flow-conclusion-tag {
-  background: color-mix(in srgb, var(--flow-interest) 15%, transparent);
-  border-color: color-mix(in srgb, var(--flow-interest) 35%, transparent);
-  color: var(--flow-interest);
-}
-.flow-light .flow-conclusion-card.purpose .flow-conclusion-tag {
-  background: color-mix(in srgb, var(--flow-target) 15%, transparent);
-  border-color: color-mix(in srgb, var(--flow-target) 35%, transparent);
-  color: var(--flow-target);
+.flow-light .flow-conclusion-tag:hover {
+  background: white;
+  transform: scale(1.05);
+  box-shadow: 0 4px 15px var(--cc-shadow, rgba(0,0,0,0.05));
 }
 .flow-light .flow-conclusion-actions {
   display: flex;
   flex-wrap: nowrap;
   gap: 12px;
-  padding-top: 8px;
-  border-top: 1px solid var(--flow-border);
 }
 .flow-light .flow-conclusion-btn {
-  flex-shrink: 0;
+  flex: 1;
   white-space: nowrap;
-  padding: 10px 16px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 500;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
   transition: all 0.2s;
   border: none;
   cursor: pointer;
 }
 .flow-light .flow-conclusion-btn-secondary {
-  background: transparent;
-  color: var(--flow-text-muted);
-  border: 1px solid var(--flow-border);
+  background: rgba(255, 255, 255, 0.6);
+  color: #6b7280;
+  border: 1px solid rgba(0,0,0,0.05);
 }
 .flow-light .flow-conclusion-btn-secondary:hover {
-  background: rgba(0,0,0,0.04);
+  background: rgba(255, 255, 255, 0.9);
   color: var(--flow-text-body);
 }
 .flow-light .flow-conclusion-btn-primary {
-  background: var(--flow-guide);
+  background: linear-gradient(135deg, var(--cc-accent, var(--flow-guide)), color-mix(in srgb, var(--cc-accent, var(--flow-guide)) 70%, #ffffff));
   color: white;
+  box-shadow: 0 4px 15px var(--cc-shadow, rgba(0,0,0,0.1));
 }
 .flow-light .flow-conclusion-btn-primary:hover {
-  opacity: 0.9;
+  box-shadow: 0 8px 25px var(--cc-shadow, rgba(0,0,0,0.15));
   transform: translateY(-1px);
+  filter: brightness(1.05);
 }
 .flow-light .flow-conclusion-btn-confirmed {
-  flex-shrink: 0;
+  flex: 1;
   white-space: nowrap;
-  padding: 10px 16px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 500;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
   background: rgba(16, 185, 129, 0.15);
   color: #059669;
   display: flex;

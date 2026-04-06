@@ -147,6 +147,7 @@ export const zh = {
       noContent: '暂无内容',
       threadList: '对话列表',
       sidebarMaxReached: '已达上限（最多 5 个）',
+      sidebarPhaseLockedHint: '本阶段已提交。请使用右上角「完成并继续」进入下一步；此处无法新建对话。',
       statusCompleted: '已完成',
       statusInProgress: '进行中',
       turns: '{n} 轮',

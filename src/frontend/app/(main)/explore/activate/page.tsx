@@ -13,6 +13,7 @@ import {
   applyExploreResumeToSession,
   type ExploreSession,
 } from '@/lib/explore/session';
+import { fetchExploreResumeFromJourneys } from '@/lib/explore/journeyResume';
 import { surveyApi } from '@/lib/api/survey';
 import { useAuthStore } from '@/stores/authStore';
 import { fetchAdminSystemSettings } from '@/lib/api/admin';
@@ -109,10 +110,15 @@ function ActivatePageContent() {
       }
 
       const allPhaseKeys = ['values', 'strengths', 'interests', 'purpose', 'rumination'] as const;
-      const exploreResume = res.data?.explore_resume as
+      let exploreResume = res.data?.explore_resume as
         | { resume_phase?: string; unlocked_phases?: string[] }
         | undefined;
+      if (!exploreResume?.resume_phase) {
+        const fromJourneys = await fetchExploreResumeFromJourneys(activationCode);
+        if (fromJourneys?.resume_phase) exploreResume = fromJourneys;
+      }
 
+      // 始终以后端 explore_resume 为准确定进度，localStorage 仅作兜底
       let nextSession: ExploreSession = {
         ...session,
         activationCode,
@@ -120,28 +126,25 @@ function ActivatePageContent() {
         sessionId: sessionId ?? session.sessionId,
       };
 
+      // 后端有进度信息时优先使用
+      if (exploreResume) {
+        nextSession = applyExploreResumeToSession(nextSession, exploreResume);
+      }
+
+      // Admin 豁免：跳过问卷，若后端无进度则全部解锁
       if (adminBypass) {
         nextSession = {
           ...nextSession,
           surveyCompleted: true,
           ...(exploreResume
-            ? {}
-            : {
-                unlockedPhases: [...allPhaseKeys],
-                currentPhase: nextSession.currentPhase || 'values',
-              }),
+            ? {} // 后端已有进度，不覆盖
+            : { unlockedPhases: [...allPhaseKeys], currentPhase: nextSession.currentPhase || 'values' }),
         };
-      }
-
-      if (exploreResume) {
-        nextSession = applyExploreResumeToSession(nextSession, exploreResume);
       }
 
       saveSession(nextSession);
 
-      if (adminBypass) {
-        router.push(`/explore/chat/${nextSession.currentPhase}`);
-      } else if (surveyDone) {
+      if (surveyDone || adminBypass) {
         router.push(`/explore/chat/${nextSession.currentPhase}`);
       } else {
         router.push('/explore/survey');

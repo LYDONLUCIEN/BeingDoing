@@ -135,32 +135,25 @@ export default function RuminationTableWidget({
 
   const isGlass = uiVariant === 'glass';
 
-  const primaryBtn = tableRefillMode ? (
-    <button
-      type="button"
-      onClick={() => onRefill?.()}
-      disabled={disabled || !onRefill}
-      className={
-        isGlass
-          ? 'bd-btn-black shrink-0 rounded-full px-4 py-2 text-sm font-medium text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed'
-          : 'rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50'
-      }
-    >
-      {refillLabel}
-    </button>
-  ) : (
-    <button
-      type="button"
-      onClick={handleConfirm}
-      disabled={disabled}
-      className={
-        isGlass
-          ? 'bd-btn-black shrink-0 rounded-full px-4 py-2 text-sm font-medium text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed'
-          : 'rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50'
-      }
-    >
-      {confirmLabel}
-    </button>
+  const confirmBtnCls = isGlass
+    ? 'bd-btn-black shrink-0 rounded-full px-4 py-2 text-sm font-medium text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed'
+    : 'rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50';
+
+  const refillBtnCls = isGlass
+    ? 'shrink-0 rounded-full border border-neutral-200 bg-white/70 px-4 py-2 text-sm font-medium text-neutral-600 transition-all hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed'
+    : 'rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50';
+
+  const primaryBtn = (
+    <div className="flex items-center gap-3">
+      {tableRefillMode && onRefill && (
+        <button type="button" onClick={() => onRefill?.()} disabled={disabled} className={refillBtnCls}>
+          {refillLabel}
+        </button>
+      )}
+      <button type="button" onClick={handleConfirm} disabled={disabled} className={confirmBtnCls}>
+        {confirmLabel}
+      </button>
+    </div>
   );
 
   const selectArrowSvg =

@@ -28,9 +28,11 @@ import {
   saveSession,
   unlockNextPhase,
   getLastActivationCode,
+  applyExploreResumeToSession,
   type PhaseKey,
   type ExploreSession,
 } from '@/lib/explore/session';
+import { fetchExploreResumeFromJourneys } from '@/lib/explore/journeyResume';
 import {
   getThreads,
   setThreadsForPhase,
@@ -666,15 +668,53 @@ export default function ChatPhasePage() {
   const canContinue =
     !!selectedThread && (isSelectedCompleted || (stepLocked && !adminDebugBypass));
 
+  /** 本阶段已提交：普通用户仅可点「完成并继续」，主输入区与侧栏新建等置灰 */
+  const phaseInteractionLocked = stepLocked && !adminDebugBypass;
+
+  // 与激活页一致：用旅程列表中的 explore_resume 对齐「当前未完成 step」，避免书签/缓存仍停在已提交阶段
+  useEffect(() => {
+    if (!activationCode || adminDebugBypass || !adminPolicyLoaded) return;
+    let cancelled = false;
+    void (async () => {
+      const resume = await fetchExploreResumeFromJourneys(activationCode);
+      if (cancelled || !resume?.resume_phase) return;
+      const rp = resume.resume_phase as PhaseKey;
+      if (!PHASES.some((p) => p.key === rp)) return;
+      const s = loadSession(activationCode);
+      const next = applyExploreResumeToSession(s, resume);
+      saveSession(next);
+      setSession(next);
+      if (phase !== rp) {
+        router.replace(`/explore/chat/${rp}`);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activationCode, adminDebugBypass, adminPolicyLoaded, phase, router]);
+
   const checkScrollPosition = useCallback(() => {
     const el = chatBodyRef.current;
     if (!el) return;
     setShowScrollBottom(el.scrollHeight - el.scrollTop - el.clientHeight > 80);
   }, []);
 
+  /** 进入某阶段 / 切换会话 / 线程列表首次就绪后：立即滚到底部（最新一条） */
+  useLayoutEffect(() => {
+    if (initLoading || !threadsFetched) return;
+    const el = chatBodyRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+  }, [phase, activeThreadId, initLoading, threadsFetched, threadListSignature]);
+
+  /** 流式生成中：跟随最新内容 */
   useEffect(() => {
+    if (!sending) return;
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, displayMessages]);
+  }, [messages, displayMessages, sending]);
 
   useEffect(() => {
     const el = chatBodyRef.current;
@@ -1375,6 +1415,7 @@ export default function ChatPhasePage() {
             onNewChat={handleNewChat}
             onDeleteThread={handleDeleteThread}
             canNewChat={canCreateMoreThreads}
+            phaseInteractionLocked={phaseInteractionLocked}
             careeringMatte
           />
         )}
@@ -1650,32 +1691,18 @@ export default function ChatPhasePage() {
                                 </span>
                               </div>
                             ) : null}
-                            <div className="flow-msg-user-content">
-                              {useCareeringMatte ? (
-                                <span className="flow-msg-user-text flow-msg-user-text--careering-plain">
-                                  {m.content ?? ''}
-                                </span>
-                              ) : (
-                                (() => {
-                                  const s = m.content || '';
-                                  const lines = s.split(/\r?\n/);
-                                  const display =
-                                    lines.length > 1 && lines.every((l) => l.length <= 2)
-                                      ? lines.join('')
-                                      : s;
-                                  const charCount = [...display].length;
-                                  const hasManualBreak = /\r|\n/.test(display);
-                                  const compact =
-                                    charCount > 0 && charCount < 25 && !hasManualBreak;
-                                  return (
-                                    <span
-                                      className={`flow-msg-user-text${compact ? ' flow-msg-user-text--compact' : ''}`}
-                                    >
-                                      {display}
-                                    </span>
-                                  );
-                                })()
-                              )}
+                            <div className="flow-msg-user-content" lang="zh-CN">
+                              {(() => {
+                                const s = (m.content || '').replace(/\r\n/g, '\n');
+                                const charCount = [...s].length;
+                                const hasManualBreak = s.includes('\n');
+                                const compact =
+                                  charCount > 0 && charCount < 25 && !hasManualBreak;
+                                const textClass = useCareeringMatte
+                                  ? `flow-msg-user-text flow-msg-user-text--careering-plain${compact ? ' flow-msg-user-text--compact' : ''}`
+                                  : `flow-msg-user-text${compact ? ' flow-msg-user-text--compact' : ''}`;
+                                return <span className={textClass}>{s}</span>;
+                              })()}
                             </div>
                           </div>
                           <div className="flow-msg-user-toolbar">
@@ -1782,7 +1809,9 @@ export default function ChatPhasePage() {
               className={`flow-input-area${phase === 'rumination' && ruminationRowContext ? ' rumination-input-focused-context' : ''}`}
             >
               <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="w-full">
-                <div className="flow-input-box">
+                <div
+                  className={`flow-input-box${phaseInteractionLocked && !sending ? ' opacity-40 pointer-events-none' : ''}`}
+                >
                   <textarea
                     ref={inputRef}
                     value={input}

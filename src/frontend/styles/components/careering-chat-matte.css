@@ -212,7 +212,7 @@
   margin-left: 0;
 }
 
-/* 用户气泡：勿用 min-width:0，否则窄父级会把「确认!」压成一字一行；与全局 flow 短句策略一致 */
+/* 用户气泡：勿用 min-width:0，否则窄父级会把短句压成一字一行；换行策略与 IM 常见做法一致（不用 anywhere） */
 .flow-light.careering-matte .flow-msg-user-anchor {
   max-width: min(960px, calc(100% - 0.5rem));
   min-width: min-content;
@@ -221,15 +221,26 @@
   min-width: min(25ch, 100%) !important;
   max-width: 100%;
   width: fit-content;
-  word-break: keep-all !important;
-  overflow-wrap: anywhere;
-  word-wrap: break-word;
+  word-break: normal;
+  overflow-wrap: break-word;
+  line-break: strict;
 }
-/* 中文不按字硬断行；超长无空格串仍可由 overflow-wrap 处理 */
+/* 与默认 flow 一致：短句用 .flow-msg-user-text--compact → nowrap（由 page 与 flow-chat-light 共同约定） */
 .flow-light.careering-matte .flow-msg-user-text.flow-msg-user-text--careering-plain {
   white-space: normal;
-  word-break: keep-all;
-  overflow-wrap: anywhere;
+  word-break: normal;
+  overflow-wrap: break-word;
+  line-break: strict;
+}
+.flow-light.careering-matte .flow-msg-user-text.flow-msg-user-text--careering-plain.flow-msg-user-text--compact {
+  white-space: nowrap;
+}
+
+@supports (text-wrap: pretty) {
+  .flow-light.careering-matte
+    .flow-msg-user-text.flow-msg-user-text--careering-plain:not(.flow-msg-user-text--compact) {
+    text-wrap: pretty;
+  }
 }
 
 /* AI / 用户 顶栏 meta（头像 + 时间） */

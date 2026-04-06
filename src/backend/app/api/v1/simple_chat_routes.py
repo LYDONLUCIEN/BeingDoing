@@ -52,7 +52,15 @@ from app.utils.rumination_ops import (
     filter_strength,
     filter_match,
     extract_dimension_lists_for_rumination_table,
+    structure_hypothesis_round1_table,
+    generate_hypotheses_round2_table,
+    generate_hypotheses_round3_finalize,
+    value_filter,
+    passion_filter,
+    reality_filter,
+    similar_filter,
 )
+from app.utils.rumination_hypothesis_service import fill_hypothesis_columns_for_table
 from app.utils.context_refiner import (
     refine_and_save_anchor,
     format_anchor_for_prompt,
@@ -67,7 +75,7 @@ from app.utils.survey_storage import (
     load_prior_context_for_report,
     load_prior_context,
 )
-from app.domain.prompts import get_simple_chat_system_prompt
+from app.domain.prompts import get_simple_chat_system_prompt, get_step_copy
 from app.utils.admin_policy import is_admin_debug_policy_enabled
 from app.utils.admin_prompt_lab import resolve_simple_chat_prompt_override
 from app.utils.admin_policy import is_admin_sandbox_enabled
@@ -1311,7 +1319,7 @@ def _build_table_widget_payload(
 
 
 @router.post("/rumination-table-submit", response_model=SimpleChatResponse)
-def rumination_table_submit(
+async def rumination_table_submit(
     request: RuminationTableSubmitRequest,
     current_user: dict = Depends(get_current_user),
 ):
@@ -1353,7 +1361,24 @@ def rumination_table_submit(
         filter_step_snapshots=snapshots,
     )
 
+    # ── 读取维度关键词（step 3 LLM 需要 values_hint，step 6 需要 values_list）──
+    record_path = reports_root / report_id / "record.json"
+    record_obj: Optional[dict] = None
+    if record_path.is_file():
+        try:
+            raw_rec = json.loads(record_path.read_text(encoding="utf-8") or "{}")
+            if isinstance(raw_rec, dict):
+                record_obj = raw_rec
+        except (json.JSONDecodeError, OSError, TypeError):
+            pass
+    values_list, strengths_list, interests_list, _purpose = extract_dimension_lists_for_rumination_table(
+        str(reports_root), report_id, record_obj
+    )
+    values_hint = "、".join(values_list[:8]) if values_list else ""
+
     next_table = None
+    next_step_val = step
+
     if step == 1 and table_data:
         filtered = filter_strength(table_data)
         if filtered:
@@ -1371,21 +1396,127 @@ def rumination_table_submit(
                 editable_cols=["匹配性"],
                 guide_text="这是匹配分析结果。如不同意某行标记，可直接修改。确认后我们将基于匹配结果提出假设。",
             )
+            next_step_val = 2
             s2 = snapshots.setdefault("2", {})
             if step2_rows and s2.get("initial") is None:
                 s2["initial"] = deepcopy(step2_rows)
             progress = save_rumination_progress(
-                reports_root,
-                report_id,
-                filter_step=2,
-                filter_table=step2_rows,
-                filter_step_snapshots=snapshots,
+                reports_root, report_id,
+                filter_step=2, filter_table=step2_rows, filter_step_snapshots=snapshots,
+            )
+
+    elif step == 2 and table_data:
+        # step 2 → 3: 结构化假设表 + LLM 填充假设
+        step3_rows = structure_hypothesis_round1_table(table_data)
+        if step3_rows:
+            vip_level = getattr(rec, "vip_level", 1) or 1
+            llm = _get_dialogue_llm_provider(vip_level=vip_level)
+            step3_rows = await fill_hypothesis_columns_for_table(
+                llm, step3_rows, values_hint=values_hint,
+            )
+            next_table = build_table_widget_payload(3, step3_rows, values_list)
+            next_step_val = 3
+            s3 = snapshots.setdefault("3", {})
+            if s3.get("initial") is None:
+                s3["initial"] = deepcopy(step3_rows)
+            progress = save_rumination_progress(
+                reports_root, report_id,
+                filter_step=3, filter_table=step3_rows, filter_step_snapshots=snapshots,
+            )
+
+    elif step == 3 and table_data:
+        # step 3 → 4: 第二轮假设（仅为空行重新生成）
+        step4_rows = generate_hypotheses_round2_table(table_data)
+        if step4_rows:
+            vip_level = getattr(rec, "vip_level", 1) or 1
+            llm = _get_dialogue_llm_provider(vip_level=vip_level)
+            step4_rows = await fill_hypothesis_columns_for_table(
+                llm, step4_rows, values_hint=values_hint, only_empty_hypothesis_slots=True,
+            )
+            next_table = build_table_widget_payload(4, step4_rows, values_list)
+            next_step_val = 4
+            s4 = snapshots.setdefault("4", {})
+            if s4.get("initial") is None:
+                s4["initial"] = deepcopy(step4_rows)
+            progress = save_rumination_progress(
+                reports_root, report_id,
+                filter_step=4, filter_table=step4_rows, filter_step_snapshots=snapshots,
+            )
+
+    elif step == 4 and table_data:
+        # step 4 → 5: 第三轮定稿（空行标记"待定"）
+        step5_rows = generate_hypotheses_round3_finalize(table_data)
+        if step5_rows:
+            next_table = build_table_widget_payload(5, step5_rows, values_list)
+            next_step_val = 5
+            s5 = snapshots.setdefault("5", {})
+            if s5.get("initial") is None:
+                s5["initial"] = deepcopy(step5_rows)
+            progress = save_rumination_progress(
+                reports_root, report_id,
+                filter_step=5, filter_table=step5_rows, filter_step_snapshots=snapshots,
+            )
+
+    elif step == 5 and table_data:
+        # step 5 → 6: 价值观筛选
+        step6_rows = value_filter(table_data)
+        if step6_rows:
+            next_table = build_table_widget_payload(6, step6_rows, values_list)
+            next_step_val = 6
+            s6 = snapshots.setdefault("6", {})
+            if s6.get("initial") is None:
+                s6["initial"] = deepcopy(step6_rows)
+            progress = save_rumination_progress(
+                reports_root, report_id,
+                filter_step=6, filter_table=step6_rows, filter_step_snapshots=snapshots,
+            )
+
+    elif step == 6 and table_data:
+        # step 6 → 7: 激情筛选
+        step7_rows = passion_filter(table_data)
+        if step7_rows:
+            next_table = build_table_widget_payload(7, step7_rows, values_list)
+            next_step_val = 7
+            s7 = snapshots.setdefault("7", {})
+            if s7.get("initial") is None:
+                s7["initial"] = deepcopy(step7_rows)
+            progress = save_rumination_progress(
+                reports_root, report_id,
+                filter_step=7, filter_table=step7_rows, filter_step_snapshots=snapshots,
+            )
+
+    elif step == 7 and table_data:
+        # step 7 → 8: 现实筛选
+        step8_rows = reality_filter(table_data)
+        if step8_rows:
+            next_table = build_table_widget_payload(8, step8_rows, values_list)
+            next_step_val = 8
+            s8 = snapshots.setdefault("8", {})
+            if s8.get("initial") is None:
+                s8["initial"] = deepcopy(step8_rows)
+            progress = save_rumination_progress(
+                reports_root, report_id,
+                filter_step=8, filter_table=step8_rows, filter_step_snapshots=snapshots,
+            )
+
+    elif step == 8 and table_data:
+        # step 8 → 9: 最终筛选
+        step9_rows = similar_filter(table_data)
+        if step9_rows:
+            next_table = build_table_widget_payload(9, step9_rows, values_list)
+            next_step_val = 9
+            s9 = snapshots.setdefault("9", {})
+            if s9.get("initial") is None:
+                s9["initial"] = deepcopy(step9_rows)
+            progress = save_rumination_progress(
+                reports_root, report_id,
+                filter_step=9, filter_table=step9_rows, filter_step_snapshots=snapshots,
             )
 
     snaps = progress.get("filter_step_snapshots") or {}
     data: dict = {
         "progress": progress,
-        "next_step": step,
+        "next_step": next_step_val,
         "max_reached_filter_step": max_reached_filter_step(snaps),
     }
     if next_table:
@@ -1395,7 +1526,7 @@ def rumination_table_submit(
 
 
 @router.get("/rumination-get-table", response_model=SimpleChatResponse)
-def rumination_get_table(
+async def rumination_get_table(
     activation_code: str,
     step: Optional[int] = 1,
     reset_initial: bool = False,
@@ -1488,6 +1619,7 @@ def rumination_get_table(
         payload = build_table_widget_payload(step, rows, values_list)
         return _rumination_get_table_response(prog, payload)
 
+    # ── step 3-9: 先查快照，无快照则从前一步 submitted 生成 ──
     ent_any = snapshots.get(sk) or {}
     for key in ("submitted", "initial"):
         r0 = ent_any.get(key)
@@ -1497,7 +1629,50 @@ def rumination_get_table(
             payload = build_table_widget_payload(step, rows, values_list)
             return _rumination_get_table_response(prog, payload)
 
-    return _rumination_get_table_response(progress, None)
+    # 无快照：从前一步 submitted 生成
+    prev_sk = str(step - 1)
+    prev_submitted = (snapshots.get(prev_sk) or {}).get("submitted")
+    if prev_submitted is None:
+        return _rumination_get_table_response(progress, None)
+
+    rows = None
+    if step == 3:
+        rows = structure_hypothesis_round1_table(prev_submitted)
+        if rows:
+            vip_level = getattr(rec, "vip_level", 1) or 1
+            llm = _get_dialogue_llm_provider(vip_level=vip_level)
+            values_hint = "、".join(values_list[:8]) if values_list else ""
+            rows = await fill_hypothesis_columns_for_table(llm, rows, values_hint=values_hint)
+    elif step == 4:
+        rows = generate_hypotheses_round2_table(prev_submitted)
+        if rows:
+            vip_level = getattr(rec, "vip_level", 1) or 1
+            llm = _get_dialogue_llm_provider(vip_level=vip_level)
+            values_hint = "、".join(values_list[:8]) if values_list else ""
+            rows = await fill_hypothesis_columns_for_table(
+                llm, rows, values_hint=values_hint, only_empty_hypothesis_slots=True,
+            )
+    elif step == 5:
+        rows = generate_hypotheses_round3_finalize(prev_submitted)
+    elif step == 6:
+        rows = value_filter(prev_submitted)
+    elif step == 7:
+        rows = passion_filter(prev_submitted)
+    elif step == 8:
+        rows = reality_filter(prev_submitted)
+    elif step == 9:
+        rows = similar_filter(prev_submitted)
+
+    if not rows:
+        return _rumination_get_table_response(progress, None)
+
+    ent = snapshots.setdefault(sk, {})
+    if ent.get("initial") is None:
+        ent["initial"] = deepcopy(rows)
+        snapshots[sk] = ent
+    prog = _persist(rows, snapshots)
+    payload = build_table_widget_payload(step, rows, values_list)
+    return _rumination_get_table_response(prog, payload)
 
 
 def _build_system_prompt(
@@ -1837,6 +2012,7 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
                 },
                 "report_id": report["report_id"],
                 "step_id": phase_step,
+                "step_intro": get_step_copy(phase_step, "intro"),
             },
         )
     registry = ReportRegistry(base_dir=str(get_effective_simple_root(rec)))
@@ -1923,6 +2099,7 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
             },
             "report_id": report["report_id"],
             "step_id": phase_step,
+            "step_intro": get_step_copy(phase_step, "intro"),
             "token_usage": token_usage,
         },
     )
@@ -2089,7 +2266,9 @@ async def mark_thread_complete(
         dimension_conclusion=dimension_conclusion,
         vip_level=getattr(rec, "vip_level", 1) or 1,
     )
-    return SimpleChatResponse(code=200, message="success", data={})
+    return SimpleChatResponse(code=200, message="success", data={
+        "step_outro": get_step_copy(phase_step, "outro"),
+    })
 
 
 @router.get("/threads", response_model=SimpleHistoryResponse)

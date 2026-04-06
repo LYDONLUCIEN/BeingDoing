@@ -1,34 +1,41 @@
 import type { Metadata } from 'next';
-import { Inter, Playfair_Display, Noto_Sans_SC, Noto_Serif_SC } from 'next/font/google';
+import localFont from 'next/font/local';
 import './globals.css';
 import Providers from '@/components/layout/Providers';
 
-const inter = Inter({
-  subsets: ['latin'],
+const inter = localFont({
+  src: '../public/fonts/Inter-Variable.ttf',
   variable: '--font-inter',
   display: 'swap',
 });
 
-const playfair = Playfair_Display({
-  subsets: ['latin'],
+const playfair = localFont({
+  src: [
+    { path: '../public/fonts/PlayfairDisplay-Variable.ttf', style: 'normal' },
+    { path: '../public/fonts/PlayfairDisplay-Italic-Variable.ttf', style: 'italic' },
+  ],
   variable: '--font-playfair',
   display: 'swap',
-  weight: ['400', '600', '700'],
-  style: ['normal', 'italic'],
 });
 
-const notoSansSC = Noto_Sans_SC({
-  subsets: ['latin'],
+const notoSansSC = localFont({
+  src: [
+    { path: '../public/fonts/NotoSansSC-Light.ttf', weight: '300', style: 'normal' },
+    { path: '../public/fonts/NotoSansSC-Regular.ttf', weight: '400', style: 'normal' },
+    { path: '../public/fonts/NotoSansSC-Medium.ttf', weight: '500', style: 'normal' },
+    { path: '../public/fonts/NotoSansSC-SemiBold.ttf', weight: '600', style: 'normal' },
+  ],
   variable: '--font-noto-sans-sc',
   display: 'swap',
-  weight: ['300', '400', '500', '600'],
 });
 
-const notoSerifSC = Noto_Serif_SC({
-  subsets: ['latin'],
+const notoSerifSC = localFont({
+  src: [
+    { path: '../public/fonts/NotoSerifSC-Regular.ttf', weight: '400', style: 'normal' },
+    { path: '../public/fonts/NotoSerifSC-SemiBold.ttf', weight: '600', style: 'normal' },
+  ],
   variable: '--font-noto-serif-sc',
   display: 'swap',
-  weight: ['400', '600'],
 });
 
 export const metadata: Metadata = {

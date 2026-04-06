@@ -64,10 +64,14 @@ export default function DimensionConclusionCard({
         tabIndex={inline ? 0 : undefined}
         onKeyDown={inline ? (e) => e.key === 'Enter' && toggleCollapsed() : undefined}
       >
-        <MessageSquare size={18} className="flow-conclusion-icon" />
-        <span className="flow-conclusion-title">
-          {inline && isCollapsed ? '探索结论汇总 · 点击展开' : '探索结论汇总'}
-        </span>
+        <div className="flow-conclusion-header-left">
+          <div className="flow-conclusion-icon-box">
+            <MessageSquare size={16} className="flow-conclusion-icon" />
+          </div>
+          <span className="flow-conclusion-title">
+            {inline && isCollapsed ? '探索结论汇总 · 点击展开' : '探索结论汇总'}
+          </span>
+        </div>
         {inline && (
           <span className="flow-conclusion-chevron" onClick={(e) => { e.stopPropagation(); toggleCollapsed(); }}>
             {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}

@@ -143,3 +143,66 @@ async def activate(
         data=data,
     )
 
+
+@router.get("/journeys", response_model=ActivationResponse)
+async def list_user_journeys(
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    返回当前用户的所有激活码（职业旅程）及进度摘要。
+    按最后活跃时间倒序排列，最近使用的排第一。
+    清除浏览器缓存后仍可从此接口恢复。
+    """
+    user_id = (current_user or {}).get("user_id", "")
+    email = (current_user or {}).get("email", "")
+    if not user_id and not email:
+        return ActivationResponse(code=200, message="success", data={"journeys": []})
+
+    journeys = []
+    # 扫描生产环境和测试环境的激活码
+    for root_fn in [get_effective_simple_root]:
+        pass  # 统一通过 manager 遍历
+
+    from app.utils.simple_activation_manager import (
+        SimpleActivationManager,
+        get_simple_base_dir,
+    )
+    # 扫描生产环境
+    prod_manager = SimpleActivationManager(base_dir=str(get_simple_base_dir()))
+    all_records = prod_manager.list_activations()
+    for rec in all_records:
+        owner_uid = (getattr(rec, "owner_user_id", None) or "").strip()
+        owner_email = (getattr(rec, "owner_email", None) or "").strip()
+        is_mine = (user_id and owner_uid == user_id) or (email and owner_email == email)
+        if not is_mine:
+            continue
+        if rec.status in {ActivationStatus.DELETED, ActivationStatus.REVOKED}:
+            continue
+
+        root = get_effective_simple_root(rec)
+        registry = ReportRegistry(base_dir=str(root))
+        report = registry.get_by_activation_user(rec.code, user_id or email)
+        resume = compute_explore_resume(report) if report else {}
+
+        journeys.append({
+            "activation_code": rec.code,
+            "mode": rec.mode,
+            "status": rec.status,
+            "created_at": rec.created_at,
+            "expires_at": rec.expires_at,
+            "last_activity_at": getattr(rec, "last_activity_at", None) or rec.created_at,
+            "explore_resume": resume,
+        })
+
+    # 按最后活跃时间倒序
+    journeys.sort(key=lambda j: j.get("last_activity_at") or "", reverse=True)
+    # 标记最近使用的
+    if journeys:
+        journeys[0]["is_latest"] = True
+
+    return ActivationResponse(
+        code=200,
+        message="success",
+        data={"journeys": journeys},
+    )
+

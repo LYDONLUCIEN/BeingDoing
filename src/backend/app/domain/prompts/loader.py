@@ -90,3 +90,20 @@ def get_simple_chat_system_prompt(context: Dict[str, Any]) -> str:
     context: phase, question_bank, basic_info, prior_block
     """
     return _get_loader().render("simple_chat_system", context)
+
+
+def get_step_copy(phase: str, position: str = "intro") -> str:
+    """
+    获取阶段引导文案（intro/outro）。
+    phase: values | strengths | interests | purpose | rumination
+    position: intro | outro
+    """
+    loader = _get_loader()
+    template_path = os.path.join(loader.templates_dir, "step_copy.yaml")
+    try:
+        with open(template_path, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f.read())
+        phase_data = (data or {}).get(phase) or {}
+        return (phase_data.get(position) or "").strip()
+    except (FileNotFoundError, yaml.YAMLError):
+        return ""

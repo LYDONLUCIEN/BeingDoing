@@ -37,10 +37,11 @@ function withinCurrentSection(progress: RuminationProgress): number {
       return (ri + 1) / 4;
     }
     case 'filter': {
-      /** 筛选子步 1–9 线性映射；filter_step 与后端 rumination 进度一致 */
+      /** 筛选子步 1–9：step 1 开始 = 0%，step 9 完成 = 100% */
       const fs = Number(progress.filter_step) || 0;
-      if (fs <= 0) return 1 / 18;
-      return Math.min(1, fs / 9);
+      if (fs <= 1) return 0;
+      // step 2 完成 = 1/8, step 3 = 2/8, ..., step 9 = 8/8 = 1
+      return Math.min(1, (fs - 1) / 8);
     }
     case 'final_choice':
       return 0.45;
@@ -149,11 +150,6 @@ export default function RuminationSectionProgress({
 
   const inFilter =
     displayProgress?.main_section === 'filter' && (displayProgress.filter_step ?? 0) > 0;
-  const cursor = displayProgress?.filter_row_cursor ?? 0;
-  const totalRows =
-    inFilter && Array.isArray(displayProgress?.filter_table)
-      ? displayProgress.filter_table.length
-      : 0;
 
   const detailLine = useMemo(() => {
     if (!displayProgress) return '';
@@ -164,15 +160,9 @@ export default function RuminationSectionProgress({
       extra += t('explore.chat.ruminationProgress.filterDetail', {
         step: String(displayProgress.filter_step),
       });
-      if (totalRows > 0) {
-        extra += t('explore.chat.ruminationProgress.rowDetail', {
-          current: String(Math.min(cursor + 1, totalRows)),
-          total: String(totalRows),
-        });
-      }
     }
     return extra ? `${sectionLabel} ${extra}` : sectionLabel;
-  }, [displayProgress, inFilter, cursor, totalRows, t]);
+  }, [displayProgress, inFilter, t]);
 
   if (!activationCode) return null;
 

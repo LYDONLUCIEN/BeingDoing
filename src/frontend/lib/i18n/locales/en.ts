@@ -152,6 +152,8 @@ export const en = {
       noContent: 'No content',
       threadList: 'Conversations',
       sidebarMaxReached: 'Max 5 conversations',
+      sidebarPhaseLockedHint:
+        'This step is submitted. Use “Complete & Continue” at the top right to proceed; you cannot start a new chat here.',
       statusCompleted: 'Completed',
       statusInProgress: 'In progress',
       turns: '{n} turns',
