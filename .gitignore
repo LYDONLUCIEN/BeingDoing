@@ -77,3 +77,5 @@ site/
 data/
 备份文件/
 uidesign/
+
+*.zip
