@@ -18,7 +18,7 @@ import re
 
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from app.core.llmapi import get_default_llm_provider, LLMMessage
 from app.core.llmapi.factory import create_llm_provider
 from app.api.v1.auth import get_current_user, _is_debug_admin
@@ -1206,10 +1206,14 @@ class RuminationProgressSaveRequest(BaseModel):
 
 
 class RuminationTableSubmitRequest(BaseModel):
+    """前端可能传 table_data: null；另附 mode / row_id / patch 等扩展字段须忽略。"""
+
+    model_config = ConfigDict(extra="ignore")
+
     activation_code: str
     thread_id: str
     step: int
-    table_data: List[dict]
+    table_data: Optional[List[Dict[str, Any]]] = None
 
 
 @router.get("/rumination-progress", response_model=SimpleChatResponse)
@@ -1324,205 +1328,221 @@ async def rumination_table_submit(
     current_user: dict = Depends(get_current_user),
 ):
     """提交 rumination 筛选表格数据，更新 progress，并可能返回下一步表格。"""
-    manager = get_activation_manager_for_code(request.activation_code)
-    rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
-    if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(
-        rec, current_user
-    ):
-        raise HTTPException(status_code=400, detail="激活码已过期")
-    root = get_effective_simple_root(rec)
-    registry = ReportRegistry(base_dir=str(root))
-    report = registry.ensure_report(
-        rec.code,
-        (current_user or {}).get("user_id", ""),
-        bind_session_id_for_ensure_report(rec),
-    )
-    report_id = report.get("report_id")
-    if not report_id:
-        raise HTTPException(status_code=500, detail="报告初始化失败")
-    reports_root = root / "reports"
-    step = max(1, min(9, request.step))
-    progress0 = load_rumination_progress(reports_root, report_id)
-    snapshots = _rumination_snapshots_copy(progress0)
-    sk = str(step)
-    ent = snapshots.setdefault(sk, {})
-    table_data = request.table_data
-    if table_data is not None:
-        if ent.get("initial") is None:
-            ent["initial"] = deepcopy(table_data)
-        ent["submitted"] = deepcopy(table_data)
-        snapshots[sk] = ent
+    try:
+        manager = get_activation_manager_for_code(request.activation_code)
+        rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
+        if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(
+            rec, current_user
+        ):
+            raise HTTPException(status_code=400, detail="激活码已过期")
+        root = get_effective_simple_root(rec)
+        registry = ReportRegistry(base_dir=str(root))
+        report = registry.ensure_report(
+            rec.code,
+            (current_user or {}).get("user_id", ""),
+            bind_session_id_for_ensure_report(rec),
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning("rumination-table-submit 报告上下文无效: %s", e)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
-    progress = save_rumination_progress(
-        reports_root,
-        report_id,
-        filter_step=step,
-        filter_table=table_data,
-        filter_step_snapshots=snapshots,
-    )
+    try:
+        report_id = report.get("report_id")
+        if not report_id:
+            raise HTTPException(status_code=500, detail="报告初始化失败")
+        reports_root = root / "reports"
+        step = max(1, min(9, request.step))
+        progress0 = load_rumination_progress(reports_root, report_id)
+        snapshots = _rumination_snapshots_copy(progress0)
+        sk = str(step)
+        ent = snapshots.setdefault(sk, {})
+        table_data = request.table_data
+        if table_data is not None:
+            if ent.get("initial") is None:
+                ent["initial"] = deepcopy(table_data)
+            ent["submitted"] = deepcopy(table_data)
+            snapshots[sk] = ent
 
-    # ── 读取维度关键词（step 3 LLM 需要 values_hint，step 6 需要 values_list）──
-    record_path = reports_root / report_id / "record.json"
-    record_obj: Optional[dict] = None
-    if record_path.is_file():
-        try:
-            raw_rec = json.loads(record_path.read_text(encoding="utf-8") or "{}")
-            if isinstance(raw_rec, dict):
-                record_obj = raw_rec
-        except (json.JSONDecodeError, OSError, TypeError):
-            pass
-    values_list, strengths_list, interests_list, _purpose = extract_dimension_lists_for_rumination_table(
-        str(reports_root), report_id, record_obj
-    )
-    values_hint = "、".join(values_list[:8]) if values_list else ""
+        progress = save_rumination_progress(
+            reports_root,
+            report_id,
+            filter_step=step,
+            filter_table=table_data,
+            filter_step_snapshots=snapshots,
+        )
 
-    next_table = None
-    next_step_val = step
+        # ── 读取维度关键词（step 3 LLM 需要 values_hint，step 6 需要 values_list）──
+        record_path = reports_root / report_id / "record.json"
+        record_obj: Optional[dict] = None
+        if record_path.is_file():
+            try:
+                raw_rec = json.loads(record_path.read_text(encoding="utf-8") or "{}")
+                if isinstance(raw_rec, dict):
+                    record_obj = raw_rec
+            except (json.JSONDecodeError, OSError, TypeError):
+                pass
+        values_list, strengths_list, interests_list, _purpose = extract_dimension_lists_for_rumination_table(
+            str(reports_root), report_id, record_obj
+        )
+        values_hint = "、".join(values_list[:8]) if values_list else ""
 
-    if step == 1 and table_data:
-        filtered = filter_strength(table_data)
-        if filtered:
-            step2_rows = filter_match(filtered)
-            next_table = _build_table_widget_payload(
-                step=2,
-                rows=step2_rows,
-                columns=[
-                    {"key": "id", "label": "id"},
-                    {"key": "热爱", "label": "热爱"},
-                    {"key": "优势", "label": "优势"},
-                    {"key": "匹配性", "label": "匹配性", "options": ["匹配", "不匹配"]},
-                    {"key": "匹配原因", "label": "匹配原因"},
-                ],
-                editable_cols=["匹配性"],
-                guide_text="这是匹配分析结果。如不同意某行标记，可直接修改。确认后我们将基于匹配结果提出假设。",
-            )
-            next_step_val = 2
-            s2 = snapshots.setdefault("2", {})
-            if step2_rows and s2.get("initial") is None:
-                s2["initial"] = deepcopy(step2_rows)
-            progress = save_rumination_progress(
-                reports_root, report_id,
-                filter_step=2, filter_table=step2_rows, filter_step_snapshots=snapshots,
-            )
+        next_table = None
+        next_step_val = step
 
-    elif step == 2 and table_data:
-        # step 2 → 3: 结构化假设表 + LLM 填充假设
-        step3_rows = structure_hypothesis_round1_table(table_data)
-        if step3_rows:
-            vip_level = getattr(rec, "vip_level", 1) or 1
-            llm = _get_dialogue_llm_provider(vip_level=vip_level)
-            step3_rows = await fill_hypothesis_columns_for_table(
-                llm, step3_rows, values_hint=values_hint,
-            )
-            next_table = build_table_widget_payload(3, step3_rows, values_list)
-            next_step_val = 3
-            s3 = snapshots.setdefault("3", {})
-            if s3.get("initial") is None:
-                s3["initial"] = deepcopy(step3_rows)
-            progress = save_rumination_progress(
-                reports_root, report_id,
-                filter_step=3, filter_table=step3_rows, filter_step_snapshots=snapshots,
-            )
+        if step == 1 and table_data:
+            filtered = filter_strength(table_data)
+            if filtered:
+                step2_rows = filter_match(filtered)
+                next_table = _build_table_widget_payload(
+                    step=2,
+                    rows=step2_rows,
+                    columns=[
+                        {"key": "id", "label": "id"},
+                        {"key": "热爱", "label": "热爱"},
+                        {"key": "优势", "label": "优势"},
+                        {"key": "匹配性", "label": "匹配性", "options": ["匹配", "不匹配"]},
+                        {"key": "匹配原因", "label": "匹配原因"},
+                    ],
+                    editable_cols=["匹配性"],
+                    guide_text="这是匹配分析结果。如不同意某行标记，可直接修改。确认后我们将基于匹配结果提出假设。",
+                )
+                next_step_val = 2
+                s2 = snapshots.setdefault("2", {})
+                if step2_rows and s2.get("initial") is None:
+                    s2["initial"] = deepcopy(step2_rows)
+                progress = save_rumination_progress(
+                    reports_root, report_id,
+                    filter_step=2, filter_table=step2_rows, filter_step_snapshots=snapshots,
+                )
 
-    elif step == 3 and table_data:
-        # step 3 → 4: 第二轮假设（仅为空行重新生成）
-        step4_rows = generate_hypotheses_round2_table(table_data)
-        if step4_rows:
-            vip_level = getattr(rec, "vip_level", 1) or 1
-            llm = _get_dialogue_llm_provider(vip_level=vip_level)
-            step4_rows = await fill_hypothesis_columns_for_table(
-                llm, step4_rows, values_hint=values_hint, only_empty_hypothesis_slots=True,
-            )
-            next_table = build_table_widget_payload(4, step4_rows, values_list)
-            next_step_val = 4
-            s4 = snapshots.setdefault("4", {})
-            if s4.get("initial") is None:
-                s4["initial"] = deepcopy(step4_rows)
-            progress = save_rumination_progress(
-                reports_root, report_id,
-                filter_step=4, filter_table=step4_rows, filter_step_snapshots=snapshots,
-            )
+        elif step == 2 and table_data:
+            # step 2 → 3: 结构化假设表 + LLM 填充假设
+            step3_rows = structure_hypothesis_round1_table(table_data)
+            if step3_rows:
+                vip_level = getattr(rec, "vip_level", 1) or 1
+                llm = _get_dialogue_llm_provider(vip_level=vip_level)
+                step3_rows = await fill_hypothesis_columns_for_table(
+                    llm, step3_rows, values_hint=values_hint,
+                )
+                next_table = build_table_widget_payload(3, step3_rows, values_list)
+                next_step_val = 3
+                s3 = snapshots.setdefault("3", {})
+                if s3.get("initial") is None:
+                    s3["initial"] = deepcopy(step3_rows)
+                progress = save_rumination_progress(
+                    reports_root, report_id,
+                    filter_step=3, filter_table=step3_rows, filter_step_snapshots=snapshots,
+                )
 
-    elif step == 4 and table_data:
-        # step 4 → 5: 第三轮定稿（空行标记"待定"）
-        step5_rows = generate_hypotheses_round3_finalize(table_data)
-        if step5_rows:
-            next_table = build_table_widget_payload(5, step5_rows, values_list)
-            next_step_val = 5
-            s5 = snapshots.setdefault("5", {})
-            if s5.get("initial") is None:
-                s5["initial"] = deepcopy(step5_rows)
-            progress = save_rumination_progress(
-                reports_root, report_id,
-                filter_step=5, filter_table=step5_rows, filter_step_snapshots=snapshots,
-            )
+        elif step == 3 and table_data:
+            # step 3 → 4: 第二轮假设（仅为空行重新生成）
+            step4_rows = generate_hypotheses_round2_table(table_data)
+            if step4_rows:
+                vip_level = getattr(rec, "vip_level", 1) or 1
+                llm = _get_dialogue_llm_provider(vip_level=vip_level)
+                step4_rows = await fill_hypothesis_columns_for_table(
+                    llm, step4_rows, values_hint=values_hint, only_empty_hypothesis_slots=True,
+                )
+                next_table = build_table_widget_payload(4, step4_rows, values_list)
+                next_step_val = 4
+                s4 = snapshots.setdefault("4", {})
+                if s4.get("initial") is None:
+                    s4["initial"] = deepcopy(step4_rows)
+                progress = save_rumination_progress(
+                    reports_root, report_id,
+                    filter_step=4, filter_table=step4_rows, filter_step_snapshots=snapshots,
+                )
 
-    elif step == 5 and table_data:
-        # step 5 → 6: 价值观筛选
-        step6_rows = value_filter(table_data)
-        if step6_rows:
-            next_table = build_table_widget_payload(6, step6_rows, values_list)
-            next_step_val = 6
-            s6 = snapshots.setdefault("6", {})
-            if s6.get("initial") is None:
-                s6["initial"] = deepcopy(step6_rows)
-            progress = save_rumination_progress(
-                reports_root, report_id,
-                filter_step=6, filter_table=step6_rows, filter_step_snapshots=snapshots,
-            )
+        elif step == 4 and table_data:
+            # step 4 → 5: 第三轮定稿（空行标记"待定"）
+            step5_rows = generate_hypotheses_round3_finalize(table_data)
+            if step5_rows:
+                next_table = build_table_widget_payload(5, step5_rows, values_list)
+                next_step_val = 5
+                s5 = snapshots.setdefault("5", {})
+                if s5.get("initial") is None:
+                    s5["initial"] = deepcopy(step5_rows)
+                progress = save_rumination_progress(
+                    reports_root, report_id,
+                    filter_step=5, filter_table=step5_rows, filter_step_snapshots=snapshots,
+                )
 
-    elif step == 6 and table_data:
-        # step 6 → 7: 激情筛选
-        step7_rows = passion_filter(table_data)
-        if step7_rows:
-            next_table = build_table_widget_payload(7, step7_rows, values_list)
-            next_step_val = 7
-            s7 = snapshots.setdefault("7", {})
-            if s7.get("initial") is None:
-                s7["initial"] = deepcopy(step7_rows)
-            progress = save_rumination_progress(
-                reports_root, report_id,
-                filter_step=7, filter_table=step7_rows, filter_step_snapshots=snapshots,
-            )
+        elif step == 5 and table_data:
+            # step 5 → 6: 价值观筛选
+            step6_rows = value_filter(table_data)
+            if step6_rows:
+                next_table = build_table_widget_payload(6, step6_rows, values_list)
+                next_step_val = 6
+                s6 = snapshots.setdefault("6", {})
+                if s6.get("initial") is None:
+                    s6["initial"] = deepcopy(step6_rows)
+                progress = save_rumination_progress(
+                    reports_root, report_id,
+                    filter_step=6, filter_table=step6_rows, filter_step_snapshots=snapshots,
+                )
 
-    elif step == 7 and table_data:
-        # step 7 → 8: 现实筛选
-        step8_rows = reality_filter(table_data)
-        if step8_rows:
-            next_table = build_table_widget_payload(8, step8_rows, values_list)
-            next_step_val = 8
-            s8 = snapshots.setdefault("8", {})
-            if s8.get("initial") is None:
-                s8["initial"] = deepcopy(step8_rows)
-            progress = save_rumination_progress(
-                reports_root, report_id,
-                filter_step=8, filter_table=step8_rows, filter_step_snapshots=snapshots,
-            )
+        elif step == 6 and table_data:
+            # step 6 → 7: 激情筛选
+            step7_rows = passion_filter(table_data)
+            if step7_rows:
+                next_table = build_table_widget_payload(7, step7_rows, values_list)
+                next_step_val = 7
+                s7 = snapshots.setdefault("7", {})
+                if s7.get("initial") is None:
+                    s7["initial"] = deepcopy(step7_rows)
+                progress = save_rumination_progress(
+                    reports_root, report_id,
+                    filter_step=7, filter_table=step7_rows, filter_step_snapshots=snapshots,
+                )
 
-    elif step == 8 and table_data:
-        # step 8 → 9: 最终筛选
-        step9_rows = similar_filter(table_data)
-        if step9_rows:
-            next_table = build_table_widget_payload(9, step9_rows, values_list)
-            next_step_val = 9
-            s9 = snapshots.setdefault("9", {})
-            if s9.get("initial") is None:
-                s9["initial"] = deepcopy(step9_rows)
-            progress = save_rumination_progress(
-                reports_root, report_id,
-                filter_step=9, filter_table=step9_rows, filter_step_snapshots=snapshots,
-            )
+        elif step == 7 and table_data:
+            # step 7 → 8: 现实筛选
+            step8_rows = reality_filter(table_data)
+            if step8_rows:
+                next_table = build_table_widget_payload(8, step8_rows, values_list)
+                next_step_val = 8
+                s8 = snapshots.setdefault("8", {})
+                if s8.get("initial") is None:
+                    s8["initial"] = deepcopy(step8_rows)
+                progress = save_rumination_progress(
+                    reports_root, report_id,
+                    filter_step=8, filter_table=step8_rows, filter_step_snapshots=snapshots,
+                )
 
-    snaps = progress.get("filter_step_snapshots") or {}
-    data: dict = {
-        "progress": progress,
-        "next_step": next_step_val,
-        "max_reached_filter_step": max_reached_filter_step(snaps),
-    }
-    if next_table:
-        data["next_table_widget"] = next_table
+        elif step == 8 and table_data:
+            # step 8 → 9: 最终筛选
+            step9_rows = similar_filter(table_data)
+            if step9_rows:
+                next_table = build_table_widget_payload(9, step9_rows, values_list)
+                next_step_val = 9
+                s9 = snapshots.setdefault("9", {})
+                if s9.get("initial") is None:
+                    s9["initial"] = deepcopy(step9_rows)
+                progress = save_rumination_progress(
+                    reports_root, report_id,
+                    filter_step=9, filter_table=step9_rows, filter_step_snapshots=snapshots,
+                )
 
-    return SimpleChatResponse(code=200, message="success", data=data)
+        snaps = progress.get("filter_step_snapshots") or {}
+        data: dict = {
+            "progress": progress,
+            "next_step": next_step_val,
+            "max_reached_filter_step": max_reached_filter_step(snaps),
+        }
+        if next_table:
+            data["next_table_widget"] = next_table
+
+        return SimpleChatResponse(code=200, message="success", data=data)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("rumination-table-submit 未预期错误")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="表格提交失败，请稍后重试",
+        ) from None
 
 
 @router.get("/rumination-get-table", response_model=SimpleChatResponse)

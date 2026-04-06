@@ -1477,7 +1477,7 @@ export default function ChatPhasePage() {
           >
             {phase === 'rumination' && (
               <aside
-                className={`rumination-beautiful-card flex min-h-0 min-w-0 flex-col py-4 pl-4 pr-3 sm:min-h-[min(52vh,560px)] sm:py-5 sm:pl-5 sm:pr-4 ${
+                className={`rumination-beautiful-card flex min-h-0 min-w-0 flex-col overflow-hidden py-4 pl-4 pr-3 sm:min-h-[min(52vh,560px)] sm:py-5 sm:pl-5 sm:pr-4 ${
                   ruminationWorkbenchStacked ? 'w-full flex-none' : 'w-full flex-1 sm:w-auto'
                 }`}
               >

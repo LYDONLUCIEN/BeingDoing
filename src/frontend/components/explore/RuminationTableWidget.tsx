@@ -1,6 +1,9 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, type MouseEvent } from 'react';
+
+const HYP_CONFIRM_KEY = '用户确认的假设';
+const OTHER_SELECT_VALUE = '__RUMINATION_OTHER__';
 
 export interface RuminationTableColumn {
   key: string;
@@ -44,6 +47,12 @@ interface RuminationTableWidgetProps {
   submitting?: boolean;
   /** 选中行摘要，用于输入框上下文 */
   onRowContextChange?: (ctx: { rowIndex: number; label: string } | null) => void;
+  /** 假设确认列：「待定」文案 */
+  hypothesisPendingLabel?: string;
+  /** 假设确认列：「其他」文案 */
+  hypothesisOtherLabel?: string;
+  /** 选「其他」后出现的输入框占位 */
+  otherTextPlaceholder?: string;
 }
 
 export default function RuminationTableWidget({
@@ -62,6 +71,9 @@ export default function RuminationTableWidget({
   loadingLabel = '…',
   submitting = false,
   onRowContextChange,
+  hypothesisPendingLabel = '待定',
+  hypothesisOtherLabel = '其他',
+  otherTextPlaceholder = '请填写自定义内容…',
 }: RuminationTableWidgetProps) {
   const [rows, setRows] = useState<Record<string, unknown>[]>(
     () => JSON.parse(JSON.stringify(payload.rows)) || []
@@ -159,11 +171,134 @@ export default function RuminationTableWidget({
   const selectArrowSvg =
     'url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2220%22 height=%2220%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%236b7280%22 stroke-width=%222%22%3E%3Cpolyline points=%226 9 12 15 18 9%22/%3E%3C/svg%3E")';
 
+  const filterStep = payload.step ?? 0;
+
+  const selectShellClass = isGlass
+    ? 'rumination-glass-select w-full min-w-[120px] appearance-none px-2 py-1.5 pr-8 text-sm border border-neutral-200/90 rounded-lg bg-white/80 focus:ring-2 focus:ring-violet-300/40 focus:border-violet-400/60'
+    : 'w-full min-w-[120px] px-2 py-1 text-sm border border-neutral-200 rounded-md bg-white focus:ring-2 focus:ring-violet-300 focus:border-violet-400';
+
+  const selectArrowStyle = isGlass
+    ? {
+        backgroundImage: selectArrowSvg,
+        backgroundRepeat: 'no-repeat' as const,
+        backgroundPosition: 'right 0.45rem center',
+        backgroundSize: '14px',
+      }
+    : undefined;
+
+  const textareaShellClass = isGlass
+    ? 'w-full min-h-[2.75rem] min-w-[100px] resize-y px-2 py-1.5 text-sm leading-snug border border-neutral-200/90 rounded-lg bg-white/80 focus:ring-2 focus:ring-violet-300/40 break-words whitespace-pre-wrap'
+    : 'w-full min-w-[100px] px-2 py-1 text-sm border border-neutral-200 rounded-md focus:ring-2 focus:ring-violet-300 focus:border-violet-400';
+
+  /** 从假设1–3 去重得到下拉项，并附「待定」「其他」 */
+  const hypothesisPresetForRow = (row: Record<string, unknown>) => {
+    const raw = ['假设1', '假设2', '假设3'].map((k) => String(row[k] ?? '').trim()).filter(Boolean);
+    return [...new Set(raw)];
+  };
+
+  const renderHypothesisConfirmCell = (row: Record<string, unknown>, rowIdx: number, strVal: string) => {
+    const presets = hypothesisPresetForRow(row);
+    const fixedChoices = [...presets, hypothesisPendingLabel];
+    const known = new Set(fixedChoices);
+    const isKnown = strVal !== '' && known.has(strVal);
+    const selectVal = strVal === '' ? '' : isKnown ? strVal : OTHER_SELECT_VALUE;
+
+    const stopRow = (e: MouseEvent) => {
+      if (isGlass) e.stopPropagation();
+    };
+
+    return (
+      <div className="space-y-2" onMouseDown={stopRow} onClick={stopRow}>
+        <select
+          value={selectVal}
+          disabled={disabled}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === OTHER_SELECT_VALUE) handleCellChange(rowIdx, HYP_CONFIRM_KEY, '');
+            else handleCellChange(rowIdx, HYP_CONFIRM_KEY, v);
+          }}
+          className={selectShellClass}
+          style={selectArrowStyle}
+        >
+          <option value="">{selectPlaceholder}</option>
+          {fixedChoices.map((opt) => (
+            <option key={opt} value={opt} title={opt}>
+              {opt.length > 72 ? `${opt.slice(0, 69)}…` : opt}
+            </option>
+          ))}
+          <option value={OTHER_SELECT_VALUE}>{hypothesisOtherLabel}</option>
+        </select>
+        {selectVal === OTHER_SELECT_VALUE && (
+          <textarea
+            value={strVal}
+            disabled={disabled}
+            onChange={(e) => handleCellChange(rowIdx, HYP_CONFIRM_KEY, e.target.value)}
+            placeholder={otherTextPlaceholder}
+            rows={2}
+            className={textareaShellClass}
+          />
+        )}
+      </div>
+    );
+  };
+
+  /** 列自带 options 且含「其他」：选「其他」后出现输入框（如工作目的） */
+  const renderSelectWithOther = (
+    col: RuminationTableColumn,
+    rowIdx: number,
+    strVal: string,
+    otherLabel: string,
+  ) => {
+    const opts = col.options ?? [];
+    const rest = opts.filter((o) => o !== otherLabel);
+    const known = new Set(opts);
+    const isKnown = strVal !== '' && known.has(strVal);
+    const selectVal = strVal === '' ? '' : isKnown ? strVal : OTHER_SELECT_VALUE;
+
+    const stopRow = (e: MouseEvent) => {
+      if (isGlass) e.stopPropagation();
+    };
+
+    return (
+      <div className="space-y-2" onMouseDown={stopRow} onClick={stopRow}>
+        <select
+          value={selectVal}
+          disabled={disabled}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === OTHER_SELECT_VALUE) handleCellChange(rowIdx, col.key, '');
+            else handleCellChange(rowIdx, col.key, v);
+          }}
+          className={selectShellClass}
+          style={selectArrowStyle}
+        >
+          <option value="">{selectPlaceholder}</option>
+          {rest.map((opt) => (
+            <option key={opt} value={opt} title={opt}>
+              {opt.length > 72 ? `${opt.slice(0, 69)}…` : opt}
+            </option>
+          ))}
+          <option value={OTHER_SELECT_VALUE}>{otherLabel}</option>
+        </select>
+        {selectVal === OTHER_SELECT_VALUE && (
+          <textarea
+            value={strVal}
+            disabled={disabled}
+            onChange={(e) => handleCellChange(rowIdx, col.key, e.target.value)}
+            placeholder={otherTextPlaceholder}
+            rows={2}
+            className={textareaShellClass}
+          />
+        )}
+      </div>
+    );
+  };
+
   const tableBlock = (
     <div
       className={
         isGlass
-          ? 'rumination-beautiful-table-scroll rumination-beautiful-table-widget relative overflow-x-auto overflow-y-auto max-h-[min(52vh,520px)] rounded-xl border border-neutral-300/50 bg-white/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]'
+          ? 'rumination-beautiful-table-scroll rumination-beautiful-table-widget relative min-h-0 flex-1 overflow-x-auto overflow-y-auto rounded-xl border border-neutral-300/50 bg-white/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]'
           : 'relative overflow-x-auto overflow-y-auto max-h-[320px] rounded-lg border border-neutral-100'
       }
     >
@@ -235,28 +370,22 @@ export default function RuminationTableWidget({
                         : 'px-3 py-2'
                     }
                   >
-                    {isEditable && col.options?.length ? (
+                    {isEditable &&
+                    col.key === HYP_CONFIRM_KEY &&
+                    filterStep >= 3 &&
+                    filterStep <= 5 ? (
+                      renderHypothesisConfirmCell(row, rowIdx, strVal)
+                    ) : isEditable && col.options?.includes(hypothesisOtherLabel) ? (
+                      renderSelectWithOther(col, rowIdx, strVal, hypothesisOtherLabel)
+                    ) : isEditable && col.options?.length ? (
                       <select
                         value={strVal}
                         onChange={(e) => handleCellChange(rowIdx, col.key, e.target.value)}
                         onMouseDown={(e) => isGlass && e.stopPropagation()}
                         onClick={(e) => isGlass && e.stopPropagation()}
                         disabled={disabled}
-                        className={
-                          isGlass
-                            ? 'rumination-glass-select w-full min-w-[120px] appearance-none px-2 py-1.5 pr-8 text-sm border border-neutral-200/90 rounded-lg bg-white/80 focus:ring-2 focus:ring-violet-300/40 focus:border-violet-400/60'
-                            : 'w-full min-w-[120px] px-2 py-1 text-sm border border-neutral-200 rounded-md bg-white focus:ring-2 focus:ring-violet-300 focus:border-violet-400'
-                        }
-                        style={
-                          isGlass
-                            ? {
-                                backgroundImage: selectArrowSvg,
-                                backgroundRepeat: 'no-repeat',
-                                backgroundPosition: 'right 0.45rem center',
-                                backgroundSize: '14px',
-                              }
-                            : undefined
-                        }
+                        className={selectShellClass}
+                        style={selectArrowStyle}
                       >
                         <option value="">{selectPlaceholder}</option>
                         {col.options.map((opt) => (
@@ -306,17 +435,16 @@ export default function RuminationTableWidget({
 
   if (isGlass) {
     return (
-      <div className={`flex flex-1 flex-col min-h-0 ${className}`}>
-        <div className="mb-4 flex shrink-0 items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-bd-fg truncate">
-            {cardTitle ?? '表格'}
-          </h2>
+      <div className={`flex min-h-0 flex-1 flex-col ${className}`}>
+        <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
+          <h2 className="truncate text-lg font-semibold text-bd-fg">{cardTitle ?? '表格'}</h2>
           {primaryBtn}
         </div>
         {payload.guideText && (
-          <p className="mb-3 shrink-0 text-sm leading-relaxed text-neutral-600">{payload.guideText}</p>
+          <p className="mb-2 shrink-0 text-sm leading-relaxed text-neutral-600">{payload.guideText}</p>
         )}
-        <div className="min-h-0 flex-1">{tableBlock}</div>
+        {/* flex-1 + 表格区 flex-1：撑满左卡剩余高度，避免 max-h 下方大块留白 */}
+        <div className="flex min-h-0 flex-1 flex-col">{tableBlock}</div>
       </div>
     );
   }

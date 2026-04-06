@@ -6,8 +6,11 @@ Rumination 阶段进度存储
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 MAIN_SECTIONS = ("opening", "review", "filter", "final_choice", "recommend", "end")
 FILTER_STEPS = tuple(range(1, 10))  # 1-9
@@ -113,5 +116,12 @@ def save_rumination_progress(
 
     path = _rumination_progress_file(reports_root, report_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(current, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        path.write_text(
+            json.dumps(current, ensure_ascii=False, indent=2, default=str),
+            encoding="utf-8",
+        )
+    except (TypeError, ValueError, OSError) as e:
+        logger.exception("rumination_progress 写入失败: %s", e)
+        raise
     return current

@@ -7,6 +7,25 @@
   color: var(--bd-fg, #1a1a24);
 }
 
+/* 双栏工作台与气泡区整体比原先收窄 60px */
+.rumination-beautiful-root .rumination-workbench {
+  width: calc(100% - 60px);
+  max-width: calc(100vw - 60px);
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
+}
+
+.rumination-beautiful-root .rumination-beautiful-chat-panel .flow-msg-ai-wrap,
+.rumination-beautiful-root .rumination-beautiful-chat-panel .flow-msg-think-wrap {
+  max-width: min(800px, calc(88% - 60px));
+}
+
+.rumination-beautiful-root .rumination-beautiful-chat-panel .flow-msg-user-anchor {
+  max-width: min(760px, calc(86% - 60px));
+  min-width: min-content;
+}
+
 /* 与激活页一致：暖米底 + mesh 可见度 */
 html[data-rumination-mesh-page='true']:not([data-color-scheme='dark'])
   [class*='bd-aurora-bg'],
