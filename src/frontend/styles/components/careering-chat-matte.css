@@ -103,13 +103,27 @@
   background-image: none !important;
 }
 
-/* 侧栏哑光实体（Stripe/Notion） */
+/* 侧栏：半透明磨砂玻璃（透出 silk 背景） */
 .flow-light.careering-matte .careering-sidebar {
-  background: #ffffff !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  border-right: 1px solid rgba(0, 0, 0, 0.06) !important;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  background: rgba(255, 255, 255, 0.38) !important;
+  backdrop-filter: blur(22px) saturate(1.25) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(1.25) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.45) !important;
+  box-shadow: 4px 0 24px rgba(15, 23, 42, 0.04);
+}
+
+/* 会话列表项：轻磨砂，与侧栏一体 */
+.flow-light.careering-matte .careering-sidebar .flow-sidebar-threads div.space-y-2 > div[role='button'] {
+  background: rgba(255, 255, 255, 0.34) !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: none !important;
+}
+.flow-light.careering-matte .careering-sidebar .flow-sidebar-threads div.space-y-2 > div[role='button'].shadow-md {
+  background: rgba(255, 255, 255, 0.58) !important;
+  border: 1px solid rgba(255, 255, 255, 0.55) !important;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08) !important;
 }
 
 .flow-light.careering-matte .careering-sidebar-header {
@@ -282,10 +296,12 @@
   padding: 1.125rem 1.5rem;
   border-radius: 20px;
   border-top-left-radius: 4px;
-  border: 1px solid rgba(0, 0, 0, 0.05);
-  border-left: 1px solid rgba(0, 0, 0, 0.05) !important;
-  background: #f9fafb !important;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-left: 1px solid rgba(255, 255, 255, 0.45) !important;
+  background: rgba(255, 255, 255, 0.4) !important;
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.65);
   font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif !important;
   font-size: 0.95rem;
   line-height: 1.7;
@@ -298,34 +314,39 @@
   display: none;
 }
 .flow-light.careering-matte .flow-msg-user-content {
-  background: #1d1d1f !important;
-  border: 1px solid transparent !important;
+  background: rgba(29, 29, 31, 0.48) !important;
+  backdrop-filter: blur(18px) saturate(1.15);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
   color: #ffffff !important;
   border-radius: 20px;
   border-top-right-radius: 4px;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.12);
   padding: 1.125rem 1.5rem;
 }
 .flow-light.careering-matte[data-phase='values'] .flow-msg-user-content,
 .flow-light.careering-matte[data-phase='strengths'] .flow-msg-user-content,
 .flow-light.careering-matte[data-phase='interests'] .flow-msg-user-content,
 .flow-light.careering-matte[data-phase='purpose'] .flow-msg-user-content {
-  background: #1d1d1f !important;
-  border-color: transparent !important;
+  background: rgba(29, 29, 31, 0.48) !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
   color: #fff !important;
 }
 .flow-light.careering-matte .flow-msg-user-text {
   color: inherit;
 }
 
-/* 行上下文条：哑光 */
+/* 行上下文条：轻磨砂（底边与气泡衔接，勿重复描边） */
 .flow-light.careering-matte .flow-msg-user-context-bar {
   right: 0;
   width: 100%;
   bottom: 100%;
-  border: none !important;
-  box-shadow: none !important;
-  background: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.42) !important;
+  border-bottom: none !important;
+  box-shadow: 0 4px 16px rgba(107, 70, 193, 0.1) !important;
+  background: rgba(255, 255, 255, 0.45) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   color: #6b46c1 !important;
   border-radius: 12px 12px 4px 4px !important;
 }
@@ -334,11 +355,14 @@
   max-width: min(960px, 92%);
 }
 
-/* 结论卡：哑光白卡，与 AI 气泡一致 */
+/* 结论卡：与主区一致的轻磨砂（略实于气泡，保证 pastel 标签可读） */
 .flow-light.careering-matte .flow-conclusion-card {
-  background: #ffffff !important;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.72) !important;
+  backdrop-filter: blur(16px) saturate(1.2) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(1.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.55) !important;
+  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  border-radius: 16px;
 }
 
 /* 底部输入：无顶部分割线，渐变融底 + 胶囊（newchat6） */

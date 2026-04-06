@@ -431,7 +431,7 @@
 }
 .flow-light .flow-conclusion-chevron {
   margin-left: auto;
-  color: var(--flow-text-muted);
+  color: #d1d5db;
   flex-shrink: 0;
 }
 
@@ -450,59 +450,96 @@
 }
 .flow-light .flow-msg-error-text { flex: 1; }
 
-/* 维度探索结论卡片 — Glass-Morphism 设计 */
+/* 维度探索结论卡片 — 对齐 uidesign/beautiful/conclusion_card5.html（Flat Pastel / Notion 白卡） */
 .flow-light .flow-conclusion-card {
+  --n-bg: #f1f5f9;
+  --n-tag-bg: #e2e8f0;
+  --n-dot: #64748b;
+  --n-text: #334155;
   width: 100%;
   max-width: 680px;
-  background: rgba(255, 255, 255, 0.65);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.9);
-  border-radius: 20px;
-  padding: 28px 32px;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.04), inset 0 2px 0 rgba(255,255,255,0.5);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: 0 4px 10px -2px rgba(0, 0, 0, 0.02), 0 2px 4px -2px rgba(0, 0, 0, 0.02);
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Noto Sans SC',
+    sans-serif;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 .flow-light .flow-conclusion-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 15px 50px rgba(0,0,0,0.06), inset 0 2px 0 rgba(255,255,255,0.6);
+  box-shadow: 0 15px 30px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -4px rgba(0, 0, 0, 0.02);
 }
-.flow-light .flow-conclusion-card.values   { --cc-accent: var(--flow-values); --cc-accent-light: color-mix(in srgb, var(--flow-values) 10%, #ffffff); --cc-shadow: color-mix(in srgb, var(--flow-values) 25%, transparent); }
-.flow-light .flow-conclusion-card.strength { --cc-accent: var(--flow-strength); --cc-accent-light: color-mix(in srgb, var(--flow-strength) 10%, #ffffff); --cc-shadow: color-mix(in srgb, var(--flow-strength) 25%, transparent); }
-.flow-light .flow-conclusion-card.interest { --cc-accent: var(--flow-interest); --cc-accent-light: color-mix(in srgb, var(--flow-interest) 10%, #ffffff); --cc-shadow: color-mix(in srgb, var(--flow-interest) 25%, transparent); }
-.flow-light .flow-conclusion-card.purpose  { --cc-accent: var(--flow-target); --cc-accent-light: color-mix(in srgb, var(--flow-target) 10%, #ffffff); --cc-shadow: color-mix(in srgb, var(--flow-target) 25%, transparent); }
+/* values→蓝 strength→绿 热忱(interest)→红 使命(purpose)→黄（产品语义，与 card5 四色对应调整） */
+.flow-light .flow-conclusion-card.values {
+  --n-bg: #eff6ff;
+  --n-tag-bg: #dbeafe;
+  --n-dot: #3b82f6;
+  --n-text: #1e40af;
+}
+.flow-light .flow-conclusion-card.strength {
+  --n-bg: #f0fdf4;
+  --n-tag-bg: #dcfce7;
+  --n-dot: #22c55e;
+  --n-text: #166534;
+}
+.flow-light .flow-conclusion-card.interest {
+  --n-bg: #fef2f2;
+  --n-tag-bg: #fee2e2;
+  --n-dot: #ef4444;
+  --n-text: #991b1b;
+}
+.flow-light .flow-conclusion-card.purpose {
+  --n-bg: #fefce8;
+  --n-tag-bg: #fef08a;
+  --n-dot: #eab308;
+  --n-text: #854d0e;
+}
+.flow-light .flow-conclusion-card.rumination {
+  --n-bg: #faf5ff;
+  --n-tag-bg: #e9d5ff;
+  --n-dot: #7c3aed;
+  --n-text: #5b21b6;
+}
 
 .flow-light .flow-conclusion-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin-bottom: 20px;
 }
 .flow-light .flow-conclusion-header-left {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: var(--cc-accent, var(--flow-ai-border));
   font-weight: 600;
-  font-size: 15px;
+  font-size: 1.1rem;
+  /* 与 card5 .n-header-left 一致：标题字色中性深灰 */
+  color: #111827;
 }
 .flow-light .flow-conclusion-icon-box {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  background: var(--cc-accent-light, rgba(0,0,0,0.04));
-  border-radius: 10px;
-  color: var(--cc-accent, var(--flow-ai-border));
+  padding: 6px;
+  min-width: 36px;
+  min-height: 36px;
+  box-sizing: border-box;
+  background: var(--n-bg);
+  border-radius: 8px;
+  color: var(--n-text);
 }
 .flow-light .flow-conclusion-icon { color: inherit; flex-shrink: 0; }
 .flow-light .flow-conclusion-title {
-  font-size: 15px;
+  font-size: 1.1rem;
   font-weight: 600;
-  color: var(--cc-accent, var(--flow-text-body));
+  color: #111827;
 }
 .flow-light .flow-conclusion-section { display: flex; flex-direction: column; gap: 6px; }
 .flow-light .flow-conclusion-label {
@@ -512,23 +549,79 @@
   text-transform: uppercase;
   color: var(--flow-text-muted);
 }
+.flow-light .flow-conclusion-body {
+  display: flex;
+  flex-direction: column;
+}
 .flow-light .flow-conclusion-text {
-  font-size: 14px;
-  line-height: 1.8;
+  font-size: 0.95rem;
+  line-height: 1.7;
   color: #374151;
   margin: 0;
   text-align: justify;
 }
 .flow-light .flow-conclusion-goal { font-style: italic; color: var(--flow-text-muted); }
 .flow-light .flow-conclusion-answer { font-weight: 500; }
-.flow-light .flow-conclusion-summary { margin-bottom: 4px; }
+.flow-light .flow-conclusion-summary { margin-bottom: 24px; }
+.flow-light .flow-conclusion-summary:empty {
+  display: none;
+  margin-bottom: 0;
+}
 .flow-light .flow-conclusion-markdown {
-  font-size: 14px;
-  line-height: 1.8;
+  font-size: 0.95rem;
+  line-height: 1.7;
   color: #374151;
 }
-.flow-light .flow-conclusion-markdown .message-content { font-size: inherit; }
-.flow-light .flow-conclusion-keywords { margin-top: 8px; }
+.flow-light .flow-conclusion-markdown .message-content {
+  font-size: inherit !important;
+  line-height: inherit !important;
+  color: inherit !important;
+}
+
+/* 结论卡内 Markdown：覆盖 markdown.css 的 var(--bd-fg) !important，与 conclusion_card5 .n-body 完全一致 */
+.flow-light .flow-conclusion-card .flow-conclusion-markdown .message-content .wmde-markdown {
+  color: #374151 !important;
+  font-size: 0.95rem !important;
+  line-height: 1.7 !important;
+  background-color: transparent !important;
+}
+.flow-light .flow-conclusion-card .flow-conclusion-markdown .message-content .wmde-markdown p,
+.flow-light .flow-conclusion-card .flow-conclusion-markdown .message-content .wmde-markdown li,
+.flow-light .flow-conclusion-card .flow-conclusion-markdown .message-content .wmde-markdown td,
+.flow-light .flow-conclusion-card .flow-conclusion-markdown .message-content .wmde-markdown th,
+.flow-light .flow-conclusion-card .flow-conclusion-markdown .message-content .wmde-markdown strong {
+  color: #374151 !important;
+}
+.flow-light .flow-conclusion-card .flow-conclusion-markdown .message-content .wmde-markdown h1,
+.flow-light .flow-conclusion-card .flow-conclusion-markdown .message-content .wmde-markdown h2,
+.flow-light .flow-conclusion-card .flow-conclusion-markdown .message-content .wmde-markdown h3,
+.flow-light .flow-conclusion-card .flow-conclusion-markdown .message-content .wmde-markdown h4,
+.flow-light .flow-conclusion-card .flow-conclusion-markdown .message-content .wmde-markdown h5,
+.flow-light .flow-conclusion-card .flow-conclusion-markdown .message-content .wmde-markdown h6 {
+  color: #111827 !important;
+  border-bottom: none !important;
+}
+.flow-light .flow-conclusion-card .flow-conclusion-markdown .message-content .wmde-markdown a {
+  color: var(--n-text) !important;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.flow-light .flow-conclusion-card .flow-conclusion-markdown .message-content .wmde-markdown em,
+.flow-light .flow-conclusion-card .flow-conclusion-markdown .message-content .wmde-markdown blockquote {
+  color: #6b7280 !important;
+}
+.flow-light .flow-conclusion-card .flow-conclusion-markdown .message-content .wmde-markdown code {
+  color: #334155 !important;
+  background-color: var(--n-bg) !important;
+}
+.flow-light .flow-conclusion-card .flow-conclusion-markdown .message-content .wmde-markdown pre {
+  background-color: #f8fafc !important;
+}
+.flow-light .flow-conclusion-card .flow-conclusion-markdown .message-content .wmde-markdown pre code {
+  color: #334155 !important;
+  background-color: transparent !important;
+}
+.flow-light .flow-conclusion-keywords { margin-bottom: 32px; }
 .flow-light .flow-conclusion-tags {
   display: flex;
   flex-wrap: wrap;
@@ -537,70 +630,91 @@
 .flow-light .flow-conclusion-tag {
   display: inline-flex;
   align-items: center;
-  padding: 6px 14px;
-  border-radius: 20px;
-  font-size: 13px;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
   font-weight: 500;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid var(--cc-accent-light, rgba(0,0,0,0.08));
-  color: var(--cc-accent, var(--flow-text-body));
-  box-shadow: 0 2px 10px rgba(0,0,0,0.02);
-  transition: all 0.3s ease;
+  background-color: var(--n-tag-bg);
+  color: var(--n-text);
+  border: none;
+  box-shadow: none;
+  transition: filter 0.2s;
   cursor: default;
 }
+.flow-light .flow-conclusion-tag::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--n-dot);
+  flex-shrink: 0;
+}
 .flow-light .flow-conclusion-tag:hover {
-  background: white;
-  transform: scale(1.05);
-  box-shadow: 0 4px 15px var(--cc-shadow, rgba(0,0,0,0.05));
+  filter: brightness(0.95);
+  transform: none;
 }
 .flow-light .flow-conclusion-actions {
   display: flex;
   flex-wrap: nowrap;
   gap: 12px;
+  align-items: center;
+  padding-top: 20px;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
 }
 .flow-light .flow-conclusion-btn {
   flex: 1;
   white-space: nowrap;
-  padding: 12px 16px;
-  border-radius: 12px;
-  font-size: 14px;
-  font-weight: 600;
+  padding: 10px 0;
+  border-radius: 8px;
+  font-size: 0.9rem;
   transition: all 0.2s;
-  border: none;
   cursor: pointer;
 }
 .flow-light .flow-conclusion-btn-secondary {
-  background: rgba(255, 255, 255, 0.6);
-  color: #6b7280;
-  border: 1px solid rgba(0,0,0,0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: #4b5563;
+  border: 1px solid #e5e7eb;
+  font-weight: 500;
 }
 .flow-light .flow-conclusion-btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.9);
-  color: var(--flow-text-body);
+  background: #f9fafb;
+  color: #111827;
+  border-color: #d1d5db;
 }
 .flow-light .flow-conclusion-btn-primary {
-  background: linear-gradient(135deg, var(--cc-accent, var(--flow-guide)), color-mix(in srgb, var(--cc-accent, var(--flow-guide)) 70%, #ffffff));
-  color: white;
-  box-shadow: 0 4px 15px var(--cc-shadow, rgba(0,0,0,0.1));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--n-tag-bg);
+  color: var(--n-text);
+  border: none;
+  font-weight: 600;
+  box-shadow: none;
 }
 .flow-light .flow-conclusion-btn-primary:hover {
-  box-shadow: 0 8px 25px var(--cc-shadow, rgba(0,0,0,0.15));
-  transform: translateY(-1px);
-  filter: brightness(1.05);
+  filter: brightness(0.92);
+  transform: none;
 }
+/* 与 card5 .n-btn-primary 同源 pastel，随阶段 --n-tag-bg / --n-text 变化（非固定绿） */
 .flow-light .flow-conclusion-btn-confirmed {
   flex: 1;
   white-space: nowrap;
-  padding: 12px 16px;
-  border-radius: 12px;
-  font-size: 14px;
+  padding: 10px 0;
+  border-radius: 8px;
+  font-size: 0.9rem;
   font-weight: 600;
-  background: rgba(16, 185, 129, 0.15);
-  color: #059669;
+  background: var(--n-tag-bg);
+  color: var(--n-text);
+  border: none;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: default;
+  user-select: none;
 }
 
 .flow-light .flow-retry-btn {

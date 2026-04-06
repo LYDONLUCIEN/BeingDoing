@@ -27,12 +27,13 @@ interface DimensionConclusionCardProps {
   onContinueChat?: () => void;
 }
 
-const phaseBorderClass: Record<string, string> = {
-  values: 'flow-msg-ai-content values',
-  strength: 'flow-msg-ai-content strength',
-  interest: 'flow-msg-ai-content interest',
-  purpose: 'flow-msg-ai-content purpose',
-  rumination: 'flow-msg-ai-content rumination',
+/** 仅作主题色类名，勿叠加 flow-msg-ai-content（会套用 AI 气泡边框与字体） */
+const phaseThemeClass: Record<string, string> = {
+  values: 'values',
+  strength: 'strength',
+  interest: 'interest',
+  purpose: 'purpose',
+  rumination: 'rumination',
 };
 
 export default function DimensionConclusionCard({
@@ -47,7 +48,7 @@ export default function DimensionConclusionCard({
   onContinueChat,
 }: DimensionConclusionCardProps) {
   const isCollapsed = inline && collapsed;
-  const borderClass = phaseBorderClass[phase] || phaseBorderClass.values;
+  const themeClass = phaseThemeClass[phase] || phaseThemeClass.values;
   const summaryText = data.summary ?? data.ai_summary ?? '';
   const keywords = data.keywords ?? (data.final_answer ? data.final_answer.split(/[,，、]/).map((k) => k.trim()).filter(Boolean) : []);
 
@@ -56,7 +57,7 @@ export default function DimensionConclusionCard({
   };
 
   return (
-    <div className={`flow-conclusion-card ${borderClass} ${inline ? 'flow-conclusion-inline' : ''}`}>
+    <div className={`flow-conclusion-card ${themeClass} ${inline ? 'flow-conclusion-inline' : ''}`}>
       <div
         className={`flow-conclusion-header ${inline ? 'flow-conclusion-header-clickable' : ''}`}
         onClick={inline ? toggleCollapsed : undefined}
