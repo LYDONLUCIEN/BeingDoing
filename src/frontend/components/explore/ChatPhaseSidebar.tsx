@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { MessageSquare, Trash2 } from 'lucide-react';
-import type { ChatThread } from '@/lib/explore/threads';
+import type { ChatThread, DimensionConclusionData } from '@/lib/explore/threads';
 import { useLocale } from '@/hooks/useLocale';
 
 function formatLastTime(ms: number, t: (k: string, p?: Record<string, string>) => string): string {
@@ -19,12 +19,24 @@ function formatLastTime(ms: number, t: (k: string, p?: Record<string, string>) =
   return t('explore.chat.monthDay', { m: String(d.getMonth() + 1), d: String(d.getDate()) });
 }
 
-/** 最后一条用户发言（摘要），用于列表主文案 */
-function getLastUserMessagePreview(thread: ChatThread, noContent: string): string {
+function conclusionDataPreview(d: DimensionConclusionData | undefined): string {
+  if (!d) return '';
+  const bits = [d.summary, d.ai_summary, d.final_answer, d.dimension_goal]
+    .map((x) => (typeof x === 'string' ? x.trim() : ''))
+    .filter(Boolean);
+  return bits[0] ?? '';
+}
+
+/** 最后一条助手回复（摘要），用于列表主文案（前四维对话） */
+function getLastAssistantMessagePreview(thread: ChatThread, noContent: string): string {
   for (let i = thread.messages.length - 1; i >= 0; i--) {
     const m = thread.messages[i];
-    if (m.role !== 'user' || m.type === 'dimension_conclusion') continue;
-    const raw = m.content?.trim();
+    if (m.role !== 'assistant') continue;
+    if (m.type === 'table_widget') continue;
+    let raw = m.content?.trim() ?? '';
+    if (!raw && m.type === 'dimension_conclusion') {
+      raw = conclusionDataPreview(m.conclusionData) || conclusionDataPreview(thread.dimensionConclusion);
+    }
     if (!raw) continue;
     return raw.replace(/\s+/g, ' ');
   }
@@ -132,7 +144,7 @@ export default function ChatPhaseSidebar({
             const isActive = thread.id === activeThreadId;
             const lastTime = getLastMessageTime(thread);
             const noContent = t('explore.chat.noContent');
-            const summary = getLastUserMessagePreview(thread, noContent);
+            const summary = getLastAssistantMessagePreview(thread, noContent);
             const turnCount = getTurnCount(thread);
             const lastTimeStr = lastTime ? formatLastTime(lastTime, t) : '';
             return (

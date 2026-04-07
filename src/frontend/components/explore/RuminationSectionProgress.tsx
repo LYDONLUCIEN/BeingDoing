@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   ruminationApi,
   type RuminationMainSection,
@@ -27,8 +28,52 @@ const SECTION_SPAN: Record<RuminationMainSection, number> = {
   end: 8,
 };
 
+/**
+ * 已有 submitted 快照的筛选子步数量（1..9 各计一次，不要求连续，与后端快照一致）。
+ */
+function countFilterSubmittedSteps(progress: RuminationProgress): number {
+  const snaps = progress.filter_step_snapshots ?? {};
+  let n = 0;
+  for (let k = 1; k <= 9; k++) {
+    const ent = snaps[String(k)];
+    if (ent != null && ent.submitted != null) n++;
+  }
+  return n;
+}
+
+/**
+ * 筛选表界面 11 个节点（0..10）→ 映射到 0%..100%（本页仍 cap 99%）：
+ * - 0：尚未有任何子步提交快照（含空白表刚进入）
+ * - 1..9：已有 submitted 的子步个数（通常与顺序提交一致）
+ * - 10：已进入 final_choice / recommend / end（筛选主线结束、最终确认后流程）
+ */
+export function computeRuminationFilterMilestone11(progress: RuminationProgress): number {
+  const ms = progress.main_section;
+  if (ms === 'final_choice' || ms === 'recommend' || ms === 'end') return 10;
+  return Math.min(10, countFilterSubmittedSteps(progress));
+}
+
+/**
+ * 筛选表进度展示刻度（0..10）：与「上一阶段/下一阶段」联动——
+ * 取「已提交子步数」与「当前查看子步」的较小值，回退查看时进度条随之回落。
+ */
+export function computeDisplayedRuminationMilestone(
+  progress: RuminationProgress,
+  viewFilterStep?: number | null
+): number {
+  const ms = progress.main_section;
+  if (ms === 'final_choice' || ms === 'recommend' || ms === 'end') return 10;
+  const submitted = countFilterSubmittedSteps(progress);
+  if (viewFilterStep == null || viewFilterStep < 1) return Math.min(10, submitted);
+  const v = Math.min(9, Math.max(1, viewFilterStep));
+  return Math.min(submitted, v);
+}
+
 /** 当前阶段内部完成比例 0–1（与后端 main_section / review_sub_index / filter_step 对齐） */
-function withinCurrentSection(progress: RuminationProgress): number {
+function withinCurrentSection(
+  progress: RuminationProgress,
+  viewFilterStep?: number | null
+): number {
   switch (progress.main_section) {
     case 'opening':
       return 0.12;
@@ -37,16 +82,10 @@ function withinCurrentSection(progress: RuminationProgress): number {
       return (ri + 1) / 4;
     }
     case 'filter': {
-      /** 第 9 步表格已提交：筛选表流程结束，总条视为满（避免一直停在 ~70%） */
-      const snaps = progress.filter_step_snapshots || {};
-      if (snaps['9']?.submitted != null) return 1;
-      /** 筛选子步 1–9：step 1 开始 = 0%，step 9 在途 = 100% 本段内进度 */
-      const fs = Number(progress.filter_step) || 0;
-      if (fs <= 1) return 0;
-      return Math.min(1, (fs - 1) / 8);
+      return Math.min(1, computeDisplayedRuminationMilestone(progress, viewFilterStep) / 10);
     }
     case 'final_choice':
-      return 0.45;
+      return 1;
     case 'recommend':
       return 0.55;
     case 'end':
@@ -56,12 +95,26 @@ function withinCurrentSection(progress: RuminationProgress): number {
   }
 }
 
-/** 整体完成度 0–100：先累加已完成阶段权重，再叠加当前阶段内进度 */
-export function computeRuminationJourneyPercent(progress: RuminationProgress): number {
-  const snaps = progress.filter_step_snapshots || {};
-  if (snaps['9']?.submitted != null) {
-    return 100;
+/**
+ * 整体完成度 0–100。
+ * 在筛选表界面（含 final_choice 回看表）：进度为 **11 个节点**（0..10）的线性刻度——
+ * 0% 空白/未提交 → 每多一个子步 submitted +1 档 → 10 档为进入最终选择及之后；本页最高 99%。
+ * 详情文案仍显示「筛选 n/9」。
+ */
+export function computeRuminationJourneyPercent(
+  progress: RuminationProgress,
+  viewFilterStep?: number | null
+): number {
+  const useViewForFilterBar =
+    viewFilterStep != null &&
+    viewFilterStep >= 1 &&
+    (progress.main_section === 'filter' || progress.main_section === 'final_choice');
+
+  if (useViewForFilterBar) {
+    const m = computeDisplayedRuminationMilestone(progress, viewFilterStep);
+    return Math.min(99, Math.max(0, (m / 10) * 100));
   }
+
   const idx = SECTION_ORDER.indexOf(progress.main_section);
   const safeIdx = idx < 0 ? 0 : idx;
   let base = 0;
@@ -69,7 +122,7 @@ export function computeRuminationJourneyPercent(progress: RuminationProgress): n
     base += SECTION_SPAN[SECTION_ORDER[i]];
   }
   const span = SECTION_SPAN[progress.main_section] ?? SECTION_SPAN.opening;
-  const w = withinCurrentSection(progress);
+  const w = withinCurrentSection(progress, viewFilterStep);
   const pct = base + w * span;
   return Math.min(100, Math.max(0, pct));
 }
@@ -85,6 +138,10 @@ export interface RuminationFilterStepNavConfig {
   onNext: () => void;
   prevDisabled: boolean;
   nextDisabled: boolean;
+  /** 第 1 子步不展示「上一阶段」 */
+  hidePrev?: boolean;
+  /** 第 9 子步不展示「下一阶段」 */
+  hideNext?: boolean;
 }
 
 interface RuminationSectionProgressProps {
@@ -105,6 +162,8 @@ interface RuminationSectionProgressProps {
    * 对话页父级已统一拉取，避免同屏重复请求（含 refreshNonce 触发的二次拉取）。
    */
   externalProgressOnly?: boolean;
+  /** 筛选段用户正在查看的子步 1–9，与上一阶段/下一阶段联动，驱动进度条与「筛选 n/9」文案 */
+  viewFilterStep?: number | null;
 }
 
 export default function RuminationSectionProgress({
@@ -115,6 +174,7 @@ export default function RuminationSectionProgress({
   filterStepNav,
   serverProgress = null,
   externalProgressOnly = false,
+  viewFilterStep = null,
 }: RuminationSectionProgressProps) {
   const { t } = useLocale();
   const [progress, setProgress] = useState<RuminationProgress | null>(null);
@@ -145,8 +205,11 @@ export default function RuminationSectionProgress({
   const displayProgress = serverProgress ?? progress;
 
   const fillPercent = useMemo(
-    () => (displayProgress ? computeRuminationJourneyPercent(displayProgress) : 0),
-    [displayProgress]
+    () =>
+      displayProgress
+        ? computeRuminationJourneyPercent(displayProgress, viewFilterStep)
+        : 0,
+    [displayProgress, viewFilterStep]
   );
 
   const currentIdx = displayProgress
@@ -157,18 +220,24 @@ export default function RuminationSectionProgress({
   const inFilter =
     displayProgress?.main_section === 'filter' && (displayProgress.filter_step ?? 0) > 0;
 
+  /** 与进度条一致：正在查看某筛选子步时展示「筛选 n/9」（含 final_choice 回看表） */
+  const showFilterSubstepCaption =
+    viewFilterStep != null &&
+    viewFilterStep >= 1 &&
+    (inFilter || displayProgress?.main_section === 'final_choice');
+
   const detailLine = useMemo(() => {
     if (!displayProgress) return '';
     const sectionKey = `explore.chat.ruminationProgress.sections.${displayProgress.main_section}`;
     const sectionLabel = t(sectionKey);
-    let extra = '';
-    if (inFilter) {
-      extra += t('explore.chat.ruminationProgress.filterDetail', {
-        step: String(displayProgress.filter_step),
+    if (showFilterSubstepCaption && viewFilterStep != null) {
+      const extra = t('explore.chat.ruminationProgress.filterDetail', {
+        step: String(viewFilterStep),
       });
+      return `${sectionLabel} ${extra}`;
     }
-    return extra ? `${sectionLabel} ${extra}` : sectionLabel;
-  }, [displayProgress, inFilter, t]);
+    return sectionLabel;
+  }, [displayProgress, showFilterSubstepCaption, t, viewFilterStep]);
 
   if (!activationCode) return null;
 
@@ -208,7 +277,7 @@ export default function RuminationSectionProgress({
 
   if (variant === 'beautiful') {
     const navBtnClass =
-      'shrink-0 rounded-full border border-neutral-200/90 bg-white/70 px-3 py-2 text-xs font-semibold text-neutral-800 shadow-sm transition-all hover:bg-white disabled:cursor-not-allowed disabled:opacity-40 sm:px-4 sm:text-sm';
+      'shrink-0 inline-flex items-center gap-0.5 rounded-full border border-neutral-200/50 bg-white/35 px-2 py-1 text-[10px] font-medium tracking-wide text-neutral-600 shadow-none backdrop-blur-md transition-[color,background-color,border-color,opacity] duration-200 hover:border-neutral-300/70 hover:bg-white/65 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-35 sm:gap-1 sm:px-2.5 sm:py-1 sm:text-[11px]';
     const barBlock = (
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex items-center justify-between gap-3 text-sm font-medium text-neutral-600">
@@ -239,25 +308,43 @@ export default function RuminationSectionProgress({
     );
 
     if (filterStepNav) {
+      const effHidePrev =
+        filterStepNav.hidePrev === true ||
+        (viewFilterStep != null && viewFilterStep <= 1);
+      const effHideNext =
+        filterStepNav.hideNext === true ||
+        (viewFilterStep != null && viewFilterStep >= 9);
       return (
-        <div className={`mx-auto flex w-full max-w-4xl items-stretch gap-3 sm:gap-5 ${className}`}>
-          <button
-            type="button"
-            className={navBtnClass}
-            onClick={filterStepNav.onPrev}
-            disabled={filterStepNav.prevDisabled}
-          >
-            ← {t('explore.chat.ruminationUi.navPrev')}
-          </button>
+        <div className={`mx-auto flex w-full max-w-4xl items-center gap-2 sm:gap-3 ${className}`}>
+          {!effHidePrev ? (
+            <button
+              type="button"
+              className={navBtnClass}
+              onClick={filterStepNav.onPrev}
+              disabled={filterStepNav.prevDisabled}
+              aria-label={t('explore.chat.ruminationUi.navPrev')}
+            >
+              <ChevronLeft className="h-3.5 w-3.5 shrink-0 opacity-80" strokeWidth={2.25} aria-hidden />
+              <span className="max-[380px]:sr-only">{t('explore.chat.ruminationUi.navPrev')}</span>
+            </button>
+          ) : (
+            <span className="hidden w-8 shrink-0 sm:block sm:w-14" aria-hidden />
+          )}
           {barBlock}
-          <button
-            type="button"
-            className={navBtnClass}
-            onClick={filterStepNav.onNext}
-            disabled={filterStepNav.nextDisabled}
-          >
-            {t('explore.chat.ruminationUi.navNext')} →
-          </button>
+          {!effHideNext ? (
+            <button
+              type="button"
+              className={navBtnClass}
+              onClick={filterStepNav.onNext}
+              disabled={filterStepNav.nextDisabled}
+              aria-label={t('explore.chat.ruminationUi.navNext')}
+            >
+              <span className="max-[380px]:sr-only">{t('explore.chat.ruminationUi.navNext')}</span>
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-80" strokeWidth={2.25} aria-hidden />
+            </button>
+          ) : (
+            <span className="hidden w-8 shrink-0 sm:block sm:w-14" aria-hidden />
+          )}
         </div>
       );
     }

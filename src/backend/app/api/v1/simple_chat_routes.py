@@ -60,7 +60,10 @@ from app.utils.rumination_ops import (
     reality_filter,
     similar_filter,
 )
-from app.utils.rumination_hypothesis_service import fill_hypothesis_columns_for_table
+from app.utils.rumination_hypothesis_service import (
+    fill_hypothesis_columns_for_table,
+    generate_two_hypotheses_for_row,
+)
 from app.utils.context_refiner import (
     refine_and_save_anchor,
     format_anchor_for_prompt,
@@ -76,6 +79,12 @@ from app.utils.survey_storage import (
     load_prior_context,
 )
 from app.domain.prompts import get_simple_chat_system_prompt, get_step_copy
+from app.domain.rumination_step_guidance import (
+    build_opening_context,
+    build_opening_llm_messages,
+    get_opening_mode,
+    render_fixed_opening_zh,
+)
 from app.utils.admin_policy import is_admin_debug_policy_enabled
 from app.utils.admin_prompt_lab import resolve_simple_chat_prompt_override
 from app.utils.admin_policy import is_admin_sandbox_enabled
@@ -1217,6 +1226,26 @@ class RuminationTableSubmitRequest(BaseModel):
     table_data: Optional[List[Dict[str, Any]]] = None
 
 
+class RuminationStepOpeningStreamRequest(BaseModel):
+    """沉淀子步引导语流式生成（仅 opening_mode=llm 的子步）。"""
+
+    model_config = ConfigDict(extra="ignore")
+
+    activation_code: str
+    filter_step: int
+    thread_id: str = ""
+
+
+class RuminationRegenerateHypothesesRequest(BaseModel):
+    """假设子步（3–5）单行重新生成假设1、假设2。"""
+
+    model_config = ConfigDict(extra="ignore")
+
+    activation_code: str
+    filter_step: int
+    row_id: str
+
+
 @router.get("/rumination-progress", response_model=SimpleChatResponse)
 def get_rumination_progress(
     activation_code: str,
@@ -1304,6 +1333,296 @@ def _rumination_get_table_response(
             "max_reached_filter_step": mr,
         },
     )
+
+
+def _rumination_opening_load_bundle(
+    activation_code: str,
+    current_user: dict,
+):
+    """
+    读取报告、进度与价值观关键词，供 rumination 子步引导语使用。
+    Returns:
+        tuple[rec, reports_root, report_id, progress, values_list]
+    """
+    manager = get_activation_manager_for_code(activation_code)
+    rec = _resolve_activation_for_user(manager, activation_code, current_user)
+    if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(
+        rec, current_user
+    ):
+        raise HTTPException(status_code=400, detail="激活码已过期")
+    root = get_effective_simple_root(rec)
+    registry = ReportRegistry(base_dir=str(root))
+    report = registry.ensure_report(
+        rec.code,
+        (current_user or {}).get("user_id", ""),
+        bind_session_id_for_ensure_report(rec),
+    )
+    report_id = report.get("report_id")
+    if not report_id:
+        raise HTTPException(status_code=500, detail="报告初始化失败")
+    reports_root = root / "reports"
+    progress = load_rumination_progress(reports_root, report_id)
+    record_path = reports_root / report_id / "record.json"
+    record_obj: Optional[dict] = None
+    if record_path.is_file():
+        try:
+            raw_rec = json.loads(record_path.read_text(encoding="utf-8") or "{}")
+            if isinstance(raw_rec, dict):
+                record_obj = raw_rec
+        except (json.JSONDecodeError, OSError, TypeError):
+            record_obj = None
+    values_list, _, _, _ = extract_dimension_lists_for_rumination_table(
+        str(reports_root), report_id, record_obj
+    )
+    return rec, reports_root, report_id, progress, values_list
+
+
+@router.get("/rumination-step-opening", response_model=SimpleChatResponse)
+def rumination_step_opening(
+    activation_code: str,
+    filter_step: int = 1,
+    current_user: dict = Depends(get_current_user),
+):
+    """子步引导：fixed 时返回完整文案（前端模拟流式）；llm 时 text 为 null，走流式接口。"""
+    try:
+        _rec, _rp, _rid, progress, values_list = _rumination_opening_load_bundle(
+            activation_code, current_user
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning("rumination-step-opening load failed: %s", e)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+    step = max(1, min(9, int(filter_step)))
+    ctx = build_opening_context(filter_step=step, progress=progress, values_list=values_list)
+    mode = get_opening_mode(step)
+    if mode == "llm":
+        return SimpleChatResponse(
+            code=200,
+            message="success",
+            data={"mode": "llm", "text": None, "filter_step": step},
+        )
+    text = render_fixed_opening_zh(step, ctx)
+    return SimpleChatResponse(
+        code=200,
+        message="success",
+        data={"mode": "fixed", "text": text, "filter_step": step},
+    )
+
+
+@router.post("/rumination-step-opening-stream")
+async def rumination_step_opening_stream(
+    request: RuminationStepOpeningStreamRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """子步引导流式生成（SSE 事件与 /message/stream 的 chunk/think/done 兼容）。"""
+    step = max(1, min(9, int(request.filter_step)))
+    if get_opening_mode(step) != "llm":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="该子步使用固定引导语，请使用 GET /rumination-step-opening",
+        )
+    try:
+        rec, _reports_root, _report_id, progress, values_list = _rumination_opening_load_bundle(
+            request.activation_code, current_user
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+    ctx = build_opening_context(filter_step=step, progress=progress, values_list=values_list)
+    try:
+        llm_messages = build_opening_llm_messages(step, ctx)
+    except ValueError as e:
+        logger.warning("rumination opening llm build failed: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="该子步未配置 LLM 引导提示词",
+        ) from e
+
+    manager = get_activation_manager_for_code(request.activation_code)
+    try:
+        _, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
+            manager=manager,
+            activation_code=request.activation_code,
+            current_user=current_user,
+            phase="rumination",
+            thread_id=(request.thread_id or "").strip() or None,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning("rumination opening stream resolve context: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="会话上下文无效，请刷新后重试",
+        ) from e
+
+    if phase_step != "rumination":
+        raise HTTPException(status_code=400, detail="仅支持沉淀阶段")
+
+    session_id = report["report_id"]
+    vip_level = getattr(rec, "vip_level", 1) or 1
+
+    async def event_stream() -> AsyncIterator[str]:
+        llm = _get_dialogue_llm_provider(vip_level=vip_level)
+        if hasattr(llm, "_last_stream_usage"):
+            try:
+                setattr(llm, "_last_stream_usage", None)
+            except Exception:
+                pass
+        full_reply = ""
+        sem = _get_llm_semaphore()
+
+        async def run_one() -> AsyncIterator[str]:
+            nonlocal full_reply
+            stream_coro = llm.chat_stream(llm_messages, temperature=0.65, max_tokens=600)
+            async for piece in stream_coro:
+                if isinstance(piece, dict):
+                    t = piece.get("_t")
+                    if t == "think_start":
+                        yield 'data: {"think_start": true}\n\n'
+                    elif t == "think_chunk":
+                        tc = piece.get("content") or ""
+                        if tc:
+                            yield f"data: {json.dumps({'think_chunk': tc}, ensure_ascii=False)}\n\n"
+                    elif t == "think_end":
+                        te = piece.get("content")
+                        yield f"data: {json.dumps({'think_end': te}, ensure_ascii=False)}\n\n"
+                    continue
+                if piece:
+                    full_reply += piece
+                    yield f"data: {json.dumps({'chunk': piece}, ensure_ascii=False)}\n\n"
+
+        try:
+            if sem:
+                async with sem:
+                    async for line in run_one():
+                        yield line
+            else:
+                async for line in run_one():
+                    yield line
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
+            return
+
+        text = full_reply.strip()
+        stream_usage = _normalize_token_usage(getattr(llm, "_last_stream_usage", None))
+        if text:
+            try:
+                await conv_manager.append_message(
+                    session_id=session_id,
+                    category=category,
+                    message={
+                        "role": "assistant",
+                        "content": text,
+                        "session_id": logical_session_id,
+                        "step_id": phase_step,
+                        "agent_id": "coach",
+                        "event": "assistant_reply",
+                        "token_usage": stream_usage,
+                    },
+                )
+            except Exception as e:
+                logger.warning("rumination opening append_message failed: %s", e)
+
+        yield (
+            f"data: {{\"done\": true, \"response\": {json.dumps(text, ensure_ascii=False)}, "
+            f"\"token_usage\": {json.dumps(stream_usage, ensure_ascii=False)} }}\n\n"
+        )
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post("/rumination-regenerate-hypotheses", response_model=SimpleChatResponse)
+async def rumination_regenerate_hypotheses(
+    request: RuminationRegenerateHypothesesRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """筛选子步 3–5：对单行重新生成假设1、假设2（个人事业 / 职业路径），并清空假设3与已选假设。"""
+    step = int(request.filter_step)
+    if step < 3 or step > 5:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="仅支持筛选子步 3、4、5 的假设重新生成",
+        )
+    row_id = str(request.row_id or "").strip()
+    if not row_id:
+        raise HTTPException(status_code=400, detail="row_id 无效")
+
+    try:
+        rec, reports_root, report_id, progress, values_list = _rumination_opening_load_bundle(
+            request.activation_code, current_user
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    values_hint = "、".join(values_list[:8]) if values_list else ""
+    snapshots = _rumination_snapshots_copy(progress)
+    sk = str(step)
+    ent = dict(snapshots.get(sk) or {})
+    rows = ent.get("submitted")
+    storage_key = "submitted"
+    if rows is None:
+        rows = ent.get("initial")
+        storage_key = "initial"
+    if not isinstance(rows, list) or not rows:
+        raise HTTPException(status_code=400, detail="当前子步无表格数据")
+
+    idx = None
+    for i, r in enumerate(rows):
+        if not isinstance(r, dict):
+            continue
+        if str(r.get("id", "")) == row_id:
+            idx = i
+            break
+    if idx is None:
+        raise HTTPException(status_code=404, detail="未找到该行")
+
+    row = dict(rows[idx])
+    passion = str(row.get("热爱") or "")
+    strength = str(row.get("优势") or "")
+    match_reason = str(row.get("匹配原因") or "")
+    vip_level = getattr(rec, "vip_level", 1) or 1
+    llm = _get_dialogue_llm_provider(vip_level=vip_level)
+    h1, h2 = await generate_two_hypotheses_for_row(
+        llm,
+        passion=passion,
+        strength=strength,
+        match_reason=match_reason,
+        values_hint=values_hint,
+        row_index=idx,
+    )
+    row["假设1"] = h1
+    row["假设2"] = h2
+    row["假设3"] = ""
+    row["用户确认的假设"] = ""
+
+    new_rows = list(rows)
+    new_rows[idx] = row
+    ent = {**ent, storage_key: new_rows}
+    snapshots[sk] = ent
+
+    save_kw: Dict[str, Any] = {"filter_step_snapshots": snapshots}
+    cur_fs = int(progress.get("filter_step") or 0)
+    if cur_fs == step:
+        save_kw["filter_table"] = new_rows
+
+    progress = save_rumination_progress(reports_root, report_id, **save_kw)
+    payload = build_table_widget_payload(step, new_rows, values_list)
+    return _rumination_get_table_response(progress, payload)
 
 
 def _build_table_widget_payload(

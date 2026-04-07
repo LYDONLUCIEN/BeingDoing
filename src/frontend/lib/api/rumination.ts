@@ -73,6 +73,15 @@ export interface RuminationSubmitData {
   max_reached_filter_step?: number;
 }
 
+/** 筛选子步右侧引导：固定文案或 LLM（后端 `domain/rumination_step_guidance.py`） */
+export type RuminationStepOpeningMode = 'fixed' | 'llm';
+
+export interface RuminationStepOpeningPayload {
+  mode: RuminationStepOpeningMode;
+  text: string | null;
+  filter_step: number;
+}
+
 export const ruminationApi = {
   /** 获取 rumination 进度 */
   get: async (
@@ -147,4 +156,34 @@ export const ruminationApi = {
     const res = await apiClient.post('/simple-chat/rumination-table-submit', body);
     return res;
   },
+
+  /** 获取进入某筛选子步时的引导配置（固定文案或标记为 llm） */
+  getStepOpening: (
+    activationCode: string,
+    filterStep: number
+  ): Promise<ApiResponse<RuminationStepOpeningPayload>> =>
+    apiClient.get<RuminationStepOpeningPayload>('/simple-chat/rumination-step-opening', {
+      params: {
+        activation_code: activationCode,
+        filter_step: filterStep,
+      },
+    }),
+
+  /** 子步 3–5：单行重新生成假设1、假设2 */
+  regenerateHypotheses: (
+    activationCode: string,
+    filterStep: number,
+    rowId: string
+  ): Promise<
+    ApiResponse<{
+      table_widget: RuminationTablePayload;
+      progress: RuminationProgress;
+      max_reached_filter_step?: number;
+    }>
+  > =>
+    apiClient.post('/simple-chat/rumination-regenerate-hypotheses', {
+      activation_code: activationCode,
+      filter_step: filterStep,
+      row_id: rowId,
+    }),
 };

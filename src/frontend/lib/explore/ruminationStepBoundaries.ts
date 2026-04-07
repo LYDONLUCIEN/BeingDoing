@@ -94,3 +94,41 @@ export function sliceMessagesForRuminationStep(
   const hi = Math.max(lo, Math.min(end, messages.length));
   return messages.slice(lo, hi).filter((m) => m.type !== 'table_widget');
 }
+
+/**
+ * 「重新填写」当前筛选子步：从完整消息列表中删除该子步切片 [lo, hi)，并平移后续子步的边界下标。
+ * 与 sliceMessagesForRuminationStep 使用同一套 boundaries 语义。
+ */
+export function cutMessagesForRuminationStepRefill(
+  messages: ThreadMessage[],
+  viewStep: number,
+  boundaries: Record<string, number>
+): { messages: ThreadMessage[]; boundaries: Record<string, number> } {
+  const b = ensureDefaultStepOne({ ...boundaries });
+  const sk = String(viewStep);
+  const lo = b[sk];
+  if (lo === undefined) {
+    return { messages, boundaries: b };
+  }
+  let hi = messages.length;
+  for (let s = viewStep + 1; s <= 12; s++) {
+    const x = b[String(s)];
+    if (x != null) {
+      hi = x;
+      break;
+    }
+  }
+  if (lo >= hi) {
+    return { messages, boundaries: b };
+  }
+  const delta = hi - lo;
+  const newMessages = messages.slice(0, lo).concat(messages.slice(hi));
+  const newB: Record<string, number> = { ...b };
+  for (const k of Object.keys(newB)) {
+    const v = newB[k];
+    if (v > hi) newB[k] = v - delta;
+    else if (v === hi) newB[k] = lo;
+    else if (v > lo && v < hi) newB[k] = lo;
+  }
+  return { messages: newMessages, boundaries: newB };
+}

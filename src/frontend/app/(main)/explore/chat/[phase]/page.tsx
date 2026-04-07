@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter, useParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
@@ -11,6 +12,7 @@ import {
   Copy,
   FileText,
   ListFilter,
+  Loader2,
 } from 'lucide-react';
 import FlowAiMessage from '@/components/explore/FlowAiMessage';
 import DimensionConclusionCard, { type DimensionConclusionData } from '@/components/explore/DimensionConclusionCard';
@@ -53,6 +55,7 @@ import {
   loadRuminationStepBoundaries,
   saveRuminationStepBoundaries,
   ensureDefaultStepOne,
+  cutMessagesForRuminationStepRefill,
   sliceMessagesForRuminationStep,
 } from '@/lib/explore/ruminationStepBoundaries';
 import {
@@ -60,6 +63,10 @@ import {
   type RuminationProgress,
   type RuminationSubmitData,
 } from '@/lib/api/rumination';
+import {
+  simulateFixedRuminationOpening,
+  streamRuminationStepOpening,
+} from '@/lib/explore/ruminationStepOpening';
 import { useLocale } from '@/hooks/useLocale';
 import { useAuthStore } from '@/stores/authStore';
 import { fetchAdminSystemSettings } from '@/lib/api/admin';
@@ -92,6 +99,67 @@ function computeMaxReachedFromSnapshots(p: RuminationProgress | null): number {
   return m;
 }
 
+/** 表格提交：全屏遮罩 + 动态省略号（Portal 挂到 body） */
+function RuminationTableSubmitPortal({
+  open,
+  lineBefore,
+  lineAfter,
+}: {
+  open: boolean;
+  lineBefore: string;
+  lineAfter: string;
+}) {
+  const [mounted, setMounted] = useState(false);
+  const [dots, setDots] = useState('');
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  useEffect(() => {
+    if (!open) {
+      setDots('');
+      return;
+    }
+    let i = 0;
+    const id = window.setInterval(() => {
+      i = (i + 1) % 4;
+      setDots('.'.repeat(i));
+    }, 400);
+    return () => window.clearInterval(id);
+  }, [open]);
+  if (!mounted || !open) return null;
+  return createPortal(
+    <motion.div
+      className="fixed left-0 right-0 top-14 bottom-0 z-40 flex items-center justify-center bg-black/50 px-4 backdrop-blur-[3px]"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.2 }}
+    >
+      <motion.div
+        className="flex w-full max-w-[20rem] flex-col items-center gap-6 rounded-2xl bg-white px-8 py-10 shadow-[0_25px_80px_-12px_rgba(0,0,0,0.4)] ring-1 ring-neutral-200/90 sm:max-w-[22rem] sm:px-10"
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+        initial={{ scale: 0.94, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+      >
+        <Loader2
+          className="h-12 w-12 animate-spin text-sky-600 drop-shadow-sm motion-reduce:animate-none"
+          aria-hidden
+        />
+        <p className="text-balance text-center text-[0.95rem] font-semibold leading-relaxed text-neutral-800 sm:text-base">
+          <span>{lineBefore}</span>
+          <span className="inline-block min-w-[1.15em] text-left font-bold tabular-nums tracking-tight text-sky-700">
+            {dots}
+          </span>
+          <span>{lineAfter}</span>
+        </p>
+      </motion.div>
+    </motion.div>,
+    document.body
+  );
+}
+
 export default function ChatPhasePage() {
   const router = useRouter();
   const params = useParams();
@@ -106,6 +174,9 @@ export default function ChatPhasePage() {
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  /** 沉淀：表格确认后自动插入的子步引导语（固定模拟流 / LLM 流）进行中 */
+  const [ruminationGuideBusy, setRuminationGuideBusy] = useState(false);
+  const ruminationGuideAbortRef = useRef<AbortController | null>(null);
   const [initLoading, setInitLoading] = useState(true);
   const [threadsFetched, setThreadsFetched] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
@@ -128,8 +199,14 @@ export default function ChatPhasePage() {
   const [ruminationStepBoundaries, setRuminationStepBoundaries] = useState<Record<string, number>>(
     {}
   );
+  const ruminationStepBoundariesRef = useRef<Record<string, number>>({});
+  ruminationStepBoundariesRef.current = ruminationStepBoundaries;
   const [ruminationWorkbenchStacked, setRuminationWorkbenchStacked] = useState(false);
   const [ruminationTableSubmitting, setRuminationTableSubmitting] = useState(false);
+  const [ruminationTableNavLoading, setRuminationTableNavLoading] = useState(false);
+  const [hypothesisRegeneratingRowIndex, setHypothesisRegeneratingRowIndex] = useState<number | null>(
+    null
+  );
   const [ruminationRowContext, setRuminationRowContext] = useState<{
     rowIndex: number;
     label: string;
@@ -818,8 +895,9 @@ export default function ChatPhasePage() {
   }, [phase]);
 
   const loadRuminationTableStep = useCallback(
-    async (step: number, opts?: { resetInitial?: boolean }) => {
-      if (!activationCode || phase !== 'rumination') return;
+    async (step: number, opts?: { resetInitial?: boolean }): Promise<boolean> => {
+      if (!activationCode || phase !== 'rumination') return false;
+      setRuminationTableNavLoading(true);
       try {
         setChatError(null);
         const res = await ruminationApi.getTable(activationCode, step, {
@@ -846,15 +924,19 @@ export default function ChatPhasePage() {
               return nb;
             });
           });
-        } else {
-          setChatError(
-            opts?.resetInitial
-              ? t('explore.chat.ruminationTableRefillEmpty')
-              : t('explore.chat.ruminationTableMissing')
-          );
+          return true;
         }
+        setChatError(
+          opts?.resetInitial
+            ? t('explore.chat.ruminationTableRefillEmpty')
+            : t('explore.chat.ruminationTableMissing')
+        );
+        return false;
       } catch {
         setChatError(t('explore.chat.ruminationTableLoadError'));
+        return false;
+      } finally {
+        setRuminationTableNavLoading(false);
       }
     },
     [activationCode, activeThreadId, phase, t]
@@ -932,7 +1014,8 @@ export default function ChatPhasePage() {
     regenerateRowLabel?: string
   ) => {
     const text = prefill ?? input.trim();
-    if (!activationCode || !text || sending || isReadOnly) return;
+    if (!activationCode || !text || sending || ruminationGuideBusy || isReadOnly) return;
+    if (phase === 'rumination' && ruminationTableNavLoading) return;
     if (!prefill) setInput('');
     const now = Date.now();
     const rowSnap =
@@ -1343,7 +1426,10 @@ export default function ChatPhasePage() {
     })();
   };
 
-  const handleStopStream = () => abortControllerRef.current?.abort();
+  const handleStopStream = () => {
+    abortControllerRef.current?.abort();
+    ruminationGuideAbortRef.current?.abort();
+  };
 
   /** 沉淀表格提交依赖后端 thread_id；历史恢复占位 id 或竞态时需回退到真实会话 id */
   const resolveRuminationTableThreadId = useCallback((): string => {
@@ -1356,13 +1442,138 @@ export default function ChatPhasePage() {
     return activeThreadId || '';
   }, [activeThreadId, backendSyncedThreadId, threads]);
 
+  /** 表格确认成功后：拉取子步引导配置，固定文案前端模拟流式，LLM 走专用流式接口 */
+  const playRuminationStepOpeningAfterSubmit = useCallback(
+    async (newStep: number, threadId: string) => {
+      if (!activationCode || phase !== 'rumination') return;
+      ruminationGuideAbortRef.current?.abort();
+      const ac = new AbortController();
+      ruminationGuideAbortRef.current = ac;
+      const assistantId = `rum_open_${Date.now()}_${newStep}`;
+      let assistantHasVisibleOutput = false;
+
+      let openingRes;
+      try {
+        openingRes = await ruminationApi.getStepOpening(activationCode, newStep);
+      } catch {
+        return;
+      }
+      if (openingRes.code !== 200 || !openingRes.data) return;
+
+      const cfg = openingRes.data;
+      const shouldStreamLlm = cfg.mode === 'llm';
+      const fixedText = cfg.mode === 'fixed' ? (cfg.text || '').trim() : '';
+      if (!shouldStreamLlm && !fixedText) return;
+
+      const now = Date.now();
+      setRuminationGuideBusy(true);
+      setMessages((prev) => [
+        ...prev,
+        { id: assistantId, role: 'assistant', content: '', createdAt: now },
+      ]);
+
+      try {
+        if (cfg.mode === 'fixed' && fixedText) {
+          assistantHasVisibleOutput = true;
+          await simulateFixedRuminationOpening(fixedText, ac.signal, (acc) => {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantId ? { ...m, content: acc } : m))
+            );
+          });
+        } else if (shouldStreamLlm) {
+          await streamRuminationStepOpening(
+            activationCode,
+            newStep,
+            threadId,
+            ac.signal,
+            {
+              onChunk: (delta) => {
+                if (String(delta).trim()) assistantHasVisibleOutput = true;
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId ? { ...m, content: (m.content || '') + delta } : m
+                  )
+                );
+              },
+              onThinkStart: () => {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? { ...m, thinkStreaming: true, thinkChunkContent: '' }
+                      : m
+                  )
+                );
+              },
+              onThinkChunk: (chunk) => {
+                if (chunk) {
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantId ? { ...m, thinkChunkContent: chunk } : m
+                    )
+                  );
+                }
+              },
+              onThinkEnd: () => {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? { ...m, thinkStreaming: false, thinkChunkContent: undefined }
+                      : m
+                  )
+                );
+              },
+              onDone: (full) => {
+                const trimmed = (full || '').trim();
+                if (trimmed) assistantHasVisibleOutput = true;
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? {
+                          ...m,
+                          content: trimmed || m.content,
+                          thinkStreaming: false,
+                          thinkChunkContent: undefined,
+                        }
+                      : m
+                  )
+                );
+              },
+              onError: (msg) => setChatError(msg),
+            },
+            t('explore.chat.streamAuthExpired')
+          );
+        }
+      } catch (e: unknown) {
+        const err = e as { name?: string; message?: string };
+        if (err?.name !== 'AbortError') {
+          setChatError(err?.message || t('explore.chat.ruminationUi.openingGuideError'));
+        }
+      } finally {
+        setRuminationGuideBusy(false);
+        ruminationGuideAbortRef.current = null;
+        if (!assistantHasVisibleOutput) {
+          setMessages((prev) => prev.filter((m) => m.id !== assistantId));
+        } else {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId && m.thinkStreaming
+                ? { ...m, thinkStreaming: false, thinkChunkContent: undefined }
+                : m
+            )
+          );
+        }
+      }
+    },
+    [activationCode, phase, setChatError, setMessages, t]
+  );
+
   const handleTableConfirm = useCallback(
     async (
       _msgId: string,
       payload: NonNullable<ThreadMessage['tablePayload']>,
       rows: Record<string, unknown>[]
     ) => {
-      if (!activationCode || phase !== 'rumination' || sending) return;
+      if (!activationCode || phase !== 'rumination' || sending || ruminationGuideBusy) return;
       const submitThreadId = resolveRuminationTableThreadId();
       if (!submitThreadId.trim()) {
         setChatError(t('explore.chat.ruminationUi.tableSubmitNoThread'));
@@ -1430,11 +1641,13 @@ export default function ChatPhasePage() {
           setRuminationTablePayload(nextTable as ThreadMessage['tablePayload']);
           setRuminationViewStep(newStep);
           setMessages(filtered);
+          queueMicrotask(() => {
+            void playRuminationStepOpeningAfterSubmit(newStep, submitThreadId);
+          });
         } else if (data?.progress?.filter_step != null && data.progress.filter_step >= 1) {
           setRuminationViewStep(Math.min(9, Math.max(1, data.progress.filter_step)));
         }
         setRuminationProgressNonce((n) => n + 1);
-        /* 整表确认后由左侧表格直接进入下一步，不再自动往对话区插入跟进句，避免「一条条弹出」 */
       } catch (err) {
         setChatError(getApiErrorMessage(err, t('explore.chat.ruminationUi.tableSubmitError')));
       } finally {
@@ -1450,6 +1663,8 @@ export default function ChatPhasePage() {
       adminDebugBypass,
       resolveRuminationTableThreadId,
       ruminationViewStep,
+      ruminationGuideBusy,
+      playRuminationStepOpeningAfterSubmit,
       t,
     ]
   );
@@ -1461,11 +1676,31 @@ export default function ChatPhasePage() {
   }, [ruminationViewStep, ruminationProgressState]);
 
   const handleRuminationFilterPrev = useCallback(() => {
-    if (ruminationViewStep <= 1) return;
+    if (
+      ruminationViewStep <= 1 ||
+      ruminationGuideBusy ||
+      ruminationTableNavLoading ||
+      hypothesisRegeneratingRowIndex !== null
+    ) {
+      return;
+    }
     void loadRuminationTableStep(ruminationViewStep - 1);
-  }, [ruminationViewStep, loadRuminationTableStep]);
+  }, [
+    ruminationViewStep,
+    loadRuminationTableStep,
+    ruminationGuideBusy,
+    ruminationTableNavLoading,
+    hypothesisRegeneratingRowIndex,
+  ]);
 
   const handleRuminationFilterNext = useCallback(() => {
+    if (
+      ruminationGuideBusy ||
+      ruminationTableNavLoading ||
+      hypothesisRegeneratingRowIndex !== null
+    ) {
+      return;
+    }
     const fs = ruminationProgressState?.filter_step ?? 0;
     const furthest = Math.max(ruminationMaxReached, fs, 1);
     if (ruminationViewStep >= furthest) return;
@@ -1475,11 +1710,96 @@ export default function ChatPhasePage() {
     ruminationMaxReached,
     ruminationProgressState?.filter_step,
     loadRuminationTableStep,
+    ruminationGuideBusy,
+    ruminationTableNavLoading,
+    hypothesisRegeneratingRowIndex,
   ]);
 
+  const handleHypothesisRegenerateRow = useCallback(
+    async (rowIdx: number, rowId: string) => {
+      if (!activationCode || phase !== 'rumination') return;
+      const filterStep = ruminationTablePayload?.step ?? ruminationViewStep;
+      if (filterStep < 3 || filterStep > 5) return;
+      setHypothesisRegeneratingRowIndex(rowIdx);
+      setChatError(null);
+      try {
+        const res = await ruminationApi.regenerateHypotheses(activationCode, filterStep, rowId);
+        if (res.code !== 200 || !res.data?.table_widget) {
+          setChatError(
+            res.message || t('explore.chat.ruminationUi.hypothesisRegenerateError')
+          );
+          return;
+        }
+        setRuminationTablePayload(res.data.table_widget as ThreadMessage['tablePayload']);
+        if (res.data.progress) setRuminationProgressState(res.data.progress);
+        if (typeof res.data.max_reached_filter_step === 'number') {
+          setRuminationMaxReached(res.data.max_reached_filter_step);
+        } else if (res.data.progress) {
+          setRuminationMaxReached(computeMaxReachedFromSnapshots(res.data.progress));
+        }
+        setRuminationProgressNonce((n) => n + 1);
+      } catch (err) {
+        setChatError(
+          getApiErrorMessage(err, t('explore.chat.ruminationUi.hypothesisRegenerateError'))
+        );
+      } finally {
+        setHypothesisRegeneratingRowIndex(null);
+      }
+    },
+    [
+      activationCode,
+      phase,
+      ruminationTablePayload?.step,
+      ruminationViewStep,
+      t,
+    ]
+  );
+
   const handleRuminationRefill = useCallback(() => {
-    void loadRuminationTableStep(ruminationViewStep, { resetInitial: true });
-  }, [ruminationViewStep, loadRuminationTableStep]);
+    if (!activationCode || phase !== 'rumination' || !activeThreadId) return;
+    if (
+      ruminationTableNavLoading ||
+      ruminationTableSubmitting ||
+      hypothesisRegeneratingRowIndex !== null
+    ) {
+      return;
+    }
+    ruminationGuideAbortRef.current?.abort();
+    ruminationGuideAbortRef.current = null;
+    setRuminationGuideBusy(false);
+    setInput('');
+    setChatError(null);
+    void (async () => {
+      const ok = await loadRuminationTableStep(ruminationViewStep, { resetInitial: true });
+      if (!ok) return;
+      const cut = cutMessagesForRuminationStepRefill(
+        messagesRef.current,
+        ruminationViewStep,
+        ruminationStepBoundariesRef.current
+      );
+      setMessages(cut.messages);
+      setRuminationStepBoundaries(cut.boundaries);
+      saveRuminationStepBoundaries(activationCode, activeThreadId, cut.boundaries);
+      const th = threads.find((t) => t.id === activeThreadId);
+      if (th) {
+        const updated: ChatThread = { ...th, messages: cut.messages };
+        saveThread(activationCode, phase, updated);
+        setThreads((prev) =>
+          prev.map((t) => (t.id === activeThreadId ? updated : t))
+        );
+      }
+    })();
+  }, [
+    activationCode,
+    activeThreadId,
+    loadRuminationTableStep,
+    phase,
+    ruminationTableNavLoading,
+    ruminationTableSubmitting,
+    hypothesisRegeneratingRowIndex,
+    ruminationViewStep,
+    threads,
+  ]);
 
   const phaseClass =
     phase === 'values'
@@ -1570,14 +1890,30 @@ export default function ChatPhasePage() {
                     refreshNonce={ruminationProgressNonce}
                     externalProgressOnly
                     serverProgress={ruminationProgressState}
+                    viewFilterStep={
+                      ruminationShowFilterStepNav ? ruminationViewStep : null
+                    }
                     filterStepNav={
                       ruminationShowFilterStepNav
                         ? {
                             onPrev: handleRuminationFilterPrev,
                             onNext: handleRuminationFilterNext,
-                            prevDisabled: ruminationViewStep <= 1 || sending,
+                            prevDisabled:
+                              ruminationViewStep <= 1 ||
+                              sending ||
+                              ruminationGuideBusy ||
+                              ruminationTableNavLoading ||
+                              hypothesisRegeneratingRowIndex !== null,
                             nextDisabled:
-                              sending || ruminationViewStep >= ruminationFurthestNavigableStep,
+                              sending ||
+                              ruminationGuideBusy ||
+                              ruminationTableNavLoading ||
+                              hypothesisRegeneratingRowIndex !== null ||
+                              ruminationViewStep >= ruminationFurthestNavigableStep,
+                            hidePrev: ruminationViewStep <= 1,
+                            hideNext:
+                              ruminationViewStep >= 9 ||
+                              ruminationTablePayload?.step === 9,
                           }
                         : undefined
                     }
@@ -1590,10 +1926,23 @@ export default function ChatPhasePage() {
             ref={phase === 'rumination' ? ruminationWorkbenchRef : undefined}
             className={`flex min-h-0 min-w-0 flex-1 ${
               phase === 'rumination'
-                ? `rumination-workbench flex w-full min-h-0 gap-4 px-3 pb-3 sm:gap-6 sm:px-6 ${ruminationWorkbenchStacked ? 'flex-col' : 'flex-row'}`
+                ? `relative rumination-workbench flex w-full min-h-0 gap-4 px-3 pb-3 sm:gap-6 sm:px-6 ${ruminationWorkbenchStacked ? 'flex-col' : 'flex-row'}`
                 : 'flex-col'
             }`}
           >
+            {phase === 'rumination' && ruminationTableNavLoading && (
+              <div
+                className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 rounded-xl bg-white/45 px-4 text-center text-sm font-medium text-neutral-700 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.6)] backdrop-blur-sm"
+                role="status"
+                aria-live="polite"
+                aria-busy="true"
+              >
+                <Loader2 className="h-8 w-8 shrink-0 animate-spin text-sky-600" aria-hidden />
+                <span className="max-w-xs leading-snug">
+                  {t('explore.chat.ruminationUi.tableNavLoading')}
+                </span>
+              </div>
+            )}
             {phase === 'rumination' && (
               <aside
                 className={`rumination-beautiful-card flex min-h-0 min-w-0 flex-col overflow-hidden py-4 pl-4 pr-3 sm:min-h-[min(52vh,560px)] sm:py-5 sm:pl-5 sm:pr-4 ${
@@ -1611,7 +1960,23 @@ export default function ChatPhasePage() {
                     refillLabel={t('explore.chat.ruminationTable.refill')}
                     selectPlaceholder={t('explore.chat.ruminationUi.tableSelectPlaceholder')}
                     inputPlaceholder={t('explore.chat.ruminationUi.tableInputPlaceholder')}
-                    loadingLabel={t('explore.chat.ruminationUi.tableSubmitting')}
+                    validationEmptyHint={t('explore.chat.ruminationUi.tableValidationEmptyHint')}
+                    hypothesisRegenerateHint={t(
+                      'explore.chat.ruminationUi.hypothesisRegenerateHint'
+                    )}
+                    hypothesisTagFreelanceLabel={t(
+                      'explore.chat.ruminationUi.hypothesisTagFreelance'
+                    )}
+                    hypothesisTagCompanyLabel={t(
+                      'explore.chat.ruminationUi.hypothesisTagCompany'
+                    )}
+                    hypothesisTagExtraLabel={t('explore.chat.ruminationUi.hypothesisTagExtra')}
+                    hypothesisRegenerateLabel={t('explore.chat.ruminationUi.hypothesisRegenerate')}
+                    hypothesisRegeneratingLabel={t(
+                      'explore.chat.ruminationUi.hypothesisRegenerating'
+                    )}
+                    hypothesisRegeneratingRowIndex={hypothesisRegeneratingRowIndex}
+                    onHypothesisRegenerate={handleHypothesisRegenerateRow}
                     tableRefillMode={ruminationStepHasSubmitted}
                     onRefill={handleRuminationRefill}
                     onRowContextChange={setRuminationRowContext}
@@ -1619,7 +1984,13 @@ export default function ChatPhasePage() {
                     onConfirm={(rows) =>
                       handleTableConfirm('rumination_left_panel', ruminationTablePayload, rows)
                     }
-                    disabled={sending || ruminationTableSubmitting}
+                    disabled={
+                      sending ||
+                      ruminationTableSubmitting ||
+                      ruminationGuideBusy ||
+                      ruminationTableNavLoading ||
+                      hypothesisRegeneratingRowIndex !== null
+                    }
                   />
                 ) : (
                   <div className="flex min-h-0 flex-1 flex-col items-center justify-center py-10 text-center">
@@ -1862,7 +2233,10 @@ export default function ChatPhasePage() {
                                 : undefined
                           }
                           careeringAiRoleLabel={t('explore.chat.careeringAiRole')}
-                          streaming={sending && idx === displayMessages.length - 1}
+                          streaming={
+                            (sending || ruminationGuideBusy) &&
+                            idx === displayMessages.length - 1
+                          }
                           thinkStreaming={m.thinkStreaming}
                           thinkChunkContent={m.thinkChunkContent}
                           thinkPlaceholders={[
@@ -1934,7 +2308,12 @@ export default function ChatPhasePage() {
             >
               <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="w-full">
                 <div
-                  className={`flow-input-box${phaseInteractionLocked && !sending ? ' opacity-40 pointer-events-none' : ''}`}
+                  className={`flow-input-box${
+                    (phaseInteractionLocked && !sending && !ruminationGuideBusy) ||
+                    (phase === 'rumination' && ruminationTableNavLoading && !sending)
+                      ? ' opacity-40 pointer-events-none'
+                      : ''
+                  }`}
                 >
                   <textarea
                     ref={inputRef}
@@ -1943,7 +2322,14 @@ export default function ChatPhasePage() {
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
-                        if (!sending && !isReadOnly) handleSend();
+                        if (
+                          !sending &&
+                          !ruminationGuideBusy &&
+                          !isReadOnly &&
+                          !(phase === 'rumination' && ruminationTableNavLoading)
+                        ) {
+                          handleSend();
+                        }
                       }
                     }}
                     placeholder={
@@ -1958,18 +2344,37 @@ export default function ChatPhasePage() {
                             : t('explore.chat.inputPlaceholderCareering')
                     }
                     rows={1}
-                    disabled={sending || isReadOnly}
+                    disabled={
+                      sending ||
+                      ruminationGuideBusy ||
+                      isReadOnly ||
+                      (phase === 'rumination' && ruminationTableNavLoading)
+                    }
                     className="flow-input-field"
                   />
                   <div className="flow-send-btn-wrap">
-                    {sending && <div className="flow-send-glow" aria-hidden />}
+                    {(sending || ruminationGuideBusy) && (
+                      <div className="flow-send-glow" aria-hidden />
+                    )}
                     <button
                       type="button"
-                      onClick={sending ? handleStopStream : () => handleSend()}
-                      disabled={((!sending && !input.trim()) || isReadOnly) as boolean}
-                      className={`flow-send-btn ${sending ? 'is-stop' : ''}`}
+                      onClick={
+                        sending || ruminationGuideBusy ? handleStopStream : () => handleSend()
+                      }
+                      disabled={
+                        (isReadOnly ||
+                          (!sending &&
+                            !ruminationGuideBusy &&
+                            (!input.trim() ||
+                              (phase === 'rumination' && ruminationTableNavLoading)))) as boolean
+                      }
+                      className={`flow-send-btn ${sending || ruminationGuideBusy ? 'is-stop' : ''}`}
                     >
-                      {sending ? <Square size={16} strokeWidth={0} fill="white" /> : <ArrowUp size={16} strokeWidth={2.2} />}
+                      {sending || ruminationGuideBusy ? (
+                        <Square size={16} strokeWidth={0} fill="white" />
+                      ) : (
+                        <ArrowUp size={16} strokeWidth={2.2} />
+                      )}
                     </button>
                   </div>
                 </div>
@@ -1981,6 +2386,13 @@ export default function ChatPhasePage() {
         </div>
       </div>
       </div>
+      {phase === 'rumination' && (
+        <RuminationTableSubmitPortal
+          open={ruminationTableSubmitting}
+          lineBefore={t('explore.chat.ruminationUi.tableSubmittingOrganizing')}
+          lineAfter={t('explore.chat.ruminationUi.tableSubmittingWait')}
+        />
+      )}
     </div>
   );
 }

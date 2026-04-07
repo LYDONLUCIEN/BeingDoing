@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback, useEffect, type MouseEvent } from 'react';
+import { useState, useCallback, useEffect, useRef, type MouseEvent } from 'react';
+import { Loader2, RefreshCw } from 'lucide-react';
 
 const HYP_CONFIRM_KEY = '用户确认的假设';
 const OTHER_SELECT_VALUE = '__RUMINATION_OTHER__';
@@ -42,9 +43,13 @@ interface RuminationTableWidgetProps {
   onRefill?: () => void;
   selectPlaceholder?: string;
   inputPlaceholder?: string;
-  /** 提交表格时遮罩文案 */
+  /** 提交表格时遮罩文案（仅 embeddedSubmitOverlay 为 true 时使用） */
   loadingLabel?: string;
   submitting?: boolean;
+  /** 为 true 时在表格外壳内显示提交遮罩；默认 false（由页面全屏遮罩承担） */
+  embeddedSubmitOverlay?: boolean;
+  /** 存在未填项时点确认的提示（显著横幅） */
+  validationEmptyHint?: string;
   /** 选中行摘要，用于输入框上下文 */
   onRowContextChange?: (ctx: { rowIndex: number; label: string } | null) => void;
   /** 假设确认列：「待定」文案 */
@@ -55,6 +60,19 @@ interface RuminationTableWidgetProps {
   otherTextPlaceholder?: string;
   /** 为 true 时隐藏表头「确认」按钮（如第 9 步改由对话/结论卡确认） */
   hideConfirmButton?: boolean;
+  /** 假设列：假设1 侧色块标签（个人事业向） */
+  hypothesisTagFreelanceLabel?: string;
+  /** 假设列：假设2 侧色块标签（职业路径向） */
+  hypothesisTagCompanyLabel?: string;
+  /** 假设列：第三条等额外假设的标签 */
+  hypothesisTagExtraLabel?: string;
+  /** 子步 3–5：重新生成本行两条假设 */
+  hypothesisRegenerateLabel?: string;
+  hypothesisRegeneratingLabel?: string;
+  /** 右上角重新生成图标的悬停说明 */
+  hypothesisRegenerateHint?: string;
+  hypothesisRegeneratingRowIndex?: number | null;
+  onHypothesisRegenerate?: (rowIndex: number, rowId: string) => void | Promise<void>;
 }
 
 export default function RuminationTableWidget({
@@ -77,12 +95,28 @@ export default function RuminationTableWidget({
   hypothesisOtherLabel = '其他',
   otherTextPlaceholder = '请填写自定义内容…',
   hideConfirmButton = false,
+  hypothesisTagFreelanceLabel = '个人事业',
+  hypothesisTagCompanyLabel = '职业路径',
+  hypothesisTagExtraLabel = '备选',
+  hypothesisRegenerateLabel = '重新生成',
+  hypothesisRegeneratingLabel = '生成中…',
+  hypothesisRegenerateHint = '重新生成本行的假设选项',
+  hypothesisRegeneratingRowIndex = null,
+  onHypothesisRegenerate,
+  embeddedSubmitOverlay = false,
+  validationEmptyHint,
 }: RuminationTableWidgetProps) {
   const [rows, setRows] = useState<Record<string, unknown>[]>(
     () => JSON.parse(JSON.stringify(payload.rows)) || []
   );
   /** glass：当前高亮行；null 表示未选中（再点同一行可取消） */
   const [selectedRowIdx, setSelectedRowIdx] = useState<number | null>(0);
+  const [validationBanner, setValidationBanner] = useState(false);
+  /** 校验动画：与单元格 class 绑定，动画结束后清空 */
+  const [validationFlashKey, setValidationFlashKey] = useState<string | null>(null);
+  const [validationCycle, setValidationCycle] = useState(0);
+  const [hypOtherDraftByKey, setHypOtherDraftByKey] = useState<Record<string, string>>({});
+  const cellWrapRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
 
   const rowsPayloadSig = JSON.stringify(payload.rows ?? []);
   useEffect(() => {
@@ -104,6 +138,14 @@ export default function RuminationTableWidget({
     setSelectedRowIdx(Math.min(Math.max(0, c), n - 1));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 故意不依赖 payload.rows 全文
   }, [payload.step, payload.rowCursor, payload.totalRows, payload.rows?.length]);
+
+  const setCellWrapRef = useCallback((rowIdx: number, colKey: string) => {
+    const key = `${rowIdx}:${colKey}`;
+    return (el: HTMLDivElement | null) => {
+      if (el) cellWrapRefs.current.set(key, el);
+      else cellWrapRefs.current.delete(key);
+    };
+  }, []);
 
   const handleGlassRowActivate = useCallback((rowIdx: number) => {
     setSelectedRowIdx((prev) => (prev === rowIdx ? null : rowIdx));
@@ -129,9 +171,13 @@ export default function RuminationTableWidget({
   }, [selectedRowIdx, rows, payload.columns, onRowContextChange]);
 
   const editableSet = new Set(payload.editableCols || []);
+  const filterStep = payload.step ?? 0;
 
-  const colMinWidth = (col: RuminationTableColumn) =>
-    Math.min(320, Math.max(112, 12 + (col.label?.length ?? 0) * 14));
+  const colMinWidth = (col: RuminationTableColumn) => {
+    if (col.key === 'id') return 40;
+    const labelLen = col.label?.length ?? 0;
+    return Math.min(220, Math.max(76, 8 + labelLen * 11));
+  };
 
   const handleCellChange = useCallback((rowIdx: number, colKey: string, value: unknown) => {
     setRows((prev) => {
@@ -142,13 +188,105 @@ export default function RuminationTableWidget({
     });
   }, []);
 
-  /** 「请选择」仅作空值 label，不得出现在可选项里（含后端误下发的选项） */
-  const optionsWithoutPlaceholder = useCallback(
-    (opts: string[]) => opts.filter((o) => o !== selectPlaceholder && String(o).trim() !== ''),
-    [selectPlaceholder]
+  const normalizeOptionText = useCallback((s: unknown) => {
+    return String(s)
+      .replace(/[\u200B-\u200D\uFEFF]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }, []);
+
+  const isPlaceholderToken = useCallback(
+    (s: string) => {
+      const t = normalizeOptionText(s);
+      if (!t) return true;
+      const ph = normalizeOptionText(selectPlaceholder);
+      if (t === ph || t.toLowerCase() === ph.toLowerCase()) return true;
+      if (/^请\s*选\s*择$/.test(t) || /^請\s*選\s*擇$/.test(t)) return true;
+      if (['请选择', '请選擇', '請選擇', '选择', '選擇'].includes(t)) return true;
+      const lower = t.toLowerCase();
+      if (
+        [
+          'select',
+          'choose',
+          'please select',
+          'please choose',
+          '--',
+          '—',
+          '-',
+          'placeholder',
+        ].includes(lower)
+      ) {
+        return true;
+      }
+      return false;
+    },
+    [normalizeOptionText, selectPlaceholder]
   );
 
+  /** 占位文案不得作为真实选项（含后端误下发的「请选择」及空白项） */
+  const optionsWithoutPlaceholder = useCallback(
+    (opts: string[]) =>
+      (opts ?? []).filter((o) => {
+        const n = normalizeOptionText(o);
+        return n.length > 0 && !isPlaceholderToken(n);
+      }),
+    [isPlaceholderToken, normalizeOptionText]
+  );
+
+  const findFirstInvalidCell = useCallback((): { rowIdx: number; colKey: string } | null => {
+    const cols = payload.columns || [];
+    for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+      const row = rows[rowIdx];
+      for (const col of cols) {
+        if (!editableSet.has(col.key)) continue;
+        const raw = row[col.key];
+        const strVal = raw != null ? String(raw).trim() : '';
+
+        if (
+          col.key === HYP_CONFIRM_KEY &&
+          filterStep >= 3 &&
+          filterStep <= 5
+        ) {
+          if (!strVal || isPlaceholderToken(strVal)) return { rowIdx, colKey: col.key };
+          if (strVal === OTHER_SELECT_VALUE) return { rowIdx, colKey: col.key };
+          continue;
+        }
+
+        if (col.options?.includes(hypothesisOtherLabel)) {
+          if (!strVal || isPlaceholderToken(strVal)) return { rowIdx, colKey: col.key };
+          if (strVal === OTHER_SELECT_VALUE) return { rowIdx, colKey: col.key };
+          continue;
+        }
+
+        if (col.options?.length) {
+          if (!strVal || isPlaceholderToken(strVal)) return { rowIdx, colKey: col.key };
+          continue;
+        }
+
+        if (!strVal || isPlaceholderToken(strVal)) return { rowIdx, colKey: col.key };
+      }
+    }
+    return null;
+  }, [rows, payload.columns, editableSet, filterStep, hypothesisOtherLabel, isPlaceholderToken]);
+
   const handleConfirm = useCallback(() => {
+    setValidationBanner(false);
+    setValidationFlashKey(null);
+    const bad = findFirstInvalidCell();
+    if (bad) {
+      const key = `${bad.rowIdx}:${bad.colKey}`;
+      setValidationCycle((c) => c + 1);
+      setValidationBanner(true);
+      setValidationFlashKey(key);
+      requestAnimationFrame(() => {
+        cellWrapRefs.current.get(key)?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'nearest',
+        });
+      });
+      return;
+    }
     const sanitized = rows.map((row) => {
       const next = { ...row };
       for (const k of Object.keys(next)) {
@@ -157,7 +295,7 @@ export default function RuminationTableWidget({
       return next;
     });
     onConfirm(sanitized);
-  }, [rows, onConfirm]);
+  }, [rows, onConfirm, findFirstInvalidCell]);
 
   if (!payload.columns?.length) return null;
 
@@ -190,8 +328,6 @@ export default function RuminationTableWidget({
   const selectArrowSvg =
     'url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2220%22 height=%2220%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%236b7280%22 stroke-width=%222%22%3E%3Cpolyline points=%226 9 12 15 18 9%22/%3E%3C/svg%3E")';
 
-  const filterStep = payload.step ?? 0;
-
   const selectShellClass = isGlass
     ? 'rumination-glass-select w-full min-w-[120px] appearance-none px-2 py-1.5 pr-8 text-sm border border-neutral-200/90 rounded-lg bg-white/80 focus:ring-2 focus:ring-[rgba(145,194,255,0.55)] focus:border-[#91C2FF]/80'
     : 'w-full min-w-[120px] px-2 py-1 text-sm border border-neutral-200 rounded-md bg-white focus:ring-2 focus:ring-sky-300/50 focus:border-sky-400/70';
@@ -209,66 +345,204 @@ export default function RuminationTableWidget({
     ? 'w-full min-h-[2.75rem] min-w-[100px] resize-y px-2 py-1.5 text-sm leading-snug border border-neutral-200/90 rounded-lg bg-white/80 focus:ring-2 focus:ring-[rgba(145,194,255,0.55)] break-words whitespace-pre-wrap'
     : 'w-full min-w-[100px] px-2 py-1 text-sm border border-neutral-200 rounded-md focus:ring-2 focus:ring-sky-300/50 focus:border-sky-400/70';
 
-  /** 从假设1–3 去重得到下拉项，并附「待定」「其他」 */
-  const hypothesisPresetForRow = (row: Record<string, unknown>) => {
-    const raw = ['假设1', '假设2', '假设3']
-      .map((k) => String(row[k] ?? '').trim())
-      .filter(Boolean)
-      .filter((p) => p !== selectPlaceholder);
-    return [...new Set(raw)];
+  type HypTagKind = 'freelance' | 'company' | 'extra';
+
+  const tagLabels: Record<HypTagKind, string> = {
+    freelance: hypothesisTagFreelanceLabel,
+    company: hypothesisTagCompanyLabel,
+    extra: hypothesisTagExtraLabel,
   };
 
+  const tagPillClass = (tag: HypTagKind) =>
+    tag === 'freelance'
+      ? 'bg-sky-500 text-white'
+      : tag === 'company'
+        ? 'bg-violet-500 text-white'
+        : 'bg-teal-600 text-white';
+
+  const renderHypothesisTag = (tag: HypTagKind) => (
+    <span
+      className={`inline-flex max-w-[5.5rem] shrink-0 items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold leading-tight ${tagPillClass(tag)}`}
+    >
+      {tagLabels[tag]}
+    </span>
+  );
+
   const renderHypothesisConfirmCell = (row: Record<string, unknown>, rowIdx: number, strVal: string) => {
-    const presets = hypothesisPresetForRow(row);
-    const fixedChoices = [
-      ...presets,
-      ...(hypothesisPendingLabel !== selectPlaceholder ? [hypothesisPendingLabel] : []),
-    ];
-    const known = new Set(fixedChoices);
-    const selectVal =
-      strVal === ''
-        ? ''
-        : strVal === OTHER_SELECT_VALUE
-          ? OTHER_SELECT_VALUE
-          : known.has(strVal)
-            ? strVal
-            : OTHER_SELECT_VALUE;
-    const otherTextareaValue = strVal === OTHER_SELECT_VALUE ? '' : strVal;
+    const h1 = String(row['假设1'] ?? '').trim();
+    const h2 = String(row['假设2'] ?? '').trim();
+    const h3 = String(row['假设3'] ?? '').trim();
+    const pendingOk =
+      hypothesisPendingLabel && !isPlaceholderToken(hypothesisPendingLabel);
+
+    type HypPick = 'h1' | 'h2' | 'h3' | 'pending' | 'other' | '';
+    let active: HypPick = '';
+    if (strVal === OTHER_SELECT_VALUE) active = 'other';
+    else if (!strVal) active = '';
+    else if (pendingOk && strVal === hypothesisPendingLabel) active = 'pending';
+    else if (h1 && strVal === h1) active = 'h1';
+    else if (h2 && strVal === h2) active = 'h2';
+    else if (h3 && strVal === h3) active = 'h3';
+    else active = 'other';
+
+    const draftKey = `h${filterStep}-${rowIdx}`;
+    const storedDraft = hypOtherDraftByKey[draftKey] ?? '';
+    const otherInputValue =
+      active === 'other'
+        ? strVal === OTHER_SELECT_VALUE
+          ? storedDraft
+          : strVal
+        : storedDraft;
 
     const stopRow = (e: MouseEvent) => {
       if (isGlass) e.stopPropagation();
     };
 
+    const radioName = `rumination-hyp-${filterStep}-${rowIdx}`;
+    const radioBase =
+      'h-4 w-4 shrink-0 border-neutral-300 text-sky-600 focus:ring-2 focus:ring-sky-500/40';
+
+    const lineCls =
+      'flex cursor-pointer items-center gap-2 rounded-lg py-1.5 pr-1 transition-colors hover:bg-white/45';
+
+    const persistOtherDraftFromCell = () => {
+      if (active !== 'other') return;
+      if (strVal && strVal !== OTHER_SELECT_VALUE) {
+        setHypOtherDraftByKey((p) => ({ ...p, [draftKey]: strVal }));
+      } else if (storedDraft.trim()) {
+        setHypOtherDraftByKey((p) => ({ ...p, [draftKey]: storedDraft }));
+      }
+    };
+
+    const setChoice = (pick: HypPick) => {
+      if (pick !== 'other') persistOtherDraftFromCell();
+      if (pick === 'h1' && h1) handleCellChange(rowIdx, HYP_CONFIRM_KEY, h1);
+      else if (pick === 'h2' && h2) handleCellChange(rowIdx, HYP_CONFIRM_KEY, h2);
+      else if (pick === 'h3' && h3) handleCellChange(rowIdx, HYP_CONFIRM_KEY, h3);
+      else if (pick === 'pending' && pendingOk) {
+        handleCellChange(rowIdx, HYP_CONFIRM_KEY, hypothesisPendingLabel);
+      } else if (pick === 'other') {
+        const fromCell =
+          strVal && strVal !== OTHER_SELECT_VALUE ? strVal : '';
+        const d = (fromCell || hypOtherDraftByKey[draftKey] || '').trim();
+        if (d) handleCellChange(rowIdx, HYP_CONFIRM_KEY, d);
+        else handleCellChange(rowIdx, HYP_CONFIRM_KEY, OTHER_SELECT_VALUE);
+      }
+    };
+
+    const hypLines: { key: HypPick; tag: HypTagKind; text: string; show: boolean }[] = [
+      { key: 'h1', tag: 'freelance', text: h1, show: !!h1 },
+      { key: 'h2', tag: 'company', text: h2, show: !!h2 },
+      { key: 'h3', tag: 'extra', text: h3, show: !!h3 },
+    ];
+
     return (
-      <div className="space-y-2" onMouseDown={stopRow} onClick={stopRow}>
-        <select
-          value={selectVal}
-          disabled={disabled}
-          onChange={(e) => {
-            const v = e.target.value;
-            if (v === OTHER_SELECT_VALUE) handleCellChange(rowIdx, HYP_CONFIRM_KEY, OTHER_SELECT_VALUE);
-            else handleCellChange(rowIdx, HYP_CONFIRM_KEY, v);
-          }}
-          className={selectShellClass}
-          style={selectArrowStyle}
-        >
-          <option value="">{selectPlaceholder}</option>
-          {fixedChoices.map((opt) => (
-            <option key={opt} value={opt} title={opt}>
-              {opt.length > 72 ? `${opt.slice(0, 69)}…` : opt}
-            </option>
-          ))}
-          <option value={OTHER_SELECT_VALUE}>{hypothesisOtherLabel}</option>
-        </select>
-        {selectVal === OTHER_SELECT_VALUE && (
-          <textarea
-            value={otherTextareaValue}
+      <div
+        className="relative min-w-[200px] space-y-0.5 pb-2 pl-0.5 pr-8 pt-8"
+        onMouseDown={stopRow}
+        onClick={stopRow}
+      >
+        {hypothesisRegeneratingRowIndex === rowIdx && (
+          <div
+            className="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-white/70 backdrop-blur-sm"
+            aria-busy="true"
+            aria-live="polite"
+          >
+            <Loader2 className="h-7 w-7 animate-spin text-sky-600" aria-hidden />
+          </div>
+        )}
+
+        {hypLines.map(
+          (line) =>
+            line.show && (
+              <label key={line.key} className={lineCls} onClick={stopRow}>
+                <input
+                  type="radio"
+                  name={radioName}
+                  className={radioBase}
+                  checked={active === line.key}
+                  disabled={disabled}
+                  onMouseDown={(e) => isGlass && e.stopPropagation()}
+                  onChange={() => setChoice(line.key)}
+                />
+                {renderHypothesisTag(line.tag)}
+                <span className="min-w-0 flex-1 break-words text-sm leading-relaxed text-neutral-800">
+                  {line.text}
+                </span>
+              </label>
+            )
+        )}
+
+        {pendingOk && (
+          <label className={lineCls} onClick={stopRow}>
+            <input
+              type="radio"
+              name={radioName}
+              className={radioBase}
+              checked={active === 'pending'}
+              disabled={disabled}
+              onMouseDown={(e) => isGlass && e.stopPropagation()}
+              onChange={() => setChoice('pending')}
+            />
+            <span className="inline-flex max-w-[5.5rem] shrink-0 items-center rounded-md bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold leading-tight text-white">
+              {hypothesisPendingLabel}
+            </span>
+            <span className="min-w-0 flex-1 text-sm text-neutral-500">—</span>
+          </label>
+        )}
+
+        <label className={`${lineCls} items-center`} onClick={stopRow}>
+          <input
+            type="radio"
+            name={radioName}
+            className={radioBase}
+            checked={active === 'other'}
             disabled={disabled}
-            onChange={(e) => handleCellChange(rowIdx, HYP_CONFIRM_KEY, e.target.value)}
-            placeholder={otherTextPlaceholder}
-            rows={2}
-            className={textareaShellClass}
+            onMouseDown={(e) => isGlass && e.stopPropagation()}
+            onChange={() => setChoice('other')}
           />
+          <span className="inline-flex max-w-[5.5rem] shrink-0 items-center rounded-md bg-slate-500 px-1.5 py-0.5 text-[10px] font-semibold leading-tight text-white">
+            {hypothesisOtherLabel}
+          </span>
+          <input
+            type="text"
+            value={otherInputValue}
+            disabled={disabled || active !== 'other'}
+            placeholder={otherTextPlaceholder}
+            onMouseDown={(e) => isGlass && e.stopPropagation()}
+            onClick={(e) => isGlass && e.stopPropagation()}
+            onChange={(e) => {
+              const v = e.target.value;
+              setHypOtherDraftByKey((p) => ({ ...p, [draftKey]: v }));
+              if (active === 'other') {
+                if (v === '') handleCellChange(rowIdx, HYP_CONFIRM_KEY, OTHER_SELECT_VALUE);
+                else handleCellChange(rowIdx, HYP_CONFIRM_KEY, v);
+              }
+            }}
+            className={
+              isGlass
+                ? 'min-w-0 flex-1 rounded-lg border border-neutral-200/90 bg-white/80 px-2 py-1.5 text-sm focus:border-[#91C2FF]/80 focus:outline-none focus:ring-2 focus:ring-[rgba(145,194,255,0.55)]'
+                : 'min-w-0 flex-1 rounded-md border border-neutral-200 px-2 py-1 text-sm focus:border-sky-400/70 focus:outline-none focus:ring-2 focus:ring-sky-300/50'
+            }
+          />
+        </label>
+
+        {onHypothesisRegenerate && filterStep >= 3 && filterStep <= 5 && (
+          <button
+            type="button"
+            title={hypothesisRegenerateHint}
+            aria-label={hypothesisRegenerateHint}
+            disabled={disabled || hypothesisRegeneratingRowIndex === rowIdx}
+            className="absolute right-0 top-0 rounded-lg p-1.5 text-sky-600 transition-colors hover:bg-sky-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+            onMouseDown={(e) => isGlass && e.stopPropagation()}
+            onClick={(e) => {
+              if (isGlass) e.stopPropagation();
+              const rid = String(row.id ?? rowIdx);
+              void onHypothesisRegenerate(rowIdx, rid);
+            }}
+          >
+            <RefreshCw className="h-4 w-4" aria-hidden />
+          </button>
         )}
       </div>
     );
@@ -281,7 +555,9 @@ export default function RuminationTableWidget({
     strVal: string,
     otherLabel: string,
   ) => {
-    const opts = optionsWithoutPlaceholder(col.options ?? []);
+    const opts = optionsWithoutPlaceholder(col.options ?? []).filter(
+      (o) => !isPlaceholderToken(normalizeOptionText(o))
+    );
     const rest = opts.filter((o) => o !== otherLabel);
     const known = new Set(opts);
     const selectVal =
@@ -312,11 +588,13 @@ export default function RuminationTableWidget({
           style={selectArrowStyle}
         >
           <option value="">{selectPlaceholder}</option>
-          {rest.map((opt) => (
-            <option key={opt} value={opt} title={opt}>
-              {opt.length > 72 ? `${opt.slice(0, 69)}…` : opt}
-            </option>
-          ))}
+          {rest
+            .filter((opt) => !isPlaceholderToken(normalizeOptionText(opt)))
+            .map((opt) => (
+              <option key={opt} value={opt} title={opt}>
+                {opt.length > 72 ? `${opt.slice(0, 69)}…` : opt}
+              </option>
+            ))}
           <option value={OTHER_SELECT_VALUE}>{otherLabel}</option>
         </select>
         {selectVal === OTHER_SELECT_VALUE && (
@@ -333,36 +611,22 @@ export default function RuminationTableWidget({
     );
   };
 
-  const tableBlock = (
-    <div
-      className={
-        isGlass
-          ? 'rumination-beautiful-table-scroll rumination-beautiful-table-widget relative min-h-0 flex-1 overflow-x-auto overflow-y-auto rounded-xl border border-neutral-300/50 bg-white/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]'
-          : 'relative overflow-x-auto overflow-y-auto max-h-[320px] rounded-lg border border-neutral-100'
-      }
-    >
-      {isGlass && submitting && (
-        <div
-          className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-white/35 backdrop-blur-[24px]"
-          aria-live="polite"
-          aria-busy="true"
-        >
-          <span className="rounded-full bg-white/80 px-4 py-2 text-sm font-medium text-neutral-700 shadow-sm">
-            {loadingLabel}
-          </span>
-        </div>
-      )}
-      <table className="w-max min-w-full text-sm border-separate border-spacing-0 table-auto">
+  const tableInner = (
+    <table className="w-max min-w-full text-sm border-separate border-spacing-0 table-auto">
         <thead className={isGlass ? 'sticky top-0 z-10' : ''}>
           <tr className={isGlass ? 'bg-white/55 backdrop-blur-md' : 'bg-neutral-50'}>
             {payload.columns.map((col) => (
               <th
                 key={col.key}
-                style={{ minWidth: colMinWidth(col) }}
+                style={{ minWidth: colMinWidth(col), maxWidth: col.key === 'id' ? 48 : undefined }}
                 className={
-                  isGlass
-                    ? 'px-3 py-3 text-left font-medium text-neutral-600 whitespace-nowrap border-b border-neutral-300/70 text-[0.65rem] uppercase tracking-[0.06em] align-top'
-                    : 'px-3 py-2 text-left font-medium text-neutral-700 whitespace-nowrap border-b border-neutral-200'
+                  col.key === 'id'
+                    ? isGlass
+                      ? 'px-1 py-3 text-center font-medium text-neutral-500 whitespace-nowrap border-b border-neutral-300/70 text-[0.6rem] uppercase tracking-[0.04em] align-top'
+                      : 'px-1 py-2 text-center font-medium text-neutral-500 whitespace-nowrap border-b border-neutral-200 text-xs'
+                    : isGlass
+                      ? 'px-2.5 py-3 text-left font-medium text-neutral-600 whitespace-nowrap border-b border-neutral-300/70 text-[0.65rem] uppercase tracking-[0.06em] align-middle'
+                      : 'px-2.5 py-2 text-left font-medium text-neutral-700 whitespace-nowrap border-b border-neutral-200 align-middle'
                 }
               >
                 {col.label}
@@ -399,69 +663,99 @@ export default function RuminationTableWidget({
                 const val = row[col.key];
                 const strVal = val != null ? String(val) : '';
 
+                const cellKey = `${rowIdx}:${col.key}`;
+                const cellFlash = isEditable && validationFlashKey === cellKey;
+
                 return (
                   <td
                     key={col.key}
-                    style={{ minWidth: colMinWidth(col) }}
+                    style={{
+                      minWidth: colMinWidth(col),
+                      maxWidth: col.key === 'id' ? 48 : undefined,
+                    }}
                     className={
-                      isGlass
-                        ? 'px-3 py-3 align-top text-neutral-700 break-words whitespace-normal'
-                        : 'px-3 py-2'
+                      col.key === 'id'
+                        ? isGlass
+                          ? 'px-1 py-2 align-middle text-center text-neutral-600'
+                          : 'px-1 py-2 align-middle text-center'
+                        : isGlass
+                          ? 'px-2.5 py-3 align-middle text-neutral-700 break-words whitespace-normal'
+                          : 'px-2.5 py-2 align-middle'
                     }
                   >
-                    {isEditable &&
-                    col.key === HYP_CONFIRM_KEY &&
-                    filterStep >= 3 &&
-                    filterStep <= 5 ? (
-                      renderHypothesisConfirmCell(row, rowIdx, strVal)
-                    ) : isEditable && col.options?.includes(hypothesisOtherLabel) ? (
-                      renderSelectWithOther(col, rowIdx, strVal, hypothesisOtherLabel)
-                    ) : isEditable && col.options?.length ? (
-                      <select
-                        value={strVal}
-                        onChange={(e) => handleCellChange(rowIdx, col.key, e.target.value)}
-                        onMouseDown={(e) => isGlass && e.stopPropagation()}
-                        onClick={(e) => isGlass && e.stopPropagation()}
-                        disabled={disabled}
-                        className={selectShellClass}
-                        style={selectArrowStyle}
-                      >
-                        <option value="">{selectPlaceholder}</option>
-                        {optionsWithoutPlaceholder(col.options ?? []).map((opt) => (
-                          <option key={opt} value={opt}>
-                            {opt}
-                          </option>
-                        ))}
-                      </select>
-                    ) : isEditable ? (
-                      isGlass ? (
-                        <textarea
+                    <div
+                      key={
+                        cellFlash ? `${cellKey}-v${validationCycle}` : cellKey
+                      }
+                      ref={isEditable ? setCellWrapRef(rowIdx, col.key) : undefined}
+                      className={`min-w-0 ${cellFlash ? 'rumination-validation-cell-flash' : ''}`}
+                      onAnimationEnd={(e) => {
+                        if (e.target !== e.currentTarget) return;
+                        const name = (e.animationName || '').split(',')[0]?.trim();
+                        if (name !== 'rumination-cell-flash') return;
+                        setValidationFlashKey((k) => (k === cellKey ? null : k));
+                      }}
+                    >
+                      {isEditable &&
+                      col.key === HYP_CONFIRM_KEY &&
+                      filterStep >= 3 &&
+                      filterStep <= 5 ? (
+                        renderHypothesisConfirmCell(row, rowIdx, strVal)
+                      ) : isEditable && col.options?.includes(hypothesisOtherLabel) ? (
+                        renderSelectWithOther(col, rowIdx, strVal, hypothesisOtherLabel)
+                      ) : isEditable && col.options?.length ? (
+                        <select
                           value={strVal}
                           onChange={(e) => handleCellChange(rowIdx, col.key, e.target.value)}
                           onMouseDown={(e) => isGlass && e.stopPropagation()}
                           onClick={(e) => isGlass && e.stopPropagation()}
                           disabled={disabled}
-                          placeholder={inputPlaceholder}
-                          rows={2}
-                          className="w-full min-h-[2.75rem] min-w-[100px] resize-y px-2 py-1.5 text-sm leading-snug border border-neutral-200/90 rounded-lg bg-white/80 focus:ring-2 focus:ring-[rgba(145,194,255,0.55)] break-words whitespace-pre-wrap"
-                        />
+                          className={selectShellClass}
+                          style={selectArrowStyle}
+                        >
+                          <option value="">{selectPlaceholder}</option>
+                          {optionsWithoutPlaceholder(col.options ?? [])
+                            .filter((opt) => !isPlaceholderToken(normalizeOptionText(opt)))
+                            .map((opt) => (
+                              <option key={opt} value={opt}>
+                                {opt}
+                              </option>
+                            ))}
+                        </select>
+                      ) : isEditable ? (
+                        isGlass ? (
+                          <textarea
+                            value={strVal}
+                            onChange={(e) => handleCellChange(rowIdx, col.key, e.target.value)}
+                            onMouseDown={(e) => isGlass && e.stopPropagation()}
+                            onClick={(e) => isGlass && e.stopPropagation()}
+                            disabled={disabled}
+                            placeholder={inputPlaceholder}
+                            rows={2}
+                            className="w-full min-h-[2.75rem] min-w-[100px] resize-y px-2 py-1.5 text-sm leading-snug border border-neutral-200/90 rounded-lg bg-white/80 focus:ring-2 focus:ring-[rgba(145,194,255,0.55)] break-words whitespace-pre-wrap"
+                          />
+                        ) : (
+                          <input
+                            type="text"
+                            value={strVal}
+                            onChange={(e) => handleCellChange(rowIdx, col.key, e.target.value)}
+                            onMouseDown={(e) => isGlass && e.stopPropagation()}
+                            onClick={(e) => isGlass && e.stopPropagation()}
+                            disabled={disabled}
+                            placeholder={inputPlaceholder}
+                            className="w-full min-w-[100px] px-2 py-1 text-sm border border-neutral-200 rounded-md focus:ring-2 focus:ring-sky-300/50 focus:border-sky-400/70"
+                          />
+                        )
                       ) : (
-                        <input
-                          type="text"
-                          value={strVal}
-                          onChange={(e) => handleCellChange(rowIdx, col.key, e.target.value)}
-                          onMouseDown={(e) => isGlass && e.stopPropagation()}
-                          onClick={(e) => isGlass && e.stopPropagation()}
-                          disabled={disabled}
-                          placeholder={inputPlaceholder}
-                          className="w-full min-w-[100px] px-2 py-1 text-sm border border-neutral-200 rounded-md focus:ring-2 focus:ring-sky-300/50 focus:border-sky-400/70"
-                        />
-                      )
-                    ) : (
-                      <span className="text-neutral-700 break-words whitespace-pre-wrap">
-                        {strVal || '—'}
-                      </span>
-                    )}
+                        <span
+                          className={`text-neutral-700 break-words whitespace-pre-wrap ${
+                            col.key === 'id' ? 'block text-center text-xs tabular-nums text-neutral-500' : ''
+                          }`}
+                        >
+                          {strVal || '—'}
+                        </span>
+                      )}
+                    </div>
                   </td>
                 );
               })}
@@ -469,6 +763,28 @@ export default function RuminationTableWidget({
           ))}
         </tbody>
       </table>
+  );
+
+  const tableBlock = isGlass ? (
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-neutral-300/50 bg-white/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
+      <div className="rumination-beautiful-table-scroll rumination-beautiful-table-widget min-h-0 flex-1 overflow-x-auto overflow-y-auto">
+        {tableInner}
+      </div>
+      {embeddedSubmitOverlay && submitting && (
+        <div
+          className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-xl bg-white/55 backdrop-blur-[20px]"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <span className="rounded-full bg-white/90 px-4 py-2 text-sm font-medium text-neutral-700 shadow-md">
+            {loadingLabel}
+          </span>
+        </div>
+      )}
+    </div>
+  ) : (
+    <div className="relative max-h-[320px] overflow-x-auto overflow-y-auto rounded-lg border border-neutral-100">
+      {tableInner}
     </div>
   );
 
@@ -482,6 +798,20 @@ export default function RuminationTableWidget({
         {payload.guideText && (
           <p className="mb-2 shrink-0 text-sm leading-relaxed text-neutral-600">{payload.guideText}</p>
         )}
+        {validationBanner && validationEmptyHint && (
+          <div
+            key={`rumination-val-banner-${validationCycle}`}
+            role="alert"
+            className="rumination-validation-banner--timed mb-2 shrink-0 overflow-hidden rounded-xl border border-amber-400/90 bg-amber-50 px-3 py-2.5 text-sm font-medium text-amber-950 shadow-sm"
+            onAnimationEnd={(e) => {
+              if (e.target !== e.currentTarget) return;
+              const name = (e.animationName || '').split(',')[0]?.trim();
+              if (name === 'rumination-banner-fade') setValidationBanner(false);
+            }}
+          >
+            {validationEmptyHint}
+          </div>
+        )}
         {/* flex-1 + 表格区 flex-1：撑满左卡剩余高度，避免 max-h 下方大块留白 */}
         <div className="flex min-h-0 flex-1 flex-col">{tableBlock}</div>
       </div>
@@ -494,6 +824,20 @@ export default function RuminationTableWidget({
     >
       {payload.guideText && (
         <p className="text-sm text-neutral-600 mb-3">{payload.guideText}</p>
+      )}
+      {validationBanner && validationEmptyHint && (
+        <div
+          key={`rumination-val-banner-${validationCycle}`}
+          role="alert"
+          className="rumination-validation-banner--timed mb-3 overflow-hidden rounded-lg border border-amber-400/90 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-950"
+          onAnimationEnd={(e) => {
+            if (e.target !== e.currentTarget) return;
+            const name = (e.animationName || '').split(',')[0]?.trim();
+            if (name === 'rumination-banner-fade') setValidationBanner(false);
+          }}
+        >
+          {validationEmptyHint}
+        </div>
       )}
       {tableBlock}
       <div className="mt-3 flex justify-end">{tableHeaderActions}</div>

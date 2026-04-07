@@ -82,6 +82,61 @@ async def generate_three_hypotheses_for_row(
     return list(fallback_hypotheses(passion, strength, row_index))
 
 
+async def generate_two_hypotheses_for_row(
+    llm: Any,
+    *,
+    passion: str,
+    strength: str,
+    match_reason: str = "",
+    values_hint: str = "",
+    row_index: int = 0,
+) -> tuple[str, str]:
+    """
+    为单行生成两条假设：假设1=个人事业向，假设2=职业路径向；假设3 由调用方清空。
+    """
+    sys_freelance = (
+        "目前处于「个人事业」向假设生成。根据热爱与优势生成一句具体假设（15-45 字），"
+        "描述可独立经营、自由职业或小型创业的方向，有画面感。"
+        "只输出一句正文，不要引号、编号或前后缀说明。"
+    )
+    sys_company = (
+        "目前处于「职业路径」向假设生成。根据热爱与优势生成一句具体假设（15-45 字），"
+        "描述可通过进入公司、担任某类岗位发展的路径，有画面感。"
+        "只输出一句正文，不要引号、编号或前后缀说明。"
+    )
+    user_common = (
+        f"热爱：{passion}\n优势：{strength}\n匹配说明：{match_reason or '（无）'}\n"
+        f"价值观参考：{values_hint or '（无）'}"
+    )
+
+    async def _one_line(system: str) -> str:
+        try:
+            resp = await llm.chat(
+                [
+                    LLMMessage(role="system", content=system),
+                    LLMMessage(role="user", content=user_common),
+                ],
+                temperature=0.72,
+                max_tokens=160,
+            )
+            raw = (resp.content or "").strip()
+            line = raw.split("\n")[0].strip().strip('"“”')
+            return line[:220] if line else ""
+        except Exception as e:
+            logger.warning("rumination two-hypo single LLM failed: %s", e)
+            return ""
+
+    h1 = await _one_line(sys_freelance)
+    h2 = await _one_line(sys_company)
+    if len(h1) < 4 or len(h2) < 4:
+        fb = fallback_hypotheses(passion, strength, row_index)
+        if len(h1) < 4:
+            h1 = fb[0] if fb else h1
+        if len(h2) < 4:
+            h2 = fb[1] if len(fb) > 1 else fb[0] if fb else h2
+    return h1, h2
+
+
 async def fill_hypothesis_columns_for_table(
     llm: Any,
     table: List[Dict[str, Any]],
