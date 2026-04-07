@@ -202,6 +202,9 @@ export const zh = {
       ruminationTable: {
         confirm: '确认',
         refill: '重新填写',
+        refillConfirmTitle: '确定清空并重填？',
+        refillConfirmMessage:
+          '将清空筛选第 {from} 步至第 9 步的已提交结果（第 {from} 步之前已填内容保留），右侧对话中从本步起的记录也会删除。需重新完成上述子步。此操作不可撤销。',
       },
       ruminationTableMissing: '该阶段暂无表格数据',
       ruminationTableRefillEmpty: '暂无该步初始表格，请先完成本步首次加载',
@@ -210,6 +213,8 @@ export const zh = {
         barLabel: '进度',
         caption: '六段进程',
         loading: '加载进度…',
+        filterStepSegmentsGroup: '筛选进度共 9 步，点击某一段可跳转到对应子步',
+        jumpToFilterStep: '跳转到筛选第 {step} 步',
         filterDetail: '筛选 {step}/9',
         rowDetail: '· 行 {current}/{total}',
         sections: {

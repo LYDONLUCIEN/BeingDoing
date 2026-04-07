@@ -1932,13 +1932,34 @@ async def rumination_get_table(
     if reset_initial:
         ent = snapshots.get(sk) or {}
         initial = ent.get("initial")
-        if initial is not None:
-            rows = deepcopy(initial)
-            ent = {**ent, "submitted": None}
-            snapshots[sk] = ent
-            prog = _persist(rows, snapshots)
-            payload = build_table_widget_payload(step, rows, values_list)
-            return _rumination_get_table_response(prog, payload)
+        if initial is None:
+            return SimpleChatResponse(
+                code=400,
+                message="该步暂无初始表格快照，无法重新填写",
+                data={"progress": progress, "table_widget": None},
+            )
+        # 从本步起之后整段作废：删除后续子步快照，本步恢复 initial、清空 submitted
+        for d in range(step + 1, 10):
+            snapshots.pop(str(d), None)
+        rows = deepcopy(initial)
+        ent = {**ent, "submitted": None}
+        snapshots[sk] = ent
+        # 与筛选主线对齐：回到 filter、当前子步；清除提前终止标记
+        hr = 1 if step <= 2 else (step - 2 if step <= 5 else 3)
+        prog = save_rumination_progress(
+            reports_root,
+            report_id,
+            main_section="filter",
+            filter_step=step,
+            filter_table=rows,
+            filter_row_cursor=0,
+            hypothesis_round=hr,
+            filter_early_terminated=False,
+            filter_terminate_reason=None,
+            filter_step_snapshots=snapshots,
+        )
+        payload = build_table_widget_payload(step, rows, values_list)
+        return _rumination_get_table_response(prog, payload)
 
     ent_sub = snapshots.get(sk) or {}
     if ent_sub.get("submitted") is not None:

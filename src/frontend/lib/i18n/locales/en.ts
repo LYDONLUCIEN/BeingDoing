@@ -208,7 +208,10 @@ export const en = {
       },
       ruminationTable: {
         confirm: 'Confirm',
-        refill: 'Refill',
+        refill: 'Start over',
+        refillConfirmTitle: 'Clear and refill these steps?',
+        refillConfirmMessage:
+          'This clears submitted results for filter steps {from}–9 (steps before {from} stay as-is) and removes chat from this step onward on the right. You will need to redo those steps. This cannot be undone.',
       },
       ruminationTableMissing: 'No table data for this step yet',
       ruminationTableRefillEmpty: 'No initial snapshot for this step yet',
@@ -217,6 +220,8 @@ export const en = {
         barLabel: 'Progress',
         caption: 'Six stages',
         loading: 'Loading progress…',
+        filterStepSegmentsGroup: 'Filter progress: 9 steps — tap a segment to jump',
+        jumpToFilterStep: 'Go to filter step {step}',
         filterDetail: 'Filter {step}/9',
         rowDetail: ' · Row {current}/{total}',
         sections: {

@@ -59,6 +59,10 @@ import {
   sliceMessagesForRuminationStep,
 } from '@/lib/explore/ruminationStepBoundaries';
 import {
+  computeFurthestBrowsableFilterStep,
+  computeMaxReachedFromSnapshots,
+} from '@/lib/explore/ruminationProgressNav';
+import {
   ruminationApi,
   type RuminationProgress,
   type RuminationSubmitData,
@@ -87,17 +91,6 @@ const BACKEND_PHASE: Record<PhaseKey, string> = {
   purpose: 'purpose',
   rumination: 'rumination',
 };
-
-function computeMaxReachedFromSnapshots(p: RuminationProgress | null): number {
-  if (!p?.filter_step_snapshots) return 0;
-  let m = 0;
-  for (const [key, snap] of Object.entries(p.filter_step_snapshots)) {
-    const n = parseInt(key, 10);
-    if (Number.isNaN(n)) continue;
-    if (snap?.submitted != null) m = Math.max(m, n);
-  }
-  return m;
-}
 
 /** 表格提交：全屏遮罩 + 动态省略号（Portal 挂到 body） */
 function RuminationTableSubmitPortal({
@@ -207,6 +200,7 @@ export default function ChatPhasePage() {
   const [hypothesisRegeneratingRowIndex, setHypothesisRegeneratingRowIndex] = useState<number | null>(
     null
   );
+  const [ruminationRefillConfirmOpen, setRuminationRefillConfirmOpen] = useState(false);
   const [ruminationRowContext, setRuminationRowContext] = useState<{
     rowIndex: number;
     label: string;
@@ -903,6 +897,10 @@ export default function ChatPhasePage() {
         const res = await ruminationApi.getTable(activationCode, step, {
           resetInitial: opts?.resetInitial,
         });
+        if (res.code !== 200) {
+          setChatError(res.message || t('explore.chat.ruminationTableLoadError'));
+          return false;
+        }
         const p = res.data?.progress;
         const mr = res.data?.max_reached_filter_step;
         if (p) setRuminationProgressState(p);
@@ -1701,14 +1699,12 @@ export default function ChatPhasePage() {
     ) {
       return;
     }
-    const fs = ruminationProgressState?.filter_step ?? 0;
-    const furthest = Math.max(ruminationMaxReached, fs, 1);
+    const furthest = computeFurthestBrowsableFilterStep(ruminationProgressState);
     if (ruminationViewStep >= furthest) return;
     void loadRuminationTableStep(ruminationViewStep + 1);
   }, [
     ruminationViewStep,
-    ruminationMaxReached,
-    ruminationProgressState?.filter_step,
+    ruminationProgressState,
     loadRuminationTableStep,
     ruminationGuideBusy,
     ruminationTableNavLoading,
@@ -1755,7 +1751,7 @@ export default function ChatPhasePage() {
     ]
   );
 
-  const handleRuminationRefill = useCallback(() => {
+  const handleRuminationRefillRequest = useCallback(() => {
     if (!activationCode || phase !== 'rumination' || !activeThreadId) return;
     if (
       ruminationTableNavLoading ||
@@ -1764,6 +1760,19 @@ export default function ChatPhasePage() {
     ) {
       return;
     }
+    setRuminationRefillConfirmOpen(true);
+  }, [
+    activationCode,
+    activeThreadId,
+    phase,
+    ruminationTableNavLoading,
+    ruminationTableSubmitting,
+    hypothesisRegeneratingRowIndex,
+  ]);
+
+  const handleRuminationRefillConfirm = useCallback(() => {
+    if (!activationCode || phase !== 'rumination' || !activeThreadId) return;
+    setRuminationRefillConfirmOpen(false);
     ruminationGuideAbortRef.current?.abort();
     ruminationGuideAbortRef.current = null;
     setRuminationGuideBusy(false);
@@ -1782,21 +1791,32 @@ export default function ChatPhasePage() {
       saveRuminationStepBoundaries(activationCode, activeThreadId, cut.boundaries);
       const th = threads.find((t) => t.id === activeThreadId);
       if (th) {
-        const updated: ChatThread = { ...th, messages: cut.messages };
+        try {
+          await apiClient.post('/simple-chat/thread/reopen', {
+            activation_code: activationCode,
+            phase: BACKEND_PHASE[phase],
+            thread_id: activeThreadId,
+          });
+        } catch {
+          /* 与「继续完善」一致：失败不阻断本地状态 */
+        }
+        const updated: ChatThread = {
+          ...th,
+          status: 'in-progress',
+          messages: cut.messages,
+        };
         saveThread(activationCode, phase, updated);
         setThreads((prev) =>
           prev.map((t) => (t.id === activeThreadId ? updated : t))
         );
       }
+      setRuminationProgressNonce((n) => n + 1);
     })();
   }, [
     activationCode,
     activeThreadId,
     loadRuminationTableStep,
     phase,
-    ruminationTableNavLoading,
-    ruminationTableSubmitting,
-    hypothesisRegeneratingRowIndex,
     ruminationViewStep,
     threads,
   ]);
@@ -1815,11 +1835,11 @@ export default function ChatPhasePage() {
   /** 沉淀对话区：助手气泡样式与前四步一致（values 蓝条白底），用户气泡仍用紫色主题 */
   const flowAiPhaseClass = phase === 'rumination' ? 'values' : phaseClass;
 
-  /** 筛选子步可浏览上界：已提交到的最远步 与 当前工作 filter_step 的较大者 */
-  const ruminationFurthestNavigableStep = useMemo(() => {
-    const fs = ruminationProgressState?.filter_step ?? 0;
-    return Math.max(ruminationMaxReached, fs, 1);
-  }, [ruminationMaxReached, ruminationProgressState?.filter_step]);
+  /** 筛选子步可浏览上界：与快照一致，避免已生成未提交的子步在回看时被「下一阶段」锁死 */
+  const ruminationFurthestNavigableStep = useMemo(
+    () => computeFurthestBrowsableFilterStep(ruminationProgressState),
+    [ruminationProgressState]
+  );
 
   /** 筛选子步导航：普通用户仅在 filter 段；管理员在 final_choice 仍可上一步/下一步/改表 */
   const ruminationShowFilterStepNav =
@@ -1911,9 +1931,19 @@ export default function ChatPhasePage() {
                               hypothesisRegeneratingRowIndex !== null ||
                               ruminationViewStep >= ruminationFurthestNavigableStep,
                             hidePrev: ruminationViewStep <= 1,
-                            hideNext:
-                              ruminationViewStep >= 9 ||
-                              ruminationTablePayload?.step === 9,
+                            hideNext: ruminationViewStep >= 9,
+                            segmentJump: {
+                              furthestStep: ruminationFurthestNavigableStep,
+                              jumpDisabled:
+                                sending ||
+                                ruminationGuideBusy ||
+                                ruminationTableNavLoading ||
+                                hypothesisRegeneratingRowIndex !== null,
+                              onJump: (step) => {
+                                if (step === ruminationViewStep) return;
+                                void loadRuminationTableStep(step);
+                              },
+                            },
                           }
                         : undefined
                     }
@@ -1960,7 +1990,6 @@ export default function ChatPhasePage() {
                     refillLabel={t('explore.chat.ruminationTable.refill')}
                     selectPlaceholder={t('explore.chat.ruminationUi.tableSelectPlaceholder')}
                     inputPlaceholder={t('explore.chat.ruminationUi.tableInputPlaceholder')}
-                    validationEmptyHint={t('explore.chat.ruminationUi.tableValidationEmptyHint')}
                     hypothesisRegenerateHint={t(
                       'explore.chat.ruminationUi.hypothesisRegenerateHint'
                     )}
@@ -1978,7 +2007,7 @@ export default function ChatPhasePage() {
                     hypothesisRegeneratingRowIndex={hypothesisRegeneratingRowIndex}
                     onHypothesisRegenerate={handleHypothesisRegenerateRow}
                     tableRefillMode={ruminationStepHasSubmitted}
-                    onRefill={handleRuminationRefill}
+                    onRefill={handleRuminationRefillRequest}
                     onRowContextChange={setRuminationRowContext}
                     submitting={ruminationTableSubmitting}
                     onConfirm={(rows) =>
@@ -2386,6 +2415,49 @@ export default function ChatPhasePage() {
         </div>
       </div>
       </div>
+      {phase === 'rumination' && ruminationRefillConfirmOpen && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 backdrop-blur-sm"
+          onClick={() => setRuminationRefillConfirmOpen(false)}
+          role="presentation"
+        >
+          <div
+            className="mx-4 max-w-md rounded-2xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rumination-refill-confirm-title"
+          >
+            <h3
+              id="rumination-refill-confirm-title"
+              className="mb-2 text-lg font-semibold text-[var(--flow-text-body)]"
+            >
+              {t('explore.chat.ruminationTable.refillConfirmTitle')}
+            </h3>
+            <p className="mb-6 text-sm leading-relaxed text-[var(--flow-text-muted)]">
+              {t('explore.chat.ruminationTable.refillConfirmMessage', {
+                from: String(ruminationViewStep),
+              })}
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setRuminationRefillConfirmOpen(false)}
+                className="rounded-xl px-4 py-2 text-sm font-medium text-[var(--flow-text-muted)] transition-colors hover:bg-neutral-100"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={handleRuminationRefillConfirm}
+                className="rounded-xl bg-red-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-600"
+              >
+                {t('common.confirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {phase === 'rumination' && (
         <RuminationTableSubmitPortal
           open={ruminationTableSubmitting}

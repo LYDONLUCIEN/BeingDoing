@@ -48,8 +48,6 @@ interface RuminationTableWidgetProps {
   submitting?: boolean;
   /** 为 true 时在表格外壳内显示提交遮罩；默认 false（由页面全屏遮罩承担） */
   embeddedSubmitOverlay?: boolean;
-  /** 存在未填项时点确认的提示（显著横幅） */
-  validationEmptyHint?: string;
   /** 选中行摘要，用于输入框上下文 */
   onRowContextChange?: (ctx: { rowIndex: number; label: string } | null) => void;
   /** 假设确认列：「待定」文案 */
@@ -104,14 +102,12 @@ export default function RuminationTableWidget({
   hypothesisRegeneratingRowIndex = null,
   onHypothesisRegenerate,
   embeddedSubmitOverlay = false,
-  validationEmptyHint,
 }: RuminationTableWidgetProps) {
   const [rows, setRows] = useState<Record<string, unknown>[]>(
     () => JSON.parse(JSON.stringify(payload.rows)) || []
   );
   /** glass：当前高亮行；null 表示未选中（再点同一行可取消） */
-  const [selectedRowIdx, setSelectedRowIdx] = useState<number | null>(0);
-  const [validationBanner, setValidationBanner] = useState(false);
+  const [selectedRowIdx, setSelectedRowIdx] = useState<number | null>(null);
   /** 校验动画：与单元格 class 绑定，动画结束后清空 */
   const [validationFlashKey, setValidationFlashKey] = useState<string | null>(null);
   const [validationCycle, setValidationCycle] = useState(0);
@@ -127,17 +123,27 @@ export default function RuminationTableWidget({
     }
   }, [rowsPayloadSig]);
 
-  // 仅随子步、游标、行数变化重置选中；不依赖 payload.rows 引用以免编辑单元格时误重置高亮
+  // 仅随子步、游标、行数变化重置选中；默认不选中任何行（单行模式仍跟 rowCursor）
   useEffect(() => {
     const n = (payload.rows ?? []).length;
-    const c = payload.rowCursor ?? 0;
     if (n <= 0) {
       setSelectedRowIdx(null);
       return;
     }
-    setSelectedRowIdx(Math.min(Math.max(0, c), n - 1));
+    if (payload.singleRowMode) {
+      const c = payload.rowCursor ?? 0;
+      setSelectedRowIdx(Math.min(Math.max(0, c), n - 1));
+      return;
+    }
+    setSelectedRowIdx(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 故意不依赖 payload.rows 全文
-  }, [payload.step, payload.rowCursor, payload.totalRows, payload.rows?.length]);
+  }, [
+    payload.step,
+    payload.rowCursor,
+    payload.totalRows,
+    payload.rows?.length,
+    payload.singleRowMode,
+  ]);
 
   const setCellWrapRef = useCallback((rowIdx: number, colKey: string) => {
     const key = `${rowIdx}:${colKey}`;
@@ -270,13 +276,11 @@ export default function RuminationTableWidget({
   }, [rows, payload.columns, editableSet, filterStep, hypothesisOtherLabel, isPlaceholderToken]);
 
   const handleConfirm = useCallback(() => {
-    setValidationBanner(false);
     setValidationFlashKey(null);
     const bad = findFirstInvalidCell();
     if (bad) {
       const key = `${bad.rowIdx}:${bad.colKey}`;
       setValidationCycle((c) => c + 1);
-      setValidationBanner(true);
       setValidationFlashKey(key);
       requestAnimationFrame(() => {
         cellWrapRefs.current.get(key)?.scrollIntoView({
@@ -399,11 +403,44 @@ export default function RuminationTableWidget({
     };
 
     const radioName = `rumination-hyp-${filterStep}-${rowIdx}`;
+    const otherRadioId = `${radioName}-other`;
     const radioBase =
-      'h-4 w-4 shrink-0 border-neutral-300 text-sky-600 focus:ring-2 focus:ring-sky-500/40';
+      'rumination-hyp-radio h-4 w-4 shrink-0 rounded-full border-neutral-300 text-sky-600 accent-sky-600';
 
     const lineCls =
       'flex cursor-pointer items-center gap-2 rounded-lg py-1.5 pr-1 transition-colors hover:bg-white/45';
+
+    const hypLines: { key: HypPick; tag: HypTagKind; text: string; show: boolean }[] = [
+      { key: 'h1', tag: 'freelance', text: h1, show: !!h1 },
+      { key: 'h2', tag: 'company', text: h2, show: !!h2 },
+      { key: 'h3', tag: 'extra', text: h3, show: !!h3 },
+    ];
+
+    const regenCol = onHypothesisRegenerate && filterStep >= 3 && filterStep <= 5;
+    const firstShownKey = hypLines.find((l) => l.show)?.key;
+
+    const renderLeadingSlot = (lineKey: HypPick) => {
+      if (regenCol && lineKey === firstShownKey) {
+        return (
+          <button
+            type="button"
+            title={hypothesisRegenerateHint}
+            aria-label={hypothesisRegenerateHint}
+            disabled={disabled || hypothesisRegeneratingRowIndex === rowIdx}
+            className="inline-flex h-4 w-7 shrink-0 items-center justify-center rounded-md text-sky-600 transition-colors hover:bg-sky-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+            onMouseDown={(e) => isGlass && e.stopPropagation()}
+            onClick={(e) => {
+              if (isGlass) e.stopPropagation();
+              const rid = String(row.id ?? rowIdx);
+              void onHypothesisRegenerate(rowIdx, rid);
+            }}
+          >
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        );
+      }
+      return <span className="inline-flex h-4 w-7 shrink-0" aria-hidden />;
+    };
 
     const persistOtherDraftFromCell = () => {
       if (active !== 'other') return;
@@ -430,15 +467,9 @@ export default function RuminationTableWidget({
       }
     };
 
-    const hypLines: { key: HypPick; tag: HypTagKind; text: string; show: boolean }[] = [
-      { key: 'h1', tag: 'freelance', text: h1, show: !!h1 },
-      { key: 'h2', tag: 'company', text: h2, show: !!h2 },
-      { key: 'h3', tag: 'extra', text: h3, show: !!h3 },
-    ];
-
     return (
       <div
-        className="relative min-w-[200px] space-y-0.5 pb-2 pl-0.5 pr-8 pt-8"
+        className="relative min-w-[200px] space-y-0.5 pb-2 pl-0.5 pr-1 pt-0.5"
         onMouseDown={stopRow}
         onClick={stopRow}
       >
@@ -456,6 +487,7 @@ export default function RuminationTableWidget({
           (line) =>
             line.show && (
               <label key={line.key} className={lineCls} onClick={stopRow}>
+                {renderLeadingSlot(line.key)}
                 <input
                   type="radio"
                   name={radioName}
@@ -475,6 +507,7 @@ export default function RuminationTableWidget({
 
         {pendingOk && (
           <label className={lineCls} onClick={stopRow}>
+            {renderLeadingSlot('pending')}
             <input
               type="radio"
               name={radioName}
@@ -491,33 +524,46 @@ export default function RuminationTableWidget({
           </label>
         )}
 
-        <label className={`${lineCls} items-center`} onClick={stopRow}>
+        <div className={`${lineCls} items-center`} onMouseDown={stopRow} onClick={stopRow}>
+          {renderLeadingSlot('other')}
           <input
             type="radio"
+            id={otherRadioId}
             name={radioName}
             className={radioBase}
             checked={active === 'other'}
             disabled={disabled}
-            onMouseDown={(e) => isGlass && e.stopPropagation()}
+            onMouseDown={(e) => {
+              if (isGlass) e.stopPropagation();
+            }}
+            onClick={(e) => {
+              if (isGlass) e.stopPropagation();
+            }}
             onChange={() => setChoice('other')}
           />
-          <span className="inline-flex max-w-[5.5rem] shrink-0 items-center rounded-md bg-slate-500 px-1.5 py-0.5 text-[10px] font-semibold leading-tight text-white">
+          <label
+            htmlFor={otherRadioId}
+            className="inline-flex max-w-[5.5rem] shrink-0 cursor-pointer items-center rounded-md bg-slate-500 px-1.5 py-0.5 text-[10px] font-semibold leading-tight text-white"
+            onMouseDown={(e) => isGlass && e.stopPropagation()}
+            onClick={(e) => isGlass && e.stopPropagation()}
+          >
             {hypothesisOtherLabel}
-          </span>
+          </label>
           <input
             type="text"
             value={otherInputValue}
-            disabled={disabled || active !== 'other'}
+            disabled={disabled}
             placeholder={otherTextPlaceholder}
             onMouseDown={(e) => isGlass && e.stopPropagation()}
             onClick={(e) => isGlass && e.stopPropagation()}
+            onFocus={() => {
+              if (active !== 'other') setChoice('other');
+            }}
             onChange={(e) => {
               const v = e.target.value;
               setHypOtherDraftByKey((p) => ({ ...p, [draftKey]: v }));
-              if (active === 'other') {
-                if (v === '') handleCellChange(rowIdx, HYP_CONFIRM_KEY, OTHER_SELECT_VALUE);
-                else handleCellChange(rowIdx, HYP_CONFIRM_KEY, v);
-              }
+              if (v === '') handleCellChange(rowIdx, HYP_CONFIRM_KEY, OTHER_SELECT_VALUE);
+              else handleCellChange(rowIdx, HYP_CONFIRM_KEY, v);
             }}
             className={
               isGlass
@@ -525,25 +571,7 @@ export default function RuminationTableWidget({
                 : 'min-w-0 flex-1 rounded-md border border-neutral-200 px-2 py-1 text-sm focus:border-sky-400/70 focus:outline-none focus:ring-2 focus:ring-sky-300/50'
             }
           />
-        </label>
-
-        {onHypothesisRegenerate && filterStep >= 3 && filterStep <= 5 && (
-          <button
-            type="button"
-            title={hypothesisRegenerateHint}
-            aria-label={hypothesisRegenerateHint}
-            disabled={disabled || hypothesisRegeneratingRowIndex === rowIdx}
-            className="absolute right-0 top-0 rounded-lg p-1.5 text-sky-600 transition-colors hover:bg-sky-500/15 disabled:cursor-not-allowed disabled:opacity-40"
-            onMouseDown={(e) => isGlass && e.stopPropagation()}
-            onClick={(e) => {
-              if (isGlass) e.stopPropagation();
-              const rid = String(row.id ?? rowIdx);
-              void onHypothesisRegenerate(rowIdx, rid);
-            }}
-          >
-            <RefreshCw className="h-4 w-4" aria-hidden />
-          </button>
-        )}
+        </div>
       </div>
     );
   };
@@ -568,7 +596,12 @@ export default function RuminationTableWidget({
           : known.has(strVal)
             ? strVal
             : OTHER_SELECT_VALUE;
-    const otherTextareaValue = strVal === OTHER_SELECT_VALUE ? '' : strVal;
+    const otherTextareaDisplay =
+      selectVal === OTHER_SELECT_VALUE
+        ? strVal === OTHER_SELECT_VALUE
+          ? ''
+          : strVal
+        : '';
 
     const stopRow = (e: MouseEvent) => {
       if (isGlass) e.stopPropagation();
@@ -599,7 +632,7 @@ export default function RuminationTableWidget({
         </select>
         {selectVal === OTHER_SELECT_VALUE && (
           <textarea
-            value={otherTextareaValue}
+            value={otherTextareaDisplay}
             disabled={disabled}
             onChange={(e) => handleCellChange(rowIdx, col.key, e.target.value)}
             placeholder={otherTextPlaceholder}
@@ -798,20 +831,6 @@ export default function RuminationTableWidget({
         {payload.guideText && (
           <p className="mb-2 shrink-0 text-sm leading-relaxed text-neutral-600">{payload.guideText}</p>
         )}
-        {validationBanner && validationEmptyHint && (
-          <div
-            key={`rumination-val-banner-${validationCycle}`}
-            role="alert"
-            className="rumination-validation-banner--timed mb-2 shrink-0 overflow-hidden rounded-xl border border-amber-400/90 bg-amber-50 px-3 py-2.5 text-sm font-medium text-amber-950 shadow-sm"
-            onAnimationEnd={(e) => {
-              if (e.target !== e.currentTarget) return;
-              const name = (e.animationName || '').split(',')[0]?.trim();
-              if (name === 'rumination-banner-fade') setValidationBanner(false);
-            }}
-          >
-            {validationEmptyHint}
-          </div>
-        )}
         {/* flex-1 + 表格区 flex-1：撑满左卡剩余高度，避免 max-h 下方大块留白 */}
         <div className="flex min-h-0 flex-1 flex-col">{tableBlock}</div>
       </div>
@@ -824,20 +843,6 @@ export default function RuminationTableWidget({
     >
       {payload.guideText && (
         <p className="text-sm text-neutral-600 mb-3">{payload.guideText}</p>
-      )}
-      {validationBanner && validationEmptyHint && (
-        <div
-          key={`rumination-val-banner-${validationCycle}`}
-          role="alert"
-          className="rumination-validation-banner--timed mb-3 overflow-hidden rounded-lg border border-amber-400/90 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-950"
-          onAnimationEnd={(e) => {
-            if (e.target !== e.currentTarget) return;
-            const name = (e.animationName || '').split(',')[0]?.trim();
-            if (name === 'rumination-banner-fade') setValidationBanner(false);
-          }}
-        >
-          {validationEmptyHint}
-        </div>
       )}
       {tableBlock}
       <div className="mt-3 flex justify-end">{tableHeaderActions}</div>

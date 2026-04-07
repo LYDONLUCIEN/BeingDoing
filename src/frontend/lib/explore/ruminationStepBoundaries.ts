@@ -96,8 +96,8 @@ export function sliceMessagesForRuminationStep(
 }
 
 /**
- * 「重新填写」当前筛选子步：从完整消息列表中删除该子步切片 [lo, hi)，并平移后续子步的边界下标。
- * 与 sliceMessagesForRuminationStep 使用同一套 boundaries 语义。
+ * 「重新填写」从当前筛选子步起直到对话末尾整段删除（与后端从本步起清空后续快照一致）。
+ * 保留本子步起点边界 b[viewStep]，删除 viewStep+1.. 的边界键。
  */
 export function cutMessagesForRuminationStepRefill(
   messages: ThreadMessage[],
@@ -110,25 +110,13 @@ export function cutMessagesForRuminationStepRefill(
   if (lo === undefined) {
     return { messages, boundaries: b };
   }
-  let hi = messages.length;
+  const hi = messages.length;
+  const newB: Record<string, number> = { ...b };
   for (let s = viewStep + 1; s <= 12; s++) {
-    const x = b[String(s)];
-    if (x != null) {
-      hi = x;
-      break;
-    }
+    delete newB[String(s)];
   }
   if (lo >= hi) {
-    return { messages, boundaries: b };
+    return { messages, boundaries: newB };
   }
-  const delta = hi - lo;
-  const newMessages = messages.slice(0, lo).concat(messages.slice(hi));
-  const newB: Record<string, number> = { ...b };
-  for (const k of Object.keys(newB)) {
-    const v = newB[k];
-    if (v > hi) newB[k] = v - delta;
-    else if (v === hi) newB[k] = lo;
-    else if (v > lo && v < hi) newB[k] = lo;
-  }
-  return { messages: newMessages, boundaries: newB };
+  return { messages: messages.slice(0, lo), boundaries: newB };
 }

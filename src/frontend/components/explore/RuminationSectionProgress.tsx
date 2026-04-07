@@ -142,6 +142,14 @@ export interface RuminationFilterStepNavConfig {
   hidePrev?: boolean;
   /** 第 9 子步不展示「下一阶段」 */
   hideNext?: boolean;
+  /**
+   * 进度条拆成 9 段可点：跳到对应筛选子步（与 furthest 对齐，不可达段禁用）。
+   */
+  segmentJump?: {
+    furthestStep: number;
+    jumpDisabled?: boolean;
+    onJump: (step: number) => void;
+  };
 }
 
 interface RuminationSectionProgressProps {
@@ -278,6 +286,8 @@ export default function RuminationSectionProgress({
   if (variant === 'beautiful') {
     const navBtnClass =
       'shrink-0 inline-flex items-center gap-0.5 rounded-full border border-neutral-200/50 bg-white/35 px-2 py-1 text-[10px] font-medium tracking-wide text-neutral-600 shadow-none backdrop-blur-md transition-[color,background-color,border-color,opacity] duration-200 hover:border-neutral-300/70 hover:bg-white/65 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-35 sm:gap-1 sm:px-2.5 sm:py-1 sm:text-[11px]';
+    const segJump = filterStepNav?.segmentJump;
+    const trackH = segJump ? 'h-3' : 'h-2';
     const barBlock = (
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex items-center justify-between gap-3 text-sm font-medium text-neutral-600">
@@ -286,21 +296,77 @@ export default function RuminationSectionProgress({
         </div>
         <div
           className="relative w-full"
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(fillPercent)}
-          aria-label={`${detailLine} ${Math.round(fillPercent)}%`}
+          role={segJump ? 'group' : 'progressbar'}
+          aria-valuemin={segJump ? undefined : 0}
+          aria-valuemax={segJump ? undefined : 100}
+          aria-valuenow={segJump ? undefined : Math.round(fillPercent)}
+          aria-label={
+            segJump
+              ? t('explore.chat.ruminationProgress.filterStepSegmentsGroup')
+              : `${detailLine} ${Math.round(fillPercent)}%`
+          }
         >
-          <div className="relative h-2 w-full overflow-hidden rounded-[10px] bg-white/80 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]">
-            <div
-              className="h-full rounded-[10px] transition-[width] duration-500 ease-out"
-              style={{
-                width: `${fillPercent}%`,
-                backgroundImage: barGradient,
-                boxShadow: '0 0 14px rgba(124, 131, 253, 0.35)',
-              }}
-            />
+          <div
+            className={`relative ${trackH} w-full overflow-hidden rounded-[10px] bg-white/80 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]`}
+          >
+            {!segJump ? (
+              <div
+                className="h-full rounded-[10px] transition-[width] duration-500 ease-out"
+                style={{
+                  width: `${fillPercent}%`,
+                  backgroundImage: barGradient,
+                  boxShadow: '0 0 14px rgba(124, 131, 253, 0.35)',
+                }}
+              />
+            ) : (
+              <>
+                <div
+                  className="pointer-events-none absolute inset-y-0 left-0 z-0 rounded-[10px] transition-[width] duration-500 ease-out"
+                  style={{
+                    width: `${fillPercent}%`,
+                    backgroundImage: barGradient,
+                    boxShadow: '0 0 14px rgba(124, 131, 253, 0.35)',
+                  }}
+                  aria-hidden
+                />
+                <div
+                  className="absolute inset-0 z-[1] flex items-stretch"
+                  role="presentation"
+                >
+                  {Array.from({ length: 9 }, (_, i) => {
+                    const step = i + 1;
+                    const vf = viewFilterStep ?? 0;
+                    const reachable = step <= segJump.furthestStep;
+                    const current = vf === step;
+                    const disabled = Boolean(segJump.jumpDisabled) || !reachable;
+                    return (
+                      <button
+                        key={step}
+                        type="button"
+                        disabled={disabled}
+                        title={t('explore.chat.ruminationProgress.jumpToFilterStep', {
+                          step: String(step),
+                        })}
+                        aria-label={t('explore.chat.ruminationProgress.jumpToFilterStep', {
+                          step: String(step),
+                        })}
+                        aria-current={current ? 'step' : undefined}
+                        className={`rumination-filter-seg relative min-w-0 flex-1 border-l border-white/45 first:border-l-0 first:rounded-l-[10px] last:rounded-r-[10px] transition-[background-color,box-shadow] duration-200 ease-out ${
+                          current
+                            ? 'bg-white/[0.22] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.55)]'
+                            : ''
+                        } ${
+                          !disabled
+                            ? 'cursor-pointer hover:bg-white/14 active:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-400/50'
+                            : ''
+                        } disabled:cursor-not-allowed disabled:opacity-30`}
+                        onClick={() => segJump.onJump(step)}
+                      />
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </div>
         </div>
         <p className="text-center text-xs text-neutral-500">{detailLine}</p>
