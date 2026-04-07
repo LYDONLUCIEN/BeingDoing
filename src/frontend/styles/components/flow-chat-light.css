@@ -42,8 +42,8 @@
   --flow-ai-border: var(--flow-target);
 }
 .flow-light[data-phase="rumination"] {
-  --flow-bg: #F5F3FA;
-  --flow-rumination: #8B5CF6;
+  --flow-bg: #f2f7fc;
+  --flow-rumination: #91c2ff;
   --flow-dot: var(--flow-rumination);
   --flow-ai-border: var(--flow-rumination);
 }
@@ -135,7 +135,9 @@
 .flow-light .flow-msg-ai-content.strength   { border-left-color: var(--flow-strength); }
 .flow-light .flow-msg-ai-content.interest   { border-left-color: var(--flow-interest); }
 .flow-light .flow-msg-ai-content.purpose    { border-left-color: var(--flow-target); }
-.flow-light .flow-msg-ai-content.rumination { border-left-color: #8B5CF6; }
+.flow-light .flow-msg-ai-content.rumination {
+  border-left-color: #91c2ff;
+}
 
 .flow-light .flow-msg-ai-content [data-color-mode],
 .flow-light .flow-msg-ai-content [data-color-mode] *,
@@ -145,15 +147,30 @@
   font-style: normal !important;
 }
 
-/* 推理模型思考过程：无色块，灰色小灯泡 → hover 变为 > 箭头，点击展开 */
+/* 推理模型思考过程：透明底、单行（不展示推理全文，避免泄露） */
 .flow-light .flow-msg-think-wrap {
   margin-bottom: 8px;
   max-width: min(860px, 88%);
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 .flow-light .flow-msg-think-placeholder {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+/* 单行：占位句 + 流式片段同一行，不换行 */
+.flow-light .flow-msg-think-placeholder.flow-msg-think-placeholder--single-row {
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
 }
 .flow-light .flow-msg-think-placeholder-text {
   display: flex;
@@ -161,6 +178,22 @@
   gap: 8px;
   font-size: 12px;
   color: var(--flow-text-muted);
+}
+.flow-light .flow-msg-think-placeholder-label {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--flow-text-muted);
+}
+.flow-light .flow-msg-think-chunk-line {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #a8a29e;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .flow-light .flow-msg-think-preview {
   min-height: 1.5em;
@@ -384,11 +417,11 @@
 .flow-light[data-phase="rumination"] .flow-msg-user-content {
   background: linear-gradient(
     145deg,
-    color-mix(in srgb, var(--flow-rumination) 20%, #ffffff) 0%,
-    color-mix(in srgb, var(--flow-rumination) 12%, #faf8ff) 100%
+    color-mix(in srgb, var(--flow-rumination) 38%, #ffffff) 0%,
+    color-mix(in srgb, var(--flow-rumination) 22%, #f0f7ff) 100%
   );
-  border-color: color-mix(in srgb, var(--flow-rumination) 42%, #e9e0ff);
-  color: #3b2f55;
+  border-color: color-mix(in srgb, var(--flow-rumination) 55%, #cfe8ff);
+  color: #1e3a5f;
 }
 .flow-light .flow-msg-user-text {
   white-space: normal;
@@ -502,10 +535,10 @@
   --n-text: #854d0e;
 }
 .flow-light .flow-conclusion-card.rumination {
-  --n-bg: #faf5ff;
-  --n-tag-bg: #e9d5ff;
-  --n-dot: #7c3aed;
-  --n-text: #5b21b6;
+  --n-bg: #eff6ff;
+  --n-tag-bg: #dbeafe;
+  --n-dot: #91c2ff;
+  --n-text: #1e3a8a;
 }
 
 .flow-light .flow-conclusion-header {

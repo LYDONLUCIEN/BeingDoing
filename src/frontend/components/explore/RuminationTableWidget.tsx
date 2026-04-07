@@ -53,6 +53,8 @@ interface RuminationTableWidgetProps {
   hypothesisOtherLabel?: string;
   /** 选「其他」后出现的输入框占位 */
   otherTextPlaceholder?: string;
+  /** 为 true 时隐藏表头「确认」按钮（如第 9 步改由对话/结论卡确认） */
+  hideConfirmButton?: boolean;
 }
 
 export default function RuminationTableWidget({
@@ -74,6 +76,7 @@ export default function RuminationTableWidget({
   hypothesisPendingLabel = '待定',
   hypothesisOtherLabel = '其他',
   otherTextPlaceholder = '请填写自定义内容…',
+  hideConfirmButton = false,
 }: RuminationTableWidgetProps) {
   const [rows, setRows] = useState<Record<string, unknown>[]>(
     () => JSON.parse(JSON.stringify(payload.rows)) || []
@@ -168,18 +171,21 @@ export default function RuminationTableWidget({
     ? 'shrink-0 rounded-full border border-neutral-200 bg-white/70 px-4 py-2 text-sm font-medium text-neutral-600 transition-all hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed'
     : 'rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50';
 
-  const primaryBtn = (
-    <div className="flex items-center gap-3">
-      {tableRefillMode && onRefill && (
-        <button type="button" onClick={() => onRefill?.()} disabled={disabled} className={refillBtnCls}>
-          {refillLabel}
-        </button>
-      )}
-      <button type="button" onClick={handleConfirm} disabled={disabled} className={confirmBtnCls}>
-        {confirmLabel}
-      </button>
-    </div>
-  );
+  const tableHeaderActions =
+    hideConfirmButton && !(tableRefillMode && onRefill) ? null : (
+      <div className="flex items-center gap-3">
+        {tableRefillMode && onRefill && (
+          <button type="button" onClick={() => onRefill?.()} disabled={disabled} className={refillBtnCls}>
+            {refillLabel}
+          </button>
+        )}
+        {!hideConfirmButton && (
+          <button type="button" onClick={handleConfirm} disabled={disabled} className={confirmBtnCls}>
+            {confirmLabel}
+          </button>
+        )}
+      </div>
+    );
 
   const selectArrowSvg =
     'url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2220%22 height=%2220%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%236b7280%22 stroke-width=%222%22%3E%3Cpolyline points=%226 9 12 15 18 9%22/%3E%3C/svg%3E")';
@@ -187,8 +193,8 @@ export default function RuminationTableWidget({
   const filterStep = payload.step ?? 0;
 
   const selectShellClass = isGlass
-    ? 'rumination-glass-select w-full min-w-[120px] appearance-none px-2 py-1.5 pr-8 text-sm border border-neutral-200/90 rounded-lg bg-white/80 focus:ring-2 focus:ring-violet-300/40 focus:border-violet-400/60'
-    : 'w-full min-w-[120px] px-2 py-1 text-sm border border-neutral-200 rounded-md bg-white focus:ring-2 focus:ring-violet-300 focus:border-violet-400';
+    ? 'rumination-glass-select w-full min-w-[120px] appearance-none px-2 py-1.5 pr-8 text-sm border border-neutral-200/90 rounded-lg bg-white/80 focus:ring-2 focus:ring-[rgba(145,194,255,0.55)] focus:border-[#91C2FF]/80'
+    : 'w-full min-w-[120px] px-2 py-1 text-sm border border-neutral-200 rounded-md bg-white focus:ring-2 focus:ring-sky-300/50 focus:border-sky-400/70';
 
   const selectArrowStyle = isGlass
     ? {
@@ -200,8 +206,8 @@ export default function RuminationTableWidget({
     : undefined;
 
   const textareaShellClass = isGlass
-    ? 'w-full min-h-[2.75rem] min-w-[100px] resize-y px-2 py-1.5 text-sm leading-snug border border-neutral-200/90 rounded-lg bg-white/80 focus:ring-2 focus:ring-violet-300/40 break-words whitespace-pre-wrap'
-    : 'w-full min-w-[100px] px-2 py-1 text-sm border border-neutral-200 rounded-md focus:ring-2 focus:ring-violet-300 focus:border-violet-400';
+    ? 'w-full min-h-[2.75rem] min-w-[100px] resize-y px-2 py-1.5 text-sm leading-snug border border-neutral-200/90 rounded-lg bg-white/80 focus:ring-2 focus:ring-[rgba(145,194,255,0.55)] break-words whitespace-pre-wrap'
+    : 'w-full min-w-[100px] px-2 py-1 text-sm border border-neutral-200 rounded-md focus:ring-2 focus:ring-sky-300/50 focus:border-sky-400/70';
 
   /** 从假设1–3 去重得到下拉项，并附「待定」「其他」 */
   const hypothesisPresetForRow = (row: Record<string, unknown>) => {
@@ -380,9 +386,9 @@ export default function RuminationTableWidget({
               }}
               className={
                 isGlass
-                  ? `border-b border-neutral-200/80 transition-colors last:border-b-0 outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50 focus-visible:ring-inset ${
+                  ? `border-b border-neutral-200/80 transition-colors last:border-b-0 outline-none focus-visible:ring-2 focus-visible:ring-[rgba(145,194,255,0.65)] focus-visible:ring-inset ${
                       selectedRowIdx === rowIdx
-                        ? 'bg-[#E8DFFE]/90 text-[#5b21b6] shadow-[inset_3px_0_0_0_#7c3aed]'
+                        ? 'bg-[rgba(145,194,255,0.38)] text-neutral-900 shadow-[inset_3px_0_0_0_#91C2FF]'
                         : 'hover:bg-white/30'
                     } cursor-pointer`
                   : 'border-b border-neutral-100 hover:bg-neutral-50/50'
@@ -437,7 +443,7 @@ export default function RuminationTableWidget({
                           disabled={disabled}
                           placeholder={inputPlaceholder}
                           rows={2}
-                          className="w-full min-h-[2.75rem] min-w-[100px] resize-y px-2 py-1.5 text-sm leading-snug border border-neutral-200/90 rounded-lg bg-white/80 focus:ring-2 focus:ring-violet-300/40 break-words whitespace-pre-wrap"
+                          className="w-full min-h-[2.75rem] min-w-[100px] resize-y px-2 py-1.5 text-sm leading-snug border border-neutral-200/90 rounded-lg bg-white/80 focus:ring-2 focus:ring-[rgba(145,194,255,0.55)] break-words whitespace-pre-wrap"
                         />
                       ) : (
                         <input
@@ -448,7 +454,7 @@ export default function RuminationTableWidget({
                           onClick={(e) => isGlass && e.stopPropagation()}
                           disabled={disabled}
                           placeholder={inputPlaceholder}
-                          className="w-full min-w-[100px] px-2 py-1 text-sm border border-neutral-200 rounded-md focus:ring-2 focus:ring-violet-300 focus:border-violet-400"
+                          className="w-full min-w-[100px] px-2 py-1 text-sm border border-neutral-200 rounded-md focus:ring-2 focus:ring-sky-300/50 focus:border-sky-400/70"
                         />
                       )
                     ) : (
@@ -471,7 +477,7 @@ export default function RuminationTableWidget({
       <div className={`flex min-h-0 flex-1 flex-col ${className}`}>
         <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
           <h2 className="truncate text-lg font-semibold text-bd-fg">{cardTitle ?? '表格'}</h2>
-          {primaryBtn}
+          {tableHeaderActions}
         </div>
         {payload.guideText && (
           <p className="mb-2 shrink-0 text-sm leading-relaxed text-neutral-600">{payload.guideText}</p>
@@ -490,7 +496,7 @@ export default function RuminationTableWidget({
         <p className="text-sm text-neutral-600 mb-3">{payload.guideText}</p>
       )}
       {tableBlock}
-      <div className="mt-3 flex justify-end">{primaryBtn}</div>
+      <div className="mt-3 flex justify-end">{tableHeaderActions}</div>
     </div>
   );
 }

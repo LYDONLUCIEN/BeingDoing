@@ -227,7 +227,6 @@ export default function ChatPhasePage() {
           id,
           role,
           content: m.content ?? '',
-          thinkContent: m.think_content ?? undefined,
           createdAt,
         };
         if (m.role === 'table_widget' && m.card_payload) {
@@ -1057,11 +1056,10 @@ export default function ChatPhasePage() {
               }
             }
             if (payload.think_end != null) {
-              const thinkContent = typeof payload.think_end === 'string' ? payload.think_end : '';
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === assistantId
-                    ? { ...m, thinkContent, thinkStreaming: false, thinkChunkContent: undefined }
+                    ? { ...m, thinkStreaming: false, thinkChunkContent: undefined }
                     : m
                 )
               );
@@ -1127,7 +1125,14 @@ export default function ChatPhasePage() {
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === assistantId
-                    ? { ...m, content: fullReply, thinkStreaming: false, createdAt: m.createdAt ?? doneAt }
+                    ? {
+                        ...m,
+                        content: fullReply,
+                        thinkStreaming: false,
+                        thinkChunkContent: undefined,
+                        thinkContent: undefined,
+                        createdAt: m.createdAt ?? doneAt,
+                      }
                     : m
                 )
               );
@@ -1365,29 +1370,26 @@ export default function ChatPhasePage() {
       }
       setRuminationTableSubmitting(true);
       try {
-        const stepNum = payload.step ?? 1;
-        /** 第 9 步必须整表提交，否则后端无法标记筛选完成并返回 next_action */
-        const single =
-          stepNum !== 9 && Boolean(payload.singleRowMode && rows.length === 1);
-        const patch: Record<string, unknown> = {};
-        if (single) {
-          for (const k of payload.editableCols || []) {
-            patch[k] = rows[0][k];
-          }
-        }
+        const rawStep = payload.step;
+        /** 以 payload 为准；缺失时回退当前查看子步，避免闭包/竞态导致误按第 1 步提交 */
+        const stepNum =
+          typeof rawStep === 'number' && rawStep >= 1 && rawStep <= 9
+            ? rawStep
+            : Math.min(9, Math.max(1, ruminationViewStep || 1));
+        /** 必须始终传完整 table_data：后端 RuminationTableSubmitRequest 未实现 single_row/patch，
+         * 若 single 行模式传 null，服务端不会进入任一步的递进分支，表现为「确认后卡住不前进」。 */
         const res = await ruminationApi.submitTable(
           activationCode,
           submitThreadId,
           stepNum,
-          single ? null : rows,
-          {
-            mode: single ? 'single_row' : 'full_step',
-            rowId: single ? String(rows[0].id ?? '') : undefined,
-            patch: single ? patch : undefined,
-            preferSingleRow: single,
-          }
+          rows,
+          { mode: 'full_step' }
         );
-        const data = res?.data as RuminationSubmitData | undefined;
+        if (res.code !== 200) {
+          setChatError(res.message || t('explore.chat.ruminationUi.tableSubmitError'));
+          return;
+        }
+        const data = res.data as RuminationSubmitData | undefined;
         if (data?.early_terminated || data?.next_action === 'early_terminated') {
           setChatError(t('explore.chat.ruminationUi.tableEarlyTerminated'));
           return;
@@ -1433,8 +1435,8 @@ export default function ChatPhasePage() {
         }
         setRuminationProgressNonce((n) => n + 1);
         /* 整表确认后由左侧表格直接进入下一步，不再自动往对话区插入跟进句，避免「一条条弹出」 */
-      } catch {
-        setChatError(t('explore.chat.ruminationUi.tableSubmitError'));
+      } catch (err) {
+        setChatError(getApiErrorMessage(err, t('explore.chat.ruminationUi.tableSubmitError')));
       } finally {
         setRuminationTableSubmitting(false);
       }
@@ -1447,6 +1449,7 @@ export default function ChatPhasePage() {
       router,
       adminDebugBypass,
       resolveRuminationTableThreadId,
+      ruminationViewStep,
       t,
     ]
   );
@@ -1512,8 +1515,8 @@ export default function ChatPhasePage() {
     <div
       className={
         phase === 'rumination'
-          ? 'rumination-beautiful-root flow-light relative h-screen flex flex-col overflow-hidden'
-          : 'flow-light careering-matte h-screen flex flex-col overflow-hidden'
+          ? 'rumination-beautiful-root flow-light relative flex min-h-0 flex-col overflow-hidden h-[calc(100dvh-3.5rem)] max-h-[calc(100dvh-3.5rem)]'
+          : 'flow-light careering-matte flex min-h-0 flex-col overflow-hidden h-[calc(100dvh-3.5rem)] max-h-[calc(100dvh-3.5rem)]'
       }
       data-phase={phase}
     >
@@ -1526,8 +1529,6 @@ export default function ChatPhasePage() {
       <div className="flex min-h-0 flex-1 overflow-hidden relative z-10">
         {phase !== 'rumination' && (
           <ChatPhaseSidebar
-            phase={phase}
-            phaseLabel={phaseLabel}
             threads={threadsForSidebar}
             activeThreadId={activeThreadId}
             onSelectThread={handleSelectThread}
@@ -1601,9 +1602,11 @@ export default function ChatPhasePage() {
               >
                 {ruminationTablePayload ? (
                   <RuminationTableWidget
+                    className="min-h-0 flex-1"
                     uiVariant="glass"
                     cardTitle={t('explore.chat.ruminationUi.tableCardTitle')}
                     payload={ruminationTablePayload}
+                    hideConfirmButton={ruminationTablePayload.step === 9}
                     confirmLabel={t('explore.chat.ruminationTable.confirm')}
                     refillLabel={t('explore.chat.ruminationTable.refill')}
                     selectPlaceholder={t('explore.chat.ruminationUi.tableSelectPlaceholder')}
@@ -1614,16 +1617,12 @@ export default function ChatPhasePage() {
                     onRowContextChange={setRuminationRowContext}
                     submitting={ruminationTableSubmitting}
                     onConfirm={(rows) =>
-                      handleTableConfirm(
-                        'rumination_left_panel',
-                        ruminationTablePayload,
-                        rows
-                      )
+                      handleTableConfirm('rumination_left_panel', ruminationTablePayload, rows)
                     }
                     disabled={sending || ruminationTableSubmitting}
                   />
                 ) : (
-                  <div className="flex flex-1 flex-col items-center justify-center py-10 text-center">
+                  <div className="flex min-h-0 flex-1 flex-col items-center justify-center py-10 text-center">
                     <p className="px-2 text-sm text-neutral-500">
                       {t('explore.chat.ruminationUi.tableEmptyHint')}
                     </p>
@@ -1708,6 +1707,18 @@ export default function ChatPhasePage() {
                       : 'contents'
                   }
                 >
+                {phase === 'rumination' &&
+                  !initLoading &&
+                  ruminationTablePayload?.step === 9 && (
+                    <div className="mb-3 min-w-0">
+                      <FlowAiMessage
+                        variant="ruminationWorkbench"
+                        phase={flowAiPhaseClass}
+                        content={t('explore.chat.ruminationUi.finalTableTextConfirmHint')}
+                        hideToolbar
+                      />
+                    </div>
+                  )}
                 {!useCareeringMatte && phase !== 'rumination' && (
                   <div className="flow-dimension-label">
                     <span className="flow-dimension-dot" />
@@ -1805,7 +1816,7 @@ export default function ChatPhasePage() {
                                 <ListFilter
                                   size={14}
                                   strokeWidth={2}
-                                  className="flow-msg-user-context-icon shrink-0 text-violet-700"
+                                  className="flow-msg-user-context-icon shrink-0"
                                   aria-hidden
                                 />
                                 <span className="flow-msg-user-context-text">
@@ -1852,7 +1863,6 @@ export default function ChatPhasePage() {
                           }
                           careeringAiRoleLabel={t('explore.chat.careeringAiRole')}
                           streaming={sending && idx === displayMessages.length - 1}
-                          thinkContent={m.thinkContent}
                           thinkStreaming={m.thinkStreaming}
                           thinkChunkContent={m.thinkChunkContent}
                           thinkPlaceholders={[
@@ -1863,7 +1873,6 @@ export default function ChatPhasePage() {
                             t('explore.chat.thinkInProgress5'),
                             t('explore.chat.thinkInProgress6'),
                           ]}
-                          thinkLabel={t('explore.chat.thinkProcess')}
                           timestamp={m.createdAt}
                           toolbarCopyTitle={t('explore.chat.messageToolbar.copy')}
                           toolbarLikeTitle={t('explore.chat.messageToolbar.like')}
@@ -1965,9 +1974,6 @@ export default function ChatPhasePage() {
                   </div>
                 </div>
               </form>
-            </div>
-            <div className="careering-auto-save-hint">
-              <p className="text-xs text-neutral-500">{t('explore.chat.autoSave')}</p>
             </div>
           </div>
           </div>

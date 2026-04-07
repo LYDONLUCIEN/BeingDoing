@@ -190,6 +190,8 @@ export const en = {
         followConfirmTable: 'I have confirmed the table—please continue.',
         tableSubmitError: 'Submit failed. Please try again.',
         messageRowContextPrefix: '【Selected table row】{label}',
+        finalTableTextConfirmHint:
+          'This is the last filter step: review the final directions on the left—no need to tap the table “Confirm”. I’ll share a short summary in chat; please confirm via the **conclusion card** or follow the text instructions.',
       },
       ruminationTable: {
         confirm: 'Confirm',

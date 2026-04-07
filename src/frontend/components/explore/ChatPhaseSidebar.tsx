@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { MessageSquare, Trash2 } from 'lucide-react';
-import type { PhaseKey } from '@/lib/explore/session';
 import type { ChatThread } from '@/lib/explore/threads';
 import { useLocale } from '@/hooks/useLocale';
 
@@ -20,17 +19,14 @@ function formatLastTime(ms: number, t: (k: string, p?: Record<string, string>) =
   return t('explore.chat.monthDay', { m: String(d.getMonth() + 1), d: String(d.getDate()) });
 }
 
-/** 取第一条有内容的对话首行作为标题 */
-function getFirstLinePreview(thread: ChatThread, noContent: string): string {
-  for (const m of thread.messages) {
-    if (m.type === 'dimension_conclusion' && m.conclusionData?.summary) {
-      const s = m.conclusionData.summary.trim().split('\n')[0].replace(/\s+/g, ' ');
-      return s.length > 24 ? s.slice(0, 24) + '…' : s || noContent;
-    }
-    if (m.content?.trim()) {
-      const s = m.content.trim().split('\n')[0].replace(/\s+/g, ' ');
-      return s.length > 24 ? s.slice(0, 24) + '…' : s;
-    }
+/** 最后一条用户发言（摘要），用于列表主文案 */
+function getLastUserMessagePreview(thread: ChatThread, noContent: string): string {
+  for (let i = thread.messages.length - 1; i >= 0; i--) {
+    const m = thread.messages[i];
+    if (m.role !== 'user' || m.type === 'dimension_conclusion') continue;
+    const raw = m.content?.trim();
+    if (!raw) continue;
+    return raw.replace(/\s+/g, ' ');
   }
   return noContent;
 }
@@ -40,13 +36,6 @@ function getTurnCount(thread: ChatThread): number {
   return thread.messages.filter((m) => m.role === 'user').length;
 }
 
-function getLastMessagePreview(thread: ChatThread, noContent: string): string {
-  const last = thread.messages[thread.messages.length - 1];
-  if (!last?.content) return noContent;
-  const s = last.content.trim().replace(/\s+/g, ' ');
-  return s.length > 36 ? s.slice(0, 36) + '…' : s;
-}
-
 function getLastMessageTime(thread: ChatThread): number | null {
   const last = thread.messages[thread.messages.length - 1];
   if (last?.createdAt) return last.createdAt;
@@ -54,8 +43,6 @@ function getLastMessageTime(thread: ChatThread): number | null {
 }
 
 interface ChatPhaseSidebarProps {
-  phase: PhaseKey;
-  phaseLabel: string;
   threads: ChatThread[];
   activeThreadId: string | null;
   onSelectThread: (thread: ChatThread) => void;
@@ -66,11 +53,11 @@ interface ChatPhaseSidebarProps {
   phaseInteractionLocked?: boolean;
   /** newchat6 哑光侧栏（前四维对话页） */
   careeringMatte?: boolean;
+  /** 会话列表下方展示「对话自动保存」提示（主区输入框下方不再重复） */
+  showAutoSaveHint?: boolean;
 }
 
 export default function ChatPhaseSidebar({
-  phase,
-  phaseLabel,
   threads,
   activeThreadId,
   onSelectThread,
@@ -79,6 +66,7 @@ export default function ChatPhaseSidebar({
   canNewChat,
   phaseInteractionLocked = false,
   careeringMatte = false,
+  showAutoSaveHint = true,
 }: ChatPhaseSidebarProps) {
   const { t } = useLocale();
   const [deleteTarget, setDeleteTarget] = useState<ChatThread | null>(null);
@@ -110,17 +98,14 @@ export default function ChatPhaseSidebar({
       }
     >
       <div
-        className={`p-5 border-b ${careeringMatte ? 'careering-sidebar-header' : ''}`}
+        className={`border-b px-4 py-3 sm:px-4 sm:py-3.5 ${careeringMatte ? 'careering-sidebar-header' : ''}`}
         style={careeringMatte ? undefined : { borderColor: 'rgba(0,0,0,0.05)' }}
       >
-        <p className="text-xs font-medium text-[var(--flow-text-muted)] mb-3 tracking-wider">
-          {phaseLabel} · {t('explore.chat.threadList')}
-        </p>
         <button
           type="button"
           onClick={onNewChat}
           disabled={!canNewChat || phaseInteractionLocked}
-          className={`w-full px-5 py-2.5 rounded-full text-sm font-medium text-white transition-all hover:scale-[0.98] disabled:cursor-not-allowed ${
+          className={`w-full rounded-full px-4 py-2 text-sm font-medium text-white transition-all hover:scale-[0.98] disabled:cursor-not-allowed ${
             phaseInteractionLocked ? 'opacity-35' : 'disabled:opacity-50'
           }`}
           style={{
@@ -131,15 +116,15 @@ export default function ChatPhaseSidebar({
           + {t('explore.chat.sidebarNewChat')}
         </button>
         {phaseInteractionLocked ? (
-          <p className="text-[10px] text-[var(--flow-text-muted)] mt-2 leading-snug">
+          <p className="mt-1.5 text-[10px] leading-snug text-[var(--flow-text-muted)]">
             {t('explore.chat.sidebarPhaseLockedHint')}
           </p>
         ) : !canNewChat ? (
-          <p className="text-[10px] text-[var(--flow-text-muted)] mt-2">{t('explore.chat.sidebarMaxReached')}</p>
+          <p className="mt-1.5 text-[10px] text-[var(--flow-text-muted)]">{t('explore.chat.sidebarMaxReached')}</p>
         ) : null}
       </div>
-      <div className="flow-sidebar-threads flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4">
-        <div className="space-y-2">
+      <div className="flow-sidebar-threads min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-3">
+        <div className="space-y-1.5">
           {threads.length === 0 && (
             <p className="text-xs text-[var(--flow-text-muted)] py-4 text-center">{t('explore.chat.sidebarNoThreads')}</p>
           )}
@@ -147,15 +132,14 @@ export default function ChatPhaseSidebar({
             const isActive = thread.id === activeThreadId;
             const lastTime = getLastMessageTime(thread);
             const noContent = t('explore.chat.noContent');
-            const title = getFirstLinePreview(thread, noContent);
+            const summary = getLastUserMessagePreview(thread, noContent);
             const turnCount = getTurnCount(thread);
-            const preview = getLastMessagePreview(thread, noContent);
             const lastTimeStr = lastTime ? formatLastTime(lastTime, t) : '';
             return (
               <div
                 key={thread.id}
-                className={`group relative w-full text-left px-4 py-3 rounded-xl transition-all cursor-pointer ${
-                  isActive ? 'shadow-md scale-[1.02]' : 'hover:opacity-90'
+                className={`group relative w-full cursor-pointer rounded-xl px-3 py-2 text-left transition-all ${
+                  isActive ? 'shadow-md' : 'hover:opacity-90'
                 }`}
                 style={{
                   background: isActive ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)',
@@ -166,7 +150,7 @@ export default function ChatPhaseSidebar({
                 onClick={() => onSelectThread(thread)}
                 onKeyDown={(e) => e.key === 'Enter' && onSelectThread(thread)}
               >
-                <div className="flex items-start gap-2 mb-1.5">
+                <div className="flex items-start gap-2">
                   {careeringMatte ? (
                     <span
                       className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full"
@@ -186,40 +170,39 @@ export default function ChatPhaseSidebar({
                       aria-hidden
                     />
                   ) : (
-                    <MessageSquare size={14} className="text-[var(--flow-text-muted)] flex-shrink-0 mt-0.5" />
+                    <MessageSquare size={14} className="mt-0.5 flex-shrink-0 text-[var(--flow-text-muted)]" />
                   )}
-                  <span
-                    className="text-sm font-medium truncate flex-1 leading-tight"
+                  <p
+                    className="line-clamp-2 min-w-0 flex-1 text-sm font-medium leading-snug"
                     style={{ color: 'var(--flow-text-body)' }}
                   >
-                    {title}
-                  </span>
+                    {summary}
+                  </p>
                   <button
                     type="button"
                     onClick={(e) => handleDeleteClick(e, thread)}
                     disabled={phaseInteractionLocked}
-                    className="opacity-0 group-hover:opacity-60 hover:opacity-100 p-1 rounded-lg hover:bg-red-100 text-red-500 transition-all flex-shrink-0 disabled:opacity-25 disabled:pointer-events-none disabled:hover:opacity-25"
+                    className="flex-shrink-0 rounded-lg p-1 text-red-500 opacity-0 transition-all hover:bg-red-100 hover:opacity-100 group-hover:opacity-60 disabled:pointer-events-none disabled:opacity-25 disabled:hover:opacity-25"
                     title={t('explore.chat.sidebarDeleteThread')}
                     aria-label={t('explore.chat.sidebarDeleteThread')}
                   >
                     <Trash2 size={14} />
                   </button>
                 </div>
-                <p className="text-xs line-clamp-2 mb-2" style={{ color: 'var(--flow-text-muted)' }}>
-                  {preview}
-                </p>
-                <div className="flex items-center justify-between gap-2">
+                <div className="mt-1.5 flex items-center justify-between gap-2 pl-3.5">
                   <span className="text-[10px] text-[var(--flow-text-muted)]">
-                    {[turnCount > 0 && t('explore.chat.turns', { n: String(turnCount) }), lastTimeStr].filter(Boolean).join(' · ')}
+                    {[turnCount > 0 && t('explore.chat.turns', { n: String(turnCount) }), lastTimeStr]
+                      .filter(Boolean)
+                      .join(' · ')}
                   </span>
                   <span
-                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-medium text-white ${
-                      thread.status === 'completed'
-                        ? 'bg-emerald-500'
-                        : 'bg-amber-500'
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium text-white ${
+                      thread.status === 'completed' ? 'bg-emerald-500' : 'bg-amber-500'
                     }`}
                   >
-                    {thread.status === 'completed' ? t('explore.chat.statusCompleted') : t('explore.chat.statusInProgress')}
+                    {thread.status === 'completed'
+                      ? t('explore.chat.statusCompleted')
+                      : t('explore.chat.statusInProgress')}
                   </span>
                 </div>
               </div>
@@ -227,6 +210,17 @@ export default function ChatPhaseSidebar({
           })}
         </div>
       </div>
+
+      {showAutoSaveHint && (
+        <div
+          className={`careering-sidebar-auto-save-hint shrink-0 px-4 py-3 ${
+            careeringMatte ? 'border-t border-black/[0.06]' : ''
+          }`}
+          style={careeringMatte ? undefined : { borderTop: '1px solid rgba(0,0,0,0.06)' }}
+        >
+          <p className="text-center text-xs text-neutral-500">{t('explore.chat.autoSave')}</p>
+        </div>
+      )}
 
       {/* 删除确认弹窗 */}
       {deleteTarget && (

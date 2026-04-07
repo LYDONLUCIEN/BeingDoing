@@ -226,6 +226,15 @@
   margin-left: 0;
 }
 
+/* 结论卡与 AI 气泡左缘对齐（同 60px 左内缩 + 同 max-width 上限） */
+.flow-light.careering-matte .flow-msg-conclusion-wrap {
+  width: auto !important;
+  max-width: min(960px, 92%);
+  margin-left: 60px;
+  margin-right: 0;
+  box-sizing: border-box;
+}
+
 /* 用户气泡：勿用 min-width:0，否则窄父级会把短句压成一字一行；换行策略与 IM 常见做法一致（不用 anywhere） */
 .flow-light.careering-matte .flow-msg-user-anchor {
   max-width: min(960px, calc(100% - 0.5rem));
@@ -353,6 +362,16 @@
 
 .flow-light.careering-matte .flow-msg-think-wrap {
   max-width: min(960px, 92%);
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+.flow-light.careering-matte .flow-msg-think-placeholder,
+.flow-light.careering-matte .flow-msg-think-placeholder-label,
+.flow-light.careering-matte .flow-msg-think-chunk-line {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
 }
 
 /* 结论卡：与主区一致的轻磨砂（略实于气泡，保证 pastel 标签可读） */
@@ -397,9 +416,10 @@
   border-color: rgba(0, 0, 0, 0.08);
 }
 
-.flow-light.careering-matte .careering-auto-save-hint {
+/* 自动保存提示已移至侧栏底部，与 .careering-sidebar-auto-save-hint 对齐 */
+.flow-light.careering-matte .careering-sidebar-auto-save-hint {
   text-align: center;
-  padding-top: 0.5rem;
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0) 100%);
 }
 
 /* 主栏全宽滚动时，回底按钮靠近视口右缘（仍在 flow-chat-box 内） */

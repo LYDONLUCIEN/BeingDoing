@@ -1206,7 +1206,7 @@ class RuminationProgressSaveRequest(BaseModel):
 
 
 class RuminationTableSubmitRequest(BaseModel):
-    """前端可能传 table_data: null；另附 mode / row_id / patch 等扩展字段须忽略。"""
+    """提交筛选表。递进逻辑依赖非空的 table_data（整表行列表）；传 null 时服务端不会进入任一步的 if step==N and table_data 分支。"""
 
     model_config = ConfigDict(extra="ignore")
 

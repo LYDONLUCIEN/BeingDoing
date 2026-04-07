@@ -184,6 +184,8 @@ export const zh = {
         followConfirmTable: '我已确认表格，请继续。',
         tableSubmitError: '提交失败，请重试',
         messageRowContextPrefix: '【关联表格行】{label}',
+        finalTableTextConfirmHint:
+          '当前为筛选最后一步：请通读左侧最终方向表，无需点击表上的「确认」。稍后在对话中我会给出总结，请你通过**结论卡片**或按提示用文字完成确认即可。',
       },
       ruminationTable: {
         confirm: '确认',
