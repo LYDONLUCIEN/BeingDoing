@@ -42,6 +42,7 @@ from app.utils.report_registry import ReportRegistry, STEP_IDS, STEP_ORDER
 from copy import deepcopy
 
 from app.utils.rumination_progress import (
+    MAX_FILTER_STEP,
     load_rumination_progress,
     max_reached_filter_step,
     save_rumination_progress,
@@ -53,8 +54,6 @@ from app.utils.rumination_ops import (
     filter_match,
     extract_dimension_lists_for_rumination_table,
     structure_hypothesis_round1_table,
-    generate_hypotheses_round2_table,
-    generate_hypotheses_round3_finalize,
     value_filter,
     passion_filter,
     reality_filter,
@@ -1224,6 +1223,8 @@ class RuminationTableSubmitRequest(BaseModel):
     thread_id: str = ""
     step: int
     table_data: Optional[List[Dict[str, Any]]] = None
+    # 终步（7）多选提交时可传 id 列表，否则从 table_data 行内 __pick / _rumination_selected 读取
+    selected_row_ids: Optional[List[str]] = None
 
 
 class RuminationStepOpeningStreamRequest(BaseModel):
@@ -1237,7 +1238,7 @@ class RuminationStepOpeningStreamRequest(BaseModel):
 
 
 class RuminationRegenerateHypothesesRequest(BaseModel):
-    """假设子步（3–5）单行重新生成假设1、假设2。"""
+    """假设子步（仅第 3 步）单行重新生成假设1、假设2。"""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -1394,7 +1395,7 @@ def rumination_step_opening(
         logger.warning("rumination-step-opening load failed: %s", e)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
-    step = max(1, min(9, int(filter_step)))
+    step = max(1, min(MAX_FILTER_STEP, int(filter_step)))
     ctx = build_opening_context(filter_step=step, progress=progress, values_list=values_list)
     mode = get_opening_mode(step)
     if mode == "llm":
@@ -1417,7 +1418,7 @@ async def rumination_step_opening_stream(
     current_user: dict = Depends(get_current_user),
 ):
     """子步引导流式生成（SSE 事件与 /message/stream 的 chunk/think/done 兼容）。"""
-    step = max(1, min(9, int(request.filter_step)))
+    step = max(1, min(MAX_FILTER_STEP, int(request.filter_step)))
     if get_opening_mode(step) != "llm":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1549,12 +1550,12 @@ async def rumination_regenerate_hypotheses(
     request: RuminationRegenerateHypothesesRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """筛选子步 3–5：对单行重新生成假设1、假设2（个人事业 / 职业路径），并清空假设3与已选假设。"""
+    """筛选子步 3：对单行重新生成假设1、假设2（个人事业 / 职业路径），并清空假设3与已选假设。"""
     step = int(request.filter_step)
-    if step < 3 or step > 5:
+    if step != 3:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="仅支持筛选子步 3、4、5 的假设重新生成",
+            detail="仅支持筛选子步 3 的假设重新生成",
         )
     row_id = str(request.row_id or "").strip()
     if not row_id:
@@ -1642,23 +1643,88 @@ def _build_table_widget_payload(
     }
 
 
+RUMINATION_GUIDE_ALL_PENDING_ZH = (
+    "注意到您暂时未选定具体方向（全部为「待定」或留空）。请至少在左侧一行选择有效假设，"
+    "或点某一行在右侧与我聊聊，我们一起把范围收窄后再继续。"
+)
+
+RUMINATION_GUIDE_ZERO_STRENGTH_ZH = (
+    "注意到您觉得当前组合里几乎没有想继续探索的选项。您可以调整左侧「优势标记」，"
+    "或点某一行在右侧跟我聊聊，我们一起收窄到至少保留一行后再继续。"
+)
+
+RUMINATION_GUIDE_ALL_MISMATCH_ZH = (
+    "当前所有行都被标为「不匹配」，无法生成假设。请至少保留一行「匹配」，"
+    "或在右侧与我聊聊您的想法，我们再继续。"
+)
+
+
 def _rumination_clear_snapshots_from_step(snapshots: Dict[str, Any], start: int) -> None:
-    """删除从 start 到 9 的子步快照（含），用于回退或直达终筛后避免脏数据。"""
-    for d in range(max(1, int(start)), 10):
+    """删除从 start 到 7 的子步快照（含），用于回退或直达终筛后避免脏数据。"""
+    for d in range(max(1, int(start)), MAX_FILTER_STEP + 1):
         snapshots.pop(str(d), None)
 
 
-def _rumination_step9_via_678_chain(rows: List[dict]) -> List[dict]:
-    """第 6 步形态的表格（含「工作目的」列）经 7→8→similar 得到第 9 步展示行。"""
+def _rumination_step7_rows_for_widget(rows: List[dict]) -> List[dict]:
+    """终步表格增加 __pick 字段供前端多选。"""
+    out: List[dict] = []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        x = dict(r)
+        x.setdefault("__pick", False)
+        out.append(x)
+    return out
+
+
+def _rumination_parse_selected_row_ids(
+    table_data: Optional[List[Dict[str, Any]]],
+    selected_row_ids: Optional[List[str]],
+) -> List[str]:
+    if selected_row_ids:
+        return [str(x).strip() for x in selected_row_ids if str(x).strip()]
+    if not table_data:
+        return []
+    out: List[str] = []
+    for r in table_data:
+        if not isinstance(r, dict):
+            continue
+        if r.get("__pick") is True or r.get("_rumination_selected") is True:
+            rid = str(r.get("id", "")).strip()
+            if rid:
+                out.append(rid)
+    seen = set()
+    uniq: List[str] = []
+    for x in out:
+        if x not in seen:
+            seen.add(x)
+            uniq.append(x)
+    return uniq
+
+
+def _rumination_strip_meta_keys(rows: List[dict]) -> List[dict]:
+    out: List[dict] = []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        x = dict(r)
+        x.pop("__pick", None)
+        x.pop("_rumination_selected", None)
+        out.append(x)
+    return out
+
+
+def _rumination_step7_via_456_chain(rows: List[dict]) -> List[dict]:
+    """第 4 步形态的表格（含「工作目的」列）经 激情→现实→similar 得到终步展示行。"""
     if not rows:
         return []
-    s7 = passion_filter(rows)
-    s8 = reality_filter(s7)
-    return similar_filter(s8)
+    s5 = passion_filter(rows)
+    s6 = reality_filter(s5)
+    return similar_filter(s6)
 
 
-def _rumination_step9_preserve_incoming_rows(incoming: List[dict]) -> List[dict]:
-    """6–8 任一步筛选得到 0 行时：保留用户本步提交的每一行，投射为第 9 步两列。"""
+def _rumination_step7_preserve_incoming_rows(incoming: List[dict]) -> List[dict]:
+    """假设后任一步筛选得到 0 行时：保留用户本步提交的每一行，投射为终步两列。"""
     out: List[dict] = []
     for r in incoming:
         if not isinstance(r, dict):
@@ -1672,35 +1738,36 @@ def _rumination_step9_preserve_incoming_rows(incoming: List[dict]) -> List[dict]
     return out
 
 
-def _rumination_persist_skip_to_step9(
+def _rumination_persist_skip_to_step7(
     reports_root: Path,
     report_id: str,
     snapshots: Dict[str, Any],
-    step9_rows: List[dict],
+    step7_rows: List[dict],
     values_list: List[str],
     *,
     filter_early_terminated: bool,
     clear_snapshots_from: int,
 ) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]], int]:
-    """直达第 9 步：清理中间快照、写入 9 的 initial、更新 progress。"""
+    """直达第 7 步：清理中间快照、写入 7 的 initial、更新 progress。"""
     _rumination_clear_snapshots_from_step(snapshots, clear_snapshots_from)
-    s9 = snapshots.setdefault("9", {})
-    if s9.get("initial") is None:
-        s9["initial"] = deepcopy(step9_rows)
-    s9["submitted"] = None
-    snapshots["9"] = s9
+    wrows = _rumination_step7_rows_for_widget(step7_rows)
+    s7 = snapshots.setdefault("7", {})
+    if s7.get("initial") is None:
+        s7["initial"] = deepcopy(_rumination_strip_meta_keys(wrows))
+    s7["submitted"] = None
+    snapshots["7"] = s7
     progress = save_rumination_progress(
         reports_root,
         report_id,
         main_section="filter",
-        filter_step=9,
-        filter_table=step9_rows,
+        filter_step=7,
+        filter_table=wrows,
         filter_step_snapshots=snapshots,
         filter_early_terminated=filter_early_terminated,
         filter_terminate_reason=None,
     )
-    next_table = build_table_widget_payload(9, step9_rows, values_list)
-    return progress, next_table, 9
+    next_table = build_table_widget_payload(7, wrows, values_list)
+    return progress, next_table, 7
 
 
 @router.post("/rumination-table-submit", response_model=SimpleChatResponse)
@@ -1734,7 +1801,7 @@ async def rumination_table_submit(
         if not report_id:
             raise HTTPException(status_code=500, detail="报告初始化失败")
         reports_root = root / "reports"
-        step = max(1, min(9, request.step))
+        step = max(1, min(MAX_FILTER_STEP, request.step))
         progress0 = load_rumination_progress(reports_root, report_id)
         snapshots = _rumination_snapshots_copy(progress0)
         sk = str(step)
@@ -1754,7 +1821,7 @@ async def rumination_table_submit(
             filter_step_snapshots=snapshots,
         )
 
-        # ── 读取维度关键词（step 3 LLM 需要 values_hint，step 6 需要 values_list）──
+        # ── 读取维度关键词（step 3 LLM 需要 values_hint，假设后各步需要 values_list）──
         record_path = reports_root / report_id / "record.json"
         record_obj: Optional[dict] = None
         if record_path.is_file():
@@ -1773,6 +1840,7 @@ async def rumination_table_submit(
 
         next_table = None
         next_step_val = step
+        dimension_conclusion_payload: Optional[dict] = None
 
         if step == 1 and table_data:
             filtered = filter_strength(table_data)
@@ -1797,6 +1865,9 @@ async def rumination_table_submit(
                     filter_terminate_reason=None,
                 )
                 next_table = build_table_widget_payload(1, rows1, values_list)
+                if next_table:
+                    base_g = str(next_table.get("guideText") or "")
+                    next_table["guideText"] = f"{RUMINATION_GUIDE_ZERO_STRENGTH_ZH}\n\n{base_g}".strip()
                 next_step_val = 1
             else:
                 step2_rows = filter_match(filtered)
@@ -1859,6 +1930,9 @@ async def rumination_table_submit(
                     filter_terminate_reason=None,
                 )
                 next_table = build_table_widget_payload(2, rows2, values_list)
+                if next_table:
+                    base_g = str(next_table.get("guideText") or "")
+                    next_table["guideText"] = f"{RUMINATION_GUIDE_ALL_MISMATCH_ZH}\n\n{base_g}".strip()
                 next_step_val = 2
             else:
                 vip_level = getattr(rec, "vip_level", 1) or 1
@@ -1882,45 +1956,63 @@ async def rumination_table_submit(
                 )
 
         elif step == 3 and table_data:
-            # step 3 → 4: 第二轮假设（仅为空行重新生成）
-            step4_rows = generate_hypotheses_round2_table(table_data)
-            if step4_rows:
-                vip_level = getattr(rec, "vip_level", 1) or 1
-                llm = _get_dialogue_llm_provider(vip_level=vip_level)
-                step4_rows = await fill_hypothesis_columns_for_table(
-                    llm, step4_rows, values_hint=values_hint, only_empty_hypothesis_slots=True,
+            # 单轮假设 → 价值观入口（原 step5→6 的 value_filter）
+            finalized: List[dict] = []
+            for r in table_data:
+                row = dict(r)
+                if not (row.get("用户确认的假设") or "").strip():
+                    row["用户确认的假设"] = "待定"
+                finalized.append(row)
+            valid_count = sum(
+                1
+                for r in finalized
+                if str(r.get("用户确认的假设") or "").strip() not in ("", "待定")
+            )
+            if valid_count == 0:
+                ent3 = snapshots.setdefault("3", {})
+                initial3 = ent3.get("initial")
+                if not initial3:
+                    initial3 = deepcopy(finalized)
+                    ent3["initial"] = deepcopy(initial3)
+                rows3 = deepcopy(initial3)
+                ent3["submitted"] = None
+                snapshots["3"] = ent3
+                _rumination_clear_snapshots_from_step(snapshots, 4)
+                progress = save_rumination_progress(
+                    reports_root,
+                    report_id,
+                    main_section="filter",
+                    filter_step=3,
+                    filter_table=rows3,
+                    filter_step_snapshots=snapshots,
+                    filter_early_terminated=False,
+                    filter_terminate_reason=None,
                 )
+                next_table = build_table_widget_payload(3, rows3, values_list)
+                if next_table:
+                    base_g = str(next_table.get("guideText") or "")
+                    next_table["guideText"] = f"{RUMINATION_GUIDE_ALL_PENDING_ZH}\n\n{base_g}".strip()
+                next_step_val = 3
+            else:
+                step4_rows = value_filter(finalized, values_list)
+                if not step4_rows:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="没有可进入价值观筛选的有效假设，请至少保留一行非「待定」选择。",
+                    )
                 if 1 <= len(step4_rows) <= 3:
-                    step5_r = generate_hypotheses_round3_finalize(step4_rows)
-                    step6_r = value_filter(step5_r, values_list)
-                    if step6_r:
-                        step9_r = _rumination_step9_via_678_chain(step6_r)
-                        if not step9_r:
-                            step9_r = _rumination_step9_preserve_incoming_rows(step6_r)
-                        progress, next_table, next_step_val = _rumination_persist_skip_to_step9(
-                            reports_root,
-                            report_id,
-                            snapshots,
-                            step9_r,
-                            values_list,
-                            filter_early_terminated=True,
-                            clear_snapshots_from=4,
-                        )
-                    else:
-                        next_table = build_table_widget_payload(4, step4_rows, values_list)
-                        next_step_val = 4
-                        s4 = snapshots.setdefault("4", {})
-                        if s4.get("initial") is None:
-                            s4["initial"] = deepcopy(step4_rows)
-                        progress = save_rumination_progress(
-                            reports_root,
-                            report_id,
-                            filter_step=4,
-                            filter_table=step4_rows,
-                            filter_step_snapshots=snapshots,
-                            filter_early_terminated=False,
-                            filter_terminate_reason=None,
-                        )
+                    step7_r = _rumination_step7_via_456_chain(step4_rows)
+                    if not step7_r:
+                        step7_r = _rumination_step7_preserve_incoming_rows(step4_rows)
+                    progress, next_table, next_step_val = _rumination_persist_skip_to_step7(
+                        reports_root,
+                        report_id,
+                        snapshots,
+                        step7_r,
+                        values_list,
+                        filter_early_terminated=True,
+                        clear_snapshots_from=4,
+                    )
                 else:
                     next_table = build_table_widget_payload(4, step4_rows, values_list)
                     next_step_val = 4
@@ -1938,82 +2030,73 @@ async def rumination_table_submit(
                     )
 
         elif step == 4 and table_data:
-            # step 4 → 5: 第三轮定稿（空行标记"待定"）
-            step5_rows = generate_hypotheses_round3_finalize(table_data)
-            if step5_rows:
-                if 1 <= len(step5_rows) <= 3:
-                    step6_r = value_filter(step5_rows, values_list)
-                    if step6_r:
-                        step9_r = _rumination_step9_via_678_chain(step6_r)
-                        if not step9_r:
-                            step9_r = _rumination_step9_preserve_incoming_rows(step6_r)
-                        progress, next_table, next_step_val = _rumination_persist_skip_to_step9(
-                            reports_root,
-                            report_id,
-                            snapshots,
-                            step9_r,
-                            values_list,
-                            filter_early_terminated=True,
-                            clear_snapshots_from=5,
-                        )
-                    else:
-                        next_table = build_table_widget_payload(5, step5_rows, values_list)
-                        next_step_val = 5
-                        s5 = snapshots.setdefault("5", {})
-                        if s5.get("initial") is None:
-                            s5["initial"] = deepcopy(step5_rows)
-                        progress = save_rumination_progress(
-                            reports_root,
-                            report_id,
-                            filter_step=5,
-                            filter_table=step5_rows,
-                            filter_step_snapshots=snapshots,
-                            filter_early_terminated=False,
-                            filter_terminate_reason=None,
-                        )
-                else:
-                    next_table = build_table_widget_payload(5, step5_rows, values_list)
-                    next_step_val = 5
-                    s5 = snapshots.setdefault("5", {})
-                    if s5.get("initial") is None:
-                        s5["initial"] = deepcopy(step5_rows)
-                    progress = save_rumination_progress(
-                        reports_root,
-                        report_id,
-                        filter_step=5,
-                        filter_table=step5_rows,
-                        filter_step_snapshots=snapshots,
-                        filter_early_terminated=False,
-                        filter_terminate_reason=None,
-                    )
-
-        elif step == 5 and table_data:
-            # step 5 → 6: 价值观筛选（value_filter 需传入价值观关键词列表供前端下拉配置）
-            step6_rows = value_filter(table_data, values_list)
-            if not step6_rows:
-                step9_r = _rumination_step9_preserve_incoming_rows(deepcopy(table_data))
-                if step9_r:
-                    progress, next_table, next_step_val = _rumination_persist_skip_to_step9(
-                        reports_root,
-                        report_id,
-                        snapshots,
-                        step9_r,
-                        values_list,
-                        filter_early_terminated=True,
-                        clear_snapshots_from=6,
-                    )
-            elif 1 <= len(step6_rows) <= 3:
-                step9_r = _rumination_step9_via_678_chain(step6_rows)
-                if not step9_r:
-                    step9_r = _rumination_step9_preserve_incoming_rows(step6_rows)
-                progress, next_table, next_step_val = _rumination_persist_skip_to_step9(
+            step5_rows = passion_filter(table_data)
+            if not step5_rows:
+                step7_r = _rumination_step7_preserve_incoming_rows(deepcopy(table_data))
+                progress, next_table, next_step_val = _rumination_persist_skip_to_step7(
                     reports_root,
                     report_id,
                     snapshots,
-                    step9_r,
+                    step7_r,
                     values_list,
                     filter_early_terminated=True,
-                    clear_snapshots_from=6,
+                    clear_snapshots_from=5,
+                )
+            elif 1 <= len(step5_rows) <= 3:
+                step7_r = _rumination_step7_via_456_chain(step5_rows)
+                if not step7_r:
+                    step7_r = _rumination_step7_preserve_incoming_rows(step5_rows)
+                progress, next_table, next_step_val = _rumination_persist_skip_to_step7(
+                    reports_root,
+                    report_id,
+                    snapshots,
+                    step7_r,
+                    values_list,
+                    filter_early_terminated=True,
+                    clear_snapshots_from=5,
+                )
+            else:
+                next_table = build_table_widget_payload(5, step5_rows, values_list)
+                next_step_val = 5
+                s5 = snapshots.setdefault("5", {})
+                if s5.get("initial") is None:
+                    s5["initial"] = deepcopy(step5_rows)
+                progress = save_rumination_progress(
+                    reports_root,
+                    report_id,
+                    filter_step=5,
+                    filter_table=step5_rows,
+                    filter_step_snapshots=snapshots,
+                    filter_early_terminated=False,
+                    filter_terminate_reason=None,
+                )
+
+        elif step == 5 and table_data:
+            incoming5 = deepcopy(table_data)
+            step6_rows = reality_filter(table_data)
+            if not step6_rows:
+                step7_r = _rumination_step7_preserve_incoming_rows(incoming5)
+                progress, next_table, next_step_val = _rumination_persist_skip_to_step7(
+                    reports_root,
+                    report_id,
+                    snapshots,
+                    step7_r,
+                    values_list,
+                    filter_early_terminated=True,
+                    clear_snapshots_from=5,
+                )
+            elif 1 <= len(step6_rows) <= 3:
+                step7_r = _rumination_step7_via_456_chain(step6_rows)
+                if not step7_r:
+                    step7_r = _rumination_step7_preserve_incoming_rows(step6_rows)
+                progress, next_table, next_step_val = _rumination_persist_skip_to_step7(
+                    reports_root,
+                    report_id,
+                    snapshots,
+                    step7_r,
+                    values_list,
+                    filter_early_terminated=True,
+                    clear_snapshots_from=5,
                 )
             else:
                 next_table = build_table_widget_payload(6, step6_rows, values_list)
@@ -2032,111 +2115,84 @@ async def rumination_table_submit(
                 )
 
         elif step == 6 and table_data:
-            # step 6 → 7: 激情筛选；筛选 0 行时保留本步填写，直达第 9 步
             incoming6 = deepcopy(table_data)
-            step7_rows = passion_filter(table_data)
-            if not step7_rows:
-                step9_r = _rumination_step9_preserve_incoming_rows(incoming6)
-                progress, next_table, next_step_val = _rumination_persist_skip_to_step9(
+            step7_plain = similar_filter(table_data)
+            if not step7_plain:
+                step7_plain = _rumination_step7_preserve_incoming_rows(incoming6)
+                progress, next_table, next_step_val = _rumination_persist_skip_to_step7(
                     reports_root,
                     report_id,
                     snapshots,
-                    step9_r,
+                    step7_plain,
                     values_list,
                     filter_early_terminated=True,
                     clear_snapshots_from=6,
                 )
             else:
-                next_table = build_table_widget_payload(7, step7_rows, values_list)
-                next_step_val = 7
+                wrows = _rumination_step7_rows_for_widget(step7_plain)
                 s7 = snapshots.setdefault("7", {})
                 if s7.get("initial") is None:
-                    s7["initial"] = deepcopy(step7_rows)
+                    s7["initial"] = deepcopy(_rumination_strip_meta_keys(wrows))
+                s7["submitted"] = None
+                snapshots["7"] = s7
                 progress = save_rumination_progress(
                     reports_root,
                     report_id,
+                    main_section="filter",
                     filter_step=7,
-                    filter_table=step7_rows,
+                    filter_table=wrows,
                     filter_step_snapshots=snapshots,
                     filter_early_terminated=False,
                     filter_terminate_reason=None,
                 )
+                next_table = build_table_widget_payload(7, wrows, values_list)
+                next_step_val = 7
 
-        elif step == 7 and table_data:
-            # step 7 → 8: 现实筛选
-            incoming7 = deepcopy(table_data)
-            step8_rows = reality_filter(table_data)
-            if not step8_rows:
-                step9_r = _rumination_step9_preserve_incoming_rows(incoming7)
-                progress, next_table, next_step_val = _rumination_persist_skip_to_step9(
-                    reports_root,
-                    report_id,
-                    snapshots,
-                    step9_r,
-                    values_list,
-                    filter_early_terminated=True,
-                    clear_snapshots_from=6,
+        elif step == 7 and table_data is not None:
+            sel_ids = _rumination_parse_selected_row_ids(table_data, request.selected_row_ids)
+            if not (1 <= len(sel_ids) <= 3):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="请在左侧勾选 1–3 行方向后再点确认",
                 )
-            else:
-                next_table = build_table_widget_payload(8, step8_rows, values_list)
-                next_step_val = 8
-                s8 = snapshots.setdefault("8", {})
-                if s8.get("initial") is None:
-                    s8["initial"] = deepcopy(step8_rows)
-                progress = save_rumination_progress(
-                    reports_root,
-                    report_id,
-                    filter_step=8,
-                    filter_table=step8_rows,
-                    filter_step_snapshots=snapshots,
-                    filter_early_terminated=False,
-                    filter_terminate_reason=None,
+            id_set = set(sel_ids)
+            by_id: Dict[str, dict] = {}
+            for r in table_data or []:
+                if not isinstance(r, dict):
+                    continue
+                rid = str(r.get("id", "")).strip()
+                if rid in id_set:
+                    clean = _rumination_strip_meta_keys([dict(r)])[0]
+                    by_id[rid] = clean
+            ordered = [by_id[i] for i in sel_ids if i in by_id]
+            if len(ordered) != len(sel_ids):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="所选行与当前表格不一致，请刷新后重试",
                 )
-
-        elif step == 8 and table_data:
-            # step 8 → 9: 最终筛选
-            incoming8 = deepcopy(table_data)
-            step9_rows = similar_filter(table_data)
-            if not step9_rows:
-                step9_rows = _rumination_step9_preserve_incoming_rows(incoming8)
-                progress, next_table, next_step_val = _rumination_persist_skip_to_step9(
-                    reports_root,
-                    report_id,
-                    snapshots,
-                    step9_rows,
-                    values_list,
-                    filter_early_terminated=True,
-                    clear_snapshots_from=6,
-                )
-            else:
-                next_table = build_table_widget_payload(9, step9_rows, values_list)
-                next_step_val = 9
-                s9 = snapshots.setdefault("9", {})
-                if s9.get("initial") is None:
-                    s9["initial"] = deepcopy(step9_rows)
-                progress = save_rumination_progress(
-                    reports_root,
-                    report_id,
-                    filter_step=9,
-                    filter_table=step9_rows,
-                    filter_step_snapshots=snapshots,
-                    filter_early_terminated=False,
-                    filter_terminate_reason=None,
-                )
-
-        elif step == 9 and table_data is not None:
-            # 第 9 步整表确认：筛选表结束，进入后续主线（前端可跳转过渡页）
+            lines = [(r.get("用户确认的假设") or "").strip() for r in ordered]
+            lines = [x for x in lines if x]
+            summary = "\n\n".join(lines)
+            dimension_conclusion_payload = {
+                "summary": summary or "（暂无有效文案）",
+                "keywords": [],
+            }
+            wdone = [{**dict(r), "__pick": True} for r in ordered]
+            s7 = snapshots.setdefault("7", {})
+            s7["submitted"] = deepcopy(_rumination_strip_meta_keys(wdone))
+            snapshots["7"] = s7
             progress = save_rumination_progress(
                 reports_root,
                 report_id,
                 main_section="final_choice",
-                filter_step=9,
-                filter_table=table_data,
+                filter_step=7,
+                filter_table=wdone,
                 filter_step_snapshots=snapshots,
                 filter_early_terminated=False,
                 filter_terminate_reason=None,
             )
-            next_step_val = 9
+            next_table = None
+            next_step_val = 7
 
         snaps = progress.get("filter_step_snapshots") or {}
         data: dict = {
@@ -2146,8 +2202,9 @@ async def rumination_table_submit(
         }
         if next_table:
             data["next_table_widget"] = next_table
-        if step == 9 and table_data is not None:
-            data["next_action"] = "rumination_filter_complete"
+        if dimension_conclusion_payload is not None:
+            data["dimension_conclusion"] = dimension_conclusion_payload
+            data["next_action"] = "rumination_conclusion_insert"
 
         return SimpleChatResponse(code=200, message="success", data=data)
     except HTTPException:
@@ -2197,18 +2254,24 @@ async def rumination_get_table(
     passions = interests_list if interests_list else ["热爱1", "热爱2"]
     strengths_list = strengths_list if strengths_list else ["优势1", "优势2"]
 
-    step = max(1, min(9, int(step or 1)))
+    step = max(1, min(MAX_FILTER_STEP, int(step or 1)))
     snapshots = _rumination_snapshots_copy(progress)
     sk = str(step)
 
     def _persist(rows: List[dict], snap: Dict[str, Any]) -> Dict[str, Any]:
-        return save_rumination_progress(
-            reports_root,
-            report_id,
+        kw: Dict[str, Any] = dict(
             filter_step=step,
             filter_table=rows,
             filter_step_snapshots=snap,
         )
+        # 首次拉取第 1 步表时同步进入筛选段，否则前端仅靠 progress 不会请求 get-table
+        if step == 1 and (progress.get("main_section") or "opening") in (
+            "opening",
+            "review",
+        ):
+            kw["main_section"] = "filter"
+            kw["filter_early_terminated"] = False
+        return save_rumination_progress(reports_root, report_id, **kw)
 
     if reset_initial:
         ent = snapshots.get(sk) or {}
@@ -2220,13 +2283,15 @@ async def rumination_get_table(
                 data={"progress": progress, "table_widget": None},
             )
         # 从本步起之后整段作废：删除后续子步快照，本步恢复 initial、清空 submitted
-        for d in range(step + 1, 10):
+        for d in range(step + 1, MAX_FILTER_STEP + 1):
             snapshots.pop(str(d), None)
         rows = deepcopy(initial)
+        if step == 7:
+            rows = _rumination_step7_rows_for_widget(rows)
         ent = {**ent, "submitted": None}
         snapshots[sk] = ent
         # 与筛选主线对齐：回到 filter、当前子步；清除提前终止标记
-        hr = 1 if step <= 2 else (step - 2 if step <= 5 else 3)
+        hr = 1 if step <= 3 else 2
         prog = save_rumination_progress(
             reports_root,
             report_id,
@@ -2245,6 +2310,8 @@ async def rumination_get_table(
     ent_sub = snapshots.get(sk) or {}
     if ent_sub.get("submitted") is not None:
         rows = deepcopy(ent_sub["submitted"])
+        if step == 7:
+            rows = _rumination_step7_rows_for_widget(rows)
         prog = _persist(rows, snapshots)
         payload = build_table_widget_payload(step, rows, values_list)
         return _rumination_get_table_response(prog, payload)
@@ -2275,12 +2342,14 @@ async def rumination_get_table(
         payload = build_table_widget_payload(step, rows, values_list)
         return _rumination_get_table_response(prog, payload)
 
-    # ── step 3-9: 先查快照，无快照则从前一步 submitted 生成 ──
+    # ── step 3-7: 先查快照，无快照则从前一步 submitted 生成 ──
     ent_any = snapshots.get(sk) or {}
     for key in ("submitted", "initial"):
         r0 = ent_any.get(key)
         if r0 is not None:
             rows = deepcopy(r0)
+            if step == 7:
+                rows = _rumination_step7_rows_for_widget(rows)
             prog = _persist(rows, snapshots)
             payload = build_table_widget_payload(step, rows, values_list)
             return _rumination_get_table_response(prog, payload)
@@ -2300,31 +2369,22 @@ async def rumination_get_table(
             values_hint = "、".join(values_list[:8]) if values_list else ""
             rows = await fill_hypothesis_columns_for_table(llm, rows, values_hint=values_hint)
     elif step == 4:
-        rows = generate_hypotheses_round2_table(prev_submitted)
-        if rows:
-            vip_level = getattr(rec, "vip_level", 1) or 1
-            llm = _get_dialogue_llm_provider(vip_level=vip_level)
-            values_hint = "、".join(values_list[:8]) if values_list else ""
-            rows = await fill_hypothesis_columns_for_table(
-                llm, rows, values_hint=values_hint, only_empty_hypothesis_slots=True,
-            )
-    elif step == 5:
-        rows = generate_hypotheses_round3_finalize(prev_submitted)
-    elif step == 6:
         rows = value_filter(prev_submitted, values_list)
-    elif step == 7:
+    elif step == 5:
         rows = passion_filter(prev_submitted)
-    elif step == 8:
+    elif step == 6:
         rows = reality_filter(prev_submitted)
-    elif step == 9:
+    elif step == 7:
         rows = similar_filter(prev_submitted)
+        if rows:
+            rows = _rumination_step7_rows_for_widget(rows)
 
     if not rows:
         return _rumination_get_table_response(progress, None)
 
     ent = snapshots.setdefault(sk, {})
     if ent.get("initial") is None:
-        ent["initial"] = deepcopy(rows)
+        ent["initial"] = deepcopy(_rumination_strip_meta_keys(rows) if step == 7 else rows)
         snapshots[sk] = ent
     prog = _persist(rows, snapshots)
     payload = build_table_widget_payload(step, rows, values_list)

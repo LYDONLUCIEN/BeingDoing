@@ -61,6 +61,7 @@ import {
 import {
   computeFurthestBrowsableFilterStep,
   computeMaxReachedFromSnapshots,
+  RUMINATION_FILTER_STEP_MAX,
 } from '@/lib/explore/ruminationProgressNav';
 import {
   ruminationApi,
@@ -163,6 +164,8 @@ export default function ChatPhasePage() {
   const [activationCode, setActivationCode] = useState<string | null>(null);
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [activeThreadId, setActiveThreadIdState] = useState<string | null>(null);
+  const activeThreadIdRef = useRef<string | null>(null);
+  activeThreadIdRef.current = activeThreadId;
   const [backendSyncedThreadId, setBackendSyncedThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [input, setInput] = useState('');
@@ -184,7 +187,7 @@ export default function ChatPhasePage() {
   >(null);
   /** 表格提交等操作后递增，驱动标题区六段进度条重新拉取 */
   const [ruminationProgressNonce, setRuminationProgressNonce] = useState(0);
-  /** 与后端 filter_step（1–9）对齐：当前查看的筛选子步、已提交到的最远步、完整 progress（含快照） */
+  /** 与后端 filter_step（1–7）对齐：当前查看的筛选子步、已提交到的最远步、完整 progress（含快照） */
   const [ruminationProgressState, setRuminationProgressState] =
     useState<RuminationProgress | null>(null);
   const [ruminationViewStep, setRuminationViewStep] = useState(1);
@@ -806,6 +809,15 @@ export default function ChatPhasePage() {
   const canContinue =
     !!selectedThread && (isSelectedCompleted || (stepLocked && !adminDebugBypass));
 
+  /** 沉淀终步：用表格确认 + 结论卡完成流程，期间隐藏顶栏「完成并继续」 */
+  const hideRuminationHeaderComplete =
+    phase === 'rumination' &&
+    ((!isSelectedCompleted &&
+      ruminationProgressState?.main_section === 'final_choice') ||
+      (ruminationProgressState?.main_section === 'filter' &&
+        ruminationViewStep === RUMINATION_FILTER_STEP_MAX &&
+        ruminationTablePayload?.step === RUMINATION_FILTER_STEP_MAX));
+
   /** 本阶段已提交：普通用户仅可点「完成并继续」，主输入区与侧栏新建等置灰 */
   const phaseInteractionLocked = stepLocked && !adminDebugBypass;
 
@@ -943,67 +955,129 @@ export default function ChatPhasePage() {
   /**
    * 沉淀：单次 GET rumination-progress 更新进度与 max_reached；必要时再 GET get-table 补左栏表。
    * 原实现拆成两个 effect 会对同一接口连打多次；标题区 RuminationSectionProgress 已 externalProgressOnly，不再重复请求。
+   *
+   * 注意：不把 activeThreadId 列入依赖，避免切换/校正线程时误取消进行中的请求；边界保存用 activeThreadIdRef。
+   * threadsFetched 与 initLoading 齐平后再拉表，避免与线程初始化竞态。
+   * filter_step 与快照不一致时 get-table 可能返回空 widget，此时回退拉第 1 步表。
    */
   useEffect(() => {
-    if (phase !== 'rumination' || !activationCode || initLoading) return;
+    if (
+      phase !== 'rumination' ||
+      !activationCode ||
+      initLoading ||
+      !threadsFetched
+    ) {
+      return;
+    }
     let cancelled = false;
     (async () => {
+      type ApplyResult = 'ok' | 'error' | 'empty';
+      const applyTableResponse = (
+        tb: Awaited<ReturnType<typeof ruminationApi.getTable>>,
+        defaultStep: number
+      ): ApplyResult => {
+        if (cancelled) return 'ok';
+        if (tb.code !== 200) {
+          setChatError(tb.message || t('explore.chat.ruminationTableLoadError'));
+          return 'error';
+        }
+        const w = tb.data?.table_widget;
+        if (!w) return 'empty';
+        if (tb.data?.progress) setRuminationProgressState(tb.data.progress);
+        if (typeof tb.data?.max_reached_filter_step === 'number') {
+          setRuminationMaxReached(tb.data.max_reached_filter_step);
+        } else if (tb.data?.progress) {
+          setRuminationMaxReached(computeMaxReachedFromSnapshots(tb.data.progress));
+        }
+        setRuminationTablePayload(w as ThreadMessage['tablePayload']);
+        if (w.step != null) setRuminationViewStep(w.step);
+        const stepKey = String(w.step ?? defaultStep);
+        queueMicrotask(() => {
+          setRuminationStepBoundaries((b) => {
+            if (b[stepKey] !== undefined) return b;
+            const len = messagesRef.current.length;
+            const nb = { ...b, [stepKey]: len };
+            const tid = activeThreadIdRef.current;
+            if (activationCode && tid) {
+              saveRuminationStepBoundaries(activationCode, tid, nb);
+            }
+            return nb;
+          });
+        });
+        return 'ok';
+      };
+
       try {
         const res = await ruminationApi.get(activationCode);
         if (cancelled) return;
-        const p = res?.data?.progress;
-        const mr =
-          res?.data?.max_reached_filter_step ?? computeMaxReachedFromSnapshots(p ?? null);
-        if (p) setRuminationProgressState(p);
-        setRuminationMaxReached(mr);
-
-        const progressOk = p && !p.filter_early_terminated;
-        const userFilterTableFlow =
-          progressOk &&
-          p.main_section === 'filter' &&
-          (p.filter_step ?? 0) > 0;
-        /** 管理员在筛选表提交进入 final_choice 后仍应能加载左栏表做调试 */
-        const adminFilterTableAfterDone =
-          progressOk &&
-          adminDebugBypass &&
-          p.main_section === 'final_choice';
-        if (!progressOk || (!userFilterTableFlow && !adminFilterTableAfterDone)) {
+        if (res.code !== 200) {
+          setChatError(res.message || t('explore.chat.ruminationTableLoadError'));
           return;
         }
-        /** 历史里可能仍有旧 table_widget；不能以「消息里有没有表」跳过 getTable，否则会永远停在错误子步、第 9 步无法整表提交 */
-        const stepToLoad = Math.min(9, Math.max(1, p.filter_step || 1));
-        setRuminationViewStep(stepToLoad);
-        const tb = await ruminationApi.getTable(activationCode, stepToLoad);
-        if (cancelled || !tb?.data?.table_widget) return;
-        if (tb.data.progress) setRuminationProgressState(tb.data.progress);
-        if (typeof tb.data.max_reached_filter_step === 'number') {
-          setRuminationMaxReached(tb.data.max_reached_filter_step);
+        const p = res.data?.progress;
+        if (!p) {
+          setChatError(t('explore.chat.ruminationTableLoadError'));
+          return;
         }
-        const w = tb.data.table_widget;
-        setRuminationTablePayload(w as ThreadMessage['tablePayload']);
-        if (w?.step != null) setRuminationViewStep(w.step);
-        if (w) {
-          const stepKey = String(w.step ?? stepToLoad);
-          queueMicrotask(() => {
-            setRuminationStepBoundaries((b) => {
-              if (b[stepKey] !== undefined) return b;
-              const len = messagesRef.current.length;
-              const nb = { ...b, [stepKey]: len };
-              if (activationCode && activeThreadId) {
-                saveRuminationStepBoundaries(activationCode, activeThreadId, nb);
-              }
-              return nb;
-            });
-          });
+        const mr =
+          res.data?.max_reached_filter_step ?? computeMaxReachedFromSnapshots(p);
+        setRuminationProgressState(p);
+        setRuminationMaxReached(mr);
+
+        /** 终态不再自动拉表；final_choice 下普通用户用结论卡，管理员走 adminFilterTableAfterDone */
+        const terminalNoTable = ['recommend', 'end'];
+        const userFilterTableFlow =
+          !terminalNoTable.includes(p.main_section ?? '') &&
+          p.main_section !== 'final_choice' &&
+          ((p.filter_step ?? 0) > 0 ||
+            p.main_section === 'opening' ||
+            p.main_section === 'review' ||
+            (p.main_section === 'filter' && (p.filter_step ?? 0) === 0));
+        /** 管理员在筛选表提交进入 final_choice 后仍应能加载左栏表做调试 */
+        const adminFilterTableAfterDone =
+          adminDebugBypass && p.main_section === 'final_choice';
+        if (!userFilterTableFlow && !adminFilterTableAfterDone) {
+          return;
+        }
+
+        setChatError(null);
+        /** 历史里可能仍有旧 table_widget；不能以「消息里有没有表」跳过 getTable，否则会永远停在错误子步 */
+        const stepToLoad = Math.min(
+          RUMINATION_FILTER_STEP_MAX,
+          Math.max(1, p.filter_step || 1)
+        );
+        setRuminationViewStep(stepToLoad);
+
+        let tb = await ruminationApi.getTable(activationCode, stepToLoad);
+        if (cancelled) return;
+
+        let r = applyTableResponse(tb, stepToLoad);
+        if (r === 'empty' && stepToLoad !== 1) {
+          tb = await ruminationApi.getTable(activationCode, 1);
+          if (cancelled) return;
+          r = applyTableResponse(tb, 1);
+        }
+        if (r === 'empty') {
+          setChatError(t('explore.chat.ruminationTableMissing'));
         }
       } catch {
-        /* ignore */
+        if (!cancelled) {
+          setChatError(t('explore.chat.ruminationTableLoadError'));
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [phase, activationCode, activeThreadId, initLoading, ruminationProgressNonce, adminDebugBypass]);
+  }, [
+    phase,
+    activationCode,
+    initLoading,
+    threadsFetched,
+    ruminationProgressNonce,
+    adminDebugBypass,
+    t,
+  ]);
 
   const handleSend = async (
     prefill?: string,
@@ -1343,6 +1417,13 @@ export default function ChatPhasePage() {
       if (idx < 0) return [...prev, updated];
       return prev.map((t) => (t.id === targetThreadId ? updated : t));
     });
+
+    if (phase === 'rumination' && activationCode && session) {
+      const nextSession = unlockNextPhase({ ...session, currentPhase: phase });
+      saveSession(nextSession);
+      setSession(nextSession);
+      router.push('/explore/transition?from=rumination');
+    }
   };
 
   const handleContinueChat = async (conclusionMsg?: ThreadMessage) => {
@@ -1582,9 +1663,11 @@ export default function ChatPhasePage() {
         const rawStep = payload.step;
         /** 以 payload 为准；缺失时回退当前查看子步，避免闭包/竞态导致误按第 1 步提交 */
         const stepNum =
-          typeof rawStep === 'number' && rawStep >= 1 && rawStep <= 9
+          typeof rawStep === 'number' &&
+          rawStep >= 1 &&
+          rawStep <= RUMINATION_FILTER_STEP_MAX
             ? rawStep
-            : Math.min(9, Math.max(1, ruminationViewStep || 1));
+            : Math.min(RUMINATION_FILTER_STEP_MAX, Math.max(1, ruminationViewStep || 1));
         /** 必须始终传完整 table_data：后端 RuminationTableSubmitRequest 未实现 single_row/patch，
          * 若 single 行模式传 null，服务端不会进入任一步的递进分支，表现为「确认后卡住不前进」。 */
         const res = await ruminationApi.submitTable(
@@ -1608,22 +1691,45 @@ export default function ChatPhasePage() {
         if (typeof data?.max_reached_filter_step === 'number') {
           setRuminationMaxReached(data.max_reached_filter_step);
         }
-        if (data?.next_action === 'rumination_filter_complete') {
-          setRuminationProgressNonce((n) => n + 1);
-          if (adminDebugBypass) {
-            const ft = data.progress?.filter_table;
-            setRuminationTablePayload((prev) => {
-              const base: RuminationTablePayload = prev ?? payload;
-              if (ft && Array.isArray(ft)) {
-                return { ...base, rows: ft as Record<string, unknown>[], step: 9 };
-              }
-              return { ...base, rows };
+        if (data?.next_action === 'rumination_conclusion_insert' && data.dimension_conclusion) {
+          const concl = data.dimension_conclusion as DimensionConclusionData;
+          const newId = `rumination_concl_${Date.now()}`;
+          setMessages((prev) => {
+            const filtered = prev.filter((m) => m.type !== 'table_widget');
+            const boundarySnap = filtered.length;
+            queueMicrotask(() => {
+              setRuminationStepBoundaries((b) => {
+                const nb = ensureDefaultStepOne({
+                  ...b,
+                  [String(RUMINATION_FILTER_STEP_MAX)]: boundarySnap,
+                });
+                if (activationCode && submitThreadId) {
+                  saveRuminationStepBoundaries(activationCode, submitThreadId, nb);
+                }
+                return nb;
+              });
             });
-            setRuminationViewStep(9);
-            return;
-          }
+            return [
+              ...filtered,
+              {
+                id: newId,
+                role: 'assistant',
+                type: 'dimension_conclusion',
+                content: JSON.stringify(concl),
+                createdAt: Date.now(),
+                conclusionData: concl,
+                conclusionCollapsed: false,
+                conclusionConfirmed: false,
+              },
+            ];
+          });
           setRuminationTablePayload(null);
-          router.push('/explore/transition?from=rumination');
+          setRuminationViewStep(RUMINATION_FILTER_STEP_MAX);
+          if (data.progress) setRuminationProgressState(data.progress);
+          if (typeof data?.max_reached_filter_step === 'number') {
+            setRuminationMaxReached(data.max_reached_filter_step);
+          }
+          setRuminationProgressNonce((n) => n + 1);
           return;
         }
         if (nextTable) {
@@ -1643,7 +1749,9 @@ export default function ChatPhasePage() {
             void playRuminationStepOpeningAfterSubmit(newStep, submitThreadId);
           });
         } else if (data?.progress?.filter_step != null && data.progress.filter_step >= 1) {
-          setRuminationViewStep(Math.min(9, Math.max(1, data.progress.filter_step)));
+          setRuminationViewStep(
+            Math.min(RUMINATION_FILTER_STEP_MAX, Math.max(1, data.progress.filter_step))
+          );
         }
         setRuminationProgressNonce((n) => n + 1);
       } catch (err) {
@@ -1715,7 +1823,7 @@ export default function ChatPhasePage() {
     async (rowIdx: number, rowId: string) => {
       if (!activationCode || phase !== 'rumination') return;
       const filterStep = ruminationTablePayload?.step ?? ruminationViewStep;
-      if (filterStep < 3 || filterStep > 5) return;
+      if (filterStep !== 3) return;
       setHypothesisRegeneratingRowIndex(rowIdx);
       setChatError(null);
       try {
@@ -1889,18 +1997,20 @@ export default function ChatPhasePage() {
                 <p className="mx-auto mt-2 max-w-2xl text-sm leading-relaxed text-neutral-600">
                   {phaseMeta.desc} {phaseMeta.hint}
                 </p>
-                <button
-                  type="button"
-                  onClick={handleCompleteAndContinue}
-                  disabled={!canContinue}
-                  title={!canContinue ? t('explore.chat.selectCompletedHint') : ''}
-                  className="bd-btn-black absolute right-2 top-2 flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold text-white sm:right-6 sm:top-3 sm:px-4 sm:py-2.5 sm:text-sm disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <FileText size={15} strokeWidth={2} className="hidden shrink-0 sm:inline" />
-                  <span className="max-w-[9rem] truncate sm:max-w-none">
-                    {t('explore.chat.completeAndContinue')}
-                  </span>
-                </button>
+                {!hideRuminationHeaderComplete && (
+                  <button
+                    type="button"
+                    onClick={handleCompleteAndContinue}
+                    disabled={!canContinue}
+                    title={!canContinue ? t('explore.chat.selectCompletedHint') : ''}
+                    className="bd-btn-black absolute right-2 top-2 flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold text-white sm:right-6 sm:top-3 sm:px-4 sm:py-2.5 sm:text-sm disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <FileText size={15} strokeWidth={2} className="hidden shrink-0 sm:inline" />
+                    <span className="max-w-[9rem] truncate sm:max-w-none">
+                      {t('explore.chat.completeAndContinue')}
+                    </span>
+                  </button>
+                )}
               </header>
               {activationCode && (
                 <div className="shrink-0 px-4 pb-3 pt-0 sm:px-8">
@@ -1931,7 +2041,7 @@ export default function ChatPhasePage() {
                               hypothesisRegeneratingRowIndex !== null ||
                               ruminationViewStep >= ruminationFurthestNavigableStep,
                             hidePrev: ruminationViewStep <= 1,
-                            hideNext: ruminationViewStep >= 9,
+                            hideNext: ruminationViewStep >= RUMINATION_FILTER_STEP_MAX,
                             segmentJump: {
                               furthestStep: ruminationFurthestNavigableStep,
                               jumpDisabled:
@@ -1985,7 +2095,7 @@ export default function ChatPhasePage() {
                     uiVariant="glass"
                     cardTitle={t('explore.chat.ruminationUi.tableCardTitle')}
                     payload={ruminationTablePayload}
-                    hideConfirmButton={ruminationTablePayload.step === 9}
+                    hideConfirmButton={false}
                     confirmLabel={t('explore.chat.ruminationTable.confirm')}
                     refillLabel={t('explore.chat.ruminationTable.refill')}
                     selectPlaceholder={t('explore.chat.ruminationUi.tableSelectPlaceholder')}
@@ -2109,7 +2219,7 @@ export default function ChatPhasePage() {
                 >
                 {phase === 'rumination' &&
                   !initLoading &&
-                  ruminationTablePayload?.step === 9 && (
+                  ruminationTablePayload?.step === 7 && (
                     <div className="mb-3 min-w-0">
                       <FlowAiMessage
                         variant="ruminationWorkbench"

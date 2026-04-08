@@ -28,13 +28,15 @@ const SECTION_SPAN: Record<RuminationMainSection, number> = {
   end: 8,
 };
 
+const FILTER_STEP_CAP = 7;
+
 /**
- * 已有 submitted 快照的筛选子步数量（1..9 各计一次，不要求连续，与后端快照一致）。
+ * 已有 submitted 快照的筛选子步数量（1..7 各计一次，不要求连续，与后端快照一致）。
  */
 function countFilterSubmittedSteps(progress: RuminationProgress): number {
   const snaps = progress.filter_step_snapshots ?? {};
   let n = 0;
-  for (let k = 1; k <= 9; k++) {
+  for (let k = 1; k <= FILTER_STEP_CAP; k++) {
     const ent = snaps[String(k)];
     if (ent != null && ent.submitted != null) n++;
   }
@@ -42,15 +44,15 @@ function countFilterSubmittedSteps(progress: RuminationProgress): number {
 }
 
 /**
- * 筛选表界面 11 个节点（0..10）→ 映射到 0%..100%（本页仍 cap 99%）：
- * - 0：尚未有任何子步提交快照（含空白表刚进入）
- * - 1..9：已有 submitted 的子步个数（通常与顺序提交一致）
- * - 10：已进入 final_choice / recommend / end（筛选主线结束、最终确认后流程）
+ * 筛选表界面刻度（0..8）→ 映射到进度条填充比例的分母：
+ * - 0：尚未有任何子步提交快照
+ * - 1..7：已有 submitted 的子步个数
+ * - 8：已进入 final_choice / recommend / end
  */
 export function computeRuminationFilterMilestone11(progress: RuminationProgress): number {
   const ms = progress.main_section;
-  if (ms === 'final_choice' || ms === 'recommend' || ms === 'end') return 10;
-  return Math.min(10, countFilterSubmittedSteps(progress));
+  if (ms === 'final_choice' || ms === 'recommend' || ms === 'end') return 8;
+  return Math.min(8, countFilterSubmittedSteps(progress));
 }
 
 /**
@@ -62,10 +64,10 @@ export function computeDisplayedRuminationMilestone(
   viewFilterStep?: number | null
 ): number {
   const ms = progress.main_section;
-  if (ms === 'final_choice' || ms === 'recommend' || ms === 'end') return 10;
+  if (ms === 'final_choice' || ms === 'recommend' || ms === 'end') return 8;
   const submitted = countFilterSubmittedSteps(progress);
-  if (viewFilterStep == null || viewFilterStep < 1) return Math.min(10, submitted);
-  const v = Math.min(9, Math.max(1, viewFilterStep));
+  if (viewFilterStep == null || viewFilterStep < 1) return Math.min(8, submitted);
+  const v = Math.min(FILTER_STEP_CAP, Math.max(1, viewFilterStep));
   return Math.min(submitted, v);
 }
 
@@ -82,7 +84,7 @@ function withinCurrentSection(
       return (ri + 1) / 4;
     }
     case 'filter': {
-      return Math.min(1, computeDisplayedRuminationMilestone(progress, viewFilterStep) / 10);
+      return Math.min(1, computeDisplayedRuminationMilestone(progress, viewFilterStep) / 8);
     }
     case 'final_choice':
       return 1;
@@ -97,9 +99,9 @@ function withinCurrentSection(
 
 /**
  * 整体完成度 0–100。
- * 在筛选表界面（含 final_choice 回看表）：进度为 **11 个节点**（0..10）的线性刻度——
- * 0% 空白/未提交 → 每多一个子步 submitted +1 档 → 10 档为进入最终选择及之后；本页最高 99%。
- * 详情文案仍显示「筛选 n/9」。
+ * 在筛选表界面（含 final_choice 回看表）：进度为 **9 个节点**（0..8）的线性刻度——
+ * 0% 空白/未提交 → 每多一个子步 submitted +1 档 → 8 档为进入最终选择及之后；本页最高 99%。
+ * 详情文案仍显示「筛选 n/7」。
  */
 export function computeRuminationJourneyPercent(
   progress: RuminationProgress,
@@ -112,7 +114,7 @@ export function computeRuminationJourneyPercent(
 
   if (useViewForFilterBar) {
     const m = computeDisplayedRuminationMilestone(progress, viewFilterStep);
-    return Math.min(99, Math.max(0, (m / 10) * 100));
+    return Math.min(99, Math.max(0, (m / 8) * 100));
   }
 
   const idx = SECTION_ORDER.indexOf(progress.main_section);
@@ -140,10 +142,10 @@ export interface RuminationFilterStepNavConfig {
   nextDisabled: boolean;
   /** 第 1 子步不展示「上一阶段」 */
   hidePrev?: boolean;
-  /** 第 9 子步不展示「下一阶段」 */
+  /** 第 7 子步不展示「下一阶段」 */
   hideNext?: boolean;
   /**
-   * 进度条拆成 9 段可点：跳到对应筛选子步（与 furthest 对齐，不可达段禁用）。
+   * 进度条拆成 7 段可点：跳到对应筛选子步（与 furthest 对齐，不可达段禁用）。
    */
   segmentJump?: {
     furthestStep: number;
@@ -158,7 +160,7 @@ interface RuminationSectionProgressProps {
   /** 递增则重新拉取进度（如表格提交成功后） */
   refreshNonce?: number;
   variant?: 'default' | 'beautiful';
-  /** 筛选子步（filter_step 1–9）上一阶段 / 下一阶段 */
+  /** 筛选子步（filter_step 1–7）上一阶段 / 下一阶段 */
   filterStepNav?: RuminationFilterStepNavConfig;
   /**
    * 与对话页同源进度（getTable / submit 后立即更新），避免仅依赖本组件轮询时百分比滞后。
@@ -170,7 +172,7 @@ interface RuminationSectionProgressProps {
    * 对话页父级已统一拉取，避免同屏重复请求（含 refreshNonce 触发的二次拉取）。
    */
   externalProgressOnly?: boolean;
-  /** 筛选段用户正在查看的子步 1–9，与上一阶段/下一阶段联动，驱动进度条与「筛选 n/9」文案 */
+  /** 筛选段用户正在查看的子步 1–7，与上一阶段/下一阶段联动，驱动进度条与「筛选 n/7」文案 */
   viewFilterStep?: number | null;
 }
 
@@ -228,7 +230,7 @@ export default function RuminationSectionProgress({
   const inFilter =
     displayProgress?.main_section === 'filter' && (displayProgress.filter_step ?? 0) > 0;
 
-  /** 与进度条一致：正在查看某筛选子步时展示「筛选 n/9」（含 final_choice 回看表） */
+  /** 与进度条一致：正在查看某筛选子步时展示「筛选 n/7」（含 final_choice 回看表） */
   const showFilterSubstepCaption =
     viewFilterStep != null &&
     viewFilterStep >= 1 &&
@@ -333,7 +335,7 @@ export default function RuminationSectionProgress({
                   className="absolute inset-0 z-[1] flex items-stretch"
                   role="presentation"
                 >
-                  {Array.from({ length: 9 }, (_, i) => {
+                  {Array.from({ length: FILTER_STEP_CAP }, (_, i) => {
                     const step = i + 1;
                     const vf = viewFilterStep ?? 0;
                     const reachable = step <= segJump.furthestStep;
@@ -379,7 +381,7 @@ export default function RuminationSectionProgress({
         (viewFilterStep != null && viewFilterStep <= 1);
       const effHideNext =
         filterStepNav.hideNext === true ||
-        (viewFilterStep != null && viewFilterStep >= 9);
+        (viewFilterStep != null && viewFilterStep >= FILTER_STEP_CAP);
       return (
         <div className={`mx-auto flex w-full max-w-4xl items-center gap-2 sm:gap-3 ${className}`}>
           {!effHidePrev ? (

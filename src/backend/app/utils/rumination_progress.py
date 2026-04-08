@@ -13,10 +13,11 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 MAIN_SECTIONS = ("opening", "review", "filter", "final_choice", "recommend", "end")
-FILTER_STEPS = tuple(range(1, 10))  # 1-9
+MAX_FILTER_STEP = 7
+FILTER_STEPS = tuple(range(1, MAX_FILTER_STEP + 1))  # 1-7
 
 DEFAULT_PROGRESS: Dict[str, Any] = {
-    "schema_version": 1,
+    "schema_version": 2,
     "main_section": "opening",
     "review_sub_index": 0,
     "filter_step": 0,
@@ -35,14 +36,58 @@ def _rumination_progress_file(reports_root: Path, report_id: str) -> Path:
     return reports_root / report_id / "rumination_progress.json"
 
 
+def _migrate_progress_v1_to_v2(data: Dict[str, Any]) -> None:
+    """将旧版 9 子步快照映射为 7 子步（去掉原 4–5 假设轮）。"""
+    if int(data.get("schema_version", 1)) >= 2:
+        return
+    snaps = data.get("filter_step_snapshots")
+    if not isinstance(snaps, dict):
+        data["schema_version"] = 2
+        return
+    new_snaps: Dict[str, Any] = {}
+    for k, v in snaps.items():
+        try:
+            sk = int(str(k))
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(v, dict):
+            continue
+        if sk in (1, 2, 3):
+            new_snaps[str(sk)] = v
+        elif sk in (4, 5):
+            continue
+        elif sk == 6:
+            new_snaps["4"] = v
+        elif sk == 7:
+            new_snaps["5"] = v
+        elif sk == 8:
+            new_snaps["6"] = v
+        elif sk == 9:
+            new_snaps["7"] = v
+    data["filter_step_snapshots"] = new_snaps
+    fs = int(data.get("filter_step") or 0)
+    if fs in (4, 5):
+        data["filter_step"] = 3
+    elif fs == 6:
+        data["filter_step"] = 4
+    elif fs == 7:
+        data["filter_step"] = 5
+    elif fs == 8:
+        data["filter_step"] = 6
+    elif fs >= 9:
+        data["filter_step"] = 7
+    data["schema_version"] = 2
+
+
 def _normalize_loaded(data: Dict[str, Any]) -> Dict[str, Any]:
     out = {**DEFAULT_PROGRESS, **data}
     out["main_section"] = out.get("main_section") or "opening"
     out["review_sub_index"] = int(out.get("review_sub_index", 0))
-    out["filter_step"] = int(out.get("filter_step", 0))
     out["filter_row_cursor"] = int(out.get("filter_row_cursor", 0))
     out["hypothesis_round"] = max(1, min(3, int(out.get("hypothesis_round", 1))))
-    out["schema_version"] = int(out.get("schema_version", 1))
+    _migrate_progress_v1_to_v2(out)
+    out["schema_version"] = int(out.get("schema_version", 2))
+    out["filter_step"] = max(0, min(MAX_FILTER_STEP, int(out.get("filter_step", 0))))
     if "filter_early_terminated" not in data:
         out["filter_early_terminated"] = False
     if "filter_terminate_reason" not in data:
@@ -53,7 +98,7 @@ def _normalize_loaded(data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def max_reached_filter_step(snapshots: Any) -> int:
-    """有已提交表格的最高 filter_step（1–9），无则 0。"""
+    """有已提交表格的最高 filter_step（1–7），无则 0。"""
     if not isinstance(snapshots, dict):
         return 0
     m = 0
@@ -61,6 +106,8 @@ def max_reached_filter_step(snapshots: Any) -> int:
         try:
             sk = int(str(k))
         except (TypeError, ValueError):
+            continue
+        if sk > MAX_FILTER_STEP:
             continue
         if isinstance(v, dict) and v.get("submitted") is not None:
             m = max(m, sk)
@@ -101,7 +148,7 @@ def save_rumination_progress(
     if review_sub_index is not None:
         current["review_sub_index"] = max(0, min(3, review_sub_index))
     if filter_step is not None:
-        current["filter_step"] = max(0, min(9, filter_step))
+        current["filter_step"] = max(0, min(MAX_FILTER_STEP, filter_step))
     if filter_table is not None:
         current["filter_table"] = filter_table
     if filter_row_cursor is not None:

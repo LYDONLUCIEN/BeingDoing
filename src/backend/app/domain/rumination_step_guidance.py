@@ -14,17 +14,15 @@ from app.core.llmapi.base import LLMMessage
 
 OpeningMode = Literal["fixed", "llm"]
 
-# 1–9 子步；默认仅第 6 步（工作目的 / 价值观）使用 LLM，其余固定文案
+# 1–7 子步；默认仅第 4 步（工作目的 / 价值观）使用 LLM，其余固定文案
 STEP_OPENING_MODE: Dict[int, OpeningMode] = {
     1: "fixed",
     2: "fixed",
     3: "fixed",
-    4: "fixed",
+    4: "llm",
     5: "fixed",
-    6: "llm",
+    6: "fixed",
     7: "fixed",
-    8: "fixed",
-    9: "fixed",
 }
 
 # 固定引导模板。可用占位符：{row_count} {values_keywords} {table_json}
@@ -41,31 +39,27 @@ STEP_OPENING_FIXED_ZH: Dict[int, str] = {
     3: (
         "接下来是为每个组合生成具体方向假设，左侧约 {row_count} 行。"
         "带「个人事业」「职业路径」色块的是两类不同取向；在「假设」列里选一条，或选「待定」「其他」自填。"
-        "有疑问就点行，在右边跟我说。"
+        "至少一行需为有效假设（非「待定」）。有疑问就点行，在右边跟我说。"
     ),
     4: (
-        "请继续把还没选定的假设补齐（左侧仍约 {row_count} 行），可以选推荐、待定或自定义。"
-        "全部选完后请点「确认」，进入下一轮整理。"
+        "左侧表格已增加「工作目的」列（约 {row_count} 行）。请结合您的价值观为每一行选择最贴近的一项，"
+        "或选「都不符合」「其他」。可点行在右侧提问；选完后点「确认」。"
     ),
     5: (
-        "这是假设确认的最后一轮（{row_count} 行）。请尽量做出选择；实在纠结可以选「待定」。"
-        "整表确认后，我们会进入与价值观相关的筛选。"
-    ),
-    7: (
         "现在要感受每个方向对你的驱动力：左侧 {row_count} 行，请在「激情标记」里选「忍不住想做」或「应该做」。"
         "选好后点「确认」即可。"
     ),
-    8: (
+    6: (
         "结合你现在的处境，判断每个方向是「现在」就能迈出第一步，还是更适合放在「未来」。"
         "左侧 {row_count} 行选完后点「确认」，我们会生成最终方向表。"
     ),
-    9: (
-        "筛选结果已经收束在左侧这张最终表（{row_count} 个方向）。"
-        "你可以先通读，有需要就在对话里跟我聊；按页面提示用结论卡或文字完成确认即可。"
+    7: (
+        "左侧是收束后的方向列表（{row_count} 行）。请勾选 1–3 行你最认同的，点表格「确认」后在右侧查看结论卡；"
+        "仍可在对话里随时问我。"
     ),
 }
 
-# 第 6 步 LLM：对齐产品文档「价值过滤」引导要点
+# 第 4 步 LLM：对齐产品文档「价值过滤」引导要点
 STEP_6_OPENING_SYSTEM_ZH = (
     "你是职业规划咨询师，语气亲切、专业、一次只说清一件事。"
     "当前用户处于「价值过滤」环节：表格里每一行有一个已选定的职业方向假设，并新增「工作目的」列，"
@@ -100,7 +94,7 @@ def build_opening_context(
     values_list: List[str],
 ) -> RuminationOpeningContext:
     """从 progress 快照读取当前子步表格，供固定文案格式化或 LLM 提示词使用。"""
-    step = max(1, min(9, int(filter_step)))
+    step = max(1, min(7, int(filter_step)))
     snapshots = progress.get("filter_step_snapshots") or {}
     sk = str(step)
     ent = snapshots.get(sk) or {}
@@ -134,12 +128,12 @@ def build_opening_context(
 
 
 def get_opening_mode(filter_step: int) -> OpeningMode:
-    step = max(1, min(9, int(filter_step)))
+    step = max(1, min(7, int(filter_step)))
     return STEP_OPENING_MODE.get(step, "fixed")
 
 
 def render_fixed_opening_zh(filter_step: int, ctx: RuminationOpeningContext) -> str:
-    step = max(1, min(9, int(filter_step)))
+    step = max(1, min(7, int(filter_step)))
     template = STEP_OPENING_FIXED_ZH.get(step, "")
     if not template:
         return "请查看左侧表格，按提示完成本步选择后点击「确认」。"
@@ -166,7 +160,7 @@ def build_opening_llm_messages(filter_step: int, ctx: RuminationOpeningContext) 
     """
     按子步组装 LLM 消息。新增「某步改用 AI 引导」时在此分支实现对应提示词即可。
     """
-    step = max(1, min(9, int(filter_step)))
-    if step == 6:
+    step = max(1, min(7, int(filter_step)))
+    if step == 4:
         return build_step_6_opening_llm_messages(ctx)
     raise ValueError(f"rumination opening llm not implemented for step {step}")

@@ -577,7 +577,7 @@ export default function AdminConversationsPage() {
                 <input
                   type="number"
                   min={0}
-                  max={9}
+                  max={7}
                   value={jumpFilterStep}
                   onChange={(e) => setJumpFilterStep(parseInt(e.target.value, 10) || 0)}
                   className="w-full rounded-lg border border-bd-border bg-bd-overlay px-3 py-2"

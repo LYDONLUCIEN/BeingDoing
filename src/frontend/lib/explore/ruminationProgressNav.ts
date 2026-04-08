@@ -1,5 +1,8 @@
 import type { RuminationProgress } from '@/lib/api/rumination';
 
+/** 与后端 MAX_FILTER_STEP 一致 */
+export const RUMINATION_FILTER_STEP_MAX = 7;
+
 export function computeMaxReachedFromSnapshots(p: RuminationProgress | null): number {
   if (!p?.filter_step_snapshots) return 0;
   let m = 0;
@@ -22,11 +25,11 @@ export function computeFurthestBrowsableFilterStep(p: RuminationProgress | null)
   const snaps = p.filter_step_snapshots ?? {};
   for (const [key, ent] of Object.entries(snaps)) {
     const n = parseInt(key, 10);
-    if (Number.isNaN(n) || n < 1 || n > 9) continue;
+    if (Number.isNaN(n) || n < 1 || n > RUMINATION_FILTER_STEP_MAX) continue;
     const e = ent as { initial?: unknown; submitted?: unknown } | null;
     if (e != null && (e.initial != null || e.submitted != null)) {
       maxSnap = Math.max(maxSnap, n);
     }
   }
-  return Math.min(9, Math.max(1, fs, mr, maxSnap));
+  return Math.min(RUMINATION_FILTER_STEP_MAX, Math.max(1, fs, mr, maxSnap));
 }

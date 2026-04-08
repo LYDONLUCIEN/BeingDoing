@@ -215,7 +215,7 @@ export const zh = {
         loading: '加载进度…',
         filterStepSegmentsGroup: '筛选进度共 9 步，点击某一段可跳转到对应子步',
         jumpToFilterStep: '跳转到筛选第 {step} 步',
-        filterDetail: '筛选 {step}/9',
+        filterDetail: '筛选 {step}/7',
         rowDetail: '· 行 {current}/{total}',
         sections: {
           opening: '开场',

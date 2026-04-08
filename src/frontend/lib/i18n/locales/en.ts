@@ -222,7 +222,7 @@ export const en = {
         loading: 'Loading progress…',
         filterStepSegmentsGroup: 'Filter progress: 9 steps — tap a segment to jump',
         jumpToFilterStep: 'Go to filter step {step}',
-        filterDetail: 'Filter {step}/9',
+        filterDetail: 'Filter {step}/7',
         rowDetail: ' · Row {current}/{total}',
         sections: {
           opening: 'Opening',

@@ -40,6 +40,9 @@ export interface RuminationTablePayload {
   singleRowMode?: boolean;
   rowCursor?: number;
   totalRows?: number;
+  rowSelectionMode?: 'multi';
+  rowSelectionMin?: number;
+  rowSelectionMax?: number;
 }
 
 export interface RuminationProgressSaveParams {
@@ -60,6 +63,8 @@ export interface RuminationTableSubmitOptions {
   rowId?: string;
   patch?: Record<string, unknown>;
   preferSingleRow?: boolean;
+  /** 终步多选提交时传行 id（与 table_data 内 __pick 二选一） */
+  selectedRowIds?: string[];
 }
 
 export interface RuminationSubmitData {
@@ -71,6 +76,7 @@ export interface RuminationSubmitData {
   early_terminated?: boolean;
   terminate_reason?: string;
   max_reached_filter_step?: number;
+  dimension_conclusion?: Record<string, unknown>;
 }
 
 /** 筛选子步右侧引导：固定文案或 LLM（后端 `domain/rumination_step_guidance.py`） */
@@ -153,6 +159,7 @@ export const ruminationApi = {
     if (options?.rowId != null) body.row_id = options.rowId;
     if (options?.patch != null) body.patch = options.patch;
     if (options?.preferSingleRow != null) body.prefer_single_row = options.preferSingleRow;
+    if (options?.selectedRowIds?.length) body.selected_row_ids = options.selectedRowIds;
     const res = await apiClient.post('/simple-chat/rumination-table-submit', body);
     return res;
   },
@@ -169,7 +176,7 @@ export const ruminationApi = {
       },
     }),
 
-  /** 子步 3–5：单行重新生成假设1、假设2 */
+  /** 子步 3：单行重新生成假设1、假设2 */
   regenerateHypotheses: (
     activationCode: string,
     filterStep: number,

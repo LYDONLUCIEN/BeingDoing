@@ -24,6 +24,9 @@ export interface RuminationTablePayload {
   singleRowMode?: boolean;
   rowCursor?: number;
   totalRows?: number;
+  rowSelectionMode?: 'multi';
+  rowSelectionMin?: number;
+  rowSelectionMax?: number;
 }
 
 interface RuminationTableWidgetProps {
@@ -178,8 +181,12 @@ export default function RuminationTableWidget({
 
   const editableSet = new Set(payload.editableCols || []);
   const filterStep = payload.step ?? 0;
+  const rowSelectionMulti = payload.rowSelectionMode === 'multi';
+  const selMin = payload.rowSelectionMin ?? 1;
+  const selMax = payload.rowSelectionMax ?? 3;
 
   const colMinWidth = (col: RuminationTableColumn) => {
+    if (col.key === '__pick') return 52;
     if (col.key === 'id') return 40;
     const labelLen = col.label?.length ?? 0;
     return Math.min(220, Math.max(76, 8 + labelLen * 11));
@@ -248,11 +255,7 @@ export default function RuminationTableWidget({
         const raw = row[col.key];
         const strVal = raw != null ? String(raw).trim() : '';
 
-        if (
-          col.key === HYP_CONFIRM_KEY &&
-          filterStep >= 3 &&
-          filterStep <= 5
-        ) {
+        if (col.key === HYP_CONFIRM_KEY && filterStep === 3) {
           if (!strVal || isPlaceholderToken(strVal)) return { rowIdx, colKey: col.key };
           if (strVal === OTHER_SELECT_VALUE) return { rowIdx, colKey: col.key };
           continue;
@@ -272,11 +275,42 @@ export default function RuminationTableWidget({
         if (!strVal || isPlaceholderToken(strVal)) return { rowIdx, colKey: col.key };
       }
     }
+    if (rowSelectionMulti) {
+      const n = rows.filter((r) => r.__pick === true).length;
+      if (n < selMin || n > selMax) {
+        return { rowIdx: 0, colKey: '__pick' };
+      }
+    }
     return null;
-  }, [rows, payload.columns, editableSet, filterStep, hypothesisOtherLabel, isPlaceholderToken]);
+  }, [
+    rows,
+    payload.columns,
+    editableSet,
+    filterStep,
+    hypothesisOtherLabel,
+    isPlaceholderToken,
+    rowSelectionMulti,
+    selMin,
+    selMax,
+  ]);
 
   const handleConfirm = useCallback(() => {
     setValidationFlashKey(null);
+    if (filterStep === 3) {
+      let anyReal = false;
+      for (const r of rows) {
+        const v = String(r[HYP_CONFIRM_KEY] ?? '').trim();
+        if (v && v !== hypothesisPendingLabel) {
+          anyReal = true;
+          break;
+        }
+      }
+      if (!anyReal) {
+        setValidationCycle((c) => c + 1);
+        setValidationFlashKey(`0:${HYP_CONFIRM_KEY}`);
+        return;
+      }
+    }
     const bad = findFirstInvalidCell();
     if (bad) {
       const key = `${bad.rowIdx}:${bad.colKey}`;
@@ -299,7 +333,13 @@ export default function RuminationTableWidget({
       return next;
     });
     onConfirm(sanitized);
-  }, [rows, onConfirm, findFirstInvalidCell]);
+  }, [
+    rows,
+    onConfirm,
+    findFirstInvalidCell,
+    filterStep,
+    hypothesisPendingLabel,
+  ]);
 
   if (!payload.columns?.length) return null;
 
@@ -416,7 +456,7 @@ export default function RuminationTableWidget({
       { key: 'h3', tag: 'extra', text: h3, show: !!h3 },
     ];
 
-    const regenCol = onHypothesisRegenerate && filterStep >= 3 && filterStep <= 5;
+    const regenCol = onHypothesisRegenerate && filterStep === 3;
     const firstShownKey = hypLines.find((l) => l.show)?.key;
 
     const renderLeadingSlot = (lineKey: HypPick) => {
@@ -671,11 +711,11 @@ export default function RuminationTableWidget({
           {rows.map((row, rowIdx) => (
             <tr
               key={rowIdx}
-              role={isGlass ? 'button' : undefined}
-              tabIndex={isGlass ? 0 : undefined}
-              onClick={() => isGlass && handleGlassRowActivate(rowIdx)}
+              role={isGlass && !rowSelectionMulti ? 'button' : undefined}
+              tabIndex={isGlass && !rowSelectionMulti ? 0 : undefined}
+              onClick={() => isGlass && !rowSelectionMulti && handleGlassRowActivate(rowIdx)}
               onKeyDown={(e) => {
-                if (!isGlass) return;
+                if (!isGlass || rowSelectionMulti) return;
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
                   handleGlassRowActivate(rowIdx);
@@ -684,10 +724,10 @@ export default function RuminationTableWidget({
               className={
                 isGlass
                   ? `border-b border-neutral-200/80 transition-colors last:border-b-0 outline-none focus-visible:ring-2 focus-visible:ring-[rgba(145,194,255,0.65)] focus-visible:ring-inset ${
-                      selectedRowIdx === rowIdx
+                      !rowSelectionMulti && selectedRowIdx === rowIdx
                         ? 'bg-[rgba(145,194,255,0.38)] text-neutral-900 shadow-[inset_3px_0_0_0_#91C2FF]'
                         : 'hover:bg-white/30'
-                    } cursor-pointer`
+                    } ${rowSelectionMulti ? '' : 'cursor-pointer'}`
                   : 'border-b border-neutral-100 hover:bg-neutral-50/50'
               }
             >
@@ -697,7 +737,9 @@ export default function RuminationTableWidget({
                 const strVal = val != null ? String(val) : '';
 
                 const cellKey = `${rowIdx}:${col.key}`;
-                const cellFlash = isEditable && validationFlashKey === cellKey;
+                const cellFlash =
+                  validationFlashKey === cellKey &&
+                  (isEditable || (rowSelectionMulti && col.key === '__pick'));
 
                 return (
                   <td
@@ -720,7 +762,11 @@ export default function RuminationTableWidget({
                       key={
                         cellFlash ? `${cellKey}-v${validationCycle}` : cellKey
                       }
-                      ref={isEditable ? setCellWrapRef(rowIdx, col.key) : undefined}
+                      ref={
+                        isEditable || (rowSelectionMulti && col.key === '__pick')
+                          ? setCellWrapRef(rowIdx, col.key)
+                          : undefined
+                      }
                       className={`min-w-0 ${cellFlash ? 'rumination-validation-cell-flash' : ''}`}
                       onAnimationEnd={(e) => {
                         if (e.target !== e.currentTarget) return;
@@ -729,10 +775,30 @@ export default function RuminationTableWidget({
                         setValidationFlashKey((k) => (k === cellKey ? null : k));
                       }}
                     >
-                      {isEditable &&
-                      col.key === HYP_CONFIRM_KEY &&
-                      filterStep >= 3 &&
-                      filterStep <= 5 ? (
+                      {col.key === '__pick' && rowSelectionMulti ? (
+                        <label
+                          className="flex cursor-pointer items-center justify-center gap-2"
+                          onMouseDown={(e) => isGlass && e.stopPropagation()}
+                          onClick={(e) => isGlass && e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-neutral-300 text-sky-600 accent-sky-600"
+                            checked={row.__pick === true}
+                            disabled={disabled}
+                            onChange={() => {
+                              const currently = rows.filter((r) => r.__pick === true).length;
+                              const isOn = row.__pick === true;
+                              if (!isOn && currently >= selMax) {
+                                setValidationCycle((c) => c + 1);
+                                setValidationFlashKey(`${rowIdx}:__pick`);
+                                return;
+                              }
+                              handleCellChange(rowIdx, '__pick', !isOn);
+                            }}
+                          />
+                        </label>
+                      ) : isEditable && col.key === HYP_CONFIRM_KEY && filterStep === 3 ? (
                         renderHypothesisConfirmCell(row, rowIdx, strVal)
                       ) : isEditable && col.options?.includes(hypothesisOtherLabel) ? (
                         renderSelectWithOther(col, rowIdx, strVal, hypothesisOtherLabel)
