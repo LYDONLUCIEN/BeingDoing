@@ -23,6 +23,7 @@ DEFAULT_PROGRESS: Dict[str, Any] = {
     "filter_row_cursor": 0,
     "hypothesis_round": 1,
     "filter_table": None,
+    # True：跳过 6→8 直达第 9 步（假设轮≤3 行短链，或 6/7/8 筛选 0 行仍带本步填写进终筛）
     "filter_early_terminated": False,
     "filter_terminate_reason": None,
     # 每步表格：initial=该步首次生成；submitted=用户确认后（用于回退查看，不删行）
