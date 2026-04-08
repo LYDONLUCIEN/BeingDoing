@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef, type MouseEvent } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo, type MouseEvent } from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
 
 const HYP_CONFIRM_KEY = '用户确认的假设';
@@ -44,6 +44,8 @@ interface RuminationTableWidgetProps {
   /** true：主按钮变为「重新填写」，点击走 onRefill（恢复该步 initial 表） */
   tableRefillMode?: boolean;
   onRefill?: () => void;
+  /** true：本步已提交过快照时禁用「确认」，需先「重新填写」才可再次提交 */
+  confirmDisabledAfterCommit?: boolean;
   selectPlaceholder?: string;
   inputPlaceholder?: string;
   /** 提交表格时遮罩文案（仅 embeddedSubmitOverlay 为 true 时使用） */
@@ -59,7 +61,7 @@ interface RuminationTableWidgetProps {
   hypothesisOtherLabel?: string;
   /** 选「其他」后出现的输入框占位 */
   otherTextPlaceholder?: string;
-  /** 为 true 时隐藏表头「确认」按钮（如第 9 步改由对话/结论卡确认） */
+  /** 为 true 时隐藏表头「确认」按钮（如终步改由对话/结论卡确认） */
   hideConfirmButton?: boolean;
   /** 假设列：假设1 侧色块标签（个人事业向） */
   hypothesisTagFreelanceLabel?: string;
@@ -87,18 +89,19 @@ export default function RuminationTableWidget({
   refillLabel = '重新填写',
   tableRefillMode = false,
   onRefill,
+  confirmDisabledAfterCommit = false,
   selectPlaceholder = '请选择',
   inputPlaceholder = '填写',
   loadingLabel = '…',
   submitting = false,
   onRowContextChange,
-  hypothesisPendingLabel = '待定',
+  hypothesisPendingLabel = '暂未选定',
   hypothesisOtherLabel = '其他',
   otherTextPlaceholder = '请填写自定义内容…',
   hideConfirmButton = false,
   hypothesisTagFreelanceLabel = '个人事业',
   hypothesisTagCompanyLabel = '职业路径',
-  hypothesisTagExtraLabel = '备选',
+  hypothesisTagExtraLabel = '',
   hypothesisRegenerateLabel = '重新生成',
   hypothesisRegeneratingLabel = '生成中…',
   hypothesisRegenerateHint = '重新生成本行的假设选项',
@@ -185,6 +188,35 @@ export default function RuminationTableWidget({
   const selMin = payload.rowSelectionMin ?? 1;
   const selMax = payload.rowSelectionMax ?? 3;
 
+  const displayColumns = useMemo(() => {
+    const cols = payload.columns ?? [];
+    if (rowSelectionMulti) return cols.filter((c) => c.key !== '__pick');
+    return cols;
+  }, [payload.columns, rowSelectionMulti]);
+
+  const handleRowPickToggle = useCallback(
+    (rowIdx: number) => {
+      if (disabled) return;
+      const cap = payload.rowSelectionMax ?? 3;
+      setRows((prev) => {
+        const row = prev[rowIdx];
+        if (!row) return prev;
+        const isOn = row.__pick === true;
+        const currently = prev.filter((r) => r.__pick === true).length;
+        if (!isOn && currently >= cap) {
+          setValidationCycle((c) => c + 1);
+          setValidationFlashKey(`${rowIdx}:__pick`);
+          return prev;
+        }
+        const next = [...prev];
+        next[rowIdx] = { ...row, __pick: !isOn };
+        return next;
+      });
+      setSelectedRowIdx(rowIdx);
+    },
+    [disabled, payload.rowSelectionMax]
+  );
+
   const colMinWidth = (col: RuminationTableColumn) => {
     if (col.key === '__pick') return 52;
     if (col.key === 'id') return 40;
@@ -256,8 +288,6 @@ export default function RuminationTableWidget({
         const strVal = raw != null ? String(raw).trim() : '';
 
         if (col.key === HYP_CONFIRM_KEY && filterStep === 3) {
-          if (!strVal || isPlaceholderToken(strVal)) return { rowIdx, colKey: col.key };
-          if (strVal === OTHER_SELECT_VALUE) return { rowIdx, colKey: col.key };
           continue;
         }
 
@@ -296,21 +326,6 @@ export default function RuminationTableWidget({
 
   const handleConfirm = useCallback(() => {
     setValidationFlashKey(null);
-    if (filterStep === 3) {
-      let anyReal = false;
-      for (const r of rows) {
-        const v = String(r[HYP_CONFIRM_KEY] ?? '').trim();
-        if (v && v !== hypothesisPendingLabel) {
-          anyReal = true;
-          break;
-        }
-      }
-      if (!anyReal) {
-        setValidationCycle((c) => c + 1);
-        setValidationFlashKey(`0:${HYP_CONFIRM_KEY}`);
-        return;
-      }
-    }
     const bad = findFirstInvalidCell();
     if (bad) {
       const key = `${bad.rowIdx}:${bad.colKey}`;
@@ -337,8 +352,6 @@ export default function RuminationTableWidget({
     rows,
     onConfirm,
     findFirstInvalidCell,
-    filterStep,
-    hypothesisPendingLabel,
   ]);
 
   if (!payload.columns?.length) return null;
@@ -362,7 +375,12 @@ export default function RuminationTableWidget({
           </button>
         )}
         {!hideConfirmButton && (
-          <button type="button" onClick={handleConfirm} disabled={disabled} className={confirmBtnCls}>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={disabled || confirmDisabledAfterCommit}
+            className={confirmBtnCls}
+          >
             {confirmLabel}
           </button>
         )}
@@ -404,13 +422,16 @@ export default function RuminationTableWidget({
         ? 'bg-violet-500 text-white'
         : 'bg-teal-600 text-white';
 
-  const renderHypothesisTag = (tag: HypTagKind) => (
-    <span
-      className={`inline-flex max-w-[5.5rem] shrink-0 items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold leading-tight ${tagPillClass(tag)}`}
-    >
-      {tagLabels[tag]}
-    </span>
-  );
+  const renderHypothesisTag = (tag: HypTagKind) => {
+    if (tag === 'extra' && !String(tagLabels.extra ?? '').trim()) return null;
+    return (
+      <span
+        className={`inline-flex max-w-[5.5rem] shrink-0 items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold leading-tight ${tagPillClass(tag)}`}
+      >
+        {tagLabels[tag]}
+      </span>
+    );
+  };
 
   const renderHypothesisConfirmCell = (row: Record<string, unknown>, rowIdx: number, strVal: string) => {
     const h1 = String(row['假设1'] ?? '').trim();
@@ -423,7 +444,8 @@ export default function RuminationTableWidget({
     let active: HypPick = '';
     if (strVal === OTHER_SELECT_VALUE) active = 'other';
     else if (!strVal) active = '';
-    else if (pendingOk && strVal === hypothesisPendingLabel) active = 'pending';
+    else if (pendingOk && (strVal === hypothesisPendingLabel || strVal === '待定'))
+      active = 'pending';
     else if (h1 && strVal === h1) active = 'h1';
     else if (h2 && strVal === h2) active = 'h2';
     else if (h3 && strVal === h3) active = 'h3';
@@ -688,7 +710,7 @@ export default function RuminationTableWidget({
     <table className="w-max min-w-full text-sm border-separate border-spacing-0 table-auto">
         <thead className={isGlass ? 'sticky top-0 z-10' : ''}>
           <tr className={isGlass ? 'bg-white/55 backdrop-blur-md' : 'bg-neutral-50'}>
-            {payload.columns.map((col) => (
+            {displayColumns.map((col) => (
               <th
                 key={col.key}
                 style={{ minWidth: colMinWidth(col), maxWidth: col.key === 'id' ? 48 : undefined }}
@@ -711,35 +733,53 @@ export default function RuminationTableWidget({
           {rows.map((row, rowIdx) => (
             <tr
               key={rowIdx}
-              role={isGlass && !rowSelectionMulti ? 'button' : undefined}
-              tabIndex={isGlass && !rowSelectionMulti ? 0 : undefined}
-              onClick={() => isGlass && !rowSelectionMulti && handleGlassRowActivate(rowIdx)}
+              role={isGlass ? 'button' : undefined}
+              tabIndex={isGlass ? 0 : undefined}
+              onClick={(e) => {
+                if (!isGlass) return;
+                if (
+                  rowSelectionMulti &&
+                  (e.target as HTMLElement).closest(
+                    'input,select,textarea,button,a,label,option'
+                  )
+                ) {
+                  return;
+                }
+                if (rowSelectionMulti) handleRowPickToggle(rowIdx);
+                else handleGlassRowActivate(rowIdx);
+              }}
               onKeyDown={(e) => {
-                if (!isGlass || rowSelectionMulti) return;
+                if (!isGlass) return;
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  handleGlassRowActivate(rowIdx);
+                  if (rowSelectionMulti) handleRowPickToggle(rowIdx);
+                  else handleGlassRowActivate(rowIdx);
                 }
               }}
               className={
                 isGlass
                   ? `border-b border-neutral-200/80 transition-colors last:border-b-0 outline-none focus-visible:ring-2 focus-visible:ring-[rgba(145,194,255,0.65)] focus-visible:ring-inset ${
-                      !rowSelectionMulti && selectedRowIdx === rowIdx
+                      rowSelectionMulti && row.__pick === true
                         ? 'bg-[rgba(145,194,255,0.38)] text-neutral-900 shadow-[inset_3px_0_0_0_#91C2FF]'
-                        : 'hover:bg-white/30'
-                    } ${rowSelectionMulti ? '' : 'cursor-pointer'}`
+                        : !rowSelectionMulti && selectedRowIdx === rowIdx
+                          ? 'bg-[rgba(145,194,255,0.38)] text-neutral-900 shadow-[inset_3px_0_0_0_#91C2FF]'
+                          : 'hover:bg-white/30'
+                    } ${isGlass ? 'cursor-pointer' : ''}`
                   : 'border-b border-neutral-100 hover:bg-neutral-50/50'
               }
             >
-              {payload.columns.map((col) => {
+              {displayColumns.map((col) => {
                 const isEditable = editableSet.has(col.key);
                 const val = row[col.key];
                 const strVal = val != null ? String(val) : '';
 
                 const cellKey = `${rowIdx}:${col.key}`;
+                const firstColKey = displayColumns[0]?.key;
                 const cellFlash =
-                  validationFlashKey === cellKey &&
-                  (isEditable || (rowSelectionMulti && col.key === '__pick'));
+                  (validationFlashKey === cellKey && isEditable) ||
+                  (rowSelectionMulti &&
+                    validationFlashKey === `${rowIdx}:__pick` &&
+                    col.key === firstColKey);
 
                 return (
                   <td
@@ -763,7 +803,7 @@ export default function RuminationTableWidget({
                         cellFlash ? `${cellKey}-v${validationCycle}` : cellKey
                       }
                       ref={
-                        isEditable || (rowSelectionMulti && col.key === '__pick')
+                        isEditable || (rowSelectionMulti && col.key === firstColKey)
                           ? setCellWrapRef(rowIdx, col.key)
                           : undefined
                       }
@@ -772,33 +812,20 @@ export default function RuminationTableWidget({
                         if (e.target !== e.currentTarget) return;
                         const name = (e.animationName || '').split(',')[0]?.trim();
                         if (name !== 'rumination-cell-flash') return;
-                        setValidationFlashKey((k) => (k === cellKey ? null : k));
+                        setValidationFlashKey((k) => {
+                          if (k === cellKey) return null;
+                          if (
+                            rowSelectionMulti &&
+                            k === `${rowIdx}:__pick` &&
+                            col.key === firstColKey
+                          ) {
+                            return null;
+                          }
+                          return k;
+                        });
                       }}
                     >
-                      {col.key === '__pick' && rowSelectionMulti ? (
-                        <label
-                          className="flex cursor-pointer items-center justify-center gap-2"
-                          onMouseDown={(e) => isGlass && e.stopPropagation()}
-                          onClick={(e) => isGlass && e.stopPropagation()}
-                        >
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded border-neutral-300 text-sky-600 accent-sky-600"
-                            checked={row.__pick === true}
-                            disabled={disabled}
-                            onChange={() => {
-                              const currently = rows.filter((r) => r.__pick === true).length;
-                              const isOn = row.__pick === true;
-                              if (!isOn && currently >= selMax) {
-                                setValidationCycle((c) => c + 1);
-                                setValidationFlashKey(`${rowIdx}:__pick`);
-                                return;
-                              }
-                              handleCellChange(rowIdx, '__pick', !isOn);
-                            }}
-                          />
-                        </label>
-                      ) : isEditable && col.key === HYP_CONFIRM_KEY && filterStep === 3 ? (
+                      {isEditable && col.key === HYP_CONFIRM_KEY && filterStep === 3 ? (
                         renderHypothesisConfirmCell(row, rowIdx, strVal)
                       ) : isEditable && col.options?.includes(hypothesisOtherLabel) ? (
                         renderSelectWithOther(col, rowIdx, strVal, hypothesisOtherLabel)

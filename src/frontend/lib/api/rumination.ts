@@ -70,7 +70,8 @@ export interface RuminationTableSubmitOptions {
 export interface RuminationSubmitData {
   progress: RuminationProgress;
   next_step: number;
-  next_action?: string;
+  /** rumination 终表提交后进入过渡页（无结论卡） */
+  next_action?: 'rumination_conclusion_insert' | 'rumination_finalize_transition' | string;
   next_table_widget?: RuminationTablePayload;
   full_table_preview?: Record<string, unknown>[];
   early_terminated?: boolean;

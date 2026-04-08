@@ -27,6 +27,7 @@ def test_value_filter_drops_pending_and_empty_hypothesis():
         {"id": "1", "用户确认的假设": "写书", "假设1": "x"},
         {"id": "2", "用户确认的假设": ""},
         {"id": "3", "用户确认的假设": "待定"},
+        {"id": "4", "用户确认的假设": "暂未选定"},
     ]
     out = ro.value_filter(t, ["诚信"])
     assert len(out) == 1

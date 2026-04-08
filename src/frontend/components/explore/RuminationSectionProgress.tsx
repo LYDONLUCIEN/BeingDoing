@@ -66,9 +66,13 @@ export function computeDisplayedRuminationMilestone(
   const ms = progress.main_section;
   if (ms === 'final_choice' || ms === 'recommend' || ms === 'end') return 8;
   const submitted = countFilterSubmittedSteps(progress);
-  if (viewFilterStep == null || viewFilterStep < 1) return Math.min(8, submitted);
+  const fs = progress.filter_step ?? 0;
+  /** 短链可能未在每子步写入 submitted；服务端已到第 7 子步时，进度条至少按 7 档计，避免重置再走满仍显示约 50% */
+  const effectiveSubmitted =
+    fs >= FILTER_STEP_CAP ? Math.max(submitted, FILTER_STEP_CAP) : submitted;
+  if (viewFilterStep == null || viewFilterStep < 1) return Math.min(8, effectiveSubmitted);
   const v = Math.min(FILTER_STEP_CAP, Math.max(1, viewFilterStep));
-  return Math.min(submitted, v);
+  return Math.min(effectiveSubmitted, v);
 }
 
 /** 当前阶段内部完成比例 0–1（与后端 main_section / review_sub_index / filter_step 对齐） */
@@ -99,7 +103,7 @@ function withinCurrentSection(
 
 /**
  * 整体完成度 0–100。
- * 在筛选表界面（含 final_choice 回看表）：进度为 **9 个节点**（0..8）的线性刻度——
+ * 在筛选表界面（含 final_choice 回看表）：进度刻度 0..8（7 个子步提交 + 进入最终选择档），详情文案为「筛选 n/7」——
  * 0% 空白/未提交 → 每多一个子步 submitted +1 档 → 8 档为进入最终选择及之后；本页最高 99%。
  * 详情文案仍显示「筛选 n/7」。
  */

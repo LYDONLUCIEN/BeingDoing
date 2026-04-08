@@ -9,6 +9,15 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+# 与前端「假设」列「暂未选定」一致；历史数据可能仍为「待定」
+RUMINATION_HYP_PENDING_MARKERS = frozenset({"待定", "暂未选定"})
+
+
+def is_rumination_hypothesis_pending(val: Any) -> bool:
+    t = str(val or "").strip()
+    return not t or t in RUMINATION_HYP_PENDING_MARKERS
+
+
 # 与 survey_storage / prior 块标题一致：【信念/禀赋/热忱/使命 阶段结果】
 _RE_VALUES = re.compile(r"【信念[^】]*阶段结果】\s*\n(.*?)(?=【|$)", re.DOTALL)
 _RE_STRENGTHS = re.compile(r"【禀赋[^】]*阶段结果】\s*\n(.*?)(?=【|$)", re.DOTALL)
@@ -135,13 +144,13 @@ def generate_hypotheses_round2_table(table: List[Dict[str, Any]]) -> List[Dict[s
 
 def generate_hypotheses_round3_finalize(table: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    第五轮提交后：仍空的「用户确认的假设」标为「待定」（假设列可由上一轮 LLM 填充）。
+    第五轮提交后：仍空的「用户确认的假设」标为「暂未选定」（假设列可由上一轮 LLM 填充）。
     """
     out: List[Dict[str, Any]] = []
     for r in table:
         row = dict(r)
         if not (row.get("用户确认的假设") or "").strip():
-            row["用户确认的假设"] = "待定"
+            row["用户确认的假设"] = "暂未选定"
         out.append(row)
     return out
 
@@ -154,7 +163,7 @@ def value_filter(table: List[Dict[str, Any]], values: List[str]) -> List[Dict[st
     result: List[Dict[str, Any]] = []
     for r in table:
         hyp = (r.get("用户确认的假设") or "").strip()
-        if not hyp or hyp == "待定":
+        if is_rumination_hypothesis_pending(hyp):
             continue
         row = _remove_keys(r, ("假设1", "假设2", "假设3"))
         row["工作目的"] = ""

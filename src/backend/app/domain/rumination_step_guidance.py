@@ -38,8 +38,8 @@ STEP_OPENING_FIXED_ZH: Dict[int, str] = {
     ),
     3: (
         "接下来是为每个组合生成具体方向假设，左侧约 {row_count} 行。"
-        "带「个人事业」「职业路径」色块的是两类不同取向；在「假设」列里选一条，或选「待定」「其他」自填。"
-        "至少一行需为有效假设（非「待定」）。有疑问就点行，在右边跟我说。"
+        "带「个人事业」「职业路径」色块的是两类不同取向；在「假设」列里选一条，或选「暂未选定」「其他」自填。"
+        "若暂不选定可先点确认查看引导；至少一行需为有效假设后才能进入价值观筛选。有疑问就点行，在右边跟我说。"
     ),
     4: (
         "左侧表格已增加「工作目的」列（约 {row_count} 行）。请结合您的价值观为每一行选择最贴近的一项，"
@@ -54,7 +54,7 @@ STEP_OPENING_FIXED_ZH: Dict[int, str] = {
         "左侧 {row_count} 行选完后点「确认」，我们会生成最终方向表。"
     ),
     7: (
-        "左侧是收束后的方向列表（{row_count} 行）。请勾选 1–3 行你最认同的，点表格「确认」后在右侧查看结论卡；"
+        "左侧是收束后的方向列表（{row_count} 行）。请点击整行点选 1–3 个你最认同的方向，点表格「确认」后在右侧查看结论卡；"
         "仍可在对话里随时问我。"
     ),
 }
@@ -107,6 +107,15 @@ def build_opening_context(
         ft = progress.get("filter_table")
         if isinstance(ft, list):
             rows = ft
+
+    # 第 2 步：优先用当前 progress.filter_table，避免快照 initial 未随第 1 步重提交流更新导致 row_count 偏小
+    if (
+        step == 2
+        and int(progress.get("filter_step") or 0) == 2
+        and isinstance(progress.get("filter_table"), list)
+        and (progress.get("filter_table") or [])
+    ):
+        rows = list(progress["filter_table"])
 
     row_count = len(rows)
     values_keywords = "、".join(values_list[:12]) if values_list else ""

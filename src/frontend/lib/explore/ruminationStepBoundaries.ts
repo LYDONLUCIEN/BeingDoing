@@ -71,16 +71,31 @@ export function sliceMessagesForRuminationStep(
   }
 
   const b = ensureDefaultStepOne(boundaries);
-  const start =
+  let start =
     viewStep === 1
       ? b['1'] ?? 0
       : b[String(viewStep)] !== undefined
-        ? b[String(viewStep)]
+        ? b[String(viewStep)]!
         : messages.length;
   let end = messages.length;
   const active = opts?.activeFilterStep;
   const viewingCurrentFilterStep =
     typeof active === 'number' && active > 0 && viewStep === active;
+  /**
+   * 边界若因异步晚于首条消息写入，可能被记成 len，导致起点==len 本步对话全被裁掉。
+   * 正在查看当前子步时，回退到上一子步起点，至少能看到本步新消息（可能短暂与上一步末尾重叠，待边界修正后消失）。
+   */
+  if (
+    viewingCurrentFilterStep &&
+    viewStep > 1 &&
+    start === messages.length &&
+    messages.length > 0
+  ) {
+    const prev = b[String(viewStep - 1)];
+    if (prev !== undefined && prev < messages.length) {
+      start = prev;
+    }
+  }
   if (!viewingCurrentFilterStep) {
     for (let s = viewStep + 1; s <= 12; s++) {
       const x = b[String(s)];

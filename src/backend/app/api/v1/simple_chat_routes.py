@@ -54,6 +54,7 @@ from app.utils.rumination_ops import (
     filter_match,
     extract_dimension_lists_for_rumination_table,
     structure_hypothesis_round1_table,
+    is_rumination_hypothesis_pending,
     value_filter,
     passion_filter,
     reality_filter,
@@ -1644,19 +1645,17 @@ def _build_table_widget_payload(
 
 
 RUMINATION_GUIDE_ALL_PENDING_ZH = (
-    "注意到您暂时未选定具体方向（全部为「待定」或留空）。请至少在左侧一行选择有效假设，"
-    "或点某一行在右侧与我聊聊，我们一起把范围收窄后再继续。"
+    "如果您对生成的假设内容不够确定，可以与我交流，或者可以点击蓝色的按钮，重新生成新的假设。"
 )
 
-RUMINATION_GUIDE_ZERO_STRENGTH_ZH = (
-    "注意到您觉得当前组合里几乎没有想继续探索的选项。您可以调整左侧「优势标记」，"
-    "或点某一行在右侧跟我聊聊，我们一起收窄到至少保留一行后再继续。"
+RUMINATION_GUIDE_ZERO_SELECTION_ZH = (
+    "注意到您觉得所有选项都不太匹配，但或许我们只是还没发现它们各自的可能性。"
+    "接下来，让我们一起探索一下。"
 )
 
-RUMINATION_GUIDE_ALL_MISMATCH_ZH = (
-    "当前所有行都被标为「不匹配」，无法生成假设。请至少保留一行「匹配」，"
-    "或在右侧与我聊聊您的想法，我们再继续。"
-)
+# 兼容旧名：第 1 步无优势标记 / 第 2 步全不匹配，共用同一引导
+RUMINATION_GUIDE_ZERO_STRENGTH_ZH = RUMINATION_GUIDE_ZERO_SELECTION_ZH
+RUMINATION_GUIDE_ALL_MISMATCH_ZH = RUMINATION_GUIDE_ZERO_SELECTION_ZH
 
 
 def _rumination_clear_snapshots_from_step(snapshots: Dict[str, Any], start: int) -> None:
@@ -1747,8 +1746,12 @@ def _rumination_persist_skip_to_step7(
     *,
     filter_early_terminated: bool,
     clear_snapshots_from: int,
+    preserve_step6_initial: Optional[List[dict]] = None,
 ) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]], int]:
-    """直达第 7 步：清理中间快照、写入 7 的 initial、更新 progress。"""
+    """直达第 7 步：清理中间快照、写入 7 的 initial、更新 progress。
+
+    preserve_step6_initial：短链跳过第 6 步 UI 时仍写入第 6 步 initial，便于用户「上一阶段」回看（能看即可）。
+    """
     _rumination_clear_snapshots_from_step(snapshots, clear_snapshots_from)
     wrows = _rumination_step7_rows_for_widget(step7_rows)
     s7 = snapshots.setdefault("7", {})
@@ -1756,6 +1759,11 @@ def _rumination_persist_skip_to_step7(
         s7["initial"] = deepcopy(_rumination_strip_meta_keys(wrows))
     s7["submitted"] = None
     snapshots["7"] = s7
+    if preserve_step6_initial is not None:
+        s6 = snapshots.setdefault("6", {})
+        s6["initial"] = deepcopy(preserve_step6_initial)
+        s6["submitted"] = None
+        snapshots["6"] = s6
     progress = save_rumination_progress(
         reports_root,
         report_id,
@@ -1841,6 +1849,7 @@ async def rumination_table_submit(
         next_table = None
         next_step_val = step
         dimension_conclusion_payload: Optional[dict] = None
+        rumination_submit_next_action: Optional[str] = None
 
         if step == 1 and table_data:
             filtered = filter_strength(table_data)
@@ -1867,7 +1876,7 @@ async def rumination_table_submit(
                 next_table = build_table_widget_payload(1, rows1, values_list)
                 if next_table:
                     base_g = str(next_table.get("guideText") or "")
-                    next_table["guideText"] = f"{RUMINATION_GUIDE_ZERO_STRENGTH_ZH}\n\n{base_g}".strip()
+                    next_table["guideText"] = f"{RUMINATION_GUIDE_ZERO_SELECTION_ZH}\n\n{base_g}".strip()
                 next_step_val = 1
             else:
                 step2_rows = filter_match(filtered)
@@ -1886,8 +1895,11 @@ async def rumination_table_submit(
                 )
                 next_step_val = 2
                 s2 = snapshots.setdefault("2", {})
-                if step2_rows and s2.get("initial") is None:
+                # 每次从第 1 步生成第 2 步表时同步 initial，避免沿用过期快照行数导致引导语 row_count 错误
+                if step2_rows:
                     s2["initial"] = deepcopy(step2_rows)
+                    s2["submitted"] = None
+                snapshots["2"] = s2
                 progress = save_rumination_progress(
                     reports_root,
                     report_id,
@@ -1932,7 +1944,7 @@ async def rumination_table_submit(
                 next_table = build_table_widget_payload(2, rows2, values_list)
                 if next_table:
                     base_g = str(next_table.get("guideText") or "")
-                    next_table["guideText"] = f"{RUMINATION_GUIDE_ALL_MISMATCH_ZH}\n\n{base_g}".strip()
+                    next_table["guideText"] = f"{RUMINATION_GUIDE_ZERO_SELECTION_ZH}\n\n{base_g}".strip()
                 next_step_val = 2
             else:
                 vip_level = getattr(rec, "vip_level", 1) or 1
@@ -1961,12 +1973,10 @@ async def rumination_table_submit(
             for r in table_data:
                 row = dict(r)
                 if not (row.get("用户确认的假设") or "").strip():
-                    row["用户确认的假设"] = "待定"
+                    row["用户确认的假设"] = "暂未选定"
                 finalized.append(row)
             valid_count = sum(
-                1
-                for r in finalized
-                if str(r.get("用户确认的假设") or "").strip() not in ("", "待定")
+                1 for r in finalized if not is_rumination_hypothesis_pending(r.get("用户确认的假设"))
             )
             if valid_count == 0:
                 ent3 = snapshots.setdefault("3", {})
@@ -1998,7 +2008,7 @@ async def rumination_table_submit(
                 if not step4_rows:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="没有可进入价值观筛选的有效假设，请至少保留一行非「待定」选择。",
+                        detail="没有可进入价值观筛选的有效假设，请至少保留一行非「暂未选定」的有效选择。",
                     )
                 if 1 <= len(step4_rows) <= 3:
                     step7_r = _rumination_step7_via_456_chain(step4_rows)
@@ -2097,6 +2107,7 @@ async def rumination_table_submit(
                     values_list,
                     filter_early_terminated=True,
                     clear_snapshots_from=5,
+                    preserve_step6_initial=step6_rows,
                 )
             else:
                 next_table = build_table_widget_payload(6, step6_rows, values_list)
@@ -2127,6 +2138,7 @@ async def rumination_table_submit(
                     values_list,
                     filter_early_terminated=True,
                     clear_snapshots_from=6,
+                    preserve_step6_initial=incoming6,
                 )
             else:
                 wrows = _rumination_step7_rows_for_widget(step7_plain)
@@ -2153,7 +2165,7 @@ async def rumination_table_submit(
             if not (1 <= len(sel_ids) <= 3):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="请在左侧勾选 1–3 行方向后再点确认",
+                    detail="请在左侧点选 1–3 行方向后再点确认",
                 )
             id_set = set(sel_ids)
             by_id: Dict[str, dict] = {}
@@ -2170,13 +2182,6 @@ async def rumination_table_submit(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="所选行与当前表格不一致，请刷新后重试",
                 )
-            lines = [(r.get("用户确认的假设") or "").strip() for r in ordered]
-            lines = [x for x in lines if x]
-            summary = "\n\n".join(lines)
-            dimension_conclusion_payload = {
-                "summary": summary or "（暂无有效文案）",
-                "keywords": [],
-            }
             wdone = [{**dict(r), "__pick": True} for r in ordered]
             s7 = snapshots.setdefault("7", {})
             s7["submitted"] = deepcopy(_rumination_strip_meta_keys(wdone))
@@ -2193,6 +2198,7 @@ async def rumination_table_submit(
             )
             next_table = None
             next_step_val = 7
+            rumination_submit_next_action = "rumination_finalize_transition"
 
         snaps = progress.get("filter_step_snapshots") or {}
         data: dict = {
@@ -2205,6 +2211,8 @@ async def rumination_table_submit(
         if dimension_conclusion_payload is not None:
             data["dimension_conclusion"] = dimension_conclusion_payload
             data["next_action"] = "rumination_conclusion_insert"
+        elif rumination_submit_next_action:
+            data["next_action"] = rumination_submit_next_action
 
         return SimpleChatResponse(code=200, message="success", data=data)
     except HTTPException:
