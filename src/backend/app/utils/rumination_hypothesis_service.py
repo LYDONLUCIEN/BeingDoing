@@ -1,5 +1,5 @@
 """
-Rumination 假设列：调用 LLM 生成三条职业假设，失败时降级为占位文案。
+Rumination 假设列：调用 LLM 生成三条职业假设（对应 UI 槽位：个人事业 / 职业路径 / 备选），失败时降级为占位。
 """
 from __future__ import annotations
 
@@ -82,6 +82,23 @@ async def generate_three_hypotheses_for_row(
     return list(fallback_hypotheses(passion, strength, row_index))
 
 
+def ensure_row_has_three_hypotheses(
+    row: Dict[str, Any],
+    *,
+    passion: str,
+    strength: str,
+    row_index: int = 0,
+) -> None:
+    """保证 假设1–3 均有非空文案（历史数据 / 第二轮清空后补占位，供 UI 三条选项）。"""
+    fb = fallback_hypotheses(passion, strength, row_index)
+    if not str(row.get("假设1") or "").strip():
+        row["假设1"] = fb[0]
+    if not str(row.get("假设2") or "").strip():
+        row["假设2"] = fb[1]
+    if not str(row.get("假设3") or "").strip():
+        row["假设3"] = fb[2]
+
+
 async def generate_two_hypotheses_for_row(
     llm: Any,
     *,
@@ -145,7 +162,7 @@ async def fill_hypothesis_columns_for_table(
     only_empty_hypothesis_slots: bool = False,
 ) -> List[Dict[str, Any]]:
     """
-    为表中行填充 假设1/假设2/假设3。
+    为表中行填充 假设1/假设2/假设3（三条 LLM 假设，对应 UI：个人事业向 / 职业路径向 / 备选）。
     only_empty_hypothesis_slots=True 时仅处理「用户确认的假设」为空且假设1 为空的行（第二轮）。
     """
     out: List[Dict[str, Any]] = []
@@ -173,5 +190,8 @@ async def fill_hypothesis_columns_for_table(
             row["假设1"] = hyps[0] if len(hyps) > 0 else ""
             row["假设2"] = hyps[1] if len(hyps) > 1 else ""
             row["假设3"] = hyps[2] if len(hyps) > 2 else ""
+        ensure_row_has_three_hypotheses(
+            row, passion=passion, strength=strength, row_index=i
+        )
         out.append(row)
     return out

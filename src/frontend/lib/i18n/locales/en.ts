@@ -195,7 +195,7 @@ export const en = {
         hypothesisRegenerateHint: 'Regenerate hypothesis options for this row',
         hypothesisTagFreelance: 'Solo / business',
         hypothesisTagCompany: 'Company path',
-        hypothesisTagExtra: '',
+        hypothesisTagExtra: 'Alternative path',
         hypothesisPendingOption: 'Undecided for now',
         placeholderWithRow: 'Add a note for “{label}”…',
         tableEarlyTerminated: 'No rows left in this filter. Go back to review or earlier steps.',

@@ -146,13 +146,27 @@ def build_table_widget_payload(
     """构建 table_widget 的 card_payload；无行时返回 None。"""
     if not rows:
         return None
+    display_rows: List[dict] = list(rows)
+    if step == 3:
+        from app.utils.rumination_hypothesis_service import ensure_row_has_three_hypotheses
+
+        patched: List[dict] = []
+        for i, r in enumerate(rows):
+            row = dict(r)
+            passion = str(row.get("热爱") or "")
+            strength = str(row.get("优势") or "")
+            ensure_row_has_three_hypotheses(
+                row, passion=passion, strength=strength, row_index=i
+            )
+            patched.append(row)
+        display_rows = patched
     cols = columns_for_step(step, values_keywords)
     guide = GUIDE_TEXT.get(step, "")
     if single_row_mode and total_rows > 0:
         guide = f"第 {min(row_cursor + 1, total_rows)}/{total_rows} 行。{guide}"
     payload: Dict[str, Any] = {
         "columns": cols,
-        "rows": rows,
+        "rows": display_rows,
         "editableCols": EDITABLE_COLS.get(step, []),
         "guideText": guide,
         "step": step,

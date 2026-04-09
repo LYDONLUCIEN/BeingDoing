@@ -61,8 +61,9 @@ from app.utils.rumination_ops import (
     similar_filter,
 )
 from app.utils.rumination_hypothesis_service import (
+    ensure_row_has_three_hypotheses,
     fill_hypothesis_columns_for_table,
-    generate_two_hypotheses_for_row,
+    generate_three_hypotheses_for_row,
 )
 from app.utils.context_refiner import (
     refine_and_save_anchor,
@@ -1551,7 +1552,7 @@ async def rumination_regenerate_hypotheses(
     request: RuminationRegenerateHypothesesRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """筛选子步 3：对单行重新生成假设1、假设2（个人事业 / 职业路径），并清空假设3与已选假设。"""
+    """筛选子步 3：对单行重新生成假设1–3（三条方案），已选假设由前端按槽位映射保留。"""
     step = int(request.filter_step)
     if step != 3:
         raise HTTPException(
@@ -1599,7 +1600,7 @@ async def rumination_regenerate_hypotheses(
     match_reason = str(row.get("匹配原因") or "")
     vip_level = getattr(rec, "vip_level", 1) or 1
     llm = _get_dialogue_llm_provider(vip_level=vip_level)
-    h1, h2 = await generate_two_hypotheses_for_row(
+    hyps = await generate_three_hypotheses_for_row(
         llm,
         passion=passion,
         strength=strength,
@@ -1607,9 +1608,12 @@ async def rumination_regenerate_hypotheses(
         values_hint=values_hint,
         row_index=idx,
     )
-    row["假设1"] = h1
-    row["假设2"] = h2
-    row["假设3"] = ""
+    row["假设1"] = hyps[0] if len(hyps) > 0 else ""
+    row["假设2"] = hyps[1] if len(hyps) > 1 else ""
+    row["假设3"] = hyps[2] if len(hyps) > 2 else ""
+    ensure_row_has_three_hypotheses(
+        row, passion=passion, strength=strength, row_index=idx
+    )
     row["用户确认的假设"] = ""
 
     new_rows = list(rows)

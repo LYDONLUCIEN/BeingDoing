@@ -1,10 +1,19 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef, useMemo, type MouseEvent } from 'react';
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useMemo,
+  type ChangeEvent,
+  type MouseEvent,
+} from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
 
-const HYP_CONFIRM_KEY = '用户确认的假设';
-const OTHER_SELECT_VALUE = '__RUMINATION_OTHER__';
+export const HYP_CONFIRM_KEY = '用户确认的假设';
+export const OTHER_SELECT_VALUE = '__RUMINATION_OTHER__';
 
 export interface RuminationTableColumn {
   key: string;
@@ -69,7 +78,7 @@ interface RuminationTableWidgetProps {
   hypothesisTagCompanyLabel?: string;
   /** 假设列：第三条等额外假设的标签 */
   hypothesisTagExtraLabel?: string;
-  /** 子步 3–5：重新生成本行两条假设 */
+  /** 子步 3：重新生成本行三条假设（+ 其他 / 暂不选由下拉选择） */
   hypothesisRegenerateLabel?: string;
   hypothesisRegeneratingLabel?: string;
   /** 右上角重新生成图标的悬停说明 */
@@ -121,6 +130,28 @@ export default function RuminationTableWidget({
   const cellWrapRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
   /** 已确认本步：锁定格内与选行；表头「重新填写」仍用外层 disabled 控制 */
   const cellDisabled = disabled || confirmDisabledAfterCommit;
+
+  const tableRowRefs = useRef<Map<number, HTMLTableRowElement | null>>(new Map());
+  const [hypRegenOverlayW, setHypRegenOverlayW] = useState(0);
+
+  const setTableRowRef = useCallback((idx: number) => (el: HTMLTableRowElement | null) => {
+    if (el) tableRowRefs.current.set(idx, el);
+    else tableRowRefs.current.delete(idx);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (hypothesisRegeneratingRowIndex == null) {
+      setHypRegenOverlayW(0);
+      return;
+    }
+    const measure = () => {
+      const tr = tableRowRefs.current.get(hypothesisRegeneratingRowIndex);
+      if (tr) setHypRegenOverlayW(tr.getBoundingClientRect().width);
+    };
+    measure();
+    const id = requestAnimationFrame(() => measure());
+    return () => cancelAnimationFrame(id);
+  }, [hypothesisRegeneratingRowIndex, rows, payload.step]);
 
   const rowsPayloadSig = JSON.stringify(payload.rows ?? []);
   useEffect(() => {
@@ -416,31 +447,11 @@ export default function RuminationTableWidget({
     ? 'w-full min-h-[2.75rem] min-w-[100px] resize-y px-2 py-1.5 text-sm leading-snug border border-neutral-200/90 rounded-lg bg-white/80 focus:ring-2 focus:ring-[rgba(145,194,255,0.55)] break-words whitespace-pre-wrap'
     : 'w-full min-w-[100px] px-2 py-1 text-sm border border-neutral-200 rounded-md focus:ring-2 focus:ring-sky-300/50 focus:border-sky-400/70';
 
-  type HypTagKind = 'freelance' | 'company' | 'extra';
-
-  const tagLabels: Record<HypTagKind, string> = {
+  const tagLabels = {
     freelance: hypothesisTagFreelanceLabel,
     company: hypothesisTagCompanyLabel,
     extra: hypothesisTagExtraLabel,
-  };
-
-  const tagPillClass = (tag: HypTagKind) =>
-    tag === 'freelance'
-      ? 'bg-sky-500 text-white'
-      : tag === 'company'
-        ? 'bg-violet-500 text-white'
-        : 'bg-teal-600 text-white';
-
-  const renderHypothesisTag = (tag: HypTagKind) => {
-    if (tag === 'extra' && !String(tagLabels.extra ?? '').trim()) return null;
-    return (
-      <span
-        className={`inline-flex max-w-[5.5rem] shrink-0 items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold leading-tight ${tagPillClass(tag)}`}
-      >
-        {tagLabels[tag]}
-      </span>
-    );
-  };
+  } as const;
 
   const renderHypothesisConfirmCell = (row: Record<string, unknown>, rowIdx: number, strVal: string) => {
     const h1 = String(row['假设1'] ?? '').trim();
@@ -469,49 +480,27 @@ export default function RuminationTableWidget({
           : strVal
         : storedDraft;
 
-    const stopRow = (e: MouseEvent) => {
-      if (isGlass) e.stopPropagation();
-    };
+    const OPT_H1 = '__rum_hyp_h1__';
+    const OPT_H2 = '__rum_hyp_h2__';
+    const OPT_H3 = '__rum_hyp_h3__';
+    const OPT_OTHER = '__rum_hyp_other__';
+    const OPT_PENDING = '__rum_hyp_pending__';
 
-    const radioName = `rumination-hyp-${filterStep}-${rowIdx}`;
-    const otherRadioId = `${radioName}-other`;
-    const radioBase =
-      'rumination-hyp-radio h-4 w-4 shrink-0 rounded-full border-neutral-300 text-sky-600 accent-sky-600';
+    const selectControlValue =
+      active === ''
+        ? ''
+        : active === 'h1'
+          ? OPT_H1
+          : active === 'h2'
+            ? OPT_H2
+            : active === 'h3'
+              ? OPT_H3
+              : active === 'pending'
+                ? OPT_PENDING
+                : OPT_OTHER;
 
-    const lineCls =
-      'flex cursor-pointer items-center gap-2 rounded-lg py-1.5 pr-1 transition-colors hover:bg-white/45';
-
-    const hypLines: { key: HypPick; tag: HypTagKind; text: string; show: boolean }[] = [
-      { key: 'h1', tag: 'freelance', text: h1, show: !!h1 },
-      { key: 'h2', tag: 'company', text: h2, show: !!h2 },
-      { key: 'h3', tag: 'extra', text: h3, show: !!h3 },
-    ];
-
-    const regenCol = onHypothesisRegenerate && filterStep === 3;
-    const firstShownKey = hypLines.find((l) => l.show)?.key;
-
-    const renderLeadingSlot = (lineKey: HypPick) => {
-      if (regenCol && lineKey === firstShownKey) {
-        return (
-          <button
-            type="button"
-            title={hypothesisRegenerateHint}
-            aria-label={hypothesisRegenerateHint}
-            disabled={cellDisabled || hypothesisRegeneratingRowIndex === rowIdx}
-            className="inline-flex h-4 w-7 shrink-0 items-center justify-center rounded-md text-sky-600 transition-colors hover:bg-sky-500/15 disabled:cursor-not-allowed disabled:opacity-40"
-            onMouseDown={(e) => isGlass && e.stopPropagation()}
-            onClick={(e) => {
-              if (isGlass) e.stopPropagation();
-              const rid = String(row.id ?? rowIdx);
-              void onHypothesisRegenerate(rowIdx, rid);
-            }}
-          >
-            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-          </button>
-        );
-      }
-      return <span className="inline-flex h-4 w-7 shrink-0" aria-hidden />;
-    };
+    const h3TagLabel = String(tagLabels.extra ?? '').trim() || '备选方向';
+    const showRegen = Boolean(onHypothesisRegenerate && filterStep === 3);
 
     const persistOtherDraftFromCell = () => {
       if (active !== 'other') return;
@@ -522,127 +511,139 @@ export default function RuminationTableWidget({
       }
     };
 
-    const setChoice = (pick: HypPick) => {
-      if (pick !== 'other') persistOtherDraftFromCell();
-      if (pick === 'h1' && h1) handleCellChange(rowIdx, HYP_CONFIRM_KEY, h1);
-      else if (pick === 'h2' && h2) handleCellChange(rowIdx, HYP_CONFIRM_KEY, h2);
-      else if (pick === 'h3' && h3) handleCellChange(rowIdx, HYP_CONFIRM_KEY, h3);
-      else if (pick === 'pending' && pendingOk) {
+    const onHypSelectChange = (e: ChangeEvent<HTMLSelectElement>) => {
+      const v = e.target.value;
+      if (active === 'other' && v !== OPT_OTHER) persistOtherDraftFromCell();
+      if (v === '') {
+        handleCellChange(rowIdx, HYP_CONFIRM_KEY, '');
+        return;
+      }
+      if (v === OPT_H1 && h1) {
+        handleCellChange(rowIdx, HYP_CONFIRM_KEY, h1);
+        return;
+      }
+      if (v === OPT_H2 && h2) {
+        handleCellChange(rowIdx, HYP_CONFIRM_KEY, h2);
+        return;
+      }
+      if (v === OPT_H3) {
+        if (h3) handleCellChange(rowIdx, HYP_CONFIRM_KEY, h3);
+        return;
+      }
+      if (v === OPT_PENDING && pendingOk) {
         handleCellChange(rowIdx, HYP_CONFIRM_KEY, hypothesisPendingLabel);
-      } else if (pick === 'other') {
+        return;
+      }
+      if (v === OPT_OTHER) {
         const fromCell =
           strVal && strVal !== OTHER_SELECT_VALUE ? strVal : '';
         const d = (fromCell || hypOtherDraftByKey[draftKey] || '').trim();
         if (d) handleCellChange(rowIdx, HYP_CONFIRM_KEY, d);
         else handleCellChange(rowIdx, HYP_CONFIRM_KEY, OTHER_SELECT_VALUE);
+        return;
       }
     };
 
-    return (
+    const tagPillCls =
+      'inline-flex shrink-0 items-center justify-center rounded px-1.5 py-1 text-center text-[11px] font-semibold leading-tight text-sky-950 bg-white/90 ring-1 ring-sky-200/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]';
+
+    const otherTextInputCls = isGlass
+      ? 'min-w-0 w-full rounded-lg border border-neutral-200/90 bg-white/90 px-3 py-2 text-sm text-neutral-800 placeholder:text-neutral-400 focus:border-[#91C2FF] focus:outline-none focus:ring-2 focus:ring-[rgba(145,194,255,0.4)]'
+      : 'min-w-0 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-300/50';
+
+    let displayTag = '';
+    if (active === 'h1') displayTag = tagLabels.freelance;
+    else if (active === 'h2') displayTag = tagLabels.company;
+    else if (active === 'h3') displayTag = h3TagLabel;
+    else if (active === 'other') displayTag = hypothesisOtherLabel;
+    const regenBtn = showRegen ? (
       <div
-        className="relative min-w-[200px] space-y-0.5 pb-2 pl-0.5 pr-1 pt-0.5"
-        onMouseDown={stopRow}
-        onClick={stopRow}
+        className="flex shrink-0 flex-col justify-center self-stretch border-l border-neutral-200/75 pl-2 pr-0.5"
+        onMouseDown={(e) => isGlass && e.stopPropagation()}
+        onClick={(e) => isGlass && e.stopPropagation()}
       >
-        {hypothesisRegeneratingRowIndex === rowIdx && (
-          <div
-            className="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-white/70 backdrop-blur-sm"
-            aria-busy="true"
-            aria-live="polite"
-          >
-            <Loader2 className="h-7 w-7 animate-spin text-sky-600" aria-hidden />
-          </div>
-        )}
+        <button
+          type="button"
+          title={hypothesisRegenerateHint}
+          aria-label={hypothesisRegenerateHint}
+          disabled={cellDisabled || hypothesisRegeneratingRowIndex === rowIdx}
+          className="shrink-0 border-0 bg-transparent p-1 text-blue-950 opacity-90 transition-opacity hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-35"
+          onMouseDown={(e) => isGlass && e.stopPropagation()}
+          onClick={(e) => {
+            if (isGlass) e.stopPropagation();
+            const rid = String(row.id ?? rowIdx);
+            void onHypothesisRegenerate?.(rowIdx, rid);
+          }}
+        >
+          <RefreshCw className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+        </button>
+      </div>
+    ) : null;
 
-        {hypLines.map(
-          (line) =>
-            line.show && (
-              <label key={line.key} className={lineCls} onClick={stopRow}>
-                {renderLeadingSlot(line.key)}
-                <input
-                  type="radio"
-                  name={radioName}
-                  className={radioBase}
-                  checked={active === line.key}
-                  disabled={cellDisabled}
-                  onMouseDown={(e) => isGlass && e.stopPropagation()}
-                  onChange={() => setChoice(line.key)}
-                />
-                {renderHypothesisTag(line.tag)}
-                <span className="min-w-0 flex-1 break-words text-sm leading-relaxed text-neutral-800">
-                  {line.text}
-                </span>
-              </label>
-            )
-        )}
-
-        {pendingOk && (
-          <label className={lineCls} onClick={stopRow}>
-            {renderLeadingSlot('pending')}
-            <input
-              type="radio"
-              name={radioName}
-              className={radioBase}
-              checked={active === 'pending'}
+    return (
+      <div className="flex min-w-[200px] flex-row items-stretch gap-0 pb-1 pl-0.5 pr-1 pt-0.5">
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-row items-stretch gap-2">
+            <select
+              value={selectControlValue}
               disabled={cellDisabled}
-              onMouseDown={(e) => isGlass && e.stopPropagation()}
-              onChange={() => setChoice('pending')}
-            />
-            <span className="inline-flex max-w-[5.5rem] shrink-0 items-center rounded-md bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold leading-tight text-white">
-              {hypothesisPendingLabel}
-            </span>
-            <span className="min-w-0 flex-1 text-sm text-neutral-500">—</span>
-          </label>
-        )}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              onChange={onHypSelectChange}
+              className={`${selectShellClass} min-w-0 flex-1`}
+              style={selectArrowStyle}
+            >
+              <option value="">{selectPlaceholder}</option>
+              {h1 ? (
+                <option value={OPT_H1}>{tagLabels.freelance}</option>
+              ) : null}
+              {h2 ? (
+                <option value={OPT_H2}>{tagLabels.company}</option>
+              ) : null}
+              <option value={OPT_H3}>{h3TagLabel}</option>
+              <option value={OPT_OTHER}>{hypothesisOtherLabel}</option>
+              {pendingOk ? (
+                <option value={OPT_PENDING}>{hypothesisPendingLabel}</option>
+              ) : null}
+            </select>
+          </div>
 
-        <div className={`${lineCls} items-center`} onMouseDown={stopRow} onClick={stopRow}>
-          {renderLeadingSlot('other')}
-          <input
-            type="radio"
-            id={otherRadioId}
-            name={radioName}
-            className={radioBase}
-            checked={active === 'other'}
-            disabled={cellDisabled}
-            onMouseDown={(e) => {
-              if (isGlass) e.stopPropagation();
-            }}
-            onClick={(e) => {
-              if (isGlass) e.stopPropagation();
-            }}
-            onChange={() => setChoice('other')}
-          />
-          <label
-            htmlFor={otherRadioId}
-            className="inline-flex max-w-[5.5rem] shrink-0 cursor-pointer items-center rounded-md bg-slate-500 px-1.5 py-0.5 text-[10px] font-semibold leading-tight text-white"
-            onMouseDown={(e) => isGlass && e.stopPropagation()}
-            onClick={(e) => isGlass && e.stopPropagation()}
-          >
-            {hypothesisOtherLabel}
-          </label>
-          <input
-            type="text"
-            value={otherInputValue}
-            disabled={cellDisabled}
-            placeholder={otherTextPlaceholder}
-            onMouseDown={(e) => isGlass && e.stopPropagation()}
-            onClick={(e) => isGlass && e.stopPropagation()}
-            onFocus={() => {
-              if (active !== 'other') setChoice('other');
-            }}
-            onChange={(e) => {
-              const v = e.target.value;
-              setHypOtherDraftByKey((p) => ({ ...p, [draftKey]: v }));
-              if (v === '') handleCellChange(rowIdx, HYP_CONFIRM_KEY, OTHER_SELECT_VALUE);
-              else handleCellChange(rowIdx, HYP_CONFIRM_KEY, v);
-            }}
-            className={
-              isGlass
-                ? 'min-w-0 flex-1 rounded-lg border border-neutral-200/90 bg-white/80 px-2 py-1.5 text-sm focus:border-[#91C2FF]/80 focus:outline-none focus:ring-2 focus:ring-[rgba(145,194,255,0.55)]'
-                : 'min-w-0 flex-1 rounded-md border border-neutral-200 px-2 py-1 text-sm focus:border-sky-400/70 focus:outline-none focus:ring-2 focus:ring-sky-300/50'
-            }
-          />
+          {active !== '' && active !== 'pending' && (
+            <div className="mt-2 flex min-w-0 flex-row items-start gap-3 border-t border-dashed border-neutral-200/70 pt-2">
+              <span className={tagPillCls}>{displayTag}</span>
+              <div className="min-w-0 flex-1">
+                {active === 'h1' && (
+                  <p className="text-sm leading-relaxed text-neutral-800">{h1}</p>
+                )}
+                {active === 'h2' && (
+                  <p className="text-sm leading-relaxed text-neutral-800">{h2}</p>
+                )}
+                {active === 'h3' && (
+                  <p className="text-sm leading-relaxed text-neutral-800">{h3}</p>
+                )}
+                {active === 'other' && (
+                  <input
+                    type="text"
+                    value={otherInputValue}
+                    disabled={cellDisabled}
+                    placeholder={otherTextPlaceholder}
+                    onMouseDown={(e) => isGlass && e.stopPropagation()}
+                    onClick={(e) => isGlass && e.stopPropagation()}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setHypOtherDraftByKey((p) => ({ ...p, [draftKey]: v }));
+                      if (v === '')
+                        handleCellChange(rowIdx, HYP_CONFIRM_KEY, OTHER_SELECT_VALUE);
+                      else handleCellChange(rowIdx, HYP_CONFIRM_KEY, v);
+                    }}
+                    className={otherTextInputCls}
+                  />
+                )}
+              </div>
+            </div>
+          )}
         </div>
+        {regenBtn}
       </div>
     );
   };
@@ -742,12 +743,12 @@ export default function RuminationTableWidget({
           {rows.map((row, rowIdx) => (
             <tr
               key={rowIdx}
+              ref={setTableRowRef(rowIdx)}
               role={isGlass && !cellDisabled ? 'button' : undefined}
               tabIndex={isGlass && !cellDisabled ? 0 : undefined}
               onClick={(e) => {
                 if (!isGlass || cellDisabled) return;
                 if (
-                  rowSelectionMulti &&
                   (e.target as HTMLElement).closest(
                     'input,select,textarea,button,a,label,option'
                   )
@@ -779,7 +780,7 @@ export default function RuminationTableWidget({
                   : 'border-b border-neutral-100 hover:bg-neutral-50/50'
               }
             >
-              {displayColumns.map((col) => {
+              {displayColumns.map((col, colIdx) => {
                 const isEditable = editableSet.has(col.key);
                 const val = row[col.key];
                 const strVal = val != null ? String(val) : '';
@@ -792,6 +793,21 @@ export default function RuminationTableWidget({
                     validationFlashKey === `${rowIdx}:__pick` &&
                     col.key === firstColKey);
 
+                const filterStepNow = payload.step ?? 0;
+                const showHypRegenOverlay =
+                  colIdx === 0 &&
+                  hypothesisRegeneratingRowIndex === rowIdx &&
+                  filterStepNow === 3;
+
+                const tdBase =
+                  col.key === 'id'
+                    ? isGlass
+                      ? 'px-1 py-2 align-middle text-center text-neutral-600'
+                      : 'px-1 py-2 align-middle text-center'
+                    : isGlass
+                      ? 'px-2.5 py-3 align-middle text-neutral-700 break-words whitespace-normal'
+                      : 'px-2.5 py-2 align-middle';
+
                 return (
                   <td
                     key={col.key}
@@ -799,16 +815,24 @@ export default function RuminationTableWidget({
                       minWidth: colMinWidth(col),
                       maxWidth: col.key === 'id' ? 48 : undefined,
                     }}
-                    className={
-                      col.key === 'id'
-                        ? isGlass
-                          ? 'px-1 py-2 align-middle text-center text-neutral-600'
-                          : 'px-1 py-2 align-middle text-center'
-                        : isGlass
-                          ? 'px-2.5 py-3 align-middle text-neutral-700 break-words whitespace-normal'
-                          : 'px-2.5 py-2 align-middle'
-                    }
+                    className={`${showHypRegenOverlay ? 'relative overflow-visible ' : ''}${tdBase}`}
                   >
+                    {showHypRegenOverlay && (
+                      <div
+                        className="absolute left-0 top-0 z-[45] flex min-h-full items-center justify-center bg-white/80 backdrop-blur-[6px]"
+                        style={{
+                          width:
+                            hypRegenOverlayW > 0 ? `${hypRegenOverlayW}px` : '100%',
+                        }}
+                        aria-busy="true"
+                        aria-live="polite"
+                      >
+                        <Loader2
+                          className="h-7 w-7 shrink-0 animate-spin text-blue-950"
+                          aria-hidden
+                        />
+                      </div>
+                    )}
                     <div
                       key={
                         cellFlash ? `${cellKey}-v${validationCycle}` : cellKey

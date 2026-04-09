@@ -188,7 +188,7 @@ export const zh = {
         hypothesisRegenerateHint: '重新生成该行的假设选项',
         hypothesisTagFreelance: '个人事业',
         hypothesisTagCompany: '职业路径',
-        hypothesisTagExtra: '',
+        hypothesisTagExtra: '备选方向',
         hypothesisPendingOption: '暂未选定',
         placeholderWithRow: '针对「{label}」补充说明…',
         tableEarlyTerminated: '当前筛选无剩余行，请回到回顾或前序阶段补充后再试。',

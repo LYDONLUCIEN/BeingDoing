@@ -105,7 +105,7 @@ function withinCurrentSection(
 /**
  * 整体完成度 0–100。
  * 在筛选表界面（含 final_choice 回看表）：进度刻度 0..8（7 个子步提交 + 进入最终选择档），详情文案为「筛选 n/7」——
- * 0% 空白/未提交 → 每多一个子步 submitted +1 档 → 8 档为进入最终选择及之后；本页最高 99%。
+ * 0% 空白/未提交 → 每多一个子步 submitted +1 档 → 8 档为进入最终选择及之后；满档为 100%。
  * 详情文案仍显示「筛选 n/7」。
  */
 export function computeRuminationJourneyPercent(
@@ -119,7 +119,7 @@ export function computeRuminationJourneyPercent(
 
   if (useViewForFilterBar) {
     const m = computeDisplayedRuminationMilestone(progress, viewFilterStep);
-    return Math.min(99, Math.max(0, (m / 8) * 100));
+    return Math.min(100, Math.max(0, (m / 8) * 100));
   }
 
   const idx = SECTION_ORDER.indexOf(progress.main_section);

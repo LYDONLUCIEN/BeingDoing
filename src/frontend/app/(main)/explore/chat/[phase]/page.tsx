@@ -20,7 +20,10 @@ import ChatPhaseBackground from '@/components/explore/ChatPhaseBackground';
 import ExploreLandingMeshLayers from '@/components/explore/ExploreLandingMeshLayers';
 import ChatPhaseSidebar from '@/components/explore/ChatPhaseSidebar';
 import RuminationSectionProgress from '@/components/explore/RuminationSectionProgress';
-import RuminationTableWidget from '@/components/explore/RuminationTableWidget';
+import RuminationTableWidget, {
+  HYP_CONFIRM_KEY,
+  OTHER_SELECT_VALUE,
+} from '@/components/explore/RuminationTableWidget';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { apiClient, getApiErrorMessage } from '@/lib/api/client';
 import { authApi } from '@/lib/api/auth';
@@ -92,6 +95,47 @@ const BACKEND_PHASE: Record<PhaseKey, string> = {
   purpose: 'purpose',
   rumination: 'rumination',
 };
+
+/** 重新生成假设后按「槽位」写回确认列，避免新文案导致选中丢失 */
+function mapRuminationHypConfirmAfterRegen(
+  prevRow: Record<string, unknown>,
+  nextRow: Record<string, unknown>,
+  pendingLabel: string
+): string {
+  const pv = String(prevRow[HYP_CONFIRM_KEY] ?? '');
+  const o1 = String(prevRow['假设1'] ?? '').trim();
+  const o2 = String(prevRow['假设2'] ?? '').trim();
+  const o3 = String(prevRow['假设3'] ?? '').trim();
+  const n1 = String(nextRow['假设1'] ?? '').trim();
+  const n2 = String(nextRow['假设2'] ?? '').trim();
+  const n3 = String(nextRow['假设3'] ?? '').trim();
+
+  type Slot = 'h1' | 'h2' | 'h3' | 'pending' | 'other_empty' | 'other_custom';
+  let slot: Slot;
+  if (pv === OTHER_SELECT_VALUE || !pv.trim()) {
+    slot = 'other_empty';
+  } else if (pendingLabel && (pv === pendingLabel || pv === '待定')) {
+    slot = 'pending';
+  } else if (o1 && pv === o1) {
+    slot = 'h1';
+  } else if (o2 && pv === o2) {
+    slot = 'h2';
+  } else if (o3 && pv === o3) {
+    slot = 'h3';
+  } else {
+    slot = 'other_custom';
+  }
+
+  if (slot === 'h1' && n1) return n1;
+  if (slot === 'h2' && n2) return n2;
+  if (slot === 'h3' && n3) return n3;
+  if (slot === 'pending') return pendingLabel;
+  if (slot === 'other_custom') {
+    if (pv && pv !== OTHER_SELECT_VALUE && ![n1, n2, n3].includes(pv)) return pv;
+    return OTHER_SELECT_VALUE;
+  }
+  return OTHER_SELECT_VALUE;
+}
 
 /** 表格提交：全屏遮罩 + 动态省略号（Portal 挂到 body） */
 function RuminationTableSubmitPortal({
@@ -1944,13 +1988,42 @@ export default function ChatPhasePage() {
       setChatError(null);
       try {
         const res = await ruminationApi.regenerateHypotheses(activationCode, filterStep, rowId);
-        if (res.code !== 200 || !res.data?.table_widget) {
+        const rawTw = res.data?.table_widget;
+        if (res.code !== 200 || !rawTw) {
           setChatError(
             res.message || t('explore.chat.ruminationUi.hypothesisRegenerateError')
           );
           return;
         }
-        setRuminationTablePayload(res.data.table_widget as ThreadMessage['tablePayload']);
+        const tw = rawTw as NonNullable<ThreadMessage['tablePayload']>;
+        const pendingLabel = t('explore.chat.ruminationUi.hypothesisPendingOption');
+        const prevRows = (ruminationTablePayload?.rows ?? []) as Record<string, unknown>[];
+        const prevRow = prevRows[rowIdx];
+        let nextPayload: NonNullable<ThreadMessage['tablePayload']> = tw;
+        if (Array.isArray(tw.rows) && rowIdx >= 0 && rowIdx < tw.rows.length) {
+          const incoming = tw.rows as Record<string, unknown>[];
+          const hypCols = ['假设1', '假设2', '假设3'] as const;
+          const newRows = incoming.map((r, i) => {
+            const pr = prevRows[i];
+            if (i === rowIdx && prevRow) {
+              const mapped = mapRuminationHypConfirmAfterRegen(prevRow, r, pendingLabel);
+              return { ...r, [HYP_CONFIRM_KEY]: mapped };
+            }
+            if (!pr) return r;
+            const merged = { ...r };
+            for (const k of hypCols) {
+              const nextS = String(r[k] ?? '').trim();
+              const prevS = String(pr[k] ?? '').trim();
+              if (!nextS && prevS) merged[k] = pr[k];
+            }
+            if (Object.prototype.hasOwnProperty.call(pr, HYP_CONFIRM_KEY)) {
+              merged[HYP_CONFIRM_KEY] = pr[HYP_CONFIRM_KEY];
+            }
+            return merged;
+          });
+          nextPayload = { ...tw, rows: newRows } as NonNullable<ThreadMessage['tablePayload']>;
+        }
+        setRuminationTablePayload(nextPayload);
         if (res.data.progress) setRuminationProgressState(res.data.progress);
         if (typeof res.data.max_reached_filter_step === 'number') {
           setRuminationMaxReached(res.data.max_reached_filter_step);
@@ -1969,6 +2042,7 @@ export default function ChatPhasePage() {
     [
       activationCode,
       phase,
+      ruminationTablePayload?.rows,
       ruminationTablePayload?.step,
       ruminationViewStep,
       t,
