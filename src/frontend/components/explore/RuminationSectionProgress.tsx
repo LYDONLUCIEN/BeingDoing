@@ -8,6 +8,7 @@ import {
   type RuminationProgress,
 } from '@/lib/api/rumination';
 import { useLocale } from '@/hooks/useLocale';
+import { isRuminationFilterStepReachable } from '@/lib/explore/ruminationProgressNav';
 
 const SECTION_ORDER: RuminationMainSection[] = [
   'opening',
@@ -152,7 +153,6 @@ export interface RuminationFilterStepNavConfig {
    * 进度条拆成 7 段可点：跳到对应筛选子步（与 furthest 对齐，不可达段禁用）。
    */
   segmentJump?: {
-    furthestStep: number;
     jumpDisabled?: boolean;
     onJump: (step: number) => void;
   };
@@ -342,7 +342,7 @@ export default function RuminationSectionProgress({
                   {Array.from({ length: FILTER_STEP_CAP }, (_, i) => {
                     const step = i + 1;
                     const vf = viewFilterStep ?? 0;
-                    const reachable = step <= segJump.furthestStep;
+                    const reachable = isRuminationFilterStepReachable(step, displayProgress);
                     const current = vf === step;
                     const disabled = Boolean(segJump.jumpDisabled) || !reachable;
                     return (

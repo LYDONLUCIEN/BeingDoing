@@ -59,8 +59,8 @@ import {
   sliceMessagesForRuminationStep,
 } from '@/lib/explore/ruminationStepBoundaries';
 import {
-  computeFurthestBrowsableFilterStep,
   computeMaxReachedFromSnapshots,
+  isRuminationFilterStepReachable,
   RUMINATION_FILTER_STEP_MAX,
 } from '@/lib/explore/ruminationProgressNav';
 import {
@@ -907,6 +907,12 @@ export default function ChatPhasePage() {
   const loadRuminationTableStep = useCallback(
     async (step: number, opts?: { resetInitial?: boolean }): Promise<boolean> => {
       if (!activationCode || phase !== 'rumination') return false;
+      if (
+        !adminDebugBypass &&
+        !isRuminationFilterStepReachable(step, ruminationProgressState)
+      ) {
+        return false;
+      }
       setRuminationTableNavLoading(true);
       try {
         setChatError(null);
@@ -951,7 +957,14 @@ export default function ChatPhasePage() {
         setRuminationTableNavLoading(false);
       }
     },
-    [activationCode, activeThreadId, phase, t]
+    [
+      activationCode,
+      activeThreadId,
+      adminDebugBypass,
+      phase,
+      ruminationProgressState,
+      t,
+    ]
   );
 
   /**
@@ -1886,9 +1899,15 @@ export default function ChatPhasePage() {
     ) {
       return;
     }
-    void loadRuminationTableStep(ruminationViewStep - 1);
+    let t = ruminationViewStep - 1;
+    while (t >= 1 && !isRuminationFilterStepReachable(t, ruminationProgressState)) {
+      t -= 1;
+    }
+    if (t < 1) return;
+    void loadRuminationTableStep(t);
   }, [
     ruminationViewStep,
+    ruminationProgressState,
     loadRuminationTableStep,
     ruminationGuideBusy,
     ruminationTableNavLoading,
@@ -1903,9 +1922,10 @@ export default function ChatPhasePage() {
     ) {
       return;
     }
-    const furthest = computeFurthestBrowsableFilterStep(ruminationProgressState);
-    if (ruminationViewStep >= furthest) return;
-    void loadRuminationTableStep(ruminationViewStep + 1);
+    const next = ruminationViewStep + 1;
+    if (next > RUMINATION_FILTER_STEP_MAX) return;
+    if (!isRuminationFilterStepReachable(next, ruminationProgressState)) return;
+    void loadRuminationTableStep(next);
   }, [
     ruminationViewStep,
     ruminationProgressState,
@@ -2039,26 +2059,6 @@ export default function ChatPhasePage() {
   /** 沉淀对话区：助手气泡样式与前四步一致（values 蓝条白底），用户气泡仍用紫色主题 */
   const flowAiPhaseClass = phase === 'rumination' ? 'values' : phaseClass;
 
-  /** 筛选子步可浏览上界：与快照一致，避免已生成未提交的子步在回看时被「下一阶段」锁死 */
-  const ruminationFurthestNavigableStep = useMemo(
-    () => computeFurthestBrowsableFilterStep(ruminationProgressState),
-    [ruminationProgressState]
-  );
-
-  /** 进度条分段与「下一阶段」可浏览上界：与后端 filter_step 取大，避免已推进子步却点不到下一段 */
-  const ruminationBrowseHorizonStep = useMemo(
-    () =>
-      Math.min(
-        RUMINATION_FILTER_STEP_MAX,
-        Math.max(
-          ruminationFurthestNavigableStep,
-          ruminationProgressState?.filter_step ?? 0,
-          1
-        )
-      ),
-    [ruminationFurthestNavigableStep, ruminationProgressState?.filter_step]
-  );
-
   /** 筛选子步导航：普通用户仅在 filter 段；管理员在 final_choice 仍可上一步/下一步/改表 */
   const ruminationShowFilterStepNav =
     !!ruminationTablePayload &&
@@ -2149,11 +2149,14 @@ export default function ChatPhasePage() {
                               ruminationGuideBusy ||
                               ruminationTableNavLoading ||
                               hypothesisRegeneratingRowIndex !== null ||
-                              ruminationViewStep >= ruminationBrowseHorizonStep,
+                              ruminationViewStep >= RUMINATION_FILTER_STEP_MAX ||
+                              !isRuminationFilterStepReachable(
+                                ruminationViewStep + 1,
+                                ruminationProgressState
+                              ),
                             hidePrev: ruminationViewStep <= 1,
                             hideNext: ruminationViewStep >= RUMINATION_FILTER_STEP_MAX,
                             segmentJump: {
-                              furthestStep: ruminationBrowseHorizonStep,
                               jumpDisabled:
                                 sending ||
                                 ruminationGuideBusy ||

@@ -119,6 +119,8 @@ export default function RuminationTableWidget({
   const [validationCycle, setValidationCycle] = useState(0);
   const [hypOtherDraftByKey, setHypOtherDraftByKey] = useState<Record<string, string>>({});
   const cellWrapRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
+  /** 已确认本步：锁定格内与选行；表头「重新填写」仍用外层 disabled 控制 */
+  const cellDisabled = disabled || confirmDisabledAfterCommit;
 
   const rowsPayloadSig = JSON.stringify(payload.rows ?? []);
   useEffect(() => {
@@ -159,9 +161,18 @@ export default function RuminationTableWidget({
     };
   }, []);
 
-  const handleGlassRowActivate = useCallback((rowIdx: number) => {
-    setSelectedRowIdx((prev) => (prev === rowIdx ? null : rowIdx));
-  }, []);
+  const handleGlassRowActivate = useCallback(
+    (rowIdx: number) => {
+      if (cellDisabled) return;
+      setSelectedRowIdx((prev) => (prev === rowIdx ? null : rowIdx));
+    },
+    [cellDisabled]
+  );
+
+  useEffect(() => {
+    if (!confirmDisabledAfterCommit) return;
+    setSelectedRowIdx(null);
+  }, [confirmDisabledAfterCommit]);
 
   useEffect(() => {
     if (!onRowContextChange) return;
@@ -196,7 +207,7 @@ export default function RuminationTableWidget({
 
   const handleRowPickToggle = useCallback(
     (rowIdx: number) => {
-      if (disabled) return;
+      if (cellDisabled) return;
       const cap = payload.rowSelectionMax ?? 3;
       setRows((prev) => {
         const row = prev[rowIdx];
@@ -214,7 +225,7 @@ export default function RuminationTableWidget({
       });
       setSelectedRowIdx(rowIdx);
     },
-    [disabled, payload.rowSelectionMax]
+    [cellDisabled, payload.rowSelectionMax]
   );
 
   const colMinWidth = (col: RuminationTableColumn) => {
@@ -225,13 +236,14 @@ export default function RuminationTableWidget({
   };
 
   const handleCellChange = useCallback((rowIdx: number, colKey: string, value: unknown) => {
+    if (cellDisabled) return;
     setRows((prev) => {
       const next = [...prev];
       if (rowIdx < 0 || rowIdx >= next.length) return prev;
       next[rowIdx] = { ...next[rowIdx], [colKey]: value };
       return next;
     });
-  }, []);
+  }, [cellDisabled]);
 
   const normalizeOptionText = useCallback((s: unknown) => {
     return String(s)
@@ -325,6 +337,7 @@ export default function RuminationTableWidget({
   ]);
 
   const handleConfirm = useCallback(() => {
+    if (cellDisabled) return;
     setValidationFlashKey(null);
     const bad = findFirstInvalidCell();
     if (bad) {
@@ -348,11 +361,7 @@ export default function RuminationTableWidget({
       return next;
     });
     onConfirm(sanitized);
-  }, [
-    rows,
-    onConfirm,
-    findFirstInvalidCell,
-  ]);
+  }, [rows, onConfirm, findFirstInvalidCell, cellDisabled]);
 
   if (!payload.columns?.length) return null;
 
@@ -378,7 +387,7 @@ export default function RuminationTableWidget({
           <button
             type="button"
             onClick={handleConfirm}
-            disabled={disabled || confirmDisabledAfterCommit}
+            disabled={cellDisabled}
             className={confirmBtnCls}
           >
             {confirmLabel}
@@ -488,7 +497,7 @@ export default function RuminationTableWidget({
             type="button"
             title={hypothesisRegenerateHint}
             aria-label={hypothesisRegenerateHint}
-            disabled={disabled || hypothesisRegeneratingRowIndex === rowIdx}
+            disabled={cellDisabled || hypothesisRegeneratingRowIndex === rowIdx}
             className="inline-flex h-4 w-7 shrink-0 items-center justify-center rounded-md text-sky-600 transition-colors hover:bg-sky-500/15 disabled:cursor-not-allowed disabled:opacity-40"
             onMouseDown={(e) => isGlass && e.stopPropagation()}
             onClick={(e) => {
@@ -555,7 +564,7 @@ export default function RuminationTableWidget({
                   name={radioName}
                   className={radioBase}
                   checked={active === line.key}
-                  disabled={disabled}
+                  disabled={cellDisabled}
                   onMouseDown={(e) => isGlass && e.stopPropagation()}
                   onChange={() => setChoice(line.key)}
                 />
@@ -575,7 +584,7 @@ export default function RuminationTableWidget({
               name={radioName}
               className={radioBase}
               checked={active === 'pending'}
-              disabled={disabled}
+              disabled={cellDisabled}
               onMouseDown={(e) => isGlass && e.stopPropagation()}
               onChange={() => setChoice('pending')}
             />
@@ -594,7 +603,7 @@ export default function RuminationTableWidget({
             name={radioName}
             className={radioBase}
             checked={active === 'other'}
-            disabled={disabled}
+            disabled={cellDisabled}
             onMouseDown={(e) => {
               if (isGlass) e.stopPropagation();
             }}
@@ -614,7 +623,7 @@ export default function RuminationTableWidget({
           <input
             type="text"
             value={otherInputValue}
-            disabled={disabled}
+            disabled={cellDisabled}
             placeholder={otherTextPlaceholder}
             onMouseDown={(e) => isGlass && e.stopPropagation()}
             onClick={(e) => isGlass && e.stopPropagation()}
@@ -673,7 +682,7 @@ export default function RuminationTableWidget({
       <div className="space-y-2" onMouseDown={stopRow} onClick={stopRow}>
         <select
           value={selectVal}
-          disabled={disabled}
+          disabled={cellDisabled}
           onChange={(e) => {
             const v = e.target.value;
             if (v === OTHER_SELECT_VALUE) handleCellChange(rowIdx, col.key, OTHER_SELECT_VALUE);
@@ -695,7 +704,7 @@ export default function RuminationTableWidget({
         {selectVal === OTHER_SELECT_VALUE && (
           <textarea
             value={otherTextareaDisplay}
-            disabled={disabled}
+            disabled={cellDisabled}
             onChange={(e) => handleCellChange(rowIdx, col.key, e.target.value)}
             placeholder={otherTextPlaceholder}
             rows={2}
@@ -733,10 +742,10 @@ export default function RuminationTableWidget({
           {rows.map((row, rowIdx) => (
             <tr
               key={rowIdx}
-              role={isGlass ? 'button' : undefined}
-              tabIndex={isGlass ? 0 : undefined}
+              role={isGlass && !cellDisabled ? 'button' : undefined}
+              tabIndex={isGlass && !cellDisabled ? 0 : undefined}
               onClick={(e) => {
-                if (!isGlass) return;
+                if (!isGlass || cellDisabled) return;
                 if (
                   rowSelectionMulti &&
                   (e.target as HTMLElement).closest(
@@ -749,7 +758,7 @@ export default function RuminationTableWidget({
                 else handleGlassRowActivate(rowIdx);
               }}
               onKeyDown={(e) => {
-                if (!isGlass) return;
+                if (!isGlass || cellDisabled) return;
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
                   if (rowSelectionMulti) handleRowPickToggle(rowIdx);
@@ -763,8 +772,10 @@ export default function RuminationTableWidget({
                         ? 'bg-[rgba(145,194,255,0.38)] text-neutral-900 shadow-[inset_3px_0_0_0_#91C2FF]'
                         : !rowSelectionMulti && selectedRowIdx === rowIdx
                           ? 'bg-[rgba(145,194,255,0.38)] text-neutral-900 shadow-[inset_3px_0_0_0_#91C2FF]'
-                          : 'hover:bg-white/30'
-                    } ${isGlass ? 'cursor-pointer' : ''}`
+                          : cellDisabled
+                            ? ''
+                            : 'hover:bg-white/30'
+                    } ${isGlass && !cellDisabled ? 'cursor-pointer' : isGlass ? 'cursor-default' : ''}`
                   : 'border-b border-neutral-100 hover:bg-neutral-50/50'
               }
             >
@@ -835,7 +846,7 @@ export default function RuminationTableWidget({
                           onChange={(e) => handleCellChange(rowIdx, col.key, e.target.value)}
                           onMouseDown={(e) => isGlass && e.stopPropagation()}
                           onClick={(e) => isGlass && e.stopPropagation()}
-                          disabled={disabled}
+                          disabled={cellDisabled}
                           className={selectShellClass}
                           style={selectArrowStyle}
                         >
@@ -855,7 +866,7 @@ export default function RuminationTableWidget({
                             onChange={(e) => handleCellChange(rowIdx, col.key, e.target.value)}
                             onMouseDown={(e) => isGlass && e.stopPropagation()}
                             onClick={(e) => isGlass && e.stopPropagation()}
-                            disabled={disabled}
+                            disabled={cellDisabled}
                             placeholder={inputPlaceholder}
                             rows={2}
                             className="w-full min-h-[2.75rem] min-w-[100px] resize-y px-2 py-1.5 text-sm leading-snug border border-neutral-200/90 rounded-lg bg-white/80 focus:ring-2 focus:ring-[rgba(145,194,255,0.55)] break-words whitespace-pre-wrap"
@@ -867,7 +878,7 @@ export default function RuminationTableWidget({
                             onChange={(e) => handleCellChange(rowIdx, col.key, e.target.value)}
                             onMouseDown={(e) => isGlass && e.stopPropagation()}
                             onClick={(e) => isGlass && e.stopPropagation()}
-                            disabled={disabled}
+                            disabled={cellDisabled}
                             placeholder={inputPlaceholder}
                             className="w-full min-w-[100px] px-2 py-1 text-sm border border-neutral-200 rounded-md focus:ring-2 focus:ring-sky-300/50 focus:border-sky-400/70"
                           />
