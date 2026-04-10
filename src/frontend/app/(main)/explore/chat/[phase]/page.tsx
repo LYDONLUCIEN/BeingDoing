@@ -1980,7 +1980,11 @@ export default function ChatPhasePage() {
   ]);
 
   const handleHypothesisRegenerateRow = useCallback(
-    async (rowIdx: number, rowId: string) => {
+    async (
+      rowIdx: number,
+      rowId: string,
+      liveRowsFromWidget?: Record<string, unknown>[]
+    ) => {
       if (!activationCode || phase !== 'rumination') return;
       const filterStep = ruminationTablePayload?.step ?? ruminationViewStep;
       if (filterStep !== 3) return;
@@ -1997,7 +2001,11 @@ export default function ChatPhasePage() {
         }
         const tw = rawTw as NonNullable<ThreadMessage['tablePayload']>;
         const pendingLabel = t('explore.chat.ruminationUi.hypothesisPendingOption');
-        const prevRows = (ruminationTablePayload?.rows ?? []) as Record<string, unknown>[];
+        const payloadRows = (ruminationTablePayload?.rows ?? []) as Record<string, unknown>[];
+        const prevRows =
+          liveRowsFromWidget && liveRowsFromWidget.length > 0
+            ? liveRowsFromWidget
+            : payloadRows;
         const prevRow = prevRows[rowIdx];
         let nextPayload: NonNullable<ThreadMessage['tablePayload']> = tw;
         if (Array.isArray(tw.rows) && rowIdx >= 0 && rowIdx < tw.rows.length) {

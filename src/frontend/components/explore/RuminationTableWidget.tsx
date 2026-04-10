@@ -84,7 +84,12 @@ interface RuminationTableWidgetProps {
   /** 右上角重新生成图标的悬停说明 */
   hypothesisRegenerateHint?: string;
   hypothesisRegeneratingRowIndex?: number | null;
-  onHypothesisRegenerate?: (rowIndex: number, rowId: string) => void | Promise<void>;
+  /** 第三参为当前表格内存快照（含未点「确认」的编辑），供重新生成单行时与其它行合并 */
+  onHypothesisRegenerate?: (
+    rowIndex: number,
+    rowId: string,
+    currentTableRows: Record<string, unknown>[]
+  ) => void | Promise<void>;
 }
 
 export default function RuminationTableWidget({
@@ -580,7 +585,7 @@ export default function RuminationTableWidget({
           onClick={(e) => {
             if (isGlass) e.stopPropagation();
             const rid = String(row.id ?? rowIdx);
-            void onHypothesisRegenerate?.(rowIdx, rid);
+            void onHypothesisRegenerate?.(rowIdx, rid, rows);
           }}
         >
           <RefreshCw className="h-4 w-4" strokeWidth={2.25} aria-hidden />
