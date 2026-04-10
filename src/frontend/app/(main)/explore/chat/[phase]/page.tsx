@@ -264,6 +264,8 @@ export default function ChatPhasePage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatBodyRef = useRef<HTMLDivElement>(null);
+  /** 为 true 时流式输出会滚到底部；用户上滑后为 false，点「回到底」再置 true */
+  const stickToBottomRef = useRef(true);
   const messagesRef = useRef<ThreadMessage[]>([]);
   messagesRef.current = messages;
   const [showScrollBottom, setShowScrollBottom] = useState(false);
@@ -894,7 +896,9 @@ export default function ChatPhasePage() {
   const checkScrollPosition = useCallback(() => {
     const el = chatBodyRef.current;
     if (!el) return;
-    setShowScrollBottom(el.scrollHeight - el.scrollTop - el.clientHeight > 80);
+    const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setShowScrollBottom(gap > 80);
+    stickToBottomRef.current = gap <= 120;
   }, []);
 
   /** 进入某阶段 / 切换会话 / 线程列表首次就绪后：立即滚到底部（最新一条） */
@@ -903,15 +907,22 @@ export default function ChatPhasePage() {
     const el = chatBodyRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
+    stickToBottomRef.current = true;
     requestAnimationFrame(() => {
       el.scrollTop = el.scrollHeight;
     });
   }, [phase, activeThreadId, initLoading, threadsFetched, threadListSignature]);
 
-  /** 流式生成中：跟随最新内容 */
+  /** 流式生成中：仅当用户仍在底部附近时才跟随，避免挡住上滑回看 */
   useEffect(() => {
     if (!sending) return;
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!stickToBottomRef.current) return;
+    const el = chatBodyRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    }
   }, [messages, displayMessages, sending]);
 
   useEffect(() => {
@@ -923,6 +934,7 @@ export default function ChatPhasePage() {
   }, [checkScrollPosition, messages]);
 
   const scrollToBottom = useCallback(() => {
+    stickToBottomRef.current = true;
     chatBodyRef.current?.scrollTo({ top: chatBodyRef.current.scrollHeight, behavior: 'smooth' });
   }, []);
 
@@ -1174,6 +1186,7 @@ export default function ChatPhasePage() {
     setChatError(null);
     setConclusionLoading(false);
     setSending(true);
+    stickToBottomRef.current = true;
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -2175,6 +2188,7 @@ export default function ChatPhasePage() {
             onNewChat={handleNewChat}
             onDeleteThread={handleDeleteThread}
             canNewChat={canCreateMoreThreads}
+            phaseTitle={phaseLabel}
             phaseInteractionLocked={phaseInteractionLocked}
             careeringMatte
           />

@@ -43,6 +43,12 @@ export interface ThreadMessage {
   ruminationRowLabel?: string;
 }
 
+/** 使命阶段结构化「经历 → 价值观」行（与后端 payload 一致） */
+export interface ExperienceValueRow {
+  experience?: string;
+  value?: string;
+}
+
 /** 维度探索结论卡片（持久化，完成/重访时仍可查看） */
 export interface DimensionConclusionData {
   /** 温暖汇总文案（支持 Markdown 加粗） */
@@ -53,6 +59,16 @@ export interface DimensionConclusionData {
   ai_summary?: string;
   dimension_goal?: string;
   final_answer?: string;
+  /** 与 keywords 等长（价值观） */
+  keyword_notes?: string[];
+  /** 与 keywords 等长：a/b/c（禀赋） */
+  strength_markers?: string[];
+  /** 与 keywords 等长（热忱） */
+  interest_reasons?: string[];
+  mission_core?: string;
+  mission_detail?: string;
+  mission_aim?: string;
+  experience_value_rows?: ExperienceValueRow[];
 }
 
 export interface ChatThread {

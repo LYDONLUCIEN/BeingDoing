@@ -80,6 +80,10 @@ from app.utils.survey_storage import (
     load_prior_context,
 )
 from app.domain.conclusion_card_goals import cap_strengths_keywords_list
+from app.domain.conclusion_card_payload import (
+    build_state_json_draft_extension_protocol,
+    sanitize_pending_conclusion_draft,
+)
 from app.domain.prompts import get_simple_chat_system_prompt, get_step_copy
 from app.domain.rumination_step_guidance import (
     build_opening_context,
@@ -2432,44 +2436,22 @@ def _build_system_prompt(
     if (extra_goal_hint or "").strip():
         base_prompt = f"{base_prompt}\n\n[管理员调试目标补充]\n{extra_goal_hint.strip()}"
     # 机器协议：每轮回复末尾输出状态 JSON，后端据此驱动 pending 状态机（不会展示给前端）。
-    protocol = """
+    protocol = f"""
 
 [输出协议 - 必须遵守]
 在你的自然语言回复末尾，追加如下块（严格 JSON）：
 [STATE_JSON]
-{"state":"continue|pending_ready","draft":{"summary":"...","keywords":["..."]}}
+{{"state":"continue|pending_ready","draft":{{"summary":"...","keywords":["..."]}}}}
 [/STATE_JSON]
+（draft 可含本阶段扩展字段，见下；须输出合法嵌套 JSON。）
 
 规则：
 1) 仅当你判断“已可进入结论确认”时，state 才能是 pending_ready。
 2) state=continue 时，draft 置为 null。
 3) state=pending_ready 时，draft.summary 必填，draft.keywords 为数组（可为空但应尽量给出）。
-4) [STATE_JSON] 块之外只写给用户看的自然语言，不要解释本协议。
+{build_state_json_draft_extension_protocol(phase)}
 """
     return f"{base_prompt}\n{protocol}"
-
-
-def _split_visible_reply_and_state(raw_text: str) -> tuple[str, Optional[Dict]]:
-    """
-    从模型输出中拆分用户可见文本和状态 JSON。
-    格式：
-      ...用户可见文本...
-      [STATE_JSON]
-      {...}
-      [/STATE_JSON]
-    """
-    if not raw_text:
-        return "", None
-    m = re.search(r"\[STATE_JSON\]\s*(\{.*?\})\s*\[/STATE_JSON\]\s*$", raw_text, flags=re.DOTALL)
-    if not m:
-        return raw_text.strip(), None
-    json_part = m.group(1).strip()
-    visible = raw_text[:m.start()].rstrip()
-    try:
-        obj = json.loads(json_part)
-        return visible, obj if isinstance(obj, dict) else None
-    except (json.JSONDecodeError, TypeError):
-        return visible, None
 
 
 def _strip_hidden_blocks_for_stream(
@@ -3671,11 +3653,7 @@ async def simple_chat_stream(
             state_name = str(state_obj.get("state") or "").strip().lower()
             draft = state_obj.get("draft")
             if state_name == "pending_ready" and isinstance(draft, dict):
-                draft_to_save = dict(draft)
-                if phase_step == "strengths":
-                    draft_to_save["keywords"] = cap_strengths_keywords_list(
-                        draft_to_save.get("keywords")
-                    )
+                draft_to_save = sanitize_pending_conclusion_draft(phase_step, dict(draft))
                 await conv_manager.update_metadata(
                     session_id,
                     category,

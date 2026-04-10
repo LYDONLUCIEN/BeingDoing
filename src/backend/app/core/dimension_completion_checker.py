@@ -3,7 +3,7 @@
 """
 import json
 import re
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from app.core.llmapi import get_default_llm_provider, LLMMessage
 from app.domain.conclusion_card_goals import (
@@ -12,7 +12,20 @@ from app.domain.conclusion_card_goals import (
     get_conclusion_rules,
     get_goal_prompt_hint,
 )
+from app.domain.conclusion_card_payload import (
+    build_conclusion_json_schema_instructions,
+    merge_conclusion_payload,
+)
 from app.domain.dimension_completion import get_dimension_config
+
+# 结论卡专用：勿复用主对话 system（含 STATE_JSON 与流程），避免干扰纯 JSON 输出或诱发多余协议块。
+_CONCLUSION_GENERATION_SYSTEM = (
+    "你是与来访者一对一谈话的职业咨询师。"
+    "当前任务：只根据用户消息里提供的对话记录，输出**一条**合法 JSON 对象（结论卡字段），不要输出任何 JSON 以外的文字。"
+    "其中 summary 要像当面收口：直接对「你」说话，简短、有温度；禁止元叙述（如「从对话可见」「综上所述」「作为模型/AI」）、"
+    "禁止内部推理、分析报告体或提纲式分条评析。"
+    "keywords 与扩展字段必须严格来自用户已明确说出的内容，禁止编造。"
+)
 
 
 def _normalize_keyword_list(items: List[str], *, limit: int = 5) -> List[str]:
@@ -252,7 +265,19 @@ async def check_dimension_complete(
 - 若用户未提到足够关键词，宁可减少数量也不要杜撰
 - 结论内容必须符合本维度的 dimension_goal，且与用户实际表达一致
 【命名约束】keywords 数组中每一项必须是单一概念词（或本阶段要求的单一短语），不得使用「/、或、以及、&、|」并列多个候选。若对话中出现近义词而未明确取舍，宁可拆成多条并在 summary 中说明用户偏好，也不要在单条内并列多个候选。"""
+    schema_instructions = build_conclusion_json_schema_instructions(phase)
+    tone_tight = """
+【summary 口吻（须严格遵守）】
+- 面向对方，用「你」作主语，2～6 句短句即可，像咨询师把当轮收获轻轻收束，不要写长文分析。
+- 不要使用：从对话中/可以发现/综上所述/小结如下/模型/AI/助手/用户表示（改用「你」）等措辞。
+- 可用 **关键词** 与 keywords 列表对应；避免「第一点…第二点…」式罗列，除非用户对话里本来就是列表语境。
+"""
     summary_prompt = f"""基于以下对话，生成「{label}」维度的探索结论汇总。{prior_hint}{values_extra}
+
+对话内容：
+---
+{conv_text}
+---
 
 该维度的目标：{goal}
 {summary_hint}
@@ -261,13 +286,11 @@ async def check_dimension_complete(
 【本阶段结论卡规则】
 {conclusion_rules}
 {anti_fabrication}
-
-请用温暖、专业、包容的语气，像一位可靠的咨询师对用户说话。不要用冷冰冰的「AI 分析」口吻。
-
-请**只输出一个 JSON 对象**，严格按以下格式，不要输出任何其他内容（无前后说明、无 markdown 代码块标记）：
-{{"keywords": ["词1", "词2", ...], "summary": "汇总文案：用 **关键词** 标出核心词。"}}"""
+{tone_tight}
+{schema_instructions}"""
 
     summary_messages = [
+        LLMMessage(role="system", content=_CONCLUSION_GENERATION_SYSTEM),
         LLMMessage(role="user", content=summary_prompt),
     ]
     try:
@@ -281,6 +304,7 @@ async def check_dimension_complete(
 
     summary = ""
     keywords: List[str] = []
+    raw_obj: Optional[Dict[str, Any]] = None
     text_clean = summary_text.strip()
     if "```json" in text_clean:
         text_clean = text_clean.split("```json")[1].split("```")[0].strip()
@@ -289,12 +313,14 @@ async def check_dimension_complete(
     try:
         obj = json.loads(text_clean)
         if isinstance(obj, dict):
+            raw_obj = obj
             raw_kw = obj.get("keywords")
             keywords = [str(k).strip() for k in raw_kw if k] if isinstance(raw_kw, list) else []
             summary = (obj.get("summary") or "").strip()
     except (json.JSONDecodeError, TypeError):
         summary = summary_text
         keywords = []
+        raw_obj = None
 
     if phase == "strengths":
         keywords = cap_strengths_keywords_list(keywords)
@@ -304,10 +330,11 @@ async def check_dimension_complete(
         summary = _build_goal_fallback_summary(phase, keywords)
 
     dimension_goal = config.get("goal", "") or ""
-    return {
-        "summary": summary,
-        "keywords": keywords,
-        "ai_summary": summary,
-        "dimension_goal": dimension_goal,
-        "final_answer": ", ".join(keywords) if keywords else summary,
-    }
+    return merge_conclusion_payload(
+        phase,
+        keywords=keywords,
+        summary=summary,
+        dimension_goal=dimension_goal,
+        raw_llm_obj=raw_obj,
+        prior_conclusion=prior_conclusion if isinstance(prior_conclusion, dict) else None,
+    )

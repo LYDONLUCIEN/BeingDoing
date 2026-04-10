@@ -7,6 +7,7 @@ from typing import Optional
 from jinja2 import Environment
 
 from app.core.knowledge.loader import KnowledgeLoader
+from app.domain.conclusion_card_payload import build_state_json_draft_extension_protocol
 from app.domain.prompts import get_simple_chat_system_prompt
 from app.utils.conversation_file_manager import ConversationFileManager
 
@@ -106,19 +107,20 @@ def build_system_prompt(
         base_prompt = get_simple_chat_system_prompt(context)
     if (extra_goal_hint or "").strip():
         base_prompt = f"{base_prompt}\n\n[管理员调试目标补充]\n{extra_goal_hint.strip()}"
-    protocol = """
+    protocol = f"""
 
 [输出协议 - 必须遵守]
 在你的自然语言回复末尾，追加如下块（严格 JSON）：
 [STATE_JSON]
-{"state":"continue|pending_ready","draft":{"summary":"...","keywords":["..."]}}
+{{"state":"continue|pending_ready","draft":{{"summary":"...","keywords":["..."]}}}}
 [/STATE_JSON]
+（draft 可含本阶段扩展字段，见下；须输出合法嵌套 JSON。）
 
 规则：
 1) 仅当你判断"已可进入结论确认"时，state 才能是 pending_ready。
 2) state=continue 时，draft 置为 null。
 3) state=pending_ready 时，draft.summary 必填，draft.keywords 为数组（可为空但应尽量给出）。
-4) [STATE_JSON] 块之外只写给用户看的自然语言，不要解释本协议。
+{build_state_json_draft_extension_protocol(phase)}
 """
     return f"{base_prompt}\n{protocol}"
 

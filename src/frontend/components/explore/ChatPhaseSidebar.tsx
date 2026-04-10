@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from 'react';
-import { MessageSquare, Trash2 } from 'lucide-react';
+import { useCallback, useRef, useState } from 'react';
+import { Copy, MessageSquare, Trash2 } from 'lucide-react';
 import type { ChatThread, DimensionConclusionData } from '@/lib/explore/threads';
 import { useLocale } from '@/hooks/useLocale';
+
+const SWIPE_DELETE_PX = 72;
 
 function formatLastTime(ms: number, t: (k: string, p?: Record<string, string>) => string): string {
   const d = new Date(ms);
@@ -54,6 +56,43 @@ function getLastMessageTime(thread: ChatThread): number | null {
   return thread.createdAt;
 }
 
+/** 导出为 Markdown，供用户复制存档 */
+export function buildThreadMarkdownExport(thread: ChatThread, phaseTitle: string): string {
+  const lines: string[] = [
+    `# ${phaseTitle}`,
+    ``,
+    `**会话**：${thread.title || thread.id}`,
+    ``,
+  ];
+  for (const m of thread.messages) {
+    const ts = m.createdAt ? new Date(m.createdAt).toLocaleString() : '';
+    if (m.type === 'dimension_conclusion' && m.conclusionData) {
+      const d = m.conclusionData;
+      lines.push(`## 探索结论汇总`, ``);
+      if (ts) lines.push(`*${ts}*`, ``);
+      if (d.summary || d.ai_summary) lines.push((d.summary || d.ai_summary || '').trim(), ``);
+      if (d.keywords?.length) lines.push(`**关键词**：${d.keywords.join('、')}`, ``);
+      lines.push(`---`, ``);
+      continue;
+    }
+    if (m.type === 'table_widget') {
+      lines.push(`### [表格 Widget]`, ts ? `*${ts}*` : '', ``);
+      continue;
+    }
+    if (m.role === 'user') {
+      lines.push(`## 用户`, ts ? `*${ts}*` : '', ``, m.content.trim(), ``, `---`, ``);
+    } else if (m.role === 'assistant') {
+      const parts: string[] = [`## 助手`, ts ? `*${ts}*` : '', ``];
+      if (m.thinkContent?.trim()) {
+        parts.push(`### 思考过程`, ``, m.thinkContent.trim(), ``);
+      }
+      parts.push(m.content.trim(), ``, `---`, ``);
+      lines.push(...parts);
+    }
+  }
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
+}
+
 interface ChatPhaseSidebarProps {
   threads: ChatThread[];
   activeThreadId: string | null;
@@ -61,6 +100,8 @@ interface ChatPhaseSidebarProps {
   onNewChat: () => void;
   onDeleteThread: (thread: ChatThread) => void;
   canNewChat: boolean;
+  /** 当前阶段中文名，写入导出 Markdown */
+  phaseTitle: string;
   /** 本阶段已提交锁定：新建/删除等置灰（仍保留「完成并继续」在主区） */
   phaseInteractionLocked?: boolean;
   /** newchat6 哑光侧栏（前四维对话页） */
@@ -76,22 +117,118 @@ export default function ChatPhaseSidebar({
   onNewChat,
   onDeleteThread,
   canNewChat,
+  phaseTitle,
   phaseInteractionLocked = false,
   careeringMatte = false,
   showAutoSaveHint = true,
 }: ChatPhaseSidebarProps) {
   const { t } = useLocale();
   const [deleteTarget, setDeleteTarget] = useState<ChatThread | null>(null);
+  const [copyHint, setCopyHint] = useState(false);
+  const [openSwipeId, setOpenSwipeId] = useState<string | null>(null);
+  const [, setSwipeRenderTick] = useState(0);
+  const dragRef = useRef<{
+    threadId: string;
+    pointerId: number;
+    startX: number;
+    lastX: number;
+    startOffset: number;
+    moved: boolean;
+  } | null>(null);
 
-  const handleDeleteClick = (e: React.MouseEvent, thread: ChatThread) => {
+  const bumpSwipe = useCallback(() => setSwipeRenderTick((x) => x + 1), []);
+
+  const offsetForThread = useCallback(
+    (threadId: string) => {
+      const d = dragRef.current;
+      if (d && d.threadId === threadId) {
+        const dx = d.lastX - d.startX;
+        const v = d.startOffset + dx;
+        return Math.max(-SWIPE_DELETE_PX, Math.min(0, v));
+      }
+      if (openSwipeId === threadId) return -SWIPE_DELETE_PX;
+      return 0;
+    },
+    [openSwipeId]
+  );
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent, thread: ChatThread) => {
+      if (phaseInteractionLocked || e.button !== 0) return;
+      if (openSwipeId && openSwipeId !== thread.id) setOpenSwipeId(null);
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      dragRef.current = {
+        threadId: thread.id,
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        lastX: e.clientX,
+        startOffset: offsetForThread(thread.id),
+        moved: false,
+      };
+    },
+    [phaseInteractionLocked, openSwipeId, offsetForThread]
+  );
+
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      const d = dragRef.current;
+      if (!d || d.pointerId !== e.pointerId) return;
+      if (Math.abs(e.clientX - d.startX) > 8) d.moved = true;
+      d.lastX = e.clientX;
+      bumpSwipe();
+    },
+    [bumpSwipe]
+  );
+
+  const endDrag = useCallback(
+    (e: React.PointerEvent, thread: ChatThread) => {
+      const d = dragRef.current;
+      if (!d || d.pointerId !== e.pointerId) return;
+      const dx = d.lastX - d.startX;
+      const finalOff = Math.max(-SWIPE_DELETE_PX, Math.min(0, d.startOffset + dx));
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+      dragRef.current = null;
+      if (d.moved) {
+        if (finalOff < -SWIPE_DELETE_PX / 2) setOpenSwipeId(thread.id);
+        else setOpenSwipeId(null);
+      } else {
+        onSelectThread(thread);
+        setOpenSwipeId(null);
+      }
+      bumpSwipe();
+    },
+    [bumpSwipe, onSelectThread]
+  );
+
+  const handleCopyClick = useCallback(
+    async (e: React.MouseEvent, thread: ChatThread) => {
+      e.stopPropagation();
+      const md = buildThreadMarkdownExport(thread, phaseTitle);
+      try {
+        await navigator.clipboard.writeText(md);
+        setCopyHint(true);
+        window.setTimeout(() => setCopyHint(false), 2200);
+      } catch {
+        window.prompt(t('explore.chat.sidebarCopyFallback'), md);
+      }
+    },
+    [phaseTitle, t]
+  );
+
+  const handleDeleteFromSwipe = useCallback((e: React.MouseEvent, thread: ChatThread) => {
     e.stopPropagation();
     setDeleteTarget(thread);
-  };
+  }, []);
 
   const handleConfirmDelete = () => {
     if (deleteTarget) {
       onDeleteThread(deleteTarget);
       setDeleteTarget(null);
+      setOpenSwipeId(null);
     }
   };
 
@@ -127,13 +264,20 @@ export default function ChatPhaseSidebar({
         >
           + {t('explore.chat.sidebarNewChat')}
         </button>
+        {copyHint && (
+          <p className="mt-2 text-center text-[11px] font-medium text-emerald-600" role="status">
+            {t('explore.chat.sidebarCopyOk')}
+          </p>
+        )}
         {phaseInteractionLocked ? (
           <p className="mt-1.5 text-[10px] leading-snug text-[var(--flow-text-muted)]">
             {t('explore.chat.sidebarPhaseLockedHint')}
           </p>
         ) : !canNewChat ? (
           <p className="mt-1.5 text-[10px] text-[var(--flow-text-muted)]">{t('explore.chat.sidebarMaxReached')}</p>
-        ) : null}
+        ) : (
+          <p className="mt-1.5 text-[10px] text-[var(--flow-text-muted)]">{t('explore.chat.sidebarSwipeDeleteHint')}</p>
+        )}
       </div>
       <div className="flow-sidebar-threads min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-3">
         <div className="space-y-1.5">
@@ -147,75 +291,110 @@ export default function ChatPhaseSidebar({
             const summary = getLastAssistantMessagePreview(thread, noContent);
             const turnCount = getTurnCount(thread);
             const lastTimeStr = lastTime ? formatLastTime(lastTime, t) : '';
+            const off = offsetForThread(thread.id);
+            const dragging = dragRef.current?.threadId === thread.id;
+
             return (
               <div
                 key={thread.id}
-                className={`group relative w-full cursor-pointer rounded-xl px-3 py-2 text-left transition-all ${
-                  isActive ? 'shadow-md' : 'hover:opacity-90'
-                }`}
-                style={{
-                  background: isActive ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)',
-                  border: isActive ? '1px solid rgba(0,0,0,0.08)' : '1px solid transparent',
-                }}
-                role="button"
-                tabIndex={0}
-                onClick={() => onSelectThread(thread)}
-                onKeyDown={(e) => e.key === 'Enter' && onSelectThread(thread)}
+                className="relative w-full overflow-hidden rounded-xl"
+                style={{ touchAction: 'pan-y' }}
               >
-                <div className="flex items-start gap-2">
-                  {careeringMatte ? (
-                    <span
-                      className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full"
-                      style={{
-                        backgroundColor:
-                          thread.status === 'completed' ? '#22c55e' : '#fbbf24',
-                        boxShadow:
-                          thread.status === 'completed'
-                            ? '0 0 0 1px rgba(34,197,94,0.25)'
-                            : '0 0 0 1px rgba(251,191,36,0.35)',
-                      }}
-                      title={
-                        thread.status === 'completed'
-                          ? t('explore.chat.statusCompleted')
-                          : t('explore.chat.statusInProgress')
-                      }
-                      aria-hidden
-                    />
-                  ) : (
-                    <MessageSquare size={14} className="mt-0.5 flex-shrink-0 text-[var(--flow-text-muted)]" />
-                  )}
-                  <p
-                    className="line-clamp-2 min-w-0 flex-1 text-sm font-medium leading-snug"
-                    style={{ color: 'var(--flow-text-body)' }}
-                  >
-                    {summary}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={(e) => handleDeleteClick(e, thread)}
-                    disabled={phaseInteractionLocked}
-                    className="flex-shrink-0 rounded-lg p-1 text-red-500 opacity-0 transition-all hover:bg-red-100 hover:opacity-100 group-hover:opacity-60 disabled:pointer-events-none disabled:opacity-25 disabled:hover:opacity-25"
-                    title={t('explore.chat.sidebarDeleteThread')}
-                    aria-label={t('explore.chat.sidebarDeleteThread')}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-                <div className="mt-1.5 flex items-center justify-between gap-2 pl-3.5">
-                  <span className="text-[10px] text-[var(--flow-text-muted)]">
-                    {[turnCount > 0 && t('explore.chat.turns', { n: String(turnCount) }), lastTimeStr]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </span>
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium text-white ${
-                      thread.status === 'completed' ? 'bg-emerald-500' : 'bg-amber-500'
+                <div
+                  className="grid gap-0"
+                  style={{
+                    width: `calc(100% + ${SWIPE_DELETE_PX}px)`,
+                    gridTemplateColumns: `minmax(0, 1fr) ${SWIPE_DELETE_PX}px`,
+                    transform: `translateX(${off}px)`,
+                    transition: dragging ? 'none' : 'transform 0.2s ease-out',
+                  }}
+                >
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    className={`min-w-0 cursor-pointer rounded-xl px-3 py-2 text-left transition-all ${
+                      isActive ? 'shadow-md' : 'hover:opacity-90'
                     }`}
+                    style={{
+                      background: isActive ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)',
+                      border: isActive ? '1px solid rgba(0,0,0,0.08)' : '1px solid transparent',
+                    }}
+                    onKeyDown={(e) => e.key === 'Enter' && onSelectThread(thread)}
+                    onPointerDown={(e) => handlePointerDown(e, thread)}
+                    onPointerMove={handlePointerMove}
+                    onPointerUp={(e) => endDrag(e, thread)}
+                    onPointerCancel={(e) => endDrag(e, thread)}
                   >
-                    {thread.status === 'completed'
-                      ? t('explore.chat.statusCompleted')
-                      : t('explore.chat.statusInProgress')}
-                  </span>
+                    <div className="flex items-start gap-2">
+                      {careeringMatte ? (
+                        <span
+                          className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full"
+                          style={{
+                            backgroundColor: thread.status === 'completed' ? '#22c55e' : '#fbbf24',
+                            boxShadow:
+                              thread.status === 'completed'
+                                ? '0 0 0 1px rgba(34,197,94,0.25)'
+                                : '0 0 0 1px rgba(251,191,36,0.35)',
+                          }}
+                          title={
+                            thread.status === 'completed'
+                              ? t('explore.chat.statusCompleted')
+                              : t('explore.chat.statusInProgress')
+                          }
+                          aria-hidden
+                        />
+                      ) : (
+                        <MessageSquare size={14} className="mt-0.5 flex-shrink-0 text-[var(--flow-text-muted)]" />
+                      )}
+                      <p
+                        className="line-clamp-2 min-w-0 flex-1 text-sm font-medium leading-snug"
+                        style={{ color: 'var(--flow-text-body)' }}
+                      >
+                        {summary}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={(e) => handleCopyClick(e, thread)}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        className="flex-shrink-0 rounded-lg p-1 text-neutral-500 opacity-80 transition-all hover:bg-neutral-100 hover:text-neutral-800 hover:opacity-100"
+                        title={t('explore.chat.sidebarCopyThread')}
+                        aria-label={t('explore.chat.sidebarCopyThread')}
+                      >
+                        <Copy size={14} />
+                      </button>
+                    </div>
+                    <div className="mt-1.5 flex items-center justify-between gap-2 pl-3.5">
+                      <span className="text-[10px] text-[var(--flow-text-muted)]">
+                        {[turnCount > 0 && t('explore.chat.turns', { n: String(turnCount) }), lastTimeStr]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-medium text-white ${
+                          thread.status === 'completed' ? 'bg-emerald-500' : 'bg-amber-500'
+                        }`}
+                      >
+                        {thread.status === 'completed'
+                          ? t('explore.chat.statusCompleted')
+                          : t('explore.chat.statusInProgress')}
+                      </span>
+                    </div>
+                  </div>
+                  <div
+                    className="flex min-h-full items-stretch justify-stretch"
+                    style={{ minHeight: '100%' }}
+                  >
+                    <button
+                      type="button"
+                      onClick={(e) => handleDeleteFromSwipe(e, thread)}
+                      disabled={phaseInteractionLocked}
+                      className="flex w-full flex-col items-center justify-center gap-0.5 bg-red-500 px-1 text-[10px] font-semibold leading-tight text-white transition-colors hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+                      title={t('explore.chat.sidebarDeleteThread')}
+                    >
+                      <Trash2 size={16} strokeWidth={2.2} />
+                      <span>{t('explore.chat.sidebarDeleteShort')}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -234,7 +413,6 @@ export default function ChatPhaseSidebar({
         </div>
       )}
 
-      {/* 删除确认弹窗 */}
       {deleteTarget && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
@@ -251,9 +429,7 @@ export default function ChatPhaseSidebar({
             <h3 id="delete-confirm-title" className="text-lg font-semibold text-[var(--flow-text-body)] mb-2">
               {t('explore.chat.sidebarDeleteConfirm')}
             </h3>
-            <p className="text-sm text-[var(--flow-text-muted)] mb-6">
-              {t('explore.chat.sidebarDeleteMessage')}
-            </p>
+            <p className="text-sm text-[var(--flow-text-muted)] mb-6">{t('explore.chat.sidebarDeleteMessage')}</p>
             <div className="flex gap-3 justify-end">
               <button
                 type="button"

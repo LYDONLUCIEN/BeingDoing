@@ -660,6 +660,66 @@
   flex-wrap: wrap;
   gap: 10px;
 }
+.flow-light .flow-conclusion-tag-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.06);
+  color: #374151;
+  flex-shrink: 0;
+}
+.flow-light .flow-conclusion-ext {
+  margin-bottom: 20px;
+}
+.flow-light .flow-conclusion-ext-ul {
+  margin: 0;
+  padding-left: 1.15em;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: #4b5563;
+}
+.flow-light .flow-conclusion-ext-ul li {
+  margin-bottom: 6px;
+}
+.flow-light .flow-conclusion-mission {
+  margin-bottom: 20px;
+}
+.flow-light .flow-conclusion-mission-core {
+  font-weight: 600;
+  color: #111827;
+}
+.flow-light .flow-conclusion-mission-aim {
+  color: #4b5563;
+}
+.flow-light .flow-conclusion-ev-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: #374151;
+}
+.flow-light .flow-conclusion-ev-table th,
+.flow-light .flow-conclusion-ev-table td {
+  border: 1px solid #e5e7eb;
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.flow-light .flow-conclusion-ev-table th {
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--flow-text-muted);
+  background: #f9fafb;
+}
 .flow-light .flow-conclusion-tag {
   display: inline-flex;
   align-items: center;

@@ -50,21 +50,24 @@ def split_visible_reply_and_state(raw_text: str) -> tuple[str, Optional[Dict]]:
     格式：
       ...用户可见文本...
       [STATE_JSON]
-      {...}
+      {...}  <!-- draft 内可嵌套对象，禁止用 \\{.*?\\} 非贪婪匹配，否则会截断在首个 } -->
       [/STATE_JSON]
     """
     if not raw_text:
         return "", None
-    m = re.search(r"\[STATE_JSON\]\s*(\{.*?\})\s*\[/STATE_JSON\]\s*$", raw_text, flags=re.DOTALL)
-    if not m:
+    start_marker = "[STATE_JSON]"
+    end_marker = "[/STATE_JSON]"
+    start = raw_text.rfind(start_marker)
+    end = raw_text.rfind(end_marker)
+    if start < 0 or end < 0 or end <= start:
         return raw_text.strip(), None
-    json_part = m.group(1).strip()
-    visible = raw_text[:m.start()].rstrip()
+    json_part = raw_text[start + len(start_marker) : end].strip()
+    visible = raw_text[:start].rstrip()
     try:
         obj = json.loads(json_part)
         return visible, obj if isinstance(obj, dict) else None
     except (json.JSONDecodeError, TypeError):
-        return visible, None
+        return (visible if visible else raw_text.strip()), None
 
 
 def strip_hidden_blocks_for_stream(
