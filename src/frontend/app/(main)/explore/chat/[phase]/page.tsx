@@ -2030,7 +2030,7 @@ export default function ChatPhasePage() {
         } else if (res.data.progress) {
           setRuminationMaxReached(computeMaxReachedFromSnapshots(res.data.progress));
         }
-        setRuminationProgressNonce((n) => n + 1);
+        // 勿递增 ruminationProgressNonce：会触发全量 get-table effect，用服务端表覆盖本地，导致其它行未提交的选项被清空
       } catch (err) {
         setChatError(
           getApiErrorMessage(err, t('explore.chat.ruminationUi.hypothesisRegenerateError'))

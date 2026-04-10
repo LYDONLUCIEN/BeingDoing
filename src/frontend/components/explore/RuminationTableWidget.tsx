@@ -535,8 +535,16 @@ export default function RuminationTableWidget({
         return;
       }
       if (v === OPT_OTHER) {
-        const fromCell =
-          strVal && strVal !== OTHER_SELECT_VALUE ? strVal : '';
+        // 从三条假设/待定切到「其他」时，不得把当前选项的完整文案当成自定义内容，否则 onChange 会写回 h1/h2/h3，下拉看似选不中「其他」
+        const wasOtherCustom =
+          Boolean(strVal && strVal !== OTHER_SELECT_VALUE) &&
+          !(
+            (pendingOk && (strVal === hypothesisPendingLabel || strVal === '待定')) ||
+            (h1 && strVal === h1) ||
+            (h2 && strVal === h2) ||
+            (h3 && strVal === h3)
+          );
+        const fromCell = wasOtherCustom ? strVal : '';
         const d = (fromCell || hypOtherDraftByKey[draftKey] || '').trim();
         if (d) handleCellChange(rowIdx, HYP_CONFIRM_KEY, d);
         else handleCellChange(rowIdx, HYP_CONFIRM_KEY, OTHER_SELECT_VALUE);
@@ -600,7 +608,7 @@ export default function RuminationTableWidget({
               {h2 ? (
                 <option value={OPT_H2}>{tagLabels.company}</option>
               ) : null}
-              <option value={OPT_H3}>{h3TagLabel}</option>
+              {h3 ? <option value={OPT_H3}>{h3TagLabel}</option> : null}
               <option value={OPT_OTHER}>{hypothesisOtherLabel}</option>
               {pendingOk ? (
                 <option value={OPT_PENDING}>{hypothesisPendingLabel}</option>
