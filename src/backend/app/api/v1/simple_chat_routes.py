@@ -79,6 +79,7 @@ from app.utils.survey_storage import (
     load_prior_context_for_report,
     load_prior_context,
 )
+from app.domain.conclusion_card_goals import cap_strengths_keywords_list
 from app.domain.prompts import get_simple_chat_system_prompt, get_step_copy
 from app.domain.rumination_step_guidance import (
     build_opening_context,
@@ -448,7 +449,11 @@ def _write_anchor_from_conclusion(
         return
     summary = (conclusion.get("summary") or conclusion.get("ai_summary") or "").strip()
     keywords = conclusion.get("keywords") or []
-    kw_text = "、".join([str(k).strip() for k in keywords if str(k).strip()][:10])
+    if phase_step == "strengths":
+        kw_line = cap_strengths_keywords_list(keywords)
+    else:
+        kw_line = [str(k).strip() for k in keywords if str(k).strip()][:10]
+    kw_text = "、".join(kw_line)
     goals = summary
     if kw_text:
         goals = f"{summary}\n关键词：{kw_text}".strip()
@@ -3011,7 +3016,12 @@ async def mark_thread_complete(
         summary = dimension_conclusion.get("summary") or dimension_conclusion.get("ai_summary", "")
         keywords = dimension_conclusion.get("keywords") or []
         if isinstance(keywords, list):
-            kw_text = "、".join(str(k) for k in keywords)
+            kw_for_prior = (
+                cap_strengths_keywords_list(keywords)
+                if phase_step == "strengths"
+                else keywords
+            )
+            kw_text = "、".join(str(k) for k in kw_for_prior)
         else:
             kw_text = str(keywords)
         prior_text = f"{summary}\n关键词：{kw_text}".strip() if (summary or kw_text) else ""
@@ -3661,12 +3671,17 @@ async def simple_chat_stream(
             state_name = str(state_obj.get("state") or "").strip().lower()
             draft = state_obj.get("draft")
             if state_name == "pending_ready" and isinstance(draft, dict):
+                draft_to_save = dict(draft)
+                if phase_step == "strengths":
+                    draft_to_save["keywords"] = cap_strengths_keywords_list(
+                        draft_to_save.get("keywords")
+                    )
                 await conv_manager.update_metadata(
                     session_id,
                     category,
                     _build_conclusion_meta_update(
                         state=CONCLUSION_STATE_PENDING,
-                        draft=draft,
+                        draft=draft_to_save,
                         final=cmeta.get("final"),
                         shown_at=user_count,
                         thread_completed=False,
@@ -3681,7 +3696,7 @@ async def simple_chat_stream(
                         {
                             "phase": phase_step,
                             "thread_id": logical_session_id,
-                            "pending_conclusion": draft,
+                            "pending_conclusion": draft_to_save,
                         },
                     )
                 except Exception:

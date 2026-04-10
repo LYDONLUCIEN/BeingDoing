@@ -9,6 +9,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.domain.conclusion_card_goals import cap_strengths_keywords_list
+
 # 与前端「假设」列「暂未选定」一致；历史数据可能仍为「待定」
 RUMINATION_HYP_PENDING_MARKERS = frozenset({"待定", "暂未选定"})
 
@@ -57,7 +59,7 @@ def gen_table(strengths: List[str], passions: List[str]) -> List[Dict[str, Any]]
     rows: List[Dict[str, Any]] = []
     idx = 1
     for p in passions[:6]:
-        for s in strengths[:4]:
+        for s in strengths[:5]:
             rows.append(
                 {
                     "id": str(idx),
@@ -277,7 +279,10 @@ def extract_lists_from_report_record(
             q = re.search(r"[「“]([^」”]{2,120})[」”]", g)
             if q:
                 return [q.group(1).strip()]
-        return extract_keywords_from_anchor_goals(g, 12)
+        got = extract_keywords_from_anchor_goals(g, 12)
+        if phase == "strengths":
+            return cap_strengths_keywords_list(got)
+        return got
 
     return (
         one("values"),
@@ -301,7 +306,7 @@ def extract_from_prior_context(prior_context: str) -> Tuple[List[str], List[str]
         values = _extract_keywords(mv.group(1), 12)
     ms = _RE_STRENGTHS.search(prior_context or "")
     if ms:
-        strengths = _extract_keywords(ms.group(1), 12)
+        strengths = cap_strengths_keywords_list(_extract_keywords(ms.group(1), 12))
     mi = _RE_INTERESTS.search(prior_context or "")
     if mi:
         interests = _extract_keywords(mi.group(1), 8)
@@ -339,13 +344,13 @@ def extract_dimension_lists_for_rumination_table(
     if not v:
         v = _extract_keywords(_read_phase_file("values"), 12)
     if not s:
-        s = _extract_keywords(_read_phase_file("strengths"), 12)
+        s = cap_strengths_keywords_list(_extract_keywords(_read_phase_file("strengths"), 12))
     if not i:
         i = _extract_keywords(_read_phase_file("interests"), 8)
     purpose_out: List[str] = list(p) if p else []
     if not purpose_out:
         purpose_out = _extract_keywords(_read_phase_file("purpose"), 8)
-    return (v, s, i, purpose_out)
+    return (v, cap_strengths_keywords_list(s), i, purpose_out)
 
 
 def build_prior_keywords_summary(prior_context: str) -> str:
@@ -355,7 +360,7 @@ def build_prior_keywords_summary(prior_context: str) -> str:
     if v:
         lines.append(f"- 价值观关键词：{'、'.join(v[:8])}")
     if s:
-        lines.append(f"- 优势关键词：{'、'.join(s[:10])}")
+        lines.append(f"- 优势关键词：{'、'.join(cap_strengths_keywords_list(s))}")
     if i:
         lines.append(f"- 热爱关键词：{'、'.join(i[:6])}")
     if p:

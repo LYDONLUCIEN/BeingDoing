@@ -7,9 +7,10 @@ from typing import Dict, List, Optional
 
 from app.core.llmapi import get_default_llm_provider, LLMMessage
 from app.domain.conclusion_card_goals import (
+    cap_strengths_keywords_list,
     get_conclusion_card_goal,
-    get_goal_prompt_hint,
     get_conclusion_rules,
+    get_goal_prompt_hint,
 )
 from app.domain.dimension_completion import get_dimension_config
 
@@ -295,6 +296,8 @@ async def check_dimension_complete(
         summary = summary_text
         keywords = []
 
+    if phase == "strengths":
+        keywords = cap_strengths_keywords_list(keywords)
     keywords = _validate_keywords_by_goal(phase, keywords, locked_keywords=None)
 
     if not summary:

@@ -4,7 +4,29 @@
 该配置独立于主对话提示词，用于约束不同 step 的结论卡输出重点。
 """
 
-from typing import Dict
+from typing import Any, Dict, List
+
+# 禀赋阶段优势关键词上限（与主对话流程、结论卡 validation 一致）
+STRENGTHS_KEYWORDS_MAX = 5
+
+
+def cap_strengths_keywords_list(items: Any) -> List[str]:
+    """
+    按列表顺序取前 N 个非空项，兼容历史数据中多于 5 条的优势 keywords。
+    （不去重，保留用户/模型给出的先后顺序。）
+    """
+    if not items:
+        return []
+    seq = items if isinstance(items, list) else [items]
+    out: List[str] = []
+    for x in seq:
+        s = str(x or "").strip()
+        if not s:
+            continue
+        out.append(s)
+        if len(out) >= STRENGTHS_KEYWORDS_MAX:
+            break
+    return out
 
 
 # 各阶段结论卡重要原则（从主对话提示词「重要准则」提取，用于生成结论时的硬性约束）

@@ -268,6 +268,10 @@ export default function RuminationTableWidget({
     if (col.key === '__pick') return 52;
     if (col.key === 'id') return 40;
     const labelLen = col.label?.length ?? 0;
+    /** 子步 3：左窄下拉 + 右侧长文案，列宽下限抬高 */
+    if (col.key === HYP_CONFIRM_KEY && filterStep === 3) {
+      return Math.min(560, Math.max(280, 8 + labelLen * 11 + 200));
+    }
     return Math.min(220, Math.max(76, 8 + labelLen * 11));
   };
 
@@ -557,18 +561,17 @@ export default function RuminationTableWidget({
       }
     };
 
-    const tagPillCls =
-      'inline-flex shrink-0 items-center justify-center rounded px-1.5 py-1 text-center text-[11px] font-semibold leading-tight text-sky-950 bg-white/90 ring-1 ring-sky-200/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]';
-
     const otherTextInputCls = isGlass
-      ? 'min-w-0 w-full rounded-lg border border-neutral-200/90 bg-white/90 px-3 py-2 text-sm text-neutral-800 placeholder:text-neutral-400 focus:border-[#91C2FF] focus:outline-none focus:ring-2 focus:ring-[rgba(145,194,255,0.4)]'
-      : 'min-w-0 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-300/50';
+      ? 'min-w-0 w-full rounded-lg border border-neutral-200/90 bg-white/90 px-2.5 py-1.5 text-sm leading-snug text-neutral-800 placeholder:text-neutral-400 focus:border-[#91C2FF] focus:outline-none focus:ring-2 focus:ring-[rgba(145,194,255,0.4)]'
+      : 'min-w-0 w-full rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-sm leading-snug focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-300/50';
 
-    let displayTag = '';
-    if (active === 'h1') displayTag = tagLabels.freelance;
-    else if (active === 'h2') displayTag = tagLabels.company;
-    else if (active === 'h3') displayTag = h3TagLabel;
-    else if (active === 'other') displayTag = hypothesisOtherLabel;
+    /** 子步 3：左侧窄下拉（覆盖 selectShellClass 的 w-full） */
+    const hypSelectNarrowClass = isGlass
+      ? `${selectShellClass} !w-[7rem] sm:!w-[8.25rem] !min-w-0 shrink-0`
+      : `${selectShellClass} !w-[7rem] sm:!w-[8.25rem] !min-w-0 shrink-0`;
+
+    const hypRightTextCls = 'text-sm leading-snug text-neutral-800 break-words';
+
     const regenBtn = showRegen ? (
       <div
         className="flex shrink-0 flex-col justify-center self-stretch border-l border-neutral-200/75 pl-2 pr-0.5"
@@ -593,69 +596,50 @@ export default function RuminationTableWidget({
       </div>
     ) : null;
 
-    return (
-      <div className="flex min-w-[200px] flex-row items-stretch gap-0 pb-1 pl-0.5 pr-1 pt-0.5">
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 flex-row items-stretch gap-2">
-            <select
-              value={selectControlValue}
-              disabled={cellDisabled}
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
-              onChange={onHypSelectChange}
-              className={`${selectShellClass} min-w-0 flex-1`}
-              style={selectArrowStyle}
-            >
-              <option value="">{selectPlaceholder}</option>
-              {h1 ? (
-                <option value={OPT_H1}>{tagLabels.freelance}</option>
-              ) : null}
-              {h2 ? (
-                <option value={OPT_H2}>{tagLabels.company}</option>
-              ) : null}
-              {h3 ? <option value={OPT_H3}>{h3TagLabel}</option> : null}
-              <option value={OPT_OTHER}>{hypothesisOtherLabel}</option>
-              {pendingOk ? (
-                <option value={OPT_PENDING}>{hypothesisPendingLabel}</option>
-              ) : null}
-            </select>
-          </div>
+    const rightSlot =
+      active === 'h1' ? (
+        <p className={`${hypRightTextCls} m-0`}>{h1}</p>
+      ) : active === 'h2' ? (
+        <p className={`${hypRightTextCls} m-0`}>{h2}</p>
+      ) : active === 'h3' ? (
+        <p className={`${hypRightTextCls} m-0`}>{h3}</p>
+      ) : active === 'other' ? (
+        <input
+          type="text"
+          value={otherInputValue}
+          disabled={cellDisabled}
+          placeholder={otherTextPlaceholder}
+          onMouseDown={(e) => isGlass && e.stopPropagation()}
+          onClick={(e) => isGlass && e.stopPropagation()}
+          onChange={(e) => {
+            const v = e.target.value;
+            setHypOtherDraftByKey((p) => ({ ...p, [draftKey]: v }));
+            if (v === '') handleCellChange(rowIdx, HYP_CONFIRM_KEY, OTHER_SELECT_VALUE);
+            else handleCellChange(rowIdx, HYP_CONFIRM_KEY, v);
+          }}
+          className={otherTextInputCls}
+        />
+      ) : null;
 
-          {active !== '' && active !== 'pending' && (
-            <div className="mt-2 flex min-w-0 flex-row items-start gap-3 border-t border-dashed border-neutral-200/70 pt-2">
-              <span className={tagPillCls}>{displayTag}</span>
-              <div className="min-w-0 flex-1">
-                {active === 'h1' && (
-                  <p className="text-sm leading-relaxed text-neutral-800">{h1}</p>
-                )}
-                {active === 'h2' && (
-                  <p className="text-sm leading-relaxed text-neutral-800">{h2}</p>
-                )}
-                {active === 'h3' && (
-                  <p className="text-sm leading-relaxed text-neutral-800">{h3}</p>
-                )}
-                {active === 'other' && (
-                  <input
-                    type="text"
-                    value={otherInputValue}
-                    disabled={cellDisabled}
-                    placeholder={otherTextPlaceholder}
-                    onMouseDown={(e) => isGlass && e.stopPropagation()}
-                    onClick={(e) => isGlass && e.stopPropagation()}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setHypOtherDraftByKey((p) => ({ ...p, [draftKey]: v }));
-                      if (v === '')
-                        handleCellChange(rowIdx, HYP_CONFIRM_KEY, OTHER_SELECT_VALUE);
-                      else handleCellChange(rowIdx, HYP_CONFIRM_KEY, v);
-                    }}
-                    className={otherTextInputCls}
-                  />
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+    return (
+      <div className="flex min-w-0 flex-row items-center gap-2 pb-1 pl-0.5 pr-1 pt-0.5">
+        <select
+          value={selectControlValue}
+          disabled={cellDisabled}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          onChange={onHypSelectChange}
+          className={hypSelectNarrowClass}
+          style={selectArrowStyle}
+        >
+          <option value="">{selectPlaceholder}</option>
+          {h1 ? <option value={OPT_H1}>{tagLabels.freelance}</option> : null}
+          {h2 ? <option value={OPT_H2}>{tagLabels.company}</option> : null}
+          {h3 ? <option value={OPT_H3}>{h3TagLabel}</option> : null}
+          <option value={OPT_OTHER}>{hypothesisOtherLabel}</option>
+          {pendingOk ? <option value={OPT_PENDING}>{hypothesisPendingLabel}</option> : null}
+        </select>
+        <div className="flex min-h-0 min-w-0 flex-1 items-center">{rightSlot}</div>
         {regenBtn}
       </div>
     );
