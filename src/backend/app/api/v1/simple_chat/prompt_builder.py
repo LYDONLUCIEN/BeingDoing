@@ -121,6 +121,11 @@ def build_system_prompt(
 2) state=continue 时，draft 置为 null。
 3) state=pending_ready 时，draft.summary 必填，draft.keywords 为数组（可为空但应尽量给出）。
 {build_state_json_draft_extension_protocol(phase)}
+
+【用户可见正文 - 硬性禁止】
+- 不要在自然语言里提及本协议、隐藏块名称、state 取值英文名、或「JSON / 待确认草案 / 机器协议」等字眼。
+- 禁止用「系统将弹出结论卡」「即将输出 pending」「严格遵循协议」等元话术代替真实隐藏块；界面是否出卡仅由隐藏块触发，口头承诺无效。
+- 对用户只说话题本身，就像没有后台协议存在。
 """
     return f"{base_prompt}\n{protocol}"
 

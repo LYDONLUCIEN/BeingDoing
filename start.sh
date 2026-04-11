@@ -148,6 +148,13 @@ cmd_stop() {
   else
     warn "session '$SESSION' 不存在，无需停止。"
   fi
+  # tmux 强杀时，uvicorn --reload 的子进程偶发仍会占用 8000；stop 只杀 session 不能保证端口已释放。
+  # 这里再收一遍「本项目的」监听进程（命令行含 app.main:app），避免你停干净后仍报 Address already in use。
+  if pgrep -f "uvicorn app.main:app" >/dev/null 2>&1; then
+    info "清理残留的 uvicorn (app.main:app)…"
+    pkill -f "uvicorn app.main:app" 2>/dev/null || true
+    sleep 0.5
+  fi
 }
 
 cmd_restart_backend() {

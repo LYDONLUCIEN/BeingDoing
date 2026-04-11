@@ -108,6 +108,8 @@ interface ChatPhaseSidebarProps {
   careeringMatte?: boolean;
   /** 会话列表下方展示「对话自动保存」提示（主区输入框下方不再重复） */
   showAutoSaveHint?: boolean;
+  /** 主对话正在流式输出：非当前会话弱化，提示切换需确认 */
+  streamBlocksSessionSwitch?: boolean;
 }
 
 export default function ChatPhaseSidebar({
@@ -121,6 +123,7 @@ export default function ChatPhaseSidebar({
   phaseInteractionLocked = false,
   careeringMatte = false,
   showAutoSaveHint = true,
+  streamBlocksSessionSwitch = false,
 }: ChatPhaseSidebarProps) {
   const { t } = useLocale();
   const [deleteTarget, setDeleteTarget] = useState<ChatThread | null>(null);
@@ -293,6 +296,7 @@ export default function ChatPhaseSidebar({
             const lastTimeStr = lastTime ? formatLastTime(lastTime, t) : '';
             const off = offsetForThread(thread.id);
             const dragging = dragRef.current?.threadId === thread.id;
+            const streamSwitchCue = streamBlocksSessionSwitch && !isActive;
 
             return (
               <div
@@ -312,9 +316,12 @@ export default function ChatPhaseSidebar({
                   <div
                     role="button"
                     tabIndex={0}
+                    title={
+                      streamSwitchCue ? t('explore.chat.threadSwitchWhileStreamingHint') : undefined
+                    }
                     className={`min-w-0 cursor-pointer rounded-xl px-3 py-2 text-left transition-all ${
                       isActive ? 'shadow-md' : 'hover:opacity-90'
-                    }`}
+                    } ${streamSwitchCue ? 'opacity-[0.82] ring-1 ring-amber-400/35' : ''}`}
                     style={{
                       background: isActive ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)',
                       border: isActive ? '1px solid rgba(0,0,0,0.08)' : '1px solid transparent',

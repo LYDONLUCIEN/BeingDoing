@@ -158,11 +158,14 @@ async def check_dimension_complete(
     prior_conclusion: Optional[Dict] = None,
     vip_level: int = 1,
     llm_provider=None,
+    *,
+    skip_completion_check: bool = False,
 ) -> Optional[Dict]:
     """
     判断对话是否已达到该维度的探索结论；若达到则生成结论卡片。
 
     prior_conclusion: 上一轮后台检测得出的结论；若提供则跳过完成判定，直接综合本轮用户输入重新生成。
+    skip_completion_check: 为 True 时跳过「是否已完成探索」判定，直接生成结论 JSON（用于用户主动点「确认稿」等兜底，勿滥用）。
 
     Returns:
         None 表示未完成。
@@ -192,8 +195,9 @@ async def check_dimension_complete(
     # 不再使用正则提取关键词，全部交由 AI 从对话中判断
     locked_keywords = None
 
-    # 若有 prior_conclusion，则跳过完成判定，直接进入生成
-    if not prior_conclusion:
+    # 若有 prior_conclusion 或 skip_completion_check，则跳过完成判定，直接进入生成
+    skip_gate = bool(prior_conclusion) or skip_completion_check
+    if not skip_gate:
         check_prompt = f"""你是一位职业咨询师。请判断以下对话是否已经完成「{label}」维度的探索。
 
 该维度的目标：{goal}

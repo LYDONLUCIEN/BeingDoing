@@ -96,6 +96,34 @@ const BACKEND_PHASE: Record<PhaseKey, string> = {
   rumination: 'rumination',
 };
 
+/** 待确认结论仅存 metadata、无 conclusion_card 消息行时，从历史 meta 补一条卡，避免必须刷新才看见 */
+function mergePendingDraftIntoMessagesFromMeta(
+  msgs: ThreadMessage[],
+  meta: Record<string, unknown> | undefined
+): ThreadMessage[] {
+  if (!meta) return msgs;
+  const state = String(meta.conclusion_state ?? '').toLowerCase();
+  const draft = meta.conclusion_draft;
+  if (state !== 'pending' || draft === null || draft === undefined || typeof draft !== 'object') {
+    return msgs;
+  }
+  if (msgs.some((m) => m.type === 'dimension_conclusion')) return msgs;
+  const now = Date.now();
+  return [
+    ...msgs,
+    {
+      id: `h_pending_${now}`,
+      role: 'assistant',
+      content: '',
+      type: 'dimension_conclusion',
+      conclusionData: draft as DimensionConclusionData,
+      conclusionCollapsed: false,
+      conclusionConfirmed: false,
+      createdAt: now,
+    },
+  ];
+}
+
 /** 重新生成假设后按「槽位」写回确认列，避免新文案导致选中丢失 */
 function mapRuminationHypConfirmAfterRegen(
   prevRow: Record<string, unknown>,
@@ -214,6 +242,10 @@ export default function ChatPhasePage() {
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [requestConclusionDraftBusy, setRequestConclusionDraftBusy] = useState(false);
+  /** 流式进行中点其它会话：先确认再切换 */
+  const [threadSwitchDialogOpen, setThreadSwitchDialogOpen] = useState(false);
+  const [pendingSwitchThread, setPendingSwitchThread] = useState<ChatThread | null>(null);
   /** 沉淀：表格确认后自动插入的子步引导语（固定模拟流 / LLM 流）进行中 */
   const [ruminationGuideBusy, setRuminationGuideBusy] = useState(false);
   const ruminationGuideAbortRef = useRef<AbortController | null>(null);
@@ -505,7 +537,10 @@ export default function ChatPhasePage() {
               setStepLocked(Boolean(meta.step_locked));
             }
             if (meta?.session_id) sessionIdByThread[th.id] = String(meta.session_id);
-            const msgs = mapHistoryToThreadMessages(history, meta);
+            const msgs = mergePendingDraftIntoMessagesFromMeta(
+              mapHistoryToThreadMessages(history, meta),
+              meta as Record<string, unknown>
+            );
             const concl = meta.dimension_conclusion as DimensionConclusionData | undefined;
             return {
               ...th,
@@ -649,7 +684,10 @@ export default function ChatPhasePage() {
                   const s = loadSession(activationCode);
                   saveSession({ ...s, sessionId: sessId });
                 }
-                msgs = mapHistoryToThreadMessages(history, meta);
+                msgs = mergePendingDraftIntoMessagesFromMeta(
+                  mapHistoryToThreadMessages(history, meta),
+                  meta as Record<string, unknown>
+                );
               } catch {
                 /* ignore */
               }
@@ -715,7 +753,10 @@ export default function ChatPhasePage() {
           if (!cancelled && history.length > 0) {
             // 仅用于前端展示历史，不绑定后端 thread_id，避免刷新时误创建新会话
             const recoveredId = getActiveThreadId(activationCode, phase) || `__history_fallback__${phase}`;
-            const msgs = mapHistoryToThreadMessages(history, meta);
+            const msgs = mergePendingDraftIntoMessagesFromMeta(
+              mapHistoryToThreadMessages(history, meta),
+              meta as Record<string, unknown>
+            );
             const recoveredThread: ChatThread = {
               id: recoveredId,
               title: '对话 1',
@@ -870,6 +911,14 @@ export default function ChatPhasePage() {
 
   /** 本阶段已提交：普通用户仅可点「完成并继续」，主输入区与侧栏新建等置灰 */
   const phaseInteractionLocked = stepLocked && !adminDebugBypass;
+
+  const showRequestConclusionDraftControl =
+    phase !== 'rumination' &&
+    !isReadOnly &&
+    !phaseInteractionLocked &&
+    !!activationCode &&
+    !!activeThreadId &&
+    !messages.some((m) => m.type === 'dimension_conclusion' && !m.conclusionCollapsed);
 
   // 与激活页一致：用旅程列表中的 explore_resume 对齐「当前未完成 step」，避免书签/缓存仍停在已提交阶段
   useEffect(() => {
@@ -1148,6 +1197,69 @@ export default function ChatPhasePage() {
     t,
   ]);
 
+  const handleRequestConclusionDraft = useCallback(async () => {
+    if (
+      !activationCode ||
+      !activeThreadId ||
+      phase === 'rumination' ||
+      requestConclusionDraftBusy
+    ) {
+      return;
+    }
+    setRequestConclusionDraftBusy(true);
+    setChatError(null);
+    try {
+      const res = await apiClient.post<{ draft: DimensionConclusionData }>(
+        '/simple-chat/conclusion-draft/request',
+        {
+          activation_code: activationCode,
+          phase: BACKEND_PHASE[phase],
+          thread_id: activeThreadId,
+        }
+      );
+      const draft = res.data?.draft;
+      if (draft) {
+        setMessages((prev) => {
+          const lastIdx = [...prev].map((x) => x.type).lastIndexOf('dimension_conclusion');
+          if (lastIdx >= 0) {
+            const next = [...prev];
+            next[lastIdx] = {
+              ...next[lastIdx],
+              conclusionData: draft,
+              createdAt: Date.now(),
+              conclusionCollapsed: false,
+              conclusionConfirmed: false,
+            };
+            return next;
+          }
+          return [
+            ...prev,
+            {
+              id: `concl_${Date.now()}`,
+              role: 'assistant',
+              content: '',
+              type: 'dimension_conclusion',
+              conclusionData: draft,
+              conclusionCollapsed: false,
+              conclusionConfirmed: false,
+              createdAt: Date.now(),
+            },
+          ];
+        });
+      }
+    } catch (e: unknown) {
+      setChatError(getApiErrorMessage(e, t('explore.chat.requestConclusionDraftFail')));
+    } finally {
+      setRequestConclusionDraftBusy(false);
+    }
+  }, [
+    activationCode,
+    activeThreadId,
+    phase,
+    requestConclusionDraftBusy,
+    t,
+  ]);
+
   const handleSend = async (
     prefill?: string,
     skipAddUser?: boolean,
@@ -1399,12 +1511,76 @@ export default function ChatPhasePage() {
     }
   };
 
-  const handleSelectThread = (thread: ChatThread) => {
-    setActiveThreadId(activationCode!, phase, thread.id);
-    setActiveThreadIdState(thread.id);
-    setMessages(thread.messages);
-    setBackendSyncedThreadId(thread.id);
-  };
+  const performThreadSwitch = useCallback(
+    (
+      targetThread: ChatThread,
+      opts?: { messagesSnapshot?: ThreadMessage[]; threadsSnapshot?: ChatThread[] }
+    ) => {
+      if (!activationCode || !phase) return;
+      const msgs = opts?.messagesSnapshot ?? messages;
+      let list: ChatThread[] = opts?.threadsSnapshot ?? threads;
+      const leavingId = activeThreadId;
+
+      if (leavingId && leavingId !== targetThread.id) {
+        const prev = list.find((x) => x.id === leavingId);
+        if (prev && prev.status !== 'completed' && msgs.length > 0) {
+          const lastConcl = msgs.filter((m) => m.type === 'dimension_conclusion').pop();
+          const updated: ChatThread = { ...prev, messages: msgs };
+          if (lastConcl?.conclusionData) updated.dimensionConclusion = lastConcl.conclusionData;
+          saveThread(activationCode, phase, updated);
+          list = list.map((t) => (t.id === leavingId ? updated : t));
+        }
+        abortControllerRef.current?.abort();
+        ruminationGuideAbortRef.current?.abort();
+      }
+
+      const resolved = list.find((t) => t.id === targetThread.id) ?? targetThread;
+      setThreads(list);
+      setActiveThreadId(activationCode, phase, targetThread.id);
+      setActiveThreadIdState(targetThread.id);
+      setMessages(resolved.messages);
+      setBackendSyncedThreadId(targetThread.id);
+    },
+    [activationCode, phase, activeThreadId, threads, messages]
+  );
+
+  const handleSelectThread = useCallback(
+    (thread: ChatThread) => {
+      if (!activationCode || !phase) return;
+      if (thread.id === activeThreadId) return;
+      if (sending || ruminationGuideBusy) {
+        setPendingSwitchThread(thread);
+        setThreadSwitchDialogOpen(true);
+        return;
+      }
+      performThreadSwitch(thread);
+    },
+    [activationCode, phase, activeThreadId, sending, ruminationGuideBusy, performThreadSwitch]
+  );
+
+  const handleCancelThreadSwitchWhileStreaming = useCallback(() => {
+    setThreadSwitchDialogOpen(false);
+    setPendingSwitchThread(null);
+  }, []);
+
+  const handleConfirmThreadSwitchWhileStreaming = useCallback(() => {
+    if (!pendingSwitchThread || !activationCode || !phase) {
+      setThreadSwitchDialogOpen(false);
+      setPendingSwitchThread(null);
+      return;
+    }
+    const target = pendingSwitchThread;
+    const snapMessages = messages;
+    const snapThreads = threads;
+    abortControllerRef.current?.abort();
+    ruminationGuideAbortRef.current?.abort();
+    performThreadSwitch(target, {
+      messagesSnapshot: snapMessages,
+      threadsSnapshot: snapThreads,
+    });
+    setThreadSwitchDialogOpen(false);
+    setPendingSwitchThread(null);
+  }, [pendingSwitchThread, activationCode, phase, messages, threads, performThreadSwitch]);
 
   const handleNewChat = async () => {
     if (!activationCode || !phase) return;
@@ -2191,6 +2367,7 @@ export default function ChatPhasePage() {
             phaseTitle={phaseLabel}
             phaseInteractionLocked={phaseInteractionLocked}
             careeringMatte
+            streamBlocksSessionSwitch={sending || ruminationGuideBusy}
           />
         )}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -2690,6 +2867,24 @@ export default function ChatPhasePage() {
                     }
                     className="flow-input-field"
                   />
+                  {showRequestConclusionDraftControl && (
+                    <button
+                      type="button"
+                      onClick={() => void handleRequestConclusionDraft()}
+                      disabled={
+                        sending || ruminationGuideBusy || requestConclusionDraftBusy
+                      }
+                      title={t('explore.chat.requestConclusionDraftTitle')}
+                      className="flex shrink-0 items-center gap-1 rounded-xl border border-black/10 bg-white/80 px-2.5 py-1.5 text-xs font-medium text-[var(--flow-text-body)] transition-colors hover:bg-neutral-50 disabled:pointer-events-none disabled:opacity-40"
+                    >
+                      {requestConclusionDraftBusy ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                      ) : (
+                        <FileText className="h-3.5 w-3.5 opacity-70" aria-hidden />
+                      )}
+                      <span className="max-[380px]:hidden">{t('explore.chat.requestConclusionDraft')}</span>
+                    </button>
+                  )}
                   <div className="flow-send-btn-wrap">
                     {(sending || ruminationGuideBusy) && (
                       <div className="flow-send-glow" aria-hidden />
@@ -2724,6 +2919,47 @@ export default function ChatPhasePage() {
         </div>
       </div>
       </div>
+      {threadSwitchDialogOpen && (
+        <div
+          className="fixed inset-0 z-[56] flex items-center justify-center bg-black/30 backdrop-blur-sm"
+          onClick={handleCancelThreadSwitchWhileStreaming}
+          role="presentation"
+        >
+          <div
+            className="mx-4 max-w-md rounded-2xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="thread-switch-stream-title"
+          >
+            <h3
+              id="thread-switch-stream-title"
+              className="mb-2 text-lg font-semibold text-[var(--flow-text-body)]"
+            >
+              {t('explore.chat.threadSwitchWhileStreamingTitle')}
+            </h3>
+            <p className="mb-6 text-sm leading-relaxed text-[var(--flow-text-muted)]">
+              {t('explore.chat.threadSwitchWhileStreamingMessage')}
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={handleCancelThreadSwitchWhileStreaming}
+                className="rounded-xl px-4 py-2 text-sm font-medium text-[var(--flow-text-muted)] transition-colors hover:bg-neutral-100"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmThreadSwitchWhileStreaming}
+                className="rounded-xl bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-800"
+              >
+                {t('explore.chat.threadSwitchWhileStreamingConfirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {phase === 'rumination' && ruminationRefillConfirmOpen && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 backdrop-blur-sm"

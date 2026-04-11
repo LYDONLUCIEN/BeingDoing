@@ -79,9 +79,12 @@ from app.utils.survey_storage import (
     load_prior_context_for_report,
     load_prior_context,
 )
-from app.domain.conclusion_card_goals import cap_strengths_keywords_list
+from app.domain.conclusion_card_goals import cap_strengths_keywords_list, get_conclusion_card_goal
 from app.domain.conclusion_card_payload import (
+    REJECTED_DRAFT_SUPERSESSION_LINE,
+    build_pending_main_dialogue_system_addon,
     build_state_json_draft_extension_protocol,
+    format_rejected_conclusion_injection,
     sanitize_pending_conclusion_draft,
 )
 from app.domain.prompts import get_simple_chat_system_prompt, get_step_copy
@@ -147,6 +150,18 @@ CONCLUSION_STATE_NONE = "none"
 CONCLUSION_STATE_PENDING = "pending"
 CONCLUSION_STATE_CONFIRMED = "confirmed"
 CONCLUSION_STATE_REJECTED = "rejected"
+
+# 用户否定/再聊聊后，每满 N 轮用户消息注入一次轻量 system 提醒（非第二模型）
+CONCLUSION_REJECT_NUDGE_USER_TURNS = 3
+CONCLUSION_REJECT_SYSTEM_NUDGE = (
+    "[内部策略提醒·勿向用户复述] 用户此前否定了待确认结论或选择再聊聊，并已继续补充多轮对话。"
+    "若当前信息已足以给出待确认草案，请在本轮回复中按需输出 STATE_JSON，且 state 须为 pending_ready，"
+    "draft 含 summary 与 keywords（遵守系统内嵌协议）。"
+)
+
+
+def _count_user_messages(messages: Optional[List[dict]]) -> int:
+    return sum(1 for m in (messages or []) if (m.get("role") or "") == "user")
 
 
 def _get_llm_semaphore():
@@ -761,6 +776,17 @@ def _looks_like_markdown_table(text: str) -> bool:
     return has_row and has_sep
 
 
+def _pending_judge_goal_blurb(phase: str) -> str:
+    """pending 判定器用：四步各一行阶段目标（values/strengths/interests/purpose）。"""
+    p = (phase or "").strip().lower()
+    if p not in {"values", "strengths", "interests", "purpose"}:
+        return ""
+    obj = (get_conclusion_card_goal(p).get("objective") or "").strip()
+    if not obj:
+        return ""
+    return f"本阶段结论目标（供你理解用户是否在认可该方向，勿向用户复述本行）：{obj}\n"
+
+
 async def _decide_pending_action_by_llm(
     phase: str,
     pending_conclusion: Dict,
@@ -785,10 +811,11 @@ async def _decide_pending_action_by_llm(
     summary = (pending_conclusion or {}).get("summary") or (pending_conclusion or {}).get("ai_summary") or ""
     keywords = (pending_conclusion or {}).get("keywords") or []
     kw_text = "、".join([str(k).strip() for k in keywords if str(k).strip()][:10]) or "（无）"
+    goal_line = _pending_judge_goal_blurb(phase)
     prompt = f"""你是职业咨询系统中的“确认状态判定器”。
 
 当前阶段：{phase}
-待确认总结摘要：{summary}
+{goal_line}待确认总结摘要：{summary}
 待确认关键词：{kw_text}
 用户最新回复：{(user_reply or "").strip()}
 
@@ -807,7 +834,7 @@ async def _decide_pending_action_by_llm(
     token_prompt = f"""你是职业咨询系统中的“确认状态判定器”。
 
 当前阶段：{phase}
-待确认总结摘要：{summary}
+{goal_line}待确认总结摘要：{summary}
 待确认关键词：{kw_text}
 用户最新回复：{(user_reply or "").strip()}
 
@@ -909,10 +936,11 @@ async def _decide_pending_action_by_llm_streaming(
     summary = (pending_conclusion or {}).get("summary") or (pending_conclusion or {}).get("ai_summary") or ""
     keywords = (pending_conclusion or {}).get("keywords") or []
     kw_text = "、".join([str(k).strip() for k in keywords if str(k).strip()][:10]) or "（无）"
+    goal_line = _pending_judge_goal_blurb(phase)
     token_prompt = f"""你是职业咨询系统中的“确认状态判定器”。
 
 当前阶段：{phase}
-待确认总结摘要：{summary}
+{goal_line}待确认总结摘要：{summary}
 待确认关键词：{kw_text}
 用户最新回复：{(user_reply or "").strip()}
 
@@ -2450,6 +2478,11 @@ def _build_system_prompt(
 2) state=continue 时，draft 置为 null。
 3) state=pending_ready 时，draft.summary 必填，draft.keywords 为数组（可为空但应尽量给出）。
 {build_state_json_draft_extension_protocol(phase)}
+
+【用户可见正文 - 硬性禁止】
+- 不要在自然语言里提及本协议、隐藏块名称、state 取值英文名、或「JSON / 待确认草案 / 机器协议」等字眼。
+- 禁止用「系统将弹出结论卡」「即将输出 pending」「严格遵循协议」等元话术代替真实隐藏块；界面是否出卡仅由隐藏块触发，口头承诺无效。
+- 对用户只说话题本身（如价值观、优势、小结），就像没有后台协议存在。
 """
     return f"{base_prompt}\n{protocol}"
 
@@ -2865,6 +2898,14 @@ class ThreadReopenRequest(BaseModel):
     thread_id: str
 
 
+class RequestConclusionDraftBody(BaseModel):
+    """用户主动请求根据当前对话生成待确认结论草案（不走双模型兜底）。"""
+
+    activation_code: str
+    phase: str = "values"
+    thread_id: str
+
+
 @router.post("/thread/reopen", response_model=SimpleChatResponse)
 async def reopen_thread(
     request: ThreadReopenRequest,
@@ -2902,27 +2943,186 @@ async def reopen_thread(
     conv_data = await conv_manager.get_conversation_data(report["report_id"], category)
     meta = conv_data.get("metadata") or {}
     cmeta = _read_conclusion_meta(meta)
+    draft = cmeta.get("draft")
     last_conclusion = cmeta.get("final")
-    pending_rejected = {
-        "summary": (last_conclusion or {}).get("summary", ""),
-        "keywords": (last_conclusion or {}).get("keywords", []),
-        "feedback": "用户选择再聊聊",
-    } if isinstance(last_conclusion, dict) else {
-        "summary": "",
-        "keywords": [],
-        "feedback": "用户选择再聊聊",
-    }
-    await conv_manager.update_metadata(
-        report["report_id"],
-        category,
-        _build_conclusion_meta_update(
-            state=CONCLUSION_STATE_REJECTED,
-            final=last_conclusion if isinstance(last_conclusion, dict) else None,
-            feedback=pending_rejected.get("feedback", "用户选择再聊聊"),
-            thread_completed=False,
-        ),
-    )
+    uc = _count_user_messages(conv_data.get("messages"))
+
+    # 仅有待确认草案（pending）时点「再聊聊」：视为放弃待确认，清 draft，回到主对话（等同 rejected）
+    if isinstance(draft, dict):
+        summ = (draft.get("summary") or draft.get("ai_summary") or "").strip().replace("\n", " ")
+        if len(summ) > 100:
+            summ = summ[:99] + "…"
+        kws = draft.get("keywords") or []
+        kw_s = "、".join(str(k).strip() for k in kws[:8] if str(k).strip())
+        feedback = (
+            f"{REJECTED_DRAFT_SUPERSESSION_LINE}\n"
+            "[再聊聊] 用户折叠结论卡希望继续完善。上一版待确认草案"
+        )
+        if summ:
+            feedback += f" 摘录：{summ}"
+        if kw_s:
+            feedback += f" 关键词：{kw_s}"
+        if len(feedback) > 520:
+            feedback = feedback[:517] + "…"
+        await conv_manager.update_metadata(
+            report["report_id"],
+            category,
+            {
+                **_build_conclusion_meta_update(
+                    state=CONCLUSION_STATE_REJECTED,
+                    final=last_conclusion if isinstance(last_conclusion, dict) else None,
+                    feedback=feedback,
+                    thread_completed=False,
+                ),
+                "conclusion_reject_baseline_user_count": uc,
+            },
+        )
+    elif isinstance(last_conclusion, dict):
+        # 已有最终结论后仍「再聊聊」：保留原逻辑（轻量反馈）
+        await conv_manager.update_metadata(
+            report["report_id"],
+            category,
+            {
+                **_build_conclusion_meta_update(
+                    state=CONCLUSION_STATE_REJECTED,
+                    final=last_conclusion,
+                    feedback="用户选择再聊聊",
+                    thread_completed=False,
+                ),
+                "conclusion_reject_baseline_user_count": uc,
+            },
+        )
+    else:
+        await conv_manager.update_metadata(
+            report["report_id"],
+            category,
+            {
+                **_build_conclusion_meta_update(
+                    state=CONCLUSION_STATE_NONE,
+                    final=None,
+                    feedback="",
+                    thread_completed=False,
+                ),
+                "conclusion_reject_baseline_user_count": None,
+            },
+        )
     return SimpleChatResponse(code=200, message="success", data={})
+
+
+@router.post("/conclusion-draft/request", response_model=SimpleChatResponse)
+async def request_conclusion_draft(
+    request: RequestConclusionDraftBody,
+    current_user: dict = Depends(get_current_user),
+):
+    """根据当前对话生成待确认结论草案（跳过「是否已完成探索」判定，供用户点「确认稿」主动触发）。"""
+    manager = get_activation_manager_for_code(request.activation_code)
+    phase_val = (request.phase or "values").strip() or "values"
+    try:
+        rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
+            manager=manager,
+            activation_code=request.activation_code,
+            current_user=current_user,
+            phase=phase_val,
+            thread_id=request.thread_id,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("request_conclusion_draft _resolve_report_context failed: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="解析会话上下文失败，请刷新页面后重试",
+        ) from e
+    if phase_step == "rumination":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前阶段不支持确认稿")
+    registry = ReportRegistry(base_dir=str(get_effective_simple_root(rec)))
+    _assert_step_editable(
+        registry=registry,
+        report_id=report["report_id"],
+        phase_step=phase_step,
+        current_user=current_user,
+        rec=rec,
+    )
+    session_id = report["report_id"]
+    conv_data = await conv_manager.get_conversation_data(session_id, category)
+    meta = conv_data.get("metadata") or {}
+    cmeta = _read_conclusion_meta(meta)
+    if cmeta.get("thread_completed"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="本维度对话已确认完成，无需再生成确认稿",
+        )
+    messages = conv_data.get("messages") or []
+    conv_history = [
+        {"role": m.get("role", "user"), "content": m.get("content", "")}
+        for m in messages
+    ]
+    vip_level = getattr(rec, "vip_level", 1) or 1
+    reasoning_llm = _get_reasoning_llm_provider(vip_level=vip_level)
+    try:
+        result = await asyncio.wait_for(
+            check_dimension_complete(
+                phase_step,
+                conv_history,
+                prior_conclusion=None,
+                vip_level=vip_level,
+                llm_provider=reasoning_llm,
+                skip_completion_check=True,
+            ),
+            timeout=CONCLUSION_GEN_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "[request_conclusion_draft] timeout after %ss phase=%s thread=%s",
+            CONCLUSION_GEN_TIMEOUT_SECONDS,
+            phase_step,
+            logical_session_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="生成确认稿超时，请稍后重试",
+        ) from None
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="暂无法从当前对话生成确认稿，请多聊几句再试",
+        )
+    draft_clean = sanitize_pending_conclusion_draft(phase_step, dict(result))
+    uc = _count_user_messages(messages)
+    await conv_manager.update_metadata(
+        session_id,
+        category,
+        {
+            **_build_conclusion_meta_update(
+                state=CONCLUSION_STATE_PENDING,
+                draft=draft_clean,
+                final=cmeta.get("final"),
+                shown_at=uc,
+                thread_completed=False,
+            ),
+            "conclusion_reject_baseline_user_count": None,
+        },
+    )
+    try:
+        await _append_note_json(
+            conv_manager,
+            session_id,
+            category,
+            "pending_conclusion_created",
+            {
+                "phase": phase_step,
+                "thread_id": logical_session_id,
+                "pending_conclusion": draft_clean,
+                "source": "request_conclusion_draft",
+            },
+        )
+    except Exception:
+        pass
+    return SimpleChatResponse(
+        code=200,
+        message="success",
+        data={"draft": draft_clean},
+    )
 
 
 @router.post("/thread/complete", response_model=SimpleChatResponse)
@@ -3151,6 +3351,14 @@ async def simple_history(
                     "session_id": logical_session_id,
                     "thread_completed": cmeta.get("thread_completed", False),
                     "dimension_conclusion": cmeta.get("final"),
+                    # 待确认草案仅存在 metadata，消息文件里可能没有 conclusion_card 行；供前端 hydrate 弹卡
+                    "conclusion_state": cmeta.get("state"),
+                    "conclusion_draft": (
+                        cmeta.get("draft")
+                        if cmeta.get("state") == CONCLUSION_STATE_PENDING
+                        and isinstance(cmeta.get("draft"), dict)
+                        else None
+                    ),
                     "step_locked": bool(step_payload.get("locked", False)),
                 },
                 "activation": {
@@ -3327,7 +3535,7 @@ async def simple_chat_stream(
             {"role": m.get("role", "user"), "content": m.get("content", "")}
             for m in conv_data.get("messages", [])
         ]
-        user_count = sum(1 for m in conv_data.get("messages", []) if m.get("role") == "user")
+        user_count = _count_user_messages(conv_data.get("messages"))
         conclusion_shown_at = cmeta.get("shown_at")
 
         if pending_conclusion and not cmeta.get("thread_completed"):
@@ -3520,13 +3728,16 @@ async def simple_chat_stream(
                 await conv_manager.update_metadata(
                     session_id,
                     category,
-                    _build_conclusion_meta_update(
-                        state=CONCLUSION_STATE_REJECTED,
-                        final=cmeta.get("final"),
-                        feedback=user_content,
-                        shown_at=conclusion_shown_at,
-                        thread_completed=False,
-                    ),
+                    {
+                        **_build_conclusion_meta_update(
+                            state=CONCLUSION_STATE_REJECTED,
+                            final=cmeta.get("final"),
+                            feedback=user_content,
+                            shown_at=conclusion_shown_at,
+                            thread_completed=False,
+                        ),
+                        "conclusion_reject_baseline_user_count": user_count,
+                    },
                 )
                 try:
                     await _append_note_json(
@@ -3547,14 +3758,56 @@ async def simple_chat_stream(
                 pending_conclusion = None
                 rejected_feedback = user_content
 
+        # 同步最新 metadata（含 pending→rejected），并按需注入「每 N 轮」轻量 system 提醒
+        conv_data = await conv_manager.get_conversation_data(session_id, category)
+        meta = conv_data.get("metadata", {})
+        cmeta = _read_conclusion_meta(meta)
+        user_count = _count_user_messages(conv_data.get("messages"))
+        pending_conclusion = cmeta.get("draft")
+        rejected_feedback = cmeta.get("feedback") or ""
+
+        if (
+            cmeta.get("state") == CONCLUSION_STATE_REJECTED
+            and not cmeta.get("thread_completed")
+            and not isinstance(pending_conclusion, dict)
+            and phase_step != "rumination"
+        ):
+            baseline = meta.get("conclusion_reject_baseline_user_count")
+            if isinstance(baseline, int) and user_count - baseline >= CONCLUSION_REJECT_NUDGE_USER_TURNS:
+                if llm_messages and llm_messages[0].role == "system":
+                    llm_messages[0] = LLMMessage(
+                        role="system",
+                        content=llm_messages[0].content + "\n\n" + CONCLUSION_REJECT_SYSTEM_NUDGE,
+                    )
+                await conv_manager.update_metadata(
+                    session_id,
+                    category,
+                    {"conclusion_reject_baseline_user_count": user_count},
+                )
+
         # 用户否定后：保留轻量反馈上下文（不做关键词规则）
         if rejected_feedback and not pending_conclusion:
             llm_messages.append(
                 LLMMessage(
                     role="assistant",
-                    content=f"[上一版结论未获认可] 用户反馈：{rejected_feedback[:200]}",
+                    content="[对话状态备注·供你理解上下文]\n"
+                    + format_rejected_conclusion_injection(rejected_feedback),
                 )
             )
+
+        # 仍有待确认草案且本轮将走主对话：system 追加极简状态（判定器判 continue 等情形）
+        if (
+            isinstance(pending_conclusion, dict)
+            and not cmeta.get("thread_completed")
+            and llm_messages
+            and llm_messages[0].role == "system"
+        ):
+            addon = build_pending_main_dialogue_system_addon(phase_step, pending_conclusion)
+            if addon:
+                llm_messages[0] = LLMMessage(
+                    role="system",
+                    content=llm_messages[0].content + "\n\n" + addon,
+                )
 
         # 2) 无 pending 时，不再走额外同步完成检测；仅依赖模型输出的 STATE_JSON 驱动 pending。
 
@@ -3657,13 +3910,16 @@ async def simple_chat_stream(
                 await conv_manager.update_metadata(
                     session_id,
                     category,
-                    _build_conclusion_meta_update(
-                        state=CONCLUSION_STATE_PENDING,
-                        draft=draft_to_save,
-                        final=cmeta.get("final"),
-                        shown_at=user_count,
-                        thread_completed=False,
-                    ),
+                    {
+                        **_build_conclusion_meta_update(
+                            state=CONCLUSION_STATE_PENDING,
+                            draft=draft_to_save,
+                            final=cmeta.get("final"),
+                            shown_at=user_count,
+                            thread_completed=False,
+                        ),
+                        "conclusion_reject_baseline_user_count": None,
+                    },
                 )
                 try:
                     await _append_note_json(
@@ -3679,6 +3935,12 @@ async def simple_chat_stream(
                     )
                 except Exception:
                     pass
+                # 与「确认 pending」流一致：推送 dimension_conclusion，否则前端只收到纯文字，必须刷新才能看到卡
+                yield (
+                    "data: "
+                    + json.dumps({"dimension_conclusion": draft_to_save}, ensure_ascii=False)
+                    + "\n\n"
+                )
             elif state_name == "continue":
                 # 无状态迁移，保持当前会话态
                 pass

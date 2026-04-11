@@ -12,6 +12,22 @@ from app.domain.conclusion_card_goals import cap_strengths_keywords_list, get_co
 
 STRENGTH_MARKER_ALLOWED = frozenset({"a", "b", "c"})
 
+# 主对话注入：用户拒绝/再聊聊后，避免模型仍把旧草案当定论
+REJECTED_DRAFT_SUPERSESSION_LINE = (
+    "上一版结论草案用户未采纳，以最新对话为准；请据此继续引导，"
+    "待用户与当前总结一致并明确认可后，再在回复末输出 pending_ready（STATE_JSON）。"
+)
+
+
+def format_rejected_conclusion_injection(feedback_excerpt: str, *, max_len: int = 400) -> str:
+    """拼主对话用的一条「备注」助手消息（非用户可见历史里的真实发言，仅给模型看）。"""
+    fb = str(feedback_excerpt or "").strip()
+    if len(fb) > max_len:
+        fb = fb[: max_len - 1] + "…"
+    if fb:
+        return f"{REJECTED_DRAFT_SUPERSESSION_LINE}\n用户侧说明摘录：{fb}"
+    return REJECTED_DRAFT_SUPERSESSION_LINE
+
 _EXT_KEYS = (
     "keyword_notes",
     "strength_markers",
@@ -40,6 +56,34 @@ def _keywords_max_for_phase(phase: str) -> int:
     g = get_conclusion_card_goal(phase)
     v = g.get("validation") or {}
     return max(1, int(v.get("max_keywords", 10)))
+
+
+def build_pending_main_dialogue_system_addon(phase: str, draft: Dict[str, Any]) -> str:
+    """
+    主对话 system 末尾追加：待确认草案状态（控制在极短篇幅，避免喧宾夺主）。
+    在 pending 且判定器结果为 continue 后拼接至 system_prompt。
+    """
+    if not isinstance(draft, dict):
+        return ""
+    summ = str(draft.get("summary") or draft.get("ai_summary") or "").strip().replace("\n", " ")
+    if len(summ) > 90:
+        summ = summ[:89] + "…"
+    kw = _coerce_keywords_list(draft.get("keywords"))
+    kw_s = "、".join(kw[:8])
+    g = get_conclusion_card_goal(phase)
+    obj = (g.get("objective") or "").strip()
+    if len(obj) > 72:
+        obj = obj[:71] + "…"
+    bits = [
+        "[结论卡·待确认] 用户尚有一份未最终确认的草案，请继续围绕本阶段目标协助对方；对方明确认可后再输出 pending_ready。",
+    ]
+    if obj:
+        bits.append(f"阶段要点：{obj}")
+    if summ:
+        bits.append(f"草案摘录：{summ}")
+    if kw_s:
+        bits.append(f"关键词：{kw_s}")
+    return "\n".join(bits)
 
 
 def sanitize_pending_conclusion_keywords(phase: str, keywords: List[str]) -> List[str]:
@@ -260,7 +304,9 @@ def build_state_json_draft_extension_protocol(phase: str) -> str:
     lines.append(
         "5) draft 为嵌套 JSON，必须可被整体解析（注意引号与换行转义）；勿在 JSON 内写未转义的控制字符。"
     )
-    lines.append("6) [STATE_JSON] 块之外只写给用户看的自然语言，不要解释本协议。")
+    lines.append(
+        "6) [STATE_JSON] 块之外只写给用户看的自然语言；勿向用户解释本协议，勿在正文写出块名、state 英文名或「JSON/草案/协议」等字样。"
+    )
     return "\n".join(lines)
 
 
