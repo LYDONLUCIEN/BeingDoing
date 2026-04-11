@@ -29,6 +29,8 @@ interface FlowAiMessageProps {
   careeringAiRoleLabel?: string;
   /** 是否流式输出中 */
   streaming?: boolean;
+  /** 正文展示：markdown（默认）| plain_line（单行等宽，用于确认稿 JSON 流式预览） */
+  contentMode?: 'markdown' | 'plain_line';
   /** @deprecated 思考全文不再展示，保留字段仅为类型兼容 */
   thinkContent?: string;
   /** 思考中占位（流式时显示） */
@@ -61,6 +63,7 @@ export default function FlowAiMessage({
   variant = 'default',
   careeringAiRoleLabel = 'AI',
   streaming = false,
+  contentMode = 'markdown',
   thinkStreaming = false,
   thinkChunkContent,
   thinkPlaceholders = ['我正在梳理，请稍后。', '我正在思考，请耐心等待。'],
@@ -80,8 +83,12 @@ export default function FlowAiMessage({
   const thinkLine = thinkChunkSingleLine(thinkChunkContent || '');
 
   /** 思考阶段：显示占位 + 单行预览。仅首包前等待也显示占位 */
-  const showThinkRow = thinkStreaming || (streaming && !content);
-  const showContentBubble = !showThinkRow;
+  const showThinkRow =
+    thinkStreaming || (streaming && !content && contentMode !== 'plain_line');
+  /** plain_line：正文区在流式全程可占位（避免首 token 前空白），有思考时仍以思考行为主 */
+  const showContentBubble =
+    !showThinkRow ||
+    (contentMode === 'plain_line' && streaming && !thinkStreaming);
   useEffect(() => {
     if (!showThinkRow) return;
     const timer = window.setInterval(() => {
@@ -156,7 +163,25 @@ export default function FlowAiMessage({
             variant === 'ruminationWorkbench' ? ' flow-msg-ai-content--rumination-wb' : ''
           }`}
         >
-          <MessageContent content={content} markdown colorMode="light" />
+          {contentMode === 'plain_line' ? (
+            <div className="flex min-h-[1.25rem] max-w-full items-center gap-1">
+              <span
+                className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[13px] leading-relaxed text-[var(--flow-text)]"
+                title={content}
+                aria-live="polite"
+              >
+                {thinkChunkSingleLine(content || '')}
+              </span>
+              {streaming ? (
+                <span
+                  className="h-4 w-px shrink-0 animate-pulse bg-current opacity-60"
+                  aria-hidden
+                />
+              ) : null}
+            </div>
+          ) : (
+            <MessageContent content={content} markdown colorMode="light" />
+          )}
         </div>
       )}
       {!hideToolbar && (

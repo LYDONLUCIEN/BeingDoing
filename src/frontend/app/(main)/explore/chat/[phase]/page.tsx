@@ -96,6 +96,11 @@ const BACKEND_PHASE: Record<PhaseKey, string> = {
   rumination: 'rumination',
 };
 
+function lastDimensionConclusionMessage<T extends { type?: string }>(msgs: T[]): T | undefined {
+  const list = msgs.filter((m) => m.type === 'dimension_conclusion');
+  return list.length ? list[list.length - 1] : undefined;
+}
+
 /** 待确认结论仅存 metadata、无 conclusion_card 消息行时，从历史 meta 补一条卡，避免必须刷新才看见 */
 function mergePendingDraftIntoMessagesFromMeta(
   msgs: ThreadMessage[],
@@ -366,6 +371,8 @@ export default function ChatPhasePage() {
     ruminationProgressState?.filter_step,
     adminDebugBypass,
   ]);
+
+  const latestConclusionMessageId = lastDimensionConclusionMessage(messages)?.id;
 
   const mapHistoryToThreadMessages = useCallback(
     (history: any[], meta: any): ThreadMessage[] =>
@@ -927,10 +934,19 @@ export default function ChatPhasePage() {
   const hasCollapsedConclusion = messages.some(
     (m) => m.type === 'dimension_conclusion' && m.conclusionCollapsed
   );
+  /** 末条结论卡未表态：须点「确认」或「再聊聊」；不区分是否管理员 */
+  const pendingConclusionChoiceBlocksChat =
+    phase !== 'rumination' &&
+    !isSelectedCompleted &&
+    (() => {
+      const last = lastDimensionConclusionMessage(messages);
+      return !!(last && !last.conclusionCollapsed && !last.conclusionConfirmed);
+    })();
   const isReadOnly =
     isSelectedCompleted || // 用户已确认完成，锁定
     (stepLocked && !adminDebugBypass) || // 阶段已锁定，普通用户只读
-    (!isBackendSynced && !!activeThreadId); // 切到其它 thread 时暂不输入（未同步）
+    (!isBackendSynced && !!activeThreadId) || // 切到其它 thread 时暂不输入（未同步）
+    pendingConclusionChoiceBlocksChat;
   const selectionMatchesReportForContinue =
     adminDebugBypass ||
     !stepLocked ||
@@ -972,11 +988,11 @@ export default function ChatPhasePage() {
   /** 本阶段已提交：普通用户仅可点「完成并继续」，主输入区与侧栏新建等置灰 */
   const phaseInteractionLocked = stepLocked && !adminDebugBypass;
 
-  /** 流式请求中：LLM 段结束后由后端 llm_stream_end / conclusion_loading 驱动输入框浅灰引导语 */
+  /** 流式请求中：仅在 LLM 段结束后的尾部阶段展示（与输入框上方 status 行文案一致、分结论卡/其它） */
   const streamTailInputPlaceholder = useMemo(() => {
     if (!sending) return null;
-    if (waitingForConclusionCardUi) return t('explore.chat.placeholderAwaitingConclusionCard');
-    if (postLlmTailActive) return t('explore.chat.placeholderPostLlmProcessing');
+    if (waitingForConclusionCardUi) return t('explore.chat.streamStatusConclusion');
+    if (postLlmTailActive) return t('explore.chat.streamStatusGeneric');
     return null;
   }, [sending, waitingForConclusionCardUi, postLlmTailActive, t]);
 
@@ -992,11 +1008,16 @@ export default function ChatPhasePage() {
     !!activeThreadId &&
     userChoseRefineAfterConclusion;
 
-  /** 有条未折叠的结论卡占屏、或只读等时，按钮可见但不可点 */
+  /** 末条结论卡仍展开待决时不可点确认稿（与 pending阻塞一致，且只看最新一张） */
   const canClickRequestConclusionDraft =
     showRequestConclusionDraftControl &&
     !isReadOnly &&
-    !messages.some((m) => m.type === 'dimension_conclusion' && !m.conclusionCollapsed);
+    !(
+      (() => {
+        const last = lastDimensionConclusionMessage(messages);
+        return last && !last.conclusionCollapsed && !last.conclusionConfirmed;
+      })()
+    );
 
   useLayoutEffect(() => {
     const prev = prevPathnameForLockModalRef.current;
@@ -1336,55 +1357,211 @@ export default function ChatPhasePage() {
       phase === 'rumination' ||
       requestConclusionDraftBusy ||
       isReadOnly ||
-      messages.some((m) => m.type === 'dimension_conclusion' && !m.conclusionCollapsed)
+      (() => {
+        const last = lastDimensionConclusionMessage(messages);
+        return last && !last.conclusionCollapsed && !last.conclusionConfirmed;
+      })()
     ) {
       return;
     }
     setRequestConclusionDraftBusy(true);
     setChatError(null);
-    try {
-      const res = await apiClient.post<{ draft: DimensionConclusionData }>(
-        '/simple-chat/conclusion-draft/request',
-        {
-          activation_code: activationCode,
-          phase: BACKEND_PHASE[phase],
-          thread_id: activeThreadId,
+    const now = Date.now();
+    const assistantId = `draft_req_${now}`;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: assistantId,
+        role: 'assistant',
+        content: '',
+        createdAt: now,
+      },
+    ]);
+    stickToBottomRef.current = true;
+
+    const stripPlaceholder = () => {
+      setMessages((prev) => prev.filter((m) => m.id !== assistantId));
+    };
+
+    const applyDraft = (draft: DimensionConclusionData) => {
+      setMessages((prev) => {
+        const without = prev.filter((m) => m.id !== assistantId);
+        const lastIdx = [...without].map((x) => x.type).lastIndexOf('dimension_conclusion');
+        const prevLast = lastIdx >= 0 ? without[lastIdx] : undefined;
+        const replaceInPlace =
+          prevLast &&
+          prevLast.type === 'dimension_conclusion' &&
+          !prevLast.conclusionCollapsed &&
+          !prevLast.conclusionConfirmed;
+        if (replaceInPlace) {
+          const next = [...without];
+          next[lastIdx] = {
+            ...prevLast,
+            conclusionData: draft,
+            createdAt: Date.now(),
+            conclusionCollapsed: false,
+            conclusionConfirmed: false,
+          };
+          return next;
         }
-      );
-      const draft = res.data?.draft;
-      if (draft) {
-        setMessages((prev) => {
-          const lastIdx = [...prev].map((x) => x.type).lastIndexOf('dimension_conclusion');
-          if (lastIdx >= 0) {
-            const next = [...prev];
-            next[lastIdx] = {
-              ...next[lastIdx],
-              conclusionData: draft,
-              createdAt: Date.now(),
-              conclusionCollapsed: false,
-              conclusionConfirmed: false,
-            };
-            return next;
-          }
-          return [
-            ...prev,
-            {
-              id: `concl_${Date.now()}`,
-              role: 'assistant',
-              content: '',
-              type: 'dimension_conclusion',
-              conclusionData: draft,
-              conclusionCollapsed: false,
-              conclusionConfirmed: false,
-              createdAt: Date.now(),
-            },
-          ];
+        return [
+          ...without,
+          {
+            id: `concl_${Date.now()}`,
+            role: 'assistant',
+            content: '',
+            type: 'dimension_conclusion',
+            conclusionData: draft,
+            conclusionCollapsed: false,
+            conclusionConfirmed: false,
+            createdAt: Date.now(),
+          },
+        ];
+      });
+    };
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    try {
+      const apiBase = (process.env.NEXT_PUBLIC_API_URL || '').trim();
+      const streamUrl = `${apiBase ? apiBase.replace(/\/+$/, '') : ''}/api/v1/simple-chat/conclusion-draft/request-stream`;
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const doStreamFetch = async (accessToken: string | null) =>
+        fetch(streamUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          },
+          body: JSON.stringify({
+            activation_code: activationCode,
+            phase: BACKEND_PHASE[phase],
+            thread_id: activeThreadId,
+          }),
+          signal: controller.signal,
         });
+
+      let res = await doStreamFetch(token);
+      if (res.status === 401) {
+        try {
+          const refreshed = await authApi.refresh();
+          const nextToken = refreshed?.data?.token || null;
+          if (nextToken) {
+            apiClient.setToken(nextToken);
+            setTokens(nextToken);
+            res = await doStreamFetch(nextToken);
+          }
+        } catch {
+          // 与主对话流一致：refresh 失败后走统一 401 提示
+        }
+      }
+
+      if (!res.ok) {
+        stripPlaceholder();
+        if (res.status === 401) {
+          throw new Error(t('explore.chat.streamAuthExpired'));
+        }
+        let detail = '';
+        try {
+          const errPayload = await res.json();
+          detail = errPayload?.detail || errPayload?.message || '';
+        } catch {}
+        throw new Error(detail || `请求失败（${res.status}）`);
+      }
+      if (!res.body) {
+        stripPlaceholder();
+        throw new Error('流式接口返回为空');
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finished = false;
+      while (!finished) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const payload = JSON.parse(line.slice(6));
+            if (payload.error) {
+              setChatError(String(payload.error));
+              reader.cancel();
+              stripPlaceholder();
+              finished = true;
+              break;
+            }
+            if (payload.think_start) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId ? { ...m, thinkStreaming: true, thinkChunkContent: '' } : m
+                )
+              );
+            }
+            if (payload.think_chunk) {
+              const chunk = typeof payload.think_chunk === 'string' ? payload.think_chunk : '';
+              if (chunk) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId ? { ...m, thinkChunkContent: chunk } : m
+                  )
+                );
+              }
+            }
+            if (payload.think_end != null) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? { ...m, thinkStreaming: false, thinkChunkContent: undefined }
+                    : m
+                )
+              );
+            }
+            if (payload.chunk) {
+              const c = typeof payload.chunk === 'string' ? payload.chunk : '';
+              if (c) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId ? { ...m, content: (m.content || '') + c } : m
+                  )
+                );
+              }
+            }
+            if (payload.done && payload.draft) {
+              applyDraft(payload.draft as DimensionConclusionData);
+              reader.cancel();
+              finished = true;
+              break;
+            }
+          } catch {
+            // 忽略单行解析失败
+          }
+        }
+      }
+      if (!finished) {
+        stripPlaceholder();
+        setChatError(t('explore.chat.requestConclusionDraftFail'));
       }
     } catch (e: unknown) {
-      setChatError(getApiErrorMessage(e, t('explore.chat.requestConclusionDraftFail')));
+      const err = e as { name?: string };
+      if (err?.name !== 'AbortError') {
+        setChatError(getApiErrorMessage(e, t('explore.chat.requestConclusionDraftFail')));
+      }
+      stripPlaceholder();
     } finally {
+      abortControllerRef.current = null;
       setRequestConclusionDraftBusy(false);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId && m.thinkStreaming
+            ? { ...m, thinkStreaming: false, thinkChunkContent: undefined }
+            : m
+        )
+      );
     }
   }, [
     activationCode,
@@ -1394,6 +1571,7 @@ export default function ChatPhasePage() {
     isReadOnly,
     messages,
     t,
+    setTokens,
   ]);
 
   const handleSend = async (
@@ -1450,6 +1628,15 @@ export default function ChatPhasePage() {
         activeThreadId && backendSyncedThreadId && activeThreadId === backendSyncedThreadId
           ? activeThreadId
           : undefined;
+      const uiSnap = (() => {
+        const last = lastDimensionConclusionMessage(messages);
+        if (!last) return undefined;
+        return {
+          latest_card_message_id: last.id,
+          refine_active: !!last.conclusionCollapsed,
+          confirmed: !!last.conclusionConfirmed,
+        };
+      })();
       const doStreamFetch = async (accessToken: string | null) =>
         fetch(streamUrl, {
           method: 'POST',
@@ -1462,6 +1649,7 @@ export default function ChatPhasePage() {
             message: messageForApi,
             phase: BACKEND_PHASE[phase],
             thread_id: effectiveThreadId,
+            ...(uiSnap ? { client_conclusion_ui: uiSnap } : {}),
           }),
           signal: controller.signal,
         });
@@ -1571,12 +1759,21 @@ export default function ChatPhasePage() {
                 conclusionConfirmed: false,
                 createdAt: Date.now(),
               };
-              // pending 草案已有一张卡时，确认流会再次推送：替换同一张，避免双卡
               setMessages((prev) => {
                 const lastIdx = [...prev].map((x) => x.type).lastIndexOf('dimension_conclusion');
-                if (lastIdx >= 0) {
+                const prevLast = lastIdx >= 0 ? prev[lastIdx] : undefined;
+                const replaceInPlace =
+                  prevLast &&
+                  prevLast.type === 'dimension_conclusion' &&
+                  !prevLast.conclusionCollapsed &&
+                  !prevLast.conclusionConfirmed;
+                if (replaceInPlace) {
                   const next = [...prev];
-                  next[lastIdx] = { ...next[lastIdx], conclusionData: concl, createdAt: Date.now() };
+                  next[lastIdx] = {
+                    ...prevLast,
+                    conclusionData: concl,
+                    createdAt: Date.now(),
+                  };
                   return next;
                 }
                 return [...prev, conclMsg];
@@ -1694,14 +1891,22 @@ export default function ChatPhasePage() {
     (thread: ChatThread) => {
       if (!activationCode || !phase) return;
       if (thread.id === activeThreadId) return;
-      if (sending || ruminationGuideBusy) {
+      if (sending || ruminationGuideBusy || requestConclusionDraftBusy) {
         setPendingSwitchThread(thread);
         setThreadSwitchDialogOpen(true);
         return;
       }
       performThreadSwitch(thread);
     },
-    [activationCode, phase, activeThreadId, sending, ruminationGuideBusy, performThreadSwitch]
+    [
+      activationCode,
+      phase,
+      activeThreadId,
+      sending,
+      ruminationGuideBusy,
+      requestConclusionDraftBusy,
+      performThreadSwitch,
+    ]
   );
 
   const handleCancelThreadSwitchWhileStreaming = useCallback(() => {
@@ -1780,7 +1985,7 @@ export default function ChatPhasePage() {
     if (!targetThreadId) return;
     const th = threads.find((t) => t.id === targetThreadId) || selectedThread;
     if (!th) return;
-    const lastConcl = messages.filter((m) => m.type === 'dimension_conclusion').pop();
+    const lastConcl = lastDimensionConclusionMessage(messages);
     if (!lastConcl?.conclusionData) return;
     try {
       await apiClient.post('/simple-chat/thread/complete', {
@@ -1911,8 +2116,16 @@ export default function ChatPhasePage() {
 
   const handleContinueChat = async (conclusionMsg?: ThreadMessage) => {
     if (stepLocked && !adminDebugBypass) return;
-    const lastConcl = messages.filter((m) => m.type === 'dimension_conclusion').pop();
+    const lastConcl = lastDimensionConclusionMessage(messages);
     const toCollapse = conclusionMsg ?? lastConcl;
+    if (
+      toCollapse &&
+      toCollapse.type === 'dimension_conclusion' &&
+      lastConcl &&
+      toCollapse.id !== lastConcl.id
+    ) {
+      return;
+    }
     if (toCollapse && toCollapse.type === 'dimension_conclusion') {
       setMessages((prev) =>
         prev.map((m) =>
@@ -2526,7 +2739,9 @@ export default function ChatPhasePage() {
             phaseTitle={phaseLabel}
             phaseInteractionLocked={phaseInteractionLocked}
             careeringMatte
-            streamBlocksSessionSwitch={sending || ruminationGuideBusy}
+            streamBlocksSessionSwitch={
+              sending || ruminationGuideBusy || requestConclusionDraftBusy
+            }
           />
         )}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -2819,7 +3034,12 @@ export default function ChatPhasePage() {
                             showActions={
                               !phaseInteractionLocked &&
                               !m.conclusionCollapsed &&
-                              m.id === displayMessages.filter((x) => x.type === 'dimension_conclusion').pop()?.id
+                              m.id === latestConclusionMessageId
+                            }
+                            forbidHeaderCollapseWhileActions={
+                              !phaseInteractionLocked &&
+                              !m.conclusionCollapsed &&
+                              m.id === latestConclusionMessageId
                             }
                             onConfirm={handleConfirmConclusion}
                             onContinueChat={() => handleContinueChat(m)}
@@ -2915,8 +3135,13 @@ export default function ChatPhasePage() {
                                 : undefined
                           }
                           careeringAiRoleLabel={t('explore.chat.careeringAiRole')}
+                          contentMode={
+                            m.id.startsWith('draft_req_') ? 'plain_line' : 'markdown'
+                          }
                           streaming={
-                            (sending || ruminationGuideBusy) &&
+                            (sending ||
+                              ruminationGuideBusy ||
+                              requestConclusionDraftBusy) &&
                             idx === displayMessages.length - 1
                           }
                           thinkStreaming={m.thinkStreaming}
@@ -2938,7 +3163,9 @@ export default function ChatPhasePage() {
                             .filter((x) => x.role === 'assistant' && x.type !== 'dimension_conclusion')
                             .length}
                           dimension={phase}
-                          hideToolbar={phaseInteractionLocked}
+                          hideToolbar={
+                            phaseInteractionLocked || m.id.startsWith('draft_req_')
+                          }
                         />
                       )}
                     </div>
@@ -3000,10 +3227,19 @@ export default function ChatPhasePage() {
               className={`flow-input-area${phase === 'rumination' && ruminationRowContext ? ' rumination-input-focused-context' : ''}`}
             >
               <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="w-full">
+                {pendingConclusionChoiceBlocksChat && (
+                  <p
+                    className="mb-1.5 w-full shrink-0 rounded-lg border border-amber-200/90 bg-amber-50/90 px-2 py-1.5 text-left text-xs leading-snug text-amber-950"
+                    role="status"
+                  >
+                    {t('explore.chat.conclusionChoiceRequiredBanner')}
+                  </p>
+                )}
                 <div
                   className={`flow-input-box${
                     (phaseInteractionLocked && !sending && !ruminationGuideBusy) ||
-                    (phase === 'rumination' && ruminationTableNavLoading && !sending)
+                    (phase === 'rumination' && ruminationTableNavLoading && !sending) ||
+                    (pendingConclusionChoiceBlocksChat && !sending)
                       ? ' opacity-40 pointer-events-none'
                       : ''
                   } !flex !flex-col !items-stretch gap-1.5`}
@@ -3021,8 +3257,8 @@ export default function ChatPhasePage() {
                       {requestConclusionDraftBusy ||
                       waitingForConclusionCardUi ||
                       (sending && conclusionLoading)
-                        ? t('explore.chat.placeholderAwaitingConclusionCard')
-                        : t('explore.chat.placeholderPostLlmProcessing')}
+                        ? t('explore.chat.streamStatusConclusion')
+                        : t('explore.chat.streamStatusGeneric')}
                     </p>
                   )}
                   <div className="flex w-full min-w-0 items-end gap-2.5">
@@ -3094,24 +3330,31 @@ export default function ChatPhasePage() {
                     </button>
                   )}
                   <div className="flow-send-btn-wrap">
-                    {(sending || ruminationGuideBusy) && (
+                    {(sending || ruminationGuideBusy || requestConclusionDraftBusy) && (
                       <div className="flow-send-glow" aria-hidden />
                     )}
                     <button
                       type="button"
                       onClick={
-                        sending || ruminationGuideBusy ? handleStopStream : () => handleSend()
+                        sending || ruminationGuideBusy || requestConclusionDraftBusy
+                          ? handleStopStream
+                          : () => handleSend()
                       }
                       disabled={
                         (isReadOnly ||
                           (!sending &&
                             !ruminationGuideBusy &&
+                            !requestConclusionDraftBusy &&
                             (!input.trim() ||
                               (phase === 'rumination' && ruminationTableNavLoading)))) as boolean
                       }
-                      className={`flow-send-btn ${sending || ruminationGuideBusy ? 'is-stop' : ''}`}
+                      className={`flow-send-btn ${
+                        sending || ruminationGuideBusy || requestConclusionDraftBusy
+                          ? 'is-stop'
+                          : ''
+                      }`}
                     >
-                      {sending || ruminationGuideBusy ? (
+                      {sending || ruminationGuideBusy || requestConclusionDraftBusy ? (
                         <Square size={16} strokeWidth={0} fill="white" />
                       ) : (
                         <ArrowUp size={16} strokeWidth={2.2} />

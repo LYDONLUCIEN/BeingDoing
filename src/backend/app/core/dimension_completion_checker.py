@@ -132,6 +132,136 @@ def _build_goal_fallback_summary(phase: str, keywords: List[str]) -> str:
     return f"本维度结论已完成，当前输出聚焦于：{objective}。"
 
 
+def build_conclusion_generation_messages(
+    phase: str,
+    conversation_history: List[Dict[str, str]],
+    prior_conclusion: Optional[Dict] = None,
+) -> Optional[List[LLMMessage]]:
+    """
+    构造「生成结论卡 JSON」的 LLM 消息（与 check_dimension_complete 内生成段一致）。
+    用于确认稿流式接口；不包含「是否已完成探索」判定。
+    """
+    config = get_dimension_config(phase)
+    if not config or len(conversation_history) < 2:
+        return None
+    recent = conversation_history[-20:]
+    conv_text = "\n\n".join(
+        f"{m.get('role', 'user')}: {m.get('content', '')}" for m in recent
+    )
+    label = config.get("label", phase)
+    goal = config.get("goal", "")
+    summary_hint = config.get("summary_prompt_hint", "")
+    goal_hint = get_goal_prompt_hint(phase)
+
+    prior_hint = ""
+    if prior_conclusion:
+        prior_summary = prior_conclusion.get("summary") or prior_conclusion.get("ai_summary", "")
+        prior_kw = prior_conclusion.get("keywords") or []
+        prior_str = f"{prior_summary}\n关键词: {', '.join(prior_kw) if isinstance(prior_kw, list) else prior_kw}"
+        prior_hint = f"""
+
+【重要】上一轮已得出初步结论，用户本轮又补充了内容。请综合本轮用户输入与已有结论，生成更新后的最终结论。
+
+上一轮结论：
+---
+{prior_str}
+---
+
+"""
+    values_extra = ""
+    if phase == "values":
+        values_extra = """
+
+【values 阶段特别要求】
+请从用户对话中寻找 5 个核心价值观关键词。
+1) 尽可能只使用用户亲口提到的原词，优先保留用户原话；
+2) 实在没有足够原词时，再进行同义词改写；
+3) 尽量是精准的 2~4 字词语（如：诚实、成长、家庭、自由）。"""
+
+    conclusion_rules = get_conclusion_rules(phase)
+    anti_fabrication = """
+【硬性约束 - 严禁杜撰】
+- keywords 必须且只能从对话中用户明确说出的词汇提取，严禁自创、同义替换或凭空添加
+- 若用户未提到足够关键词，宁可减少数量也不要杜撰
+- 结论内容必须符合本维度的 dimension_goal，且与用户实际表达一致
+【命名约束】keywords 数组中每一项必须是单一概念词（或本阶段要求的单一短语），不得使用「/、或、以及、&、|」并列多个候选。若对话中出现近义词而未明确取舍，宁可拆成多条并在 summary 中说明用户偏好，也不要在单条内并列多个候选。"""
+    schema_instructions = build_conclusion_json_schema_instructions(phase)
+    tone_tight = """
+【summary 口吻（须严格遵守）】
+- 面向对方，用「你」作主语，2～6 句短句即可，像咨询师把当轮收获轻轻收束，不要写长文分析。
+- 不要使用：从对话中/可以发现/综上所述/小结如下/模型/AI/助手/用户表示（改用「你」）等措辞。
+- 可用 **关键词** 与 keywords 列表对应；避免「第一点…第二点…」式罗列，除非用户对话里本来就是列表语境。
+"""
+    summary_prompt = f"""基于以下对话，生成「{label}」维度的探索结论汇总。{prior_hint}{values_extra}
+
+对话内容：
+---
+{conv_text}
+---
+
+该维度的目标：{goal}
+{summary_hint}
+{goal_hint}
+
+【本阶段结论卡规则】
+{conclusion_rules}
+{anti_fabrication}
+{tone_tight}
+{schema_instructions}"""
+
+    return [
+        LLMMessage(role="system", content=_CONCLUSION_GENERATION_SYSTEM),
+        LLMMessage(role="user", content=summary_prompt),
+    ]
+
+
+def finalize_conclusion_from_summary_text(
+    phase: str,
+    summary_text: str,
+    prior_conclusion: Optional[Dict] = None,
+) -> Optional[Dict]:
+    """将模型输出的正文解析为结论卡 payload（与 check_dimension_complete 尾部逻辑一致）。"""
+    config = get_dimension_config(phase)
+    if not config:
+        return None
+    summary = ""
+    keywords: List[str] = []
+    raw_obj: Optional[Dict[str, Any]] = None
+    text_clean = (summary_text or "").strip()
+    if "```json" in text_clean:
+        text_clean = text_clean.split("```json")[1].split("```")[0].strip()
+    elif "```" in text_clean:
+        text_clean = text_clean.split("```")[1].split("```")[0].strip()
+    try:
+        obj = json.loads(text_clean)
+        if isinstance(obj, dict):
+            raw_obj = obj
+            raw_kw = obj.get("keywords")
+            keywords = [str(k).strip() for k in raw_kw if k] if isinstance(raw_kw, list) else []
+            summary = (obj.get("summary") or "").strip()
+    except (json.JSONDecodeError, TypeError):
+        summary = summary_text
+        keywords = []
+        raw_obj = None
+
+    if phase == "strengths":
+        keywords = cap_strengths_keywords_list(keywords)
+    keywords = _validate_keywords_by_goal(phase, keywords, locked_keywords=None)
+
+    if not summary:
+        summary = _build_goal_fallback_summary(phase, keywords)
+
+    dimension_goal = config.get("goal", "") or ""
+    return merge_conclusion_payload(
+        phase,
+        keywords=keywords,
+        summary=summary,
+        dimension_goal=dimension_goal,
+        raw_llm_obj=raw_obj,
+        prior_conclusion=prior_conclusion if isinstance(prior_conclusion, dict) else None,
+    )
+
+
 def _validate_keywords_by_goal(
     phase: str,
     keywords: List[str],
@@ -233,112 +363,17 @@ async def check_dimension_complete(
         except (json.JSONDecodeError, TypeError):
             return None
 
-    # 已判定完成，生成结论卡片内容
-    summary_hint = config.get("summary_prompt_hint", "")
-    goal_hint = get_goal_prompt_hint(phase)
-
-    prior_hint = ""
-    if prior_conclusion:
-        prior_summary = prior_conclusion.get("summary") or prior_conclusion.get("ai_summary", "")
-        prior_kw = prior_conclusion.get("keywords") or []
-        prior_str = f"{prior_summary}\n关键词: {', '.join(prior_kw) if isinstance(prior_kw, list) else prior_kw}"
-        prior_hint = f"""
-
-【重要】上一轮已得出初步结论，用户本轮又补充了内容。请综合本轮用户输入与已有结论，生成更新后的最终结论。
-
-上一轮结论：
----
-{prior_str}
----
-
-"""
-    values_extra = ""
-    if phase == "values":
-        values_extra = """
-
-【values 阶段特别要求】
-请从用户对话中寻找 5 个核心价值观关键词。
-1) 尽可能只使用用户亲口提到的原词，优先保留用户原话；
-2) 实在没有足够原词时，再进行同义词改写；
-3) 尽量是精准的 2~4 字词语（如：诚实、成长、家庭、自由）。"""
-
-    conclusion_rules = get_conclusion_rules(phase)
-    anti_fabrication = """
-【硬性约束 - 严禁杜撰】
-- keywords 必须且只能从对话中用户明确说出的词汇提取，严禁自创、同义替换或凭空添加
-- 若用户未提到足够关键词，宁可减少数量也不要杜撰
-- 结论内容必须符合本维度的 dimension_goal，且与用户实际表达一致
-【命名约束】keywords 数组中每一项必须是单一概念词（或本阶段要求的单一短语），不得使用「/、或、以及、&、|」并列多个候选。若对话中出现近义词而未明确取舍，宁可拆成多条并在 summary 中说明用户偏好，也不要在单条内并列多个候选。"""
-    schema_instructions = build_conclusion_json_schema_instructions(phase)
-    tone_tight = """
-【summary 口吻（须严格遵守）】
-- 面向对方，用「你」作主语，2～6 句短句即可，像咨询师把当轮收获轻轻收束，不要写长文分析。
-- 不要使用：从对话中/可以发现/综上所述/小结如下/模型/AI/助手/用户表示（改用「你」）等措辞。
-- 可用 **关键词** 与 keywords 列表对应；避免「第一点…第二点…」式罗列，除非用户对话里本来就是列表语境。
-"""
-    summary_prompt = f"""基于以下对话，生成「{label}」维度的探索结论汇总。{prior_hint}{values_extra}
-
-对话内容：
----
-{conv_text}
----
-
-该维度的目标：{goal}
-{summary_hint}
-{goal_hint}
-
-【本阶段结论卡规则】
-{conclusion_rules}
-{anti_fabrication}
-{tone_tight}
-{schema_instructions}"""
-
-    summary_messages = [
-        LLMMessage(role="system", content=_CONCLUSION_GENERATION_SYSTEM),
-        LLMMessage(role="user", content=summary_prompt),
-    ]
+    # 已判定完成，生成结论卡片内容（与确认稿流式共用同一套 prompt / 解析）
+    gen_messages = build_conclusion_generation_messages(phase, conversation_history, prior_conclusion)
+    if not gen_messages:
+        return None
     try:
         summary_response = await llm.chat(
-            summary_messages, temperature=0.3,
+            gen_messages,
+            temperature=0.3,
             response_format={"type": "json_object"},
         )
     except TypeError:
-        summary_response = await llm.chat(summary_messages, temperature=0.3)
+        summary_response = await llm.chat(gen_messages, temperature=0.3)
     summary_text = (summary_response.content or "").strip()
-
-    summary = ""
-    keywords: List[str] = []
-    raw_obj: Optional[Dict[str, Any]] = None
-    text_clean = summary_text.strip()
-    if "```json" in text_clean:
-        text_clean = text_clean.split("```json")[1].split("```")[0].strip()
-    elif "```" in text_clean:
-        text_clean = text_clean.split("```")[1].split("```")[0].strip()
-    try:
-        obj = json.loads(text_clean)
-        if isinstance(obj, dict):
-            raw_obj = obj
-            raw_kw = obj.get("keywords")
-            keywords = [str(k).strip() for k in raw_kw if k] if isinstance(raw_kw, list) else []
-            summary = (obj.get("summary") or "").strip()
-    except (json.JSONDecodeError, TypeError):
-        summary = summary_text
-        keywords = []
-        raw_obj = None
-
-    if phase == "strengths":
-        keywords = cap_strengths_keywords_list(keywords)
-    keywords = _validate_keywords_by_goal(phase, keywords, locked_keywords=None)
-
-    if not summary:
-        summary = _build_goal_fallback_summary(phase, keywords)
-
-    dimension_goal = config.get("goal", "") or ""
-    return merge_conclusion_payload(
-        phase,
-        keywords=keywords,
-        summary=summary,
-        dimension_goal=dimension_goal,
-        raw_llm_obj=raw_obj,
-        prior_conclusion=prior_conclusion if isinstance(prior_conclusion, dict) else None,
-    )
+    return finalize_conclusion_from_summary_text(phase, summary_text, prior_conclusion)

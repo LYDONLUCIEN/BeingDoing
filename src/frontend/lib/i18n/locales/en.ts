@@ -118,6 +118,10 @@ export const en = {
       placeholderRefine: 'Add more or go deeper…',
       placeholderPostLlmProcessing: 'Processing, please wait…',
       placeholderAwaitingConclusionCard: 'Generating your conclusion card, please wait…',
+      streamStatusConclusion: 'Generating your conclusion card, please wait…',
+      streamStatusGeneric: 'The reply has finished; we’re still processing—please wait…',
+      conclusionChoiceRequiredBanner:
+        'Please use the conclusion card above: tap “Confirm” or “Chat more” before you can type here.',
       completeStep: 'Complete This Step',
       completeAndContinue: 'Complete & Continue',
       selectCompletedHint: 'Please select a completed conversation',

@@ -45,6 +45,11 @@ interface DimensionConclusionCardProps {
   onCollapsedChange?: (collapsed: boolean) => void;
   /** 是否显示确认/再聊聊按钮（仅最新结论可操作） */
   showActions?: boolean;
+  /**
+   * 有操作按钮且未决时，禁止仅靠点击标题收起（须点「我想再聊聊」），避免误触等于未表态。
+   * 已折叠后允许点头展开查看。
+   */
+  forbidHeaderCollapseWhileActions?: boolean;
   onConfirm?: () => void;
   onContinueChat?: () => void;
   /** 阶段已提交锁定：不可折叠、不显示操作按钮（仅浏览） */
@@ -68,6 +73,7 @@ export default function DimensionConclusionCard({
   collapsed = false,
   onCollapsedChange,
   showActions = true,
+  forbidHeaderCollapseWhileActions = false,
   onConfirm,
   onContinueChat,
   interactionLocked = false,
@@ -86,10 +92,26 @@ export default function DimensionConclusionCard({
 
   const toggleCollapsed = () => {
     if (interactionLocked) return;
+    if (
+      forbidHeaderCollapseWhileActions &&
+      showActions &&
+      !isCompleted &&
+      !collapsed
+    ) {
+      return;
+    }
     if (inline && onCollapsedChange) onCollapsedChange(!collapsed);
   };
 
-  const headerClickable = inline && !interactionLocked;
+  const headerClickable =
+    inline &&
+    !interactionLocked &&
+    !(
+      forbidHeaderCollapseWhileActions &&
+      showActions &&
+      !isCompleted &&
+      !collapsed
+    );
 
   return (
     <div
