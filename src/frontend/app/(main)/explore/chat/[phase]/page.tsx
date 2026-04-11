@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
   ChevronRight,
@@ -229,6 +229,7 @@ function RuminationTableSubmitPortal({
 export default function ChatPhasePage() {
   const router = useRouter();
   const params = useParams();
+  const pathname = usePathname();
   const { t } = useLocale();
   const phase = (params.phase as string) as PhaseKey;
 
@@ -243,9 +244,17 @@ export default function ChatPhasePage() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [requestConclusionDraftBusy, setRequestConclusionDraftBusy] = useState(false);
+  /** 首次在结论卡上选「继续完善」后说明「确认稿」用途（每激活码+阶段+线程仅提示一次，见 sessionStorage） */
+  const [draftFlowEducationOpen, setDraftFlowEducationOpen] = useState(false);
   /** 流式进行中点其它会话：先确认再切换 */
   const [threadSwitchDialogOpen, setThreadSwitchDialogOpen] = useState(false);
   const [pendingSwitchThread, setPendingSwitchThread] = useState<ChatThread | null>(null);
+  /** 阶段已提交锁定：首次进入时说明弹窗（可勾选不再提醒） */
+  const [phaseLockNoticeOpen, setPhaseLockNoticeOpen] = useState(false);
+  const [phaseLockNoticeDontRemind, setPhaseLockNoticeDontRemind] = useState(false);
+  /** 同一次停留在本页内关闭过说明后不再弹出；离开再进入本阶段对话路由时会清空（见 pathname 逻辑） */
+  const phaseLockNoticeShownKeyRef = useRef<string | null>(null);
+  const prevPathnameForLockModalRef = useRef<string | null>(null);
   /** 沉淀：表格确认后自动插入的子步引导语（固定模拟流 / LLM 流）进行中 */
   const [ruminationGuideBusy, setRuminationGuideBusy] = useState(false);
   const ruminationGuideAbortRef = useRef<AbortController | null>(null);
@@ -257,6 +266,8 @@ export default function ChatPhasePage() {
   const [adminDebugBypass, setAdminDebugBypass] = useState(false);
   const [adminPolicyLoaded, setAdminPolicyLoaded] = useState(false);
   const [stepLocked, setStepLocked] = useState(false);
+  /** 报告里该 step 的 selected_session_id（与 /threads 里 selected: true 对齐），用于已锁定阶段下限制「完成并继续」 */
+  const [reportSelectedThreadId, setReportSelectedThreadId] = useState<string | null>(null);
   /** 沉淀阶段：表格固定在左栏，与右侧消息流解耦 */
   const [ruminationTablePayload, setRuminationTablePayload] = useState<
     ThreadMessage['tablePayload'] | null
@@ -495,11 +506,22 @@ export default function ChatPhasePage() {
     }
   }, [phase, router, adminPolicyLoaded, adminDebugBypass]);
 
+  /**
+   * phase / 激活码切换时，在 useEffect 批处理前将 threadsFetched 置为 false。
+   * 否则「同步线程」effect 与「init」effect 同一次提交内先后执行时，init 仍可能读到上一阶段的 threadsFetched===true
+   * 与旧 threads，误判为空并 createThreadId 新建会话。
+   */
+  useLayoutEffect(() => {
+    if (!activationCode || !phase) return;
+    setThreadsFetched(false);
+  }, [activationCode, phase]);
+
   // 从后端同步线程列表（主数据源，支持跨设备）
   useEffect(() => {
     if (!activationCode || !phase) return;
     setThreadsFetched(false);
     setStepLocked(false);
+    setReportSelectedThreadId(null);
     let cancelled = false;
     (async () => {
       try {
@@ -514,7 +536,10 @@ export default function ChatPhasePage() {
           createdAt: number;
           dimensionConclusion?: DimensionConclusionData;
           step_locked?: boolean;
+          selected?: boolean;
         }>;
+        const selectedTid = raw.find((t) => t.selected)?.id ?? null;
+        if (!cancelled) setReportSelectedThreadId(selectedTid);
         const list: ChatThread[] = raw.map((t) => ({
           id: t.id,
           title: t.title,
@@ -645,8 +670,11 @@ export default function ChatPhasePage() {
             status: string;
             createdAt: number;
             dimensionConclusion?: DimensionConclusionData;
+            selected?: boolean;
           }>;
           if (!cancelled && backendThreads.length > 0) {
+            const sel = backendThreads.find((t) => t.selected)?.id ?? null;
+            setReportSelectedThreadId(sel);
             let syncedThreads: ChatThread[] = backendThreads.map((t) => ({
               id: t.id,
               title: t.title,
@@ -899,8 +927,36 @@ export default function ChatPhasePage() {
     isSelectedCompleted || // 用户已确认完成，锁定
     (stepLocked && !adminDebugBypass) || // 阶段已锁定，普通用户只读
     (!isBackendSynced && !!activeThreadId); // 切到其它 thread 时暂不输入（未同步）
+  const selectionMatchesReportForContinue =
+    adminDebugBypass ||
+    !stepLocked ||
+    !reportSelectedThreadId ||
+    activeThreadId === reportSelectedThreadId;
+
   const canContinue =
-    !!selectedThread && (isSelectedCompleted || (stepLocked && !adminDebugBypass));
+    !!selectedThread && isSelectedCompleted && selectionMatchesReportForContinue;
+
+  const continueDisabledHint = useMemo(() => {
+    if (canContinue) return '';
+    if (!selectedThread) return t('explore.chat.selectCompletedHint');
+    if (
+      stepLocked &&
+      !adminDebugBypass &&
+      reportSelectedThreadId &&
+      activeThreadId !== reportSelectedThreadId
+    ) {
+      return t('explore.chat.selectSubmittedThreadHint');
+    }
+    return t('explore.chat.selectCompletedHint');
+  }, [
+    canContinue,
+    selectedThread,
+    stepLocked,
+    adminDebugBypass,
+    reportSelectedThreadId,
+    activeThreadId,
+    t,
+  ]);
 
   /** 沉淀终步：表格确认后进过渡页；筛选第 7 子步或 final_choice 未完结时隐藏顶栏「完成并继续」 */
   const hideRuminationHeaderComplete =
@@ -912,13 +968,77 @@ export default function ChatPhasePage() {
   /** 本阶段已提交：普通用户仅可点「完成并继续」，主输入区与侧栏新建等置灰 */
   const phaseInteractionLocked = stepLocked && !adminDebugBypass;
 
+  /** 用户曾在本对话中通过结论卡选择「继续完善/我想再聊聊」并折叠卡片后，才显示「确认稿」入口 */
+  const userChoseRefineAfterConclusion = messages.some(
+    (m) => m.type === 'dimension_conclusion' && m.conclusionCollapsed
+  );
+
   const showRequestConclusionDraftControl =
     phase !== 'rumination' &&
-    !isReadOnly &&
     !phaseInteractionLocked &&
     !!activationCode &&
     !!activeThreadId &&
+    userChoseRefineAfterConclusion;
+
+  /** 有条未折叠的结论卡占屏、或只读等时，按钮可见但不可点 */
+  const canClickRequestConclusionDraft =
+    showRequestConclusionDraftControl &&
+    !isReadOnly &&
     !messages.some((m) => m.type === 'dimension_conclusion' && !m.conclusionCollapsed);
+
+  useLayoutEffect(() => {
+    const prev = prevPathnameForLockModalRef.current;
+    prevPathnameForLockModalRef.current = pathname;
+    const chatPath = `/explore/chat/${phase}`;
+    if (pathname === chatPath && prev !== chatPath && phaseInteractionLocked) {
+      phaseLockNoticeShownKeyRef.current = null;
+    }
+  }, [pathname, phase, phaseInteractionLocked]);
+
+  useEffect(() => {
+    if (!phaseInteractionLocked) {
+      setPhaseLockNoticeOpen(false);
+      setPhaseLockNoticeDontRemind(false);
+      return;
+    }
+    if (user?.is_super_admin) return;
+    if (!activationCode || !threadsFetched || initLoading) return;
+    if (typeof window === 'undefined') return;
+    try {
+      if (localStorage.getItem(`bd_phase_lock_notice_hide_${activationCode}_${phase}`) === '1') {
+        return;
+      }
+    } catch {
+      /* private mode */
+    }
+    const key = `${activationCode}::${phase}`;
+    if (phaseLockNoticeShownKeyRef.current === key) return;
+    phaseLockNoticeShownKeyRef.current = key;
+    setPhaseLockNoticeOpen(true);
+  }, [phaseInteractionLocked, activationCode, phase, threadsFetched, initLoading, user?.is_super_admin]);
+
+  const dismissPhaseLockNotice = useCallback(
+    (dontRemind: boolean, navigateNext: boolean) => {
+      if (activationCode && dontRemind) {
+        try {
+          localStorage.setItem(`bd_phase_lock_notice_hide_${activationCode}_${phase}`, '1');
+        } catch {
+          /* ignore */
+        }
+      }
+      setPhaseLockNoticeOpen(false);
+      setPhaseLockNoticeDontRemind(false);
+      if (navigateNext) {
+        if (!activationCode || !session) return;
+        if (!canContinue) return;
+        const updated = unlockNextPhase({ ...session, currentPhase: phase });
+        saveSession(updated);
+        setSession(updated);
+        router.push(`/explore/transition?from=${phase}`);
+      }
+    },
+    [activationCode, phase, session, canContinue, router]
+  );
 
   // 与激活页一致：用旅程列表中的 explore_resume 对齐「当前未完成 step」，避免书签/缓存仍停在已提交阶段
   useEffect(() => {
@@ -1202,7 +1322,9 @@ export default function ChatPhasePage() {
       !activationCode ||
       !activeThreadId ||
       phase === 'rumination' ||
-      requestConclusionDraftBusy
+      requestConclusionDraftBusy ||
+      isReadOnly ||
+      messages.some((m) => m.type === 'dimension_conclusion' && !m.conclusionCollapsed)
     ) {
       return;
     }
@@ -1257,6 +1379,8 @@ export default function ChatPhasePage() {
     activeThreadId,
     phase,
     requestConclusionDraftBusy,
+    isReadOnly,
+    messages,
     t,
   ]);
 
@@ -1628,6 +1752,7 @@ export default function ChatPhasePage() {
   };
 
   const handleConfirmConclusion = async () => {
+    if (stepLocked && !adminDebugBypass) return;
     if (!activationCode || !phase) return;
     const targetThreadId = activeThreadId || backendSyncedThreadId;
     if (!targetThreadId) return;
@@ -1763,6 +1888,7 @@ export default function ChatPhasePage() {
   ]);
 
   const handleContinueChat = async (conclusionMsg?: ThreadMessage) => {
+    if (stepLocked && !adminDebugBypass) return;
     const lastConcl = messages.filter((m) => m.type === 'dimension_conclusion').pop();
     const toCollapse = conclusionMsg ?? lastConcl;
     if (toCollapse && toCollapse.type === 'dimension_conclusion') {
@@ -1771,6 +1897,17 @@ export default function ChatPhasePage() {
           m.id === toCollapse.id ? { ...m, conclusionCollapsed: true, conclusionConfirmed: false } : m
         )
       );
+      if (activationCode && phase && activeThreadId && typeof window !== 'undefined') {
+        try {
+          const k = `bd_conclusion_draft_flow_hint_${activationCode}_${phase}_${activeThreadId}`;
+          if (sessionStorage.getItem(k) !== '1') {
+            sessionStorage.setItem(k, '1');
+            setDraftFlowEducationOpen(true);
+          }
+        } catch {
+          setDraftFlowEducationOpen(true);
+        }
+      }
     }
     if (activationCode && phase && activeThreadId) {
       try {
@@ -2385,7 +2522,7 @@ export default function ChatPhasePage() {
                     type="button"
                     onClick={handleCompleteAndContinue}
                     disabled={!canContinue}
-                    title={!canContinue ? t('explore.chat.selectCompletedHint') : ''}
+                    title={continueDisabledHint}
                     className="bd-btn-black absolute right-2 top-2 flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold text-white sm:right-6 sm:top-3 sm:px-4 sm:py-2.5 sm:text-sm disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <FileText size={15} strokeWidth={2} className="hidden shrink-0 sm:inline" />
@@ -2416,12 +2553,14 @@ export default function ChatPhasePage() {
                               sending ||
                               ruminationGuideBusy ||
                               ruminationTableNavLoading ||
-                              hypothesisRegeneratingRowIndex !== null,
+                              hypothesisRegeneratingRowIndex !== null ||
+                              phaseInteractionLocked,
                             nextDisabled:
                               sending ||
                               ruminationGuideBusy ||
                               ruminationTableNavLoading ||
                               hypothesisRegeneratingRowIndex !== null ||
+                              phaseInteractionLocked ||
                               ruminationViewStep >= RUMINATION_FILTER_STEP_MAX ||
                               !isRuminationFilterStepReachable(
                                 ruminationViewStep + 1,
@@ -2434,7 +2573,8 @@ export default function ChatPhasePage() {
                                 sending ||
                                 ruminationGuideBusy ||
                                 ruminationTableNavLoading ||
-                                hypothesisRegeneratingRowIndex !== null,
+                                hypothesisRegeneratingRowIndex !== null ||
+                                phaseInteractionLocked,
                               onJump: (step) => {
                                 if (step === ruminationViewStep) return;
                                 void loadRuminationTableStep(step);
@@ -2516,7 +2656,8 @@ export default function ChatPhasePage() {
                       ruminationTableSubmitting ||
                       ruminationGuideBusy ||
                       ruminationTableNavLoading ||
-                      hypothesisRegeneratingRowIndex !== null
+                      hypothesisRegeneratingRowIndex !== null ||
+                      phaseInteractionLocked
                     }
                   />
                 ) : (
@@ -2547,7 +2688,7 @@ export default function ChatPhasePage() {
                       type="button"
                       onClick={handleCompleteAndContinue}
                       disabled={!canContinue}
-                      title={!canContinue ? t('explore.chat.selectCompletedHint') : ''}
+                      title={continueDisabledHint}
                       className={`bd-btn-black inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold text-white transition-all sm:px-5 ${
                         canContinue ? '' : 'cursor-not-allowed opacity-40'
                       }`}
@@ -2645,6 +2786,7 @@ export default function ChatPhasePage() {
                             isCompleted={isSelectedCompleted || !!m.conclusionConfirmed}
                             inline
                             collapsed={!!m.conclusionCollapsed}
+                            interactionLocked={phaseInteractionLocked}
                             onCollapsedChange={(collapsed) =>
                               setMessages((prev) =>
                                 prev.map((msg) =>
@@ -2653,6 +2795,7 @@ export default function ChatPhasePage() {
                               )
                             }
                             showActions={
+                              !phaseInteractionLocked &&
                               !m.conclusionCollapsed &&
                               m.id === displayMessages.filter((x) => x.type === 'dimension_conclusion').pop()?.id
                             }
@@ -2725,16 +2868,18 @@ export default function ChatPhasePage() {
                               })()}
                             </div>
                           </div>
-                          <div className="flow-msg-user-toolbar">
-                            <button
-                              type="button"
-                              className="flow-toolbar-btn"
-                              title={t('explore.chat.messageToolbar.copy')}
-                              onClick={() => copyToClipboard(m.content)}
-                            >
-                              <Copy size={14} strokeWidth={1.6} />
-                            </button>
-                          </div>
+                          {!phaseInteractionLocked && (
+                            <div className="flow-msg-user-toolbar">
+                              <button
+                                type="button"
+                                className="flow-toolbar-btn"
+                                title={t('explore.chat.messageToolbar.copy')}
+                                onClick={() => copyToClipboard(m.content)}
+                              >
+                                <Copy size={14} strokeWidth={1.6} />
+                              </button>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <FlowAiMessage
@@ -2771,6 +2916,7 @@ export default function ChatPhasePage() {
                             .filter((x) => x.role === 'assistant' && x.type !== 'dimension_conclusion')
                             .length}
                           dimension={phase}
+                          hideToolbar={phaseInteractionLocked}
                         />
                       )}
                     </div>
@@ -2788,17 +2934,19 @@ export default function ChatPhasePage() {
                 {chatError && (
                   <div className="flow-msg-error">
                     <div className="flow-msg-error-text">{chatError}</div>
-                    <button
-                      type="button"
-                      className="flow-retry-btn"
-                      onClick={() => {
-                        setChatError(null);
-                        const lastUser = [...messages].filter((m) => m.role === 'user').pop();
-                        if (lastUser) handleSend(lastUser.content, true);
-                      }}
-                    >
-                      {t('explore.chat.retry')}
-                    </button>
+                    {!phaseInteractionLocked && (
+                      <button
+                        type="button"
+                        className="flow-retry-btn"
+                        onClick={() => {
+                          setChatError(null);
+                          const lastUser = [...messages].filter((m) => m.role === 'user').pop();
+                          if (lastUser) handleSend(lastUser.content, true);
+                        }}
+                      >
+                        {t('explore.chat.retry')}
+                      </button>
+                    )}
                   </div>
                 )}
                 <div ref={messagesEndRef} />
@@ -2818,6 +2966,14 @@ export default function ChatPhasePage() {
 
           {/* 对话输入框：固定在最底部 */}
           <div className="careering-input-dock w-full flex-shrink-0">
+            {phaseInteractionLocked && (
+              <div
+                className="border-t border-amber-200/90 bg-amber-50 px-4 py-2 text-center text-xs font-medium text-amber-950"
+                role="status"
+              >
+                {t('explore.chat.phaseLockedInputBanner')}
+              </div>
+            )}
             <div
               className={`flow-input-area${phase === 'rumination' && ruminationRowContext ? ' rumination-input-focused-context' : ''}`}
             >
@@ -2848,15 +3004,17 @@ export default function ChatPhasePage() {
                       }
                     }}
                     placeholder={
-                      isReadOnly
-                        ? t('explore.chat.placeholderReadOnly')
-                        : hasCollapsedConclusion
-                          ? t('explore.chat.placeholderRefine')
-                          : phase === 'rumination' && ruminationRowContext
-                            ? t('explore.chat.ruminationUi.placeholderWithRow', {
-                                label: ruminationRowContext.label,
-                              })
-                            : t('explore.chat.inputPlaceholderCareering')
+                      phaseInteractionLocked
+                        ? t('explore.chat.placeholderPhaseLocked')
+                        : isReadOnly
+                          ? t('explore.chat.placeholderReadOnly')
+                          : hasCollapsedConclusion
+                            ? t('explore.chat.placeholderRefine')
+                            : phase === 'rumination' && ruminationRowContext
+                              ? t('explore.chat.ruminationUi.placeholderWithRow', {
+                                  label: ruminationRowContext.label,
+                                })
+                              : t('explore.chat.inputPlaceholderCareering')
                     }
                     rows={1}
                     disabled={
@@ -2872,9 +3030,16 @@ export default function ChatPhasePage() {
                       type="button"
                       onClick={() => void handleRequestConclusionDraft()}
                       disabled={
-                        sending || ruminationGuideBusy || requestConclusionDraftBusy
+                        !canClickRequestConclusionDraft ||
+                        sending ||
+                        ruminationGuideBusy ||
+                        requestConclusionDraftBusy
                       }
-                      title={t('explore.chat.requestConclusionDraftTitle')}
+                      title={
+                        canClickRequestConclusionDraft
+                          ? t('explore.chat.requestConclusionDraftTitle')
+                          : t('explore.chat.requestConclusionDraftDisabledHint')
+                      }
                       className="flex shrink-0 items-center gap-1 rounded-xl border border-black/10 bg-white/80 px-2.5 py-1.5 text-xs font-medium text-[var(--flow-text-body)] transition-colors hover:bg-neutral-50 disabled:pointer-events-none disabled:opacity-40"
                     >
                       {requestConclusionDraftBusy ? (
@@ -2919,6 +3084,40 @@ export default function ChatPhasePage() {
         </div>
       </div>
       </div>
+      {draftFlowEducationOpen && (
+        <div
+          className="fixed inset-0 z-[58] flex items-center justify-center bg-black/35 backdrop-blur-sm"
+          onClick={() => setDraftFlowEducationOpen(false)}
+          role="presentation"
+        >
+          <div
+            className="mx-4 w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="draft-flow-education-title"
+          >
+            <h3
+              id="draft-flow-education-title"
+              className="mb-2 text-lg font-semibold text-[var(--flow-text-body)]"
+            >
+              {t('explore.chat.conclusionDraftFlowModalTitle')}
+            </h3>
+            <p className="mb-6 text-sm leading-relaxed text-[var(--flow-text-muted)]">
+              {t('explore.chat.conclusionDraftFlowModalMessage')}
+            </p>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setDraftFlowEducationOpen(false)}
+                className="rounded-xl bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-800"
+              >
+                {t('explore.chat.conclusionDraftFlowModalOk')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {threadSwitchDialogOpen && (
         <div
           className="fixed inset-0 z-[56] flex items-center justify-center bg-black/30 backdrop-blur-sm"
@@ -2955,6 +3154,59 @@ export default function ChatPhasePage() {
                 className="rounded-xl bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-800"
               >
                 {t('explore.chat.threadSwitchWhileStreamingConfirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {phaseLockNoticeOpen && (
+        <div
+          className="fixed inset-0 z-[57] flex items-center justify-center bg-black/35 backdrop-blur-sm"
+          onClick={() => dismissPhaseLockNotice(phaseLockNoticeDontRemind, false)}
+          role="presentation"
+        >
+          <div
+            className="mx-4 w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="phase-lock-notice-title"
+          >
+            <h3
+              id="phase-lock-notice-title"
+              className="mb-2 text-lg font-semibold text-[var(--flow-text-body)]"
+            >
+              {t('explore.chat.phaseLockModalTitle')}
+            </h3>
+            <p className="mb-5 text-sm leading-relaxed text-[var(--flow-text-muted)]">
+              {t('explore.chat.phaseLockModalMessage')}
+            </p>
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-[var(--flow-text-body)]">
+                <input
+                  type="checkbox"
+                  checked={phaseLockNoticeDontRemind}
+                  onChange={(e) => setPhaseLockNoticeDontRemind(e.target.checked)}
+                  className="h-4 w-4 rounded border-neutral-300"
+                />
+                {t('explore.chat.phaseLockModalDontRemind')}
+              </label>
+            </div>
+            <div className="flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => dismissPhaseLockNotice(phaseLockNoticeDontRemind, false)}
+                className="rounded-xl px-4 py-2 text-sm font-medium text-[var(--flow-text-muted)] transition-colors hover:bg-neutral-100"
+              >
+                {t('explore.chat.phaseLockModalGotIt')}
+              </button>
+              <button
+                type="button"
+                onClick={() => dismissPhaseLockNotice(phaseLockNoticeDontRemind, true)}
+                disabled={!canContinue}
+                className="rounded-xl bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {t('explore.chat.completeAndContinue')}
               </button>
             </div>
           </div>

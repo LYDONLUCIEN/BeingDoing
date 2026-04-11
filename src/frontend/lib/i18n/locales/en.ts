@@ -119,6 +119,7 @@ export const en = {
       completeStep: 'Complete This Step',
       completeAndContinue: 'Complete & Continue',
       selectCompletedHint: 'Please select a completed conversation',
+      selectSubmittedThreadHint: 'Switch to the conversation you submitted for this step to continue',
       exploringWithDim: 'Exploring · {dim}',
       sessionTopic: 'Session topic',
       careeringAiRole: 'AI Coach',
@@ -129,11 +130,25 @@ export const en = {
       requestConclusionDraft: 'Draft card',
       requestConclusionDraftTitle: 'Generate a pending conclusion card from this chat',
       requestConclusionDraftFail: 'Could not generate a draft yet. Chat a bit more and try again.',
+      conclusionDraftFlowModalTitle: 'Keep refining your conclusion',
+      conclusionDraftFlowModalMessage:
+        'We’ll keep exploring and adjusting these conclusions with you. When you’re satisfied, tap “Draft card” next to the input to generate an updated pending conclusion card from this chat.',
+      conclusionDraftFlowModalOk: 'Got it',
+      requestConclusionDraftDisabledHint:
+        'Finish the open conclusion card first, or try again when this chat is editable',
       threadSwitchWhileStreamingTitle: 'Reply still streaming',
       threadSwitchWhileStreamingMessage:
         'This conversation is still receiving a reply. Switching will stop the stream, and the unfinished part may not be saved on the server. Switch anyway?',
       threadSwitchWhileStreamingConfirm: 'Switch anyway',
       threadSwitchWhileStreamingHint: 'A reply is streaming; click to confirm switching sessions',
+      phaseLockModalTitle: 'This step is submitted and locked',
+      phaseLockModalMessage:
+        'You can’t send messages or change the conclusion card. Switch sessions on the left to review history. Use “Complete & Continue” at the top right for the next step.',
+      phaseLockModalDontRemind: 'Don’t show this again',
+      phaseLockModalGotIt: 'Got it',
+      placeholderPhaseLocked: 'This step is submitted — view only',
+      phaseLockedInputBanner:
+        'This step is locked: browse only. Use “Complete & Continue” at the top right to proceed.',
       thinkInProgress1: "I'm organizing my thoughts, please wait…",
       thinkInProgress2: "I'm thinking, please be patient…",
       thinkInProgress3: 'Analyzing in depth, almost there…',
@@ -166,7 +181,7 @@ export const en = {
       threadList: 'Conversations',
       sidebarMaxReached: 'Max 5 conversations',
       sidebarPhaseLockedHint:
-        'This step is submitted. Use “Complete & Continue” at the top right to proceed; you cannot start a new chat here.',
+        'This step is submitted. Switch sessions on the left to review history; you cannot create or delete chats. Use “Complete & Continue” at the top right to proceed.',
       statusCompleted: 'Completed',
       statusInProgress: 'In progress',
       turns: '{n} turns',

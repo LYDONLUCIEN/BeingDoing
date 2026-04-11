@@ -47,6 +47,8 @@ interface DimensionConclusionCardProps {
   showActions?: boolean;
   onConfirm?: () => void;
   onContinueChat?: () => void;
+  /** 阶段已提交锁定：不可折叠、不显示操作按钮（仅浏览） */
+  interactionLocked?: boolean;
 }
 
 /** 仅作主题色类名，勿叠加 flow-msg-ai-content（会套用 AI 气泡边框与字体） */
@@ -68,8 +70,9 @@ export default function DimensionConclusionCard({
   showActions = true,
   onConfirm,
   onContinueChat,
+  interactionLocked = false,
 }: DimensionConclusionCardProps) {
-  const isCollapsed = inline && collapsed;
+  const isCollapsed = inline && collapsed && !interactionLocked;
   const themeClass = phaseThemeClass[phase] || phaseThemeClass.values;
   const summaryText = data.summary ?? data.ai_summary ?? '';
   const keywords = data.keywords ?? (data.final_answer ? data.final_answer.split(/[,，、]/).map((k) => k.trim()).filter(Boolean) : []);
@@ -82,17 +85,24 @@ export default function DimensionConclusionCard({
   );
 
   const toggleCollapsed = () => {
+    if (interactionLocked) return;
     if (inline && onCollapsedChange) onCollapsedChange(!collapsed);
   };
 
+  const headerClickable = inline && !interactionLocked;
+
   return (
-    <div className={`flow-conclusion-card ${themeClass} ${inline ? 'flow-conclusion-inline' : ''}`}>
+    <div
+      className={`flow-conclusion-card ${themeClass} ${inline ? 'flow-conclusion-inline' : ''} ${
+        interactionLocked ? 'flow-conclusion-card--locked opacity-95' : ''
+      }`}
+    >
       <div
-        className={`flow-conclusion-header ${inline ? 'flow-conclusion-header-clickable' : ''}`}
-        onClick={inline ? toggleCollapsed : undefined}
-        role={inline ? 'button' : undefined}
-        tabIndex={inline ? 0 : undefined}
-        onKeyDown={inline ? (e) => e.key === 'Enter' && toggleCollapsed() : undefined}
+        className={`flow-conclusion-header ${headerClickable ? 'flow-conclusion-header-clickable' : ''}`}
+        onClick={headerClickable ? toggleCollapsed : undefined}
+        role={headerClickable ? 'button' : undefined}
+        tabIndex={headerClickable ? 0 : undefined}
+        onKeyDown={headerClickable ? (e) => e.key === 'Enter' && toggleCollapsed() : undefined}
       >
         <div className="flow-conclusion-header-left">
           <div className="flow-conclusion-icon-box">
@@ -102,7 +112,7 @@ export default function DimensionConclusionCard({
             {inline && isCollapsed ? '探索结论汇总 · 点击展开' : '探索结论汇总'}
           </span>
         </div>
-        {inline && (
+        {headerClickable && (
           <span className="flow-conclusion-chevron" onClick={(e) => { e.stopPropagation(); toggleCollapsed(); }}>
             {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
           </span>
@@ -215,11 +225,14 @@ export default function DimensionConclusionCard({
         )}
       </div>
       )}
-      {showActions && (
+      {showActions && !interactionLocked && (
       <div className="flow-conclusion-actions" onClick={(e) => e.stopPropagation()}>
         <button
           type="button"
-          onClick={() => onContinueChat?.()}
+          onClick={() => {
+            if (interactionLocked) return;
+            onContinueChat?.();
+          }}
           className="flow-conclusion-btn flow-conclusion-btn-secondary"
         >
           {isCompleted ? '完善答案' : '我想再聊聊'}
@@ -233,6 +246,7 @@ export default function DimensionConclusionCard({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
+              if (interactionLocked) return;
               onConfirm?.();
             }}
             className="flow-conclusion-btn flow-conclusion-btn-primary"

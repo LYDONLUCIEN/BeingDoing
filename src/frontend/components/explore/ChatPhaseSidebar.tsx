@@ -143,6 +143,8 @@ export default function ChatPhaseSidebar({
 
   const offsetForThread = useCallback(
     (threadId: string) => {
+      // 阶段已锁定：仅允许点选切换会话查看，禁止左滑露出删除
+      if (phaseInteractionLocked) return 0;
       const d = dragRef.current;
       if (d && d.threadId === threadId) {
         const dx = d.lastX - d.startX;
@@ -152,12 +154,12 @@ export default function ChatPhaseSidebar({
       if (openSwipeId === threadId) return -SWIPE_DELETE_PX;
       return 0;
     },
-    [openSwipeId]
+    [openSwipeId, phaseInteractionLocked]
   );
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent, thread: ChatThread) => {
-      if (phaseInteractionLocked || e.button !== 0) return;
+      if (e.button !== 0) return;
       if (openSwipeId && openSwipeId !== thread.id) setOpenSwipeId(null);
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       dragRef.current = {
@@ -169,18 +171,19 @@ export default function ChatPhaseSidebar({
         moved: false,
       };
     },
-    [phaseInteractionLocked, openSwipeId, offsetForThread]
+    [openSwipeId, offsetForThread]
   );
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       const d = dragRef.current;
       if (!d || d.pointerId !== e.pointerId) return;
-      if (Math.abs(e.clientX - d.startX) > 8) d.moved = true;
+      const moveThreshold = phaseInteractionLocked ? 20 : 8;
+      if (Math.abs(e.clientX - d.startX) > moveThreshold) d.moved = true;
       d.lastX = e.clientX;
       bumpSwipe();
     },
-    [bumpSwipe]
+    [bumpSwipe, phaseInteractionLocked]
   );
 
   const endDrag = useCallback(
@@ -195,6 +198,14 @@ export default function ChatPhaseSidebar({
         /* ignore */
       }
       dragRef.current = null;
+      if (phaseInteractionLocked) {
+        setOpenSwipeId(null);
+        if (!d.moved) {
+          onSelectThread(thread);
+        }
+        bumpSwipe();
+        return;
+      }
       if (d.moved) {
         if (finalOff < -SWIPE_DELETE_PX / 2) setOpenSwipeId(thread.id);
         else setOpenSwipeId(null);
@@ -204,7 +215,7 @@ export default function ChatPhaseSidebar({
       }
       bumpSwipe();
     },
-    [bumpSwipe, onSelectThread]
+    [bumpSwipe, onSelectThread, phaseInteractionLocked]
   );
 
   const handleCopyClick = useCallback(

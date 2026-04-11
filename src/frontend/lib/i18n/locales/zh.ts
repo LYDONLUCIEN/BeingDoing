@@ -114,6 +114,7 @@ export const zh = {
       completeStep: '完成此步，进入下一步',
       completeAndContinue: '完成并继续',
       selectCompletedHint: '请选中一个已完成的对话',
+      selectSubmittedThreadHint: '请切换到本阶段提交时选中的那条对话后再继续',
       exploringWithDim: '正在探索 · {dim}维度',
       sessionTopic: '会话主题',
       careeringAiRole: 'AI 职业教练',
@@ -124,11 +125,24 @@ export const zh = {
       requestConclusionDraft: '确认稿',
       requestConclusionDraftTitle: '根据当前对话生成待确认结论卡片',
       requestConclusionDraftFail: '暂时无法生成确认稿，请多聊几句后重试',
+      conclusionDraftFlowModalTitle: '继续完善结论',
+      conclusionDraftFlowModalMessage:
+        '我们将继续针对这些结论进行探讨与调整。调整过后若您认为没有问题，可点击输入栏旁的「确认稿」，根据当前对话生成最新的待确认结论卡片。',
+      conclusionDraftFlowModalOk: '知道了',
+      requestConclusionDraftDisabledHint:
+        '请先处理当前展开中的结论卡片，或在本对话可编辑时再试',
       threadSwitchWhileStreamingTitle: '正在接收回复',
       threadSwitchWhileStreamingMessage:
         '当前会话仍在输出中。切换会话将停止本次回复，未说完的部分可能不会保存到服务器。确定要切换吗？',
       threadSwitchWhileStreamingConfirm: '仍要切换',
       threadSwitchWhileStreamingHint: '正在流式输出中，点击将询问是否切换会话',
+      phaseLockModalTitle: '本阶段已提交并锁定',
+      phaseLockModalMessage:
+        '无法再发送消息或修改结论卡。你可以切换左侧不同会话查看历史记录。请通过右上角「完成并继续」进入下一阶段。',
+      phaseLockModalDontRemind: '不再提醒',
+      phaseLockModalGotIt: '知道了',
+      placeholderPhaseLocked: '本阶段已提交，仅可查看历史对话',
+      phaseLockedInputBanner: '本阶段已锁定：仅可浏览历史与会话列表，请从右上角进入下一阶段',
       thinkInProgress1: '请稍等，我正在梳理你的答案…',
       thinkInProgress2: '我正在思考，请耐心等待…',
       thinkInProgress3: '深入分析中，马上就好…',
@@ -160,7 +174,8 @@ export const zh = {
       noContent: '暂无内容',
       threadList: '对话列表',
       sidebarMaxReached: '已达上限（最多 5 个）',
-      sidebarPhaseLockedHint: '本阶段已提交。请使用右上角「完成并继续」进入下一步；此处无法新建对话。',
+      sidebarPhaseLockedHint:
+        '本阶段已提交。可点击左侧会话切换查看历史；无法新建或删除。请用右上角「完成并继续」进入下一步。',
       statusCompleted: '已完成',
       statusInProgress: '进行中',
       turns: '{n} 轮',
