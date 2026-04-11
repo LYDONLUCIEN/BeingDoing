@@ -121,6 +121,30 @@ class ReportRegistry:
     def normalize_step_id(step_id: str) -> str:
         return STEP_ALIASES.get((step_id or "").strip().lower(), "values")
 
+    @staticmethod
+    def resolve_simple_chat_phase(phase: Optional[str]) -> str:
+        """
+        解析 simple-chat API 的 phase 参数为规范 step id。
+        缺失或无法识别时抛出 ValueError（由路由层转为 400），避免静默退回 values。
+        """
+        if phase is None:
+            raise ValueError(
+                "参数 phase 为必填，须为 values、strengths、interests、purpose、rumination 之一"
+            )
+        raw = str(phase).strip()
+        if not raw:
+            raise ValueError(
+                "参数 phase 不能为空，须为 values、strengths、interests、purpose、rumination 之一"
+            )
+        key = raw.lower()
+        mapped = STEP_ALIASES.get(key)
+        if mapped is not None:
+            return mapped
+        raise ValueError(
+            f"无效的 phase：{raw!r}。须为 values、strengths、interests、purpose、rumination，"
+            "或兼容别名 value、strength、interest、combine 等"
+        )
+
     def _report_dir(self, report_id: str) -> Path:
         return self.reports_root / report_id
 

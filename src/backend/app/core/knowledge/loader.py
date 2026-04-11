@@ -35,7 +35,7 @@ class StrengthItem:
 class QuestionItem:
     """问题项目"""
     id: int
-    category: str  # values, strengths, interests
+    category: str  # values, strengths, interests, purpose
     question_number: int
     content: str
     is_starred: bool = False
@@ -162,6 +162,14 @@ class KnowledgeLoader:
                         question_number = 0
                     elif "兴趣" in category_text or "喜欢的事" in category_text:
                         current_category = "interests"
+                        question_number = 0
+                    elif (
+                        "使命" in category_text
+                        or "他人价值" in category_text
+                        or "为别人" in category_text
+                        or "利他" in category_text
+                    ):
+                        current_category = "purpose"
                         question_number = 0
                 elif line and current_category:
                     is_starred = "⭐" in line or "星号" in line

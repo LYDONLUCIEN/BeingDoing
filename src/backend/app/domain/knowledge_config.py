@@ -9,6 +9,7 @@ from typing import Dict, Any, Optional
 KNOWLEDGE_BASE_DIR: Optional[Path] = None
 
 # 知识库文件名（相对 base_dir）
+# question.md：含价值观/才能/热忱/使命 四段「##」题库，由 KnowledgeLoader 按标题关键词解析 category
 KNOWLEDGE_FILES: Dict[str, str] = {
     "values": "重要的事_价值观.csv",
     "interests": "喜欢的事_热情.csv",

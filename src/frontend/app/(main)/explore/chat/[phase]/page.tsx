@@ -263,6 +263,10 @@ export default function ChatPhasePage() {
   const [chatError, setChatError] = useState<string | null>(null);
   const [backendSessionId, setBackendSessionId] = useState<string | null>(null);
   const [conclusionLoading, setConclusionLoading] = useState(false);
+  /** 后端已推送 llm_stream_end：主模型流式输出结束，尚在同一条 SSE 内做落盘/埋点等 */
+  const [postLlmTailActive, setPostLlmTailActive] = useState(false);
+  /** 已收到 conclusion_loading、结论卡尚未推送（与消息区 spinner 一致） */
+  const [waitingForConclusionCardUi, setWaitingForConclusionCardUi] = useState(false);
   const [adminDebugBypass, setAdminDebugBypass] = useState(false);
   const [adminPolicyLoaded, setAdminPolicyLoaded] = useState(false);
   const [stepLocked, setStepLocked] = useState(false);
@@ -968,6 +972,14 @@ export default function ChatPhasePage() {
   /** 本阶段已提交：普通用户仅可点「完成并继续」，主输入区与侧栏新建等置灰 */
   const phaseInteractionLocked = stepLocked && !adminDebugBypass;
 
+  /** 流式请求中：LLM 段结束后由后端 llm_stream_end / conclusion_loading 驱动输入框浅灰引导语 */
+  const streamTailInputPlaceholder = useMemo(() => {
+    if (!sending) return null;
+    if (waitingForConclusionCardUi) return t('explore.chat.placeholderAwaitingConclusionCard');
+    if (postLlmTailActive) return t('explore.chat.placeholderPostLlmProcessing');
+    return null;
+  }, [sending, waitingForConclusionCardUi, postLlmTailActive, t]);
+
   /** 用户曾在本对话中通过结论卡选择「继续完善/我想再聊聊」并折叠卡片后，才显示「确认稿」入口 */
   const userChoseRefineAfterConclusion = messages.some(
     (m) => m.type === 'dimension_conclusion' && m.conclusionCollapsed
@@ -1391,7 +1403,8 @@ export default function ChatPhasePage() {
     regenerateRowLabel?: string
   ) => {
     const text = prefill ?? input.trim();
-    if (!activationCode || !text || sending || ruminationGuideBusy || isReadOnly) return;
+    if (!activationCode || !text || sending || ruminationGuideBusy || requestConclusionDraftBusy || isReadOnly)
+      return;
     if (phase === 'rumination' && ruminationTableNavLoading) return;
     if (!prefill) setInput('');
     const now = Date.now();
@@ -1421,6 +1434,8 @@ export default function ChatPhasePage() {
     setMessages((prev) => [...prev, ...toAdd]);
     setChatError(null);
     setConclusionLoading(false);
+    setPostLlmTailActive(false);
+    setWaitingForConclusionCardUi(false);
     setSending(true);
     stickToBottomRef.current = true;
 
@@ -1534,12 +1549,17 @@ export default function ChatPhasePage() {
                 )
               );
             }
+            if (payload.llm_stream_end) {
+              setPostLlmTailActive(true);
+            }
             if (payload.conclusion_loading) {
               setConclusionLoading(true);
+              setWaitingForConclusionCardUi(true);
             }
             if (payload.dimension_conclusion) {
               assistantHasVisibleOutput = true;
               setConclusionLoading(false);
+              setWaitingForConclusionCardUi(false);
               const concl = payload.dimension_conclusion as DimensionConclusionData;
               const conclMsg: ThreadMessage = {
                 id: `concl_${Date.now()}`,
@@ -1607,6 +1627,8 @@ export default function ChatPhasePage() {
     } finally {
       setSending(false);
       setConclusionLoading(false);
+      setPostLlmTailActive(false);
+      setWaitingForConclusionCardUi(false);
       setMessages((prev) => {
         const normalized = prev.map((m) =>
           m.id === assistantId && m.thinkStreaming
@@ -2984,8 +3006,26 @@ export default function ChatPhasePage() {
                     (phase === 'rumination' && ruminationTableNavLoading && !sending)
                       ? ' opacity-40 pointer-events-none'
                       : ''
-                  }`}
+                  } !flex !flex-col !items-stretch gap-1.5`}
                 >
+                  {(requestConclusionDraftBusy ||
+                    (sending &&
+                      (postLlmTailActive ||
+                        waitingForConclusionCardUi ||
+                        conclusionLoading))) && (
+                    <p
+                      className="w-full shrink-0 px-1 text-left text-xs leading-snug text-neutral-500"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      {requestConclusionDraftBusy ||
+                      waitingForConclusionCardUi ||
+                      (sending && conclusionLoading)
+                        ? t('explore.chat.placeholderAwaitingConclusionCard')
+                        : t('explore.chat.placeholderPostLlmProcessing')}
+                    </p>
+                  )}
+                  <div className="flex w-full min-w-0 items-end gap-2.5">
                   <textarea
                     ref={inputRef}
                     value={input}
@@ -2996,6 +3036,7 @@ export default function ChatPhasePage() {
                         if (
                           !sending &&
                           !ruminationGuideBusy &&
+                          !requestConclusionDraftBusy &&
                           !isReadOnly &&
                           !(phase === 'rumination' && ruminationTableNavLoading)
                         ) {
@@ -3004,7 +3045,8 @@ export default function ChatPhasePage() {
                       }
                     }}
                     placeholder={
-                      phaseInteractionLocked
+                      streamTailInputPlaceholder ??
+                      (phaseInteractionLocked
                         ? t('explore.chat.placeholderPhaseLocked')
                         : isReadOnly
                           ? t('explore.chat.placeholderReadOnly')
@@ -3014,12 +3056,13 @@ export default function ChatPhasePage() {
                               ? t('explore.chat.ruminationUi.placeholderWithRow', {
                                   label: ruminationRowContext.label,
                                 })
-                              : t('explore.chat.inputPlaceholderCareering')
+                              : t('explore.chat.inputPlaceholderCareering'))
                     }
                     rows={1}
                     disabled={
                       sending ||
                       ruminationGuideBusy ||
+                      requestConclusionDraftBusy ||
                       isReadOnly ||
                       (phase === 'rumination' && ruminationTableNavLoading)
                     }
@@ -3074,6 +3117,7 @@ export default function ChatPhasePage() {
                         <ArrowUp size={16} strokeWidth={2.2} />
                       )}
                     </button>
+                  </div>
                   </div>
                 </div>
               </form>

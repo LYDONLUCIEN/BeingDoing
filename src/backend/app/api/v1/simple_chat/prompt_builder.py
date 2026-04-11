@@ -16,13 +16,13 @@ SIMPLE_QUESTION_SAMPLE_SIZE = 6
 
 
 def _phase_to_loader_category(phase: str) -> str:
-    """simple_chat 的 phase 映射到 KnowledgeLoader 的 category"""
+    """simple_chat 的 phase 映射到 KnowledgeLoader 的 category（与 question.md 中 ## 分段一致）。"""
     mapping = {
         "values": "values",
         "strengths": "strengths",
         "interests": "interests",
-        "purpose": "values",
-        "rumination": "values",
+        "purpose": "purpose",
+        "rumination": "values",  # 沉淀阶段不在提示词中注入题库；此处仅为映射表完备性
     }
     return mapping.get(phase, "values")
 

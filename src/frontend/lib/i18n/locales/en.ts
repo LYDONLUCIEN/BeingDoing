@@ -116,6 +116,8 @@ export const en = {
       placeholder: 'Share your thoughts...',
       placeholderReadOnly: 'This conversation is completed',
       placeholderRefine: 'Add more or go deeper…',
+      placeholderPostLlmProcessing: 'Processing, please wait…',
+      placeholderAwaitingConclusionCard: 'Generating your conclusion card, please wait…',
       completeStep: 'Complete This Step',
       completeAndContinue: 'Complete & Continue',
       selectCompletedHint: 'Please select a completed conversation',

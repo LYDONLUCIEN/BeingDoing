@@ -138,7 +138,10 @@ def resolve_report_context(
     if not report:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="报告初始化失败")
 
-    phase_step = ReportRegistry.normalize_step_id(phase)
+    try:
+        phase_step = ReportRegistry.resolve_simple_chat_phase(phase)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     logical_session_id = resolve_default_logical_thread_id(
         registry, report, phase_step, thread_id, rec.session_id,
     )

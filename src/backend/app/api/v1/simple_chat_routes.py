@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Sequence, Tuple
 import asyncio
 import json
-import random
 import logging
 import re
 
@@ -23,7 +22,6 @@ from app.core.llmapi import get_default_llm_provider, LLMMessage
 from app.core.llmapi.factory import create_llm_provider
 from app.api.v1.auth import get_current_user, _is_debug_admin
 from app.config.settings import settings
-from app.core.knowledge.loader import KnowledgeLoader
 from app.utils.simple_activation_manager import (
     SimpleActivationManager,
     ActivationStatus,
@@ -145,6 +143,8 @@ MAX_HISTORY_TURNS = 30
 _LLM_SEM = None
 PENDING_JUDGE_TIMEOUT_SECONDS = 20
 CONCLUSION_GEN_TIMEOUT_SECONDS = 25
+# 独立 POST「确认稿」可放宽：流式内嵌结论生成仍用 CONCLUSION_GEN_TIMEOUT_SECONDS，避免长占 SSE
+CONCLUSION_DRAFT_HTTP_TIMEOUT_SECONDS = 90
 PENDING_HEARTBEAT_SECONDS = 2.0
 CONCLUSION_STATE_NONE = "none"
 CONCLUSION_STATE_PENDING = "pending"
@@ -158,6 +158,23 @@ CONCLUSION_REJECT_SYSTEM_NUDGE = (
     "若当前信息已足以给出待确认草案，请在本轮回复中按需输出 STATE_JSON，且 state 须为 pending_ready，"
     "draft 含 summary 与 keywords（遵守系统内嵌协议）。"
 )
+
+
+def _trim_history_messages_for_llm(
+    history_messages: List[dict], max_user_turns: int = MAX_HISTORY_TURNS
+) -> List[dict]:
+    """与主对话流一致：仅保留最近若干用户轮内的消息，抑制上下文与 token 随时间线性膨胀。"""
+    turn_count = 0
+    trimmed: List[dict] = []
+    for m in reversed(history_messages or []):
+        role = m.get("role") or "user"
+        if role == "user":
+            turn_count += 1
+            if turn_count > max_user_turns:
+                break
+        if role in {"user", "assistant", "system"}:
+            trimmed.insert(0, m)
+    return trimmed
 
 
 def _count_user_messages(messages: Optional[List[dict]]) -> int:
@@ -311,6 +328,8 @@ async def _get_or_create_thread_question_bank(
     phase_step: str,
 ) -> str:
     """线程级固定 question_bank：首次生成并写入 metadata，后续复用。"""
+    if phase_step == "rumination":
+        return ""
     conv_data = await conv_manager.get_conversation_data(session_id, category)
     meta = conv_data.get("metadata") or {}
     qb = meta.get("question_bank")
@@ -641,6 +660,14 @@ def _resolve_activation_for_user(
     return rec
 
 
+def _require_simple_chat_phase(phase: Optional[str]) -> str:
+    """将 phase 解析为规范 step id；非法时返回 400，避免静默退回 values。"""
+    try:
+        return ReportRegistry.resolve_simple_chat_phase(phase)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+
 def _resolve_report_context(
     manager: SimpleActivationManager,
     activation_code: str,
@@ -667,7 +694,7 @@ def _resolve_report_context(
     if not report:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="报告初始化失败")
 
-    phase_step = ReportRegistry.normalize_step_id(phase)
+    phase_step = _require_simple_chat_phase(phase)
     logical_session_id = _resolve_default_logical_thread_id(
         registry,
         report,
@@ -690,52 +717,6 @@ def _resolve_report_context(
     category = _storage_category(phase_step, logical_session_id)
     conv_manager = ConversationFileManager(base_dir=str(root / "reports"))
     return rec, report, phase_step, logical_session_id, category, conv_manager
-
-
-def _phase_to_loader_category(phase: str) -> str:
-    """simple_chat 的 phase 映射到 KnowledgeLoader 的 category"""
-    if phase == "values":
-        return "values"
-    if phase == "strengths":
-        return "strengths"
-    if phase == "interests":
-        return "interests"
-    if phase == "purpose":
-        return "values"  # purpose 阶段复用 values 题库，或可后续单独建
-    if phase == "rumination":
-        return "values"  # rumination 综合四维，复用 values 题库
-    return "values"
-
-
-def _get_random_questions_for_phase(phase: str, n: int = SIMPLE_QUESTION_SAMPLE_SIZE) -> str:
-    """
-    从 question.md 中按阶段加载问题，随机抽取 n 个，格式化为字符串。
-     phase: values | strengths | interests
-    """
-    try:
-        loader = KnowledgeLoader()
-        all_questions = loader.load_questions()
-        category = _phase_to_loader_category(phase)
-        phase_questions = [q for q in all_questions if q.category == category]
-        if not phase_questions:
-            return "（暂无该阶段题库）"
-        sampled = random.sample(phase_questions, min(n, len(phase_questions)))
-        lines = [f"{i+1}. {q.content}" for i, q in enumerate(sampled)]
-        return "\n".join(lines)
-    except Exception:
-        return "（题库加载失败）"
-
-
-def _build_fallback_opening_question(phase: str) -> str:
-    """当 LLM 不可用时，提供一个可继续流程的兜底开场问题。"""
-    fallback_map = {
-        "values": "我们先从价值观开始：最近一次让你“很有意义感”的事情是什么？为什么它对你重要？",
-        "strengths": "我们先聊聊优势：在别人眼里，你最常被夸“做得自然且稳定”的一件事是什么？",
-        "interests": "我们先聊热忱：哪类话题会让你不知不觉投入很久、并且越做越有能量？",
-        "purpose": "我们先聊使命：如果你的工作能持续帮助一类人，你最希望他们发生什么改变？",
-        "rumination": "恭喜你进入最后一轮！我们将综合你的价值观、优势、热爱和使命，帮你确定三个职业发展方向。准备好开始了吗？",
-    }
-    return fallback_map.get(phase, fallback_map["values"])
 
 
 def _extract_json_object(text: str) -> Optional[Dict]:
@@ -1037,8 +1018,8 @@ def _normalize_token_usage(usage: Optional[dict]) -> dict:
 class SimpleChatRequest(BaseModel):
     activation_code: str
     message: str
-    # 阶段：values / strengths / interests
-    phase: Optional[str] = "values"
+    # 阶段：values / strengths / interests / purpose / rumination（必填，禁止省略）
+    phase: str
 
 
 class SimpleChatResponse(BaseModel):
@@ -1049,7 +1030,7 @@ class SimpleChatResponse(BaseModel):
 
 class SimpleInitRequest(BaseModel):
     activation_code: str
-    phase: Optional[str] = "values"
+    phase: str
     thread_id: Optional[str] = None  # 新建对话时传入，后端按 thread_id 创建独立存储
 
 
@@ -1062,7 +1043,7 @@ class SimpleHistoryResponse(BaseModel):
 class SimpleChatStreamRequest(BaseModel):
     activation_code: str
     message: str
-    phase: Optional[str] = "values"
+    phase: str
     thread_id: Optional[str] = None  # 当前对话 id，用于加载/保存到对应记录
 
 
@@ -2554,12 +2535,11 @@ async def simple_chat(
     前端已全部迁移到 /message/stream 流式端点，此端点仅作降级保留。
     """
     manager = get_activation_manager_for_code(request.activation_code)
-    phase = (request.phase or "values").strip() or "values"
     rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
         manager=manager,
         activation_code=request.activation_code,
         current_user=current_user,
-        phase=phase,
+        phase=request.phase,
         thread_id=None,
     )
 
@@ -2724,12 +2704,11 @@ async def simple_init(
 
 async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> SimpleChatResponse:
     manager = get_activation_manager_for_code(request.activation_code)
-    phase = (request.phase or "values").strip() or "values"
     rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
         manager=manager,
         activation_code=request.activation_code,
         current_user=current_user,
-        phase=phase,
+        phase=request.phase,
         thread_id=request.thread_id,
     )
     if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
@@ -2773,7 +2752,7 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
     )
 
     # 沉淀阶段：主交互在左侧筛选表，右侧仅补充说明；不写「请向我提问」式首轮 LLM
-    if phase == "rumination":
+    if phase_step == "rumination":
         reply_text = (
             "已进入沉淀阶段：请从左侧表格按步骤完成筛选与确认；需要时可在右侧补充想法，不必先发言。"
         )
@@ -2902,7 +2881,7 @@ class RequestConclusionDraftBody(BaseModel):
     """用户主动请求根据当前对话生成待确认结论草案（不走双模型兜底）。"""
 
     activation_code: str
-    phase: str = "values"
+    phase: str
     thread_id: str
 
 
@@ -2913,13 +2892,12 @@ async def reopen_thread(
 ):
     """用户选择「再聊聊」完善答案时，清除完成状态以便继续对话"""
     manager = get_activation_manager_for_code(request.activation_code)
-    phase_val = (request.phase or "values").strip() or "values"
     try:
         rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
             manager=manager,
             activation_code=request.activation_code,
             current_user=current_user,
-            phase=phase_val,
+            phase=request.phase,
             thread_id=request.thread_id,
         )
     except HTTPException:
@@ -3014,15 +2992,18 @@ async def request_conclusion_draft(
     request: RequestConclusionDraftBody,
     current_user: dict = Depends(get_current_user),
 ):
-    """根据当前对话生成待确认结论草案（跳过「是否已完成探索」判定，供用户点「确认稿」主动触发）。"""
+    """根据当前对话生成待确认结论草案（跳过「是否已完成探索」判定）。
+
+    说明：主对话流中模型仍可在满足条件时通过 STATE_JSON（pending_ready）自动推送结论卡；
+    本接口为「确认稿」兜底，不替代自动路径。
+    """
     manager = get_activation_manager_for_code(request.activation_code)
-    phase_val = (request.phase or "values").strip() or "values"
     try:
         rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
             manager=manager,
             activation_code=request.activation_code,
             current_user=current_user,
-            phase=phase_val,
+            phase=request.phase,
             thread_id=request.thread_id,
         )
     except HTTPException:
@@ -3052,7 +3033,8 @@ async def request_conclusion_draft(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="本维度对话已确认完成，无需再生成确认稿",
         )
-    messages = conv_data.get("messages") or []
+    raw_messages = conv_data.get("messages") or []
+    messages = _trim_history_messages_for_llm(raw_messages)
     conv_history = [
         {"role": m.get("role", "user"), "content": m.get("content", "")}
         for m in messages
@@ -3069,12 +3051,12 @@ async def request_conclusion_draft(
                 llm_provider=reasoning_llm,
                 skip_completion_check=True,
             ),
-            timeout=CONCLUSION_GEN_TIMEOUT_SECONDS,
+            timeout=CONCLUSION_DRAFT_HTTP_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError:
         logger.warning(
             "[request_conclusion_draft] timeout after %ss phase=%s thread=%s",
-            CONCLUSION_GEN_TIMEOUT_SECONDS,
+            CONCLUSION_DRAFT_HTTP_TIMEOUT_SECONDS,
             phase_step,
             logical_session_id,
         )
@@ -3088,7 +3070,7 @@ async def request_conclusion_draft(
             detail="暂无法从当前对话生成确认稿，请多聊几句再试",
         )
     draft_clean = sanitize_pending_conclusion_draft(phase_step, dict(result))
-    uc = _count_user_messages(messages)
+    uc = _count_user_messages(raw_messages)
     await conv_manager.update_metadata(
         session_id,
         category,
@@ -3132,12 +3114,11 @@ async def mark_thread_complete(
 ):
     """标记某对话为已完成（用户点击「确认没有问题」后调用）"""
     manager = get_activation_manager_for_code(request.activation_code)
-    phase_val = (request.phase or "values").strip() or "values"
     rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
         manager=manager,
         activation_code=request.activation_code,
         current_user=current_user,
-        phase=phase_val,
+        phase=request.phase,
         thread_id=request.thread_id,
     )
     root = get_effective_simple_root(rec)
@@ -3233,7 +3214,7 @@ async def mark_thread_complete(
 @router.get("/threads", response_model=SimpleHistoryResponse)
 async def list_threads(
     activation_code: str,
-    phase: Optional[str] = "values",
+    phase: str,
     current_user: dict = Depends(get_current_user),
 ):
     """
@@ -3241,8 +3222,7 @@ async def list_threads(
     返回 record.json 中 steps[phase].session_ids 对应的线程元信息。
     """
     manager = get_activation_manager_for_code(activation_code)
-    phase_val = (phase or "values").strip() or "values"
-    phase_step = ReportRegistry.normalize_step_id(phase_val)
+    phase_step = _require_simple_chat_phase(phase)
     rec = _resolve_activation_for_user(manager, activation_code, current_user)
     user_id = (current_user or {}).get("user_id")
     if not user_id:
@@ -3314,7 +3294,7 @@ async def list_threads(
 @router.get("/history", response_model=SimpleHistoryResponse)
 async def simple_history(
     activation_code: str,
-    phase: Optional[str] = "values",
+    phase: str,
     thread_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
 ):
@@ -3323,12 +3303,11 @@ async def simple_history(
     """
     try:
         manager = get_activation_manager_for_code(activation_code)
-        phase_val = (phase or "values").strip() or "values"
         rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
             manager=manager,
             activation_code=activation_code,
             current_user=current_user,
-            phase=phase_val,
+            phase=phase,
             thread_id=thread_id,
         )
         session_id = report["report_id"]
@@ -3399,12 +3378,11 @@ async def simple_chat_stream(
     - 结束时保存完整助手回复
     """
     manager = get_activation_manager_for_code(request.activation_code)
-    phase = (request.phase or "values").strip() or "values"
     rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
         manager=manager,
         activation_code=request.activation_code,
         current_user=current_user,
-        phase=phase,
+        phase=request.phase,
         thread_id=request.thread_id,
     )
     if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
@@ -3481,17 +3459,7 @@ async def simple_chat_stream(
         if anchor_text:
             llm_messages.append(LLMMessage(role="assistant", content=f"[此前对话要点]\n{anchor_text}"))
 
-        # 仅保留最近 N 轮，减少 token 与延迟
-        turn_count = 0
-        trimmed: List[dict] = []
-        for m in reversed(history_messages):
-            role = m.get("role") or "user"
-            if role == "user":
-                turn_count += 1
-                if turn_count > MAX_HISTORY_TURNS:
-                    break
-            if role in {"user", "assistant", "system"}:
-                trimmed.insert(0, m)
+        trimmed = _trim_history_messages_for_llm(history_messages)
 
         for m in trimmed:
             role = m.get("role") or "user"
@@ -3608,6 +3576,8 @@ async def simple_chat_stream(
             pending_msg = decision.get("content", "")
 
             if pending_state == "confirmed":
+                # 与主对话流一致：pending 判定流结束后进入非流式推理前，通知前端可切换「后台处理中」提示
+                yield f"data: {json.dumps({'llm_stream_end': True}, ensure_ascii=False)}\n\n"
                 reasoning_llm = _get_reasoning_llm_provider(vip_level=vip_level)
                 try:
                     dimension_conclusion = await asyncio.wait_for(
@@ -3645,7 +3615,7 @@ async def simple_chat_stream(
                     transition_msg = pending_msg or "收到你的确认，我将生成结论卡。"
                     yield f"data: {{\"chunk\": {json.dumps(transition_msg, ensure_ascii=False)} }}\n\n"
                     full_reply = transition_msg
-                    yield f"data: {{\"conclusion_loading\": true}}\n\n"
+                    yield f"data: {json.dumps({'conclusion_loading': True}, ensure_ascii=False)}\n\n"
                     yield f"data: {{\"dimension_conclusion\": {json.dumps(dimension_conclusion, ensure_ascii=False)} }}\n\n"
                     try:
                         await conv_manager.append_message(
@@ -3865,6 +3835,9 @@ async def simple_chat_stream(
                 stream_usage.get("prompt_tokens"),
             )
 
+        # 主对话模型流式输出已结束；后续为解析、落盘、结论卡与埋点，前端可切换「后台处理中」占位提示
+        yield f"data: {json.dumps({'llm_stream_end': True}, ensure_ascii=False)}\n\n"
+
         # 3) 解析模型状态输出（STATE_JSON）并驱动 pending 状态
         raw_full_reply = full_reply
         visible_reply, state_obj = _split_visible_reply_and_state(raw_full_reply)
@@ -3906,7 +3879,9 @@ async def simple_chat_stream(
             state_name = str(state_obj.get("state") or "").strip().lower()
             draft = state_obj.get("draft")
             if state_name == "pending_ready" and isinstance(draft, dict):
+                # 自动出卡：主模型在可见正文后附带 STATE_JSON pending_ready，经落库后再 SSE 推送 dimension_conclusion
                 draft_to_save = sanitize_pending_conclusion_draft(phase_step, dict(draft))
+                yield f"data: {json.dumps({'conclusion_loading': True}, ensure_ascii=False)}\n\n"
                 await conv_manager.update_metadata(
                     session_id,
                     category,
@@ -3996,8 +3971,7 @@ async def delete_thread(
     删除某个线程：同时删除后端 report 中的会话文件与 session 绑定，保证前后端一致。
     """
     manager = get_activation_manager_for_code(request.activation_code)
-    phase_val = (request.phase or "values").strip() or "values"
-    phase_step = ReportRegistry.normalize_step_id(phase_val)
+    phase_step = _require_simple_chat_phase(request.phase)
     rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
     user_id = (current_user or {}).get("user_id")
     if not user_id:

@@ -111,6 +111,8 @@ export const zh = {
       placeholder: '说说你的想法...',
       placeholderReadOnly: '此对话已完成',
       placeholderRefine: '继续完善，说说你想补充或深化的…',
+      placeholderPostLlmProcessing: '正在处理中，请稍后…',
+      placeholderAwaitingConclusionCard: '请稍后，正在为您生成结论卡片…',
       completeStep: '完成此步，进入下一步',
       completeAndContinue: '完成并继续',
       selectCompletedHint: '请选中一个已完成的对话',
