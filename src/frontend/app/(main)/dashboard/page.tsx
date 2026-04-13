@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Check, Lock, ChevronRight } from 'lucide-react';
 import { PHASES, loadSession, saveSession, setLastActivationCode, applyExploreResumeToSession, type PhaseKey } from '@/lib/explore/session';
 import { useLocale } from '@/hooks/useLocale';
 import { apiClient } from '@/lib/api/client';
+import { fetchExploreResumeFromJourneys } from '@/lib/explore/journeyResume';
 
 const PHASE_COLORS = [
   'var(--bd-phase-values)',
@@ -26,9 +27,30 @@ interface JourneyItem {
   is_latest?: boolean;
 }
 
+/**
+ * 与后端 compute_explore_resume / applyExploreResumeToSession 对齐：无 report 或仅有空对象时，
+ * 不能当成「五维全未解锁」，否则五个节点全灰锁，用户会以为「没有节点」。
+ */
+function effectiveResumeForNodes(resume?: JourneyItem['explore_resume']) {
+  if (!resume?.resume_phase) {
+    return { resume_phase: 'values' as PhaseKey, unlocked_phases: ['values'] as PhaseKey[] };
+  }
+  const rp = resume.resume_phase as PhaseKey;
+  if (!PHASES.some((p) => p.key === rp)) {
+    return { resume_phase: 'values' as PhaseKey, unlocked_phases: ['values'] as PhaseKey[] };
+  }
+  let unlocked = (resume.unlocked_phases ?? []) as PhaseKey[];
+  if (unlocked.length === 0) {
+    const idx = PHASES.findIndex((p) => p.key === rp);
+    unlocked = PHASES.slice(0, idx + 1).map((p) => p.key);
+  }
+  return { resume_phase: rp, unlocked_phases: unlocked };
+}
+
 function buildNodes(resume?: JourneyItem['explore_resume']) {
-  const unlocked = (resume?.unlocked_phases ?? []) as PhaseKey[];
-  const current = (resume?.resume_phase ?? 'values') as PhaseKey;
+  const eff = effectiveResumeForNodes(resume);
+  const unlocked = eff.unlocked_phases;
+  const current = eff.resume_phase;
   return PHASES.map((p, idx) => ({
     id: p.key,
     label: p.label,
@@ -51,7 +73,7 @@ function JourneyCard({
   t: (k: string) => string;
 }) {
   const nodes = buildNodes(journey.explore_resume);
-  const resumePhase = journey.explore_resume?.resume_phase ?? 'values';
+  const resumePhase = effectiveResumeForNodes(journey.explore_resume).resume_phase;
 
   return (
     <div className={`bg-bd-card/80 backdrop-blur-lg border border-bd-border rounded-2xl shadow-sm ${featured ? 'p-8' : 'p-5'}`}>
@@ -118,28 +140,49 @@ export default function DashboardCurrentProgressPage() {
   const router = useRouter();
   const [journeys, setJourneys] = useState<JourneyItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await apiClient.get('/simple-auth/journeys');
-        const list = (res.data?.journeys ?? []) as JourneyItem[];
-        setJourneys(list);
-      } catch {
-        // 后端不可用时不显示任何 journey
-      } finally {
-        setLoading(false);
+  const fetchJourneys = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const res = await apiClient.get('/simple-auth/journeys');
+      const list = (res.data?.journeys ?? []) as JourneyItem[];
+      setJourneys(list);
+      setFetchError(null);
+    } catch {
+      // 仅非静默请求提示错误；静默失败保留当前列表，不打断用户
+      if (!silent) {
+        setFetchError('无法加载旅程数据，请检查网络或稍后重试');
       }
-    })();
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, []);
 
-  const handleNavigate = (code: string, phase: string) => {
-    // 同步 session 到 localStorage 并跳转
+  useEffect(() => {
+    void fetchJourneys(false);
+  }, [fetchJourneys]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void fetchJourneys(true);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [fetchJourneys]);
+
+  const handleNavigate = async (code: string, phase: string) => {
     setLastActivationCode(code);
-    const journey = journeys.find((j) => j.activation_code === code);
-    if (journey?.explore_resume) {
+    let resume = journeys.find((j) => j.activation_code === code)?.explore_resume;
+    try {
+      const fresh = await fetchExploreResumeFromJourneys(code);
+      if (fresh?.resume_phase) resume = fresh;
+    } catch {
+      /* 使用列表中的缓存 resume */
+    }
+    if (resume?.resume_phase) {
       const session = loadSession(code);
-      const updated = applyExploreResumeToSession(session, journey.explore_resume);
+      const updated = applyExploreResumeToSession(session, resume);
       saveSession({ ...updated, activationCode: code });
     }
     router.push(`/explore/chat/${phase}`);
@@ -162,6 +205,20 @@ export default function DashboardCurrentProgressPage() {
           {others.map((j) => (
             <JourneyCard key={j.activation_code} journey={j} onNavigate={handleNavigate} t={t} />
           ))}
+        </div>
+      ) : fetchError ? (
+        <div className="bg-bd-card/80 backdrop-blur-lg border border-bd-border rounded-2xl p-8 text-center">
+          <p className="text-red-600/90 dark:text-red-400/90 mb-4">{fetchError}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setFetchError(null);
+              void fetchJourneys(false);
+            }}
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-medium bg-bd-ui-accent text-bd-ui-accent-fg hover:opacity-90"
+          >
+            重试
+          </button>
         </div>
       ) : (
         <div className="bg-bd-card/80 backdrop-blur-lg border border-bd-border rounded-2xl p-8 text-center">

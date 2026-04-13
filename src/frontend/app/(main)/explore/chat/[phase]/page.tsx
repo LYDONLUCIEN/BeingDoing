@@ -237,6 +237,8 @@ export default function ChatPhasePage() {
   const pathname = usePathname();
   const { t } = useLocale();
   const phase = (params.phase as string) as PhaseKey;
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
 
   const [session, setSession] = useState<ExploreSession | null>(null);
   const [activationCode, setActivationCode] = useState<string | null>(null);
@@ -274,6 +276,8 @@ export default function ChatPhasePage() {
   const [waitingForConclusionCardUi, setWaitingForConclusionCardUi] = useState(false);
   const [adminDebugBypass, setAdminDebugBypass] = useState(false);
   const [adminPolicyLoaded, setAdminPolicyLoaded] = useState(false);
+  /** 已从 /simple-auth/journeys 拉取并对齐 localStorage 后，才用 unlockedPhases 做路由校验，避免刷新时先用陈旧缓存误跳转 */
+  const [exploreResumeSynced, setExploreResumeSynced] = useState(false);
   const [stepLocked, setStepLocked] = useState(false);
   /** 报告里该 step 的 selected_session_id（与 /threads 里 selected: true 对齐），用于已锁定阶段下限制「完成并继续」 */
   const [reportSelectedThreadId, setReportSelectedThreadId] = useState<string | null>(null);
@@ -511,11 +515,11 @@ export default function ChatPhasePage() {
       router.replace('/explore/survey');
       return;
     }
-    if (!adminDebugBypass && !s.unlockedPhases.includes(phase)) {
+    if (!adminDebugBypass && exploreResumeSynced && !s.unlockedPhases.includes(phase)) {
       router.replace(`/explore/chat/${s.currentPhase}`);
       return;
     }
-  }, [phase, router, adminPolicyLoaded, adminDebugBypass]);
+  }, [phase, router, adminPolicyLoaded, adminDebugBypass, exploreResumeSynced]);
 
   /**
    * phase / 激活码切换时，在 useEffect 批处理前将 threadsFetched 置为 false。
@@ -1073,27 +1077,44 @@ export default function ChatPhasePage() {
     [activationCode, phase, session, canContinue, router]
   );
 
-  // 与激活页一致：用旅程列表中的 explore_resume 对齐「当前未完成 step」，避免书签/缓存仍停在已提交阶段
+  // 与激活页一致：用旅程列表中的 explore_resume 对齐进度；仅当 URL 阶段未解锁时才拉回「当前应做」阶段（已解锁阶段可自由回看，如个人空间旅程入口）
   useEffect(() => {
-    if (!activationCode || adminDebugBypass || !adminPolicyLoaded) return;
+    if (!adminPolicyLoaded) return;
+    if (adminDebugBypass) {
+      setExploreResumeSynced(true);
+      return;
+    }
+    if (!activationCode) return;
+
     let cancelled = false;
+    setExploreResumeSynced(false);
+
     void (async () => {
-      const resume = await fetchExploreResumeFromJourneys(activationCode);
-      if (cancelled || !resume?.resume_phase) return;
-      const rp = resume.resume_phase as PhaseKey;
-      if (!PHASES.some((p) => p.key === rp)) return;
-      const s = loadSession(activationCode);
-      const next = applyExploreResumeToSession(s, resume);
-      saveSession(next);
-      setSession(next);
-      if (phase !== rp) {
-        router.replace(`/explore/chat/${rp}`);
+      try {
+        const resume = await fetchExploreResumeFromJourneys(activationCode);
+        if (cancelled) return;
+        if (resume?.resume_phase) {
+          const rp = resume.resume_phase as PhaseKey;
+          if (PHASES.some((p) => p.key === rp)) {
+            const s = loadSession(activationCode);
+            const next = applyExploreResumeToSession(s, resume);
+            saveSession(next);
+            setSession(next);
+            const urlPhase = phaseRef.current;
+            if (!next.unlockedPhases.includes(urlPhase)) {
+              router.replace(`/explore/chat/${rp}`);
+            }
+          }
+        }
+      } finally {
+        if (!cancelled) setExploreResumeSynced(true);
       }
     })();
+
     return () => {
       cancelled = true;
     };
-  }, [activationCode, adminDebugBypass, adminPolicyLoaded, phase, router]);
+  }, [activationCode, adminDebugBypass, adminPolicyLoaded, router]);
 
   const checkScrollPosition = useCallback(() => {
     const el = chatBodyRef.current;
