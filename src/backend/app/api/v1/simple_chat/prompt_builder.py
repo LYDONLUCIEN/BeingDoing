@@ -46,11 +46,11 @@ def get_random_questions_for_phase(phase: str, n: int = SIMPLE_QUESTION_SAMPLE_S
 def build_fallback_opening_question(phase: str) -> str:
     """当 LLM 不可用时，提供一个可继续流程的兜底开场问题。"""
     fallback_map = {
-        "values": "我们先从价值观开始：最近一次让你\u201c很有意义感\u201d的事情是什么？为什么它对你重要？",
-        "strengths": "我们先聊聊优势：在别人眼里，你最常被夸\u201c做得自然且稳定\u201d的一件事是什么？",
-        "interests": "我们先聊热忱：哪类话题会让你不知不觉投入很久、并且越做越有能量？",
-        "purpose": "我们先聊使命：如果你的工作能持续帮助一类人，你最希望他们发生什么改变？",
-        "rumination": "恭喜你进入最后一轮！我们将综合你的价值观、优势、热爱和使命，帮你确定三个职业发展方向。准备好开始了吗？",
+        "values": "hi,我们先从价值观开始：最近一次让你\u201c很有意义感\u201d的事情是什么？为什么它对你重要？",
+        "strengths": "hi,我们先聊聊优势：在别人眼里，你最常被夸\u201c做得自然且稳定\u201d的一件事是什么？",
+        "interests": "hi,我们先聊热忱：哪类话题会让你不知不觉投入很久、并且越做越有能量？",
+        "purpose": "hi,我们先聊使命：如果你的工作能持续帮助一类人，你最希望他们发生什么改变？",
+        "rumination": "hi,恭喜你进入最后一轮！我们将综合你的价值观、优势、热爱和使命，帮你确定三个职业发展方向。准备好开始了吗？",
     }
     return fallback_map.get(phase, fallback_map["values"])
 
