@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.domain.conclusion_card_goals import cap_strengths_keywords_list
+from app.utils.survey_storage import load_dimension_conclusions
 
 # 与前端「假设」列「暂未选定」一致；历史数据可能仍为「待定」
 RUMINATION_HYP_PENDING_MARKERS = frozenset({"待定", "暂未选定"})
@@ -316,6 +317,20 @@ def extract_from_prior_context(prior_context: str) -> Tuple[List[str], List[str]
     return (values, strengths, interests, purpose)
 
 
+def _keywords_from_stored_dimension_conclusion(
+    conclusion: Optional[Dict[str, Any]], phase: str, limit: int
+) -> List[str]:
+    if not isinstance(conclusion, dict):
+        return []
+    k = conclusion.get("keywords") or []
+    if not isinstance(k, list):
+        return []
+    out = [str(x).strip() for x in k if str(x).strip()]
+    if phase == "strengths":
+        out = cap_strengths_keywords_list(out)
+    return out[:limit]
+
+
 def extract_dimension_lists_for_rumination_table(
     reports_root: str,
     report_id: str,
@@ -324,12 +339,12 @@ def extract_dimension_lists_for_rumination_table(
     """
     为筛选表生成「热爱×优势」等行数据用的关键词列表。
 
-    优先用 report record.json 中各维 anchor_summary.goals；不足时按阶段读取
-    prior_context_{phase}.txt 全文摘词（单文件上限约 12k），避免依赖合并 prior 再被
-    PRIOR_CONTEXT_MAX_CHARS 截断后正则拿不到「热忱/禀赋」段落。
+    优先用 report record.json 中各维 anchor_summary.goals；其次 dimension_conclusions.json；
+    再回退 prior_context_{phase}.txt 全文摘词。
     """
     v, s, i, p = extract_lists_from_report_record(record_obj)
     report_dir = Path(reports_root) / report_id
+    store = load_dimension_conclusions(report_id, reports_root)
 
     def _read_phase_file(phase_key: str) -> str:
         path = report_dir / f"prior_context_{phase_key}.txt"
@@ -342,12 +357,20 @@ def extract_dimension_lists_for_rumination_table(
         return raw[:12000] if len(raw) > 12000 else raw
 
     if not v:
+        v = _keywords_from_stored_dimension_conclusion(store.get("values"), "values", 12)
+    if not v:
         v = _extract_keywords(_read_phase_file("values"), 12)
+    if not s:
+        s = _keywords_from_stored_dimension_conclusion(store.get("strengths"), "strengths", 12)
     if not s:
         s = cap_strengths_keywords_list(_extract_keywords(_read_phase_file("strengths"), 12))
     if not i:
+        i = _keywords_from_stored_dimension_conclusion(store.get("interests"), "interests", 8)
+    if not i:
         i = _extract_keywords(_read_phase_file("interests"), 8)
     purpose_out: List[str] = list(p) if p else []
+    if not purpose_out:
+        purpose_out = _keywords_from_stored_dimension_conclusion(store.get("purpose"), "purpose", 8)
     if not purpose_out:
         purpose_out = _extract_keywords(_read_phase_file("purpose"), 8)
     return (v, cap_strengths_keywords_list(s), i, purpose_out)

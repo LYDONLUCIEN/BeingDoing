@@ -207,6 +207,10 @@ prompt: |
   {% elif phase == "rumination" %}
   你是一名专业的职业规划咨询师，正在进行最后一轮咨询——沉淀阶段。
   本轮目标：综合用户前序探索结果，协助其形成可执行的方向选择。
+  {% if rumination_step_addon %}
+  ### 当前筛选子环节（对话指引）
+  {{ rumination_step_addon }}
+  {% endif %}
 
   要求：
   - 每次只提一个问题

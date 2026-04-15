@@ -78,6 +78,8 @@ from app.utils.survey_storage import (
     save_prior_context_for_report,
     load_prior_context_for_report,
     load_prior_context,
+    merge_dimension_conclusion_record,
+    build_values_info_for_prompt,
 )
 from app.domain.conclusion_card_goals import cap_strengths_keywords_list, get_conclusion_card_goal
 from app.domain.conclusion_card_payload import (
@@ -92,6 +94,7 @@ from app.domain.rumination_step_guidance import (
     build_opening_context,
     build_opening_llm_messages,
     get_opening_mode,
+    get_rumination_chat_step_addon,
     render_fixed_opening_zh,
 )
 from app.utils.admin_policy import is_admin_debug_policy_enabled
@@ -117,7 +120,6 @@ from app.api.v1.simple_chat.llm_providers import (
     to_reasoning_model as _to_reasoning_model,
 )
 from app.api.v1.simple_chat.prompt_builder import (
-    build_system_prompt as _build_system_prompt,
     build_fallback_opening_question as _build_fallback_opening_question,
     get_or_create_thread_question_bank as _get_or_create_thread_question_bank,
     get_random_questions_for_phase as _get_random_questions_for_phase,
@@ -285,6 +287,35 @@ def _get_reasoning_llm_provider(vip_level: int = 1):
         )
     except Exception:
         return llm
+
+
+def _normalize_client_locale(locale: Optional[str]) -> str:
+    if not locale:
+        return "zh"
+    s = str(locale).strip().lower().replace("_", "-")
+    if s.startswith("en"):
+        return "en"
+    return "zh"
+
+
+def _system_prompt_dimension_extras(
+    phase_step: str,
+    report: Optional[dict],
+    reports_root: str,
+    rumination_filter_step: Optional[int],
+    locale: str,
+) -> Tuple[str, str]:
+    """purpose 的 values_info + rumination 子步注入段。"""
+    rid = (report or {}).get("report_id") if report else None
+    if not rid:
+        return "", ""
+    values_info = ""
+    if phase_step == "purpose":
+        values_info = build_values_info_for_prompt(rid, reports_root)
+    rumination_step_addon = ""
+    if phase_step == "rumination" and rumination_filter_step is not None:
+        rumination_step_addon = get_rumination_chat_step_addon(rumination_filter_step, locale)
+    return values_info, rumination_step_addon
 
 
 router = APIRouter(prefix="/simple-chat", tags=["简单模式对话"])
@@ -1022,6 +1053,8 @@ class SimpleChatRequest(BaseModel):
     message: str
     # 阶段：values / strengths / interests / purpose / rumination（必填，禁止省略）
     phase: str
+    locale: Optional[str] = None
+    rumination_filter_step: Optional[int] = None
 
 
 class SimpleChatResponse(BaseModel):
@@ -1034,6 +1067,7 @@ class SimpleInitRequest(BaseModel):
     activation_code: str
     phase: str
     thread_id: Optional[str] = None  # 新建对话时传入，后端按 thread_id 创建独立存储
+    locale: Optional[str] = None  # zh | en，用于 step_intro 等展示文案
 
 
 class SimpleHistoryResponse(BaseModel):
@@ -1049,6 +1083,9 @@ class SimpleChatStreamRequest(BaseModel):
     thread_id: Optional[str] = None  # 当前对话 id，用于加载/保存到对应记录
     # 可选：前端结论卡 UI 快照（诊断/后续扩展；不参与业务分支）
     client_conclusion_ui: Optional[Dict[str, Any]] = None
+    locale: Optional[str] = None  # zh | en
+    # 沉淀阶段当前筛选子步（1–7），用于注入主对话 system 小段指引
+    rumination_filter_step: Optional[int] = None
 
 
 class SurveySaveRequest(BaseModel):
@@ -2432,6 +2469,9 @@ def _build_system_prompt(
     prior_context: str = "",
     template_override: Optional[str] = None,
     extra_goal_hint: str = "",
+    *,
+    values_info: str = "",
+    rumination_step_addon: str = "",
 ) -> str:
     """根据阶段构建 system prompt（通过模板渲染，避免超长硬编码）。"""
     prior_block = f"\n\n以下是该来访者在上一轮咨询中的谈话结果，供你参考：\n{prior_context}" if prior_context.strip() else ""
@@ -2440,6 +2480,8 @@ def _build_system_prompt(
         "question_bank": question_bank,
         "basic_info": basic_info,
         "prior_block": prior_block,
+        "values_info": (values_info or "").strip(),
+        "rumination_step_addon": (rumination_step_addon or "").strip(),
     }
     if (template_override or "").strip():
         env = Environment(trim_blocks=True, lstrip_blocks=True)
@@ -2589,6 +2631,16 @@ async def simple_chat(
         request.activation_code, phase_step, report
     )
     override_cfg = _resolve_prompt_lab_override_for_request(rec, current_user)
+    _root = get_effective_simple_root(rec)
+    reports_root = str(Path(_root) / "reports")
+    loc = _normalize_client_locale(request.locale)
+    vi, ra = _system_prompt_dimension_extras(
+        phase_step,
+        report,
+        reports_root,
+        request.rumination_filter_step,
+        loc,
+    )
     system_prompt = _build_system_prompt(
         phase_step,
         question_bank=question_bank,
@@ -2596,6 +2648,8 @@ async def simple_chat(
         prior_context=prior_context,
         template_override=(override_cfg or {}).get("template"),
         extra_goal_hint=(override_cfg or {}).get("extra_goal_hint", ""),
+        values_info=vi,
+        rumination_step_addon=ra,
     )
     llm_messages = [LLMMessage(role="system", content=system_prompt)]
 
@@ -2721,6 +2775,7 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
             detail="激活码已过期（历史记录已保留，可以用于回放或导出）",
         )
     session_id = report["report_id"]
+    init_loc = _normalize_client_locale(getattr(request, "locale", None))
 
     # 如果已有历史，就直接返回历史（新建 thread_id 时文件不存在，返回空）
     history_messages: List[dict] = await conv_manager.get_messages(
@@ -2743,7 +2798,7 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
                 },
                 "report_id": report["report_id"],
                 "step_id": phase_step,
-                "step_intro": get_step_copy(phase_step, "intro"),
+                "step_intro": get_step_copy(phase_step, "intro", init_loc),
             },
         )
     registry = ReportRegistry(base_dir=str(get_effective_simple_root(rec)))
@@ -2789,7 +2844,7 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
                 },
                 "report_id": report["report_id"],
                 "step_id": phase_step,
-                "step_intro": get_step_copy(phase_step, "intro"),
+                "step_intro": get_step_copy(phase_step, "intro", init_loc),
                 "token_usage": token_usage,
             },
         )
@@ -2808,6 +2863,11 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
         request.activation_code, phase_step, report
     )
     override_cfg = _resolve_prompt_lab_override_for_request(rec, current_user)
+    _ir = get_effective_simple_root(rec)
+    _reports_root = str(Path(_ir) / "reports")
+    vi_i, ra_i = _system_prompt_dimension_extras(
+        phase_step, report, _reports_root, None, init_loc
+    )
     system_prompt = _build_system_prompt(
         phase_step,
         question_bank=question_bank,
@@ -2815,6 +2875,8 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
         prior_context=prior_context,
         template_override=(override_cfg or {}).get("template"),
         extra_goal_hint=(override_cfg or {}).get("extra_goal_hint", ""),
+        values_info=vi_i,
+        rumination_step_addon=ra_i,
     )
     llm_messages = [
         LLMMessage(role="system", content=system_prompt),
@@ -2869,7 +2931,7 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
             },
             "report_id": report["report_id"],
             "step_id": phase_step,
-            "step_intro": get_step_copy(phase_step, "intro"),
+            "step_intro": get_step_copy(phase_step, "intro", init_loc),
             "token_usage": token_usage,
         },
     )
@@ -3327,6 +3389,15 @@ async def mark_thread_complete(
             storage_root=str(root),
             conclusion=dimension_conclusion,
         )
+        try:
+            merge_dimension_conclusion_record(
+                report["report_id"],
+                phase_step,
+                dimension_conclusion,
+                str(root / "reports"),
+            )
+        except Exception:
+            pass
         summary = dimension_conclusion.get("summary") or dimension_conclusion.get("ai_summary", "")
         keywords = dimension_conclusion.get("keywords") or []
         if isinstance(keywords, list):
@@ -3357,9 +3428,14 @@ async def mark_thread_complete(
         dimension_conclusion=dimension_conclusion,
         vip_level=getattr(rec, "vip_level", 1) or 1,
     )
-    return SimpleChatResponse(code=200, message="success", data={
-        "step_outro": get_step_copy(phase_step, "outro"),
-    })
+    return SimpleChatResponse(
+        code=200,
+        message="success",
+        data={
+            "step_outro": get_step_copy(phase_step, "outro", "zh"),
+            "step_outro_en": get_step_copy(phase_step, "outro", "en"),
+        },
+    )
 
 
 @router.get("/threads", response_model=SimpleHistoryResponse)
@@ -3600,6 +3676,15 @@ async def simple_chat_stream(
             request.activation_code, phase_step, report
         )
         override_cfg = _resolve_prompt_lab_override_for_request(rec, current_user)
+        stream_loc = _normalize_client_locale(request.locale)
+        reports_root = str(Path(storage_root) / "reports")
+        vi_s, ra_s = _system_prompt_dimension_extras(
+            phase_step,
+            report,
+            reports_root,
+            request.rumination_filter_step,
+            stream_loc,
+        )
         system_prompt = _build_system_prompt(
             phase_step,
             question_bank=question_bank,
@@ -3607,6 +3692,8 @@ async def simple_chat_stream(
             prior_context=prior_context,
             template_override=(override_cfg or {}).get("template"),
             extra_goal_hint=(override_cfg or {}).get("extra_goal_hint", ""),
+            values_info=vi_s,
+            rumination_step_addon=ra_s,
         )
         llm_messages = [LLMMessage(role="system", content=system_prompt)]
 
@@ -3731,6 +3818,37 @@ async def simple_chat_stream(
                     }
             pending_state = decision.get("state", "continue")
             pending_msg = decision.get("content", "")
+            _draft_kw = (
+                (pending_conclusion or {}).get("keywords")
+                if isinstance(pending_conclusion, dict)
+                else None
+            )
+            _draft_kw_list = _draft_kw[:12] if isinstance(_draft_kw, list) else []
+            try:
+                await _append_note_json(
+                    conv_manager,
+                    session_id,
+                    category,
+                    "pending_judge_decision",
+                    {
+                        "phase": phase_step,
+                        "thread_id": logical_session_id,
+                        "result_state": pending_state,
+                        "timed_out": pending_timed_out,
+                        "decision_visible_reply": (pending_msg or "")[:800],
+                        "user_input_excerpt": (user_content or "")[:600],
+                        "draft_summary_excerpt": str(
+                            (pending_conclusion or {}).get("summary")
+                            or (pending_conclusion or {}).get("ai_summary")
+                            or ""
+                        )[:400],
+                        "draft_keywords": [str(x) for x in _draft_kw_list if str(x).strip()][
+                            :12
+                        ],
+                    },
+                )
+            except Exception:
+                pass
 
             if pending_state == "confirmed":
                 # 与主对话流一致：pending 判定流结束后进入非流式推理前，通知前端可切换「后台处理中」提示

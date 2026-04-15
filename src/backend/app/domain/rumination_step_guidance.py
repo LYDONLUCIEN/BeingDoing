@@ -173,3 +173,39 @@ def build_opening_llm_messages(filter_step: int, ctx: RuminationOpeningContext) 
     if step == 4:
         return build_step_6_opening_llm_messages(ctx)
     raise ValueError(f"rumination opening llm not implemented for step {step}")
+
+
+# ---------------------------------------------------------------------------
+# 主对话 system 提示词末尾注入：按筛选子步追加一小段「当前环节侧重」（暖提示，非题库）
+# 留空字符串表示该步不注入。编辑文案只改本字典即可。
+# ---------------------------------------------------------------------------
+RUMINATION_CHAT_STEP_ADDON_ZH: Dict[int, str] = {
+    1: "用户正在完成「热爱×优势」组合表与优势标记。请语气温和，一次只回应一件事；若对方问表格操作，用简短步骤说明，不要代替对方做选择。",
+    2: "用户正在浏览或修订每行「匹配性」判断。请帮助对方澄清犹豫点，不急于推进到下一步。",
+    3: "用户正在为每行选择方向假设（个人事业/职业路径等）。若对方纠结，可帮其区分两类取向的差异，不替选答案。",
+    4: "用户正在为每行选择「工作目的」与价值观的对应关系。可提醒对方对照其价值观关键词，语气耐心，不催促一次性改完。",
+    5: "用户正在标注每行方向的「激情标记」。帮助对方分辨「忍不住想做」与「应该做」的身体感受差异。",
+    6: "用户正在判断每行方向更适合「现在」还是「未来」起步。可帮其看见现实条件与心之所向的张力，不替做决定。",
+    7: "用户正在从收束列表中点选最认同的 1–3 个方向。请尊重对方节奏，可总结差异点协助取舍，不夸大某一选项。",
+}
+
+RUMINATION_CHAT_STEP_ADDON_EN: Dict[int, str] = {
+    1: "The user is filling the passion×strength grid and strength tags. Stay warm; one focus per reply. If they ask how the table works, give short steps—do not choose for them.",
+    2: "The user is reviewing or editing per-row “fit” judgments. Help clarify doubts; do not rush the next step.",
+    3: "The user is picking direction hypotheses per row. If they hesitate, contrast the two orientations without picking an answer for them.",
+    4: "The user is mapping each row to a work-purpose / values option. Gently remind them of their values keywords; be patient.",
+    5: "The user is marking passion signals per row. Help them sense the difference between “can’t help but want” vs “should do.”",
+    6: "The user is labeling whether each direction fits “now” or “later.” Hold the tension between reality and desire; do not decide for them.",
+    7: "The user is selecting 1–3 final directions. Respect their pace; summarize contrasts to support choice without hyping one option.",
+}
+
+
+def get_rumination_chat_step_addon(filter_step: int, locale: str = "zh") -> str:
+    """供主对话 system 模板注入；filter_step 非法或文案为空则返回空串。"""
+    step = max(1, min(7, int(filter_step)))
+    loc = (locale or "zh").strip().lower()
+    if loc.startswith("en"):
+        text = RUMINATION_CHAT_STEP_ADDON_EN.get(step, "")
+    else:
+        text = RUMINATION_CHAT_STEP_ADDON_ZH.get(step, "")
+    return (text or "").strip()

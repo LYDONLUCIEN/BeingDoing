@@ -4,13 +4,17 @@
 basic_info 以用户维度存储：data/user/{user_id}/basic_info.json（仅保留最新 1 份）
 prior_context 以 report 维度存储：reports/{report_id}/prior_context_{phase}.txt
 
+各维度**已确认结论卡**另存统一快照：reports/{report_id}/dimension_conclusions.json
+供 prior_block 与 purpose 阶段 values_info 等统一读取；缺失时回退 legacy txt。
+
 保留旧 session_id 接口用于迁移期回退。
 """
 
 import json
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 
+from app.domain.conclusion_card_goals import cap_strengths_keywords_list
 from app.utils.data_paths import get_user_data_dir
 
 # 调研字段到中文标签的映射（用于 format_basic_info_for_prompt）
@@ -151,6 +155,18 @@ def load_basic_info(session_id: str, base_dir: str) -> Optional[Dict[str, Any]]:
 
 _PRIOR_CONTEXT_FILENAME = "prior_context_{phase}.txt"
 
+# 四维结论卡统一快照（仅含 values/strengths/interests/purpose）
+DIMENSION_CONCLUSIONS_FILENAME = "dimension_conclusions.json"
+DIMENSION_PHASE_IDS: Tuple[str, ...] = ("values", "strengths", "interests", "purpose")
+DIMENSION_LABEL_CN: Dict[str, str] = {
+    "values": "信念",
+    "strengths": "禀赋",
+    "interests": "热忱",
+    "purpose": "使命",
+}
+# 合并多阶段结论文本时的上限（略高于单文件 PRIOR_CONTEXT_MAX_CHARS）
+PRIOR_UNIFIED_MAX_CHARS = 4800
+
 
 def _get_prior_context_path_for_report(report_id: str, phase: str, reports_root: Path) -> Path:
     """report 维度 prior_context 路径：reports/{report_id}/prior_context_{phase}.txt"""
@@ -176,6 +192,134 @@ def save_prior_context_for_report(
     path.write_text(text, encoding="utf-8")
 
 
+def _dimension_conclusions_path(report_id: str, reports_root: str) -> Path:
+    return Path(reports_root) / report_id / DIMENSION_CONCLUSIONS_FILENAME
+
+
+def load_dimension_conclusions(report_id: str, reports_root: str) -> Dict[str, Dict[str, Any]]:
+    """加载 report 下已确认的四维结论卡快照（按 phase 键）。"""
+    path = _dimension_conclusions_path(report_id, reports_root)
+    if not path.is_file():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8") or "{}")
+    except (json.JSONDecodeError, OSError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    out: Dict[str, Dict[str, Any]] = {}
+    for k in DIMENSION_PHASE_IDS:
+        v = raw.get(k)
+        if isinstance(v, dict) and v:
+            out[k] = v
+    return out
+
+
+def merge_dimension_conclusion_record(
+    report_id: str, phase_step: str, conclusion: Dict[str, Any], reports_root: str
+) -> None:
+    """将某维已确认结论写入/更新 dimension_conclusions.json（整文件重写）。"""
+    if phase_step not in DIMENSION_PHASE_IDS:
+        return
+    if not isinstance(conclusion, dict):
+        return
+    cur = load_dimension_conclusions(report_id, reports_root)
+    cur[phase_step] = dict(conclusion)
+    path = _dimension_conclusions_path(report_id, reports_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {k: cur[k] for k in DIMENSION_PHASE_IDS if k in cur}
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def format_conclusion_prior_block(phase_step: str, conclusion: Dict[str, Any]) -> str:
+    """单维结论文本块（与 thread/complete 写入 prior 的格式一致）。"""
+    summary = (conclusion.get("summary") or conclusion.get("ai_summary") or "").strip()
+    keywords = conclusion.get("keywords") or []
+    if isinstance(keywords, list):
+        kw_for_prior = (
+            cap_strengths_keywords_list(keywords) if phase_step == "strengths" else keywords
+        )
+        kw_text = "、".join(str(k) for k in kw_for_prior)
+    else:
+        kw_text = str(keywords)
+    prior_text = f"{summary}\n关键词：{kw_text}".strip() if (summary or kw_text) else ""
+    if not prior_text:
+        return ""
+    label = DIMENSION_LABEL_CN.get(phase_step, phase_step)
+    return f"【{label} 阶段结果】\n{prior_text}"
+
+
+def _prior_phases_before(phase: str) -> List[str]:
+    """当前阶段之前应注入 prompt 的维度顺序列表。"""
+    if phase == "values":
+        return []
+    if phase == "strengths":
+        return ["values"]
+    if phase == "interests":
+        return ["values", "strengths"]
+    if phase == "purpose":
+        return ["values", "strengths", "interests"]
+    if phase == "rumination":
+        return list(DIMENSION_PHASE_IDS)
+    return []
+
+
+def _truncate_prior_unified(text: str) -> str:
+    if not text or len(text) <= PRIOR_UNIFIED_MAX_CHARS:
+        return text
+    return text[: PRIOR_UNIFIED_MAX_CHARS - 36] + "\n\n[... 前置阶段结论已截断 ...]"
+
+
+def build_prior_context_from_dimension_store(report_id: str, current_phase: str, reports_root: str) -> str:
+    """从 dimension_conclusions.json 拼接当前阶段所需的全部前置维结论。"""
+    needed = _prior_phases_before(current_phase)
+    if not needed:
+        return ""
+    store = load_dimension_conclusions(report_id, reports_root)
+    parts: List[str] = []
+    for p in needed:
+        block = format_conclusion_prior_block(p, store.get(p) or {})
+        if block:
+            parts.append(block)
+    if not parts:
+        return ""
+    return _truncate_prior_unified("\n\n".join(parts))
+
+
+def build_values_info_for_prompt(
+    report_id: str, reports_root: str, *, max_chars: int = 960
+) -> str:
+    """
+    purpose 阶段注入：关键词 + 与 keywords 对齐的 keyword_notes（含义），供模型理解；
+    系统提示仍要求对用户口述时只列关键词。
+    """
+    store = load_dimension_conclusions(report_id, reports_root)
+    vc = store.get("values")
+    if not isinstance(vc, dict):
+        return ""
+    kws_in = vc.get("keywords") or []
+    if not isinstance(kws_in, list):
+        return ""
+    kws = [str(x).strip() for x in kws_in if str(x).strip()]
+    if not kws:
+        return ""
+    notes_in = vc.get("keyword_notes")
+    notes: List[str] = []
+    if isinstance(notes_in, list):
+        notes = [str(x).strip() for x in notes_in]
+    pieces: List[str] = []
+    for i, kw in enumerate(kws):
+        note = notes[i] if i < len(notes) else ""
+        if note:
+            pieces.append(f"{kw}（用户对该词的说明：{note}）")
+        else:
+            pieces.append(kw)
+    s = "、".join(pieces)
+    if len(s) > max_chars:
+        return s[: max_chars - 1] + "…"
+    return s
+
+
 def load_prior_context_for_report(report_id: str, phase: str, reports_root: str) -> str:
     """
     按 report 加载上一轮咨询结果。purpose/rumination 会合并前置阶段。
@@ -183,6 +327,10 @@ def load_prior_context_for_report(report_id: str, phase: str, reports_root: str)
     Returns:
         文本内容，找不到返回空字符串
     """
+    unified = build_prior_context_from_dimension_store(report_id, phase, reports_root)
+    if unified.strip():
+        return unified
+
     root = Path(reports_root)
     report_dir = root / report_id
     filename = _PRIOR_CONTEXT_FILENAME.format(phase=phase)

@@ -91,6 +91,9 @@ def build_system_prompt(
     prior_context: str = "",
     template_override: Optional[str] = None,
     extra_goal_hint: str = "",
+    *,
+    values_info: str = "",
+    rumination_step_addon: str = "",
 ) -> str:
     """根据阶段构建 system prompt（通过模板渲染，避免超长硬编码）。"""
     prior_block = f"\n\n以下是该来访者在上一轮咨询中的谈话结果，供你参考：\n{prior_context}" if prior_context.strip() else ""
@@ -99,6 +102,8 @@ def build_system_prompt(
         "question_bank": question_bank,
         "basic_info": basic_info,
         "prior_block": prior_block,
+        "values_info": (values_info or "").strip(),
+        "rumination_step_addon": (rumination_step_addon or "").strip(),
     }
     if (template_override or "").strip():
         env = Environment(trim_blocks=True, lstrip_blocks=True)

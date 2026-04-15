@@ -13,6 +13,7 @@ from app.utils.simple_activation_manager import (
     ActivationStatus,
     get_simple_base_dir,
     get_activation_with_manager,
+    get_effective_simple_root,
 )
 import json
 from pathlib import Path
@@ -360,6 +361,57 @@ async def list_activations(
             "total": len(items),
         },
     }
+
+
+@router.get("/reports/by-activation-code")
+async def resolve_report_id_by_activation_code(
+    activation_code: str = Query(..., description="激活码（大小写不敏感）"),
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """
+    根据激活码解析 report_id（UUID）及磁盘路径线索。
+    仅 super_admin，供后台排障；不在公开 activate 中返回 report_id。
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+
+    code = (activation_code or "").strip().upper()
+    if not code:
+        raise HTTPException(status_code=400, detail="activation_code 不能为空")
+
+    _mgr, rec = get_activation_with_manager(code)
+    if not rec:
+        raise HTTPException(status_code=404, detail="激活码不存在")
+
+    root = get_effective_simple_root(rec)
+    registry = ReportRegistry(base_dir=str(root))
+    report: Optional[Dict[str, Any]] = None
+    owner_uid = (getattr(rec, "owner_user_id", None) or "").strip()
+    if owner_uid:
+        report = registry.get_by_activation_user(code, owner_uid)
+    if not report:
+        for r in registry.list_reports():
+            if (r.get("activation_code") or "").strip().upper() == code:
+                report = r
+                break
+
+    rid = (report or {}).get("report_id") if report else None
+    data: Dict[str, Any] = {
+        "activation_code": code,
+        "report_id": rid,
+        "report_user_id": (report or {}).get("user_id"),
+        "activation_owner_user_id": owner_uid or None,
+        "activation_owner_email": getattr(rec, "owner_email", None) or None,
+        "storage_root": str(root),
+        "reports_dir": str(root / "reports"),
+        "record_json_path": str(root / "reports" / rid / "record.json") if rid else None,
+        "is_sandbox": bool(getattr(rec, "is_sandbox", False)),
+        "fork_id": getattr(rec, "fork_id", None),
+        "forked_from_code": getattr(rec, "forked_from_code", None),
+    }
+    if not rid:
+        data["hint"] = "未找到 report：可能尚未 claim 或未生成 record.json"
+    return {"code": 200, "message": "success", "data": data}
 
 
 @router.post("/activations/batch-create")

@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import FlowAiMessage from '@/components/explore/FlowAiMessage';
 import DimensionConclusionCard, { type DimensionConclusionData } from '@/components/explore/DimensionConclusionCard';
+import PhaseCelebrateBurst from '@/components/explore/PhaseCelebrateBurst';
+import PhaseCompleteWarmModal from '@/components/explore/PhaseCompleteWarmModal';
 import ChatPhaseBackground from '@/components/explore/ChatPhaseBackground';
 import ExploreLandingMeshLayers from '@/components/explore/ExploreLandingMeshLayers';
 import ChatPhaseSidebar from '@/components/explore/ChatPhaseSidebar';
@@ -235,7 +237,7 @@ export default function ChatPhasePage() {
   const router = useRouter();
   const params = useParams();
   const pathname = usePathname();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const phase = (params.phase as string) as PhaseKey;
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
@@ -305,6 +307,9 @@ export default function ChatPhasePage() {
   );
   const [ruminationRefillConfirmOpen, setRuminationRefillConfirmOpen] = useState(false);
   const [ruminationStep7FinalizeOpen, setRuminationStep7FinalizeOpen] = useState(false);
+  const [phaseCelebrateSignal, setPhaseCelebrateSignal] = useState(0);
+  const [phaseCompleteModalOpen, setPhaseCompleteModalOpen] = useState(false);
+  const pendingRuminationNavigateRef = useRef(false);
   const pendingStep7SubmitRef = useRef<{
     rows: Record<string, unknown>[];
     payload: NonNullable<ThreadMessage['tablePayload']>;
@@ -740,6 +745,7 @@ export default function ChatPhasePage() {
                     activation_code: activationCode,
                     phase: BACKEND_PHASE[phase],
                     thread_id: first.id,
+                    locale: locale === 'en' ? 'en' : 'zh',
                   });
                   const initMsgs: any[] = initRes.data.messages ?? [];
                   const now = Date.now();
@@ -822,6 +828,7 @@ export default function ChatPhasePage() {
               activation_code: activationCode,
               phase: BACKEND_PHASE[phase],
               thread_id: tid,
+              locale: locale === 'en' ? 'en' : 'zh',
             });
             const initMsgs: any[] = initRes.data.messages ?? [];
             const now = Date.now();
@@ -867,6 +874,7 @@ export default function ChatPhasePage() {
                 activation_code: activationCode,
                 phase: BACKEND_PHASE[phase],
                 thread_id: activeId,
+                locale: locale === 'en' ? 'en' : 'zh',
               });
               const initMsgs: any[] = initRes.data.messages ?? [];
               const now = Date.now();
@@ -913,7 +921,16 @@ export default function ChatPhasePage() {
     }
 
     return () => { cancelled = true; };
-  }, [activationCode, phase, threadsFetched, threadListSignature, activeThreadId, mapHistoryToThreadMessages, t]);
+  }, [
+    activationCode,
+    phase,
+    threadsFetched,
+    threadListSignature,
+    activeThreadId,
+    mapHistoryToThreadMessages,
+    t,
+    locale,
+  ]);
 
   // Persist messages + dimensionConclusion to active (backend-synced) thread when they change
   // 注意：不要在此调用 setThreads(getThreads())，否则会改变 threads 引用并触发上方加载 effect，造成 initLoading 反复与界面闪烁
@@ -1658,6 +1675,19 @@ export default function ChatPhasePage() {
           confirmed: !!last.conclusionConfirmed,
         };
       })();
+      const apiLocale = locale === 'en' ? 'en' : 'zh';
+      const ruminationFilterForApi =
+        phase === 'rumination'
+          ? Math.max(
+              1,
+              Math.min(
+                7,
+                (ruminationProgressState?.filter_step && ruminationProgressState.filter_step > 0
+                  ? ruminationProgressState.filter_step
+                  : ruminationViewStep) || 1
+              )
+            )
+          : undefined;
       const doStreamFetch = async (accessToken: string | null) =>
         fetch(streamUrl, {
           method: 'POST',
@@ -1670,6 +1700,10 @@ export default function ChatPhasePage() {
             message: messageForApi,
             phase: BACKEND_PHASE[phase],
             thread_id: effectiveThreadId,
+            locale: apiLocale,
+            ...(ruminationFilterForApi !== undefined
+              ? { rumination_filter_step: ruminationFilterForApi }
+              : {}),
             ...(uiSnap ? { client_conclusion_ui: uiSnap } : {}),
           }),
           signal: controller.signal,
@@ -1973,6 +2007,7 @@ export default function ChatPhasePage() {
         activation_code: activationCode,
         phase: BACKEND_PHASE[phase],
         thread_id: tid,
+        locale: locale === 'en' ? 'en' : 'zh',
       });
       const initMsgs: any[] = initRes.data.messages ?? [];
       const now = Date.now();
@@ -1999,6 +2034,17 @@ export default function ChatPhasePage() {
     setInitLoading(false);
   };
 
+  const handlePhaseCompleteModalContinue = useCallback(() => {
+    setPhaseCompleteModalOpen(false);
+    if (!pendingRuminationNavigateRef.current) return;
+    pendingRuminationNavigateRef.current = false;
+    if (!activationCode || !session) return;
+    const nextSession = unlockNextPhase({ ...session, currentPhase: phase });
+    saveSession(nextSession);
+    setSession(nextSession);
+    router.push('/explore/transition?from=rumination');
+  }, [activationCode, session, phase, router, setSession]);
+
   const handleConfirmConclusion = async () => {
     if (stepLocked && !adminDebugBypass) return;
     if (!activationCode || !phase) return;
@@ -2008,12 +2054,14 @@ export default function ChatPhasePage() {
     if (!th) return;
     const lastConcl = lastDimensionConclusionMessage(messages);
     if (!lastConcl?.conclusionData) return;
+    let threadCompleteOk = false;
     try {
-      await apiClient.post('/simple-chat/thread/complete', {
+      const res = await apiClient.post('/simple-chat/thread/complete', {
         activation_code: activationCode,
         phase: BACKEND_PHASE[phase],
         thread_id: targetThreadId,
       });
+      threadCompleteOk = res.data?.code === 200;
     } catch (e) {
       console.warn('thread/complete API failed:', e);
     }
@@ -2037,11 +2085,12 @@ export default function ChatPhasePage() {
       return prev.map((t) => (t.id === targetThreadId ? updated : t));
     });
 
-    if (phase === 'rumination' && activationCode && session) {
-      const nextSession = unlockNextPhase({ ...session, currentPhase: phase });
-      saveSession(nextSession);
-      setSession(nextSession);
-      router.push('/explore/transition?from=rumination');
+    if (threadCompleteOk) {
+      pendingRuminationNavigateRef.current = phase === 'rumination';
+      setPhaseCelebrateSignal((n) => n + 1);
+      setPhaseCompleteModalOpen(true);
+    } else {
+      pendingRuminationNavigateRef.current = false;
     }
   };
 
@@ -3617,6 +3666,14 @@ export default function ChatPhasePage() {
           lineAfter={t('explore.chat.ruminationUi.tableSubmittingWait')}
         />
       )}
+      <PhaseCelebrateBurst playSignal={phaseCelebrateSignal} />
+      <PhaseCompleteWarmModal
+        open={phaseCompleteModalOpen}
+        title={t('explore.phaseComplete.title')}
+        body={t(`explore.phaseComplete.outro.${phase}`)}
+        continueLabel={t('explore.phaseComplete.continue')}
+        onContinue={handlePhaseCompleteModalContinue}
+      />
     </div>
   );
 }

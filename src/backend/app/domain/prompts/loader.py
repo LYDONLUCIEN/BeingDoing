@@ -87,16 +87,18 @@ def get_pending_conclusion_injection(context: Dict[str, Any]) -> str:
 def get_simple_chat_system_prompt(context: Dict[str, Any]) -> str:
     """
     simple_chat 系统提示词。
-    context: phase, question_bank, basic_info, prior_block
+    context: phase, question_bank, basic_info, prior_block,
+             values_info（可选）, rumination_step_addon（可选）
     """
     return _get_loader().render("simple_chat_system", context)
 
 
-def get_step_copy(phase: str, position: str = "intro") -> str:
+def get_step_copy(phase: str, position: str = "intro", locale: str = "zh") -> str:
     """
     获取阶段引导文案（intro/outro）。
     phase: values | strengths | interests | purpose | rumination
     position: intro | outro
+    locale: zh | en（读 step_copy.yaml 中 intro_zh / intro_en / outro_zh / outro_en）
     """
     loader = _get_loader()
     template_path = os.path.join(loader.templates_dir, "step_copy.yaml")
@@ -104,6 +106,16 @@ def get_step_copy(phase: str, position: str = "intro") -> str:
         with open(template_path, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f.read())
         phase_data = (data or {}).get(phase) or {}
+        loc = (locale or "zh").strip().lower()
+        if loc.startswith("en"):
+            key = f"{position}_en"
+            hit = (phase_data.get(key) or "").strip()
+            if hit:
+                return hit
+        key_zh = f"{position}_zh"
+        hit_zh = (phase_data.get(key_zh) or "").strip()
+        if hit_zh:
+            return hit_zh
         return (phase_data.get(position) or "").strip()
     except (FileNotFoundError, yaml.YAMLError):
         return ""

@@ -3,18 +3,12 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { CheckCircle2, ChevronRight } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 import { PHASES, getLastActivationCode, loadSession } from '@/lib/explore/session';
-
-const DIM_LABELS: Record<string, string> = {
-  values: '信念',
-  strengths: '禀赋',
-  interests: '热忱',
-  purpose: '使命',
-  rumination: '沉淀',
-};
+import { useLocale } from '@/hooks/useLocale';
 
 function TransitionContent() {
+  const { t } = useLocale();
   const router = useRouter();
   const searchParams = useSearchParams();
   const fromParam = searchParams.get('from');
@@ -45,8 +39,10 @@ function TransitionContent() {
 
   if (!mounted || !session) return null;
 
-  const fromLabel = DIM_LABELS[from] || from;
-  const nextLabel = nextPhase ? DIM_LABELS[nextPhase.key] || nextPhase.label : '查看报告';
+  const fromLabel = t(`explore.chat.phaseLabels.${from}`);
+  const nextLabel = nextPhase
+    ? t(`explore.chat.phaseLabels.${nextPhase.key}`)
+    : t('explore.transition.viewReport');
   const ruminationFilterDone = from === 'rumination';
 
   return (
@@ -85,9 +81,13 @@ function TransitionContent() {
               <CheckCircle2 size={24} />
             </div>
             <div>
-              <p className="text-xs tracking-widest uppercase text-bd-primary font-medium">阶段完成</p>
+              <p className="text-xs tracking-widest uppercase text-bd-primary font-medium">
+                {t('explore.transition.badge')}
+              </p>
               <h1 className="text-xl font-semibold text-bd-fg">
-                {ruminationFilterDone ? '沉淀筛选已全部完成' : `${fromLabel}探索完成`}
+                {ruminationFilterDone
+                  ? t('explore.transition.titleRuminationDone')
+                  : t('explore.transition.titlePhaseDone', { dim: fromLabel })}
               </h1>
             </div>
           </div>
@@ -96,12 +96,14 @@ function TransitionContent() {
 
           <p className="bd-intro-premise mb-6">
             {ruminationFilterDone
-              ? '九步筛选表已确认，你的选择已写入探索档案。接下来可以生成成长报告，回顾信念、禀赋、热忱与使命如何交汇。'
-              : `你已完成了「${fromLabel}」维度的探索。休息一下，或直接进入下一步。`}
+              ? t('explore.transition.blurbRuminationDone')
+              : t('explore.transition.blurbGeneric')}
           </p>
 
           <div className="space-y-4 mb-8">
-            <p className="text-xs font-medium text-bd-fg-subtle tracking-wider uppercase">探索进度</p>
+            <p className="text-xs font-medium text-bd-fg-subtle tracking-wider uppercase">
+              {t('explore.transition.progressLabel')}
+            </p>
             <div className="flex gap-2">
               {PHASES.map((p, i) => {
                 const done = i <= currentIdx;
@@ -116,16 +118,19 @@ function TransitionContent() {
               })}
             </div>
             <p className="text-sm text-bd-muted">
-              {completedCount} / {totalCount} 已完成
+              {t('explore.transition.progressCount', {
+                done: String(completedCount),
+                total: String(totalCount),
+              })}
             </p>
           </div>
 
           <p className="bd-intro-soul mb-8">
             {ruminationFilterDone
-              ? '这是探索闭环的最后一站：把沉淀落成一页可读的成长报告，随时回来翻阅。'
+              ? t('explore.transition.soulRuminationDone')
               : nextPhase
-                ? `下一步将探索「${nextLabel}」——${nextPhase.label}。准备好了就继续吧。`
-                : '所有探索已完成，即将为你生成报告。'}
+                ? t('explore.transition.soulNext', { next: nextLabel })
+                : t('explore.transition.soulReport')}
           </p>
 
           <div className="bd-intro-cta-row">
@@ -134,7 +139,11 @@ function TransitionContent() {
               onClick={handleContinue}
               className="bd-intro-btn-begin"
             >
-              {nextPhase ? `继续探索 ${nextLabel}` : ruminationFilterDone ? '查看成长报告' : '查看报告'}
+              {nextPhase
+                ? t('explore.transition.continueNext', { next: nextLabel })
+                : ruminationFilterDone
+                  ? t('explore.transition.viewGrowthReport')
+                  : t('explore.transition.viewReport')}
               <svg className="bd-intro-btn-arrow" width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path
                   d="M1 7h12M8 2l5 5-5 5"

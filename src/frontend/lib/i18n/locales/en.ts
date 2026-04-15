@@ -110,6 +110,38 @@ export const en = {
       hint: 'This helps us tailor the conversation. All questions are optional — you can skip and start exploring.',
       submitLabel: 'Submit & Start Exploring',
     },
+    phaseComplete: {
+      title: 'You finished this stretch',
+      continue: 'Thank you — continue',
+      outro: {
+        values:
+          "You've completed round one — values. Next we'll explore your strengths. See you in the next step.",
+        strengths:
+          "You've completed strengths. Next we'll discover what truly energizes you. See you soon!",
+        interests:
+          "You've completed passions. Next we'll explore your sense of purpose. See you soon!",
+        purpose:
+          "Wonderful — purpose is done. Next is the final dialogue to integrate everything into directions. See you soon!",
+        rumination: "You've completed the full journey. Your personalized insight report is on the way.",
+      },
+    },
+    transition: {
+      badge: 'Step complete',
+      titlePhaseDone: '{dim} complete',
+      titleRuminationDone: 'Filtering complete',
+      blurbGeneric: 'Take a short break, then continue when you feel ready.',
+      blurbRuminationDone:
+        'Your table choices are saved. You can generate a growth report that weaves values, strengths, passions, and purpose together.',
+      soulRuminationDone:
+        'This is the closing loop: turn your choices into a readable report you can revisit anytime.',
+      soulNext: 'Next: 「{next}」. Continue when you feel ready.',
+      soulReport: 'All steps are done. Your report is almost ready.',
+      continueNext: 'Continue to {next}',
+      viewReport: 'View report',
+      viewGrowthReport: 'View growth report',
+      progressLabel: 'Progress',
+      progressCount: '{done} / {total} complete',
+    },
     chat: {
       exploring: 'Exploring',
       dimension: 'Dimension',

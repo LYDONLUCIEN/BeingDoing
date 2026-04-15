@@ -105,6 +105,38 @@ export const zh = {
       hint: '这份问卷帮助我们更了解你的背景，让对话更有针对性。所有问题均为选填，你也可以直接跳过开始探索。',
       submitLabel: '提交并开始探索',
     },
+    phaseComplete: {
+      title: '这一段探索完成了',
+      continue: '谢谢，继续',
+      outro: {
+        values:
+          '恭喜你完成了第一轮价值观探索。下一轮我们将进入优势探索，帮助你发现你的核心能力。我们下次见。',
+        strengths:
+          '恭喜你完成了第二轮优势探索。下一轮我们将进入热爱探索，帮助你发现你的激情所在。我们下次见！',
+        interests:
+          '恭喜你完成了第三轮热爱探索。下一轮我们将进入使命探索，帮助你找到你的人生召唤。我们下次见！',
+        purpose:
+          '太棒了！你已经完成了使命探索。接下来我们将进行最后一轮对话——帮助你整合所有发现，找到具体的职业发展方向。我们下次见！',
+        rumination: '恭喜你完成了全部探索！你的专属职业规划报告即将生成。',
+      },
+    },
+    transition: {
+      badge: '阶段完成',
+      titlePhaseDone: '{dim}探索完成',
+      titleRuminationDone: '沉淀筛选已全部完成',
+      blurbGeneric: '可以稍作休息，准备好后进入下一步。',
+      blurbRuminationDone:
+        '九步筛选表已确认，你的选择已写入探索档案。接下来可以生成成长报告，回顾信念、禀赋、热忱与使命如何交汇。',
+      soulRuminationDone:
+        '这是探索闭环的最后一站：把沉淀落成一页可读的成长报告，随时回来翻阅。',
+      soulNext: '下一步将探索「{next}」。准备好了就继续吧。',
+      soulReport: '所有探索已完成，即将为你生成报告。',
+      continueNext: '继续探索 {next}',
+      viewReport: '查看报告',
+      viewGrowthReport: '查看成长报告',
+      progressLabel: '探索进度',
+      progressCount: '{done} / {total} 已完成',
+    },
     chat: {
       exploring: '正在探索',
       dimension: '维度',
