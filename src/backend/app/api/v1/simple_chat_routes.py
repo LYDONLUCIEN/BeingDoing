@@ -61,9 +61,9 @@ from app.utils.rumination_ops import (
     similar_filter,
 )
 from app.utils.rumination_hypothesis_service import (
-    ensure_row_has_three_hypotheses,
+    ensure_row_has_pair_hypotheses,
     fill_hypothesis_columns_for_table,
-    generate_three_hypotheses_for_row,
+    generate_hypothesis_pair_for_row,
 )
 from app.utils.context_refiner import (
     refine_and_save_anchor,
@@ -90,6 +90,7 @@ from app.domain.conclusion_card_payload import (
     sanitize_pending_conclusion_draft,
 )
 from app.domain.prompts import get_simple_chat_system_prompt, get_step_copy
+from app.domain.rumination_prompt_strings import RUMINATION_CLOSING_SUMMARY_MAX_CHARS
 from app.domain.rumination_step_guidance import (
     build_opening_context,
     build_opening_llm_messages,
@@ -97,6 +98,9 @@ from app.domain.rumination_step_guidance import (
     get_rumination_chat_step_addon,
     render_fixed_opening_zh,
 )
+from app.services.rumination_finalize import append_post_table_finalize_message
+from app.services.rumination_init_greeting import synthesize_rumination_entry_greeting
+from app.utils.rumination_background_text import compose_hypothesis_user_background
 from app.utils.admin_policy import is_admin_debug_policy_enabled
 from app.utils.admin_prompt_lab import resolve_simple_chat_prompt_override
 from app.utils.admin_policy import is_admin_sandbox_enabled
@@ -1611,7 +1615,7 @@ async def rumination_regenerate_hypotheses(
     request: RuminationRegenerateHypothesesRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """筛选子步 3：对单行重新生成假设1–3（三条方案），已选假设由前端按槽位映射保留。"""
+    """筛选子步 3：对单行重新生成假设1、假设2（一次 LLM），已选假设由前端按槽位映射保留。"""
     step = int(request.filter_step)
     if step != 3:
         raise HTTPException(
@@ -1632,6 +1636,20 @@ async def rumination_regenerate_hypotheses(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     values_hint = "、".join(values_list[:8]) if values_list else ""
+    root_rh = get_effective_simple_root(rec)
+    registry_rh = ReportRegistry(base_dir=str(root_rh))
+    report_rh = registry_rh.ensure_report(
+        rec.code,
+        (current_user or {}).get("user_id", ""),
+        bind_session_id_for_ensure_report(rec),
+    )
+    prior_rh = _load_prior_context_from_activation(
+        request.activation_code, "rumination", report_rh
+    )
+    user_bg = compose_hypothesis_user_background(
+        values_hint=values_hint,
+        prior_rumination_text=prior_rh,
+    )
     snapshots = _rumination_snapshots_copy(progress)
     sk = str(step)
     ent = dict(snapshots.get(sk) or {})
@@ -1659,20 +1677,18 @@ async def rumination_regenerate_hypotheses(
     match_reason = str(row.get("匹配原因") or "")
     vip_level = getattr(rec, "vip_level", 1) or 1
     llm = _get_dialogue_llm_provider(vip_level=vip_level)
-    hyps = await generate_three_hypotheses_for_row(
+    h1, h2 = await generate_hypothesis_pair_for_row(
         llm,
         passion=passion,
         strength=strength,
         match_reason=match_reason,
-        values_hint=values_hint,
+        user_background=user_bg,
         row_index=idx,
     )
-    row["假设1"] = hyps[0] if len(hyps) > 0 else ""
-    row["假设2"] = hyps[1] if len(hyps) > 1 else ""
-    row["假设3"] = hyps[2] if len(hyps) > 2 else ""
-    ensure_row_has_three_hypotheses(
-        row, passion=passion, strength=strength, row_index=idx
-    )
+    row["假设1"] = h1
+    row["假设2"] = h2
+    row["假设3"] = ""
+    ensure_row_has_pair_hypotheses(row, passion=passion, strength=strength, row_index=idx)
     row["用户确认的假设"] = ""
 
     new_rows = list(rows)
@@ -1913,6 +1929,8 @@ async def rumination_table_submit(
         next_step_val = step
         dimension_conclusion_payload: Optional[dict] = None
         rumination_submit_next_action: Optional[str] = None
+        closing_summary_for_epilogue = ""
+        rumination_finalize_via_short_path = False
 
         if step == 1 and table_data:
             filtered = filter_strength(table_data)
@@ -2012,8 +2030,15 @@ async def rumination_table_submit(
             else:
                 vip_level = getattr(rec, "vip_level", 1) or 1
                 llm = _get_dialogue_llm_provider(vip_level=vip_level)
+                prior_h = _load_prior_context_from_activation(
+                    request.activation_code, "rumination", report
+                )
+                hypo_bg = compose_hypothesis_user_background(
+                    values_hint=values_hint,
+                    prior_rumination_text=prior_h,
+                )
                 step3_rows = await fill_hypothesis_columns_for_table(
-                    llm, step3_rows, values_hint=values_hint,
+                    llm, step3_rows, user_background=hypo_bg
                 )
                 next_table = build_table_widget_payload(3, step3_rows, values_list)
                 next_step_val = 3
@@ -2246,6 +2271,11 @@ async def rumination_table_submit(
                     detail="所选行与当前表格不一致，请刷新后重试",
                 )
             wdone = [{**dict(r), "__pick": True} for r in ordered]
+            # 在覆盖 progress 之前读取：短链直达终步时曾为 True，用于结语分支
+            rumination_finalize_via_short_path = bool(progress.get("filter_early_terminated"))
+            closing_summary_for_epilogue = "；".join(
+                str(r.get("用户确认的假设") or "").strip() for r in ordered
+            )[:RUMINATION_CLOSING_SUMMARY_MAX_CHARS]
             s7 = snapshots.setdefault("7", {})
             s7["submitted"] = deepcopy(_rumination_strip_meta_keys(wdone))
             snapshots["7"] = s7
@@ -2262,6 +2292,32 @@ async def rumination_table_submit(
             next_table = None
             next_step_val = 7
             rumination_submit_next_action = "rumination_finalize_transition"
+
+        # 终步确认后写入会话结语：见 ``append_post_table_finalize_message``（短链固定 / 正常 LLM；非流式与 submit 同请求）。
+        if rumination_submit_next_action == "rumination_finalize_transition":
+            try:
+                mgr_e = get_activation_manager_for_code(request.activation_code)
+                _rec_e, _rep_e, _ph_e, log_sid_e, cat_e, conv_e = _resolve_report_context(
+                    manager=mgr_e,
+                    activation_code=request.activation_code,
+                    current_user=current_user,
+                    phase="rumination",
+                    thread_id=(request.thread_id or "").strip() or None,
+                )
+                vip_e = getattr(rec, "vip_level", 1) or 1
+                llm_e = _get_dialogue_llm_provider(vip_level=vip_e)
+                await append_post_table_finalize_message(
+                    llm=llm_e,
+                    conv_manager=conv_e,
+                    report_session_id=report["report_id"],
+                    category=cat_e,
+                    logical_session_id=log_sid_e,
+                    via_short_path=rumination_finalize_via_short_path,
+                    selected_summary=closing_summary_for_epilogue,
+                    normalize_token_usage=_normalize_token_usage,
+                )
+            except Exception as e:
+                logger.warning("rumination closing epilogue skipped: %s", e)
 
         snaps = progress.get("filter_step_snapshots") or {}
         data: dict = {
@@ -2438,7 +2494,14 @@ async def rumination_get_table(
             vip_level = getattr(rec, "vip_level", 1) or 1
             llm = _get_dialogue_llm_provider(vip_level=vip_level)
             values_hint = "、".join(values_list[:8]) if values_list else ""
-            rows = await fill_hypothesis_columns_for_table(llm, rows, values_hint=values_hint)
+            prior_gt = _load_prior_context_from_activation(activation_code, "rumination", report)
+            hypo_bg_gt = compose_hypothesis_user_background(
+                values_hint=values_hint,
+                prior_rumination_text=prior_gt,
+            )
+            rows = await fill_hypothesis_columns_for_table(
+                llm, rows, user_background=hypo_bg_gt
+            )
     elif step == 4:
         rows = value_filter(prev_submitted, values_list)
     elif step == 5:
@@ -2810,12 +2873,20 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
         rec=rec,
     )
 
-    # 沉淀阶段：主交互在左侧筛选表，右侧仅补充说明；不写「请向我提问」式首轮 LLM
+    # 沉淀阶段：首轮开场白见 ``synthesize_rumination_entry_greeting``
     if phase_step == "rumination":
-        reply_text = (
-            "已进入沉淀阶段：请从左侧表格按步骤完成筛选与确认；需要时可在右侧补充想法，不必先发言。"
+        vip_r = getattr(rec, "vip_level", 1) or 1
+        llm_r = _get_dialogue_llm_provider(vip_level=vip_r)
+        basic_info_r = _load_basic_info_from_activation(request.activation_code)
+        prior_r = _load_prior_context_from_activation(
+            request.activation_code, phase_step, report
         )
-        token_usage = _normalize_token_usage(None)
+        reply_text, token_usage = await synthesize_rumination_entry_greeting(
+            llm_r,
+            basic_info=basic_info_r,
+            prior_block=prior_r,
+            normalize_token_usage=_normalize_token_usage,
+        )
         await conv_manager.append_message(
             session_id=session_id,
             category=category,

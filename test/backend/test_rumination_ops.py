@@ -20,6 +20,7 @@ def test_structure_hypothesis_round1_drops_non_match():
     assert len(out) == 1
     assert "匹配原因" not in out[0]
     assert "假设1" in out[0]
+    assert out[0].get("假设3") == ""
 
 
 def test_value_filter_drops_pending_and_empty_hypothesis():

@@ -259,6 +259,8 @@ export const en = {
         hypothesisRegenerating: 'Generating…',
         hypothesisRegenerateError: 'Could not regenerate hypotheses. Please try again.',
         hypothesisRegenerateHint: 'Regenerate hypothesis options for this row',
+        hypothesisPreviewTitle: 'Both recommended directions',
+        hypothesisPreviewHint: 'Hover the dropdown to read both hypotheses in full',
         hypothesisTagFreelance: 'Solo / business',
         hypothesisTagCompany: 'Company path',
         hypothesisTagExtra: 'Alternative path',

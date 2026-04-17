@@ -30,7 +30,7 @@ def _cols_step2() -> List[Dict[str, Any]]:
 
 
 def _cols_step345() -> List[Dict[str, Any]]:
-    """假设1–3 仅作行内数据供下拉选项使用，不单独占列（对齐产品文档：一列「假设」选择）。"""
+    """假设1–2 仅作行内数据供下拉选项使用，不单独占列（一列「假设」选择两条推荐之一或自填）。"""
     return [
         {"key": "id", "label": "id"},
         {"key": "热爱", "label": "热爱"},
@@ -97,7 +97,7 @@ def _cols_step7_final() -> List[Dict[str, Any]]:
 GUIDE_TEXT: Dict[int, str] = {
     1: "请在本页填完所有行的「优势标记」后，点击确认进入下一步（整表一次提交）。",
     2: "请在本页检查并修改所有行的「匹配性」后，点击确认进入下一步（整表一次提交）。",
-    3: "请在「假设」列选择：带「个人事业」或「职业路径」色块标签的两条推荐之一，或选「暂未选定」「其他」并自填。若暂不选定可点确认，我会给出引导；至少一行需为有效假设后才能进入价值观筛选。",
+    3: "请在「假设」列选择：「个人事业」或「职业路径」两条推荐之一，或选「暂未选定」「其他」并自填。可点单元格旁图标重新生成推荐。至少一行需为有效假设后才能进入价值观筛选。",
     4: "请为各行选择价值观标签、选「都不符合」「待定」或「其他」并填写后整表确认。",
     5: "请在本页为各行选择「忍不住想做」或「应该做」后整表确认。",
     6: "请在本页为各行选择「现在」或「未来」后整表确认。",
@@ -148,14 +148,14 @@ def build_table_widget_payload(
         return None
     display_rows: List[dict] = list(rows)
     if step == 3:
-        from app.utils.rumination_hypothesis_service import ensure_row_has_three_hypotheses
+        from app.utils.rumination_hypothesis_service import ensure_row_has_pair_hypotheses
 
         patched: List[dict] = []
         for i, r in enumerate(rows):
             row = dict(r)
             passion = str(row.get("热爱") or "")
             strength = str(row.get("优势") or "")
-            ensure_row_has_three_hypotheses(
+            ensure_row_has_pair_hypotheses(
                 row, passion=passion, strength=strength, row_index=i
             )
             patched.append(row)

@@ -25,8 +25,21 @@ export function isRuminationFilterStepReachable(
 ): boolean {
   if (step < 1 || step > RUMINATION_FILTER_STEP_MAX) return false;
   if (!p) return step === 1;
-  const mr = computeMaxReachedFromSnapshots(p);
+
+  const ms = p.main_section;
   const fs = p.filter_step ?? 0;
+
+  // 已进入最终选择或之后：进度条 7 段用于回看筛选表，须允许点击任意 1–7（否则短链 snapshot 未标 submitted 时第 7 段会灰掉）
+  if (ms === 'final_choice' || ms === 'recommend' || ms === 'end') {
+    return true;
+  }
+
+  // 仍在筛选且服务端当前子步已到 7：同样允许在 1–7 间跳转（与 furthest 快照不完全一致时的兜底）
+  if (ms === 'filter' && fs >= RUMINATION_FILTER_STEP_MAX) {
+    return true;
+  }
+
+  const mr = computeMaxReachedFromSnapshots(p);
   if (step <= mr) return true;
   if (fs > 0 && step === fs) return true;
   return false;

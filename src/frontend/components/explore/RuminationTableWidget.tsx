@@ -10,6 +10,7 @@ import {
   type ChangeEvent,
   type MouseEvent,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { Loader2, RefreshCw } from 'lucide-react';
 
 export const HYP_CONFIRM_KEY = '用户确认的假设';
@@ -78,11 +79,15 @@ interface RuminationTableWidgetProps {
   hypothesisTagCompanyLabel?: string;
   /** 假设列：第三条等额外假设的标签 */
   hypothesisTagExtraLabel?: string;
-  /** 子步 3：重新生成本行三条假设（+ 其他 / 暂不选由下拉选择） */
+  /** 子步 3：重新生成本行两条推荐假设（+ 其他 / 暂不选由下拉选择） */
   hypothesisRegenerateLabel?: string;
   hypothesisRegeneratingLabel?: string;
   /** 右上角重新生成图标的悬停说明 */
   hypothesisRegenerateHint?: string;
+  /** 悬停假设下拉时浮层标题（i18n） */
+  hypothesisPreviewTitle?: string;
+  /** 原生 title，提示可悬停查看全文 */
+  hypothesisPreviewHint?: string;
   hypothesisRegeneratingRowIndex?: number | null;
   /** 第三参为当前表格内存快照（含未点「确认」的编辑），供重新生成单行时与其它行合并 */
   onHypothesisRegenerate?: (
@@ -119,6 +124,8 @@ export default function RuminationTableWidget({
   hypothesisRegenerateLabel = '重新生成',
   hypothesisRegeneratingLabel = '生成中…',
   hypothesisRegenerateHint = '重新生成本行的假设选项',
+  hypothesisPreviewTitle = '两条推荐假设',
+  hypothesisPreviewHint,
   hypothesisRegeneratingRowIndex = null,
   onHypothesisRegenerate,
   embeddedSubmitOverlay = false,
@@ -138,6 +145,63 @@ export default function RuminationTableWidget({
 
   const tableRowRefs = useRef<Map<number, HTMLTableRowElement | null>>(new Map());
   const [hypRegenOverlayW, setHypRegenOverlayW] = useState(0);
+
+  const [hypothesisPreview, setHypothesisPreview] = useState<{
+    anchorRect: DOMRect;
+    h1: string;
+    h2: string;
+  } | null>(null);
+  const hypothesisPreviewCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelHypothesisPreviewClose = useCallback(() => {
+    if (hypothesisPreviewCloseTimer.current) {
+      clearTimeout(hypothesisPreviewCloseTimer.current);
+      hypothesisPreviewCloseTimer.current = null;
+    }
+  }, []);
+
+  const scheduleHypothesisPreviewClose = useCallback(() => {
+    if (hypothesisPreviewCloseTimer.current) {
+      clearTimeout(hypothesisPreviewCloseTimer.current);
+    }
+    hypothesisPreviewCloseTimer.current = setTimeout(() => {
+      setHypothesisPreview(null);
+      hypothesisPreviewCloseTimer.current = null;
+    }, 200);
+  }, []);
+
+  const openHypothesisPreview = useCallback(
+    (anchor: HTMLElement, h1s: string, h2s: string) => {
+      if (!h1s.trim() && !h2s.trim()) return;
+      cancelHypothesisPreviewClose();
+      setHypothesisPreview({
+        anchorRect: anchor.getBoundingClientRect(),
+        h1: h1s,
+        h2: h2s,
+      });
+    },
+    [cancelHypothesisPreviewClose]
+  );
+
+  useEffect(() => {
+    if (!hypothesisPreview || typeof window === 'undefined') return;
+    const close = () => setHypothesisPreview(null);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [hypothesisPreview]);
+
+  useEffect(
+    () => () => {
+      if (hypothesisPreviewCloseTimer.current) {
+        clearTimeout(hypothesisPreviewCloseTimer.current);
+      }
+    },
+    []
+  );
 
   const setTableRowRef = useCallback((idx: number) => (el: HTMLTableRowElement | null) => {
     if (el) tableRowRefs.current.set(idx, el);
@@ -623,27 +687,114 @@ export default function RuminationTableWidget({
 
     return (
       <div className="flex min-w-0 flex-row items-center gap-2 pb-1 pl-0.5 pr-1 pt-0.5">
-        <select
-          value={selectControlValue}
-          disabled={cellDisabled}
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-          onChange={onHypSelectChange}
-          className={hypSelectNarrowClass}
-          style={selectArrowStyle}
+        <div
+          className="relative shrink-0"
+          title={hypothesisPreviewHint || undefined}
+          onMouseEnter={(e) => {
+            if (cellDisabled) return;
+            openHypothesisPreview(e.currentTarget, h1, h2);
+          }}
+          onMouseLeave={scheduleHypothesisPreviewClose}
         >
-          <option value="">{selectPlaceholder}</option>
-          {h1 ? <option value={OPT_H1}>{tagLabels.freelance}</option> : null}
-          {h2 ? <option value={OPT_H2}>{tagLabels.company}</option> : null}
-          {h3 ? <option value={OPT_H3}>{h3TagLabel}</option> : null}
-          <option value={OPT_OTHER}>{hypothesisOtherLabel}</option>
-          {pendingOk ? <option value={OPT_PENDING}>{hypothesisPendingLabel}</option> : null}
-        </select>
+          <select
+            value={selectControlValue}
+            disabled={cellDisabled}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            onChange={onHypSelectChange}
+            className={hypSelectNarrowClass}
+            style={selectArrowStyle}
+          >
+            <option value="">{selectPlaceholder}</option>
+            {h1 ? <option value={OPT_H1}>{tagLabels.freelance}</option> : null}
+            {h2 ? <option value={OPT_H2}>{tagLabels.company}</option> : null}
+            {h3 ? <option value={OPT_H3}>{h3TagLabel}</option> : null}
+            <option value={OPT_OTHER}>{hypothesisOtherLabel}</option>
+            {pendingOk ? <option value={OPT_PENDING}>{hypothesisPendingLabel}</option> : null}
+          </select>
+        </div>
         <div className="flex min-h-0 min-w-0 flex-1 items-center">{rightSlot}</div>
         {regenBtn}
       </div>
     );
   };
+
+  const hypothesisPreviewLayer =
+    hypothesisPreview && typeof document !== 'undefined'
+      ? createPortal(
+          (() => {
+            const { anchorRect, h1: ph1, h2: ph2 } = hypothesisPreview;
+            const pad = 10;
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            const cardW = Math.min(400, Math.max(260, vw - pad * 2));
+            let left = anchorRect.left;
+            left = Math.min(Math.max(pad, left), vw - pad - cardW);
+            const maxCardH = Math.min(vh * 0.44, 300);
+            let top = anchorRect.bottom + 6;
+            if (top + 140 > vh - pad && anchorRect.top > maxCardH + pad + 16) {
+              top = anchorRect.top - maxCardH - 8;
+            }
+            top = Math.max(pad, Math.min(top, vh - pad - 24));
+
+            const shellCls = isGlass
+              ? 'rounded-2xl border border-white/55 bg-white/[0.93] shadow-[0_24px_56px_-14px_rgba(15,23,42,0.38)] backdrop-blur-xl ring-1 ring-neutral-900/[0.05]'
+              : 'rounded-2xl border border-neutral-200/95 bg-white shadow-[0_24px_56px_-14px_rgba(15,23,42,0.26)] ring-1 ring-black/[0.04]';
+
+            return (
+              <div
+                role="tooltip"
+                aria-label={hypothesisPreviewTitle}
+                style={{
+                  position: 'fixed',
+                  top,
+                  left,
+                  width: cardW,
+                  maxHeight: maxCardH,
+                  zIndex: 10040,
+                }}
+                className={`pointer-events-auto flex flex-col overflow-hidden ${shellCls}`}
+                onMouseEnter={cancelHypothesisPreviewClose}
+                onMouseLeave={scheduleHypothesisPreviewClose}
+              >
+                <div className="shrink-0 border-b border-neutral-200/55 bg-gradient-to-r from-violet-600/[0.08] via-white to-fuchsia-600/[0.07] px-3.5 py-2">
+                  <p className="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-neutral-500">
+                    {hypothesisPreviewTitle}
+                  </p>
+                </div>
+                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3.5 py-3">
+                  {ph1.trim() ? (
+                    <div className="space-y-1.5">
+                      <div className="inline-flex items-center gap-1.5 rounded-full bg-violet-500/10 px-2 py-0.5">
+                        <span className="h-1.5 w-1.5 rounded-full bg-violet-500 ring-2 ring-violet-400/30" />
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-violet-800">
+                          {hypothesisTagFreelanceLabel}
+                        </span>
+                      </div>
+                      <p className="text-[0.8125rem] leading-relaxed text-neutral-800">{ph1}</p>
+                    </div>
+                  ) : null}
+                  {ph1.trim() && ph2.trim() ? (
+                    <div className="h-px bg-gradient-to-r from-transparent via-neutral-200/90 to-transparent" />
+                  ) : null}
+                  {ph2.trim() ? (
+                    <div className="space-y-1.5">
+                      <div className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia-500/10 px-2 py-0.5">
+                        <span className="h-1.5 w-1.5 rounded-full bg-fuchsia-500 ring-2 ring-fuchsia-400/30" />
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-fuchsia-900/80">
+                          {hypothesisTagCompanyLabel}
+                        </span>
+                      </div>
+                      <p className="text-[0.8125rem] leading-relaxed text-neutral-800">{ph2}</p>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })(),
+          document.body
+        )
+      : null;
 
   /** 列自带 options 且含「其他」：选「其他」后出现输入框（如工作目的） */
   const renderSelectWithOther = (
@@ -948,29 +1099,35 @@ export default function RuminationTableWidget({
 
   if (isGlass) {
     return (
-      <div className={`flex min-h-0 flex-1 flex-col ${className}`}>
-        <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
-          <h2 className="truncate text-lg font-semibold text-bd-fg">{cardTitle ?? '表格'}</h2>
-          {tableHeaderActions}
+      <>
+        <div className={`flex min-h-0 flex-1 flex-col ${className}`}>
+          <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
+            <h2 className="truncate text-lg font-semibold text-bd-fg">{cardTitle ?? '表格'}</h2>
+            {tableHeaderActions}
+          </div>
+          {payload.guideText && (
+            <p className="mb-2 shrink-0 text-sm leading-relaxed text-neutral-600">{payload.guideText}</p>
+          )}
+          {/* flex-1 + 表格区 flex-1：撑满左卡剩余高度，避免 max-h 下方大块留白 */}
+          <div className="flex min-h-0 flex-1 flex-col">{tableBlock}</div>
         </div>
-        {payload.guideText && (
-          <p className="mb-2 shrink-0 text-sm leading-relaxed text-neutral-600">{payload.guideText}</p>
-        )}
-        {/* flex-1 + 表格区 flex-1：撑满左卡剩余高度，避免 max-h 下方大块留白 */}
-        <div className="flex min-h-0 flex-1 flex-col">{tableBlock}</div>
-      </div>
+        {hypothesisPreviewLayer}
+      </>
     );
   }
 
   return (
-    <div
-      className={`rumination-table-widget rounded-xl border border-neutral-200 bg-white/90 p-4 ${className}`}
-    >
-      {payload.guideText && (
-        <p className="text-sm text-neutral-600 mb-3">{payload.guideText}</p>
-      )}
-      {tableBlock}
-      <div className="mt-3 flex justify-end">{tableHeaderActions}</div>
-    </div>
+    <>
+      <div
+        className={`rumination-table-widget rounded-xl border border-neutral-200 bg-white/90 p-4 ${className}`}
+      >
+        {payload.guideText && (
+          <p className="text-sm text-neutral-600 mb-3">{payload.guideText}</p>
+        )}
+        {tableBlock}
+        <div className="mt-3 flex justify-end">{tableHeaderActions}</div>
+      </div>
+      {hypothesisPreviewLayer}
+    </>
   );
 }

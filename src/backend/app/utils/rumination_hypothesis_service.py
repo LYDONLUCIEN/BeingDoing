@@ -1,12 +1,12 @@
 """
-Rumination 假设列：调用 LLM 生成三条职业假设（对应 UI 槽位：个人事业 / 职业路径 / 备选），失败时降级为占位。
+Rumination 假设列：按产品文档一次 LLM 生成两条假设（自由职业向 + 公司职业向），失败时降级为占位。
 """
 from __future__ import annotations
 
 import json
 import logging
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from app.core.llmapi.base import LLMMessage
 
@@ -15,154 +15,131 @@ from app.utils.rumination_ops import fallback_hypotheses
 logger = logging.getLogger(__name__)
 
 
-def _parse_hypothesis_list(text: str) -> List[str]:
-    """从模型输出中解析 3 条字符串。"""
+def _parse_hypothesis_pair(text: str) -> Tuple[str, str]:
+    """从模型输出中解析两条字符串（优先 JSON 数组，恰好 2 个元素）。"""
     if not text:
-        return []
+        return "", ""
     s = text.strip()
-    # 优先整段 JSON 数组
     try:
         arr = json.loads(s)
-        if isinstance(arr, list):
-            out = [str(x).strip() for x in arr if str(x).strip()]
-            return out[:3]
+        if isinstance(arr, list) and len(arr) >= 2:
+            a = str(arr[0]).strip()
+            b = str(arr[1]).strip()
+            return a, b
     except (json.JSONDecodeError, TypeError):
         pass
     m = re.search(r"\[.*\]", s, re.DOTALL)
     if m:
         try:
             arr = json.loads(m.group(0))
-            if isinstance(arr, list):
-                out = [str(x).strip() for x in arr if str(x).strip()]
-                return out[:3]
+            if isinstance(arr, list) and len(arr) >= 2:
+                return str(arr[0]).strip(), str(arr[1]).strip()
         except (json.JSONDecodeError, TypeError):
             pass
     lines = [ln.strip().lstrip("0123456789.-、)） ") for ln in s.splitlines() if ln.strip()]
-    return [x for x in lines if x][:3]
+    if len(lines) >= 2:
+        return lines[0], lines[1]
+    if len(lines) == 1:
+        return lines[0], ""
+    return "", ""
 
 
-async def generate_three_hypotheses_for_row(
+# 文档 rumination-prompt.md 中两段「假设生成」原文合并为一次生成任务（输出格式在 system 末约束）
+HYPOTHESIS_PAIR_SYSTEM_ZH = (
+    "你将根据用户消息中的「热爱」「优势」「匹配说明」以及「用户背景信息和诉求」，在同一回复中完成两项输出。\n\n"
+    "【任务一：自由职业导向假设】\n"
+    "目前正处于「假设生成」环节。根据以下要求结合用户背景信息和诉求生成一句话的「自由职业导向假设」：\n"
+    "为当前组合（热爱：见用户消息，优势：见用户消息）生成一个具体的假设。假设需描述「想做的事」本身，要具体、有画面感，"
+    "通常包含角色、对象、动作、目的等要素，让用户能想象出实际场景，且应指向可长期投入、持续运营的职业或项目，"
+    "避免使用抽象的标签或职位名称。并可以作为独立个体、自由职业者或小型创业者来经营的事业。\n\n"
+    "【任务二：公司职业导向假设】\n"
+    "目前正处于「假设生成」环节。根据以下要求结合用户背景信息和诉求生成一句话的「公司职业导向假设」：\n"
+    "为当前组合（热爱：见用户消息，优势：见用户消息）生成一个具体的假设。假设需描述「想做的事」本身，要具体、有画面感，"
+    "通常包含角色、对象、动作、目的等要素，让用户能想象出实际场景，且应指向可长期投入、持续运营的职业或项目，"
+    "避免使用抽象的标签或职位名称。并通过进入一家公司，作为员工来发展的职业路径。\n\n"
+    "【输出格式】\n"
+    "只输出严格 JSON 数组，恰好 2 个字符串：第一个字符串为任务一的正文，第二个为任务二的正文。"
+    "不要输出数组以外的任何说明、标点或 Markdown。"
+)
+
+HYPOTHESIS_PAIR_USER_TEMPLATE_ZH = (
+    "热爱：{passion}\n"
+    "优势：{strength}\n"
+    "匹配说明：{match_reason}\n\n"
+    "以下是用户背景信息和诉求：\n"
+    "{user_background}\n"
+)
+
+
+async def generate_hypothesis_pair_for_row(
     llm: Any,
     *,
     passion: str,
     strength: str,
     match_reason: str = "",
-    values_hint: str = "",
+    user_background: str = "",
     row_index: int = 0,
-) -> List[str]:
-    """
-    为单行生成三条短假设（中文，单一方向表述，避免并列堆砌）。
-    """
-    system = (
-        "你是职业规划师助理。根据用户的热爱、优势生成三条不同的、可落地的职业方向假设。"
-        "每条一句，15-40 字，中文；不要编号外的多余解释。"
-        "输出严格 JSON 数组，恰好 3 个字符串，例如 [\"...\",\"...\",\"...\"]。"
-    )
-    user = (
-        f"热爱：{passion}\n优势：{strength}\n匹配说明：{match_reason or '（无）'}\n"
-        f"价值观参考：{values_hint or '（无）'}"
+) -> Tuple[str, str]:
+    """为单行一次生成两条假设：假设1=自由职业向，假设2=公司职业向。"""
+    ub = (user_background or "").strip() or "（暂无额外背景，请仅根据热爱与优势生成。）"
+    mr = (match_reason or "").strip() or "（无）"
+    user = HYPOTHESIS_PAIR_USER_TEMPLATE_ZH.format(
+        passion=passion or "（未填）",
+        strength=strength or "（未填）",
+        match_reason=mr,
+        user_background=ub,
     )
     try:
         resp = await llm.chat(
-            [LLMMessage(role="system", content=system), LLMMessage(role="user", content=user)],
-            temperature=0.75,
-            max_tokens=400,
+            [
+                LLMMessage(role="system", content=HYPOTHESIS_PAIR_SYSTEM_ZH),
+                LLMMessage(role="user", content=user),
+            ],
+            temperature=0.72,
+            max_tokens=500,
         )
         raw = (resp.content or "").strip()
-        got = _parse_hypothesis_list(raw)
-        if len(got) >= 3:
-            return got[:3]
-        if len(got) > 0:
-            fb = fallback_hypotheses(passion, strength, row_index)
-            while len(got) < 3:
-                got.append(fb[len(got) % 3])
-            return got[:3]
+        h1, h2 = _parse_hypothesis_pair(raw)
+        if len(h1) >= 4 and len(h2) >= 4:
+            return h1[:400], h2[:400]
+        fb = fallback_hypotheses(passion, strength, row_index)
+        if len(h1) < 4:
+            h1 = fb[0] if fb else h1
+        if len(h2) < 4:
+            h2 = fb[1] if len(fb) > 1 else (fb[0] if fb else h2)
+        return h1[:400], h2[:400]
     except Exception as e:
-        logger.warning("rumination hypothesis LLM failed: %s", e)
-    return list(fallback_hypotheses(passion, strength, row_index))
+        logger.warning("rumination hypothesis pair LLM failed: %s", e)
+    fb = fallback_hypotheses(passion, strength, row_index)
+    return (fb[0] if fb else "")[:400], (fb[1] if len(fb) > 1 else fb[0] if fb else "")[:400]
 
 
-def ensure_row_has_three_hypotheses(
+def ensure_row_has_pair_hypotheses(
     row: Dict[str, Any],
     *,
     passion: str,
     strength: str,
     row_index: int = 0,
 ) -> None:
-    """保证 假设1–3 均有非空文案（历史数据 / 第二轮清空后补占位，供 UI 三条选项）。"""
+    """保证假设1、假设2非空；假设3不再使用，置空。"""
+    row["假设3"] = ""
     fb = fallback_hypotheses(passion, strength, row_index)
     if not str(row.get("假设1") or "").strip():
-        row["假设1"] = fb[0]
+        row["假设1"] = fb[0] if fb else ""
     if not str(row.get("假设2") or "").strip():
-        row["假设2"] = fb[1]
-    if not str(row.get("假设3") or "").strip():
-        row["假设3"] = fb[2]
-
-
-async def generate_two_hypotheses_for_row(
-    llm: Any,
-    *,
-    passion: str,
-    strength: str,
-    match_reason: str = "",
-    values_hint: str = "",
-    row_index: int = 0,
-) -> tuple[str, str]:
-    """
-    为单行生成两条假设：假设1=个人事业向，假设2=职业路径向；假设3 由调用方清空。
-    """
-    sys_freelance = (
-        "目前处于「个人事业」向假设生成。根据热爱与优势生成一句具体假设（15-45 字），"
-        "描述可独立经营、自由职业或小型创业的方向，有画面感。"
-        "只输出一句正文，不要引号、编号或前后缀说明。"
-    )
-    sys_company = (
-        "目前处于「职业路径」向假设生成。根据热爱与优势生成一句具体假设（15-45 字），"
-        "描述可通过进入公司、担任某类岗位发展的路径，有画面感。"
-        "只输出一句正文，不要引号、编号或前后缀说明。"
-    )
-    user_common = (
-        f"热爱：{passion}\n优势：{strength}\n匹配说明：{match_reason or '（无）'}\n"
-        f"价值观参考：{values_hint or '（无）'}"
-    )
-
-    async def _one_line(system: str) -> str:
-        try:
-            resp = await llm.chat(
-                [
-                    LLMMessage(role="system", content=system),
-                    LLMMessage(role="user", content=user_common),
-                ],
-                temperature=0.72,
-                max_tokens=160,
-            )
-            raw = (resp.content or "").strip()
-            line = raw.split("\n")[0].strip().strip('"“”')
-            return line[:220] if line else ""
-        except Exception as e:
-            logger.warning("rumination two-hypo single LLM failed: %s", e)
-            return ""
-
-    h1 = await _one_line(sys_freelance)
-    h2 = await _one_line(sys_company)
-    if len(h1) < 4 or len(h2) < 4:
-        fb = fallback_hypotheses(passion, strength, row_index)
-        if len(h1) < 4:
-            h1 = fb[0] if fb else h1
-        if len(h2) < 4:
-            h2 = fb[1] if len(fb) > 1 else fb[0] if fb else h2
-    return h1, h2
+        row["假设2"] = fb[1] if len(fb) > 1 else (fb[0] if fb else "")
 
 
 async def fill_hypothesis_columns_for_table(
     llm: Any,
     table: List[Dict[str, Any]],
     *,
-    values_hint: str = "",
+    user_background: str = "",
     only_empty_hypothesis_slots: bool = False,
 ) -> List[Dict[str, Any]]:
     """
-    为表中行填充 假设1/假设2/假设3（三条 LLM 假设，对应 UI：个人事业向 / 职业路径向 / 备选）。
+    为表中行填充假设1/假设2（一次 LLM 调用生成一对）。
+
     only_empty_hypothesis_slots=True 时仅处理「用户确认的假设」为空且假设1 为空的行（第二轮）。
     """
     out: List[Dict[str, Any]] = []
@@ -179,19 +156,19 @@ async def fill_hypothesis_columns_for_table(
             need_fill = not confirmed and not h1
 
         if need_fill:
-            hyps = await generate_three_hypotheses_for_row(
+            p1, p2 = await generate_hypothesis_pair_for_row(
                 llm,
                 passion=passion,
                 strength=strength,
                 match_reason=match_reason,
-                values_hint=values_hint,
+                user_background=user_background,
                 row_index=i,
             )
-            row["假设1"] = hyps[0] if len(hyps) > 0 else ""
-            row["假设2"] = hyps[1] if len(hyps) > 1 else ""
-            row["假设3"] = hyps[2] if len(hyps) > 2 else ""
-        ensure_row_has_three_hypotheses(
-            row, passion=passion, strength=strength, row_index=i
-        )
+            row["假设1"] = p1
+            row["假设2"] = p2
+            row["假设3"] = ""
+        else:
+            row["假设3"] = ""
+        ensure_row_has_pair_hypotheses(row, passion=passion, strength=strength, row_index=i)
         out.append(row)
     return out

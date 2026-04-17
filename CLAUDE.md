@@ -38,6 +38,9 @@ npm run build     # Production build
 npm run lint      # ESLint
 ```
 
+**Next.js 日志：`Failed to find Server Action … older or newer deployment`（有时 id 显示为 `x`）**  
+常见于 `./start.sh start-run` **清缓存重新 build 后，浏览器仍开着旧标签页**（Flight / Server Action 与当前 `.next` 不一致），或 **未设置** `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` 导致多次 build 后解密失败。处理：**硬刷新或关旧页再开**；在 `.env` 写入 `openssl rand -base64 32` 的**输出**（不要写命令文本），保存后重新 build。`./start.sh` 在生产模式且缺该变量时会打印黄色提示。
+
 ### Testing
 ```bash
 pytest                              # Run all tests (from repo root)

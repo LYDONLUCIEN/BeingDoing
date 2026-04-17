@@ -86,6 +86,12 @@ info()  { echo -e "${CYAN}[start.sh]${RESET} $*"; }
 ok()    { echo -e "${GREEN}[start.sh]${RESET} $*"; }
 warn()  { echo -e "${YELLOW}[start.sh]${RESET} $*"; }
 
+# Next.js 生产 Server Actions：稳定密钥可避免多次 build 后旧标签页请求解密失败（日志里偶见 Failed to find Server Action "x"）
+if [ "$RUN_MODE" = "production" ] && [ -z "${NEXT_SERVER_ACTIONS_ENCRYPTION_KEY:-}" ]; then
+  warn "生产模式 frontend：.env 未设置 NEXT_SERVER_ACTIONS_ENCRYPTION_KEY。"
+  warn "建议写入 openssl rand -base64 32 的随机串（不要写命令本身），保存后 ./start.sh start-run 重新 build。"
+fi
+
 # ── 辅助函数 ────────────────────────────────────────────────
 
 session_exists() {

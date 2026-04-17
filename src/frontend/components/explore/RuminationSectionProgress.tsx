@@ -65,7 +65,12 @@ export function computeDisplayedRuminationMilestone(
   viewFilterStep?: number | null
 ): number {
   const ms = progress.main_section;
-  if (ms === 'final_choice' || ms === 'recommend' || ms === 'end') return 8;
+  if (ms === 'final_choice' || ms === 'recommend' || ms === 'end') {
+    if (viewFilterStep != null && viewFilterStep >= 1 && viewFilterStep <= FILTER_STEP_CAP) {
+      return viewFilterStep;
+    }
+    return 8;
+  }
   const submitted = countFilterSubmittedSteps(progress);
   const fs = progress.filter_step ?? 0;
   /** 短链可能未在每子步写入 submitted；服务端已到第 7 子步时，进度条至少按 7 档计，避免重置再走满仍显示约 50% */
@@ -115,7 +120,10 @@ export function computeRuminationJourneyPercent(
   const useViewForFilterBar =
     viewFilterStep != null &&
     viewFilterStep >= 1 &&
-    (progress.main_section === 'filter' || progress.main_section === 'final_choice');
+    (progress.main_section === 'filter' ||
+      progress.main_section === 'final_choice' ||
+      progress.main_section === 'recommend' ||
+      progress.main_section === 'end');
 
   if (useViewForFilterBar) {
     const m = computeDisplayedRuminationMilestone(progress, viewFilterStep);
@@ -234,11 +242,14 @@ export default function RuminationSectionProgress({
   const inFilter =
     displayProgress?.main_section === 'filter' && (displayProgress.filter_step ?? 0) > 0;
 
-  /** 与进度条一致：正在查看某筛选子步时展示「筛选 n/7」（含 final_choice 回看表） */
+  /** 与进度条一致：正在查看某筛选子步时展示「筛选 n/7」（含完成后回看表） */
   const showFilterSubstepCaption =
     viewFilterStep != null &&
     viewFilterStep >= 1 &&
-    (inFilter || displayProgress?.main_section === 'final_choice');
+    (inFilter ||
+      displayProgress?.main_section === 'final_choice' ||
+      displayProgress?.main_section === 'recommend' ||
+      displayProgress?.main_section === 'end');
 
   const detailLine = useMemo(() => {
     if (!displayProgress) return '';

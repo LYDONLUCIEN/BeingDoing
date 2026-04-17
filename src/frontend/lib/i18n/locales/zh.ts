@@ -253,6 +253,8 @@ export const zh = {
         hypothesisRegenerating: '生成中…',
         hypothesisRegenerateError: '重新生成假设失败，请重试',
         hypothesisRegenerateHint: '重新生成该行的假设选项',
+        hypothesisPreviewTitle: '两条推荐假设',
+        hypothesisPreviewHint: '悬停下拉框可展开两侧假设全文',
         hypothesisTagFreelance: '个人事业',
         hypothesisTagCompany: '职业路径',
         hypothesisTagExtra: '备选方向',

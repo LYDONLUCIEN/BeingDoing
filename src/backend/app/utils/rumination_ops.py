@@ -105,7 +105,17 @@ def _remove_keys(row: Dict[str, Any], keys: Tuple[str, ...]) -> Dict[str, Any]:
 
 def structure_hypothesis_round1_table(table: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    第三步入口：去掉不匹配行与匹配原因列，增加假设列与用户确认列（假设文案由 LLM 或占位填充）。
+    假设子步（第 3 步）入口：把第 2 步「匹配性」表变成可选假设的表结构。
+
+    处理逻辑：
+    1. 仅保留「匹配性 != 不匹配」的行（不匹配组合不进入假设轮）。
+    2. 去掉「匹配原因」列（后续列由 table_widget 与 LLM 填充）。
+    3. 为每行准备「假设1」「假设2」空槽位，由 ``fill_hypothesis_columns_for_table`` 写入两条推荐
+      （个人事业向 / 公司职业向）；「假设3」固定为空，不再提供「第三条备选」文案。
+    4. 保留行内已有「用户确认的假设」字符串（若历史上有值），前端仍可在该列选择：
+       两条推荐之一、「其他」自填、「暂未选定」不选本条——交互与列定义不变，仅少一条备选假设文本。
+
+    假设文案由 LLM 或占位填充，见 ``rumination_hypothesis_service``。
     """
     matched = _strip_non_matching_rows(table)
     out: List[Dict[str, Any]] = []
@@ -113,7 +123,7 @@ def structure_hypothesis_round1_table(table: List[Dict[str, Any]]) -> List[Dict[
         row = _remove_keys(r, ("匹配原因",))
         row["假设1"] = row.get("假设1") or ""
         row["假设2"] = row.get("假设2") or ""
-        row["假设3"] = row.get("假设3") or ""
+        row["假设3"] = ""
         row["用户确认的假设"] = (row.get("用户确认的假设") or "").strip()
         out.append(row)
     return out
@@ -131,7 +141,7 @@ def fallback_hypotheses(passion: str, strength: str, seed: int = 0) -> Tuple[str
 
 def generate_hypotheses_round2_table(table: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    第四轮：仅对「用户确认的假设」为空的行清空并等待新假设（假设1-3 由 LLM 覆盖）。
+    第四轮：仅对「用户确认的假设」为空的行清空并等待新假设（假设1、假设2 由 LLM 覆盖；假设3 保持空）。
     """
     out: List[Dict[str, Any]] = []
     for r in table:

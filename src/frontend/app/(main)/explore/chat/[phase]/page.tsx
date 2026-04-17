@@ -77,6 +77,11 @@ import {
   simulateFixedRuminationOpening,
   streamRuminationStepOpening,
 } from '@/lib/explore/ruminationStepOpening';
+import {
+  hasRuminationStepOpeningBeenShown,
+  markRuminationStepOpeningShown,
+  clearRuminationStepOpeningShownFromStep,
+} from '@/lib/explore/ruminationStepOpeningFlags';
 import { useLocale } from '@/hooks/useLocale';
 import { useAuthStore } from '@/stores/authStore';
 import { fetchAdminSystemSettings } from '@/lib/api/admin';
@@ -2303,6 +2308,10 @@ export default function ChatPhasePage() {
   const playRuminationStepOpeningAfterSubmit = useCallback(
     async (newStep: number, threadId: string) => {
       if (!activationCode || phase !== 'rumination') return;
+      const tid = threadId.trim();
+      if (tid && hasRuminationStepOpeningBeenShown(activationCode, tid, newStep)) {
+        return;
+      }
       ruminationGuideAbortRef.current?.abort();
       const ac = new AbortController();
       ruminationGuideAbortRef.current = ac;
@@ -2408,6 +2417,9 @@ export default function ChatPhasePage() {
       } finally {
         setRuminationGuideBusy(false);
         ruminationGuideAbortRef.current = null;
+        if (assistantHasVisibleOutput && tid) {
+          markRuminationStepOpeningShown(activationCode, tid, newStep);
+        }
         if (!assistantHasVisibleOutput) {
           setMessages((prev) => prev.filter((m) => m.id !== assistantId));
         } else {
@@ -2718,6 +2730,7 @@ export default function ChatPhasePage() {
     void (async () => {
       const ok = await loadRuminationTableStep(ruminationViewStep, { resetInitial: true });
       if (!ok) return;
+      clearRuminationStepOpeningShownFromStep(activationCode, activeThreadId, ruminationViewStep);
       const cut = cutMessagesForRuminationStepRefill(
         messagesRef.current,
         ruminationViewStep,
@@ -2772,11 +2785,16 @@ export default function ChatPhasePage() {
   /** 沉淀对话区：助手气泡样式与前四步一致（values 蓝条白底），用户气泡仍用紫色主题 */
   const flowAiPhaseClass = phase === 'rumination' ? 'values' : phaseClass;
 
-  /** 筛选子步导航：普通用户仅在 filter 段；管理员在 final_choice 仍可上一步/下一步/改表 */
+  /** 筛选子步导航：filter 段需已加载左表；完成后（final_choice / recommend / end）可无表显示分段，点击再拉表回看 */
+  const ruminationMainSection = ruminationProgressState?.main_section;
+  const ruminationPostFilterReview =
+    ruminationMainSection === 'final_choice' ||
+    ruminationMainSection === 'recommend' ||
+    ruminationMainSection === 'end';
   const ruminationShowFilterStepNav =
-    !!ruminationTablePayload &&
-    (ruminationProgressState?.main_section === 'filter' ||
-      (adminDebugBypass && ruminationProgressState?.main_section === 'final_choice'));
+    !!ruminationProgressState &&
+    (ruminationMainSection === 'filter' || ruminationPostFilterReview) &&
+    (!!ruminationTablePayload || ruminationPostFilterReview);
 
   if (!session || !phaseMeta || !phaseInfo) return null;
 
@@ -2936,6 +2954,8 @@ export default function ChatPhasePage() {
                     hypothesisRegenerateHint={t(
                       'explore.chat.ruminationUi.hypothesisRegenerateHint'
                     )}
+                    hypothesisPreviewTitle={t('explore.chat.ruminationUi.hypothesisPreviewTitle')}
+                    hypothesisPreviewHint={t('explore.chat.ruminationUi.hypothesisPreviewHint')}
                     hypothesisTagFreelanceLabel={t(
                       'explore.chat.ruminationUi.hypothesisTagFreelance'
                     )}
