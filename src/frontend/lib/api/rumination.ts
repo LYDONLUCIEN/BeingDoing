@@ -18,6 +18,20 @@ export type RuminationStepSnapshot = {
   submitted?: Record<string, unknown>[] | null;
 };
 
+/** 表格确认闸门：待提交暂存 + 跟进状态（与后端 rumination_progress 对齐） */
+export type RuminationNegStateStatus = 'awaiting_choice' | 'exploring' | 'closed';
+
+export interface RuminationNegState {
+  status: RuminationNegStateStatus;
+  step?: number;
+  kind?: string;
+  items?: Record<string, unknown>[];
+  llm_failed?: boolean;
+  injection_zh?: string;
+  opening_zh?: string;
+  bar_copy_zh?: string;
+}
+
 export interface RuminationProgress {
   schema_version?: number;
   main_section: RuminationMainSection;
@@ -29,6 +43,8 @@ export interface RuminationProgress {
   filter_early_terminated?: boolean;
   filter_terminate_reason?: string | null;
   filter_step_snapshots?: Record<string, RuminationStepSnapshot>;
+  pending_table_submit?: { step: number; table_data: Record<string, unknown>[] } | null;
+  rumination_neg_state?: RuminationNegState | null;
 }
 
 export interface RuminationTablePayload {
@@ -65,19 +81,37 @@ export interface RuminationTableSubmitOptions {
   preferSingleRow?: boolean;
   /** 终步多选提交时传行 id（与 table_data 内 __pick 二选一） */
   selectedRowIds?: string[];
+  /** 内部：闸门 resolve 后再次提交 */
+  negForceCommit?: boolean;
+}
+
+export interface RuminationNegConfirmPayload {
+  filter_step: number;
+  kind?: string;
+  items?: Record<string, unknown>[];
+  bar_copy_zh?: string;
+  llm_failed?: boolean;
 }
 
 export interface RuminationSubmitData {
   progress: RuminationProgress;
   next_step: number;
   /** rumination 终表提交后进入过渡页（无结论卡） */
-  next_action?: 'rumination_conclusion_insert' | 'rumination_finalize_transition' | string;
+  next_action?:
+    | 'rumination_conclusion_insert'
+    | 'rumination_finalize_transition'
+    | 'rumination_neg_confirm'
+    | 'rumination_neg_deep_started'
+    | 'rumination_neg_deep_ended'
+    | string;
   next_table_widget?: RuminationTablePayload;
   full_table_preview?: Record<string, unknown>[];
   early_terminated?: boolean;
   terminate_reason?: string;
   max_reached_filter_step?: number;
   dimension_conclusion?: Record<string, unknown>;
+  neg_confirm?: RuminationNegConfirmPayload;
+  opening_zh?: string;
 }
 
 /** 筛选子步右侧引导：固定文案或 LLM（后端 `domain/rumination_step_guidance.py`） */
@@ -161,7 +195,28 @@ export const ruminationApi = {
     if (options?.patch != null) body.patch = options.patch;
     if (options?.preferSingleRow != null) body.prefer_single_row = options.preferSingleRow;
     if (options?.selectedRowIds?.length) body.selected_row_ids = options.selectedRowIds;
-    const res = await apiClient.post('/simple-chat/rumination-table-submit', body);
+    if (options?.negForceCommit) body.neg_force_commit = true;
+    const res = await apiClient.post('/simple-chat/rumination-table-submit', body, {
+      timeout: 60_000,
+    });
+    return res;
+  },
+
+  /** 表格闸门：继续推进 / 深入讨论 / 结束讨论 */
+  negResolve: async (
+    activationCode: string,
+    threadId: string,
+    action: 'continue' | 'deep_start' | 'deep_end'
+  ): Promise<ApiResponse<RuminationSubmitData>> => {
+    const res = await apiClient.post(
+      '/simple-chat/rumination-neg-resolve',
+      {
+        activation_code: activationCode,
+        thread_id: threadId,
+        action,
+      },
+      { timeout: 60_000 }
+    );
     return res;
   },
 

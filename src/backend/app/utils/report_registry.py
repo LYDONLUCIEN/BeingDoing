@@ -74,6 +74,15 @@ STEP_ORDER = {k: i for i, k in enumerate(STEP_IDS)}
 _SESSION_ID_CROSS_REPORT_EXEMPT = frozenset({"admin_mock"})
 
 
+def _report_portal_unlocked(steps: dict) -> bool:
+    """五阶段均已选定会话时，报告入口对个人空间/仪表盘开放（与 transition 收口一致）。"""
+    for sid in STEP_IDS:
+        sel = (steps.get(sid) or {}).get("selected_session_id") or ""
+        if not str(sel).strip():
+            return False
+    return True
+
+
 def compute_explore_resume(record: dict) -> dict:
     """
     根据 record.json 推断用户应回到的「当前未完成阶段」及可访问阶段列表。
@@ -81,13 +90,22 @@ def compute_explore_resume(record: dict) -> dict:
     若全部 lock，则回到最后一步（沉淀），由前端或报告页收口。
     """
     steps = record.get("steps") or {}
+    report_unlocked = _report_portal_unlocked(steps)
     unlocked: List[str] = []
     for sid in STEP_IDS:
         unlocked.append(sid)
         st = steps.get(sid) or {}
         if not st.get("locked"):
-            return {"resume_phase": sid, "unlocked_phases": unlocked}
-    return {"resume_phase": STEP_IDS[-1], "unlocked_phases": list(STEP_IDS)}
+            return {
+                "resume_phase": sid,
+                "unlocked_phases": unlocked,
+                "report_unlocked": report_unlocked,
+            }
+    return {
+        "resume_phase": STEP_IDS[-1],
+        "unlocked_phases": list(STEP_IDS),
+        "report_unlocked": report_unlocked,
+    }
 
 
 STEP_ALIASES = {

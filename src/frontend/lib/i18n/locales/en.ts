@@ -271,6 +271,21 @@ export const en = {
         followConfirmTable: 'I have confirmed the table—please continue.',
         openingGuideError: 'Could not load step guidance. Please try again.',
         tableSubmitError: 'Submit failed. Please try again.',
+        negGateRegionLabel: 'Follow-up before confirming the table',
+        negExploringRegionLabel: 'Deep discussion in progress',
+        negGateDefaultCopy:
+          'Choose below: continue to the next step, or discuss with the AI first, then continue.',
+        negGateModalTitle: 'Please confirm before continuing',
+        negGateNoTableEditHint:
+          'Note: prerequisites like Interests and Strengths were confirmed earlier—do not edit these premises during this discussion.',
+        negGateContinue: 'Continue to next step',
+        negGateDeep: 'Discuss further',
+        negGateEndDeep: 'End discussion',
+        negExploringHint:
+          'You are in deeper discussion: continue Q&A in the input box, then click the top-right “End discussion” to submit and move on.',
+        negGateRemoteStepHint:
+          'Filter step {step} still has a pending follow-up or deep discussion. Go back there before continuing other steps.',
+        negGateJumpToStep: 'Go to step {step}',
         messageRowContextPrefix: '【Selected table row】{label}',
         finalTableTextConfirmHint:
           'This is the last filter step: review the final directions on the left—no need to tap the table “Confirm”. I’ll share a short summary in chat; please confirm via the **conclusion card** or follow the text instructions.',

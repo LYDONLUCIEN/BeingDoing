@@ -48,6 +48,14 @@ def _extract_keywords(text: str, limit: int = 10) -> List[str]:
     return found[:limit]
 
 
+def _normalize_alpha_marker(text: Any) -> str:
+    """修复类似 '(a 文案' -> '(a) 文案' 的历史标记缺右括号问题。"""
+    s = str(text or "").strip()
+    if not s:
+        return ""
+    return re.sub(r"^\(([A-Za-z])\s+", r"(\1) ", s)
+
+
 def gen_table(strengths: List[str], passions: List[str]) -> List[Dict[str, Any]]:
     """
     第一步：生成热爱×优势组合表格。
@@ -60,12 +68,14 @@ def gen_table(strengths: List[str], passions: List[str]) -> List[Dict[str, Any]]
     rows: List[Dict[str, Any]] = []
     idx = 1
     for p in passions[:6]:
+        p_norm = _normalize_alpha_marker(p)
         for s in strengths[:5]:
+            s_norm = _normalize_alpha_marker(s)
             rows.append(
                 {
                     "id": str(idx),
-                    "热爱": p,
-                    "优势": s,
+                    "热爱": p_norm,
+                    "优势": s_norm,
                     "优势标记": "有充实感",
                 }
             )

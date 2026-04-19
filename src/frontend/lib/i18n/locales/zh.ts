@@ -265,6 +265,20 @@ export const zh = {
         followConfirmTable: '我已确认表格，请继续。',
         openingGuideError: '子步引导加载失败，请稍后重试',
         tableSubmitError: '提交失败，请重试',
+        negGateRegionLabel: '表格确认前的跟进说明',
+        negExploringRegionLabel: '深入讨论进行中',
+        negGateDefaultCopy: '请先选择：进入下一步，或与 AI 深入讨论后再继续。',
+        negGateModalTitle: '继续前请先确认这一点',
+        negGateNoTableEditHint:
+          '提示：这里的热爱、优势等前提项来自前面已确认内容，请不要在本轮讨论里改动这些前提。',
+        negGateContinue: '进入下一步',
+        negGateDeep: '深入讨论',
+        negGateEndDeep: '结束讨论',
+        negExploringHint:
+          '你已进入深入讨论：可先在输入框继续问答，结束时请点击右上角「结束讨论」提交并进入下一步。',
+        negGateRemoteStepHint:
+          '筛选第 {step} 步有待处理的跟进或深入讨论，请先回到该步完成后再继续其它子步。',
+        negGateJumpToStep: '回到第 {step} 步',
         messageRowContextPrefix: '【关联表格行】{label}',
         finalTableTextConfirmHint:
           '当前为筛选最后一步：请通读左侧最终方向表，无需点击表上的「确认」。稍后在对话中我会给出总结，请你通过**结论卡片**或按提示用文字完成确认即可。',

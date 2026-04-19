@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Check, Lock, ChevronRight } from 'lucide-react';
+import { Check, Lock, ChevronRight, BookOpen } from 'lucide-react';
 import { PHASES, loadSession, saveSession, setLastActivationCode, applyExploreResumeToSession, type PhaseKey } from '@/lib/explore/session';
 import { useLocale } from '@/hooks/useLocale';
 import { apiClient } from '@/lib/api/client';
@@ -17,13 +17,20 @@ const PHASE_COLORS = [
   'var(--bd-phase-rumination, #8B5CF6)',
 ];
 
+/** 报告节点：琥珀旧纸色（与五阶段色块区分），渐变与内阴影在按钮 class 中实现 */
+const REPORT_NODE_COLOR = '#d97706';
+
 interface JourneyItem {
   activation_code: string;
   mode: string;
   status: string;
   created_at: string;
   last_activity_at: string;
-  explore_resume?: { resume_phase?: string; unlocked_phases?: string[] };
+  explore_resume?: {
+    resume_phase?: string;
+    unlocked_phases?: string[];
+    report_unlocked?: boolean;
+  };
   is_latest?: boolean;
 }
 
@@ -47,18 +54,60 @@ function effectiveResumeForNodes(resume?: JourneyItem['explore_resume']) {
   return { resume_phase: rp, unlocked_phases: unlocked };
 }
 
-function buildNodes(resume?: JourneyItem['explore_resume']) {
+type NodeVisual = {
+  id: string;
+  label: string;
+  status: 'in-progress' | 'completed' | 'incomplete';
+  color: string;
+};
+
+function buildNodes(resume?: JourneyItem['explore_resume']): NodeVisual[] {
   const eff = effectiveResumeForNodes(resume);
   const unlocked = eff.unlocked_phases;
   const current = eff.resume_phase;
-  return PHASES.map((p, idx) => ({
+  const reportUnlocked = Boolean(resume?.report_unlocked);
+
+  const phaseNodes: NodeVisual[] = PHASES.map((p, idx) => ({
     id: p.key,
     label: p.label,
     status: unlocked.includes(p.key)
-      ? p.key === current ? ('in-progress' as const) : ('completed' as const)
+      ? p.key === current
+        ? ('in-progress' as const)
+        : ('completed' as const)
       : ('incomplete' as const),
     color: PHASE_COLORS[idx] ?? PHASE_COLORS[0],
   }));
+
+  const reportStatus: NodeVisual['status'] = reportUnlocked ? 'completed' : 'incomplete';
+
+  return [
+    ...phaseNodes,
+    {
+      id: 'report',
+      label: '报告',
+      status: reportStatus,
+      color: REPORT_NODE_COLOR,
+    },
+  ];
+}
+
+function formatJourneyDateTime(iso?: string): string {
+  if (!iso?.trim()) return '—';
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleString('zh-CN', { dateStyle: 'medium', timeStyle: 'short' });
+  } catch {
+    return iso;
+  }
+}
+
+/** 右上角状态：探索已全部收口时显示「已完成」，避免仅因激活 TTL 显示「已过期」造成误解 */
+function journeyStatusLabel(journey: JourneyItem): string {
+  if (journey.explore_resume?.report_unlocked) return '已完成';
+  if (journey.status === 'active') return '进行中';
+  if (journey.status === 'expired') return '已过期';
+  return journey.status;
 }
 
 function JourneyCard({
@@ -74,50 +123,146 @@ function JourneyCard({
 }) {
   const nodes = buildNodes(journey.explore_resume);
   const resumePhase = effectiveResumeForNodes(journey.explore_resume).resume_phase;
+  const nodePx = featured ? 64 : 48;
+  const half = nodePx / 2;
 
   return (
     <div className={`bg-bd-card/80 backdrop-blur-lg border border-bd-border rounded-2xl shadow-sm ${featured ? 'p-8' : 'p-5'}`}>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
         <h2 className={`font-medium text-bd-fg ${featured ? 'text-xl' : 'text-base'}`}>
           {featured ? t('dashboard.journeyTitle') : `旅程 ${journey.activation_code.slice(-6)}`}
         </h2>
-        <span className="text-xs text-bd-muted">
-          {journey.status === 'active' ? '进行中' : journey.status === 'expired' ? '已过期' : journey.status}
+        <span className="shrink-0 rounded-full border border-bd-border bg-bd-surface-2 px-2.5 py-0.5 text-xs text-bd-muted">
+          {journeyStatusLabel(journey)}
         </span>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {nodes.map((node, index) => (
-          <div key={node.id} className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => node.status !== 'incomplete' && onNavigate(journey.activation_code, node.id)}
-              disabled={node.status === 'incomplete'}
-              className={`relative ${featured ? 'w-16 h-16' : 'w-12 h-12'} rounded-full flex flex-col items-center justify-center transition-all ${
-                node.status !== 'incomplete' ? 'cursor-pointer hover:scale-105' : 'cursor-not-allowed opacity-50'
-              }`}
-              style={{
-                backgroundColor: node.color,
-                filter: node.status === 'incomplete' ? 'grayscale(100%)' : 'none',
-              }}
-            >
-              {node.status !== 'incomplete' && (
-                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center border-2 border-white bg-green-500">
-                  {node.status === 'completed' ? (
-                    <Check className="w-2 h-2 text-white" />
-                  ) : (
-                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                  )}
+      <div className="mb-4 space-y-0.5 text-xs text-bd-muted">
+        <p>开始时间：{formatJourneyDateTime(journey.created_at)}</p>
+        <p>最后编辑：{formatJourneyDateTime(journey.last_activity_at)}</p>
+      </div>
+
+      <div className="overflow-x-auto [-webkit-overflow-scrolling:touch] pb-1">
+        <div
+          className="relative flex min-w-min items-start gap-0"
+          style={{
+            paddingLeft: half,
+            paddingRight: half,
+          }}
+        >
+          <div
+            className="pointer-events-none absolute z-0 bg-bd-border-strong"
+            style={{
+              left: half,
+              right: half,
+              top: half,
+              height: 1,
+              transform: 'translateY(-0.5px)',
+            }}
+            aria-hidden
+          />
+          {nodes.map((node, index) => (
+            <div key={node.id} className="relative z-[1] flex shrink-0 items-start">
+              <div className="flex flex-col items-center" style={{ width: nodePx }}>
+                {node.id === 'report' ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      node.status !== 'incomplete' && onNavigate(journey.activation_code, node.id)
+                    }
+                    disabled={node.status === 'incomplete'}
+                    aria-label="报告"
+                    className={`relative flex shrink-0 flex-col items-center justify-center border border-amber-900/20 bg-gradient-to-br from-[#fffdf7] via-[#fef3c7] to-[#fbbf24] text-amber-950 shadow-[inset_5px_0_14px_rgba(146,64,14,0.14),inset_0_1px_0_rgba(255,255,255,0.88)] transition-all dark:border-amber-700/35 dark:from-amber-950/90 dark:via-amber-900/85 dark:to-amber-800/70 dark:text-amber-100 dark:shadow-[inset_5px_0_14px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.06)] ${
+                      featured
+                        ? 'h-16 w-[2.7rem] rounded-l-md rounded-r-lg'
+                        : 'h-12 w-[2.05rem] rounded-l rounded-r-md'
+                    } ${
+                      node.status !== 'incomplete'
+                        ? 'cursor-pointer hover:scale-105 hover:border-amber-800/35 hover:shadow-[inset_5px_0_14px_rgba(146,64,14,0.12),0_6px_14px_-4px_rgba(180,83,9,0.35)]'
+                        : 'cursor-not-allowed opacity-[0.58]'
+                    }`}
+                    style={{
+                      filter: node.status === 'incomplete' ? 'grayscale(0.35) brightness(0.97)' : undefined,
+                    }}
+                  >
+                    {node.status !== 'incomplete' && (
+                      <span className="absolute -right-0.5 -top-0.5 z-[2] flex h-4 w-4 items-center justify-center rounded-full border-2 border-amber-50 bg-green-600 shadow-sm dark:border-amber-900">
+                        {node.status === 'completed' ? (
+                          <Check className="h-2 w-2 text-white" strokeWidth={3} />
+                        ) : (
+                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+                        )}
+                      </span>
+                    )}
+                    {node.status === 'incomplete' ? (
+                      <Lock
+                        className={`${featured ? 'h-5 w-5' : 'h-4 w-4'} text-amber-900/45 dark:text-amber-200/50`}
+                        aria-hidden
+                      />
+                    ) : (
+                      <BookOpen
+                        className={featured ? 'h-7 w-7' : 'h-5 w-5'}
+                        strokeWidth={featured ? 1.65 : 1.5}
+                        aria-hidden
+                      />
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      node.status !== 'incomplete' && onNavigate(journey.activation_code, node.id)
+                    }
+                    disabled={node.status === 'incomplete'}
+                    className={`relative flex shrink-0 items-center justify-center rounded-full text-white transition-all ${
+                      featured ? 'h-16 w-16' : 'h-12 w-12'
+                    } ${
+                      node.status !== 'incomplete'
+                        ? 'cursor-pointer hover:scale-105 hover:ring-2 hover:ring-bd-border-strong hover:ring-offset-2 hover:ring-offset-bd-card'
+                        : 'cursor-not-allowed opacity-55'
+                    }`}
+                    style={{
+                      backgroundColor: node.color,
+                      filter: node.status === 'incomplete' ? 'grayscale(1) brightness(0.92)' : 'none',
+                    }}
+                  >
+                    {node.status !== 'incomplete' && (
+                      <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-green-500">
+                        {node.status === 'completed' ? (
+                          <Check className="h-2 w-2 text-white" />
+                        ) : (
+                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+                        )}
+                      </span>
+                    )}
+                    {node.status === 'incomplete' && (
+                      <Lock
+                        className={`${featured ? 'h-5 w-5' : 'h-4 w-4'} text-white/85`}
+                        aria-hidden
+                      />
+                    )}
+                  </button>
+                )}
+                <span
+                  className={`mt-1.5 max-w-[4.5rem] text-center font-medium leading-tight text-bd-fg ${
+                    featured ? 'text-xs' : 'text-[10px]'
+                  }`}
+                >
+                  {node.label}
                 </span>
+              </div>
+              {index < nodes.length - 1 && (
+                <div
+                  className="flex shrink-0 items-center justify-center text-bd-muted"
+                  style={{ width: featured ? 28 : 22, height: nodePx }}
+                  aria-hidden
+                >
+                  <ChevronRight className={featured ? 'h-5 w-5' : 'h-4 w-4'} strokeWidth={2} />
+                </div>
               )}
-              {node.status === 'incomplete' && <Lock className={`${featured ? 'w-5 h-5' : 'w-4 h-4'} text-white/80`} />}
-              <span className={`text-white font-medium ${featured ? 'text-xs' : 'text-[10px]'} mt-0.5 px-1 text-center`}>
-                {node.label}
-              </span>
-            </button>
-            {index < nodes.length - 1 && <ChevronRight className="w-4 h-4 text-bd-muted flex-shrink-0" />}
-          </div>
-        ))}
+            </div>
+          ))}
+        </div>
       </div>
 
       {featured && (
@@ -184,6 +329,10 @@ export default function DashboardCurrentProgressPage() {
       const session = loadSession(code);
       const updated = applyExploreResumeToSession(session, resume);
       saveSession({ ...updated, activationCode: code });
+    }
+    if (phase === 'report') {
+      router.push('/explore/report');
+      return;
     }
     router.push(`/explore/chat/${phase}`);
   };

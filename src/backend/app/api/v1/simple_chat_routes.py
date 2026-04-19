@@ -9,7 +9,7 @@
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, AsyncIterator, Callable, Dict, List, Literal, Optional, Sequence, Tuple
 import asyncio
 import json
 import logging
@@ -45,8 +45,10 @@ from app.utils.rumination_progress import (
     MAX_FILTER_STEP,
     load_rumination_progress,
     max_reached_filter_step,
+    merge_rumination_progress_fields,
     save_rumination_progress,
 )
+from app.utils.rumination_neg_gate import try_build_neg_gate_response
 from app.utils.rumination_table_widgets import build_table_widget_payload
 from app.utils.rumination_ops import (
     gen_table,
@@ -1290,6 +1292,18 @@ class RuminationTableSubmitRequest(BaseModel):
     table_data: Optional[List[Dict[str, Any]]] = None
     # 终步（7）多选提交时可传 id 列表，否则从 table_data 行内 __pick / _rumination_selected 读取
     selected_row_ids: Optional[List[str]] = None
+    # 为 True 时跳过「否定/标记」闸门（由 rumination-neg-resolve 在暂存提交后调用）
+    neg_force_commit: bool = False
+
+
+class RuminationNegResolveRequest(BaseModel):
+    """闸门：继续推进 / 开始深入讨论 / 结束讨论并推进。"""
+
+    model_config = ConfigDict(extra="ignore")
+
+    activation_code: str
+    thread_id: str = ""
+    action: Literal["continue", "deep_start", "deep_end"]
 
 
 class RuminationStepOpeningStreamRequest(BaseModel):
@@ -1894,6 +1908,65 @@ async def rumination_table_submit(
         sk = str(step)
         ent = snapshots.setdefault(sk, {})
         table_data = request.table_data
+
+        pending0 = progress0.get("pending_table_submit")
+        if isinstance(pending0, dict) and not request.neg_force_commit:
+            if int(pending0.get("step") or 0) == step and table_data is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="请先处理表格上方的跟进选项后再确认",
+                )
+
+        neg0 = progress0.get("rumination_neg_state") or {}
+        if (
+            neg0.get("status") == "exploring"
+            and int(neg0.get("step") or 0) == step
+            and table_data is not None
+            and not request.neg_force_commit
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="请先点击「结束讨论」后再确认表格",
+            )
+
+        if (
+            table_data is not None
+            and step in (2, 3, 5, 6)
+            and not request.neg_force_commit
+            and ent.get("submitted") is None
+        ):
+            vip_gate = getattr(rec, "vip_level", 1) or 1
+            llm_gate = _get_dialogue_llm_provider(vip_level=vip_gate)
+            gate_pkg = await try_build_neg_gate_response(
+                step=step,
+                table_data=table_data,
+                llm=llm_gate,
+                selected_row_ids=request.selected_row_ids,
+            )
+            if gate_pkg:
+                merge_rumination_progress_fields(
+                    reports_root,
+                    report_id,
+                    {
+                        "pending_table_submit": gate_pkg["pending"],
+                        "rumination_neg_state": gate_pkg["neg_state"],
+                        "filter_table": table_data,
+                    },
+                )
+                progress = load_rumination_progress(reports_root, report_id)
+                snaps_gate = progress.get("filter_step_snapshots") or {}
+                return SimpleChatResponse(
+                    code=200,
+                    message="success",
+                    data={
+                        "progress": progress,
+                        "next_step": step,
+                        "max_reached_filter_step": max_reached_filter_step(snaps_gate),
+                        "next_action": "rumination_neg_confirm",
+                        "neg_confirm": gate_pkg["confirm"],
+                    },
+                )
+
         if table_data is not None:
             if ent.get("initial") is None:
                 ent["initial"] = deepcopy(table_data)
@@ -2319,6 +2392,12 @@ async def rumination_table_submit(
             except Exception as e:
                 logger.warning("rumination closing epilogue skipped: %s", e)
 
+        merge_rumination_progress_fields(
+            reports_root,
+            report_id,
+            {"pending_table_submit": None, "rumination_neg_state": None},
+        )
+        progress = load_rumination_progress(reports_root, report_id)
         snaps = progress.get("filter_step_snapshots") or {}
         data: dict = {
             "progress": progress,
@@ -2342,6 +2421,113 @@ async def rumination_table_submit(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="表格提交失败，请稍后重试",
         ) from None
+
+
+@router.post("/rumination-neg-resolve", response_model=SimpleChatResponse)
+async def rumination_neg_resolve(
+    request: RuminationNegResolveRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """闸门后续：继续推进 / 开始深入讨论 / 结束讨论并回到表格。"""
+    try:
+        manager = get_activation_manager_for_code(request.activation_code)
+        rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
+        if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
+            raise HTTPException(status_code=400, detail="激活码已过期")
+        root = get_effective_simple_root(rec)
+        registry = ReportRegistry(base_dir=str(root))
+        report = registry.ensure_report(
+            rec.code,
+            (current_user or {}).get("user_id", ""),
+            bind_session_id_for_ensure_report(rec),
+        )
+        report_id = report.get("report_id")
+        if not report_id:
+            raise HTTPException(status_code=500, detail="报告初始化失败")
+        reports_root = root / "reports"
+        progress = load_rumination_progress(reports_root, report_id)
+        neg = progress.get("rumination_neg_state") or {}
+        pending = progress.get("pending_table_submit")
+
+        if request.action == "deep_start":
+            if not isinstance(pending, dict) or pending.get("table_data") is None:
+                raise HTTPException(status_code=400, detail="没有待处理的表格提交，请先确认表格")
+            if not isinstance(neg, dict) or neg.get("status") != "awaiting_choice":
+                raise HTTPException(
+                    status_code=400, detail="当前没有待处理的表格跟进项，请重新确认表格",
+                )
+            neg2 = {**neg, "status": "exploring"}
+            merge_rumination_progress_fields(
+                reports_root,
+                report_id,
+                {"rumination_neg_state": neg2},
+            )
+            progress2 = load_rumination_progress(reports_root, report_id)
+            return SimpleChatResponse(
+                code=200,
+                message="success",
+                data={
+                    "progress": progress2,
+                    "next_action": "rumination_neg_deep_started",
+                    "opening_zh": str(neg.get("opening_zh") or ""),
+                },
+            )
+
+        if request.action == "deep_end":
+            if not isinstance(neg, dict) or neg.get("status") != "exploring":
+                raise HTTPException(status_code=400, detail="当前不在深入讨论状态")
+            merge_rumination_progress_fields(
+                reports_root,
+                report_id,
+                {
+                    "pending_table_submit": None,
+                    "rumination_neg_state": None,
+                },
+            )
+            progress2 = load_rumination_progress(reports_root, report_id)
+            snaps2 = progress2.get("filter_step_snapshots") or {}
+            return SimpleChatResponse(
+                code=200,
+                message="success",
+                data={
+                    "progress": progress2,
+                    "next_step": int(progress2.get("filter_step") or 1),
+                    "max_reached_filter_step": max_reached_filter_step(snaps2),
+                    "next_action": "rumination_neg_deep_ended",
+                    "opening_zh": "这段讨论先收在这里。你可以先回到左侧表格修改答案，改完再点确认继续。",
+                },
+            )
+
+        if request.action == "continue":
+            fallback_table = progress.get("filter_table")
+            if (
+                (not isinstance(pending, dict) or pending.get("table_data") is None)
+                and isinstance(neg, dict)
+                and neg.get("status") == "exploring"
+                and isinstance(fallback_table, list)
+            ):
+                pending = {
+                    "step": int(neg.get("step") or progress.get("filter_step") or 1),
+                    "table_data": fallback_table,
+                }
+            if not isinstance(pending, dict) or pending.get("table_data") is None:
+                raise HTTPException(status_code=400, detail="没有待提交的表格数据，请重新在左侧确认表格")
+            sub = RuminationTableSubmitRequest(
+                activation_code=request.activation_code,
+                thread_id=request.thread_id,
+                step=int(pending.get("step") or 1),
+                table_data=pending.get("table_data"),
+                selected_row_ids=pending.get("selected_row_ids"),
+                neg_force_commit=True,
+            )
+            return await rumination_table_submit(sub, current_user)
+
+        raise HTTPException(status_code=400, detail="无效操作")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning("rumination-neg-resolve failed: %s", e)
+        raise HTTPException(status_code=500, detail="处理失败，请稍后重试") from e
 
 
 @router.get("/rumination-get-table", response_model=SimpleChatResponse)
@@ -2431,6 +2617,12 @@ async def rumination_get_table(
             filter_terminate_reason=None,
             filter_step_snapshots=snapshots,
         )
+        merge_rumination_progress_fields(
+            reports_root,
+            report_id,
+            {"pending_table_submit": None, "rumination_neg_state": None},
+        )
+        prog = load_rumination_progress(reports_root, report_id)
         payload = build_table_widget_payload(step, rows, values_list)
         return _rumination_get_table_response(prog, payload)
 
@@ -2535,6 +2727,7 @@ def _build_system_prompt(
     *,
     values_info: str = "",
     rumination_step_addon: str = "",
+    rumination_neg_injection: str = "",
 ) -> str:
     """根据阶段构建 system prompt（通过模板渲染，避免超长硬编码）。"""
     prior_block = f"\n\n以下是该来访者在上一轮咨询中的谈话结果，供你参考：\n{prior_context}" if prior_context.strip() else ""
@@ -2553,6 +2746,9 @@ def _build_system_prompt(
         base_prompt = get_simple_chat_system_prompt(context)
     if (extra_goal_hint or "").strip():
         base_prompt = f"{base_prompt}\n\n[管理员调试目标补充]\n{extra_goal_hint.strip()}"
+    inj = (rumination_neg_injection or "").strip()
+    if inj:
+        base_prompt = f"{base_prompt}\n{inj}"
     # 机器协议：每轮回复末尾输出状态 JSON，后端据此驱动 pending 状态机（不会展示给前端）。
     protocol = f"""
 
@@ -2713,6 +2909,7 @@ async def simple_chat(
         extra_goal_hint=(override_cfg or {}).get("extra_goal_hint", ""),
         values_info=vi,
         rumination_step_addon=ra,
+        rumination_neg_injection="",
     )
     llm_messages = [LLMMessage(role="system", content=system_prompt)]
 
@@ -2948,6 +3145,7 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
         extra_goal_hint=(override_cfg or {}).get("extra_goal_hint", ""),
         values_info=vi_i,
         rumination_step_addon=ra_i,
+        rumination_neg_injection="",
     )
     llm_messages = [
         LLMMessage(role="system", content=system_prompt),
@@ -3756,6 +3954,19 @@ async def simple_chat_stream(
             request.rumination_filter_step,
             stream_loc,
         )
+        rumination_neg_inj = ""
+        if phase_step == "rumination":
+            try:
+                rid = report.get("report_id")
+                if rid:
+                    rp = load_rumination_progress(Path(reports_root), rid)
+                    neg_st = rp.get("rumination_neg_state") or {}
+                    if neg_st.get("status") == "exploring":
+                        inj = str(neg_st.get("injection_zh") or "").strip()
+                        if inj:
+                            rumination_neg_inj = inj
+            except Exception:
+                pass
         system_prompt = _build_system_prompt(
             phase_step,
             question_bank=question_bank,
@@ -3765,6 +3976,7 @@ async def simple_chat_stream(
             extra_goal_hint=(override_cfg or {}).get("extra_goal_hint", ""),
             values_info=vi_s,
             rumination_step_addon=ra_s,
+            rumination_neg_injection=rumination_neg_inj,
         )
         llm_messages = [LLMMessage(role="system", content=system_prompt)]
 

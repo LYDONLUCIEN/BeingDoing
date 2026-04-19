@@ -306,6 +306,8 @@ export default function ChatPhasePage() {
   ruminationStepBoundariesRef.current = ruminationStepBoundaries;
   const [ruminationWorkbenchStacked, setRuminationWorkbenchStacked] = useState(false);
   const [ruminationTableSubmitting, setRuminationTableSubmitting] = useState(false);
+  const [ruminationNegMorphing, setRuminationNegMorphing] = useState(false);
+  const [ruminationNegConfirmPulseTick, setRuminationNegConfirmPulseTick] = useState(0);
   const [ruminationTableNavLoading, setRuminationTableNavLoading] = useState(false);
   const [hypothesisRegeneratingRowIndex, setHypothesisRegeneratingRowIndex] = useState<number | null>(
     null
@@ -1624,9 +1626,15 @@ export default function ChatPhasePage() {
     regenerateRowLabel?: string
   ) => {
     const text = prefill ?? input.trim();
-    if (!activationCode || !text || sending || ruminationGuideBusy || requestConclusionDraftBusy || isReadOnly)
+    if (!activationCode || !text || sending || requestConclusionDraftBusy || isReadOnly)
       return;
     if (phase === 'rumination' && ruminationTableNavLoading) return;
+    if (phase === 'rumination' && ruminationGuideBusy) {
+      // 用户主动输入时，优先进入自由问答：终止子步引导流
+      ruminationGuideAbortRef.current?.abort();
+      ruminationGuideAbortRef.current = null;
+      setRuminationGuideBusy(false);
+    }
     if (!prefill) setInput('');
     const now = Date.now();
     const rowSnap =
@@ -2436,6 +2444,151 @@ export default function ChatPhasePage() {
     [activationCode, phase, setChatError, setMessages, t]
   );
 
+  /** 与 rumination-table-submit / rumination-neg-resolve 成功响应对齐的共用收尾 */
+  const ingestRuminationSubmitData = useCallback(
+    (
+      data: RuminationSubmitData | undefined,
+      submitThreadId: string,
+      payload: NonNullable<ThreadMessage['tablePayload']>,
+      msgs: ThreadMessage[]
+    ) => {
+      if (!data) return;
+      if (data.early_terminated || data.next_action === 'early_terminated') {
+        setChatError(t('explore.chat.ruminationUi.tableEarlyTerminated'));
+        return;
+      }
+      const nextTable = data.next_table_widget;
+      if (data.progress) setRuminationProgressState(data.progress);
+      if (typeof data.max_reached_filter_step === 'number') {
+        setRuminationMaxReached(data.max_reached_filter_step);
+      }
+      if (data.next_action === 'rumination_conclusion_insert' && data.dimension_conclusion) {
+        const concl = data.dimension_conclusion as DimensionConclusionData;
+        const newId = `rumination_concl_${Date.now()}`;
+        setMessages((prev) => {
+          const filtered = prev.filter((m) => m.type !== 'table_widget');
+          const boundarySnap = filtered.length;
+          queueMicrotask(() => {
+            setRuminationStepBoundaries((b) => {
+              const nb = ensureDefaultStepOne({
+                ...b,
+                [String(RUMINATION_FILTER_STEP_MAX)]: boundarySnap,
+              });
+              if (activationCode && submitThreadId) {
+                saveRuminationStepBoundaries(activationCode, submitThreadId, nb);
+              }
+              return nb;
+            });
+          });
+          return [
+            ...filtered,
+            {
+              id: newId,
+              role: 'assistant',
+              type: 'dimension_conclusion',
+              content: JSON.stringify(concl),
+              createdAt: Date.now(),
+              conclusionData: concl,
+              conclusionCollapsed: false,
+              conclusionConfirmed: false,
+            },
+          ];
+        });
+        setRuminationTablePayload(null);
+        setRuminationViewStep(RUMINATION_FILTER_STEP_MAX);
+        if (data.progress) setRuminationProgressState(data.progress);
+        if (typeof data.max_reached_filter_step === 'number') {
+          setRuminationMaxReached(data.max_reached_filter_step);
+        }
+        setRuminationProgressNonce((n) => n + 1);
+        return;
+      }
+      if (nextTable) {
+        const newStep = nextTable.step ?? (payload.step ?? 1) + 1;
+        const filtered = msgs.filter((m) => m.type !== 'table_widget');
+        setRuminationStepBoundaries((b) => {
+          const nb = ensureDefaultStepOne({ ...b, [String(newStep)]: filtered.length });
+          if (activationCode && submitThreadId) {
+            saveRuminationStepBoundaries(activationCode, submitThreadId, nb);
+          }
+          return nb;
+        });
+        setRuminationTablePayload(nextTable as ThreadMessage['tablePayload']);
+        setRuminationViewStep(newStep);
+        setMessages(filtered);
+        queueMicrotask(() => {
+          void playRuminationStepOpeningAfterSubmit(newStep, submitThreadId);
+        });
+      } else if (data.progress?.filter_step != null && data.progress.filter_step >= 1) {
+        setRuminationViewStep(
+          Math.min(RUMINATION_FILTER_STEP_MAX, Math.max(1, data.progress.filter_step))
+        );
+      }
+      setRuminationProgressNonce((n) => n + 1);
+    },
+    [
+      activationCode,
+      t,
+      setChatError,
+      setMessages,
+      setRuminationMaxReached,
+      setRuminationProgressState,
+      setRuminationTablePayload,
+      setRuminationViewStep,
+      playRuminationStepOpeningAfterSubmit,
+    ]
+  );
+
+  /** 有待处理闸门或深入讨论时：禁止任意子步再次点表头确认（与后端 exploring / pending 一致） */
+  const ruminationNegTableSubmitBlocked = useMemo(() => {
+    const s = ruminationProgressState?.rumination_neg_state?.status;
+    return s === 'awaiting_choice' || s === 'exploring';
+  }, [ruminationProgressState?.rumination_neg_state?.status]);
+
+  /** 条带仅在与当前查看子步一致时展示，避免跳步浏览时出现无关提示 */
+  const ruminationNegGateStepMatchesView = useMemo(() => {
+    const gateStep =
+      ruminationProgressState?.rumination_neg_state?.step ??
+      ruminationProgressState?.pending_table_submit?.step;
+    if (gateStep == null || typeof gateStep !== 'number') return true;
+    return gateStep === ruminationViewStep;
+  }, [
+    ruminationProgressState?.rumination_neg_state?.step,
+    ruminationProgressState?.pending_table_submit?.step,
+    ruminationViewStep,
+  ]);
+
+  const ruminationNegHeaderStrip = useMemo(
+    () => ruminationNegTableSubmitBlocked && ruminationNegGateStepMatchesView,
+    [ruminationNegTableSubmitBlocked, ruminationNegGateStepMatchesView]
+  );
+  const ruminationNegAwaitingChoiceModalOpen = useMemo(() => {
+    return (
+      ruminationProgressState?.rumination_neg_state?.status === 'awaiting_choice' &&
+      ruminationNegHeaderStrip
+    );
+  }, [ruminationProgressState?.rumination_neg_state?.status, ruminationNegHeaderStrip]);
+  const ruminationNegExploringPinned = useMemo(() => {
+    return (
+      ruminationProgressState?.rumination_neg_state?.status === 'exploring' && ruminationNegHeaderStrip
+    );
+  }, [ruminationProgressState?.rumination_neg_state?.status, ruminationNegHeaderStrip]);
+
+  /** 闸门在其它子步时：提示回到对应步（表头确认已全局禁用） */
+  const ruminationNegRemoteStepBanner = useMemo(() => {
+    if (!ruminationNegTableSubmitBlocked || ruminationNegHeaderStrip) return null;
+    const gateStep =
+      ruminationProgressState?.rumination_neg_state?.step ??
+      ruminationProgressState?.pending_table_submit?.step;
+    if (gateStep == null || typeof gateStep !== 'number') return null;
+    return gateStep;
+  }, [
+    ruminationNegTableSubmitBlocked,
+    ruminationNegHeaderStrip,
+    ruminationProgressState?.rumination_neg_state?.step,
+    ruminationProgressState?.pending_table_submit?.step,
+  ]);
+
   const handleTableConfirm = useCallback(
     async (
       _msgId: string,
@@ -2443,6 +2596,7 @@ export default function ChatPhasePage() {
       rows: Record<string, unknown>[]
     ) => {
       if (!activationCode || phase !== 'rumination' || sending || ruminationGuideBusy) return;
+      if (ruminationNegTableSubmitBlocked) return;
       const submitThreadId = resolveRuminationTableThreadId();
       if (!submitThreadId.trim()) {
         setChatError(t('explore.chat.ruminationUi.tableSubmitNoThread'));
@@ -2478,78 +2632,15 @@ export default function ChatPhasePage() {
           return;
         }
         const data = res.data as RuminationSubmitData | undefined;
-        if (data?.early_terminated || data?.next_action === 'early_terminated') {
-          setChatError(t('explore.chat.ruminationUi.tableEarlyTerminated'));
-          return;
-        }
-        const nextTable = data?.next_table_widget;
-        if (data?.progress) setRuminationProgressState(data.progress);
-        if (typeof data?.max_reached_filter_step === 'number') {
-          setRuminationMaxReached(data.max_reached_filter_step);
-        }
-        if (data?.next_action === 'rumination_conclusion_insert' && data.dimension_conclusion) {
-          const concl = data.dimension_conclusion as DimensionConclusionData;
-          const newId = `rumination_concl_${Date.now()}`;
-          setMessages((prev) => {
-            const filtered = prev.filter((m) => m.type !== 'table_widget');
-            const boundarySnap = filtered.length;
-            queueMicrotask(() => {
-              setRuminationStepBoundaries((b) => {
-                const nb = ensureDefaultStepOne({
-                  ...b,
-                  [String(RUMINATION_FILTER_STEP_MAX)]: boundarySnap,
-                });
-                if (activationCode && submitThreadId) {
-                  saveRuminationStepBoundaries(activationCode, submitThreadId, nb);
-                }
-                return nb;
-              });
-            });
-            return [
-              ...filtered,
-              {
-                id: newId,
-                role: 'assistant',
-                type: 'dimension_conclusion',
-                content: JSON.stringify(concl),
-                createdAt: Date.now(),
-                conclusionData: concl,
-                conclusionCollapsed: false,
-                conclusionConfirmed: false,
-              },
-            ];
-          });
-          setRuminationTablePayload(null);
-          setRuminationViewStep(RUMINATION_FILTER_STEP_MAX);
+        if (data?.next_action === 'rumination_neg_confirm') {
           if (data.progress) setRuminationProgressState(data.progress);
-          if (typeof data?.max_reached_filter_step === 'number') {
+          if (typeof data.max_reached_filter_step === 'number') {
             setRuminationMaxReached(data.max_reached_filter_step);
           }
           setRuminationProgressNonce((n) => n + 1);
           return;
         }
-        if (nextTable) {
-          const newStep = nextTable.step ?? (payload.step ?? 1) + 1;
-          const filtered = messages.filter((m) => m.type !== 'table_widget');
-          setRuminationStepBoundaries((b) => {
-            const nb = ensureDefaultStepOne({ ...b, [String(newStep)]: filtered.length });
-            if (activationCode && submitThreadId) {
-              saveRuminationStepBoundaries(activationCode, submitThreadId, nb);
-            }
-            return nb;
-          });
-          setRuminationTablePayload(nextTable as ThreadMessage['tablePayload']);
-          setRuminationViewStep(newStep);
-          setMessages(filtered);
-          queueMicrotask(() => {
-            void playRuminationStepOpeningAfterSubmit(newStep, submitThreadId);
-          });
-        } else if (data?.progress?.filter_step != null && data.progress.filter_step >= 1) {
-          setRuminationViewStep(
-            Math.min(RUMINATION_FILTER_STEP_MAX, Math.max(1, data.progress.filter_step))
-          );
-        }
-        setRuminationProgressNonce((n) => n + 1);
+        ingestRuminationSubmitData(data, submitThreadId, payload, messagesRef.current);
       } catch (err) {
         setChatError(getApiErrorMessage(err, t('explore.chat.ruminationUi.tableSubmitError')));
       } finally {
@@ -2560,16 +2651,120 @@ export default function ChatPhasePage() {
       activationCode,
       phase,
       sending,
-      messages,
       router,
       adminDebugBypass,
       resolveRuminationTableThreadId,
       ruminationViewStep,
       ruminationGuideBusy,
+      ruminationNegTableSubmitBlocked,
       playRuminationStepOpeningAfterSubmit,
+      ingestRuminationSubmitData,
       t,
     ]
   );
+
+  const handleRuminationNegContinue = useCallback(async () => {
+    if (!activationCode || phase !== 'rumination') return;
+    const submitThreadId = resolveRuminationTableThreadId();
+    if (!submitThreadId.trim() || !ruminationTablePayload) return;
+    setRuminationTableSubmitting(true);
+    try {
+      const res = await ruminationApi.negResolve(activationCode, submitThreadId, 'continue');
+      if (res.code !== 200 || !res.data) {
+        setChatError(res.message || t('explore.chat.ruminationUi.tableSubmitError'));
+        return;
+      }
+      ingestRuminationSubmitData(
+        res.data as RuminationSubmitData,
+        submitThreadId,
+        ruminationTablePayload,
+        messagesRef.current
+      );
+    } catch (err) {
+      setChatError(getApiErrorMessage(err, t('explore.chat.ruminationUi.tableSubmitError')));
+    } finally {
+      setRuminationTableSubmitting(false);
+    }
+  }, [
+    activationCode,
+    phase,
+    ruminationTablePayload,
+    resolveRuminationTableThreadId,
+    ingestRuminationSubmitData,
+    t,
+  ]);
+
+  const handleRuminationNegDeepStart = useCallback(async () => {
+    if (!activationCode || phase !== 'rumination') return;
+    const submitThreadId = resolveRuminationTableThreadId();
+    if (!submitThreadId.trim()) return;
+    setRuminationTableSubmitting(true);
+    setRuminationNegMorphing(true);
+    try {
+      const res = await ruminationApi.negResolve(activationCode, submitThreadId, 'deep_start');
+      if (res.code !== 200 || !res.data) {
+        setChatError(res.message || t('explore.chat.ruminationUi.tableSubmitError'));
+        return;
+      }
+      const oz = (res.data as RuminationSubmitData).opening_zh?.trim();
+      if (oz) {
+        const aid = `rum_neg_open_${Date.now()}`;
+        setMessages((prev) => [
+          ...prev,
+          { id: aid, role: 'assistant', content: oz, createdAt: Date.now() },
+        ]);
+      }
+      if (res.data.progress) setRuminationProgressState(res.data.progress);
+      setRuminationProgressNonce((n) => n + 1);
+    } catch (err) {
+      setChatError(getApiErrorMessage(err, t('explore.chat.ruminationUi.tableSubmitError')));
+    } finally {
+      window.setTimeout(() => setRuminationNegMorphing(false), 260);
+      setRuminationTableSubmitting(false);
+    }
+  }, [activationCode, phase, resolveRuminationTableThreadId, t]);
+
+  const handleRuminationNegDeepEnd = useCallback(async () => {
+    if (!activationCode || phase !== 'rumination') return;
+    const submitThreadId = resolveRuminationTableThreadId();
+    if (!submitThreadId.trim()) return;
+    setRuminationTableSubmitting(true);
+    try {
+      const res = await ruminationApi.negResolve(activationCode, submitThreadId, 'deep_end');
+      if (res.code !== 200 || !res.data) {
+        setChatError(res.message || t('explore.chat.ruminationUi.tableSubmitError'));
+        return;
+      }
+      const data = res.data as RuminationSubmitData;
+      if (data.progress) setRuminationProgressState(data.progress);
+      if (typeof data.max_reached_filter_step === 'number') {
+        setRuminationMaxReached(data.max_reached_filter_step);
+      }
+      const closeTip = (data.opening_zh || '').trim();
+      if (closeTip) {
+        const aid = `rum_neg_close_${Date.now()}`;
+        setMessages((prev) => [
+          ...prev,
+          { id: aid, role: 'assistant', content: closeTip, createdAt: Date.now() },
+        ]);
+      }
+      setRuminationProgressNonce((n) => n + 1);
+    } catch (err) {
+      setChatError(getApiErrorMessage(err, t('explore.chat.ruminationUi.tableSubmitError')));
+    } finally {
+      setRuminationTableSubmitting(false);
+    }
+  }, [
+    activationCode,
+    phase,
+    resolveRuminationTableThreadId,
+    t,
+  ]);
+
+  const handleRuminationNegBlockedConfirmAttempt = useCallback(() => {
+    if (!ruminationNegTableSubmitBlocked) return;
+    setRuminationNegConfirmPulseTick((n) => n + 1);
+  }, [ruminationNegTableSubmitBlocked]);
 
   const ruminationStepHasSubmitted = useMemo(() => {
     const k = String(ruminationViewStep);
@@ -2911,6 +3106,33 @@ export default function ChatPhasePage() {
                   />
                 </div>
               )}
+              {activationCode && ruminationNegRemoteStepBanner != null && (
+                <div
+                  className="shrink-0 border-y border-neutral-200 bg-neutral-50 px-4 py-2.5 sm:px-8"
+                  role="status"
+                >
+                  <p className="text-xs leading-relaxed text-neutral-700 sm:text-sm">
+                    {t('explore.chat.ruminationUi.negGateRemoteStepHint', {
+                      step: String(ruminationNegRemoteStepBanner),
+                    })}
+                  </p>
+                  <button
+                    type="button"
+                    disabled={
+                      ruminationTableNavLoading ||
+                      ruminationGuideBusy ||
+                      sending ||
+                      phaseInteractionLocked
+                    }
+                    onClick={() => void loadRuminationTableStep(ruminationNegRemoteStepBanner)}
+                    className="mt-2 rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-900 disabled:cursor-not-allowed disabled:opacity-40 sm:text-sm"
+                  >
+                    {t('explore.chat.ruminationUi.negGateJumpToStep', {
+                      step: String(ruminationNegRemoteStepBanner),
+                    })}
+                  </button>
+                </div>
+              )}
             </>
           )}
           <div
@@ -2975,6 +3197,9 @@ export default function ChatPhasePage() {
                     onRefill={handleRuminationRefillRequest}
                     onRowContextChange={setRuminationRowContext}
                     submitting={ruminationTableSubmitting}
+                    confirmSoftBlocked={ruminationNegTableSubmitBlocked}
+                    confirmSoftBlockedPulseTick={ruminationNegConfirmPulseTick}
+                    onConfirmSoftBlocked={handleRuminationNegBlockedConfirmAttempt}
                     onConfirm={(rows) =>
                       handleTableConfirm('rumination_left_panel', ruminationTablePayload, rows)
                     }
@@ -2984,7 +3209,8 @@ export default function ChatPhasePage() {
                       ruminationGuideBusy ||
                       ruminationTableNavLoading ||
                       hypothesisRegeneratingRowIndex !== null ||
-                      phaseInteractionLocked
+                      phaseInteractionLocked ||
+                      ruminationNegTableSubmitBlocked
                     }
                   />
                 ) : (
@@ -3037,12 +3263,26 @@ export default function ChatPhasePage() {
               >
                 {phase === 'rumination' && (
                   <div className="mb-2 shrink-0 border-b border-black/[0.06] pb-2">
-                    <h2 className="text-lg font-semibold text-bd-fg">
-                      {t('explore.chat.ruminationUi.chatTitle')}
-                    </h2>
-                    <p className="mt-0.5 text-xs text-neutral-500">
-                      {t('explore.chat.ruminationUi.chatSubtitle')}
-                    </p>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h2 className="text-lg font-semibold text-bd-fg">
+                          {t('explore.chat.ruminationUi.chatTitle')}
+                        </h2>
+                        <p className="mt-0.5 text-xs text-neutral-500">
+                          {t('explore.chat.ruminationUi.chatSubtitle')}
+                        </p>
+                      </div>
+                      {ruminationNegExploringPinned && (
+                        <button
+                          type="button"
+                          disabled={ruminationTableSubmitting}
+                          onClick={() => void handleRuminationNegDeepEnd()}
+                          className="rumination-neg-end-pill shrink-0 rounded-full bg-neutral-900 px-3.5 py-1.5 text-xs font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {t('explore.chat.ruminationUi.negGateEndDeep')}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
                 <div
@@ -3361,7 +3601,6 @@ export default function ChatPhasePage() {
                         e.preventDefault();
                         if (
                           !sending &&
-                          !ruminationGuideBusy &&
                           !requestConclusionDraftBusy &&
                           !isReadOnly &&
                           !(phase === 'rumination' && ruminationTableNavLoading)
@@ -3387,7 +3626,6 @@ export default function ChatPhasePage() {
                     rows={1}
                     disabled={
                       sending ||
-                      ruminationGuideBusy ||
                       requestConclusionDraftBusy ||
                       isReadOnly ||
                       (phase === 'rumination' && ruminationTableNavLoading)
@@ -3420,31 +3658,30 @@ export default function ChatPhasePage() {
                     </button>
                   )}
                   <div className="flow-send-btn-wrap">
-                    {(sending || ruminationGuideBusy || requestConclusionDraftBusy) && (
+                    {(sending || requestConclusionDraftBusy) && (
                       <div className="flow-send-glow" aria-hidden />
                     )}
                     <button
                       type="button"
                       onClick={
-                        sending || ruminationGuideBusy || requestConclusionDraftBusy
+                        sending || requestConclusionDraftBusy
                           ? handleStopStream
                           : () => handleSend()
                       }
                       disabled={
                         (isReadOnly ||
                           (!sending &&
-                            !ruminationGuideBusy &&
                             !requestConclusionDraftBusy &&
                             (!input.trim() ||
                               (phase === 'rumination' && ruminationTableNavLoading)))) as boolean
                       }
                       className={`flow-send-btn ${
-                        sending || ruminationGuideBusy || requestConclusionDraftBusy
+                        sending || requestConclusionDraftBusy
                           ? 'is-stop'
                           : ''
                       }`}
                     >
-                      {sending || ruminationGuideBusy || requestConclusionDraftBusy ? (
+                      {sending || requestConclusionDraftBusy ? (
                         <Square size={16} strokeWidth={0} fill="white" />
                       ) : (
                         <ArrowUp size={16} strokeWidth={2.2} />
@@ -3532,6 +3769,63 @@ export default function ChatPhasePage() {
               >
                 {t('explore.chat.threadSwitchWhileStreamingConfirm')}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {phase === 'rumination' && activationCode && ruminationNegAwaitingChoiceModalOpen && (
+        <div
+          className={`fixed inset-0 z-[62] ${ruminationNegMorphing ? 'pointer-events-none' : ''}`}
+          role="presentation"
+        >
+          <div
+            className={`absolute inset-0 bg-black/35 backdrop-blur-sm transition-opacity duration-250 ${
+              ruminationNegMorphing ? 'opacity-0' : 'opacity-100'
+            }`}
+          />
+          <div
+            className={`pointer-events-none absolute inset-0 ${
+              ruminationNegMorphing ? '' : 'flex items-center justify-center'
+            }`}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={t('explore.chat.ruminationUi.negGateRegionLabel')}
+              className={`pointer-events-auto ${
+                ruminationNegMorphing
+                  ? 'rumination-neg-gate-morph fixed right-5 top-[7.4rem] w-[min(27rem,calc(100vw-2rem))]'
+                  : 'w-[min(36rem,calc(100vw-2rem))]'
+              } rounded-2xl border border-white/70 bg-[linear-gradient(160deg,rgba(255,255,255,0.98),rgba(248,250,255,0.95))] p-5 shadow-[0_24px_65px_rgba(15,23,42,0.24)] transition-all duration-300`}
+            >
+              <div className="mb-1 text-xs font-semibold tracking-wide text-sky-700">
+                {t('explore.chat.ruminationUi.negGateModalTitle')}
+              </div>
+              <p className="text-sm leading-relaxed text-neutral-800">
+                {(ruminationProgressState?.rumination_neg_state?.bar_copy_zh || '').trim() ||
+                  t('explore.chat.ruminationUi.negGateDefaultCopy')}
+              </p>
+              <p className="mt-2 text-xs leading-relaxed text-neutral-500">
+                {t('explore.chat.ruminationUi.negGateNoTableEditHint')}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={ruminationTableSubmitting}
+                  onClick={() => void handleRuminationNegContinue()}
+                  className="rounded-full bg-neutral-900 px-4 py-2 text-xs font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40 sm:text-sm"
+                >
+                  {t('explore.chat.ruminationUi.negGateContinue')}
+                </button>
+                <button
+                  type="button"
+                  disabled={ruminationTableSubmitting}
+                  onClick={() => void handleRuminationNegDeepStart()}
+                  className="rounded-full border border-neutral-300 bg-white px-4 py-2 text-xs font-semibold text-neutral-900 transition-opacity disabled:cursor-not-allowed disabled:opacity-40 sm:text-sm"
+                >
+                  {t('explore.chat.ruminationUi.negGateDeep')}
+                </button>
+              </div>
             </div>
           </div>
         </div>

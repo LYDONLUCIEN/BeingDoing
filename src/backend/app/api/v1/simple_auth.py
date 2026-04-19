@@ -159,18 +159,39 @@ async def list_user_journeys(
         return ActivationResponse(code=200, message="success", data={"journeys": []})
 
     journeys = []
-    # 扫描生产环境和测试环境的激活码
-    for root_fn in [get_effective_simple_root]:
-        pass  # 统一通过 manager 遍历
 
     from app.utils.simple_activation_manager import (
         SimpleActivationManager,
         get_simple_base_dir,
+        get_simple_test_base_dir,
     )
-    # 扫描生产环境
-    prod_manager = SimpleActivationManager(base_dir=str(get_simple_base_dir()))
-    all_records = prod_manager.list_activations()
-    for rec in all_records:
+
+    def _report_for_journey(rec, uid: str, em: str):
+        """与 ensure_report 一致：record.json 的 user_id 可能为历史邮箱或当前 user_id，双键尝试。"""
+        root = get_effective_simple_root(rec)
+        registry = ReportRegistry(base_dir=str(root))
+        if uid:
+            rpt = registry.get_by_activation_user(rec.code, uid)
+            if rpt:
+                return rpt
+        if em:
+            return registry.get_by_activation_user(rec.code, em)
+        return None
+
+    # 合并生产 + 测试/沙箱索引（管理员 ADM/SBX、fork、resident 仅在 test 根）
+    merged: dict[str, tuple] = {}  # code -> (last_activity_at str, ActivationRecord)
+    for base_dir in (get_simple_base_dir(), get_simple_test_base_dir()):
+        mgr = SimpleActivationManager(base_dir=str(base_dir))
+        for code, rec in mgr.list_activations().items():
+            norm = (code or "").strip().upper()
+            if not norm:
+                continue
+            ts = getattr(rec, "last_activity_at", None) or rec.created_at or ""
+            prev = merged.get(norm)
+            if prev is None or (ts or "") >= (prev[0] or ""):
+                merged[norm] = (ts, rec)
+
+    for _norm, (_ts, rec) in sorted(merged.items(), key=lambda x: x[1][0] or "", reverse=True):
         owner_uid = (getattr(rec, "owner_user_id", None) or "").strip()
         owner_email = (getattr(rec, "owner_email", None) or "").strip()
         is_mine = (user_id and owner_uid == user_id) or (email and owner_email == email)
@@ -179,9 +200,7 @@ async def list_user_journeys(
         if rec.status in {ActivationStatus.DELETED, ActivationStatus.REVOKED}:
             continue
 
-        root = get_effective_simple_root(rec)
-        registry = ReportRegistry(base_dir=str(root))
-        report = registry.get_by_activation_user(rec.code, user_id or email)
+        report = _report_for_journey(rec, user_id, email)
         resume = compute_explore_resume(report) if report else {}
 
         journeys.append({

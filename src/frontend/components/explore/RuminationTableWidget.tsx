@@ -56,6 +56,12 @@ interface RuminationTableWidgetProps {
   onRefill?: () => void;
   /** true：本步已提交过快照时禁用「确认」，需先「重新填写」才可再次提交 */
   confirmDisabledAfterCommit?: boolean;
+  /** 闸门中：按钮置灰但可点击触发引导动画/提示，不直接提交 */
+  confirmSoftBlocked?: boolean;
+  /** 软阻断态点击时，父层可触发提示（例如抖动） */
+  onConfirmSoftBlocked?: () => void;
+  /** 递增 tick 触发强调动画 */
+  confirmSoftBlockedPulseTick?: number;
   selectPlaceholder?: string;
   inputPlaceholder?: string;
   /** 提交表格时遮罩文案（仅 embeddedSubmitOverlay 为 true 时使用） */
@@ -109,6 +115,9 @@ export default function RuminationTableWidget({
   tableRefillMode = false,
   onRefill,
   confirmDisabledAfterCommit = false,
+  confirmSoftBlocked = false,
+  onConfirmSoftBlocked,
+  confirmSoftBlockedPulseTick = 0,
   selectPlaceholder = '请选择',
   inputPlaceholder = '填写',
   loadingLabel = '…',
@@ -328,15 +337,23 @@ export default function RuminationTableWidget({
     [cellDisabled, payload.rowSelectionMax]
   );
 
+  /** 数据列超过该宽度时由单元格内换行（含假设生成后的长文案），避免整表被单格撑得过宽 */
+  const DATA_COL_MAX_PX = 272;
+
   const colMinWidth = (col: RuminationTableColumn) => {
     if (col.key === '__pick') return 52;
     if (col.key === 'id') return 40;
     const labelLen = col.label?.length ?? 0;
-    /** 子步 3：左窄下拉 + 右侧长文案，列宽下限抬高 */
+    /** 子步 3：左窄下拉 + 右侧长文案；上限与 DATA_COL_MAX_PX 对齐以触发换行 */
     if (col.key === HYP_CONFIRM_KEY && filterStep === 3) {
-      return Math.min(560, Math.max(280, 8 + labelLen * 11 + 200));
+      return Math.min(DATA_COL_MAX_PX, Math.max(120, 8 + labelLen * 9));
     }
-    return Math.min(220, Math.max(76, 8 + labelLen * 11));
+    return Math.min(DATA_COL_MAX_PX, Math.max(76, 8 + labelLen * 11));
+  };
+
+  const colMaxWidth = (col: RuminationTableColumn): number | undefined => {
+    if (col.key === 'id' || col.key === '__pick') return undefined;
+    return DATA_COL_MAX_PX;
   };
 
   const handleCellChange = useCallback((rowIdx: number, colKey: string, value: unknown) => {
@@ -472,7 +489,9 @@ export default function RuminationTableWidget({
   const isGlass = uiVariant === 'glass';
 
   const confirmBtnCls = isGlass
-    ? 'bd-btn-black shrink-0 rounded-full px-4 py-2 text-sm font-medium text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed'
+    ? `bd-btn-black shrink-0 rounded-full px-4 py-2 text-sm font-medium text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+        confirmSoftBlocked ? 'opacity-45 cursor-not-allowed' : ''
+      } ${confirmSoftBlocked ? 'rumination-neg-confirm-soft-blocked' : ''}`
     : 'rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50';
 
   const refillBtnCls = isGlass
@@ -490,8 +509,16 @@ export default function RuminationTableWidget({
         {!hideConfirmButton && (
           <button
             type="button"
-            onClick={handleConfirm}
+            onClick={() => {
+              if (confirmSoftBlocked) {
+                onConfirmSoftBlocked?.();
+                return;
+              }
+              handleConfirm();
+            }}
             disabled={cellDisabled}
+            data-soft-pulse={confirmSoftBlocked ? String(confirmSoftBlockedPulseTick) : undefined}
+            aria-disabled={confirmSoftBlocked || undefined}
             className={confirmBtnCls}
           >
             {confirmLabel}
@@ -634,7 +661,8 @@ export default function RuminationTableWidget({
       ? `${selectShellClass} !w-[7rem] sm:!w-[8.25rem] !min-w-0 shrink-0`
       : `${selectShellClass} !w-[7rem] sm:!w-[8.25rem] !min-w-0 shrink-0`;
 
-    const hypRightTextCls = 'text-sm leading-snug text-neutral-800 break-words';
+    const hypRightTextCls =
+      'text-sm leading-snug text-neutral-800 break-words [overflow-wrap:anywhere] min-w-0';
 
     const regenBtn = showRegen ? (
       <div
@@ -865,13 +893,13 @@ export default function RuminationTableWidget({
   };
 
   const tableInner = (
-    <table className="w-max min-w-full text-sm border-separate border-spacing-0 table-auto">
+    <table className="w-full min-w-0 max-w-full text-sm border-separate border-spacing-0 table-auto">
         <thead className={isGlass ? 'sticky top-0 z-10' : ''}>
           <tr className={isGlass ? 'bg-white/55 backdrop-blur-md' : 'bg-neutral-50'}>
             {displayColumns.map((col) => (
               <th
                 key={col.key}
-                style={{ minWidth: colMinWidth(col), maxWidth: col.key === 'id' ? 48 : undefined }}
+                style={{ minWidth: colMinWidth(col), maxWidth: colMaxWidth(col) ?? (col.key === 'id' ? 48 : undefined) }}
                 className={
                   col.key === 'id'
                     ? isGlass
@@ -882,7 +910,7 @@ export default function RuminationTableWidget({
                       : 'px-2.5 py-2 text-left font-medium text-neutral-700 whitespace-nowrap border-b border-neutral-200 align-middle'
                 }
               >
-                {col.label}
+                {col.key === 'id' ? '#' : col.label}
               </th>
             ))}
           </tr>
@@ -931,7 +959,8 @@ export default function RuminationTableWidget({
               {displayColumns.map((col, colIdx) => {
                 const isEditable = editableSet.has(col.key);
                 const val = row[col.key];
-                const strVal = val != null ? String(val) : '';
+                const strVal =
+                  col.key === 'id' ? String(rowIdx + 1) : val != null ? String(val) : '';
 
                 const cellKey = `${rowIdx}:${col.key}`;
                 const firstColKey = displayColumns[0]?.key;
@@ -953,15 +982,15 @@ export default function RuminationTableWidget({
                       ? 'px-1 py-2 align-middle text-center text-neutral-600'
                       : 'px-1 py-2 align-middle text-center'
                     : isGlass
-                      ? 'px-2.5 py-3 align-middle text-neutral-700 break-words whitespace-normal'
-                      : 'px-2.5 py-2 align-middle';
+                      ? 'px-2.5 py-3 align-middle text-neutral-700 break-words whitespace-normal [overflow-wrap:anywhere]'
+                      : 'px-2.5 py-2 align-middle break-words whitespace-normal text-neutral-700 [overflow-wrap:anywhere]';
 
                 return (
                   <td
                     key={col.key}
                     style={{
                       minWidth: colMinWidth(col),
-                      maxWidth: col.key === 'id' ? 48 : undefined,
+                      maxWidth: colMaxWidth(col) ?? (col.key === 'id' ? 48 : undefined),
                     }}
                     className={`${showHypRegenOverlay ? 'relative overflow-visible ' : ''}${tdBase}`}
                   >

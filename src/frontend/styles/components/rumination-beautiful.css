@@ -266,6 +266,41 @@ html[data-rumination-mesh-page='true']:not([data-color-scheme='dark'])
   border-radius: 0.375rem;
 }
 
+@keyframes rumination-neg-cta-pulse {
+  0%,
+  100% {
+    transform: translateX(0);
+    box-shadow: 0 0 0 rgba(251, 191, 36, 0);
+  }
+  20% {
+    transform: translateX(-3px);
+  }
+  40% {
+    transform: translateX(3px);
+  }
+  60% {
+    transform: translateX(-2px);
+  }
+  80% {
+    transform: translateX(2px);
+    box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.28);
+  }
+}
+
+.rumination-neg-confirm-soft-blocked[data-soft-pulse] {
+  animation: rumination-neg-cta-pulse 0.48s ease-in-out;
+}
+
+.rumination-neg-end-pill {
+  box-shadow:
+    0 6px 18px rgba(15, 23, 42, 0.24),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+.rumination-neg-gate-morph {
+  transform-origin: right top;
+}
+
 /* 沉淀表格：假设确认列单选圆点，去掉方形 focus 环（保留浏览器默认可访问性时可用 accent） */
 .rumination-beautiful-table-widget input[type='radio'].rumination-hyp-radio {
   outline: none !important;

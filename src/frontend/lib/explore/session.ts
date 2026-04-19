@@ -51,6 +51,8 @@ export function saveSession(session: ExploreSession): void {
 export interface ExploreResumePayload {
   resume_phase?: string;
   unlocked_phases?: string[];
+  /** 后端根据 record 推断：五阶段均已选定会话时可进入报告流 */
+  report_unlocked?: boolean;
 }
 
 /**

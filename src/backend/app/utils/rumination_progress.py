@@ -29,6 +29,10 @@ DEFAULT_PROGRESS: Dict[str, Any] = {
     "filter_terminate_reason": None,
     # 每步表格：initial=该步首次生成；submitted=用户确认后（用于回退查看，不删行）
     "filter_step_snapshots": {},
+    # 方案 Q：待提交的表格快照（未写入各步 submitted）
+    "pending_table_submit": None,
+    # 否定/标记跟进：awaiting_choice | exploring | closed
+    "rumination_neg_state": None,
 }
 
 
@@ -94,6 +98,10 @@ def _normalize_loaded(data: Dict[str, Any]) -> Dict[str, Any]:
         out["filter_terminate_reason"] = None
     raw_snap = out.get("filter_step_snapshots")
     out["filter_step_snapshots"] = raw_snap if isinstance(raw_snap, dict) else {}
+    if "pending_table_submit" not in data:
+        out["pending_table_submit"] = None
+    if "rumination_neg_state" not in data:
+        out["rumination_neg_state"] = None
     return out
 
 
@@ -172,4 +180,20 @@ def save_rumination_progress(
     except (TypeError, ValueError, OSError) as e:
         logger.exception("rumination_progress 写入失败: %s", e)
         raise
+    return current
+
+
+def merge_rumination_progress_fields(
+    reports_root: Path, report_id: str, updates: Dict[str, Any]
+) -> Dict[str, Any]:
+    """合并写入任意进度字段（如 pending_table_submit / rumination_neg_state）。"""
+    current = load_rumination_progress(reports_root, report_id)
+    for k, v in updates.items():
+        current[k] = v
+    path = _rumination_progress_file(reports_root, report_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(current, ensure_ascii=False, indent=2, default=str),
+        encoding="utf-8",
+    )
     return current
