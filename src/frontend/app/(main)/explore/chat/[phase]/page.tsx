@@ -131,6 +131,7 @@ function mergePendingDraftIntoMessagesFromMeta(
       conclusionData: draft as DimensionConclusionData,
       conclusionCollapsed: false,
       conclusionConfirmed: false,
+      conclusionLocked: false,
       createdAt: now,
     },
   ];
@@ -1024,17 +1025,7 @@ export default function ChatPhasePage() {
     return null;
   }, [sending, waitingForConclusionCardUi, postLlmTailActive, t]);
 
-  /** 用户曾在本对话中通过结论卡选择「继续完善/我想再聊聊」并折叠卡片后，才显示「确认稿」入口 */
-  const userChoseRefineAfterConclusion = messages.some(
-    (m) => m.type === 'dimension_conclusion' && m.conclusionCollapsed
-  );
-
-  const showRequestConclusionDraftControl =
-    phase !== 'rumination' &&
-    !phaseInteractionLocked &&
-    !!activationCode &&
-    !!activeThreadId &&
-    userChoseRefineAfterConclusion;
+  const showRequestConclusionDraftControl = false;
 
   /** 末条结论卡仍展开待决时不可点确认稿（与 pending阻塞一致，且只看最新一张） */
   const canClickRequestConclusionDraft =
@@ -1431,26 +1422,11 @@ export default function ChatPhasePage() {
     const applyDraft = (draft: DimensionConclusionData) => {
       setMessages((prev) => {
         const without = prev.filter((m) => m.id !== assistantId);
-        const lastIdx = [...without].map((x) => x.type).lastIndexOf('dimension_conclusion');
-        const prevLast = lastIdx >= 0 ? without[lastIdx] : undefined;
-        const replaceInPlace =
-          prevLast &&
-          prevLast.type === 'dimension_conclusion' &&
-          !prevLast.conclusionCollapsed &&
-          !prevLast.conclusionConfirmed;
-        if (replaceInPlace) {
-          const next = [...without];
-          next[lastIdx] = {
-            ...prevLast,
-            conclusionData: draft,
-            createdAt: Date.now(),
-            conclusionCollapsed: false,
-            conclusionConfirmed: false,
-          };
-          return next;
-        }
+        const frozenHistory = without.map((m) =>
+          m.type === 'dimension_conclusion' ? { ...m, conclusionLocked: true } : m
+        );
         return [
-          ...without,
+          ...frozenHistory,
           {
             id: `concl_${Date.now()}`,
             role: 'assistant',
@@ -1459,6 +1435,7 @@ export default function ChatPhasePage() {
             conclusionData: draft,
             conclusionCollapsed: false,
             conclusionConfirmed: false,
+            conclusionLocked: false,
             createdAt: Date.now(),
           },
         ];
@@ -1628,6 +1605,15 @@ export default function ChatPhasePage() {
     const text = prefill ?? input.trim();
     if (!activationCode || !text || sending || requestConclusionDraftBusy || isReadOnly)
       return;
+    setMessages((prev) => {
+      const lastIdx = [...prev].map((m) => m.type).lastIndexOf('dimension_conclusion');
+      if (lastIdx < 0) return prev;
+      const last = prev[lastIdx];
+      if (!last || last.type !== 'dimension_conclusion' || last.conclusionLocked) return prev;
+      const next = [...prev];
+      next[lastIdx] = { ...last, conclusionLocked: true };
+      return next;
+    });
     if (phase === 'rumination' && ruminationTableNavLoading) return;
     if (phase === 'rumination' && ruminationGuideBusy) {
       // 用户主动输入时，优先进入自由问答：终止子步引导流
@@ -1825,26 +1811,14 @@ export default function ChatPhasePage() {
                 conclusionData: concl,
                 conclusionCollapsed: false,
                 conclusionConfirmed: false,
+                conclusionLocked: false,
                 createdAt: Date.now(),
               };
               setMessages((prev) => {
-                const lastIdx = [...prev].map((x) => x.type).lastIndexOf('dimension_conclusion');
-                const prevLast = lastIdx >= 0 ? prev[lastIdx] : undefined;
-                const replaceInPlace =
-                  prevLast &&
-                  prevLast.type === 'dimension_conclusion' &&
-                  !prevLast.conclusionCollapsed &&
-                  !prevLast.conclusionConfirmed;
-                if (replaceInPlace) {
-                  const next = [...prev];
-                  next[lastIdx] = {
-                    ...prevLast,
-                    conclusionData: concl,
-                    createdAt: Date.now(),
-                  };
-                  return next;
-                }
-                return [...prev, conclMsg];
+                const frozenHistory = prev.map((m) =>
+                  m.type === 'dimension_conclusion' ? { ...m, conclusionLocked: true } : m
+                );
+                return [...frozenHistory, conclMsg];
               });
             }
             if (payload.table_widget) {
@@ -2080,7 +2054,7 @@ export default function ChatPhasePage() {
     }
     const confirmedMessages = messages.map((m) =>
       m.type === 'dimension_conclusion'
-        ? { ...m, conclusionConfirmed: true, conclusionCollapsed: false }
+        ? { ...m, conclusionConfirmed: true, conclusionCollapsed: false, conclusionLocked: true }
         : m
     );
     setMessages(confirmedMessages);
@@ -2215,17 +2189,6 @@ export default function ChatPhasePage() {
           m.id === toCollapse.id ? { ...m, conclusionCollapsed: true, conclusionConfirmed: false } : m
         )
       );
-      if (activationCode && phase && activeThreadId && typeof window !== 'undefined') {
-        try {
-          const k = `bd_conclusion_draft_flow_hint_${activationCode}_${phase}_${activeThreadId}`;
-          if (sessionStorage.getItem(k) !== '1') {
-            sessionStorage.setItem(k, '1');
-            setDraftFlowEducationOpen(true);
-          }
-        } catch {
-          setDraftFlowEducationOpen(true);
-        }
-      }
     }
     if (activationCode && phase && activeThreadId) {
       try {
@@ -2466,7 +2429,9 @@ export default function ChatPhasePage() {
         const concl = data.dimension_conclusion as DimensionConclusionData;
         const newId = `rumination_concl_${Date.now()}`;
         setMessages((prev) => {
-          const filtered = prev.filter((m) => m.type !== 'table_widget');
+          const filtered = prev
+            .filter((m) => m.type !== 'table_widget')
+            .map((m) => (m.type === 'dimension_conclusion' ? { ...m, conclusionLocked: true } : m));
           const boundarySnap = filtered.length;
           queueMicrotask(() => {
             setRuminationStepBoundaries((b) => {
@@ -2491,6 +2456,7 @@ export default function ChatPhasePage() {
               conclusionData: concl,
               conclusionCollapsed: false,
               conclusionConfirmed: false,
+              conclusionLocked: false,
             },
           ];
         });
@@ -3353,7 +3319,11 @@ export default function ChatPhasePage() {
                             isCompleted={isSelectedCompleted || !!m.conclusionConfirmed}
                             inline
                             collapsed={!!m.conclusionCollapsed}
-                            interactionLocked={phaseInteractionLocked}
+                            interactionLocked={
+                              phaseInteractionLocked ||
+                              !!m.conclusionLocked ||
+                              m.id !== latestConclusionMessageId
+                            }
                             onCollapsedChange={(collapsed) =>
                               setMessages((prev) =>
                                 prev.map((msg) =>
@@ -3363,11 +3333,13 @@ export default function ChatPhasePage() {
                             }
                             showActions={
                               !phaseInteractionLocked &&
+                              !m.conclusionLocked &&
                               !m.conclusionCollapsed &&
                               m.id === latestConclusionMessageId
                             }
                             forbidHeaderCollapseWhileActions={
                               !phaseInteractionLocked &&
+                              !m.conclusionLocked &&
                               !m.conclusionCollapsed &&
                               m.id === latestConclusionMessageId
                             }

@@ -33,9 +33,7 @@ from app.utils.simple_activation_manager import (
 from app.utils.sandbox_fork import assert_sandbox_not_expired
 from app.utils.conversation_file_manager import ConversationFileManager
 from app.core.dimension_completion_checker import (
-    build_conclusion_generation_messages,
     check_dimension_complete,
-    finalize_conclusion_from_summary_text,
 )
 from app.services.analytics_service import AnalyticsService
 from app.utils.report_registry import ReportRegistry, STEP_IDS, STEP_ORDER
@@ -153,8 +151,6 @@ MAX_HISTORY_TURNS = 30
 _LLM_SEM = None
 PENDING_JUDGE_TIMEOUT_SECONDS = 20
 CONCLUSION_GEN_TIMEOUT_SECONDS = 25
-# 独立 POST「确认稿」可放宽：流式内嵌结论生成仍用 CONCLUSION_GEN_TIMEOUT_SECONDS，避免长占 SSE
-CONCLUSION_DRAFT_HTTP_TIMEOUT_SECONDS = 90
 PENDING_HEARTBEAT_SECONDS = 2.0
 CONCLUSION_STATE_NONE = "none"
 CONCLUSION_STATE_PENDING = "pending"
@@ -3212,14 +3208,6 @@ class ThreadReopenRequest(BaseModel):
     thread_id: str
 
 
-class RequestConclusionDraftBody(BaseModel):
-    """用户主动请求根据当前对话生成待确认结论草案（不走双模型兜底）。"""
-
-    activation_code: str
-    phase: str
-    thread_id: str
-
-
 @router.post("/thread/reopen", response_model=SimpleChatResponse)
 async def reopen_thread(
     request: ThreadReopenRequest,
@@ -3320,273 +3308,6 @@ async def reopen_thread(
             },
         )
     return SimpleChatResponse(code=200, message="success", data={})
-
-
-@router.post("/conclusion-draft/request", response_model=SimpleChatResponse)
-async def request_conclusion_draft(
-    request: RequestConclusionDraftBody,
-    current_user: dict = Depends(get_current_user),
-):
-    """根据当前对话生成待确认结论草案（跳过「是否已完成探索」判定）。
-
-    说明：主对话流中模型仍可在满足条件时通过 STATE_JSON（pending_ready）自动推送结论卡；
-    本接口为「确认稿」兜底，不替代自动路径。
-    """
-    manager = get_activation_manager_for_code(request.activation_code)
-    try:
-        rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
-            manager=manager,
-            activation_code=request.activation_code,
-            current_user=current_user,
-            phase=request.phase,
-            thread_id=request.thread_id,
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("request_conclusion_draft _resolve_report_context failed: %s", e)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="解析会话上下文失败，请刷新页面后重试",
-        ) from e
-    if phase_step == "rumination":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前阶段不支持确认稿")
-    registry = ReportRegistry(base_dir=str(get_effective_simple_root(rec)))
-    _assert_step_editable(
-        registry=registry,
-        report_id=report["report_id"],
-        phase_step=phase_step,
-        current_user=current_user,
-        rec=rec,
-    )
-    session_id = report["report_id"]
-    conv_data = await conv_manager.get_conversation_data(session_id, category)
-    meta = conv_data.get("metadata") or {}
-    cmeta = _read_conclusion_meta(meta)
-    if cmeta.get("thread_completed"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="本维度对话已确认完成，无需再生成确认稿",
-        )
-    raw_messages = conv_data.get("messages") or []
-    messages = _trim_history_messages_for_llm(raw_messages)
-    conv_history = [
-        {"role": m.get("role", "user"), "content": m.get("content", "")}
-        for m in messages
-    ]
-    vip_level = getattr(rec, "vip_level", 1) or 1
-    reasoning_llm = _get_reasoning_llm_provider(vip_level=vip_level)
-    try:
-        result = await asyncio.wait_for(
-            check_dimension_complete(
-                phase_step,
-                conv_history,
-                prior_conclusion=None,
-                vip_level=vip_level,
-                llm_provider=reasoning_llm,
-                skip_completion_check=True,
-            ),
-            timeout=CONCLUSION_DRAFT_HTTP_TIMEOUT_SECONDS,
-        )
-    except asyncio.TimeoutError:
-        logger.warning(
-            "[request_conclusion_draft] timeout after %ss phase=%s thread=%s",
-            CONCLUSION_DRAFT_HTTP_TIMEOUT_SECONDS,
-            phase_step,
-            logical_session_id,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail="生成确认稿超时，请稍后重试",
-        ) from None
-    if not result:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="暂无法从当前对话生成确认稿，请多聊几句再试",
-        )
-    draft_clean = sanitize_pending_conclusion_draft(phase_step, dict(result))
-    uc = _count_user_messages(raw_messages)
-    await conv_manager.update_metadata(
-        session_id,
-        category,
-        {
-            **_build_conclusion_meta_update(
-                state=CONCLUSION_STATE_PENDING,
-                draft=draft_clean,
-                final=cmeta.get("final"),
-                shown_at=uc,
-                thread_completed=False,
-            ),
-            "conclusion_reject_baseline_user_count": None,
-        },
-    )
-    try:
-        await _append_note_json(
-            conv_manager,
-            session_id,
-            category,
-            "pending_conclusion_created",
-            {
-                "phase": phase_step,
-                "thread_id": logical_session_id,
-                "pending_conclusion": draft_clean,
-                "source": "request_conclusion_draft",
-            },
-        )
-    except Exception:
-        pass
-    return SimpleChatResponse(
-        code=200,
-        message="success",
-        data={"draft": draft_clean},
-    )
-
-
-@router.post("/conclusion-draft/request-stream")
-async def request_conclusion_draft_stream(
-    request: RequestConclusionDraftBody,
-    current_user: dict = Depends(get_current_user),
-):
-    """
-    确认稿：推理模型流式生成结构化结论（与 request相同 prompt/落库逻辑），无整段 asyncio硬超时。
-    SSE 事件与主对话流兼容：think_start / think_chunk / think_end / chunk；结束时 draft。
-    """
-    manager = get_activation_manager_for_code(request.activation_code)
-    try:
-        rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
-            manager=manager,
-            activation_code=request.activation_code,
-            current_user=current_user,
-            phase=request.phase,
-            thread_id=request.thread_id,
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("request_conclusion_draft_stream _resolve_report_context failed: %s", e)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="解析会话上下文失败，请刷新页面后重试",
-        ) from e
-    if phase_step == "rumination":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前阶段不支持确认稿")
-    registry = ReportRegistry(base_dir=str(get_effective_simple_root(rec)))
-    _assert_step_editable(
-        registry=registry,
-        report_id=report["report_id"],
-        phase_step=phase_step,
-        current_user=current_user,
-        rec=rec,
-    )
-    session_id = report["report_id"]
-    conv_data = await conv_manager.get_conversation_data(session_id, category)
-    meta = conv_data.get("metadata") or {}
-    cmeta = _read_conclusion_meta(meta)
-    if cmeta.get("thread_completed"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="本维度对话已确认完成，无需再生成确认稿",
-        )
-    raw_messages = conv_data.get("messages") or []
-    messages = _trim_history_messages_for_llm(raw_messages)
-    conv_history = [
-        {"role": m.get("role", "user"), "content": m.get("content", "")}
-        for m in messages
-    ]
-    gen_messages = build_conclusion_generation_messages(phase_step, conv_history, None)
-    if not gen_messages:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="暂无法从当前对话生成确认稿，请多聊几句再试",
-        )
-
-    vip_level = getattr(rec, "vip_level", 1) or 1
-    reasoning_llm = _get_reasoning_llm_provider(vip_level=vip_level)
-
-    async def event_stream() -> AsyncIterator[str]:
-        yield f"data: {json.dumps({'started': True}, ensure_ascii=False)}\n\n"
-        full_text = ""
-        sem = _get_llm_semaphore()
-        try:
-            stream_coro = reasoning_llm.chat_stream(gen_messages, temperature=0.3)
-
-            async def _consume_stream() -> AsyncIterator[str]:
-                nonlocal full_text
-                async for piece in stream_coro:
-                    if isinstance(piece, dict):
-                        t = piece.get("_t")
-                        if t == "think_start":
-                            yield f"data: {json.dumps({'think_start': True}, ensure_ascii=False)}\n\n"
-                        elif t == "think_chunk":
-                            tc = piece.get("content") or ""
-                            if tc:
-                                yield f"data: {json.dumps({'think_chunk': tc}, ensure_ascii=False)}\n\n"
-                        elif t == "think_end":
-                            te = piece.get("content")
-                            yield f"data: {json.dumps({'think_end': te}, ensure_ascii=False)}\n\n"
-                        continue
-                    if piece:
-                        full_text += piece
-                        yield f"data: {json.dumps({'chunk': piece}, ensure_ascii=False)}\n\n"
-
-            if sem:
-                async with sem:
-                    async for line in _consume_stream():
-                        yield line
-            else:
-                async for line in _consume_stream():
-                    yield line
-        except Exception as e:
-            logger.warning("conclusion-draft stream LLM failed: %s", e)
-            yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
-            return
-
-        result = finalize_conclusion_from_summary_text(phase_step, full_text.strip(), None)
-        if not result:
-            yield f"data: {json.dumps({'error': '模型输出无法解析为结论，请重试'}, ensure_ascii=False)}\n\n"
-            return
-        draft_clean = sanitize_pending_conclusion_draft(phase_step, dict(result))
-        uc = _count_user_messages(raw_messages)
-        await conv_manager.update_metadata(
-            session_id,
-            category,
-            {
-                **_build_conclusion_meta_update(
-                    state=CONCLUSION_STATE_PENDING,
-                    draft=draft_clean,
-                    final=cmeta.get("final"),
-                    shown_at=uc,
-                    thread_completed=False,
-                ),
-                "conclusion_reject_baseline_user_count": None,
-            },
-        )
-        try:
-            await _append_note_json(
-                conv_manager,
-                session_id,
-                category,
-                "pending_conclusion_created",
-                {
-                    "phase": phase_step,
-                    "thread_id": logical_session_id,
-                    "pending_conclusion": draft_clean,
-                    "source": "request_conclusion_draft_stream",
-                },
-            )
-        except Exception:
-            pass
-        yield f"data: {json.dumps({'done': True, 'draft': draft_clean}, ensure_ascii=False)}\n\n"
-
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
 
 
 @router.post("/thread/complete", response_model=SimpleChatResponse)
@@ -4247,12 +3968,12 @@ async def simple_chat_stream(
                     yield f"data: {{\"done\": true, \"response\": {json.dumps(full_reply, ensure_ascii=False)} }}\n\n"
                     return
 
-            elif pending_state == "rejected":
-                rejected_snapshot = {
-                    "summary": (pending_conclusion or {}).get("summary", ""),
-                    "keywords": (pending_conclusion or {}).get("keywords", []),
-                    "feedback": user_content,
-                }
+            elif pending_state in {"rejected", "continue"}:
+                non_confirm_feedback = (user_content or "").strip()
+                if not non_confirm_feedback:
+                    non_confirm_feedback = (
+                        pending_msg if pending_state == "continue" else "用户明确表示需要继续完善"
+                    )
                 await conv_manager.update_metadata(
                     session_id,
                     category,
@@ -4260,7 +3981,7 @@ async def simple_chat_stream(
                         **_build_conclusion_meta_update(
                             state=CONCLUSION_STATE_REJECTED,
                             final=cmeta.get("final"),
-                            feedback=user_content,
+                            feedback=non_confirm_feedback,
                             shown_at=conclusion_shown_at,
                             thread_completed=False,
                         ),
@@ -4276,15 +3997,16 @@ async def simple_chat_stream(
                         {
                             "phase": phase_step,
                             "thread_id": logical_session_id,
+                            "decision_state": pending_state,
                             "pending": pending_conclusion,
-                            "feedback": user_content,
+                            "feedback": non_confirm_feedback,
                             "decision_msg": pending_msg,
                         },
                     )
                 except Exception:
                     pass
                 pending_conclusion = None
-                rejected_feedback = user_content
+                rejected_feedback = non_confirm_feedback
 
         # 同步最新 metadata（含 pending→rejected），并按需注入「每 N 轮」轻量 system 提醒
         conv_data = await conv_manager.get_conversation_data(session_id, category)
@@ -4294,6 +4016,7 @@ async def simple_chat_stream(
         pending_conclusion = cmeta.get("draft")
         rejected_feedback = cmeta.get("feedback") or ""
 
+        should_try_retrigger = False
         if (
             cmeta.get("state") == CONCLUSION_STATE_REJECTED
             and not cmeta.get("thread_completed")
@@ -4302,6 +4025,7 @@ async def simple_chat_stream(
         ):
             baseline = meta.get("conclusion_reject_baseline_user_count")
             if isinstance(baseline, int) and user_count - baseline >= CONCLUSION_REJECT_NUDGE_USER_TURNS:
+                should_try_retrigger = True
                 if llm_messages and llm_messages[0].role == "system":
                     llm_messages[0] = LLMMessage(
                         role="system",
@@ -4433,6 +4157,7 @@ async def simple_chat_stream(
                         "table_format": "markdown",
                     },
                 )
+        pending_spawned_in_turn = False
         if state_obj and not cmeta.get("thread_completed"):
             state_name = str(state_obj.get("state") or "").strip().lower()
             draft = state_obj.get("draft")
@@ -4474,9 +4199,74 @@ async def simple_chat_stream(
                     + json.dumps({"dimension_conclusion": draft_to_save}, ensure_ascii=False)
                     + "\n\n"
                 )
+                pending_spawned_in_turn = True
             elif state_name == "continue":
                 # 无状态迁移，保持当前会话态
                 pass
+
+        # 拒绝/继续后，按轮次触发兜底重试：满足完成条件时自动再次唤起结论卡
+        if (
+            should_try_retrigger
+            and not pending_spawned_in_turn
+            and phase_step != "rumination"
+            and not cmeta.get("thread_completed")
+        ):
+            reasoning_llm = _get_reasoning_llm_provider(vip_level=vip_level)
+            try:
+                retrigger_conclusion = await asyncio.wait_for(
+                    check_dimension_complete(
+                        phase_step,
+                        conv_history,
+                        prior_conclusion=None,
+                        vip_level=vip_level,
+                        llm_provider=reasoning_llm,
+                    ),
+                    timeout=CONCLUSION_GEN_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                retrigger_conclusion = None
+            except Exception:
+                retrigger_conclusion = None
+
+            if isinstance(retrigger_conclusion, dict):
+                draft_to_save = sanitize_pending_conclusion_draft(
+                    phase_step, dict(retrigger_conclusion)
+                )
+                yield f"data: {json.dumps({'conclusion_loading': True}, ensure_ascii=False)}\n\n"
+                await conv_manager.update_metadata(
+                    session_id,
+                    category,
+                    {
+                        **_build_conclusion_meta_update(
+                            state=CONCLUSION_STATE_PENDING,
+                            draft=draft_to_save,
+                            final=cmeta.get("final"),
+                            shown_at=user_count,
+                            thread_completed=False,
+                        ),
+                        "conclusion_reject_baseline_user_count": None,
+                    },
+                )
+                try:
+                    await _append_note_json(
+                        conv_manager,
+                        session_id,
+                        category,
+                        "pending_conclusion_created",
+                        {
+                            "phase": phase_step,
+                            "thread_id": logical_session_id,
+                            "pending_conclusion": draft_to_save,
+                            "source": "retrigger_after_rejected",
+                        },
+                    )
+                except Exception:
+                    pass
+                yield (
+                    "data: "
+                    + json.dumps({"dimension_conclusion": draft_to_save}, ensure_ascii=False)
+                    + "\n\n"
+                )
 
         # 每 20 轮触发后台锚点摘要
         user_count_after = user_count + (1 if user_content else 0)

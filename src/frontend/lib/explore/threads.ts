@@ -37,6 +37,8 @@ export interface ThreadMessage {
   conclusionCollapsed?: boolean;
   /** 结论卡是否已确认（用于前端按钮状态兜底） */
   conclusionConfirmed?: boolean;
+  /** 结论卡是否已固化为只读（发送新消息或阶段提交后） */
+  conclusionLocked?: boolean;
   /** 表格 Widget 载荷（type=table_widget 时） */
   tablePayload?: RuminationTablePayload;
   /** 沉淀：发送时绑定的表格行摘要（展示在气泡上方） */
