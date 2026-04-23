@@ -10,6 +10,7 @@ from typing import Any, Callable, Optional
 
 from app.domain.rumination_prompt_strings import RUMINATION_SHORTPATH_SKIP_CLOSING_FIXED_ZH
 from app.domain.rumination_step_guidance import build_rumination_closing_epilogue_messages
+from app.utils.id_codec import IDCodec
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ async def append_post_table_finalize_message(
     report_session_id: str,
     category: str,
     logical_session_id: str,
+    activation_session_id: Optional[str] = None,
     via_short_path: bool,
     selected_summary: str,
     normalize_token_usage: NormalizeUsageFn,
@@ -41,7 +43,10 @@ async def append_post_table_finalize_message(
             message={
                 "role": "assistant",
                 "content": body,
-                "session_id": logical_session_id,
+                **IDCodec.build_message_ids(
+                    thread_id=logical_session_id,
+                    activation_session_id=activation_session_id,
+                ),
                 "step_id": "rumination",
                 "agent_id": "coach",
                 "event": "rumination_closing_shortpath_fixed",
@@ -67,7 +72,10 @@ async def append_post_table_finalize_message(
             message={
                 "role": "assistant",
                 "content": ctext,
-                "session_id": logical_session_id,
+                **IDCodec.build_message_ids(
+                    thread_id=logical_session_id,
+                    activation_session_id=activation_session_id,
+                ),
                 "step_id": "rumination",
                 "agent_id": "coach",
                 "event": "rumination_closing_epilogue",

@@ -22,6 +22,8 @@ export interface ExploreSession {
   reportReady?: boolean;
   /** 后端 session_id（用于埋点、报告生成等） */
   sessionId?: string;
+  /** 语义化别名：激活码存储会话ID（与 thread_id 不同） */
+  activationSessionId?: string;
 }
 
 /** 检查是否有可查看的报告（完成全部五阶段探索，含沉淀） */
@@ -45,6 +47,45 @@ export function loadSession(code: string): ExploreSession {
 export function saveSession(session: ExploreSession): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(KEY(session.activationCode), JSON.stringify(session));
+}
+
+/** 统一读取 activation session id（新字段优先，回退旧字段） */
+export function getActivationSessionId(session: ExploreSession | null | undefined): string | undefined {
+  const v = session?.activationSessionId ?? session?.sessionId;
+  if (!v) return undefined;
+  const s = String(v).trim();
+  return s || undefined;
+}
+
+/** 统一写入 activation session id（兼容期双写） */
+export function setActivationSessionId(session: ExploreSession, activationSessionId: string): ExploreSession {
+  const normalized = String(activationSessionId || '').trim();
+  if (!normalized) return session;
+  return {
+    ...session,
+    activationSessionId: normalized,
+    sessionId: normalized,
+  };
+}
+
+/** history API metadata: explicit thread_id or legacy session_id (= thread). */
+export function readThreadIdFromHistoryMetadata(
+  meta: Record<string, unknown> | null | undefined
+): string | undefined {
+  if (!meta) return undefined;
+  const t = meta.thread_id ?? meta.session_id;
+  if (typeof t === 'string' && t.trim()) return t.trim();
+  return undefined;
+}
+
+/** simple-chat API nested activation: use activation_session_id only (legacy activation.session_id was thread). */
+export function readActivationSessionIdFromActivationApi(
+  activation: Record<string, unknown> | null | undefined
+): string | undefined {
+  if (!activation) return undefined;
+  const v = activation.activation_session_id;
+  if (typeof v === 'string' && v.trim()) return v.trim();
+  return undefined;
 }
 
 /** 激活接口返回：根据 report record.json 推断应回到的阶段（字段可能部分缺失） */

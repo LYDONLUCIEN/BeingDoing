@@ -33,6 +33,9 @@ import {
   PHASES,
   loadSession,
   saveSession,
+  getActivationSessionId,
+  setActivationSessionId,
+  readActivationSessionIdFromActivationApi,
   unlockNextPhase,
   getLastActivationCode,
   applyExploreResumeToSession,
@@ -258,9 +261,6 @@ export default function ChatPhasePage() {
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [requestConclusionDraftBusy, setRequestConclusionDraftBusy] = useState(false);
-  /** 首次在结论卡上选「继续完善」后说明「确认稿」用途（每激活码+阶段+线程仅提示一次，见 sessionStorage） */
-  const [draftFlowEducationOpen, setDraftFlowEducationOpen] = useState(false);
   /** 流式进行中点其它会话：先确认再切换 */
   const [threadSwitchDialogOpen, setThreadSwitchDialogOpen] = useState(false);
   const [pendingSwitchThread, setPendingSwitchThread] = useState<ChatThread | null>(null);
@@ -578,7 +578,7 @@ export default function ChatPhasePage() {
         }));
         // 前四维：为每个会话预加载历史，侧栏显示首行与轮数。
         // 沉淀（rumination）：产品为单线程、无多会话侧栏，只拉「主线程」一条 history，与 collapse 规则一致。
-        const sessionIdByThread: Record<string, string> = {};
+        let lastActivationSessionFromApi: string | undefined;
         const hydrateThreadFromHistory = async (th: ChatThread): Promise<ChatThread> => {
           try {
             const h = await apiClient.get('/simple-chat/history', {
@@ -589,7 +589,8 @@ export default function ChatPhasePage() {
             if (typeof meta?.step_locked === 'boolean') {
               setStepLocked(Boolean(meta.step_locked));
             }
-            if (meta?.session_id) sessionIdByThread[th.id] = String(meta.session_id);
+            const actSid = readActivationSessionIdFromActivationApi(h.data?.activation);
+            if (actSid) lastActivationSessionFromApi = actSid;
             const msgs = mergePendingDraftIntoMessagesFromMeta(
               mapHistoryToThreadMessages(history, meta),
               meta as Record<string, unknown>
@@ -637,11 +638,10 @@ export default function ChatPhasePage() {
         if (activeThread) {
           setMessages(activeThread.messages);
           setBackendSyncedThreadId(activeThread.id);
-          const sessId = sessionIdByThread[activeThread.id];
-          if (sessId) {
-            setBackendSessionId(sessId);
+          if (lastActivationSessionFromApi) {
+            setBackendSessionId(lastActivationSessionFromApi);
             const s = loadSession(activationCode);
-            saveSession({ ...s, sessionId: sessId });
+            saveSession(setActivationSessionId(s, lastActivationSessionFromApi));
           }
         } else {
           setMessages([]);
@@ -734,11 +734,11 @@ export default function ChatPhasePage() {
                 if (typeof meta?.step_locked === 'boolean') {
                   setStepLocked(Boolean(meta.step_locked));
                 }
-                const sessId = h.data?.activation?.session_id || meta?.session_id;
-                if (sessId && !cancelled) {
-                  setBackendSessionId(sessId);
+                const actSid = readActivationSessionIdFromActivationApi(h.data?.activation);
+                if (actSid && !cancelled) {
+                  setBackendSessionId(actSid);
                   const s = loadSession(activationCode);
-                  saveSession({ ...s, sessionId: sessId });
+                  saveSession(setActivationSessionId(s, actSid));
                 }
                 msgs = mergePendingDraftIntoMessagesFromMeta(
                   mapHistoryToThreadMessages(history, meta),
@@ -763,11 +763,11 @@ export default function ChatPhasePage() {
                     content: m.content ?? '',
                     createdAt: now,
                   }));
-                  const sid = initRes.data?.activation?.session_id;
+                  const sid = readActivationSessionIdFromActivationApi(initRes.data?.activation);
                   if (sid && !cancelled) {
-                    setBackendSessionId(String(sid));
+                    setBackendSessionId(sid);
                     const s = loadSession(activationCode);
-                    saveSession({ ...s, sessionId: String(sid) });
+                    saveSession(setActivationSessionId(s, sid));
                   }
                 } catch {
                   /* ignore */
@@ -801,11 +801,11 @@ export default function ChatPhasePage() {
           if (typeof meta?.step_locked === 'boolean') {
             setStepLocked(Boolean(meta.step_locked));
           }
-          const sessId = historyRes.data?.activation?.session_id || meta?.session_id;
-          if (sessId && !cancelled) {
-            setBackendSessionId(sessId);
+          const actSid = readActivationSessionIdFromActivationApi(historyRes.data?.activation);
+          if (actSid && !cancelled) {
+            setBackendSessionId(actSid);
             const s = loadSession(activationCode);
-            saveSession({ ...s, sessionId: sessId });
+            saveSession(setActivationSessionId(s, actSid));
           }
           if (!cancelled && history.length > 0) {
             // 仅用于前端展示历史，不绑定后端 thread_id，避免刷新时误创建新会话
@@ -1024,19 +1024,6 @@ export default function ChatPhasePage() {
     if (postLlmTailActive) return t('explore.chat.streamStatusGeneric');
     return null;
   }, [sending, waitingForConclusionCardUi, postLlmTailActive, t]);
-
-  const showRequestConclusionDraftControl = false;
-
-  /** 末条结论卡仍展开待决时不可点确认稿（与 pending阻塞一致，且只看最新一张） */
-  const canClickRequestConclusionDraft =
-    showRequestConclusionDraftControl &&
-    !isReadOnly &&
-    !(
-      (() => {
-        const last = lastDimensionConclusionMessage(messages);
-        return last && !last.conclusionCollapsed && !last.conclusionConfirmed;
-      })()
-    );
 
   useLayoutEffect(() => {
     const prev = prevPathnameForLockModalRef.current;
@@ -1386,216 +1373,6 @@ export default function ChatPhasePage() {
     t,
   ]);
 
-  const handleRequestConclusionDraft = useCallback(async () => {
-    if (
-      !activationCode ||
-      !activeThreadId ||
-      phase === 'rumination' ||
-      requestConclusionDraftBusy ||
-      isReadOnly ||
-      (() => {
-        const last = lastDimensionConclusionMessage(messages);
-        return last && !last.conclusionCollapsed && !last.conclusionConfirmed;
-      })()
-    ) {
-      return;
-    }
-    setRequestConclusionDraftBusy(true);
-    setChatError(null);
-    const now = Date.now();
-    const assistantId = `draft_req_${now}`;
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: assistantId,
-        role: 'assistant',
-        content: '',
-        createdAt: now,
-      },
-    ]);
-    stickToBottomRef.current = true;
-
-    const stripPlaceholder = () => {
-      setMessages((prev) => prev.filter((m) => m.id !== assistantId));
-    };
-
-    const applyDraft = (draft: DimensionConclusionData) => {
-      setMessages((prev) => {
-        const without = prev.filter((m) => m.id !== assistantId);
-        const frozenHistory = without.map((m) =>
-          m.type === 'dimension_conclusion' ? { ...m, conclusionLocked: true } : m
-        );
-        return [
-          ...frozenHistory,
-          {
-            id: `concl_${Date.now()}`,
-            role: 'assistant',
-            content: '',
-            type: 'dimension_conclusion',
-            conclusionData: draft,
-            conclusionCollapsed: false,
-            conclusionConfirmed: false,
-            conclusionLocked: false,
-            createdAt: Date.now(),
-          },
-        ];
-      });
-    };
-
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
-    try {
-      const apiBase = (process.env.NEXT_PUBLIC_API_URL || '').trim();
-      const streamUrl = `${apiBase ? apiBase.replace(/\/+$/, '') : ''}/api/v1/simple-chat/conclusion-draft/request-stream`;
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-      const doStreamFetch = async (accessToken: string | null) =>
-        fetch(streamUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-          },
-          body: JSON.stringify({
-            activation_code: activationCode,
-            phase: BACKEND_PHASE[phase],
-            thread_id: activeThreadId,
-          }),
-          signal: controller.signal,
-        });
-
-      let res = await doStreamFetch(token);
-      if (res.status === 401) {
-        try {
-          const refreshed = await authApi.refresh();
-          const nextToken = refreshed?.data?.token || null;
-          if (nextToken) {
-            apiClient.setToken(nextToken);
-            setTokens(nextToken);
-            res = await doStreamFetch(nextToken);
-          }
-        } catch {
-          // 与主对话流一致：refresh 失败后走统一 401 提示
-        }
-      }
-
-      if (!res.ok) {
-        stripPlaceholder();
-        if (res.status === 401) {
-          throw new Error(t('explore.chat.streamAuthExpired'));
-        }
-        let detail = '';
-        try {
-          const errPayload = await res.json();
-          detail = errPayload?.detail || errPayload?.message || '';
-        } catch {}
-        throw new Error(detail || `请求失败（${res.status}）`);
-      }
-      if (!res.body) {
-        stripPlaceholder();
-        throw new Error('流式接口返回为空');
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let finished = false;
-      while (!finished) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          try {
-            const payload = JSON.parse(line.slice(6));
-            if (payload.error) {
-              setChatError(String(payload.error));
-              reader.cancel();
-              stripPlaceholder();
-              finished = true;
-              break;
-            }
-            if (payload.think_start) {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId ? { ...m, thinkStreaming: true, thinkChunkContent: '' } : m
-                )
-              );
-            }
-            if (payload.think_chunk) {
-              const chunk = typeof payload.think_chunk === 'string' ? payload.think_chunk : '';
-              if (chunk) {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId ? { ...m, thinkChunkContent: chunk } : m
-                  )
-                );
-              }
-            }
-            if (payload.think_end != null) {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId
-                    ? { ...m, thinkStreaming: false, thinkChunkContent: undefined }
-                    : m
-                )
-              );
-            }
-            if (payload.chunk) {
-              const c = typeof payload.chunk === 'string' ? payload.chunk : '';
-              if (c) {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId ? { ...m, content: (m.content || '') + c } : m
-                  )
-                );
-              }
-            }
-            if (payload.done && payload.draft) {
-              applyDraft(payload.draft as DimensionConclusionData);
-              reader.cancel();
-              finished = true;
-              break;
-            }
-          } catch {
-            // 忽略单行解析失败
-          }
-        }
-      }
-      if (!finished) {
-        stripPlaceholder();
-        setChatError(t('explore.chat.requestConclusionDraftFail'));
-      }
-    } catch (e: unknown) {
-      const err = e as { name?: string };
-      if (err?.name !== 'AbortError') {
-        setChatError(getApiErrorMessage(e, t('explore.chat.requestConclusionDraftFail')));
-      }
-      stripPlaceholder();
-    } finally {
-      abortControllerRef.current = null;
-      setRequestConclusionDraftBusy(false);
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantId && m.thinkStreaming
-            ? { ...m, thinkStreaming: false, thinkChunkContent: undefined }
-            : m
-        )
-      );
-    }
-  }, [
-    activationCode,
-    activeThreadId,
-    phase,
-    requestConclusionDraftBusy,
-    isReadOnly,
-    messages,
-    t,
-    setTokens,
-  ]);
-
   const handleSend = async (
     prefill?: string,
     skipAddUser?: boolean,
@@ -1603,7 +1380,7 @@ export default function ChatPhasePage() {
     regenerateRowLabel?: string
   ) => {
     const text = prefill ?? input.trim();
-    if (!activationCode || !text || sending || requestConclusionDraftBusy || isReadOnly)
+    if (!activationCode || !text || sending || isReadOnly)
       return;
     setMessages((prev) => {
       const lastIdx = [...prev].map((m) => m.type).lastIndexOf('dimension_conclusion');
@@ -1699,6 +1476,7 @@ export default function ChatPhasePage() {
             message: messageForApi,
             phase: BACKEND_PHASE[phase],
             thread_id: effectiveThreadId,
+            activation_session_id: getActivationSessionId(session),
             locale: apiLocale,
             ...(ruminationFilterForApi !== undefined
               ? { rumination_filter_step: ruminationFilterForApi }
@@ -1933,7 +1711,7 @@ export default function ChatPhasePage() {
     (thread: ChatThread) => {
       if (!activationCode || !phase) return;
       if (thread.id === activeThreadId) return;
-      if (sending || ruminationGuideBusy || requestConclusionDraftBusy) {
+      if (sending || ruminationGuideBusy) {
         setPendingSwitchThread(thread);
         setThreadSwitchDialogOpen(true);
         return;
@@ -1946,7 +1724,6 @@ export default function ChatPhasePage() {
       activeThreadId,
       sending,
       ruminationGuideBusy,
-      requestConclusionDraftBusy,
       performThreadSwitch,
     ]
   );
@@ -2988,9 +2765,7 @@ export default function ChatPhasePage() {
             phaseTitle={phaseLabel}
             phaseInteractionLocked={phaseInteractionLocked}
             careeringMatte
-            streamBlocksSessionSwitch={
-              sending || ruminationGuideBusy || requestConclusionDraftBusy
-            }
+            streamBlocksSessionSwitch={sending || ruminationGuideBusy}
           />
         )}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -3438,12 +3213,11 @@ export default function ChatPhasePage() {
                           }
                           careeringAiRoleLabel={t('explore.chat.careeringAiRole')}
                           contentMode={
-                            m.id.startsWith('draft_req_') ? 'plain_line' : 'markdown'
+                            'markdown'
                           }
                           streaming={
                             (sending ||
-                              ruminationGuideBusy ||
-                              requestConclusionDraftBusy) &&
+                              ruminationGuideBusy) &&
                             idx === displayMessages.length - 1
                           }
                           thinkStreaming={m.thinkStreaming}
@@ -3466,7 +3240,7 @@ export default function ChatPhasePage() {
                             .length}
                           dimension={phase}
                           hideToolbar={
-                            phaseInteractionLocked || m.id.startsWith('draft_req_')
+                            phaseInteractionLocked
                           }
                         />
                       )}
@@ -3546,18 +3320,16 @@ export default function ChatPhasePage() {
                       : ''
                   } !flex !flex-col !items-stretch gap-1.5`}
                 >
-                  {(requestConclusionDraftBusy ||
-                    (sending &&
-                      (postLlmTailActive ||
-                        waitingForConclusionCardUi ||
-                        conclusionLoading))) && (
+                  {(sending &&
+                    (postLlmTailActive ||
+                      waitingForConclusionCardUi ||
+                      conclusionLoading)) && (
                     <p
                       className="w-full shrink-0 px-1 text-left text-xs leading-snug text-neutral-500"
                       role="status"
                       aria-live="polite"
                     >
-                      {requestConclusionDraftBusy ||
-                      waitingForConclusionCardUi ||
+                      {waitingForConclusionCardUi ||
                       (sending && conclusionLoading)
                         ? t('explore.chat.streamStatusConclusion')
                         : t('explore.chat.streamStatusGeneric')}
@@ -3573,7 +3345,6 @@ export default function ChatPhasePage() {
                         e.preventDefault();
                         if (
                           !sending &&
-                          !requestConclusionDraftBusy &&
                           !isReadOnly &&
                           !(phase === 'rumination' && ruminationTableNavLoading)
                         ) {
@@ -3598,62 +3369,31 @@ export default function ChatPhasePage() {
                     rows={1}
                     disabled={
                       sending ||
-                      requestConclusionDraftBusy ||
                       isReadOnly ||
                       (phase === 'rumination' && ruminationTableNavLoading)
                     }
                     className="flow-input-field"
                   />
-                  {showRequestConclusionDraftControl && (
-                    <button
-                      type="button"
-                      onClick={() => void handleRequestConclusionDraft()}
-                      disabled={
-                        !canClickRequestConclusionDraft ||
-                        sending ||
-                        ruminationGuideBusy ||
-                        requestConclusionDraftBusy
-                      }
-                      title={
-                        canClickRequestConclusionDraft
-                          ? t('explore.chat.requestConclusionDraftTitle')
-                          : t('explore.chat.requestConclusionDraftDisabledHint')
-                      }
-                      className="flex shrink-0 items-center gap-1 rounded-xl border border-black/10 bg-white/80 px-2.5 py-1.5 text-xs font-medium text-[var(--flow-text-body)] transition-colors hover:bg-neutral-50 disabled:pointer-events-none disabled:opacity-40"
-                    >
-                      {requestConclusionDraftBusy ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                      ) : (
-                        <FileText className="h-3.5 w-3.5 opacity-70" aria-hidden />
-                      )}
-                      <span className="max-[380px]:hidden">{t('explore.chat.requestConclusionDraft')}</span>
-                    </button>
-                  )}
                   <div className="flow-send-btn-wrap">
-                    {(sending || requestConclusionDraftBusy) && (
+                    {sending && (
                       <div className="flow-send-glow" aria-hidden />
                     )}
                     <button
                       type="button"
                       onClick={
-                        sending || requestConclusionDraftBusy
+                        sending
                           ? handleStopStream
                           : () => handleSend()
                       }
                       disabled={
                         (isReadOnly ||
                           (!sending &&
-                            !requestConclusionDraftBusy &&
                             (!input.trim() ||
                               (phase === 'rumination' && ruminationTableNavLoading)))) as boolean
                       }
-                      className={`flow-send-btn ${
-                        sending || requestConclusionDraftBusy
-                          ? 'is-stop'
-                          : ''
-                      }`}
+                      className={`flow-send-btn ${sending ? 'is-stop' : ''}`}
                     >
-                      {sending || requestConclusionDraftBusy ? (
+                      {sending ? (
                         <Square size={16} strokeWidth={0} fill="white" />
                       ) : (
                         <ArrowUp size={16} strokeWidth={2.2} />
@@ -3670,40 +3410,6 @@ export default function ChatPhasePage() {
         </div>
       </div>
       </div>
-      {draftFlowEducationOpen && (
-        <div
-          className="fixed inset-0 z-[58] flex items-center justify-center bg-black/35 backdrop-blur-sm"
-          onClick={() => setDraftFlowEducationOpen(false)}
-          role="presentation"
-        >
-          <div
-            className="mx-4 w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="draft-flow-education-title"
-          >
-            <h3
-              id="draft-flow-education-title"
-              className="mb-2 text-lg font-semibold text-[var(--flow-text-body)]"
-            >
-              {t('explore.chat.conclusionDraftFlowModalTitle')}
-            </h3>
-            <p className="mb-6 text-sm leading-relaxed text-[var(--flow-text-muted)]">
-              {t('explore.chat.conclusionDraftFlowModalMessage')}
-            </p>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setDraftFlowEducationOpen(false)}
-                className="rounded-xl bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-800"
-              >
-                {t('explore.chat.conclusionDraftFlowModalOk')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {threadSwitchDialogOpen && (
         <div
           className="fixed inset-0 z-[56] flex items-center justify-center bg-black/30 backdrop-blur-sm"

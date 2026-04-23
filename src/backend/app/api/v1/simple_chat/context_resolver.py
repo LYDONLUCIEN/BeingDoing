@@ -30,13 +30,14 @@ from app.utils.survey_storage import (
     load_prior_context_for_report,
     load_prior_context,
 )
+from app.utils.id_codec import IDCodec
 
 logger = logging.getLogger(__name__)
 
 
 def storage_category(phase: str, session_id: str) -> str:
     """存储用 category：每个 step-session 一份文件。"""
-    return f"{phase}__{session_id}"
+    return IDCodec.storage_category(phase, session_id)
 
 
 def step_session_message_count(
@@ -49,7 +50,8 @@ def step_session_message_count(
     if not path.is_file():
         return 0
     try:
-        data = json.loads(path.read_text(encoding="utf-8") or "{}")
+        raw = json.loads(path.read_text(encoding="utf-8") or "{}")
+        data = IDCodec.normalize_conversation_data_on_read(raw, report_id)
         return len(data.get("messages") or [])
     except (OSError, json.JSONDecodeError, TypeError):
         return 0
@@ -143,10 +145,14 @@ def resolve_report_context(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     logical_session_id = resolve_default_logical_thread_id(
-        registry, report, phase_step, thread_id, rec.session_id,
+        registry,
+        report,
+        phase_step,
+        thread_id,
+        IDCodec.activation_session_id_from_rec(rec),
     )
     if not logical_session_id:
-        logical_session_id = rec.session_id
+        logical_session_id = IDCodec.activation_session_id_from_rec(rec)
 
     if not can_bypass_flow_limits(current_user, rec):
         try:
@@ -220,7 +226,7 @@ def load_basic_info_from_activation(activation_code: str) -> str:
         if data:
             return format_basic_info_for_prompt(data)
     base = str(get_effective_simple_root(rec))
-    data = load_basic_info(rec.session_id, base)
+    data = load_basic_info(IDCodec.activation_session_id_from_rec(rec), base)
     return format_basic_info_for_prompt(data)
 
 
@@ -237,7 +243,7 @@ def load_prior_context_from_activation(
         text = load_prior_context_for_report(report["report_id"], phase, reports_root)
         if text:
             return text
-    return load_prior_context(rec.session_id, phase, str(root))
+    return load_prior_context(IDCodec.activation_session_id_from_rec(rec), phase, str(root))
 
 
 def is_step_locked(registry: ReportRegistry, report_id: str, phase_step: str) -> bool:

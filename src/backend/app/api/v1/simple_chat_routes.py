@@ -32,6 +32,7 @@ from app.utils.simple_activation_manager import (
 )
 from app.utils.sandbox_fork import assert_sandbox_not_expired
 from app.utils.conversation_file_manager import ConversationFileManager
+from app.utils.id_codec import IDCodec
 from app.core.dimension_completion_checker import (
     check_dimension_complete,
 )
@@ -408,7 +409,7 @@ async def _append_note_json(
                 data = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
             data = {
-                "session_id": session_id,
+                **IDCodec.build_note_container_root(session_id),
                 "category": note_category,
                 "notes": [],
                 "metadata": {"created_at": now, "updated_at": now, "total_notes": 0},
@@ -1083,6 +1084,7 @@ class SimpleChatStreamRequest(BaseModel):
     message: str
     phase: str
     thread_id: Optional[str] = None  # 当前对话 id，用于加载/保存到对应记录
+    activation_session_id: Optional[str] = None  # 仅用于诊断/去歧义，业务以激活码后端记录为准
     # 可选：前端结论卡 UI 快照（诊断/后续扩展；不参与业务分支）
     client_conclusion_ui: Optional[Dict[str, Any]] = None
     locale: Optional[str] = None  # zh | en
@@ -1135,7 +1137,7 @@ def _load_basic_info_from_activation(activation_code: str) -> str:
         if data:
             return format_basic_info_for_prompt(data)
     base = str(get_effective_simple_root(rec))
-    data = load_basic_info(rec.session_id, base)
+    data = load_basic_info(IDCodec.activation_session_id_from_rec(rec), base)
     return format_basic_info_for_prompt(data)
 
 
@@ -1152,7 +1154,7 @@ def _load_prior_context_from_activation(
         text = load_prior_context_for_report(report["report_id"], phase, reports_root)
         if text:
             return text
-    return load_prior_context(rec.session_id, phase, str(root))
+    return load_prior_context(IDCodec.activation_session_id_from_rec(rec), phase, str(root))
 
 
 def _is_step_locked(registry: ReportRegistry, report_id: str, phase_step: str) -> bool:
@@ -1190,7 +1192,10 @@ def get_survey(
     user_id = (current_user or {}).get("user_id") or (current_user or {}).get("email") or ""
     data = load_basic_info_by_user(user_id) if user_id else None
     if not data:
-        data = load_basic_info(rec.session_id, str(get_effective_simple_root(rec)))
+        data = load_basic_info(
+            IDCodec.activation_session_id_from_rec(rec),
+            str(get_effective_simple_root(rec)),
+        )
     return SimpleChatResponse(
         code=200,
         message="success",
@@ -1594,7 +1599,10 @@ async def rumination_step_opening_stream(
                     message={
                         "role": "assistant",
                         "content": text,
-                        "session_id": logical_session_id,
+                        **IDCodec.build_message_ids(
+                            thread_id=logical_session_id,
+                            activation_session_id=rec.session_id,
+                        ),
                         "step_id": phase_step,
                         "agent_id": "coach",
                         "event": "assistant_reply",
@@ -2381,6 +2389,7 @@ async def rumination_table_submit(
                     report_session_id=report["report_id"],
                     category=cat_e,
                     logical_session_id=log_sid_e,
+                    activation_session_id=getattr(_rec_e, "session_id", None),
                     via_short_path=rumination_finalize_via_short_path,
                     selected_summary=closing_summary_for_epilogue,
                     normalize_token_usage=_normalize_token_usage,
@@ -2944,7 +2953,10 @@ async def simple_chat(
         message={
             "role": "user",
             "content": request.message,
-            "session_id": logical_session_id,
+            **IDCodec.build_message_ids(
+                thread_id=logical_session_id,
+                activation_session_id=rec.session_id,
+            ),
             "step_id": phase_step,
             "agent_id": None,
             "event": "user_message",
@@ -2957,7 +2969,10 @@ async def simple_chat(
         message={
             "role": "assistant",
             "content": reply_text,
-            "session_id": logical_session_id,
+            **IDCodec.build_message_ids(
+                thread_id=logical_session_id,
+                activation_session_id=rec.session_id,
+            ),
             "step_id": phase_step,
             "agent_id": "coach",
             "event": "assistant_reply",
@@ -2982,14 +2997,7 @@ async def simple_chat(
         message="success",
         data={
             "reply": reply_text,
-            "activation": {
-                "activation_code": rec.code,
-                "session_id": logical_session_id,
-                "mode": rec.mode,
-                "created_at": rec.created_at,
-                "expires_at": rec.expires_at,
-                "status": rec.status,
-            },
+            "activation": IDCodec.build_activation_client_view(rec, logical_session_id),
             "report_id": report["report_id"],
             "step_id": phase_step,
             "token_usage": token_usage,
@@ -3044,14 +3052,7 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
             message="success",
             data={
                 "messages": history_messages,
-                "activation": {
-                    "activation_code": rec.code,
-                    "session_id": logical_session_id,
-                    "mode": rec.mode,
-                    "created_at": rec.created_at,
-                    "expires_at": rec.expires_at,
-                    "status": rec.status,
-                },
+                "activation": IDCodec.build_activation_client_view(rec, logical_session_id),
                 "report_id": report["report_id"],
                 "step_id": phase_step,
                 "step_intro": get_step_copy(phase_step, "intro", init_loc),
@@ -3086,7 +3087,10 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
             message={
                 "role": "assistant",
                 "content": reply_text,
-                "session_id": logical_session_id,
+                **IDCodec.build_message_ids(
+                    thread_id=logical_session_id,
+                    activation_session_id=rec.session_id,
+                ),
                 "step_id": phase_step,
                 "agent_id": "coach",
                 "event": "init_rumination_intro",
@@ -3098,14 +3102,7 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
             message="success",
             data={
                 "messages": [{"role": "assistant", "content": reply_text}],
-                "activation": {
-                    "activation_code": rec.code,
-                    "session_id": logical_session_id,
-                    "mode": rec.mode,
-                    "created_at": rec.created_at,
-                    "expires_at": rec.expires_at,
-                    "status": rec.status,
-                },
+                "activation": IDCodec.build_activation_client_view(rec, logical_session_id),
                 "report_id": report["report_id"],
                 "step_id": phase_step,
                 "step_intro": get_step_copy(phase_step, "intro", init_loc),
@@ -3168,7 +3165,10 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
         message={
             "role": "assistant",
             "content": reply_text,
-            "session_id": logical_session_id,
+            **IDCodec.build_message_ids(
+                thread_id=logical_session_id,
+                activation_session_id=rec.session_id,
+            ),
             "step_id": phase_step,
             "agent_id": "coach",
             "event": "init_question",
@@ -3186,14 +3186,7 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
                     "content": reply_text,
                 }
             ],
-            "activation": {
-                "activation_code": rec.code,
-                "session_id": logical_session_id,
-                "mode": rec.mode,
-                "created_at": rec.created_at,
-                "expires_at": rec.expires_at,
-                "status": rec.status,
-            },
+            "activation": IDCodec.build_activation_client_view(rec, logical_session_id),
             "report_id": report["report_id"],
             "step_id": phase_step,
             "step_intro": get_step_copy(phase_step, "intro", init_loc),
@@ -3343,7 +3336,10 @@ async def mark_thread_complete(
             message={
                 "role": "conclusion_card",
                 "content": json.dumps(dimension_conclusion, ensure_ascii=False),
-                "session_id": logical_session_id,
+                **IDCodec.build_message_ids(
+                    thread_id=logical_session_id,
+                    activation_session_id=rec.session_id,
+                ),
                 "step_id": phase_step,
                 "agent_id": "coach",
                 "event": "dimension_conclusion",
@@ -3369,7 +3365,7 @@ async def mark_thread_complete(
             "dimension_conclusion_confirmed",
             {
                 "phase": phase_step,
-                "thread_id": logical_session_id,
+                **IDCodec.build_thread_ref(logical_session_id),
                 "dimension_conclusion": dimension_conclusion,
             },
         )
@@ -3544,7 +3540,10 @@ async def simple_history(
             data={
                 "messages": history_messages,
                 "metadata": {
-                    "session_id": logical_session_id,
+                    **IDCodec.build_history_metadata_ids(
+                        thread_id=logical_session_id,
+                        activation_session_id=IDCodec.activation_session_id_from_rec(rec),
+                    ),
                     "thread_completed": cmeta.get("thread_completed", False),
                     "dimension_conclusion": cmeta.get("final"),
                     # 待确认草案仅存在 metadata，消息文件里可能没有 conclusion_card 行；供前端 hydrate 弹卡
@@ -3557,14 +3556,7 @@ async def simple_history(
                     ),
                     "step_locked": bool(step_payload.get("locked", False)),
                 },
-                "activation": {
-                    "activation_code": rec.code,
-                    "session_id": logical_session_id,
-                    "mode": rec.mode,
-                    "created_at": rec.created_at,
-                    "expires_at": rec.expires_at,
-                    "status": rec.status,
-                },
+                "activation": IDCodec.build_activation_client_view(rec, logical_session_id),
                 "report_id": report["report_id"],
                 "step_id": phase_step,
             },
@@ -3618,10 +3610,16 @@ async def simple_chat_stream(
         current_user=current_user,
         rec=rec,
     )
+    front_activation_session_id = IDCodec.read_activation_session_id(
+        request.model_dump(exclude_none=True),
+        fallback=None,
+    )
     if request.client_conclusion_ui:
         logger.debug(
-            "[message_stream] client_conclusion_ui thread=%s payload=%s",
+            "[message_stream] client_conclusion_ui thread=%s activation_session_id(front=%s,server=%s) payload=%s",
             logical_session_id,
+            front_activation_session_id or "-",
+            rec.session_id,
             request.client_conclusion_ui,
         )
 
@@ -3729,7 +3727,10 @@ async def simple_chat_stream(
                 message={
                     "role": "user",
                     "content": user_content,
-                    "session_id": logical_session_id,
+                    **IDCodec.build_message_ids(
+                        thread_id=logical_session_id,
+                        activation_session_id=rec.session_id,
+                    ),
                     "step_id": phase_step,
                     "agent_id": None,
                     "event": "user_message",
@@ -3836,7 +3837,7 @@ async def simple_chat_stream(
                     "pending_judge_decision",
                     {
                         "phase": phase_step,
-                        "thread_id": logical_session_id,
+                        **IDCodec.build_thread_ref(logical_session_id),
                         "result_state": pending_state,
                         "timed_out": pending_timed_out,
                         "decision_visible_reply": (pending_msg or "")[:800],
@@ -3903,7 +3904,10 @@ async def simple_chat_stream(
                             message={
                                 "role": "assistant",
                                 "content": full_reply,
-                                "session_id": logical_session_id,
+                                **IDCodec.build_message_ids(
+                                    thread_id=logical_session_id,
+                                    activation_session_id=rec.session_id,
+                                ),
                                 "step_id": phase_step,
                                 "agent_id": "coach",
                                 "event": "assistant_reply",
@@ -3916,7 +3920,10 @@ async def simple_chat_stream(
                             message={
                                 "role": "conclusion_card",
                                 "content": json.dumps(dimension_conclusion, ensure_ascii=False),
-                                "session_id": logical_session_id,
+                                **IDCodec.build_message_ids(
+                                    thread_id=logical_session_id,
+                                    activation_session_id=rec.session_id,
+                                ),
                                 "step_id": phase_step,
                                 "agent_id": "coach",
                                 "event": "dimension_conclusion",
@@ -3931,7 +3938,7 @@ async def simple_chat_stream(
                             "dimension_conclusion_confirmed",
                             {
                                 "phase": phase_step,
-                                "thread_id": logical_session_id,
+                                **IDCodec.build_thread_ref(logical_session_id),
                                 "dimension_conclusion": dimension_conclusion,
                             },
                         )
@@ -3996,7 +4003,7 @@ async def simple_chat_stream(
                         "pending_conclusion_rejected",
                         {
                             "phase": phase_step,
-                            "thread_id": logical_session_id,
+                            **IDCodec.build_thread_ref(logical_session_id),
                             "decision_state": pending_state,
                             "pending": pending_conclusion,
                             "feedback": non_confirm_feedback,
@@ -4130,7 +4137,10 @@ async def simple_chat_stream(
             msg_payload = {
                 "role": "assistant",
                 "content": full_reply,
-                "session_id": logical_session_id,
+                **IDCodec.build_message_ids(
+                    thread_id=logical_session_id,
+                    activation_session_id=rec.session_id,
+                ),
                 "step_id": phase_step,
                 "agent_id": "coach",
                 "event": "assistant_reply",
@@ -4150,7 +4160,10 @@ async def simple_chat_stream(
                     message={
                         "role": "table",
                         "content": full_reply,
-                        "session_id": logical_session_id,
+                        **IDCodec.build_message_ids(
+                            thread_id=logical_session_id,
+                            activation_session_id=rec.session_id,
+                        ),
                         "step_id": phase_step,
                         "agent_id": "coach",
                         "event": "table_output",
@@ -4187,7 +4200,7 @@ async def simple_chat_stream(
                         "pending_conclusion_created",
                         {
                             "phase": phase_step,
-                            "thread_id": logical_session_id,
+                            **IDCodec.build_thread_ref(logical_session_id),
                             "pending_conclusion": draft_to_save,
                         },
                     )
@@ -4255,7 +4268,7 @@ async def simple_chat_stream(
                         "pending_conclusion_created",
                         {
                             "phase": phase_step,
-                            "thread_id": logical_session_id,
+                            **IDCodec.build_thread_ref(logical_session_id),
                             "pending_conclusion": draft_to_save,
                             "source": "retrigger_after_rejected",
                         },
@@ -4358,7 +4371,7 @@ async def delete_thread(
         data={
             "deleted": True,
             "step_id": phase_step,
-            "thread_id": thread_id,
+            **IDCodec.build_thread_ref(thread_id),
             "remaining_thread_ids": step_payload.get("session_ids") or [],
             "selected_thread_id": step_payload.get("selected_session_id"),
             "step_locked": bool(step_payload.get("locked", False)),

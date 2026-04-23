@@ -14,6 +14,7 @@ import aiofiles
 from filelock import FileLock
 
 from app.utils.data_paths import get_conversation_dir
+from app.utils.id_codec import IDCodec
 
 
 class ConversationCategory(str, Enum):
@@ -91,7 +92,7 @@ class ConversationFileManager:
                     data = json.load(f)
             except FileNotFoundError:
                 data = {
-                    "session_id": session_id,
+                    **IDCodec.build_conversation_file_root_ids(session_id),
                     "category": category,
                     "messages": [],
                     "metadata": {
@@ -101,7 +102,7 @@ class ConversationFileManager:
                 }
             except json.JSONDecodeError:
                 data = {
-                    "session_id": session_id,
+                    **IDCodec.build_conversation_file_root_ids(session_id),
                     "category": category,
                     "messages": [],
                     "metadata": {
@@ -109,6 +110,8 @@ class ConversationFileManager:
                         "updated_at": datetime.utcnow().isoformat() + "Z"
                     }
                 }
+            else:
+                data = IDCodec.normalize_conversation_data_on_read(data, session_id)
 
             if "message_id" not in message:
                 message["message_id"] = f"msg_{len(data.get('messages', [])) + 1}"
@@ -144,10 +147,11 @@ class ConversationFileManager:
         try:
             async with aiofiles.open(file_path, mode='r', encoding='utf-8') as f:
                 content = await f.read()
-                return json.loads(content)
+                raw = json.loads(content)
+                return IDCodec.normalize_conversation_data_on_read(raw, session_id)
         except (FileNotFoundError, json.JSONDecodeError, OSError, IOError):
             return {
-                "session_id": session_id,
+                **IDCodec.build_conversation_file_root_ids(session_id),
                 "category": category,
                 "messages": [],
                 "metadata": {
@@ -256,7 +260,7 @@ class ConversationFileManager:
             try:
                 async with aiofiles.open(file_path, mode='r', encoding='utf-8') as f:
                     content = await f.read()
-                    data = json.loads(content)
+                    data = IDCodec.normalize_conversation_data_on_read(json.loads(content), session_id)
                     return data.get("messages", [])
             except (FileNotFoundError, json.JSONDecodeError):
                 return []
@@ -269,7 +273,7 @@ class ConversationFileManager:
                     try:
                         async with aiofiles.open(file_path, mode='r', encoding='utf-8') as f:
                             content = await f.read()
-                            data = json.loads(content)
+                            data = IDCodec.normalize_conversation_data_on_read(json.loads(content), session_id)
                             messages.extend(data.get("messages", []))
                     except (FileNotFoundError, json.JSONDecodeError):
                         continue
@@ -300,7 +304,7 @@ class ConversationFileManager:
                 try:
                     async with aiofiles.open(file_path, mode='r', encoding='utf-8') as f:
                         content = await f.read()
-                        data = json.loads(content)
+                        data = IDCodec.normalize_conversation_data_on_read(json.loads(content), session_id)
                         result[category] = data.get("messages", [])
                 except (FileNotFoundError, json.JSONDecodeError):
                     result[category] = []

@@ -22,6 +22,7 @@ from app.utils.sandbox_fork import assert_sandbox_not_expired
 from app.api.v1.auth import get_current_user
 from fastapi import Depends
 from app.utils.report_registry import ReportRegistry, compute_explore_resume
+from app.utils.id_codec import IDCodec
 
 
 router = APIRouter(prefix="/simple-auth", tags=["简单模式认证"])
@@ -61,7 +62,7 @@ async def create_activation(request: CreateActivationRequest):
         message="created",
         data={
             "activation_code": rec.code,
-            "session_id": rec.session_id,
+            **IDCodec.build_activation_response_ids(rec.session_id),
             "mode": rec.mode,
             "created_at": rec.created_at,
             "expires_at": rec.expires_at,
@@ -118,7 +119,7 @@ async def activate(
     user_id = (current_user or {}).get("user_id")
     data = {
         "activation_code": rec.code,
-        "session_id": rec.session_id,
+        **IDCodec.build_activation_response_ids(rec.session_id),
         "mode": rec.mode,
         "created_at": rec.created_at,
         "expires_at": rec.expires_at,
