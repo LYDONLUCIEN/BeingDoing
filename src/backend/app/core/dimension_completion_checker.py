@@ -27,6 +27,27 @@ _CONCLUSION_GENERATION_SYSTEM = (
     "keywords 与扩展字段必须严格来自用户已明确说出的内容，禁止编造。"
 )
 
+CONCLUSION_CONTEXT_MAX_MESSAGES = 60
+CONCLUSION_CONTEXT_MAX_CHARS = 12000
+CONCLUSION_BASIC_INFO_MAX_CHARS = 1200
+CONCLUSION_PRIOR_CONTEXT_MAX_CHARS = 2200
+
+
+def _clip_text(text: str, limit: int) -> str:
+    s = (text or "").strip()
+    if len(s) <= limit:
+        return s
+    return s[: limit - 1] + "…"
+
+
+def _build_conclusion_conv_text(conversation_history: List[Dict[str, str]]) -> str:
+    """结论生成上下文：扩大窗口但设字符预算，兼顾质量与成本。"""
+    recent = conversation_history[-CONCLUSION_CONTEXT_MAX_MESSAGES:]
+    text = "\n\n".join(
+        f"{m.get('role', 'user')}: {m.get('content', '')}" for m in recent
+    )
+    return _clip_text(text, CONCLUSION_CONTEXT_MAX_CHARS)
+
 
 def _normalize_keyword_list(items: List[str], *, limit: int = 5) -> List[str]:
     """标准化关键词列表：去重、去空、保序。"""
@@ -136,6 +157,9 @@ def build_conclusion_generation_messages(
     phase: str,
     conversation_history: List[Dict[str, str]],
     prior_conclusion: Optional[Dict] = None,
+    *,
+    basic_info: str = "",
+    prior_context: str = "",
 ) -> Optional[List[LLMMessage]]:
     """
     构造「生成结论卡 JSON」的 LLM 消息（与 check_dimension_complete 内生成段一致）。
@@ -144,14 +168,15 @@ def build_conclusion_generation_messages(
     config = get_dimension_config(phase)
     if not config or len(conversation_history) < 2:
         return None
-    recent = conversation_history[-20:]
-    conv_text = "\n\n".join(
-        f"{m.get('role', 'user')}: {m.get('content', '')}" for m in recent
-    )
+    conv_text = _build_conclusion_conv_text(conversation_history)
     label = config.get("label", phase)
     goal = config.get("goal", "")
     summary_hint = config.get("summary_prompt_hint", "")
+    style_rules = config.get("summary_style_rules") or []
+    style_examples = config.get("summary_style_examples") or []
     goal_hint = get_goal_prompt_hint(phase)
+    basic_info_clean = _clip_text(basic_info or "", CONCLUSION_BASIC_INFO_MAX_CHARS)
+    prior_context_clean = _clip_text(prior_context or "", CONCLUSION_PRIOR_CONTEXT_MAX_CHARS)
 
     prior_hint = ""
     if prior_conclusion:
@@ -188,16 +213,35 @@ def build_conclusion_generation_messages(
     schema_instructions = build_conclusion_json_schema_instructions(phase)
     tone_tight = """
 【summary 口吻（须严格遵守）】
-- 面向对方，用「你」作主语，2～6 句短句即可，像咨询师把当轮收获轻轻收束，不要写长文分析。
+- 面向对方，用「你」作主语，优先输出 2-4 段自然段；允许洞察与建议，但禁止编造事实。
 - 不要使用：从对话中/可以发现/综上所述/小结如下/模型/AI/助手/用户表示（改用「你」）等措辞。
 - 可用 **关键词** 与 keywords 列表对应；避免「第一点…第二点…」式罗列，除非用户对话里本来就是列表语境。
 """
-    summary_prompt = f"""基于以下对话，生成「{label}」维度的探索结论汇总。{prior_hint}{values_extra}
+    style_rules_block = ""
+    if isinstance(style_rules, list) and style_rules:
+        rule_lines = [f"- {str(x).strip()}" for x in style_rules if str(x).strip()]
+        if rule_lines:
+            style_rules_block = "【本阶段文风规则】\n" + "\n".join(rule_lines)
 
-对话内容：
----
-{conv_text}
----
+    style_examples_block = ""
+    if isinstance(style_examples, list) and style_examples:
+        ex_lines = [str(x).strip() for x in style_examples if str(x).strip()]
+        if ex_lines:
+            style_examples_block = (
+                "【本阶段文风示例（仅用于风格参考，不可照抄具体事实）】\n"
+                + "\n\n".join(f"示例{i+1}：{v}" for i, v in enumerate(ex_lines[:2]))
+            )
+
+    context_blocks: List[str] = []
+    if basic_info_clean:
+        context_blocks.append(f"【用户基础信息】\n{basic_info_clean}")
+    if prior_context_clean:
+        context_blocks.append(f"【前序阶段结论（供参考）】\n{prior_context_clean}")
+    context_blocks.append(f"【当前阶段对话内容】\n---\n{conv_text}\n---")
+    composed_context = "\n\n".join(context_blocks)
+
+    summary_prompt = f"""基于以下对话，生成「{label}」维度的探索结论汇总。{prior_hint}{values_extra}
+{composed_context}
 
 该维度的目标：{goal}
 {summary_hint}
@@ -207,6 +251,8 @@ def build_conclusion_generation_messages(
 {conclusion_rules}
 {anti_fabrication}
 {tone_tight}
+{style_rules_block}
+{style_examples_block}
 {schema_instructions}"""
 
     return [
@@ -290,6 +336,8 @@ async def check_dimension_complete(
     llm_provider=None,
     *,
     skip_completion_check: bool = False,
+    basic_info: str = "",
+    prior_context: str = "",
 ) -> Optional[Dict]:
     """
     判断对话是否已达到该维度的探索结论；若达到则生成结论卡片。
@@ -312,11 +360,7 @@ async def check_dimension_complete(
     if len(conversation_history) < 2:
         return None
 
-    # 格式化最近对话（最多 20 条）
-    recent = conversation_history[-20:]
-    conv_text = "\n\n".join(
-        f"{m.get('role', 'user')}: {m.get('content', '')}" for m in recent
-    )
+    conv_text = _build_conclusion_conv_text(conversation_history)
 
     llm = llm_provider or get_default_llm_provider(vip_level=vip_level)
     label = config.get("label", phase)
@@ -364,7 +408,13 @@ async def check_dimension_complete(
             return None
 
     # 已判定完成，生成结论卡片内容（与确认稿流式共用同一套 prompt / 解析）
-    gen_messages = build_conclusion_generation_messages(phase, conversation_history, prior_conclusion)
+    gen_messages = build_conclusion_generation_messages(
+        phase,
+        conversation_history,
+        prior_conclusion,
+        basic_info=basic_info,
+        prior_context=prior_context,
+    )
     if not gen_messages:
         return None
     try:

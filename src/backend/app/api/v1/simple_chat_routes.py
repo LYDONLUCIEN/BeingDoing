@@ -3867,6 +3867,8 @@ async def simple_chat_stream(
                             prior_conclusion=pending_conclusion if isinstance(pending_conclusion, dict) else None,
                             vip_level=vip_level,
                             llm_provider=reasoning_llm,
+                            basic_info=basic_info,
+                            prior_context=prior_context,
                         ),
                         timeout=CONCLUSION_GEN_TIMEOUT_SECONDS,
                     )
@@ -4233,6 +4235,8 @@ async def simple_chat_stream(
                         prior_conclusion=None,
                         vip_level=vip_level,
                         llm_provider=reasoning_llm,
+                        basic_info=basic_info,
+                        prior_context=prior_context,
                     ),
                     timeout=CONCLUSION_GEN_TIMEOUT_SECONDS,
                 )
