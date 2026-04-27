@@ -1,0 +1,38 @@
+{
+  "scenarios": [
+    {
+      "id": "gate_step2_mismatch",
+      "step": 2,
+      "mutations": [
+        { "row_index": 0, "field": "匹配性", "value": "不匹配" },
+        { "row_index": 1, "field": "匹配性", "value": "不匹配" }
+      ],
+      "expect": {
+        "next_action": "rumination_neg_confirm",
+        "neg_kind": "mismatch"
+      }
+    },
+    {
+      "id": "gate_step5_should_do",
+      "step": 5,
+      "mutations": [
+        { "row_index": 0, "field": "激情标记", "value": "应该做" }
+      ],
+      "expect": {
+        "next_action": "rumination_neg_confirm",
+        "neg_kind": "should_do"
+      }
+    },
+    {
+      "id": "gate_step6_future",
+      "step": 6,
+      "mutations": [
+        { "row_index": 0, "field": "现实标记", "value": "未来" }
+      ],
+      "expect": {
+        "next_action": "rumination_neg_confirm",
+        "neg_kind": "future"
+      }
+    }
+  ]
+}

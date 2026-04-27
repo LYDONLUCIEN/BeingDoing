@@ -1,0 +1,9 @@
+{
+  "base_url": "http://127.0.0.1:8000/api/v1",
+  "auth_token": "REPLACE_WITH_BEARER_TOKEN",
+  "activation_code": "REPLACE_WITH_ACTIVATION_CODE",
+  "thread_id": "",
+  "locale": "zh",
+  "stream_message": "我想继续推进这一步，你可以帮我确认我现在最该看的差异吗？",
+  "sync_message": "请基于当前筛选进度继续引导我，不用生成结论卡。"
+}

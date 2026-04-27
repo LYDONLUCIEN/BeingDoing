@@ -2004,7 +2004,6 @@ async def rumination_table_submit(
 
         next_table = None
         next_step_val = step
-        dimension_conclusion_payload: Optional[dict] = None
         rumination_submit_next_action: Optional[str] = None
         closing_summary_for_epilogue = ""
         rumination_finalize_via_short_path = False
@@ -2411,10 +2410,7 @@ async def rumination_table_submit(
         }
         if next_table:
             data["next_table_widget"] = next_table
-        if dimension_conclusion_payload is not None:
-            data["dimension_conclusion"] = dimension_conclusion_payload
-            data["next_action"] = "rumination_conclusion_insert"
-        elif rumination_submit_next_action:
+        if rumination_submit_next_action:
             data["next_action"] = rumination_submit_next_action
 
         return SimpleChatResponse(code=200, message="success", data=data)
@@ -2754,6 +2750,10 @@ def _build_system_prompt(
     inj = (rumination_neg_injection or "").strip()
     if inj:
         base_prompt = f"{base_prompt}\n{inj}"
+    # rumination 阶段不使用结论卡 pending 协议：仅保留自然对话与表格流程。
+    if (phase or "").strip().lower() == "rumination":
+        return base_prompt
+
     # 机器协议：每轮回复末尾输出状态 JSON，后端据此驱动 pending 状态机（不会展示给前端）。
     protocol = f"""
 
@@ -2883,13 +2883,16 @@ async def simple_chat(
     vip_level = getattr(rec, "vip_level", 1) or 1
     llm = _get_dialogue_llm_provider(vip_level=vip_level)
 
-    # question_bank 在线程内固定：首次生成，后续复用，避免每轮变化导致 cache miss
-    question_bank = await _get_or_create_thread_question_bank(
-        conv_manager=conv_manager,
-        session_id=session_id,
-        category=category,
-        phase_step=phase_step,
-    )
+    # rumination 不走 question_bank；其余阶段沿用线程级固定题库。
+    if phase_step == "rumination":
+        question_bank = ""
+    else:
+        question_bank = await _get_or_create_thread_question_bank(
+            conv_manager=conv_manager,
+            session_id=session_id,
+            category=category,
+            phase_step=phase_step,
+        )
     basic_info = _load_basic_info_from_activation(request.activation_code)
     prior_context = _load_prior_context_from_activation(
         request.activation_code, phase_step, report
@@ -2936,7 +2939,8 @@ async def simple_chat(
     try:
         response = await llm.chat(llm_messages, temperature=0.7)
         reply_text = (response.content or "").strip()
-        reply_text, _ = _split_visible_reply_and_state(reply_text)
+        if phase_step != "rumination":
+            reply_text, _ = _split_visible_reply_and_state(reply_text)
         token_usage = _normalize_token_usage(getattr(response, "usage", None))
     except Exception as e:
         # 避免因为上游 LLM 配置/网络问题导致初始化 500，保证问答流程可继续。
@@ -3653,12 +3657,15 @@ async def simple_chat_stream(
                         session_id, prev_phase, prev_cat, conv_manager, storage_root, vip_level=vip_level
                     )
 
-        question_bank = await _get_or_create_thread_question_bank(
-            conv_manager=conv_manager,
-            session_id=session_id,
-            category=category,
-            phase_step=phase_step,
-        )
+        if phase_step == "rumination":
+            question_bank = ""
+        else:
+            question_bank = await _get_or_create_thread_question_bank(
+                conv_manager=conv_manager,
+                session_id=session_id,
+                category=category,
+                phase_step=phase_step,
+            )
         basic_info = _load_basic_info_from_activation(request.activation_code)
         prior_context = _load_prior_context_from_activation(
             request.activation_code, phase_step, report
@@ -3746,6 +3753,26 @@ async def simple_chat_stream(
         conv_data = await conv_manager.get_conversation_data(session_id, category)
         meta = conv_data.get("metadata", {})
         cmeta = _read_conclusion_meta(meta)
+        if phase_step == "rumination" and (
+            cmeta.get("state") == CONCLUSION_STATE_PENDING or isinstance(cmeta.get("draft"), dict)
+        ):
+            await conv_manager.update_metadata(
+                session_id,
+                category,
+                {
+                    **_build_conclusion_meta_update(
+                        state=CONCLUSION_STATE_NONE,
+                        final=cmeta.get("final"),
+                        feedback="",
+                        shown_at=None,
+                        thread_completed=False,
+                    ),
+                    "conclusion_reject_baseline_user_count": None,
+                },
+            )
+            conv_data = await conv_manager.get_conversation_data(session_id, category)
+            meta = conv_data.get("metadata", {})
+            cmeta = _read_conclusion_meta(meta)
         pending_conclusion = cmeta.get("draft")
         rejected_feedback = cmeta.get("feedback") or ""
         conv_history = [
@@ -3755,7 +3782,7 @@ async def simple_chat_stream(
         user_count = _count_user_messages(conv_data.get("messages"))
         conclusion_shown_at = cmeta.get("shown_at")
 
-        if pending_conclusion and not cmeta.get("thread_completed"):
+        if phase_step != "rumination" and pending_conclusion and not cmeta.get("thread_completed"):
             pending_events_q: asyncio.Queue = asyncio.Queue()
 
             async def _emit_pending_event(evt: Dict) -> None:
@@ -4078,7 +4105,7 @@ async def simple_chat_stream(
 
             full_think = ""
             stream_hidden_filter = _build_stream_hidden_block_filter(
-                block_markers=[("[STATE_JSON]", "[/STATE_JSON]")]
+                block_markers=[] if phase_step == "rumination" else [("[STATE_JSON]", "[/STATE_JSON]")]
             )
 
             def _process_chunk(c):
@@ -4131,8 +4158,12 @@ async def simple_chat_stream(
 
         # 3) 解析模型状态输出（STATE_JSON）并驱动 pending 状态
         raw_full_reply = full_reply
-        visible_reply, state_obj = _split_visible_reply_and_state(raw_full_reply)
-        full_reply = visible_reply
+        if phase_step == "rumination":
+            state_obj = None
+            full_reply = raw_full_reply
+        else:
+            visible_reply, state_obj = _split_visible_reply_and_state(raw_full_reply)
+            full_reply = visible_reply
 
         # 保存助手回复（只保存用户可见文本）
         if full_reply:

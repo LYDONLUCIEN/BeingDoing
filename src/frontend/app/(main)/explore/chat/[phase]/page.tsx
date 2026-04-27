@@ -591,10 +591,14 @@ export default function ChatPhasePage() {
             }
             const actSid = readActivationSessionIdFromActivationApi(h.data?.activation);
             if (actSid) lastActivationSessionFromApi = actSid;
-            const msgs = mergePendingDraftIntoMessagesFromMeta(
-              mapHistoryToThreadMessages(history, meta),
-              meta as Record<string, unknown>
-            );
+            const baseMsgs = mapHistoryToThreadMessages(history, meta);
+            const msgs =
+              phase === 'rumination'
+                ? baseMsgs
+                : mergePendingDraftIntoMessagesFromMeta(
+                    baseMsgs,
+                    meta as Record<string, unknown>
+                  );
             const concl = meta.dimension_conclusion as DimensionConclusionData | undefined;
             return {
               ...th,
@@ -740,10 +744,14 @@ export default function ChatPhasePage() {
                   const s = loadSession(activationCode);
                   saveSession(setActivationSessionId(s, actSid));
                 }
-                msgs = mergePendingDraftIntoMessagesFromMeta(
-                  mapHistoryToThreadMessages(history, meta),
-                  meta as Record<string, unknown>
-                );
+                const baseMsgs = mapHistoryToThreadMessages(history, meta);
+                msgs =
+                  phase === 'rumination'
+                    ? baseMsgs
+                    : mergePendingDraftIntoMessagesFromMeta(
+                        baseMsgs,
+                        meta as Record<string, unknown>
+                      );
               } catch {
                 /* ignore */
               }
@@ -810,10 +818,14 @@ export default function ChatPhasePage() {
           if (!cancelled && history.length > 0) {
             // 仅用于前端展示历史，不绑定后端 thread_id，避免刷新时误创建新会话
             const recoveredId = getActiveThreadId(activationCode, phase) || `__history_fallback__${phase}`;
-            const msgs = mergePendingDraftIntoMessagesFromMeta(
-              mapHistoryToThreadMessages(history, meta),
-              meta as Record<string, unknown>
-            );
+            const baseMsgs = mapHistoryToThreadMessages(history, meta);
+            const msgs =
+              phase === 'rumination'
+                ? baseMsgs
+                : mergePendingDraftIntoMessagesFromMeta(
+                    baseMsgs,
+                    meta as Record<string, unknown>
+                  );
             const recoveredThread: ChatThread = {
               id: recoveredId,
               title: '对话 1',
@@ -2201,50 +2213,6 @@ export default function ChatPhasePage() {
       if (data.progress) setRuminationProgressState(data.progress);
       if (typeof data.max_reached_filter_step === 'number') {
         setRuminationMaxReached(data.max_reached_filter_step);
-      }
-      if (data.next_action === 'rumination_conclusion_insert' && data.dimension_conclusion) {
-        const concl = data.dimension_conclusion as DimensionConclusionData;
-        const newId = `rumination_concl_${Date.now()}`;
-        setMessages((prev) => {
-          const filtered = prev
-            .filter((m) => m.type !== 'table_widget')
-            .map((m) => (m.type === 'dimension_conclusion' ? { ...m, conclusionLocked: true } : m));
-          const boundarySnap = filtered.length;
-          queueMicrotask(() => {
-            setRuminationStepBoundaries((b) => {
-              const nb = ensureDefaultStepOne({
-                ...b,
-                [String(RUMINATION_FILTER_STEP_MAX)]: boundarySnap,
-              });
-              if (activationCode && submitThreadId) {
-                saveRuminationStepBoundaries(activationCode, submitThreadId, nb);
-              }
-              return nb;
-            });
-          });
-          return [
-            ...filtered,
-            {
-              id: newId,
-              role: 'assistant',
-              type: 'dimension_conclusion',
-              content: JSON.stringify(concl),
-              createdAt: Date.now(),
-              conclusionData: concl,
-              conclusionCollapsed: false,
-              conclusionConfirmed: false,
-              conclusionLocked: false,
-            },
-          ];
-        });
-        setRuminationTablePayload(null);
-        setRuminationViewStep(RUMINATION_FILTER_STEP_MAX);
-        if (data.progress) setRuminationProgressState(data.progress);
-        if (typeof data.max_reached_filter_step === 'number') {
-          setRuminationMaxReached(data.max_reached_filter_step);
-        }
-        setRuminationProgressNonce((n) => n + 1);
-        return;
       }
       if (nextTable) {
         const newStep = nextTable.step ?? (payload.step ?? 1) + 1;

@@ -98,7 +98,6 @@ export interface RuminationSubmitData {
   next_step: number;
   /** rumination 终表提交后进入过渡页（无结论卡） */
   next_action?:
-    | 'rumination_conclusion_insert'
     | 'rumination_finalize_transition'
     | 'rumination_neg_confirm'
     | 'rumination_neg_deep_started'
@@ -109,7 +108,6 @@ export interface RuminationSubmitData {
   early_terminated?: boolean;
   terminate_reason?: string;
   max_reached_filter_step?: number;
-  dimension_conclusion?: Record<string, unknown>;
   neg_confirm?: RuminationNegConfirmPayload;
   opening_zh?: string;
 }
