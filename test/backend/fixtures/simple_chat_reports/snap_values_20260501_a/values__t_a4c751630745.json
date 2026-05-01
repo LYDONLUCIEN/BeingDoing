@@ -1,0 +1,94 @@
+{
+  "report_id": "4d483c22-9384-4bc4-ba95-00d8cbb35eca",
+  "category": "values__t_a4c751630745",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "HAPPY，很高兴能和你开启这次对话。从你的描述中我能感受到，现在的工作让你有些疲惫和迷茫，这恰恰是重新梳理内心重要事情的好时机。\n\n那我们先从一个最简单、没有压力的问题开始吧——\n\n**试着想一想，在你心中对你最重要的5个价值观关键词是什么？暂时没答案的话，放心说“不知道”就行～**\n\n不用着急，想到几个说几个，哪怕只有一个也可以。",
+      "thread_id": "t_a4c751630745",
+      "activation_session_id": "a9fd7197-640c-48e1-bdc0-59d53bc30761",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 1769,
+        "completion_tokens": 107,
+        "total_tokens": 1876,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 1769
+      },
+      "created_at": "2026-04-30T15:39:29.193883Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    },
+    {
+      "role": "user",
+      "content": "不知道",
+      "thread_id": "t_a4c751630745",
+      "activation_session_id": "a9fd7197-640c-48e1-bdc0-59d53bc30761",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-04-30T15:39:53.458865Z",
+      "message_id": "msg_2",
+      "id": "msg_2"
+    },
+    {
+      "role": "assistant",
+      "content": "完全没问题，很多人在第一次想这个问题时都会觉得有点抽象，我们换个方式慢慢来。\n\n那我来问一个更具体的问题：**回想一下，在你过去的职业生涯里（比如在网易云音乐、快手，或者现在的工作中），有没有哪一件具体的事，让你做完之后觉得“这件事挺有意义的”，或者让你感到特别有成就感？**",
+      "thread_id": "t_a4c751630745",
+      "activation_session_id": "a9fd7197-640c-48e1-bdc0-59d53bc30761",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 1825,
+        "completion_tokens": 74,
+        "total_tokens": 1899,
+        "prompt_cache_hit_tokens": 896,
+        "prompt_cache_miss_tokens": 929
+      },
+      "created_at": "2026-04-30T15:39:55.240766Z",
+      "message_id": "msg_3",
+      "id": "msg_3"
+    },
+    {
+      "role": "user",
+      "content": "我觉得最让我感到有意义的就是做唱歌相关的算法，可以帮助更多人体验音乐的美好，键入门槛，让大家爱上音乐和音乐制作",
+      "thread_id": "t_a4c751630745",
+      "activation_session_id": "a9fd7197-640c-48e1-bdc0-59d53bc30761",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-05-01T07:32:11.591247Z",
+      "message_id": "msg_4",
+      "id": "msg_4"
+    },
+    {
+      "role": "assistant",
+      "content": "这个经历听起来很有温度。你通过技术，降低了大家享受和创作音乐的门槛，让更多人能体验到音乐的美好。\n\n那我想顺着这个感觉再问一句：**当你在做这件事，帮助别人体验到音乐的美好时，你自己内心感受到的那种“有意义”，具体是一种什么样的感觉？或者说，你觉得这件事之所以让你觉得有意义，是因为它满足了你的哪种内心需要？**",
+      "thread_id": "t_a4c751630745",
+      "activation_session_id": "a9fd7197-640c-48e1-bdc0-59d53bc30761",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 1930,
+        "completion_tokens": 78,
+        "total_tokens": 2008,
+        "prompt_cache_hit_tokens": 1792,
+        "prompt_cache_miss_tokens": 138
+      },
+      "created_at": "2026-05-01T07:32:13.370780Z",
+      "message_id": "msg_5",
+      "id": "msg_5"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-04-30T15:39:29.194413Z",
+    "updated_at": "2026-05-01T07:32:13.371786Z",
+    "total_messages": 5,
+    "question_bank": "1. ### 2. 对现在的你影响最大的人是谁？\n2. 从中可以发现你有什么样的价值观？\n3. ### 18. 你什么时候感到最幸福？\n4. 你喜欢那本书的哪个部分？从中可以发现你有什么样的价值观？\n5. 那个人做了什么让你这样认为？从中可以发现你有什么样的价值观？\n6. 你的价值观里有母亲的价值观的影子吗？抑或是将母亲的价值观当作反面教材？",
+    "question_bank_phase": "values"
+  }
+}

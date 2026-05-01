@@ -80,6 +80,9 @@ class ActivationRecord:
     # 通用工作区字段（兼容后续 admin 常驻工作区）
     workspace_kind: Optional[str] = None  # fork | resident
     workspace_root: Optional[str] = None  # 相对 data/test/simple，如 admin_workspaces/{admin_user_id}
+    # activation_code -> report_id 快速索引（权威仍以 reports/{report_id}/record.json 为准）
+    report_id: Optional[str] = None
+    report_index_updated_at: Optional[str] = None
 
 
 @dataclass
@@ -227,6 +230,8 @@ class SimpleActivationManager:
                 data.setdefault("sandbox_expires_at", None)
                 data.setdefault("workspace_kind", None)
                 data.setdefault("workspace_root", None)
+                data.setdefault("report_id", None)
+                data.setdefault("report_index_updated_at", None)
                 records[code] = ActivationRecord(**data)
             except (TypeError, ValueError):
                 continue

@@ -1,0 +1,18 @@
+{
+  "mode": "snapshot",
+  "source_report_id": "df0b212f-7e59-44d6-890b-3dbcecbe3db8",
+  "simple_root": "/home/gitclone/BeingDoing/data/simple",
+  "created_at": "2026-05-01T10:27:03Z",
+  "remap_ids": true,
+  "old_report_id": "df0b212f-7e59-44d6-890b-3dbcecbe3db8",
+  "new_report_id": "474e5329-cc4e-4863-834b-b40df619486d",
+  "thread_map": {
+    "t_77363f869cb946bc8f20a7091f525fe4": "t_908d0792bba7",
+    "t_551ac7540f484b5bac736e38aaac36f1": "t_15e10f6b766b"
+  },
+  "dst": "/home/gitclone/BeingDoing/test/backend/fixtures/simple_chat_reports/snap_values_20260501_conclusion_reject",
+  "created_case": {
+    "cases_file": "/home/gitclone/BeingDoing/test/backend/fixtures/simple_chat_cases/batch_savepoints_general.json",
+    "name": "savepoint_snap_values_20260501_conclusion_reject"
+  }
+}

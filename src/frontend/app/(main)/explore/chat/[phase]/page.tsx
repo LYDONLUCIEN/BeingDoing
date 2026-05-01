@@ -3280,8 +3280,13 @@ export default function ChatPhasePage() {
                                 const s = (m.content || '').replace(/\r\n/g, '\n');
                                 const charCount = [...s].length;
                                 const hasManualBreak = s.includes('\n');
+                                // 仅超短文本保留单行；稍长句子必须允许自动换行，避免窄屏溢出。
+                                const compactSingleLineThreshold =
+                                  useCareeringMatte || phase === 'rumination' ? 8 : 25;
                                 const compact =
-                                  charCount > 0 && charCount < 25 && !hasManualBreak;
+                                  charCount > 0 &&
+                                  charCount <= compactSingleLineThreshold &&
+                                  !hasManualBreak;
                                 const textClass =
                                   useCareeringMatte || phase === 'rumination'
                                     ? `flow-msg-user-text flow-msg-user-text--careering-plain${compact ? ' flow-msg-user-text--compact' : ''}`

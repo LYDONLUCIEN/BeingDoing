@@ -1,0 +1,23 @@
+{
+  "report_id": "mock-report-rumination-opening-001",
+  "category": "rumination__t_rum_chat_001",
+  "messages": [
+    {
+      "id": "r1",
+      "message_id": "r1",
+      "role": "assistant",
+      "content": "沉淀阶段我们会用几张表帮你收敛选项，你可以随时在表格里选中一行再问我。",
+      "thread_id": "t_rum_chat_001",
+      "step_id": "rumination",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "created_at": "2026-04-02T00:00:00Z"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-04-02T00:00:00Z",
+    "updated_at": "2026-04-02T00:00:00Z",
+    "total_messages": 1,
+    "thread_completed": false
+  }
+}

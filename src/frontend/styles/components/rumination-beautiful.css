@@ -113,20 +113,29 @@ html[data-rumination-mesh-page='true']:not([data-color-scheme='dark'])
 /*
  * 沉淀右栏对话：AI 尽量靠左（仅消息区内边距）；用户靠右且整列不超展示区宽度的 2/3，超长自动换行。
  */
+.rumination-beautiful-root .rumination-beautiful-chat-panel {
+  /* 强约束：用户气泡左边界 >= AI 正文气泡左边界 */
+  --rumination-msg-left-edge: 0px;
+  --rumination-msg-right-edge: 0px;
+  --rumination-msg-max-track: min(
+    960px,
+    calc(100% - var(--rumination-msg-left-edge) - var(--rumination-msg-right-edge))
+  );
+}
 .rumination-beautiful-root .rumination-beautiful-chat-panel .flow-msg-ai-wrap {
-  margin-left: 0;
+  margin-left: var(--rumination-msg-left-edge);
   margin-right: auto;
-  max-width: min(960px, 100%);
+  max-width: var(--rumination-msg-max-track);
 }
 .rumination-beautiful-root .rumination-beautiful-chat-panel .flow-msg-think-wrap {
-  margin-left: 0;
+  margin-left: var(--rumination-msg-left-edge);
   margin-right: auto;
-  max-width: min(960px, 100%);
+  max-width: var(--rumination-msg-max-track);
 }
 .rumination-beautiful-root .rumination-beautiful-chat-panel .flow-msg-user .flow-msg-user-wrap {
-  margin-right: 0;
+  margin-right: var(--rumination-msg-right-edge);
   margin-left: auto;
-  max-width: 66.67%;
+  max-width: min(66.67%, var(--rumination-msg-max-track));
   display: flex;
   flex-direction: column;
   align-items: flex-end;

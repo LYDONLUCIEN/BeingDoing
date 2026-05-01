@@ -1,0 +1,208 @@
+{
+  "schema_version": 1,
+  "description": "存档点主流程回放用例（假数据 + mock，稳定）。扩展字段见各 case 的 start_state_code / end_state_code。",
+  "cases": [
+    {
+      "name": "sp_values_pending_continue_1_2",
+      "start_state_code": "1-3-a",
+      "end_state_code": "1-2",
+      "seed_fixture": {
+        "report_dir": "test/backend/fixtures/simple_chat_reports/mock_values_pending",
+        "ttl_minutes": 180
+      },
+      "phase": "values",
+      "thread_id": "t_mock_pending_001",
+      "message": "我想先把价值观再聊细一点",
+      "mock": {
+        "stream_reply": "好的，我们先不急着定稿。\n[STATE_JSON]{\"state\":\"continue\",\"draft\":null}[/STATE_JSON]"
+      }
+    },
+    {
+      "name": "sp_values_pending_confirm_card_1_3",
+      "start_state_code": "1-3-a",
+      "end_state_code": "1-3-a",
+      "seed_fixture": {
+        "report_dir": "test/backend/fixtures/simple_chat_reports/mock_values_pending",
+        "ttl_minutes": 180
+      },
+      "phase": "values",
+      "thread_id": "t_mock_pending_001",
+      "message": "我确认当前总结可以定稿",
+      "mock": {
+        "pending_decision": {
+          "state": "confirmed",
+          "content": "确认无误，生成结论卡。"
+        },
+        "dimension_conclusion": {
+          "summary": "你重视成长、关系与身心平衡，并愿意为之持续投入。",
+          "keywords": [
+            "成长",
+            "关系",
+            "身心平衡",
+            "投入"
+          ]
+        }
+      },
+      "assertions": {
+        "history_roles_contains": [
+          "conclusion_card"
+        ]
+      }
+    },
+    {
+      "name": "sp_strengths_dialogue_continue_2_2",
+      "start_state_code": "2-2",
+      "end_state_code": "2-2",
+      "seed_fixture": {
+        "report_dir": "test/backend/fixtures/simple_chat_reports/mock_strengths_dialogue",
+        "ttl_minutes": 180
+      },
+      "phase": "strengths",
+      "thread_id": "t_strengths_demo",
+      "message": "我补充一个例子：上周我带三人小组两天内拆清了上线风险。",
+      "mock": {
+        "stream_reply": "收到，这个例子很有画面感。\n[STATE_JSON]{\"state\":\"continue\",\"draft\":null}[/STATE_JSON]"
+      }
+    },
+    {
+      "name": "sp_rumination_opening_chat_5_entry",
+      "start_state_code": "5-1-a",
+      "end_state_code": "5-1-b",
+      "seed_fixture": {
+        "report_dir": "test/backend/fixtures/simple_chat_reports/mock_rumination_opening",
+        "ttl_minutes": 180
+      },
+      "phase": "rumination",
+      "thread_id": "t_rum_chat_001",
+      "message": "我想先确认「优势标记」这一步整体在做什么？",
+      "mock": {
+        "stream_reply": "这一步是把前面各维度里出现的优势线索收敛成可勾选的表格行，方便后面逐步筛选。"
+      }
+    },
+    {
+      "name": "sp_values_reject_then_reopen_pending_then_confirm",
+      "start_state_code": "1-3-a",
+      "end_state_code": "1-3-d",
+      "seed_fixture": {
+        "report_dir": "test/backend/fixtures/simple_chat_reports/mock_values_pending",
+        "ttl_minutes": 180
+      },
+      "phase": "values",
+      "thread_id": "t_mock_pending_001",
+      "steps": [
+        {
+          "message": "这个总结不准确，我现在不确认",
+          "mock": {
+            "pending_decision": {
+              "state": "rejected",
+              "content": "明白，我先撤回结论卡，我们继续聊。"
+            }
+          }
+        },
+        {
+          "message": "我补充：我还非常在意长期学习和自主性",
+          "mock": {
+            "stream_reply": "收到补充，我重新整理一版供你确认。\\n[STATE_JSON]{\"state\":\"pending_ready\",\"draft\":{\"summary\":\"你在意成长、关系、身心平衡，也强调长期学习与自主性。\",\"keywords\":[\"成长\",\"关系\",\"身心平衡\",\"长期学习\",\"自主性\"]}}[/STATE_JSON]"
+          }
+        },
+        {
+          "message": "这版可以，我确认",
+          "mock": {
+            "pending_decision": {
+              "state": "confirmed",
+              "content": "收到确认，生成结论卡。"
+            },
+            "dimension_conclusion": {
+              "summary": "你追求成长、关系与身心平衡，同时重视长期学习和自主性。",
+              "keywords": [
+                "成长",
+                "关系",
+                "身心平衡",
+                "长期学习",
+                "自主性"
+              ]
+            }
+          }
+        }
+      ],
+      "assertions": {
+        "history_roles_contains": [
+          "conclusion_card"
+        ],
+        "history_metadata_equals": {
+          "conclusion_state": "confirmed"
+        },
+        "steps_executed": 3,
+        "step_assertions": [
+          {
+            "index": 0,
+            "history_metadata_equals": {
+              "conclusion_state": "rejected"
+            }
+          },
+          {
+            "index": 1,
+            "history_metadata_equals": {
+              "conclusion_state": "pending"
+            },
+            "chunks_contains": [
+              "重新整理一版供你确认"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "savepoint_snap_values_20260501_a",
+      "start_state_code": "1-3-a",
+      "end_state_code": "1-3-d",
+      "seed_fixture": {
+        "report_dir": "test/backend/fixtures/simple_chat_reports/snap_values_20260501_a",
+        "ttl_minutes": 180
+      },
+      "phase": "values",
+      "thread_id": "",
+      "message": "我觉得最有价值的是我做音乐",
+      "mock": {}
+    },
+    {
+      "name": "savepoint_snap_values_20260501_conclusion_card_show",
+      "start_state_code": "1-3-a",
+      "end_state_code": "1-3-d",
+      "seed_fixture": {
+        "report_dir": "test/backend/fixtures/simple_chat_reports/snap_values_20260501_conclusion_card_show",
+        "ttl_minutes": 180
+      },
+      "phase": "values",
+      "thread_id": "",
+      "message": "我不确认",
+      "mock": {}
+    },
+    {
+      "name": "savepoint_snap_values_20260501_conclusion_reject",
+      "start_state_code": "1-3-a",
+      "end_state_code": "1-3-d",
+      "seed_fixture": {
+        "report_dir": "test/backend/fixtures/simple_chat_reports/snap_values_20260501_conclusion_reject",
+        "ttl_minutes": 180
+      },
+      "phase": "values",
+      "thread_id": "t_908d0792bba7",
+      "message": "另一条，上来就reject结果",
+      "mock": {}
+    },
+    {
+      "name": "savepoint_snap_values_20260501_conclusion_card_error_show",
+      "start_state_code": "1-3-a",
+      "end_state_code": "1-3-d",
+      "seed_fixture": {
+        "report_dir": "test/backend/fixtures/simple_chat_reports/snap_values_20260501_conclusion_card_error_show",
+        "ttl_minutes": 180
+      },
+      "phase": "values",
+      "thread_id": "t_516530240331",
+      "message": "结论卡显示了很奇怪的内容，没有summary，还加了提示词内容",
+      "mock": {}
+    }
+  ]
+}

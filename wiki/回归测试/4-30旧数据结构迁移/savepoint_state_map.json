@@ -1,0 +1,462 @@
+{
+  "schema_version": 1,
+  "description": "存档点 STATE_CODE 与后端可观测节点、主要 API 的映射（供造数脚本与回归文档引用）。",
+  "phase_ids": ["values", "strengths", "interests", "purpose", "rumination"],
+  "api_index": {
+    "POST /api/v1/simple-auth/activate": "激活码校验与首次归属绑定",
+    "POST /api/v1/simple-chat/init": "阶段首轮引导（含 rumination 入口）",
+    "POST /api/v1/simple-chat/message/stream": "主对话流式回复（含 STATE_JSON / pending 分支）",
+    "GET /api/v1/simple-chat/history": "读取当前 phase+thread 历史与 metadata",
+    "POST /api/v1/simple-chat/thread/complete": "阶段提交：选定 thread、写 prior、标记完成",
+    "POST /api/v1/simple-chat/thread/reopen": "阶段重开继续聊",
+    "POST /api/v1/simple-chat/thread/delete": "删除线程",
+    "GET /api/v1/simple-chat/threads": "线程列表",
+    "GET /api/v1/simple-chat/rumination-progress": "rumination 进度读取",
+    "POST /api/v1/simple-chat/rumination-progress": "rumination 进度写入",
+    "GET /api/v1/simple-chat/rumination-step-opening": "子步固定/合成开场",
+    "POST /api/v1/simple-chat/rumination-table-submit": "表格提交与闸门/短链",
+    "POST /api/v1/simple-chat/rumination-neg-resolve": "否定闸门后续决策",
+    "POST /api/v1/simple-chat/rumination-regenerate-hypotheses": "假设行重生成"
+  },
+  "observable_fields": {
+    "report_record_json": "data/simple/reports/{report_id}/record.json → steps.*.locked | selected_session_id | session_ids",
+    "conversation_metadata": "{phase}__{thread_id}.json → metadata.conclusion_state | thread_completed | conclusion_draft",
+    "rumination_progress_json": "rumination_progress.json → main_section | filter_step | pending_table_submit | rumination_neg_state | filter_early_terminated",
+    "sse_stream": "chunk 不含泄漏的 [STATE_JSON]；末包 done=true"
+  },
+  "states": [
+    {
+      "state_code": "0-1",
+      "title": "未激活",
+      "phase": null,
+      "backend_node": "activation_unclaimed",
+      "primary_apis": ["POST /api/v1/simple-auth/activate"],
+      "assertions_hint": ["无 report 或首次 ensure_report 创建"],
+      "llm_risk": "low"
+    },
+    {
+      "state_code": "0-2",
+      "title": "首次激活",
+      "phase": "values",
+      "backend_node": "post_activate_first_entry",
+      "primary_apis": ["POST /api/v1/simple-auth/activate", "POST /api/v1/simple-chat/init"],
+      "assertions_hint": ["可进入 values；record 存在"],
+      "llm_risk": "medium"
+    },
+    {
+      "state_code": "1-1",
+      "title": "values init 引导完毕",
+      "phase": "values",
+      "backend_node": "phase_init_done",
+      "primary_apis": ["POST /api/v1/simple-chat/init", "GET /api/v1/simple-chat/history"],
+      "assertions_hint": ["history 有首轮 assistant；metadata 初始"],
+      "llm_risk": "medium"
+    },
+    {
+      "state_code": "1-2",
+      "title": "values 正常交流",
+      "phase": "values",
+      "backend_node": "dialogue_active",
+      "primary_apis": ["POST /api/v1/simple-chat/message/stream"],
+      "assertions_hint": ["STATE_JSON 合法或 continue；无泄漏"],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "1-3-a",
+      "title": "values 出卡",
+      "phase": "values",
+      "backend_node": "conclusion_pending_ready",
+      "primary_apis": ["POST /api/v1/simple-chat/message/stream"],
+      "assertions_hint": ["metadata.conclusion_state=pending", "conclusion_draft 非空"],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "1-3-b",
+      "title": "values 出卡否认",
+      "phase": "values",
+      "backend_node": "pending_decision_rejected",
+      "primary_apis": ["POST /api/v1/simple-chat/message/stream"],
+      "assertions_hint": ["pending 判定 rejected；回到对话态"],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "1-3-c",
+      "title": "values 出卡否认后问答",
+      "phase": "values",
+      "backend_node": "dialogue_after_reject",
+      "primary_apis": ["POST /api/v1/simple-chat/message/stream"],
+      "assertions_hint": ["可再次收敛 pending"],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "1-3-d",
+      "title": "values 二次出卡",
+      "phase": "values",
+      "backend_node": "conclusion_pending_ready_again",
+      "primary_apis": ["POST /api/v1/simple-chat/message/stream"],
+      "assertions_hint": ["draft 更新"],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "1-4",
+      "title": "values 提交",
+      "phase": "values",
+      "backend_node": "thread_complete_phase_locked_next_unlocked",
+      "primary_apis": ["POST /api/v1/simple-chat/thread/complete"],
+      "assertions_hint": ["thread_completed=true", "steps.values.locked 随 journey 规则变化", "prior 写入"],
+      "llm_risk": "low"
+    },
+    {
+      "state_code": "2-1",
+      "title": "strengths init 引导完毕",
+      "phase": "strengths",
+      "backend_node": "phase_init_done",
+      "primary_apis": ["POST /api/v1/simple-chat/init"],
+      "assertions_hint": ["values locked", "strengths 可 init"],
+      "llm_risk": "medium"
+    },
+    {
+      "state_code": "2-2",
+      "title": "strengths 正常交流",
+      "phase": "strengths",
+      "backend_node": "dialogue_active",
+      "primary_apis": ["POST /api/v1/simple-chat/message/stream"],
+      "assertions_hint": ["同 values 对话协议"],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "2-3-a",
+      "title": "strengths 出卡",
+      "phase": "strengths",
+      "backend_node": "conclusion_pending_ready",
+      "primary_apis": ["POST /api/v1/simple-chat/message/stream"],
+      "assertions_hint": ["pending + draft"],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "2-3-b",
+      "title": "strengths 出卡否认",
+      "phase": "strengths",
+      "backend_node": "pending_decision_rejected",
+      "primary_apis": ["POST /api/v1/simple-chat/message/stream"],
+      "assertions_hint": ["rejected 分支"],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "2-3-c",
+      "title": "strengths 出卡否认后问答",
+      "phase": "strengths",
+      "backend_node": "dialogue_after_reject",
+      "primary_apis": ["POST /api/v1/simple-chat/message/stream"],
+      "assertions_hint": [],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "2-3-d",
+      "title": "strengths 二次出卡",
+      "phase": "strengths",
+      "backend_node": "conclusion_pending_ready_again",
+      "primary_apis": ["POST /api/v1/simple-chat/message/stream"],
+      "assertions_hint": [],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "2-4",
+      "title": "strengths 提交",
+      "phase": "strengths",
+      "backend_node": "thread_complete",
+      "primary_apis": ["POST /api/v1/simple-chat/thread/complete"],
+      "assertions_hint": [],
+      "llm_risk": "low"
+    },
+    {
+      "state_code": "3-1",
+      "title": "interests init",
+      "phase": "interests",
+      "backend_node": "phase_init_done",
+      "primary_apis": ["POST /api/v1/simple-chat/init"],
+      "assertions_hint": [],
+      "llm_risk": "medium"
+    },
+    {
+      "state_code": "3-2",
+      "title": "interests 正常交流",
+      "phase": "interests",
+      "backend_node": "dialogue_active",
+      "primary_apis": ["POST /api/v1/simple-chat/message/stream"],
+      "assertions_hint": [],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "3-3-a",
+      "title": "interests 出卡",
+      "phase": "interests",
+      "backend_node": "conclusion_pending_ready",
+      "primary_apis": ["POST /api/v1/simple-chat/message/stream"],
+      "assertions_hint": [],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "3-3-b",
+      "title": "interests 出卡否认",
+      "phase": "interests",
+      "backend_node": "pending_decision_rejected",
+      "primary_apis": ["POST /api/v1/simple-chat/message/stream"],
+      "assertions_hint": [],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "3-3-c",
+      "title": "interests 否认后问答",
+      "phase": "interests",
+      "backend_node": "dialogue_after_reject",
+      "primary_apis": ["POST /api/v1/simple-chat/message/stream"],
+      "assertions_hint": [],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "3-3-d",
+      "title": "interests 二次出卡",
+      "phase": "interests",
+      "backend_node": "conclusion_pending_ready_again",
+      "primary_apis": ["POST /api/v1/simple-chat/message/stream"],
+      "assertions_hint": [],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "3-4",
+      "title": "interests 提交",
+      "phase": "interests",
+      "backend_node": "thread_complete",
+      "primary_apis": ["POST /api/v1/simple-chat/thread/complete"],
+      "assertions_hint": [],
+      "llm_risk": "low"
+    },
+    {
+      "state_code": "4-1",
+      "title": "purpose init",
+      "phase": "purpose",
+      "backend_node": "phase_init_done",
+      "primary_apis": ["POST /api/v1/simple-chat/init"],
+      "assertions_hint": ["prior 上下文注入段存在"],
+      "llm_risk": "medium"
+    },
+    {
+      "state_code": "4-2",
+      "title": "purpose 正常交流",
+      "phase": "purpose",
+      "backend_node": "dialogue_active",
+      "primary_apis": ["POST /api/v1/simple-chat/message/stream"],
+      "assertions_hint": [],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "4-3-a",
+      "title": "purpose 出卡",
+      "phase": "purpose",
+      "backend_node": "conclusion_pending_ready",
+      "primary_apis": ["POST /api/v1/simple-chat/message/stream"],
+      "assertions_hint": [],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "4-3-b",
+      "title": "purpose 出卡否认",
+      "phase": "purpose",
+      "backend_node": "pending_decision_rejected",
+      "primary_apis": ["POST /api/v1/simple-chat/message/stream"],
+      "assertions_hint": [],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "4-3-c",
+      "title": "purpose 否认后问答",
+      "phase": "purpose",
+      "backend_node": "dialogue_after_reject",
+      "primary_apis": ["POST /api/v1/simple-chat/message/stream"],
+      "assertions_hint": [],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "4-3-d",
+      "title": "purpose 二次出卡",
+      "phase": "purpose",
+      "backend_node": "conclusion_pending_ready_again",
+      "primary_apis": ["POST /api/v1/simple-chat/message/stream"],
+      "assertions_hint": [],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "4-4",
+      "title": "purpose 提交",
+      "phase": "purpose",
+      "backend_node": "thread_complete_before_rumination",
+      "primary_apis": ["POST /api/v1/simple-chat/thread/complete"],
+      "assertions_hint": ["可进入 rumination"],
+      "llm_risk": "low"
+    },
+    {
+      "state_code": "5-1-a",
+      "title": "rumination 优势标记表格可见",
+      "phase": "rumination",
+      "backend_node": "rumination_filter_step1_table_visible",
+      "primary_apis": ["GET /api/v1/simple-chat/rumination-get-table", "POST /api/v1/simple-chat/rumination-table-submit"],
+      "assertions_hint": ["rumination_progress.filter_step>=1", "filter_table 非空"],
+      "llm_risk": "medium"
+    },
+    {
+      "state_code": "5-1-b",
+      "title": "rumination 优势标记选中行问答",
+      "phase": "rumination",
+      "backend_node": "rumination_row_chat",
+      "primary_apis": ["POST /api/v1/simple-chat/message/stream"],
+      "assertions_hint": [],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "5-1-c",
+      "title": "rumination 优势标记提交",
+      "phase": "rumination",
+      "backend_node": "rumination_step_submit_advance",
+      "primary_apis": ["POST /api/v1/simple-chat/rumination-table-submit"],
+      "assertions_hint": ["snapshots['1'].submitted", "filter_step 前进"],
+      "llm_risk": "low"
+    },
+    {
+      "state_code": "5-2-a",
+      "title": "rumination 匹配性分析 init",
+      "phase": "rumination",
+      "backend_node": "rumination_filter_step2",
+      "primary_apis": ["GET /api/v1/simple-chat/rumination-step-opening", "GET /api/v1/simple-chat/rumination-get-table"],
+      "assertions_hint": [],
+      "llm_risk": "medium"
+    },
+    {
+      "state_code": "5-2-b",
+      "title": "匹配性 选中表格问答",
+      "phase": "rumination",
+      "backend_node": "rumination_row_chat",
+      "primary_apis": ["POST /api/v1/simple-chat/message/stream"],
+      "assertions_hint": [],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "5-2-c",
+      "title": "匹配性 操作选项",
+      "phase": "rumination",
+      "backend_node": "rumination_table_ops",
+      "primary_apis": ["POST /api/v1/simple-chat/rumination-table-submit"],
+      "assertions_hint": [],
+      "llm_risk": "low"
+    },
+    {
+      "state_code": "5-2-d",
+      "title": "匹配性 否定确认进深聊",
+      "phase": "rumination",
+      "backend_node": "rumination_neg_gate_exploring",
+      "primary_apis": ["POST /api/v1/simple-chat/rumination-table-submit", "POST /api/v1/simple-chat/rumination-neg-resolve"],
+      "assertions_hint": ["next_action=rumination_neg_confirm", "rumination_neg_state"],
+      "llm_risk": "medium"
+    },
+    {
+      "state_code": "5-2-e",
+      "title": "匹配性 深聊后正常问答",
+      "phase": "rumination",
+      "backend_node": "rumination_neg_dialogue",
+      "primary_apis": ["POST /api/v1/simple-chat/message/stream", "POST /api/v1/simple-chat/rumination-neg-resolve"],
+      "assertions_hint": [],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "5-2-f",
+      "title": "匹配性 提交",
+      "phase": "rumination",
+      "backend_node": "rumination_step_submit",
+      "primary_apis": ["POST /api/v1/simple-chat/rumination-table-submit"],
+      "assertions_hint": [],
+      "llm_risk": "low"
+    },
+    {
+      "state_code": "5-2-g",
+      "title": "匹配性 短链直达 step7",
+      "phase": "rumination",
+      "backend_node": "rumination_short_path_step7",
+      "primary_apis": ["POST /api/v1/simple-chat/rumination-table-submit"],
+      "assertions_hint": ["filter_early_terminated=true", "filter_step=7"],
+      "llm_risk": "low"
+    },
+    {
+      "state_code": "5-3-a",
+      "title": "假设生成 init",
+      "phase": "rumination",
+      "backend_node": "rumination_filter_step3",
+      "primary_apis": ["GET /api/v1/simple-chat/rumination-get-table"],
+      "assertions_hint": [],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "5-3-e",
+      "title": "假设生成 点击重新生成",
+      "phase": "rumination",
+      "backend_node": "hypothesis_regenerate_row",
+      "primary_apis": ["POST /api/v1/simple-chat/rumination-regenerate-hypotheses"],
+      "assertions_hint": ["该行选项变化"],
+      "llm_risk": "high"
+    },
+    {
+      "state_code": "5-3-j",
+      "title": "假设生成 短链跳过至最后步骤",
+      "phase": "rumination",
+      "backend_node": "rumination_short_path_finalize",
+      "primary_apis": ["POST /api/v1/simple-chat/rumination-table-submit"],
+      "assertions_hint": [],
+      "llm_risk": "low"
+    },
+    {
+      "state_code": "5-7-d",
+      "title": "最终确认 提交",
+      "phase": "rumination",
+      "backend_node": "rumination_finalize",
+      "primary_apis": ["POST /api/v1/simple-chat/rumination-table-submit"],
+      "assertions_hint": ["尾声消息或固定短链结语"],
+      "llm_risk": "medium"
+    }
+  ],
+  "cross_cutting": [
+    {
+      "id": "auth_owner_mismatch",
+      "title": "激活码归属非本人",
+      "primary_apis": ["POST /api/v1/simple-auth/activate"],
+      "assertions_hint": ["403 该激活码已被其他用户使用"],
+      "llm_risk": "none"
+    },
+    {
+      "id": "activation_expired_revoked",
+      "title": "激活码过期/吊销",
+      "primary_apis": ["POST /api/v1/simple-auth/activate"],
+      "assertions_hint": ["400 激活码不可用"],
+      "llm_risk": "none"
+    },
+    {
+      "id": "journey_resume",
+      "title": "清缓存后 journey 自动 resume",
+      "primary_apis": ["GET report + compute_explore_resume 等价前端行为"],
+      "assertions_hint": ["resume_phase 与 record.steps 一致"],
+      "llm_risk": "none"
+    },
+    {
+      "id": "thread_delete_last",
+      "title": "删除最后线程后可再 init",
+      "primary_apis": ["POST /api/v1/simple-chat/thread/delete", "POST /api/v1/simple-chat/init"],
+      "assertions_hint": ["新 thread 可创建"],
+      "llm_risk": "none"
+    },
+    {
+      "id": "readonly_completed_phase",
+      "title": "回看已完成阶段只读",
+      "primary_apis": ["GET history", "POST rumination-table-submit 应拒绝或只读"],
+      "assertions_hint": ["step_locked metadata"],
+      "llm_risk": "none"
+    }
+  ]
+}

@@ -8,6 +8,7 @@
 - 回放测试：`test/backend/test_simple_chat_replay_cases.py`
 - 单条示例：`test/backend/fixtures/simple_chat_cases/single_values_continue.json`
 - 批量示例：`test/backend/fixtures/simple_chat_cases/batch_basic.json`
+- 存档点批量示例：`test/backend/fixtures/simple_chat_cases/batch_savepoints_general.json`（含 `start_state_code` / `end_state_code` 扩展字段）
 - 假数据 report：`test/backend/fixtures/simple_chat_reports/mock_values_pending/`
 
 ## 2. 三种数据模式（最重要）
@@ -62,6 +63,31 @@ python src/backend/scripts/replay_simple_chat.py \
   --cases-file test/backend/fixtures/simple_chat_cases/batch_basic.json \
   --output-json data/test/simple/replay_runs/last_batch_result.json
 ```
+
+存档点用例（values / strengths / rumination 组合）：
+
+```bash
+python src/backend/scripts/replay_simple_chat.py \
+  --cases-file test/backend/fixtures/simple_chat_cases/batch_savepoints_general.json
+```
+
+从模板或真实 `report_id` 生成新 fixture：`src/backend/scripts/generate_simple_chat_savepoints.py`（`template` / `snapshot` / `emit-case` 子命令）。
+
+一键快照并自动追加 case（推荐）：
+
+```bash
+python src/backend/scripts/generate_simple_chat_savepoints.py snapshot \
+  --report-id <report_id> \
+  --output-name snap_demo_001 \
+  --apply \
+  --create-case \
+  --phase values \
+  --message "我补充一点" \
+  --start-state-code 1-2 \
+  --end-state-code 1-3-a
+```
+
+如果 case 同名要覆盖，附加 `--replace-case`。
 
 ### 3.3 真实激活码（会改真实数据）
 
@@ -172,6 +198,26 @@ pytest test/backend/test_simple_chat_replay_cases.py -v
 说明：
 - 该测试默认使用 fixture 假数据 + monkeypatch，不依赖前端。
 - 与脚本一样，默认不会写真实 report（写到 pytest 临时目录）。
+- `test_savepoint_replay_batch.py` 默认自动跑 `batch_savepoints_general.json` 的全部 case。
+- 只跑部分 case 可用环境变量：`SAVEPOINT_CASES=case_a,case_b pytest test/backend/test_savepoint_replay_batch.py -v`
+- 默认是 mock 回归（稳定）。如需真实 LLM 接口调用，在 case 中加 `\"use_real_llm\": true`，或命令行设置 `SAVEPOINT_REAL_LLM=1`。
+- 多步骤链路可用 `steps[]`，并通过 `assertions.step_assertions[]` 做逐步断言（例如 rejected -> pending -> confirmed）。
+
+### 真实 LLM 回归（不走 mock）
+
+推荐使用独立用例文件：
+
+```bash
+SAVEPOINT_CASES_FILE=test/backend/fixtures/simple_chat_cases/batch_savepoints_real_llm.json \
+SAVEPOINT_LLM_MODE=real \
+DEBUG=false PYTHONPATH=src/backend \
+python -m pytest test/backend/test_savepoint_replay_batch.py -v -p no:cacheprovider
+```
+
+说明：
+- `SAVEPOINT_LLM_MODE=real`：仅执行 `use_real_llm=true` 的 case。
+- `SAVEPOINT_CASES_FILE=...`：切到真实回归用例集。
+- `-p no:cacheprovider`：避免当前环境 `.pytest_cache` 写权限导致的噪音告警。
 
 ## 9. 常见问题
 

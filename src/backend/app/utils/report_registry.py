@@ -28,7 +28,7 @@ try:
 except ImportError:  # 精简 venv 时仍可跑通（如仅跑部分测试）
     _FileLock = None  # type: ignore[misc, assignment]
 
-from app.utils.simple_activation_manager import get_simple_base_dir
+from app.utils.simple_activation_manager import ActivationRecord, SimpleActivationManager, get_simple_base_dir
 
 logger = logging.getLogger(__name__)
 
@@ -277,6 +277,60 @@ class ReportRegistry:
         items.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
         return items
 
+    def _activation_manager(self) -> SimpleActivationManager:
+        """与当前 reports_root 同根的激活码索引管理器。"""
+        return SimpleActivationManager(base_dir=str(self.simple_base_dir))
+
+    def _load_activation_record(self, activation_code: str) -> Optional[ActivationRecord]:
+        code = (activation_code or "").strip().upper()
+        if not code:
+            return None
+        return self._activation_manager().get_activation(code)
+
+    def _set_activation_report_index(self, activation_code: str, report_id: Optional[str]) -> None:
+        code = (activation_code or "").strip().upper()
+        if not code:
+            return
+        manager = self._activation_manager()
+        rec = manager.get_activation(code)
+        if rec is None:
+            return
+        normalized = (report_id or "").strip() or None
+        if rec.report_id == normalized:
+            return
+        rec.report_id = normalized
+        rec.report_index_updated_at = self._now_iso()
+        manager.put_activation(rec)
+
+    def _get_record_via_activation_index(self, activation_code: str, user_id: str) -> Optional[dict]:
+        """
+        先用 activations.json 中 report_id 快速命中。
+        若索引脏（目录不存在/归属不匹配）则自动清空并回退扫描。
+        """
+        code = (activation_code or "").strip().upper()
+        uid = (user_id or "").strip()
+        if not code or not uid:
+            return None
+        rec = self._load_activation_record(code)
+        rid = ((rec.report_id if rec else None) or "").strip()
+        if not rid:
+            return None
+        record = self._load_record(rid)
+        if not record:
+            logger.warning("report 索引失效，目标目录不存在，已清空: activation_code=%s report_id=%s", code, rid)
+            self._set_activation_report_index(code, None)
+            return None
+        if (record.get("activation_code") or "").upper() != code or (record.get("user_id") or "").strip() != uid:
+            logger.warning(
+                "report 索引失效，归属不匹配，已清空: activation_code=%s report_id=%s indexed_user_id=%s",
+                code,
+                rid,
+                record.get("user_id"),
+            )
+            self._set_activation_report_index(code, None)
+            return None
+        return record
+
     def _matches_activation_user(self, code: str, uid: str) -> List[dict]:
         matches: List[dict] = []
         for rec in self._iter_records_raw():
@@ -355,6 +409,15 @@ class ReportRegistry:
 
         lock = _pair_file_lock(self._pair_lock_path(code, uid))
         with lock:
+            indexed = self._get_record_via_activation_index(code, uid)
+            if indexed:
+                rid = indexed.get("report_id")
+                if not rid:
+                    raise ValueError("record 缺少 report_id")
+                if session_id:
+                    self.bind_session(rid, "values", session_id)
+                return self._load_record(rid) or indexed
+
             matches = self._matches_activation_user(code, uid)
             if len(matches) > 1:
                 ordered = self._sort_canonical_matches(matches)
@@ -367,6 +430,7 @@ class ReportRegistry:
                 rid = record.get("report_id")
                 if not rid:
                     raise ValueError("record 缺少 report_id")
+                self._set_activation_report_index(code, rid)
                 if session_id:
                     self.bind_session(rid, "values", session_id)
                 return self._load_record(rid) or record
@@ -374,6 +438,7 @@ class ReportRegistry:
             report_id = str(uuid.uuid4())
             record = self._default_record(report_id=report_id, activation_code=code, user_id=uid)
             self._save_record(record)
+            self._set_activation_report_index(code, report_id)
             if session_id:
                 self.bind_session(report_id, "values", session_id)
             return self._load_record(report_id) or record
@@ -381,11 +446,19 @@ class ReportRegistry:
     def get_by_activation_user(self, activation_code: str, user_id: str) -> Optional[dict]:
         code = (activation_code or "").strip().upper()
         uid = (user_id or "").strip()
+        indexed = self._get_record_via_activation_index(code, uid)
+        if indexed:
+            return indexed
         matches = self._matches_activation_user(code, uid)
         if not matches:
+            self._set_activation_report_index(code, None)
             return None
         ordered = self._sort_canonical_matches(matches)
-        return ordered[0]
+        record = ordered[0]
+        rid = (record.get("report_id") or "").strip()
+        if rid:
+            self._set_activation_report_index(code, rid)
+        return record
 
     def bind_session(self, report_id: str, step_id: str, session_id: str) -> Optional[dict]:
         sid = self.normalize_step_id(step_id)

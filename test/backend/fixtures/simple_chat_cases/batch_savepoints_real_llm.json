@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "description": "真实LLM回归用例（需要有效 LLM_PROVIDER/API_KEY）。建议人工抽查语义质量 + 基础状态断言。",
+  "cases": [
+    {
+      "name": "real_values_continue_smoke",
+      "use_real_llm": true,
+      "start_state_code": "1-2",
+      "end_state_code": "1-2",
+      "seed_fixture": {
+        "report_dir": "test/backend/fixtures/simple_chat_reports/mock_values_pending",
+        "ttl_minutes": 180
+      },
+      "phase": "values",
+      "thread_id": "t_mock_pending_001",
+      "message": "请基于我刚才的内容继续追问一个更聚焦的问题。",
+      "assertions": {
+        "steps_executed": 1
+      }
+    },
+    {
+      "name": "real_values_reject_then_recover_and_confirm",
+      "use_real_llm": true,
+      "start_state_code": "1-3-a",
+      "end_state_code": "1-3-d",
+      "seed_fixture": {
+        "report_dir": "test/backend/fixtures/simple_chat_reports/mock_values_pending",
+        "ttl_minutes": 180
+      },
+      "phase": "values",
+      "thread_id": "t_mock_pending_001",
+      "steps": [
+        {
+          "message": "这个总结不太准确，我先不确认。请你继续问我，帮助你更准确理解。"
+        },
+        {
+          "message": "我补充两点：第一我很看重长期学习，第二我希望工作有较高自主性。"
+        },
+        {
+          "message": "现在这版总结我认可，可以确认。"
+        }
+      ],
+      "assertions": {
+        "steps_executed": 3,
+        "history_roles_contains": ["conclusion_card"]
+      }
+    }
+  ]
+}

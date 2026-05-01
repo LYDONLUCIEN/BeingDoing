@@ -1,0 +1,56 @@
+{
+  "report_id": "474e5329-cc4e-4863-834b-b40df619486d",
+  "activation_code": "MOCKPLACEHOLDER",
+  "user_id": "fc8267de-771e-428a-953f-8be1f7014db0",
+  "created_at": "2026-04-30T15:31:55.282747Z",
+  "updated_at": "2026-05-01T10:27:03Z",
+  "status": "in_progress",
+  "final_conclusion": null,
+  "steps": {
+    "values": {
+      "step_id": "values",
+      "selected_session_id": "t_908d0792bba7",
+      "locked": false,
+      "session_ids": [
+        "t_908d0792bba7",
+        "t_15e10f6b766b"
+      ],
+      "updated_at": "2026-05-01T10:26:22.163525Z",
+      "anchor_summary": {
+        "goals": "本阶段已沉淀的核心结论：HAPPY确认了对其职业发展最重要的5个价值观关键词，按优先级排序为：自由、认识自我、创新、意义感、平衡。目标达成：已输出最终关键词顺序及用户解释。",
+        "personality": "深度思考型，自我觉察强，逻辑清晰，追求意义与平衡，有哲学倾向。",
+        "style": "表达清晰，善用比喻（如对抗熵增），能抽象提炼概念，沟通中主动深化定义。",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-05-01T10:15:11.999156Z"
+    },
+    "strengths": {
+      "step_id": "strengths",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [],
+      "updated_at": "2026-04-30T15:31:55.282747Z"
+    },
+    "interests": {
+      "step_id": "interests",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [],
+      "updated_at": "2026-04-30T15:31:55.282747Z"
+    },
+    "purpose": {
+      "step_id": "purpose",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [],
+      "updated_at": "2026-04-30T15:31:55.282747Z"
+    },
+    "rumination": {
+      "step_id": "rumination",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [],
+      "updated_at": "2026-04-30T15:31:55.282747Z"
+    }
+  }
+}

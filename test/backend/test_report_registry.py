@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from app.utils.report_registry import ReportRegistry
+from app.utils.simple_activation_manager import SimpleActivationManager
 
 
 def _write_record(root: Path, report_id: str, payload: dict) -> None:
@@ -211,6 +212,81 @@ def test_simple_thread_id_unique() -> None:
     ids = {allocate_simple_chat_thread_id() for _ in range(100)}
     assert len(ids) == 100
     assert all(x.startswith("t_") and len(x) > 8 for x in ids)
+
+
+def test_ensure_report_persists_report_id_to_activation_index(reg: ReportRegistry) -> None:
+    manager = SimpleActivationManager(base_dir=str(reg.simple_base_dir))
+    rec = manager.create_activation(mode="values", ttl_minutes=60)
+    manager.claim_owner(rec.code, {"user_id": "owner-1", "email": "owner-1@example.com"})
+
+    report = reg.ensure_report(rec.code, "owner-1", session_id=None)
+    refreshed = manager.get_activation(rec.code)
+    assert refreshed is not None
+    assert refreshed.report_id == report["report_id"]
+    assert refreshed.report_index_updated_at
+
+
+def test_get_by_activation_user_uses_activation_index_fast_path(reg: ReportRegistry, monkeypatch) -> None:
+    manager = SimpleActivationManager(base_dir=str(reg.simple_base_dir))
+    rec = manager.create_activation(mode="values", ttl_minutes=60)
+    manager.claim_owner(rec.code, {"user_id": "owner-fast", "email": "owner-fast@example.com"})
+    report = reg.ensure_report(rec.code, "owner-fast", session_id=None)
+
+    def _should_not_scan(*_args, **_kwargs):
+        raise AssertionError("should not scan reports when activation index is valid")
+
+    monkeypatch.setattr(reg, "_matches_activation_user", _should_not_scan)
+    got = reg.get_by_activation_user(rec.code, "owner-fast")
+    assert got is not None
+    assert got["report_id"] == report["report_id"]
+
+
+def test_get_by_activation_user_clears_stale_activation_index_when_report_missing(
+    reg: ReportRegistry,
+) -> None:
+    manager = SimpleActivationManager(base_dir=str(reg.simple_base_dir))
+    rec = manager.create_activation(mode="values", ttl_minutes=60)
+    manager.claim_owner(rec.code, {"user_id": "owner-miss", "email": "owner-miss@example.com"})
+    rec = manager.get_activation(rec.code)
+    assert rec is not None
+    rec.report_id = "missing-report-id"
+    manager.put_activation(rec)
+
+    got = reg.get_by_activation_user(rec.code, "owner-miss")
+    assert got is None
+    refreshed = manager.get_activation(rec.code)
+    assert refreshed is not None
+    assert refreshed.report_id is None
+
+
+def test_ensure_report_fallback_scan_repairs_stale_activation_index(reg: ReportRegistry) -> None:
+    root = reg.simple_base_dir
+    manager = SimpleActivationManager(base_dir=str(root))
+    rec = manager.create_activation(mode="values", ttl_minutes=60)
+    manager.claim_owner(rec.code, {"user_id": "owner-fallback", "email": "owner-fallback@example.com"})
+
+    payload = {
+        "report_id": "real-report",
+        "activation_code": rec.code,
+        "user_id": "owner-fallback",
+        "created_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-01-01T00:00:00Z",
+        "status": "in_progress",
+        "final_conclusion": None,
+        "steps": {},
+    }
+    _write_record(root, "real-report", payload)
+
+    rec = manager.get_activation(rec.code)
+    assert rec is not None
+    rec.report_id = "stale-report"
+    manager.put_activation(rec)
+
+    got = reg.ensure_report(rec.code, "owner-fallback", session_id=None)
+    assert got["report_id"] == "real-report"
+    refreshed = manager.get_activation(rec.code)
+    assert refreshed is not None
+    assert refreshed.report_id == "real-report"
 
 
 def test_end_user_cannot_soft_delete(tmp_path: Path) -> None:

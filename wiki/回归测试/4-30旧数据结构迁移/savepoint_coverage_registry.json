@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "updated_note": "由实施计划生成；与 batch_savepoints_general.json 及 savepoint_state_map.json 交叉引用。",
+  "replay_entrypoints": {
+    "script": "src/backend/scripts/replay_simple_chat.py",
+    "pytest": [
+      "test/backend/test_simple_chat_replay_cases.py",
+      "test/backend/test_savepoint_replay_batch.py"
+    ],
+    "generator": "src/backend/scripts/generate_simple_chat_savepoints.py"
+  },
+  "cases": [
+    {
+      "case_name": "sp_values_pending_continue_1_2",
+      "fixture": "test/backend/fixtures/simple_chat_reports/mock_values_pending",
+      "cases_file": "test/backend/fixtures/simple_chat_cases/batch_savepoints_general.json",
+      "start_state_code": "1-3-a",
+      "end_state_code": "1-2",
+      "apis_touched": ["POST /api/v1/simple-chat/message/stream", "GET /api/v1/simple-chat/history"],
+      "llm_mocked": true
+    },
+    {
+      "case_name": "sp_values_pending_confirm_card_1_3",
+      "fixture": "test/backend/fixtures/simple_chat_reports/mock_values_pending",
+      "cases_file": "test/backend/fixtures/simple_chat_cases/batch_savepoints_general.json",
+      "start_state_code": "1-3-a",
+      "end_state_code": "1-3-a",
+      "apis_touched": [
+        "POST /api/v1/simple-chat/message/stream",
+        "GET /api/v1/simple-chat/history"
+      ],
+      "llm_mocked": true,
+      "assertions": ["history 中出现 role=conclusion_card（由 dimension_conclusion mock）"]
+    },
+    {
+      "case_name": "sp_strengths_dialogue_continue_2_2",
+      "fixture": "test/backend/fixtures/simple_chat_reports/mock_strengths_dialogue",
+      "cases_file": "test/backend/fixtures/simple_chat_cases/batch_savepoints_general.json",
+      "start_state_code": "2-2",
+      "end_state_code": "2-2",
+      "apis_touched": ["POST /api/v1/simple-chat/message/stream"],
+      "llm_mocked": true
+    },
+    {
+      "case_name": "sp_rumination_opening_chat_5_entry",
+      "fixture": "test/backend/fixtures/simple_chat_reports/mock_rumination_opening",
+      "cases_file": "test/backend/fixtures/simple_chat_cases/batch_savepoints_general.json",
+      "start_state_code": "5-1-a",
+      "end_state_code": "5-1-b",
+      "apis_touched": ["POST /api/v1/simple-chat/message/stream"],
+      "llm_mocked": true
+    }
+  ],
+  "state_codes_automated_vs_manual": {
+    "automated_in_batch_savepoints_general": ["1-2", "1-3-a", "2-2", "5-1-b"],
+    "manual_or_other_runners": [
+      "0-1",
+      "0-2",
+      "1-1",
+      "1-3-b",
+      "1-3-c",
+      "1-3-d",
+      "1-4",
+      "2-1",
+      "2-3-a",
+      "2-3-b",
+      "2-3-c",
+      "2-3-d",
+      "2-4",
+      "3-1",
+      "3-2",
+      "3-3-a",
+      "3-3-b",
+      "3-3-c",
+      "3-3-d",
+      "3-4",
+      "4-1",
+      "4-2",
+      "4-3-a",
+      "4-3-b",
+      "4-3-c",
+      "4-3-d",
+      "4-4",
+      "5-1-a",
+      "5-1-c",
+      "5-2-a",
+      "5-2-b",
+      "5-2-c",
+      "5-2-d",
+      "5-2-e",
+      "5-2-f",
+      "5-2-g",
+      "5-3-a",
+      "5-3-e",
+      "5-3-j",
+      "5-7-d"
+    ],
+    "rumination_http_runner": "wiki/回归测试/scripts/run_rumination_regression.py"
+  }
+}

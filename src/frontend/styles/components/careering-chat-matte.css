@@ -213,32 +213,41 @@
   box-sizing: border-box;
   width: 100%;
   max-width: none;
+  /* 强约束：用户气泡左边界不能越过 AI 正文气泡左边界 */
+  --careering-msg-left-edge: 60px;
+  --careering-msg-right-edge: 60px;
+  --careering-msg-max-track: min(
+    960px,
+    calc(100% - var(--careering-msg-left-edge) - var(--careering-msg-right-edge))
+  );
 }
 
 /* 与 newchat6 .msg-container：AI 左内缩 60px、用户右内缩 60px */
 .flow-light.careering-matte .flow-msg-ai-wrap {
-  margin-left: 60px;
+  margin-left: var(--careering-msg-left-edge);
   margin-right: 0;
-  max-width: min(960px, 92%);
+  max-width: var(--careering-msg-max-track);
 }
 .flow-light.careering-matte .flow-msg-user .flow-msg-user-wrap {
-  margin-right: 60px;
+  margin-right: var(--careering-msg-right-edge);
   margin-left: 0;
+  max-width: var(--careering-msg-max-track);
+  width: fit-content;
 }
 
 /* 结论卡与 AI 气泡左缘对齐（同 60px 左内缩 + 同 max-width 上限） */
 .flow-light.careering-matte .flow-msg-conclusion-wrap {
   width: auto !important;
-  max-width: min(960px, 92%);
-  margin-left: 60px;
+  max-width: var(--careering-msg-max-track);
+  margin-left: var(--careering-msg-left-edge);
   margin-right: 0;
   box-sizing: border-box;
 }
 
 /* 用户气泡：勿用 min-width:0，否则窄父级会把短句压成一字一行；换行策略与 IM 常见做法一致（不用 anywhere） */
 .flow-light.careering-matte .flow-msg-user-anchor {
-  max-width: min(960px, calc(100% - 0.5rem));
-  min-width: min-content;
+  max-width: 100%;
+  min-width: 0;
 }
 .flow-light.careering-matte .flow-msg-user-content {
   min-width: min(25ch, 100%) !important;
@@ -361,7 +370,7 @@
 }
 
 .flow-light.careering-matte .flow-msg-think-wrap {
-  max-width: min(960px, 92%);
+  max-width: var(--careering-msg-max-track);
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;

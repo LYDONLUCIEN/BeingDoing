@@ -1,0 +1,15 @@
+{
+  "schema_version": 2,
+  "main_section": "opening",
+  "review_sub_index": 0,
+  "filter_step": 0,
+  "filter_row_cursor": 0,
+  "hypothesis_round": 1,
+  "filter_table": null,
+  "filter_early_terminated": false,
+  "filter_terminate_reason": null,
+  "filter_step_snapshots": {},
+  "pending_table_submit": null,
+  "rumination_neg_state": null,
+  "neg_gate_triggered_steps": []
+}
