@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 import re
+import uuid
 
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import StreamingResponse
@@ -30,6 +31,11 @@ from app.utils.simple_activation_manager import (
     get_activation_manager_for_code,
     get_activation_with_manager,
 )
+from app.utils.activation_audit import (
+    append_activation_audit,
+    EVENT_OWNER_DENIED,
+    EVENT_OWNER_VERIFIED,
+)
 from app.utils.sandbox_fork import assert_sandbox_not_expired
 from app.utils.conversation_file_manager import ConversationFileManager
 from app.utils.id_codec import IDCodec
@@ -42,7 +48,10 @@ from copy import deepcopy
 
 from app.utils.rumination_progress import (
     MAX_FILTER_STEP,
+    clear_neg_gate_triggered_step,
+    is_neg_gate_triggered,
     load_rumination_progress,
+    mark_neg_gate_triggered,
     max_reached_filter_step,
     merge_rumination_progress_fields,
     save_rumination_progress,
@@ -60,6 +69,9 @@ from app.utils.rumination_ops import (
     passion_filter,
     reality_filter,
     similar_filter,
+    resolve_values_for_step4,
+    save_values_snapshot_to_snapshots,
+    load_values_snapshot_from_snapshots,
 )
 from app.utils.rumination_hypothesis_service import (
     ensure_row_has_pair_hypotheses,
@@ -636,7 +648,7 @@ def _resolve_default_logical_thread_id(
     前端未传 thread_id 时，不能简单用 rec.session_id：该 id 是「问卷/附属文件」命名空间，
     真实对话往往在 values__t_xxx.json。Fork 沙箱后 rec.session_id 为新 UUID，会误开空线程。
     策略：优先显式 thread_id → 已选 selected_session_id → session_ids 中消息数最多的文件
-    → 再退到非 activation_storage_session_id 的候选 → 最后 rec.session_id。
+    → 再退到非 activation_storage_session_id 的候选 → 新建 thread_id。
     """
     tid = (thread_id or "").strip()
     if tid:
@@ -662,7 +674,7 @@ def _resolve_default_logical_thread_id(
     non_act = [s for s in candidates if s != act_sid]
     if non_act:
         return non_act[0]
-    return act_sid
+    return f"t_{uuid.uuid4().hex}"
 
 
 def _resolve_activation_for_user(
@@ -677,7 +689,21 @@ def _resolve_activation_for_user(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="激活码不存在",
         )
+    uid = (current_user or {}).get("user_id")
+    email = (current_user or {}).get("email")
     if not manager.is_owner(rec, current_user):
+        # 审计日志：归属拒绝
+        append_activation_audit(
+            EVENT_OWNER_DENIED,
+            activation_code,
+            actor_user_id=uid,
+            actor_email=email,
+            detail={
+                "owner_user_id": rec.owner_user_id,
+                "owner_email": rec.owner_email,
+                "endpoint": "simple_chat_routes._resolve_activation_for_user",
+            },
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="该激活码已被其他用户使用",
@@ -689,6 +715,15 @@ def _resolve_activation_for_user(
         )
     if not rec.owner_user_id and not rec.owner_email:
         rec = manager.claim_owner(rec.code, current_user)
+    else:
+        # 审计日志：归属校验通过
+        append_activation_audit(
+            EVENT_OWNER_VERIFIED,
+            activation_code,
+            actor_user_id=uid,
+            actor_email=email,
+            detail={"endpoint": "simple_chat_routes._resolve_activation_for_user"},
+        )
     try:
         assert_sandbox_not_expired(rec)
     except ValueError as e:
@@ -739,7 +774,7 @@ def _resolve_report_context(
         rec.session_id,
     )
     if not logical_session_id:
-        logical_session_id = rec.session_id
+        logical_session_id = f"t_{uuid.uuid4().hex}"
 
     # 进入新阶段前，锁定上一阶段（管理员调试工作区可豁免，支持回退/跳步）
     if not _can_bypass_flow_limits(current_user, rec):
@@ -1181,6 +1216,27 @@ def _assert_step_editable(
         )
 
 
+@router.get("/user-survey-status")
+def get_user_survey_status(
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    按当前登录用户维度查询 basic_info 是否已填写。
+
+    返回 { completed: bool, survey_data: {...} } 。
+    前端登录后可先调此接口决定是否需要跳问卷，不依赖激活码。
+    """
+    user_id = (current_user or {}).get("user_id") or (current_user or {}).get("email") or ""
+    if not user_id:
+        return SimpleChatResponse(code=200, message="success", data={"completed": False, "survey_data": {}})
+    data = load_basic_info_by_user(user_id)
+    completed = bool(data) and any(
+        v is not None and v != "" and (not isinstance(v, list) or len(v) > 0)
+        for v in (data or {}).values()
+    )
+    return SimpleChatResponse(code=200, message="success", data={"completed": completed, "survey_data": data or {}})
+
+
 @router.get("/survey")
 def get_survey(
     activation_code: str,
@@ -1422,8 +1478,12 @@ def _rumination_opening_load_bundle(
 ):
     """
     读取报告、进度与价值观关键词，供 rumination 子步引导语使用。
+
+    价值观关键词优先从 step 4 快照读取，保证与下拉选项一致；
+    无快照时实时解析并返回 source tag。
+
     Returns:
-        tuple[rec, reports_root, report_id, progress, values_list]
+        tuple[rec, reports_root, report_id, progress, values_list, values_source]
     """
     manager = get_activation_manager_for_code(activation_code)
     rec = _resolve_activation_for_user(manager, activation_code, current_user)
@@ -1452,10 +1512,12 @@ def _rumination_opening_load_bundle(
                 record_obj = raw_rec
         except (json.JSONDecodeError, OSError, TypeError):
             record_obj = None
-    values_list, _, _, _ = extract_dimension_lists_for_rumination_table(
-        str(reports_root), report_id, record_obj
+    # 优先使用快照中的价值观关键词（保证与下拉选项一致）
+    snapshots = progress.get("filter_step_snapshots") or {}
+    values_list, values_source = resolve_values_for_step4(
+        str(reports_root), report_id, record_obj, snapshots
     )
-    return rec, reports_root, report_id, progress, values_list
+    return rec, reports_root, report_id, progress, values_list, values_source
 
 
 @router.get("/rumination-step-opening", response_model=SimpleChatResponse)
@@ -1466,7 +1528,7 @@ def rumination_step_opening(
 ):
     """子步引导：fixed 时返回完整文案（前端模拟流式）；llm 时 text 为 null，走流式接口。"""
     try:
-        _rec, _rp, _rid, progress, values_list = _rumination_opening_load_bundle(
+        _rec, _rp, _rid, progress, values_list, values_source = _rumination_opening_load_bundle(
             activation_code, current_user
         )
     except HTTPException:
@@ -1476,7 +1538,7 @@ def rumination_step_opening(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
     step = max(1, min(MAX_FILTER_STEP, int(filter_step)))
-    ctx = build_opening_context(filter_step=step, progress=progress, values_list=values_list)
+    ctx = build_opening_context(filter_step=step, progress=progress, values_list=values_list, values_source=values_source)
     mode = get_opening_mode(step)
     if mode == "llm":
         return SimpleChatResponse(
@@ -1505,7 +1567,7 @@ async def rumination_step_opening_stream(
             detail="该子步使用固定引导语，请使用 GET /rumination-step-opening",
         )
     try:
-        rec, _reports_root, _report_id, progress, values_list = _rumination_opening_load_bundle(
+        rec, _reports_root, _report_id, progress, values_list, values_source = _rumination_opening_load_bundle(
             request.activation_code, current_user
         )
     except HTTPException:
@@ -1513,7 +1575,7 @@ async def rumination_step_opening_stream(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
-    ctx = build_opening_context(filter_step=step, progress=progress, values_list=values_list)
+    ctx = build_opening_context(filter_step=step, progress=progress, values_list=values_list, values_source=values_source)
     try:
         llm_messages = build_opening_llm_messages(step, ctx)
     except ValueError as e:
@@ -1645,7 +1707,7 @@ async def rumination_regenerate_hypotheses(
         raise HTTPException(status_code=400, detail="row_id 无效")
 
     try:
-        rec, reports_root, report_id, progress, values_list = _rumination_opening_load_bundle(
+        rec, reports_root, report_id, progress, values_list, _values_source = _rumination_opening_load_bundle(
             request.activation_code, current_user
         )
     except HTTPException:
@@ -1938,6 +2000,7 @@ async def rumination_table_submit(
             and step in (2, 3, 5, 6)
             and not request.neg_force_commit
             and ent.get("submitted") is None
+            and not is_neg_gate_triggered(progress0, step)
         ):
             vip_gate = getattr(rec, "vip_level", 1) or 1
             llm_gate = _get_dialogue_llm_provider(vip_level=vip_gate)
@@ -1948,6 +2011,8 @@ async def rumination_table_submit(
                 selected_row_ids=request.selected_row_ids,
             )
             if gate_pkg:
+                # 标记本子步闸门已触发，避免后续重复弹出
+                mark_neg_gate_triggered(reports_root, report_id, step)
                 merge_rumination_progress_fields(
                     reports_root,
                     report_id,
@@ -1995,9 +2060,23 @@ async def rumination_table_submit(
                     record_obj = raw_rec
             except (json.JSONDecodeError, OSError, TypeError):
                 pass
-        values_list, strengths_list, interests_list, _purpose = extract_dimension_lists_for_rumination_table(
-            str(reports_root), report_id, record_obj
+
+        # step 4 价值观关键词优先从快照读取，保证下拉选项与右侧对话一致
+        values_list, values_source = resolve_values_for_step4(
+            str(reports_root), report_id, record_obj, snapshots
         )
+        # 若快照尚不存在（首次进入 step 4 前景），使用全量解析结果
+        if not values_list:
+            _v, strengths_list, interests_list, _purpose, _sources = extract_dimension_lists_for_rumination_table(
+                str(reports_root), report_id, record_obj
+            )
+            values_list = _v
+            values_source = _sources.get("values", "none")
+        else:
+            # 快照已有 values，仍需 strengths/interests 用于后续步骤
+            _, strengths_list, interests_list, _purpose, _sources = extract_dimension_lists_for_rumination_table(
+                str(reports_root), report_id, record_obj
+            )
         values_hint = "、".join(values_list[:8]) if values_list else ""
         passions = interests_list if interests_list else ["热爱1", "热爱2"]
         strengths_for_gen = strengths_list if strengths_list else ["优势1", "优势2"]
@@ -2137,7 +2216,7 @@ async def rumination_table_submit(
             for r in table_data:
                 row = dict(r)
                 if not (row.get("用户确认的假设") or "").strip():
-                    row["用户确认的假设"] = "暂未选定"
+                    row["用户确认的假设"] = "无"
                 finalized.append(row)
             valid_count = sum(
                 1 for r in finalized if not is_rumination_hypothesis_pending(r.get("用户确认的假设"))
@@ -2172,7 +2251,7 @@ async def rumination_table_submit(
                 if not step4_rows:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="没有可进入价值观筛选的有效假设，请至少保留一行非「暂未选定」的有效选择。",
+                        detail="没有可进入价值观筛选的有效假设，请至少保留一行非「无」的有效选择。",
                     )
                 if 1 <= len(step4_rows) <= 3:
                     step7_r = _rumination_step7_via_456_chain(step4_rows)
@@ -2188,11 +2267,15 @@ async def rumination_table_submit(
                         clear_snapshots_from=4,
                     )
                 else:
-                    next_table = build_table_widget_payload(4, step4_rows, values_list)
+                    next_table = build_table_widget_payload(4, step4_rows, values_list, values_source=values_source)
                     next_step_val = 4
                     s4 = snapshots.setdefault("4", {})
                     if s4.get("initial") is None:
                         s4["initial"] = deepcopy(step4_rows)
+                    # 快照价值观关键词 + source，保证下拉与对话一致
+                    snapshots = save_values_snapshot_to_snapshots(
+                        snapshots, values_list, values_source, step=4
+                    )
                     progress = save_rumination_progress(
                         reports_root,
                         report_id,
@@ -2562,14 +2645,21 @@ async def rumination_get_table(
                 record_obj = raw
         except (json.JSONDecodeError, OSError, TypeError):
             record_obj = None
-    values_list, strengths_list, interests_list, _purpose = extract_dimension_lists_for_rumination_table(
+
+    step = max(1, min(MAX_FILTER_STEP, int(step or 1)))
+    snapshots = _rumination_snapshots_copy(progress)
+
+    # step 4 价值观关键词优先从快照读取（保证下拉与对话一致）
+    values_list, values_source = resolve_values_for_step4(
+        str(reports_root), report_id, record_obj, snapshots
+    )
+    # 其余维度仍需全量解析（step 1 需 strengths/interests 生成行）
+    _v_full, strengths_list, interests_list, _purpose, _sources_full = extract_dimension_lists_for_rumination_table(
         str(reports_root), report_id, record_obj
     )
     passions = interests_list if interests_list else ["热爱1", "热爱2"]
     strengths_list = strengths_list if strengths_list else ["优势1", "优势2"]
 
-    step = max(1, min(MAX_FILTER_STEP, int(step or 1)))
-    snapshots = _rumination_snapshots_copy(progress)
     sk = str(step)
 
     def _persist(rows: List[dict], snap: Dict[str, Any]) -> Dict[str, Any]:
@@ -2623,8 +2713,10 @@ async def rumination_get_table(
             report_id,
             {"pending_table_submit": None, "rumination_neg_state": None},
         )
+        # 重新填写时重置本子步的闸门触发标记，允许再次触发「深入聊聊」
+        clear_neg_gate_triggered_step(reports_root, report_id, step)
         prog = load_rumination_progress(reports_root, report_id)
-        payload = build_table_widget_payload(step, rows, values_list)
+        payload = build_table_widget_payload(step, rows, values_list, values_source=values_source)
         return _rumination_get_table_response(prog, payload)
 
     ent_sub = snapshots.get(sk) or {}
@@ -2633,7 +2725,7 @@ async def rumination_get_table(
         if step == 7:
             rows = _rumination_step7_rows_for_widget(rows)
         prog = _persist(rows, snapshots)
-        payload = build_table_widget_payload(step, rows, values_list)
+        payload = build_table_widget_payload(step, rows, values_list, values_source=values_source)
         return _rumination_get_table_response(prog, payload)
 
     if step == 1:
@@ -2643,7 +2735,7 @@ async def rumination_get_table(
             ent["initial"] = deepcopy(rows)
             snapshots[sk] = ent
         prog = _persist(rows, snapshots)
-        payload = build_table_widget_payload(step, rows, values_list)
+        payload = build_table_widget_payload(step, rows, values_list, values_source=values_source)
         return _rumination_get_table_response(prog, payload)
 
     if step == 2:
@@ -2659,7 +2751,7 @@ async def rumination_get_table(
             ent["initial"] = deepcopy(rows)
             snapshots[sk] = ent
         prog = _persist(rows, snapshots)
-        payload = build_table_widget_payload(step, rows, values_list)
+        payload = build_table_widget_payload(step, rows, values_list, values_source=values_source)
         return _rumination_get_table_response(prog, payload)
 
     # ── step 3-7: 先查快照，无快照则从前一步 submitted 生成 ──
@@ -2671,7 +2763,7 @@ async def rumination_get_table(
             if step == 7:
                 rows = _rumination_step7_rows_for_widget(rows)
             prog = _persist(rows, snapshots)
-            payload = build_table_widget_payload(step, rows, values_list)
+            payload = build_table_widget_payload(step, rows, values_list, values_source=values_source)
             return _rumination_get_table_response(prog, payload)
 
     # 无快照：从前一步 submitted 生成
@@ -2712,9 +2804,14 @@ async def rumination_get_table(
     ent = snapshots.setdefault(sk, {})
     if ent.get("initial") is None:
         ent["initial"] = deepcopy(_rumination_strip_meta_keys(rows) if step == 7 else rows)
+        # step 4 首次生成时快照价值观关键词 + source
+        if step == 4:
+            snapshots = save_values_snapshot_to_snapshots(
+                snapshots, values_list, values_source, step=4
+            )
         snapshots[sk] = ent
     prog = _persist(rows, snapshots)
-    payload = build_table_widget_payload(step, rows, values_list)
+    payload = build_table_widget_payload(step, rows, values_list, values_source=values_source)
     return _rumination_get_table_response(prog, payload)
 
 

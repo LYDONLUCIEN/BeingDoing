@@ -110,6 +110,8 @@ interface ChatPhaseSidebarProps {
   showAutoSaveHint?: boolean;
   /** 主对话正在流式输出：非当前会话弱化，提示切换需确认 */
   streamBlocksSessionSwitch?: boolean;
+  /** 线程列表是否正在从后端加载（为 true 时隐藏空列表提示，显示加载态） */
+  threadsLoading?: boolean;
 }
 
 export default function ChatPhaseSidebar({
@@ -124,6 +126,7 @@ export default function ChatPhaseSidebar({
   careeringMatte = false,
   showAutoSaveHint = true,
   streamBlocksSessionSwitch = false,
+  threadsLoading = false,
 }: ChatPhaseSidebarProps) {
   const { t } = useLocale();
   const [deleteTarget, setDeleteTarget] = useState<ChatThread | null>(null);
@@ -295,9 +298,13 @@ export default function ChatPhaseSidebar({
       </div>
       <div className="flow-sidebar-threads min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-3">
         <div className="space-y-1.5">
-          {threads.length === 0 && (
+          {threadsLoading && threads.length === 0 ? (
+            <div className="flex items-center justify-center py-6">
+              <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent text-[var(--flow-text-muted)]" />
+            </div>
+          ) : threads.length === 0 ? (
             <p className="text-xs text-[var(--flow-text-muted)] py-4 text-center">{t('explore.chat.sidebarNoThreads')}</p>
-          )}
+          ) : null}
           {threads.map((thread) => {
             const isActive = thread.id === activeThreadId;
             const lastTime = getLastMessageTime(thread);

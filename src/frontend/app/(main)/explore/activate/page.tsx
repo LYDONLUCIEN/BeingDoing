@@ -3,7 +3,7 @@
 import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { apiClient } from '@/lib/api/client';
+import { apiClient, getApiErrorMessage } from '@/lib/api/client';
 import {
   loadSession,
   saveSession,
@@ -11,8 +11,11 @@ import {
   getLastActivationCode,
   hasReportAvailable,
   applyExploreResumeToSession,
+  setUserSurveyCompleted,
+  getUserSurveyCompleted,
   type ExploreSession,
 } from '@/lib/explore/session';
+import { clearThreadCache } from '@/lib/explore/threads';
 import { fetchExploreResumeFromJourneys } from '@/lib/explore/journeyResume';
 import { surveyApi } from '@/lib/api/survey';
 import { useAuthStore } from '@/stores/authStore';
@@ -67,8 +70,9 @@ function ActivatePageContent() {
     try {
       const res = await apiClient.post('/simple-auth/activate', { code: trimmed });
       const activationCode: string = res.data.activation_code;
-      const sessionId: string | undefined = res.data.session_id;
+      const sessionId: string | undefined = res.data.activation_session_id;
       const workspaceKind = String(res.data.workspace_kind || '').toLowerCase();
+      const activationStatus = String(res.data.status || '').toLowerCase();
       const isWorkspaceActivation =
         workspaceKind === 'resident' ||
         workspaceKind === 'fork' ||
@@ -79,8 +83,10 @@ function ActivatePageContent() {
       // Load existing session state (preserves unlocked phases on revisit)
       const session = loadSession(activationCode);
 
-      // Check if survey already completed
-      let surveyDone = session.surveyCompleted;
+      // ── 问卷完成判定：用户维度优先 ──
+      // 优先级：用户维度 localStorage > 后端用户维度 API > 激活码维度兜底
+      const currentUserId = user?.user_id;
+      let surveyDone = getUserSurveyCompleted(currentUserId) || session.surveyCompleted;
       let adminBypass = false;
       if (user?.is_super_admin && isWorkspaceActivation) {
         try {
@@ -96,7 +102,23 @@ function ActivatePageContent() {
       if (adminBypass) {
         surveyDone = true;
       }
+      if (activationStatus === 'expired' && !adminBypass) {
+        setError('激活码已过期，当前仅可查看历史记录。请联系管理员续期或更换激活码。');
+        return;
+      }
 
+      // 用户维度：向后端查询当前用户 basic_info（不依赖激活码）
+      if (!surveyDone && user) {
+        try {
+          const statusRes = await surveyApi.getUserSurveyStatus();
+          if (statusRes.data?.completed) {
+            surveyDone = true;
+            if (currentUserId) setUserSurveyCompleted(currentUserId, true);
+          }
+        } catch {}
+      }
+
+      // 兜底：若用户维度仍无法判定，回退到激活码维度查询（兼容旧数据）
       if (!surveyDone) {
         try {
           const sv = await surveyApi.getForActivation(activationCode);
@@ -105,7 +127,10 @@ function ActivatePageContent() {
             const v = (data as Record<string, unknown>)[k];
             return v !== undefined && v !== null && v !== '' && (Array.isArray(v) ? v.length > 0 : true);
           });
-          surveyDone = hasData;
+          if (hasData) {
+            surveyDone = true;
+            if (currentUserId) setUserSurveyCompleted(currentUserId, true);
+          }
         } catch {}
       }
 
@@ -144,21 +169,16 @@ function ActivatePageContent() {
 
       saveSession(nextSession);
 
+      // 清除线程缓存，确保进入聊天页时从后端拉取最新数据（跨设备一致性）
+      clearThreadCache(activationCode);
+
       if (surveyDone || adminBypass) {
         router.push(`/explore/chat/${nextSession.currentPhase}`);
       } else {
         router.push('/explore/survey');
       }
-    } catch (err: any) {
-      const raw =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        err?.message;
-      const detail = Array.isArray(raw) ? raw[0] : raw;
-      const fallback = err?.response
-        ? '激活失败，请检查激活码是否正确'
-        : '网络错误或服务器未响应，请检查后端是否启动、NEXT_PUBLIC_API_URL 是否正确';
-      setError(detail || fallback);
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, '激活失败，请检查激活码是否正确'));
     } finally {
       setLoading(false);
     }

@@ -183,6 +183,25 @@ html[data-rumination-mesh-page='true']:not([data-color-scheme='dark'])
   border-radius: 10px;
 }
 
+/* 假设悬浮气泡内容区滚动条：轻量、不抢视觉焦点 */
+.rumination-hyp-preview-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+}
+.rumination-hyp-preview-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.rumination-hyp-preview-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.rumination-hyp-preview-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 10px;
+}
+.rumination-hyp-preview-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.7);
+}
+
 /* 沉淀右栏：助手主气泡无边框，磨砂 + 轻阴影；不窄于父级，靠左铺满可用宽 */
 .rumination-beautiful-chat-panel .flow-msg-ai-content--rumination-wb {
   background: rgba(255, 255, 255, 0.88) !important;

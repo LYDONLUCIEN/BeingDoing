@@ -1,0 +1,221 @@
+{
+  "tasks": [
+    {
+      "id": 1,
+      "title": "S-03 修正 rumination 关键词来源优先级",
+      "description": "修正 `extract_dimension_lists_for_rumination_table` 函数的关键词提取逻辑：\n1. 强制优先级：已确认结论卡关键词 > dimension store > report anchor，大幅降低全文摘词权重\n2. 引入来源标记(source tag)与日志，便于定位本次使用了哪一层数据\n3. 对拆分逻辑加白名单规则，避免句子级片段进入关键词\n4. 先加观测日志确认回退链路，再替换策略\n\n涉及文件：\n- `src/backend/app/utils/rumination_ops.py` — extract_dimension_lists_for_rumination_table 函数\n- `src/backend/app/utils/rumination_table_widgets.py` — 关键词注入点\n\n验收标准：\n- 关键词来源日志清晰可查\n- 全文按标点拆分的回退逻辑不再把推理文本碎片误当关键词\n- 对已确认结论卡有明确优先级判定",
+      "original_text": "S-03 修正 rumination 关键词来源优先级，避免合并/拆分/编造（结论卡关键词优先）。",
+      "status": "done"
+    },
+    {
+      "id": 2,
+      "title": "S-04 修正问卷判定为用户维度",
+      "description": "修改 survey 完成判定逻辑，从混合本地/激活码维度改为用户维度：\n1. 登录后先按 user 维度拉取 basic_info 状态，再决定是否跳问卷\n2. 激活页仅保留\"无用户 basic_info 时才去问卷\"的判断\n3. basic_info 跟 user 绑定，不随激活码变化\n\n涉及文件：\n- 前端：激活页问卷入口判断逻辑\n- 后端：surveyApi / basic_info 相关接口\n\n验收标准：\n- 清缓存后登录，已填写过问卷的用户不会被要求重填\n- 切换激活码不影响问卷完成状态\n- 多账号切换场景正常",
+      "original_text": "S-04 修正问卷判定为用户维度，清缓存后不应重复问卷。",
+      "status": "done"
+    },
+    {
+      "id": 3,
+      "title": "S-05 修正 journey 恢复定位",
+      "description": "修复清缓存后 journey 不自动定位最新 phase 的问题：\n1. 聊天页初始化阶段强制以 `explore_resume` 接口覆盖本地阶段，再做路由准入\n2. journey 点击目标 phase 时，优先跳用户点击的 phase，校验失败再降级到 resume_phase\n3. 避免用户跳到未解锁阶段\n\n涉及文件：\n- 前端：journey 组件、聊天页初始化逻辑\n- 后端：`/simple-auth/journeys` 接口、`explore_resume` 接口\n\n验收标准：\n- 清缓存后重新登录，journey 自动定位到最新进度 phase\n- 点击未解锁 phase 时有正确降级处理",
+      "original_text": "S-05 修正 journey 恢复定位，清缓存后可按目标 phase/进度进入。",
+      "status": "done"
+    },
+    {
+      "id": 4,
+      "title": "S-06 拆分\"回看\"与\"重填\"路径",
+      "description": "将现有\"回退浏览\"和\"重新填写\"解耦为两条独立路径：\n1. **回看模式（只读）+ 继续**：用户可查看历史阶段内容，然后继续后续流程\n2. **重新填写（重置快照）**：显式重置当前阶段数据，允许重新填写\n3. 回退动作必须同步切消息边界（step-boundaries）并刷新右侧上下文\n4. 消息切片边界与表格 step 需保持同步\n\n涉及文件：\n- 前端：表格快照管理、消息裁剪、子步导航状态\n- 后端：step-boundaries 消息切片接口\n\n验收标准：\n- 回看模式只读，不影响当前数据\n- 重新填写可重置快照\n- 右侧对话内容与表格 step 一致\n- 不影响阶段锁定逻辑",
+      "original_text": "S-06 拆分\"回看\"与\"重填\"路径，并同步右侧对话回退。",
+      "status": "done"
+    },
+    {
+      "id": 5,
+      "title": "S-09 统一\"工作目的/价值观\"来源",
+      "description": "修复第五轮工作目的/价值观下拉来源错乱问题：\n1. 固定来源优先级并记录 source 字段，避免混用 prior 文本摘词与 dimension_conclusions\n2. 前端下拉与右侧对话统一引用同一来源快照\n3. 若历史数据缺失，定义降级策略\n\n涉及文件：\n- 后端：工作目的下拉数据接口\n- 前端：下拉组件、对话框文案引用\n\n验收标准：\n- 前端下拉选项与右侧对话使用同一数据源\n- 关键词不再漂移\n- 历史数据缺失时有明确降级行为",
+      "original_text": "S-09 统一\"工作目的/价值观\"来源，前后端使用同一快照。",
+      "status": "done"
+    },
+    {
+      "id": 6,
+      "title": "O-03 排查激活码归属异常迁移并补审计日志",
+      "description": "排查激活码归属异常迁移问题（账号与数据被转移）：\n1. 排查 `is_owner` / `claim_owner` 触发条件与日志，确认是否存在覆盖绑定窗口\n2. 增加关键操作审计日志（code、old_owner、new_owner、来源 IP/时间）\n3. 确保归属校验流程安全可靠\n\n涉及文件：\n- 后端：激活码归属相关接口和服务\n- 数据库：激活码归属记录\n\n验收标准：\n- 审计日志完整记录归属变更\n- 无未授权的归属迁移可发生\n- 排查结论明确",
+      "original_text": "O-03 排查激活码归属异常迁移并补审计日志。",
+      "status": "done"
+    },
+    {
+      "id": 7,
+      "title": "O-06 统一跨设备/清缓存恢复与删除一致性",
+      "description": "修复跨设备/清缓存后 journey 消失、需重走流程、删除对话刷新又出现的问题：\n1. 统一\"后端为准\"的会话/journey 恢复策略；本地仅做加速缓存\n2. 删除对话改为后端成功后再本地删除，并加失败回滚\n3. 清缓存后可从后端完整恢复所有状态\n\n涉及文件：\n- 前端：会话列表、journey 组件、本地缓存管理\n- 后端：会话删除接口、journey 恢复接口\n\n验收标准：\n- 删除对话后刷新不再出现\n- 跨设备登录可看到一致的 journey 状态\n- 清缓存后不丢失已保存数据",
+      "original_text": "O-06 统一后端为准的跨设备/清缓存恢复与删除一致性。",
+      "status": "done"
+    },
+    {
+      "id": 8,
+      "title": "P-04 按 new-rumination-3.md 重做否定弹窗与深入聊聊模板",
+      "description": "按 `uidesign/prompt/new-rumination-3.md` 重做否定闸门与深入聊聊的文案模板：\n1. 将闸门文案生成从\"line 摘要\"改为\"字段级模板\"（按步骤分别生成）\n2. 步骤 3 优先展示\"否定假设文本 + 对应热爱/优势\"，避免整行噪音字段\n3. \"深入聊聊\"开场语统一采用参考文档口径，并按每条循环一次一问\n4. 回归测试 cover \"continue/deep_start/deep_end\"三个分支\n\n涉及文件：\n- `src/backend/app/utils/rumination_neg_gate.py` — 闸门文案生成\n- `src/frontend/app/(main)/explore/chat/[phase]/page.tsx` — 弹窗渲染\n- `src/frontend/lib/i18n/locales/zh.ts` — i18n 文案\n- `uidesign/prompt/new-rumination-3.md` — 参考模板\n- `uidesign/prompt/new-rumination2.md` — 同步更新\n\n验收标准：\n- 否定弹窗展示字段级模板内容，非整行摘要\n- 深入聊聊逐条处理，不一次总结跳步\n- continue/deep_start/deep_end 三分支均正常",
+      "original_text": "P-04 按`new-rumination-3.md`重做否定弹窗与深入聊聊模板（字段级而非整行）。",
+      "status": "done"
+    },
+    {
+      "id": 9,
+      "title": "P-06 移除匹配原因列并补齐判断标准引导",
+      "description": "移除 rumination 步骤 2 的匹配原因列，并增强判断标准引导：\n1. 步骤 2 列定义移除\"匹配原因\"的可编辑/展示\n2. 保留内部判断时使用的隐藏字段（如需要）\n3. 步骤 2 opening 加入\"如何判断匹配/不匹配\"的标准话术\n4. 验证移除后不影响步骤 3 生成假设的输入字段\n\n涉及文件：\n- `src/backend/app/utils/rumination_table_widgets.py` — 列定义\n- `src/backend/app/utils/rumination_ops.py` — 假设生成输入兼容性\n- `src/backend/app/domain/rumination_prompt_strings.py` — opening 文案\n- `src/frontend/components/explore/RuminationTableWidget.tsx` — 表格渲染\n- `uidesign/prompt/new-rumination2.md` / `new-rumination-3.md`\n\n验收标准：\n- 匹配原因列在 UI 上不可见、不可编辑\n- 步骤 2 opening 包含判断标准引导\n- 步骤 3 假设生成不受影响",
+      "original_text": "P-06 移除匹配原因列，并补齐\"匹配/不匹配判断标准\"引导文案。",
+      "status": "done"
+    },
+    {
+      "id": 10,
+      "title": "P-07 强化步骤2/3/5/6深入聊聊提示词一致性",
+      "description": "强化深入聊天的提示词差异化与逐条处理流程：\n1. 将步骤 2/3/5/6 分别拆分为独立 system 片段，加入字段上下文模板\n2. 对\"每条处理完成后引导下一条\"的流程加显式约束，防止一次性总结跳步\n3. 增加回归场景测试（每步至少 1 条/多条/0 条的情况）\n4. 需灰度验证输出风格变化\n\n涉及文件：\n- `src/backend/app/utils/rumination_neg_gate.py` — 闸门注入策略\n- `src/backend/app/domain/rumination_step_guidance.py` — 步骤差异化 guidance\n- `src/backend/app/domain/prompts/templates/simple_chat_system.yaml` — system prompt\n- `uidesign/prompt/new-rumination-3.md`\n\n验收标准：\n- 每个步骤有独立的 system 片段\n- 深入聊天逐条处理，不一次总结\n- 1条/多条/0条场景均有正确表现",
+      "original_text": "P-07 强化步骤2/3/5/6深入聊聊提示词一致性与逐条处理流程。",
+      "status": "done"
+    },
+    {
+      "id": 11,
+      "title": "S-07 控制深入聊聊仅首次提交触发",
+      "description": "修复\"深入聊聊\"弹窗重复触发问题，改为仅首次提交触发：\n1. 每子步增加\"首次触发标记\"（已触发则仅在\"重新填写\"后重置）\n2. 明确重置条件：仅 `onRefill` 或显式重开本步时清除\n3. 避免误造成\"永不触发\"\n\n涉及文件：\n- `src/backend/app/utils/rumination_neg_gate.py` — 闸门状态管理\n- progress 中 `pending_table_submit` / `rumination_neg_state` 字段\n\n验收标准：\n- 每子步首次提交后触发弹窗，后续提交不重复触发\n- 重新填写后重置，可再次触发\n- 不会出现\"永不触发\"的情况",
+      "original_text": "S-07 控制\"深入聊聊\"仅首次提交触发；重新填写后才可再次触发。",
+      "status": "done"
+    },
+    {
+      "id": 12,
+      "title": "S-08 五轮结束回看默认展示最后阶段结果",
+      "description": "修复五轮结束后回看第五轮无内容的问题：\n1. 回看 rumination 时默认加载 step7 submitted 快照作为只读结果表\n2. 若无 step7，回退到 max_reached step\n3. 终态 `main_section` 进入 `recommend/end` 后表格需自动回填\n\n涉及文件：\n- 前端：rumination 表格回看逻辑\n- 后端：step7 快照存储与读取接口\n\n验收标准：\n- 五轮结束后回看显示 step7 结果表\n- 无 step7 时降级到最大 step\n- 与报告页展示联动正确",
+      "original_text": "S-08 五轮结束回看默认展示最后阶段结果（step7优先）。",
+      "status": "done"
+    },
+    {
+      "id": 13,
+      "title": "O-04 个人中心问卷改为用户级直读",
+      "description": "修改个人中心问卷展示逻辑，改为用户级数据直读：\n1. 个人中心读取接口改为用户级数据直读，激活码仅作为补充来源\n2. 登录后即可在个人中心看到问卷信息，不需要先输入激活码\n\n涉及文件：\n- 前端：个人中心页面\n- 后端：问卷/用户信息读取接口\n\n验收标准：\n- 登录后个人中心可见问卷\n- 不依赖当前激活码上下文\n- 旧数据兼容",
+      "original_text": "O-04 个人中心问卷改为用户级直读，登录即见。",
+      "status": "done"
+    },
+    {
+      "id": 14,
+      "title": "O-05 禁止前端误判空会话自动新建",
+      "description": "修复多次进入自动新增对话、预览偶发不显示的问题：\n1. 调整为\"后端会话列表确认空后才允许自动新建\"\n2. 增加线程列表加载态，避免过早渲染空列表\n3. 前端初始化时序调整，避免与本地缓存判断冲突\n\n涉及文件：\n- 前端：会话列表初始化、自动新建逻辑\n- 后端：会话列表接口（确认返回完整数据）\n\n验收标准：\n- 不会因前端误判创建重复对话\n- 列表加载完成前不显示空状态\n- 预览内容正常显示",
+      "original_text": "O-05 禁止前端误判空会话自动新建，先以后端列表确认为准。",
+      "status": "done"
+    },
+    {
+      "id": 15,
+      "title": "P-02 调整使命提示词允许填写多个价值观",
+      "description": "调整使命阶段提示词，允许用户在文案里自由表达多个价值观：\n1. 提示词层：明确\"可写多个价值观\"，且不要求主次结构\n2. 数据层：保持现有字段结构不变，不做多选结构化改造\n3. 回归覆盖：使命阶段对话输出、rumination 第 4 步文案一致性、最终报告展示一致性\n\n涉及文件：\n- `src/backend/app/domain/prompts/templates/simple_chat_system.yaml`\n- `src/backend/app/domain/rumination_prompt_strings.py`\n- `src/backend/app/utils/rumination_table_widgets.py`\n- `src/frontend/components/explore/RuminationTableWidget.tsx`\n- `uidesign/prompt/0412-purpose.md`\n- `uidesign/prompt/new-rumination2.md`\n\n验收标准：\n- 使命阶段输出可包含多个价值观\n- rumination 第 4 步和报告展示一致\n- 不影响现有数据字段结构",
+      "original_text": "P-02 调整使命提示词：允许用户文案填写多个价值观（不加主次，不改结构字段）。",
+      "status": "done"
+    },
+    {
+      "id": 16,
+      "title": "P-03 删除使命阶段对用户可见的统计展示",
+      "description": "修改使命阶段提示词，禁止向用户展示统计内容：\n1. 删除使命提示词中的\"对用户展示统计\"动作，改为\"归纳 + 用户确认\"\n2. 保留内部统计供模型推理使用，但禁止输出到用户可见文案\n3. 注意不要影响使命阶段收敛质量\n\n涉及文件：\n- `src/backend/app/domain/prompts/templates/simple_chat_system.yaml`\n- `src/backend/app/api/v1/simple_chat/prompt_builder.py`\n- `uidesign/prompt/0412-purpose.md`\n\n验收标准：\n- 用户不可见任何\"统计次数/频次\"的文案\n- 模型内部推理仍可使用统计\n- 使命阶段对话收敛质量不下降",
+      "original_text": "P-03 删除对用户可见统计展示；保留内部统计仅供模型推理。",
+      "status": "done"
+    },
+    {
+      "id": 17,
+      "title": "P-05 调整步骤7文案为\"在以下方向中选择1-3个\"",
+      "description": "统一 rumination 步骤 7 的引导文案：\n1. 将步骤 7 opening 文案与 i18n 文案统一改为\"在以下方向中选择1-3个\"\n2. 保留\"可点击整行\"的交互说明作为次句\n\n涉及文件：\n- `src/backend/app/domain/rumination_prompt_strings.py`\n- `src/frontend/lib/i18n/locales/zh.ts`\n- `uidesign/prompt/new-rumination2.md`\n\n验收标准：\n- 步骤 7 引导文案统一\n- 用户仍知道如何操作（点击整行）",
+      "original_text": "P-05 调整步骤7文案为\"在以下方向中选择1-3个\"。",
+      "status": "done"
+    },
+    {
+      "id": 18,
+      "title": "P-08 加入冷启动心理预期文案",
+      "description": "在 rumination 开场模板中加入冷启动心理预期：\n1. 统一开场模板加入冷启动容错句式（\"可逐步来、不知道也可继续\"），并限制长度\n2. 对比前四阶段开场文案口径，统一\"允许不确定\"的话术风格\n\n涉及文件：\n- `src/backend/app/domain/rumination_prompt_strings.py`\n- `src/backend/app/domain/prompts/templates/step_copy.yaml`\n- `uidesign/prompt/new-rumination2.md`\n- `uidesign/prompt/0412-values.md`\n\n验收标准：\n- 开场包含容错引导\n- 文案简洁不过度铺垫\n- 与前四阶段语气一致",
+      "original_text": "P-08 加入冷启动心理预期文案并统一语气。",
+      "status": "done"
+    },
+    {
+      "id": 19,
+      "title": "S-02 第一步优势标记改为只读",
+      "description": "将 rumination 步骤 1 的\"优势标记\"列改为只读展示：\n1. 步骤 1 移除 editableCols 中的优势标记对应项\n2. 保留\"优势标记\"列展示，不隐藏该列\n3. 前端确认按钮可直接用，不做必填校验\n\n涉及文件：\n- `src/backend/app/utils/rumination_table_widgets.py` — editableCols 定义\n- `src/frontend/components/explore/RuminationTableWidget.tsx` — 表格渲染\n\n验收标准：\n- 优势标记列可见但不可编辑\n- 确认按钮正常工作",
+      "original_text": "S-02 第一步优势标记改为只读，保留列展示。",
+      "status": "done"
+    },
+    {
+      "id": 20,
+      "title": "S-10 完成阶段提醒\"不再提醒\"按激活码+phase持久化",
+      "description": "实现前 4 阶段\"已完成提醒\"的\"不再提醒\"按激活码+phase 持久化：\n1. 增加\"按激活码 + phase\"的本地持久化键，进入该阶段先读取\n2. 保留管理员调试开关可忽略该状态\n3. 跨会话/页面刷新后持久化生效\n\n涉及文件：\n- 前端：提醒弹窗组件、本地存储管理\n- 后端：管理员调试开关（如需要）\n\n验收标准：\n- 勾选不再提醒后，同一激活码+phase 不再弹窗\n- 管理员可强制忽略该状态",
+      "original_text": "S-10 完成阶段提醒\"不再提醒\"按激活码+phase持久化。",
+      "status": "done"
+    },
+    {
+      "id": 21,
+      "title": "U-01 修复表头透明穿透问题",
+      "description": "修复 rumination 表头透明导致内容穿透的视觉问题：\n1. 提升表头背景不透明度\n2. 分离 z-index 与 backdrop 效果层\n\n涉及文件：\n- `src/frontend/components/explore/RuminationTableWidget.tsx` 或相关 CSS\n\n验收标准：\n- 表头不透明，内容不穿透\n- 视觉效果清晰",
+      "original_text": "U-01 修复表头透明穿透问题。",
+      "status": "done"
+    },
+    {
+      "id": 22,
+      "title": "U-02 修复假设气泡显示不全/不可滚动/边缘裁切",
+      "description": "修复假设悬浮预览气泡的显示问题：\n1. 改为 viewport 自适应定位（上/下翻转）\n2. 预览层固定 max-height 并启用内部滚动\n3. 处理长内容溢出与容器边界\n\n涉及文件：\n- 前端：假设气泡组件（portal 定位相关）\n\n验收标准：\n- 气泡内容完整显示\n- 长内容可滚动\n- 不超出视口边界",
+      "original_text": "U-02 修复假设气泡显示不全/不可滚动/边缘裁切问题。",
+      "status": "done"
+    },
+    {
+      "id": 23,
+      "title": "U-03 放宽假设列宽",
+      "description": "调整 rumination 选中假设列的宽度策略：\n1. 放宽假设列最小/最大宽度，目标支持约 15 字后换行\n2. 超宽时保留横向滚动\n\n涉及文件：\n- `src/frontend/components/explore/RuminationTableWidget.tsx` — 列宽配置\n\n验收标准：\n- 假设列约 15 字才换行\n- 超宽内容可横向滚动",
+      "original_text": "U-03 放宽假设列宽，目标约15字再换行。",
+      "status": "done"
+    },
+    {
+      "id": 24,
+      "title": "U-04 UI侧同步移除匹配原因列并重排布局",
+      "description": "前端侧同步移除匹配原因列（配合 P-06 后端改动）：\n1. 删除匹配原因列展示\n2. 重排剩余列宽\n3. 需与后端字段联动一致\n\n涉及文件：\n- `src/frontend/components/explore/RuminationTableWidget.tsx` — 列定义与布局\n\n验收标准：\n- 匹配原因列不可见\n- 剩余列布局合理\n- 与后端返回数据字段兼容",
+      "original_text": "U-04 UI侧同步移除匹配原因列并重排布局。",
+      "status": "done"
+    },
+    {
+      "id": 25,
+      "title": "U-05 Journey 节点 hover 样式改精致",
+      "description": "优化 Journey 组件节点 hover 效果：\n1. 降低 hover 放大倍率或取消缩放，改为阴影/描边反馈\n2. 全局缩小 node 尺寸与间距\n3. 修复上缘裁切问题\n\n涉及文件：\n- 前端：Journey 组件样式\n\n验收标准：\n- hover 不放大遮挡\n- 视觉更精致\n- 无裁切问题",
+      "original_text": "U-05 Journey 节点 hover 样式改精致，避免放大遮挡。",
+      "status": "done"
+    },
+    {
+      "id": 26,
+      "title": "U-06 统一下拉命名与右侧文案",
+      "description": "统一表格下拉与对话文案的命名一致性：\n1. 统一文案映射层（前端 i18n + 后端提示词）：\"其他\"→\"自定义\"，\"暂未选定\"→\"无\"\n2. placeholder 作为不可选项显式灰显\n3. 兼容历史值映射\n\n涉及文件：\n- `src/frontend/lib/i18n/locales/zh.ts` — i18n 文案\n- `src/backend/app/domain/rumination_prompt_strings.py` — 提示词文案\n- 前端：表格下拉组件\n\n验收标准：\n- 下拉项命名统一\n- placeholder 灰显且不可选\n- 历史数据值正确映射",
+      "original_text": "U-06 统一下拉命名与右侧文案（\"自定义/无/placeholder灰显\"）。",
+      "status": "done"
+    },
+    {
+      "id": 27,
+      "title": "U-07 修复热爱列半个括号显示异常",
+      "description": "修复热爱列名称左侧多出半个括号的问题：\n1. 排查渲染前字符串清洗逻辑\n2. 检查 CSS 文本截断规则\n3. 确认列标题数据源头无异常字符\n\n涉及文件：\n- `src/backend/app/utils/rumination_table_widgets.py` — 列标题定义\n- `src/frontend/components/explore/RuminationTableWidget.tsx` — 渲染\n\n验收标准：\n- 热爱列名称显示完整，无多余括号",
+      "original_text": "U-07 修复热爱列半个括号显示异常。",
+      "status": "done"
+    },
+    {
+      "id": 28,
+      "title": "U-08 点赞彩色填充+落库+报告可溯源原文",
+      "description": "完善点赞功能的前后端链路：\n1. 前端：点赞状态改为彩色填充\n2. 后端：点赞记录 `message_id + user_id`，提供按 message 回查原文能力\n3. 报告页：有点赞内容才展示模块，展示内容必须可溯源到点赞时的原消息文本\n4. 若消息被删除/重写，需定义\"快照留存或容灾兜底\"策略\n\n涉及文件：\n- 前端：点赞按钮组件、报告页点赞模块\n- 后端：点赞 API（新增或修改）、message 回查接口\n- 数据库：点赞表（如需新增）\n\n验收标准：\n- 点赞状态彩色反馈明显\n- 点赞数据持久化到后端\n- 报告页展示点赞内容可溯源到原文\n- 消息被删除时有兜底策略",
+      "original_text": "U-08 点赞彩色填充 + `message_id + user_id` 落库 + 报告可溯源原文。",
+      "status": "done"
+    },
+    {
+      "id": 29,
+      "title": "O-01 最后一轮引导语调用链路梳理",
+      "description": "梳理 rumination 最后一轮引导语（opening）的调用链路：\n1. 梳理 opening 入口优先级（固定文案/LLM opening/step_copy）并确认正确来源\n2. 补充回归用例，确保模板来源不被混用\n\n涉及文件：\n- `src/backend/app/domain/rumination_prompt_strings.py`\n- `src/backend/app/domain/prompts/templates/step_copy.yaml`\n- 后端：opening 调用链路相关代码\n\n验收标准：\n- 最后一轮引导语来源明确\n- 不会被其他阶段模板混用\n- 有回归测试覆盖",
+      "original_text": "O-01 最后一轮引导语调用链路梳理并补回归用例。",
+      "status": "done"
+    },
+    {
+      "id": 30,
+      "title": "O-02 登录后统一跳\"开始探索\"",
+      "description": "统一登录后跳转目标为\"开始探索\"页：\n1. 前后端入口逻辑统一为\"登录后进入开始探索页\"\n2. 移除\"自动回到上次页面\"的残留逻辑和文案\n\n涉及文件：\n- 前端：登录后跳转逻辑\n- 后端：登录接口返回的跳转目标（如有）\n\n验收标准：\n- 所有登录场景统一跳到\"开始探索\"\n- 无残留的\"回到上次页面\"逻辑",
+      "original_text": "O-02 登录后统一跳\"开始探索\"，清理\"回到上次页面\"残留分支与文案。",
+      "status": "done"
+    },
+    {
+      "id": 31,
+      "title": "S-01 修复\"完成并继续\"偶发需要点两次",
+      "description": "修复\"完成并继续\"偶发\"回到本轮，再点一次才前进\"的问题：\n1. 增加\"完成并继续\"链路日志（前端点击→接口返回→session 写入→router.push）\n2. 统一以接口返回为准后再跳转，减少本地推断\n3. 增加去重跳转保护（同 phase 不重复 push）\n4. 检查 `stepLocked`/`reportSelectedThreadId`/session 保存时机的竞态\n\n涉及文件：\n- 前端：\"完成并继续\"按钮逻辑、路由跳转\n- 后端：session 写入接口\n\n验收标准：\n- 点击\"完成并继续\"一次即可前进\n- 无竞态导致的状态不一致",
+      "original_text": "S-01 完成并继续偶发\"回到本轮，再点一次才前进\"",
+      "status": "done"
+    }
+  ]
+}

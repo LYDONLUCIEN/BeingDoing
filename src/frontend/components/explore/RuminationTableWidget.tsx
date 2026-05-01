@@ -16,6 +16,18 @@ import { Loader2, RefreshCw } from 'lucide-react';
 export const HYP_CONFIRM_KEY = '用户确认的假设';
 export const OTHER_SELECT_VALUE = '__RUMINATION_OTHER__';
 
+/** 历史值兼容映射：旧文案 → 新文案 */
+export const LEGACY_VALUE_MAP: Record<string, string> = {
+  '其他': '自定义',
+  '暂未选定': '无',
+  '待定': '无',
+};
+
+/** 将旧历史值映射为当前文案（若匹配），否则原样返回 */
+export function normalizeRuminationValue(raw: string): string {
+  return LEGACY_VALUE_MAP[raw] ?? raw;
+}
+
 export interface RuminationTableColumn {
   key: string;
   label: string;
@@ -37,6 +49,8 @@ export interface RuminationTablePayload {
   rowSelectionMode?: 'multi';
   rowSelectionMin?: number;
   rowSelectionMax?: number;
+  /** 价值观关键词来源标签（step 4 专用：confirmed_card / report_anchor / prior_text / none） */
+  valuesSource?: string;
 }
 
 interface RuminationTableWidgetProps {
@@ -71,21 +85,23 @@ interface RuminationTableWidgetProps {
   embeddedSubmitOverlay?: boolean;
   /** 选中行摘要，用于输入框上下文 */
   onRowContextChange?: (ctx: { rowIndex: number; label: string } | null) => void;
-  /** 假设确认列：「待定」文案 */
+  /** 假设确认列：「无」文案 */
   hypothesisPendingLabel?: string;
-  /** 假设确认列：「其他」文案 */
+  /** 假设确认列：「自定义」文案（替代旧「其他」） */
   hypothesisOtherLabel?: string;
-  /** 选「其他」后出现的输入框占位 */
+  /** 选「自定义」后出现的输入框占位 */
   otherTextPlaceholder?: string;
   /** 为 true 时隐藏表头「确认」按钮（如终步改由对话/结论卡确认） */
   hideConfirmButton?: boolean;
+  /** true：回看模式（只读），所有单元格不可编辑，隐藏确认/重填按钮 */
+  reviewReadOnly?: boolean;
   /** 假设列：假设1 侧色块标签（个人事业向） */
   hypothesisTagFreelanceLabel?: string;
   /** 假设列：假设2 侧色块标签（职业路径向） */
   hypothesisTagCompanyLabel?: string;
   /** 假设列：第三条等额外假设的标签 */
   hypothesisTagExtraLabel?: string;
-  /** 子步 3：重新生成本行两条推荐假设（+ 其他 / 暂不选由下拉选择） */
+  /** 子步 3：重新生成本行两条推荐假设（+ 自定义 / 无由下拉选择） */
   hypothesisRegenerateLabel?: string;
   hypothesisRegeneratingLabel?: string;
   /** 右上角重新生成图标的悬停说明 */
@@ -123,10 +139,11 @@ export default function RuminationTableWidget({
   loadingLabel = '…',
   submitting = false,
   onRowContextChange,
-  hypothesisPendingLabel = '暂未选定',
-  hypothesisOtherLabel = '其他',
+  hypothesisPendingLabel = '无',
+  hypothesisOtherLabel = '自定义',
   otherTextPlaceholder = '请填写自定义内容…',
   hideConfirmButton = false,
+  reviewReadOnly = false,
   hypothesisTagFreelanceLabel = '个人事业',
   hypothesisTagCompanyLabel = '职业路径',
   hypothesisTagExtraLabel = '',
@@ -149,8 +166,8 @@ export default function RuminationTableWidget({
   const [validationCycle, setValidationCycle] = useState(0);
   const [hypOtherDraftByKey, setHypOtherDraftByKey] = useState<Record<string, string>>({});
   const cellWrapRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
-  /** 已确认本步：锁定格内与选行；表头「重新填写」仍用外层 disabled 控制 */
-  const cellDisabled = disabled || confirmDisabledAfterCommit;
+  /** 已确认本步 / 回看模式：锁定格内与选行 */
+  const cellDisabled = disabled || confirmDisabledAfterCommit || reviewReadOnly;
 
   const tableRowRefs = useRef<Map<number, HTMLTableRowElement | null>>(new Map());
   const [hypRegenOverlayW, setHypRegenOverlayW] = useState(0);
@@ -308,11 +325,17 @@ export default function RuminationTableWidget({
   const selMin = payload.rowSelectionMin ?? 1;
   const selMax = payload.rowSelectionMax ?? 3;
 
+  /** 需要从展示中隐藏的列 key（与后端 P-06 对齐：移除匹配原因列） */
+  const HIDDEN_COL_KEYS = useMemo(() => new Set(['匹配原因']), []);
+
   const displayColumns = useMemo(() => {
     const cols = payload.columns ?? [];
-    if (rowSelectionMulti) return cols.filter((c) => c.key !== '__pick');
-    return cols;
-  }, [payload.columns, rowSelectionMulti]);
+    return cols.filter((c) => {
+      if (c.key === '__pick') return false; // __pick 是行选择内部状态，不作为展示列
+      if (HIDDEN_COL_KEYS.has(c.key)) return false;
+      return true;
+    });
+  }, [payload.columns, HIDDEN_COL_KEYS]);
 
   const handleRowPickToggle = useCallback(
     (rowIdx: number) => {
@@ -337,22 +360,25 @@ export default function RuminationTableWidget({
     [cellDisabled, payload.rowSelectionMax]
   );
 
-  /** 数据列超过该宽度时由单元格内换行（含假设生成后的长文案），避免整表被单格撑得过宽 */
+  /** 数据列超过该宽度时由单元格内换行，避免整表被单格撑得过宽 */
   const DATA_COL_MAX_PX = 272;
+  /** 假设确认列（子步 3）放宽上限：左侧窄下拉 ~132px + 右侧约 15 字文本 ~210px + 间距 */
+  const HYP_COL_MAX_PX = 380;
 
   const colMinWidth = (col: RuminationTableColumn) => {
     if (col.key === '__pick') return 52;
     if (col.key === 'id') return 40;
     const labelLen = col.label?.length ?? 0;
-    /** 子步 3：左窄下拉 + 右侧长文案；上限与 DATA_COL_MAX_PX 对齐以触发换行 */
+    /** 子步 3：左窄下拉 + 右侧长文案；上限放宽以支持 ~15 字再换行 */
     if (col.key === HYP_CONFIRM_KEY && filterStep === 3) {
-      return Math.min(DATA_COL_MAX_PX, Math.max(120, 8 + labelLen * 9));
+      return Math.min(HYP_COL_MAX_PX, Math.max(160, 8 + labelLen * 9));
     }
     return Math.min(DATA_COL_MAX_PX, Math.max(76, 8 + labelLen * 11));
   };
 
   const colMaxWidth = (col: RuminationTableColumn): number | undefined => {
     if (col.key === 'id' || col.key === '__pick') return undefined;
+    if (col.key === HYP_CONFIRM_KEY && filterStep === 3) return HYP_COL_MAX_PX;
     return DATA_COL_MAX_PX;
   };
 
@@ -424,7 +450,7 @@ export default function RuminationTableWidget({
           continue;
         }
 
-        if (col.options?.includes(hypothesisOtherLabel)) {
+        if (col.options?.includes(hypothesisOtherLabel) || col.options?.includes('其他')) {
           if (!strVal || isPlaceholderToken(strVal)) return { rowIdx, colKey: col.key };
           if (strVal === OTHER_SELECT_VALUE) return { rowIdx, colKey: col.key };
           continue;
@@ -498,8 +524,9 @@ export default function RuminationTableWidget({
     ? 'shrink-0 rounded-full border border-neutral-200 bg-white/70 px-4 py-2 text-sm font-medium text-neutral-600 transition-all hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed'
     : 'rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50';
 
+  /** 回看模式：隐藏所有操作按钮（确认/重填均不可用） */
   const tableHeaderActions =
-    hideConfirmButton && !(tableRefillMode && onRefill) ? null : (
+    reviewReadOnly || (hideConfirmButton && !(tableRefillMode && onRefill)) ? null : (
       <div className="flex items-center gap-3">
         {tableRefillMode && onRefill && (
           <button type="button" onClick={() => onRefill?.()} disabled={disabled} className={refillBtnCls}>
@@ -564,7 +591,10 @@ export default function RuminationTableWidget({
     let active: HypPick = '';
     if (strVal === OTHER_SELECT_VALUE) active = 'other';
     else if (!strVal) active = '';
-    else if (pendingOk && (strVal === hypothesisPendingLabel || strVal === '待定'))
+    else if (
+      pendingOk &&
+      (strVal === hypothesisPendingLabel || strVal === '待定' || strVal === '暂未选定')
+    )
       active = 'pending';
     else if (h1 && strVal === h1) active = 'h1';
     else if (h2 && strVal === h2) active = 'h2';
@@ -635,11 +665,14 @@ export default function RuminationTableWidget({
         return;
       }
       if (v === OPT_OTHER) {
-        // 从三条假设/待定切到「其他」时，不得把当前选项的完整文案当成自定义内容，否则 onChange 会写回 h1/h2/h3，下拉看似选不中「其他」
+        // 从三条假设/待定切到「自定义」时，不得把当前选项的完整文案当成自定义内容
         const wasOtherCustom =
           Boolean(strVal && strVal !== OTHER_SELECT_VALUE) &&
           !(
-            (pendingOk && (strVal === hypothesisPendingLabel || strVal === '待定')) ||
+            (pendingOk &&
+              (strVal === hypothesisPendingLabel ||
+                strVal === '待定' ||
+                strVal === '暂未选定')) ||
             (h1 && strVal === h1) ||
             (h2 && strVal === h2) ||
             (h3 && strVal === h3)
@@ -733,7 +766,7 @@ export default function RuminationTableWidget({
             className={hypSelectNarrowClass}
             style={selectArrowStyle}
           >
-            <option value="">{selectPlaceholder}</option>
+            <option value="" disabled className="text-neutral-400">{selectPlaceholder}</option>
             {h1 ? <option value={OPT_H1}>{tagLabels.freelance}</option> : null}
             {h2 ? <option value={OPT_H2}>{tagLabels.company}</option> : null}
             {h3 ? <option value={OPT_H3}>{h3TagLabel}</option> : null}
@@ -752,18 +785,49 @@ export default function RuminationTableWidget({
       ? createPortal(
           (() => {
             const { anchorRect, h1: ph1, h2: ph2 } = hypothesisPreview;
-            const pad = 10;
+            const pad = 12;
             const vw = window.innerWidth;
             const vh = window.innerHeight;
             const cardW = Math.min(400, Math.max(260, vw - pad * 2));
-            let left = anchorRect.left;
-            left = Math.min(Math.max(pad, left), vw - pad - cardW);
-            const maxCardH = Math.min(vh * 0.44, 300);
-            let top = anchorRect.bottom + 6;
-            if (top + 140 > vh - pad && anchorRect.top > maxCardH + pad + 16) {
-              top = anchorRect.top - maxCardH - 8;
+
+            /* ── Horizontal: center on anchor, clamp to viewport edges ── */
+            let left = anchorRect.left + anchorRect.width / 2 - cardW / 2;
+            left = Math.max(pad, Math.min(left, vw - pad - cardW));
+
+            /* ── Vertical: measure real space above / below the anchor ── */
+            const gap = 6;
+            const spaceBelow = vh - anchorRect.bottom - pad;
+            const spaceAbove = anchorRect.top - pad;
+
+            /*
+             * Pick the side with more room.  If the preferred side is still
+             * too small (< 120 px usable) fall back to the other side.
+             */
+            const preferBelow = spaceBelow >= spaceAbove;
+            const primarySpace = preferBelow ? spaceBelow : spaceAbove;
+            const fallbackSpace = preferBelow ? spaceAbove : spaceBelow;
+            const MIN_USABLE = 120;
+            const useBelow =
+              preferBelow
+                ? primarySpace >= MIN_USABLE || fallbackSpace < MIN_USABLE
+                : fallbackSpace >= MIN_USABLE;
+
+            // max-height: up to 420 px but never exceed available space
+            const availSpace = useBelow ? spaceBelow : spaceAbove;
+            const maxCardH = Math.max(MIN_USABLE, Math.min(420, availSpace - gap));
+
+            /* ── Position: pin to anchor on the chosen side, clamp to viewport ── */
+            let top: number;
+            if (useBelow) {
+              top = anchorRect.bottom + gap;
+              // Ensure bottom edge stays inside viewport
+              if (top + maxCardH > vh - pad) top = vh - pad - maxCardH;
+              if (top < pad) top = pad;
+            } else {
+              // Bottom of card sits `gap` above anchor top
+              top = anchorRect.top - gap - maxCardH;
+              if (top < pad) top = pad;
             }
-            top = Math.max(pad, Math.min(top, vh - pad - 24));
 
             const shellCls = isGlass
               ? 'rounded-2xl border border-white/55 bg-white/[0.93] shadow-[0_24px_56px_-14px_rgba(15,23,42,0.38)] backdrop-blur-xl ring-1 ring-neutral-900/[0.05]'
@@ -790,7 +854,7 @@ export default function RuminationTableWidget({
                     {hypothesisPreviewTitle}
                   </p>
                 </div>
-                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3.5 py-3">
+                <div className="rumination-hyp-preview-scroll min-h-0 flex-1 space-y-3 overflow-y-auto px-3.5 py-3">
                   {ph1.trim() ? (
                     <div className="space-y-1.5">
                       <div className="inline-flex items-center gap-1.5 rounded-full bg-violet-500/10 px-2 py-0.5">
@@ -824,7 +888,7 @@ export default function RuminationTableWidget({
         )
       : null;
 
-  /** 列自带 options 且含「其他」：选「其他」后出现输入框（如工作目的） */
+  /** 列自带 options 且含「自定义」：选「自定义」后出现输入框（如工作目的） */
   const renderSelectWithOther = (
     col: RuminationTableColumn,
     rowIdx: number,
@@ -834,8 +898,10 @@ export default function RuminationTableWidget({
     const opts = optionsWithoutPlaceholder(col.options ?? []).filter(
       (o) => !isPlaceholderToken(normalizeOptionText(o))
     );
-    const rest = opts.filter((o) => o !== otherLabel);
-    const known = new Set(opts);
+    // 兼容历史选项「其他」：后端可能仍下发「其他」，统一视为「自定义」
+    const legacyOther = '其他';
+    const rest = opts.filter((o) => o !== otherLabel && o !== legacyOther);
+    const known = new Set([...opts, legacyOther]); // 旧值也能匹配
     const selectVal =
       strVal === ''
         ? ''
@@ -868,7 +934,7 @@ export default function RuminationTableWidget({
           className={selectShellClass}
           style={selectArrowStyle}
         >
-          <option value="">{selectPlaceholder}</option>
+          <option value="" disabled className="text-neutral-400">{selectPlaceholder}</option>
           {rest
             .filter((opt) => !isPlaceholderToken(normalizeOptionText(opt)))
             .map((opt) => (
@@ -894,8 +960,9 @@ export default function RuminationTableWidget({
 
   const tableInner = (
     <table className="w-full min-w-0 max-w-full text-sm border-separate border-spacing-0 table-auto">
-        <thead className={isGlass ? 'sticky top-0 z-10' : ''}>
-          <tr className={isGlass ? 'bg-white/55 backdrop-blur-md' : 'bg-neutral-50'}>
+        {/* glass 模式：表头使用高不透明背景 + 独立 z-index 层，防止内容穿透 */}
+        <thead className={isGlass ? 'sticky top-0 z-20' : ''}>
+          <tr className={isGlass ? 'bg-white/90 backdrop-blur-md' : 'bg-neutral-50'}>
             {displayColumns.map((col) => (
               <th
                 key={col.key}
@@ -1039,7 +1106,7 @@ export default function RuminationTableWidget({
                     >
                       {isEditable && col.key === HYP_CONFIRM_KEY && filterStep === 3 ? (
                         renderHypothesisConfirmCell(row, rowIdx, strVal)
-                      ) : isEditable && col.options?.includes(hypothesisOtherLabel) ? (
+                      ) : isEditable && (col.options?.includes(hypothesisOtherLabel) || col.options?.includes('其他')) ? (
                         renderSelectWithOther(col, rowIdx, strVal, hypothesisOtherLabel)
                       ) : isEditable && col.options?.length ? (
                         <select
@@ -1051,7 +1118,7 @@ export default function RuminationTableWidget({
                           className={selectShellClass}
                           style={selectArrowStyle}
                         >
-                          <option value="">{selectPlaceholder}</option>
+                          <option value="" disabled className="text-neutral-400">{selectPlaceholder}</option>
                           {optionsWithoutPlaceholder(col.options ?? [])
                             .filter((opt) => !isPlaceholderToken(normalizeOptionText(opt)))
                             .map((opt) => (

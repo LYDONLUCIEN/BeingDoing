@@ -6,14 +6,19 @@ description: 各阶段开始/结束时的引导文案（前端展示用，非 LL
 # - outro_zh / outro_en：结论卡确认后的过渡告别（可与前端弹窗一致）
 # - 支持 Markdown；留空则不展示
 # - get_step_copy(phase, position, locale) 会优先读 _zh/_en，再回退旧键 intro/outro
+#
+# ⚠️ 作用域边界（rumination 相关）：
+# - rumination.intro_zh 仅用于前端阶段欢迎弹窗（POST /init 返回 step_intro 字段）
+# - 不可用于对话流中的引导语（对话流引导语由 rumination_step_guidance 控制）
+# - 不可用于筛选子步 opening（子步引导语由 STEP_OPENING_MODE + build_opening_llm_messages 控制）
 
 values:
   intro_zh: |
     欢迎开始第一轮探索——**价值观发现**。
-    我们将通过对话，帮你找到对职业发展最重要的 5 个价值观关键词。
+    我们将通过对话，帮你找到对职业发展最重要的 5 个价值观关键词。不确定也没关系，我们一步步来。
   intro_en: |
     Welcome to round one — **values discovery**.
-    We'll explore the five values keywords that matter most for your career path.
+    We'll explore the five values keywords that matter most for your career path. Not sure yet? That's okay — we'll take it one step at a time.
   outro_zh: |
     恭喜你完成了第一轮价值观探索。下一轮我们将进入优势探索，帮助你发现你的核心能力。我们下次见。
   outro_en: |
@@ -22,10 +27,10 @@ values:
 strengths:
   intro_zh: |
     欢迎进入第二轮探索——**优势发现**。
-    我们将一起挖掘你最突出的 5 个优势，并为每个优势做标记。
+    我们将一起挖掘你最突出的 5 个优势，并为每个优势做标记。不确定也没关系，我们一步步来。
   intro_en: |
     Welcome to round two — **strengths**.
-    We'll surface five standout strengths and tag each one together.
+    We'll surface five standout strengths and tag each one together. Not sure yet? That's okay — we'll take it one step at a time.
   outro_zh: |
     恭喜你完成了第二轮优势探索。下一轮我们将进入热爱探索，帮助你发现你的激情所在。我们下次见！
   outro_en: |
@@ -34,10 +39,10 @@ strengths:
 interests:
   intro_zh: |
     欢迎进入第三轮探索——**热爱发现**。
-    我们将帮你找到 3 个你真正感兴趣、充满好奇的领域。
+    我们将帮你找到 3 个你真正感兴趣、充满好奇的领域。不确定也没关系，我们一步步来。
   intro_en: |
     Welcome to round three — **passions**.
-    We'll find three areas that spark your curiosity and pull you in.
+    We'll find three areas that spark your curiosity and pull you in. Not sure yet? That's okay — we'll take it one step at a time.
   outro_zh: |
     恭喜你完成了第三轮热爱探索。下一轮我们将进入使命探索，帮助你找到你的人生召唤。我们下次见！
   outro_en: |
@@ -46,10 +51,10 @@ interests:
 purpose:
   intro_zh: |
     欢迎进入第四轮探索——**使命发现**。
-    我们将帮你发现你最希望为他人提供的核心价值。
+    我们将帮你发现你最希望为他人提供的核心价值。不确定也没关系，我们一步步来。
   intro_en: |
     Welcome to round four — **purpose**.
-    We'll clarify the value you most want to bring to others through your work.
+    We'll clarify the value you most want to bring to others through your work. Not sure yet? That's okay — we'll take it one step at a time.
   outro_zh: |
     太棒了！你已经完成了使命探索。接下来我们将进行最后一轮对话——帮助你整合所有发现，找到具体的职业发展方向。我们下次见！
   outro_en: |
@@ -58,10 +63,10 @@ purpose:
 rumination:
   intro_zh: |
     恭喜你进入最后一轮——**沉淀与选择**。
-    我们将综合你的价值观、优势、热爱和使命，帮你确定三个可以尝试的职业方向。
+    我们将综合你的价值观、优势、热爱和使命，帮你确定可以尝试的职业方向。不确定也没关系，我们一步步来。
   intro_en: |
     Welcome to the final round — **integration and choice**.
-    We'll bring together values, strengths, passions, and purpose into three directions to try.
+    We'll bring together values, strengths, passions, and purpose into directions to try. Not sure yet? That's okay — we'll take it one step at a time.
   outro_zh: |
     恭喜你完成了全部探索！你的专属职业规划报告即将生成。
   outro_en: |

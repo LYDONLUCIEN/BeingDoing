@@ -66,6 +66,14 @@ export async function batchUpdateActivationStatus(payload: {
   return res.data ?? { changed: 0 };
 }
 
+export async function batchExtendActivations(payload: {
+  codes: string[];
+  extend_days: number;
+}) {
+  const res = await apiClient.post('/admin/activations/batch-extend', payload);
+  return res.data ?? { changed: 0, skipped: 0 };
+}
+
 export async function batchDeleteActivations(payload: { codes: string[] }) {
   const res = await apiClient.post('/admin/activations/batch-delete', payload);
   return res.data ?? { changed: 0 };

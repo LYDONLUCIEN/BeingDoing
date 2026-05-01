@@ -20,12 +20,31 @@ from app.utils.simple_activation_manager import (
 )
 from app.utils.sandbox_fork import assert_sandbox_not_expired
 from app.api.v1.auth import get_current_user
-from fastapi import Depends
+from fastapi import Depends, Request
 from app.utils.report_registry import ReportRegistry, compute_explore_resume
 from app.utils.id_codec import IDCodec
+from app.utils.activation_audit import (
+    append_activation_audit,
+    EVENT_OWNER_DENIED,
+    EVENT_OWNER_VERIFIED,
+    EVENT_ACCESS,
+)
+from app.utils.survey_storage import load_basic_info_by_user
 
 
 router = APIRouter(prefix="/simple-auth", tags=["简单模式认证"])
+
+
+def _client_ip(request) -> str:
+    """从 FastAPI Request 中提取客户端 IP。"""
+    if request is None:
+        return ""
+    forwarded = (request.headers.get("x-forwarded-for") or "").split(",")
+    if forwarded and forwarded[0].strip():
+        return forwarded[0].strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return ""
 
 
 class CreateActivationRequest(BaseModel):
@@ -75,6 +94,7 @@ async def create_activation(request: CreateActivationRequest):
 async def activate(
     request: ActivateRequest,
     current_user: dict = Depends(get_current_user),
+    req: Request = None,
 ):
     """
     使用激活码获取简单会话信息。
@@ -100,7 +120,23 @@ async def activate(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     # 首次激活绑定归属用户；已绑定则仅允许归属者使用
+    client_ip = _client_ip(req)
+    uid = (current_user or {}).get("user_id")
+    email = (current_user or {}).get("email")
     if not manager.is_owner(rec, current_user):
+        # 审计日志：归属拒绝
+        append_activation_audit(
+            EVENT_OWNER_DENIED,
+            code,
+            actor_user_id=uid,
+            actor_email=email,
+            client_ip=client_ip,
+            detail={
+                "owner_user_id": rec.owner_user_id,
+                "owner_email": rec.owner_email,
+                "endpoint": "POST /simple-auth/activate",
+            },
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="该激活码已被其他用户使用",
@@ -113,6 +149,15 @@ async def activate(
     if not rec.owner_user_id and not rec.owner_email:
         rec = manager.claim_owner(rec.code, current_user)
     else:
+        # 审计日志：归属校验通过（已绑定用户的回访）
+        append_activation_audit(
+            EVENT_OWNER_VERIFIED,
+            code,
+            actor_user_id=uid,
+            actor_email=email,
+            client_ip=client_ip,
+            detail={"endpoint": "POST /simple-auth/activate"},
+        )
         manager.touch_activity(rec.code)
 
     # 绑定/创建 report（activation_code + user_id -> report_id）
@@ -157,9 +202,19 @@ async def list_user_journeys(
     user_id = (current_user or {}).get("user_id", "")
     email = (current_user or {}).get("email", "")
     if not user_id and not email:
-        return ActivationResponse(code=200, message="success", data={"journeys": []})
+        return ActivationResponse(code=200, message="success", data={"journeys": [], "user_survey": {}})
 
     journeys = []
+
+    # ── 用户级问卷直读：不依赖激活码，登录后即可获取 ──
+    user_survey_data = {}
+    user_survey_completed = False
+    if user_id:
+        user_survey_data = load_basic_info_by_user(user_id) or {}
+        user_survey_completed = bool(user_survey_data) and any(
+            v is not None and v != "" and (not isinstance(v, list) or len(v) > 0)
+            for v in user_survey_data.values()
+        )
 
     from app.utils.simple_activation_manager import (
         SimpleActivationManager,
@@ -223,6 +278,12 @@ async def list_user_journeys(
     return ActivationResponse(
         code=200,
         message="success",
-        data={"journeys": journeys},
+        data={
+            "journeys": journeys,
+            "user_survey": {
+                "completed": user_survey_completed,
+                "survey_data": user_survey_data,
+            },
+        },
     )
 

@@ -3,6 +3,10 @@
 
 - 不落 submitted，仅写入 progress.pending_table_submit + rumination_neg_state。
 - 用户选择「继续」或「结束讨论」后由 resolve 端点带 neg_force_commit 重入正式 submit。
+
+v2: 按字段级模板展示否定条目，替代整行摘要（new-rumination-3.md 口径）。
+v3: 每个步骤拥有独立的 system 片段（rumination_prompt_strings.DEEP_CHAT_STEP_SYSTEM_MAP），
+    注入时先拼步骤专属 system 片段，再追加条目列表，确保逐条处理不跳步。
 """
 from __future__ import annotations
 
@@ -12,6 +16,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.core.llmapi.base import LLMMessage
+from app.domain.rumination_step_guidance import get_deep_chat_step_system
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +24,72 @@ NEG_GATED_STEPS = frozenset({2, 3, 5, 6})
 
 OTHER_TOKEN = "__RUMINATION_OTHER__"
 
+
+# ---------------------------------------------------------------------------
+# 字段级摘要：按步骤分别提取关键字段，避免整行噪音
+# ---------------------------------------------------------------------------
+
+def _format_mismatch_item(r: Dict[str, Any]) -> str:
+    """步骤 2 不匹配条目：仅展示 热爱 vs 优势。"""
+    passion = str(r.get("热爱") or "").strip()
+    strength = str(r.get("优势") or "").strip()
+    return f"热爱「{passion}」 Vs 优势「{strength}」"
+
+
+def _format_hypothesis_item(r: Dict[str, Any]) -> str:
+    """步骤 3 假设定义不符条目：展示 假设文本 + 对应热爱/优势。"""
+    passion = str(r.get("热爱") or "").strip()
+    strength = str(r.get("优势") or "").strip()
+    hypo = str(r.get("假设") or "").strip()
+    return f"假设「{hypo}」（热爱：{passion}；优势：{strength}）"
+
+
+def _format_should_do_item(r: Dict[str, Any]) -> str:
+    """步骤 5 应该做条目：展示 假设文本。"""
+    hypo = str(r.get("假设") or "").strip()
+    passion = str(r.get("热爱") or "").strip()
+    strength = str(r.get("优势") or "").strip()
+    return f"假设「{hypo}」（热爱：{passion}；优势：{strength}）"
+
+
+def _format_future_item(r: Dict[str, Any]) -> str:
+    """步骤 6 未来条目：展示 假设文本。"""
+    hypo = str(r.get("假设") or "").strip()
+    passion = str(r.get("热爱") or "").strip()
+    strength = str(r.get("优势") or "").strip()
+    return f"假设「{hypo}」（热爱：{passion}；优势：{strength}）"
+
+
+def _item_label(kind: str, item: Dict[str, Any]) -> str:
+    """根据步骤类型返回字段级展示文案。"""
+    if kind == "mismatch":
+        return _format_mismatch_item(item)
+    if kind == "hypothesis_def":
+        return _format_hypothesis_item(item)
+    if kind == "should_do":
+        return _format_should_do_item(item)
+    if kind == "future":
+        return _format_future_item(item)
+    # 兜底：拼接非空字段
+    return str(item.get("id", ""))
+
+
+def _item_struct_lines(kind: str, item: Dict[str, Any]) -> List[str]:
+    """返回结构化字段行（用于弹窗/系统注入，避免整行噪音）。"""
+    passion = str(item.get("热爱") or "").strip() or "（未填写）"
+    strength = str(item.get("优势") or "").strip() or "（未填写）"
+    hypo = str(item.get("假设") or "").strip() or "（未填写）"
+
+    if kind == "mismatch":
+        return [f"热爱：{passion}", f"优势：{strength}"]
+    if kind in ("hypothesis_def", "should_do", "future"):
+        return [f"假设：{hypo}", f"热爱：{passion}", f"优势：{strength}"]
+    return [str(item.get("label") or item.get("line") or item.get("id") or "")]
+
+
+# ---------------------------------------------------------------------------
+# 数据采集（与旧版一致，保留 line 字段供过渡；新增字段级展示字段）
+# ---------------------------------------------------------------------------
 
 def _row_summary(row: Dict[str, Any]) -> str:
     parts = []
@@ -39,6 +110,7 @@ def collect_step2_mismatches(table_data: List[Dict[str, Any]]) -> List[Dict[str,
                 {
                     "id": str(r.get("id", "")),
                     "line": _row_summary(r),
+                    "label": _format_mismatch_item(r),
                     "热爱": str(r.get("热爱") or ""),
                     "优势": str(r.get("优势") or ""),
                 }
@@ -56,6 +128,7 @@ def collect_step5_should_do(table_data: List[Dict[str, Any]]) -> List[Dict[str, 
                 {
                     "id": str(r.get("id", "")),
                     "line": _row_summary(r),
+                    "label": _format_should_do_item(r),
                     "热爱": str(r.get("热爱") or ""),
                     "优势": str(r.get("优势") or ""),
                     "假设": str(r.get("用户确认的假设") or ""),
@@ -74,6 +147,7 @@ def collect_step6_future(table_data: List[Dict[str, Any]]) -> List[Dict[str, Any
                 {
                     "id": str(r.get("id", "")),
                     "line": _row_summary(r),
+                    "label": _format_future_item(r),
                     "热爱": str(r.get("热爱") or ""),
                     "优势": str(r.get("优势") or ""),
                     "假设": str(r.get("用户确认的假设") or ""),
@@ -84,7 +158,8 @@ def collect_step6_future(table_data: List[Dict[str, Any]]) -> List[Dict[str, Any
 
 def _is_pending_label(s: str) -> bool:
     t = (s or "").strip()
-    return t in ("", "暂未选定", "待定")
+    # 当前文案「无」，兼容旧值「暂未选定」「待定」
+    return t in ("", "暂未选定", "待定", "无")
 
 
 def collect_step3_hypothesis_candidates(table_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -104,6 +179,7 @@ def collect_step3_hypothesis_candidates(table_data: List[Dict[str, Any]]) -> Lis
             {
                 "id": str(r.get("id", "")),
                 "line": _row_summary(r),
+                "label": _format_hypothesis_item(r),
                 "热爱": str(r.get("热爱") or ""),
                 "优势": str(r.get("优势") or ""),
                 "假设": hyp,
@@ -111,6 +187,10 @@ def collect_step3_hypothesis_candidates(table_data: List[Dict[str, Any]]) -> Lis
         )
     return out
 
+
+# ---------------------------------------------------------------------------
+# LLM 步骤 3 假设质检（不变）
+# ---------------------------------------------------------------------------
 
 STEP3_LLM_SYSTEM = """你是职业探索表格质检助手。判断每条「假设」是否符合定义。
 定义：假设需描述「想做的事」本身，要具体、有画面感，通常包含角色、对象、动作、目的等要素，让用户能想象出实际场景，且应指向可长期投入、持续运营的职业或项目；避免只有抽象标签或职位名称。
@@ -149,95 +229,181 @@ async def llm_flag_step3_hypotheses(llm: Any, rows: List[Dict[str, Any]]) -> Tup
         return [], True
 
 
+# ---------------------------------------------------------------------------
+# 注入 system prompt 末尾的补充段（字段级模板）
+# ---------------------------------------------------------------------------
+
+def _item_lines(kind: str, items: List[Dict[str, Any]], limit: int = 12) -> str:
+    """将条目列表按字段级直角引号格式化为编号列表。"""
+    return "\n".join(f"{i + 1}. {_item_label(kind, it)}" for i, it in enumerate(items[:limit]))
+    return "\n".join(blocks)
+
+
 def build_injection_zh(step: int, kind: str, items: List[Dict[str, Any]], llm_failed: bool) -> str:
-    """注入主对话 system 末尾的补充段（探索中）。"""
-    lines = "\n".join(f"{i + 1}. {it.get('line', '')}" for i, it in enumerate(items[:12]))
-    if llm_failed:
-        return (
-            "\n【沉淀·表格跟进（自动判断暂不可用）】\n"
-            "你刚提交了本步表格，系统暂时没完成自动假设检测。\n"
-            "请用温和、拟人的语气，邀请对方就**不太有把握**的假设逐条聊清楚是否符合「具体、有画面、可长期投入」；一次只问一个问题。\n"
-            f"可参考的表格条目摘要：\n{lines}\n"
-            "强调：热爱、优势等前提来自前序确认，当前讨论不修改这些前提字段。\n"
-            "禁止在这里推进到结论卡或最终确认；结束时只提醒点击右上角「结束讨论」回到左侧表格继续修改。"
-        )
-    if kind == "mismatch":
-        tail = (
-            "对方把一些热爱-优势组合标为「不匹配」。请一次一问推进：先问其不匹配的具体原因，"
-            "再引导其思考是否存在可调整后的匹配可能，最后明确确认该行是否仍保留「不匹配」。"
-        )
-    elif kind == "hypothesis_def":
-        tail = (
-            "对方有部分假设可能不符合定义（含自填）。请一次一问推进：先指出其与「具体、有画面、可长期投入」"
-            "定义的差距，再基于该行热爱与优势引导其补全为可落地表述，最后请对方确认是否采纳新假设。"
-        )
-    elif kind == "should_do":
-        tail = (
-            "对方把部分假设标为「应该做」。请一次一问推进：先探索其动力更多来自外界期待还是内在意愿，"
-            "再帮助其识别卡点，最后确认该行是否仍保留「应该做」或改为「忍不住想做」。"
-        )
-    elif kind == "future":
-        tail = (
-            "对方把部分假设标为「未来」。请一次一问推进：先问其当前无法开始的关键限制，"
-            "再引导讨论现在可启动的一小步积累，最后确认该行是否仍保留「未来」或可调整为「现在」。"
-        )
-    else:
-        tail = "请结合下列表格摘要，一次一问陪伴用户澄清。"
-    return (
-        f"\n【沉淀·待跟进标记项】\n{tail}\n条目：\n{lines}\n"
-        "提醒：不要改动表格里的热爱、优势等前提条件；若讨论充分，请只引导点击右上角「结束讨论」回到左侧表格修改。不要在当前对话中推进到结论卡。"
+    """注入主对话 system 末尾的补充段（探索中）。
+
+    v3: 使用步骤差异化 system 片段替代旧版统一模板。
+    结构：[步骤专属 system 片段] + [条目编号列表] + [结束引导提示]
+
+    步骤专属 system 片段包含：
+    - 步骤角色定位与目标
+    - 字段上下文模板（本步关注哪些字段、哪些不可修改）
+    - 逐条处理流程约束（防跳步）
+    - 禁止行为清单
+    """
+    # 获取步骤专属 system 片段
+    step_system = get_deep_chat_step_system(step, llm_failed=llm_failed)
+
+    # 格式化条目列表
+    lines = _item_lines(kind, items)
+
+    # 对话风格与边界约束（所有步骤共用）
+    style_guard = (
+        "回复风格要求：\n"
+        "- 语气温和、简洁，优先短段落；\n"
+        "- 一次只问一个问题，不要连发多问；\n"
+        "- 每轮回复最多出现一个问号（? 或 ？）；\n"
+        "- 引用条目时优先使用字段名（热爱/优势/假设），不要整段复读；\n"
+        "- 每条讨论结束后明确提示「这条我们聊完了」，再进入下一条。"
     )
 
+    # 通用结束引导提示
+    closing = "讨论充分后，请只引导点击右上角「结束讨论」回到左侧表格修改。不要在当前对话中推进到结论卡。"
+
+    if step_system:
+        # v3 路径：使用步骤专属 system 片段 + 条目列表
+        return (
+            f"\n{step_system}\n\n"
+            f"待讨论条目（按序逐条进行）：\n{lines}\n\n"
+            f"{style_guard}\n\n"
+            f"提醒：{closing}"
+        )
+    else:
+        # 降级路径：步骤不在映射中（理论上不应发生）
+        logger.warning("rumination neg gate: step %d not in DEEP_CHAT_STEP_SYSTEM_MAP, using fallback", step)
+        return (
+            f"\n【沉淀·待跟进标记项】\n"
+            "请一次一问陪伴用户澄清以下条目，逐一讨论不跳过。\n"
+            f"条目：\n{lines}\n{closing}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 用户可见开场语（字段级模板，参考 new-rumination-3.md 口径）
+# ---------------------------------------------------------------------------
 
 def build_opening_user_visible_zh(step: int, kind: str, items: List[Dict[str, Any]], llm_failed: bool) -> str:
-    """右侧首条助手可见开场（用户选深入讨论后由前端插入）。"""
+    """右侧首条助手可见开场（用户选深入讨论后由前端插入）。
+
+    按步骤分别采用参考文档口径，从第一条条目的关键字段开始引入。
+    """
     if llm_failed:
         return (
             "刚才系统在对你的假设做快速检查时稍微卡了一下，没关系的～\n"
             "如果你愿意，我们可以从你最拿不准的那一条开始，一条条聊聊它是不是足够具体、能不能想象出你在做的画面。\n"
             "这轮先不改热爱、优势等前提字段。你想先聊哪一条？讨论完请点右上角「结束讨论」提交。"
         )
+
+    if not items:
+        return (
+            "关于你刚才表格里标出的部分，我想和你多聊几句。"
+            "不过目前没有具体的条目需要讨论，你可以直接点击右上角「结束讨论」继续。"
+        )
+
+    first_label = _item_label(kind, items[0])
+    first_lines = _item_struct_lines(kind, items[0])
+    first_block = "\n".join(f"- {line}" for line in first_lines)
+
     if kind == "mismatch":
-        intro = "我注意到你在表格里标了一些「不匹配」的热爱-优势组合，我想陪你一点点看过去。"
-    elif kind == "hypothesis_def":
-        intro = "我注意到有少数假设可能需要再具体一点，我们一起把它说得更像「你想做的事」本身，好吗？"
-    elif kind == "should_do":
-        intro = "我注意到你把一些方向标成了「应该做」，我想陪你看看这背后更多是外界的期待，还是也有一点内心的火花。"
-    elif kind == "future":
-        intro = "我注意到你把一些方向标成了「未来」，我们可以聊聊现在还缺什么、以及有没有现在就能开始的一小步。"
-    else:
-        intro = "关于你刚才表格里标出的部分，我想和你多聊几句。"
-    first = items[0].get("line", "") if items else ""
+        return (
+            "你好呀，很高兴和你一起聊聊这张表格里的「热爱」与「优势」。\n"
+            "我们会一个一个来看，你只需要跟着我的问题慢慢想就好。\n\n"
+            "先看第 1 条：\n"
+            f"{first_block}\n\n"
+            "为了更清楚地理解你的判断，我想先问问——你觉得这个组合为什么「不匹配」呢？"
+        )
+    if kind == "hypothesis_def":
+        return (
+            "你好呀，很高兴和你一起梳理这份职业探索表格。\n"
+            "我注意到有几条「假设」还可以再具体一些，我们一条条来完善。\n\n"
+            "先看第 1 条：\n"
+            f"{first_block}\n\n"
+            "关于这一条假设，我想请你回想一下：当你说到你的热爱和优势时，"
+            "你脑海里有没有浮现出一个更具体的、你每天都在做的事情的场景？"
+        )
+    if kind == "should_do":
+        return (
+            "你好呀！很高兴能和你一起聊聊这些职业发展的可能性。\n"
+            "在接下来的对话中，我会针对你标记为「应该做」的每个假设，"
+            "陪你一起探索背后的原因——看看它们到底是来自外界的「应该」，"
+            "还是内心深处其实「忍不住想做」。\n\n"
+            "先看第 1 条：\n"
+            f"{first_block}\n\n"
+            "你说这件事更像是「应该做」，我想先好奇一下——"
+            "让你觉得「这更像任务而不是享受」的部分，具体是什么？"
+        )
+    if kind == "future":
+        return (
+            "你好呀！很高兴和你一起梳理这些「未来」规划。\n"
+            "今天我们会一个一个来看你标记为「未来」的职业可能性，"
+            "聊一聊背后的原因，也看看有没有一些现在就可以着手的小动作。\n\n"
+            "先看第 1 条：\n"
+            f"{first_block}\n\n"
+            "你把它归为「未来」，觉得还需要积累或等待时机。"
+            "我想先好奇一下——你觉得目前还缺少哪些具体的积累或条件？"
+        )
+
+    # 兜底
     return (
-        f"{intro}\n我们先从这一条开始好吗？\n{first}\n"
+        "关于你刚才表格里标出的部分，我想和你多聊几句。\n"
+        f"我们先从这一条开始好吗？\n{first_label}\n"
         "（先不改热爱、优势等前提字段；聊完请点右上角「结束讨论」。）"
     )
 
 
+# ---------------------------------------------------------------------------
+# 弹窗/条带文案（字段级模板）
+# ---------------------------------------------------------------------------
+
 def build_bar_copy_zh(kind: str, items: List[Dict[str, Any]], llm_failed: bool) -> str:
-    """内嵌条说明文案（非弹窗）。"""
+    """内嵌条说明文案（非弹窗）。按步骤分别展示字段级条目列表。"""
     n = len(items)
+
     if llm_failed:
         return (
-            "系统刚才没能自动完成假设检查。你可以选「继续进入下一步」直接推进；"
-            "或选「深入讨论」，在右侧和我慢慢聊你不确定的条目。当前讨论不修改热爱、优势等前提字段。"
+            "系统刚才没能自动完成假设检查。\n"
+            "你可以直接「进入下一步」，也可以点「深入讨论」，我们在右侧把不确定的条目逐一聊清楚。"
         )
+
     if kind == "mismatch":
-        head = f"注意到你标记了以下「不匹配」的项（共 {n} 条）："
+        head = f"我注意到你标记了以下「不匹配」的项（共 {n} 条）："
+        explain = "我们可以一起分析背后的原因、影响，以及是否存在调整后的匹配可能。"
     elif kind == "hypothesis_def":
-        head = f"以下假设可能需要再具体一点（共 {n} 条）："
+        head = "我注意到，你写的这几条职业假设，与我们通常理解的（比如具体、可检验、有边界）有一些不同。对于这些内容，我想带你深入探讨，发掘出你可能还没意识到的可能性。"
+        explain = "我们会基于你的热爱和优势，逐条把假设聊得更具体。"
     elif kind == "should_do":
-        head = f"注意到你标记了以下「应该做」的项（共 {n} 条）："
+        head = f"我注意到你标记了以下「应该做」的项（共 {n} 条）："
+        explain = "我们可以一起看看这些选择背后是外界期待，还是也存在内在驱动力。"
     elif kind == "future":
-        head = f"注意到你标记了以下「未来」的项（共 {n} 条）："
+        head = f"我注意到你标记了以下「未来」的项（共 {n} 条）："
+        explain = "我们可以一起梳理：哪些条件还缺，哪些小步其实现在就能开始。"
     else:
-        head = "注意到以下条目："
-    body = "\n".join(f"{i + 1}. {it.get('line', '')}" for i, it in enumerate(items[:8]))
+        head = "我注意到以下条目："
+        explain = "如果你愿意，我们可以逐条深入讨论。"
+
+    body = _item_lines(kind, items, limit=8)
+
     return (
-        f"{head}\n{body}\n\n"
-        "要针对这些多聊几句，还是直接进入下一步？（不修改表格里的热爱、优势等前提字段）"
+        f"{head}\n\n"
+        f"待讨论条目：\n{body}\n\n"
+        f"{explain}\n"
+        "如果你愿意，点击「深入讨论」；也可以直接「进入下一步」。"
     )
 
+
+# ---------------------------------------------------------------------------
+# 闸门入口（不变）
+# ---------------------------------------------------------------------------
 
 async def try_build_neg_gate_response(
     *,
@@ -283,6 +449,11 @@ async def try_build_neg_gate_response(
 
     if step in (2, 5, 6) and not items:
         return None
+
+    # 重新生成 label（LLM 筛选后的 items 仍然携带原始字段，直接格式化即可）
+    for item in items:
+        if "label" not in item:
+            item["label"] = _item_label(kind, item)
 
     inj = build_injection_zh(step, kind, items, llm_failed)
     opening = build_opening_user_visible_zh(step, kind, items, llm_failed)

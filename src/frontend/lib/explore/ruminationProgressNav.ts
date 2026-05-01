@@ -46,6 +46,21 @@ export function isRuminationFilterStepReachable(
 }
 
 /**
+ * 五轮结束后回看时的最佳展示步骤。
+ * 优先 step7 submitted 快照（终选结果），无则回退到 max_reached step。
+ * 用于 recommend/end 终态下自动加载左栏只读结果表。
+ */
+export function resolveReviewStepAfterCompletion(p: RuminationProgress | null): number {
+  if (!p) return 0;
+  const snaps = p.filter_step_snapshots ?? {};
+  // 优先 step7 submitted
+  const s7 = snaps['7'];
+  if (s7?.submitted != null) return 7;
+  // 回退到 max_reached
+  return computeMaxReachedFromSnapshots(p);
+}
+
+/**
  * 兼容旧调用：可浏览的「序号上界」近似值（用于少数仍需单值的逻辑）。
  * 注意：进度条分段是否可点请以 {@link isRuminationFilterStepReachable} 为准，勿用本值做 step<=N 判断。
  */

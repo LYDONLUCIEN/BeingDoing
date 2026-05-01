@@ -111,8 +111,31 @@ export function sliceMessagesForRuminationStep(
 }
 
 /**
+ * 判断当前 viewStep 是否处于「回看模式」。
+ * 条件：后端有 submitted 快照，且 viewStep 不等于后端当前活跃 filter_step。
+ * 回看模式下表格只读，消息区仅展示该步切片，不影响当前数据。
+ */
+export function isRuminationReviewMode(
+  viewStep: number,
+  progress: { main_section?: string | null; filter_step?: number | null; filter_step_snapshots?: Record<string, { submitted?: unknown }> } | null
+): boolean {
+  if (!progress || viewStep < 1) return false;
+  const ms = progress.main_section;
+  const fs = progress.filter_step ?? 0;
+
+  // 不在筛选段（或已完成）：所有步骤都是回看
+  if (ms !== 'filter') return true;
+
+  // 在筛选段：只有 viewStep !== 当前活跃步时为回看
+  if (fs > 0 && viewStep !== fs) return true;
+
+  return false;
+}
+
+/**
  * 「重新填写」从当前筛选子步起直到对话末尾整段删除（与后端从本步起清空后续快照一致）。
  * 保留本子步起点边界 b[viewStep]，删除 viewStep+1.. 的边界键。
+ * 仅允许从当前活跃步（非回看模式）执行。
  */
 export function cutMessagesForRuminationStepRefill(
   messages: ThreadMessage[],

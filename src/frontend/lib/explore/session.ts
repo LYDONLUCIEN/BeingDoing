@@ -68,12 +68,12 @@ export function setActivationSessionId(session: ExploreSession, activationSessio
   };
 }
 
-/** history API metadata: explicit thread_id or legacy session_id (= thread). */
+/** history API metadata: strict thread_id only. */
 export function readThreadIdFromHistoryMetadata(
   meta: Record<string, unknown> | null | undefined
 ): string | undefined {
   if (!meta) return undefined;
-  const t = meta.thread_id ?? meta.session_id;
+  const t = meta.thread_id;
   if (typeof t === 'string' && t.trim()) return t.trim();
   return undefined;
 }
@@ -127,7 +127,10 @@ export function applyExploreResumeToSession(
 export function unlockNextPhase(session: ExploreSession): ExploreSession {
   const keys = PHASES.map((p) => p.key);
   const currentIdx = keys.indexOf(session.currentPhase);
+  // currentPhase 不在 PHASES 中（异常数据）时不做任何变更，避免跳到 values
+  if (currentIdx < 0) return session;
   const nextKey = keys[currentIdx + 1];
+  // 已是最后阶段（rumination）时不再前进
   if (!nextKey) return session;
   const updated: ExploreSession = {
     ...session,
@@ -158,4 +161,47 @@ export function getLastActivationCode(): string {
 export function setLastActivationCode(code: string): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem('explore_last_code', code);
+}
+
+// ──────────────────────────────────────────────
+// 用户维度问卷完成状态（不随激活码变化，切换激活码仍然有效）
+// 按用户 ID 隔离，支持多账号切换
+// ──────────────────────────────────────────────
+
+const USER_SURVEY_DONE_PREFIX = 'explore_user_survey_';
+
+/** 标记指定用户已完成问卷（用户维度，localStorage 持久化） */
+export function setUserSurveyCompleted(userId: string, done: boolean): void {
+  if (typeof window === 'undefined' || !userId) return;
+  localStorage.setItem(`${USER_SURVEY_DONE_PREFIX}${userId}`, done ? '1' : '0');
+}
+
+/** 读取当前用户维度问卷完成状态（默认 false） */
+export function getUserSurveyCompleted(userId?: string): boolean {
+  if (typeof window === 'undefined') return false;
+  // 未传 userId 时尝试从 auth-storage 读取当前用户
+  if (!userId) {
+    try {
+      const raw = localStorage.getItem('auth-storage');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        userId = parsed?.state?.user?.user_id;
+      }
+    } catch {}
+    if (!userId) return false;
+  }
+  return localStorage.getItem(`${USER_SURVEY_DONE_PREFIX}${userId}`) === '1';
+}
+
+/** 清除所有用户的问卷完成状态（登出时调用） */
+export function clearAllUserSurveyStatus(): void {
+  if (typeof window === 'undefined') return;
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.startsWith(USER_SURVEY_DONE_PREFIX)) {
+      keysToRemove.push(key);
+    }
+  }
+  keysToRemove.forEach((k) => localStorage.removeItem(k));
 }

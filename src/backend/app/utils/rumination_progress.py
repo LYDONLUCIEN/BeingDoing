@@ -33,6 +33,8 @@ DEFAULT_PROGRESS: Dict[str, Any] = {
     "pending_table_submit": None,
     # 否定/标记跟进：awaiting_choice | exploring | closed
     "rumination_neg_state": None,
+    # 每子步「深入聊聊」闸门首次触发标记：集合，触发的子步号写入；重新填写时仅清除当前步
+    "neg_gate_triggered_steps": [],
 }
 
 
@@ -102,6 +104,12 @@ def _normalize_loaded(data: Dict[str, Any]) -> Dict[str, Any]:
         out["pending_table_submit"] = None
     if "rumination_neg_state" not in data:
         out["rumination_neg_state"] = None
+    # neg_gate_triggered_steps: 确保为列表，兼容旧数据
+    raw_triggered = out.get("neg_gate_triggered_steps")
+    if not isinstance(raw_triggered, list):
+        out["neg_gate_triggered_steps"] = []
+    else:
+        out["neg_gate_triggered_steps"] = [int(x) for x in raw_triggered if isinstance(x, (int, float, str))]
     return out
 
 
@@ -196,4 +204,46 @@ def merge_rumination_progress_fields(
         json.dumps(current, ensure_ascii=False, indent=2, default=str),
         encoding="utf-8",
     )
+    return current
+
+
+def is_neg_gate_triggered(progress: Dict[str, Any], step: int) -> bool:
+    """检查指定子步的「深入聊聊」闸门是否已经触发过。"""
+    triggered: list = progress.get("neg_gate_triggered_steps") or []
+    return step in triggered
+
+
+def mark_neg_gate_triggered(
+    reports_root: Path, report_id: str, step: int
+) -> Dict[str, Any]:
+    """标记某子步闸门已触发（幂等：已存在则不重复写入）。"""
+    current = load_rumination_progress(reports_root, report_id)
+    triggered: list = current.get("neg_gate_triggered_steps") or []
+    if step not in triggered:
+        triggered.append(step)
+        current["neg_gate_triggered_steps"] = triggered
+        path = _rumination_progress_file(reports_root, report_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(current, ensure_ascii=False, indent=2, default=str),
+            encoding="utf-8",
+        )
+    return current
+
+
+def clear_neg_gate_triggered_step(
+    reports_root: Path, report_id: str, step: int
+) -> Dict[str, Any]:
+    """清除某子步的闸门触发标记（重新填写时调用）。"""
+    current = load_rumination_progress(reports_root, report_id)
+    triggered: list = current.get("neg_gate_triggered_steps") or []
+    if step in triggered:
+        triggered = [s for s in triggered if s != step]
+        current["neg_gate_triggered_steps"] = triggered
+        path = _rumination_progress_file(reports_root, report_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(current, ensure_ascii=False, indent=2, default=str),
+            encoding="utf-8",
+        )
     return current

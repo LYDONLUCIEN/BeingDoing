@@ -97,7 +97,7 @@ export default function TopNavbar() {
   const handleNavClick = (item: typeof NAV_ITEMS[number], e: React.MouseEvent) => {
     if (item.requiresAuth && !showAuth) {
       e.preventDefault();
-      openAuthModal(item.href);
+      openAuthModal('/explore/intro');
     }
     setMobileOpen(false);
   };

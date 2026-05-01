@@ -108,6 +108,7 @@ export const zh = {
     phaseComplete: {
       title: '这一段探索完成了',
       continue: '谢谢，继续',
+      dontRemind: '不再提醒',
       outro: {
         values:
           '恭喜你完成了第一轮价值观探索。下一轮我们将进入优势探索，帮助你发现你的核心能力。我们下次见。',
@@ -258,7 +259,13 @@ export const zh = {
         hypothesisTagFreelance: '个人事业',
         hypothesisTagCompany: '职业路径',
         hypothesisTagExtra: '备选方向',
-        hypothesisPendingOption: '暂未选定',
+        hypothesisPendingOption: '无',
+        /** 子步 3 假设列：「自定义」文案（替代旧「其他」） */
+        hypothesisCustomOption: '自定义',
+        /** 历史值映射：旧「其他」映射到新「自定义」 */
+        hypothesisOtherLegacy: '其他',
+        /** 历史值映射：旧「暂未选定」映射到新「无」 */
+        hypothesisPendingLegacy: '暂未选定',
         placeholderWithRow: '针对「{label}」补充说明…',
         tableEarlyTerminated: '当前筛选无剩余行，请回到回顾或前序阶段补充后再试。',
         followShowFullTable: '筛选表格已更新为最终结果，请结合列表做最终选择。',
@@ -275,13 +282,17 @@ export const zh = {
         negGateDeep: '深入讨论',
         negGateEndDeep: '结束讨论',
         negExploringHint:
-          '你已进入深入讨论：可先在输入框继续问答，结束时请点击右上角「结束讨论」提交并进入下一步。',
+          '你已进入深入讨论：我会逐条陪你聊。结束时请点击右上角「结束讨论」回到左侧表格继续修改。',
+        negGateDeepEndCloseTip:
+          '这段讨论先收在这里。你可以先回到左侧表格修改答案，改完再点确认继续。',
         negGateRemoteStepHint:
           '筛选第 {step} 步有待处理的跟进或深入讨论，请先回到该步完成后再继续其它子步。',
         negGateJumpToStep: '回到第 {step} 步',
         messageRowContextPrefix: '【关联表格行】{label}',
         finalTableTextConfirmHint:
-          '当前为筛选最后一步：请通读左侧最终方向表，无需点击表上的「确认」。稍后在对话中我会给出总结，请你通过**结论卡片**或按提示用文字完成确认即可。',
+          '在以下方向中选择1-3个。可点击整行进行点选，选完后点表格「确认」在右侧查看结论卡。',
+        reviewModeBanner: '正在查看第 {step} 步（只读回看）',
+        reviewModeContinue: '继续当前步骤',
       },
       ruminationTable: {
         confirm: '确认',
@@ -325,6 +336,10 @@ export const zh = {
       summary: '探索摘要',
       summaryDesc: '信念 × 禀赋 × 热忱 = 使命。你已在这四个维度完成深度对话，相关数据已保存。后续版本将在此呈现个性化的综合分析报告。',
       reviewChat: '回顾对话',
+      likedContentTitle: '点赞精选',
+      likedContentCount: '条点赞内容',
+      likedContentEmpty: '暂无点赞',
+      likedContentNote: '所有点赞内容均以快照留存；即使原消息被修改或删除，仍可在此查看原文。',
     },
   },
   auth: {
@@ -339,6 +354,7 @@ export const zh = {
   },
   dashboard: {
     currentProgress: '当前进度',
+    profileInfo: '个人信息',
     basicInfo: '基本信息修改',
     basicInfoDesc: '头像与昵称',
     clickAvatarToUpload: '点击头像上传新头像',

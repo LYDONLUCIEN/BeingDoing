@@ -5,6 +5,7 @@ Rumination 筛选流程的表格操作函数
 """
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -12,8 +13,18 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.domain.conclusion_card_goals import cap_strengths_keywords_list
 from app.utils.survey_storage import load_dimension_conclusions
 
-# 与前端「假设」列「暂未选定」一致；历史数据可能仍为「待定」
-RUMINATION_HYP_PENDING_MARKERS = frozenset({"待定", "暂未选定"})
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# 关键词来源标记（source tags）——用于日志与调试定位
+# ---------------------------------------------------------------------------
+_SOURCE_CONFIRMED = "confirmed_card"   # 已确认结论卡（dimension_conclusions.json）
+_SOURCE_ANCHOR = "report_anchor"       # report record.json anchor_summary.goals
+_SOURCE_TEXT = "prior_text"            # prior_context_*.txt 全文摘词（降权）
+_SOURCE_NONE = "none"                  # 无任何来源
+
+# 与前端「假设」列一致；当前文案为「无」，历史数据可能仍为「待定」「暂未选定」
+RUMINATION_HYP_PENDING_MARKERS = frozenset({"待定", "暂未选定", "无"})
 
 
 def is_rumination_hypothesis_pending(val: Any) -> bool:
@@ -27,21 +38,69 @@ _RE_STRENGTHS = re.compile(r"【禀赋[^】]*阶段结果】\s*\n(.*?)(?=【|$)"
 _RE_INTERESTS = re.compile(r"【热忱[^】]*阶段结果】\s*\n(.*?)(?=【|$)", re.DOTALL)
 _RE_PURPOSE = re.compile(r"【使命[^】]*阶段结果】\s*\n(.*?)(?=【|$)", re.DOTALL)
 
+# ---------------------------------------------------------------------------
+# 句子级片段过滤器（白名单规则）
+# 用于 strict 模式下过滤 prior_context 全文摘词，防止推理文本碎片被当作关键词
+# ---------------------------------------------------------------------------
+# 以这些词开头的片段大概率是句子而非关键词
+_SENTENCE_STARTER_RE = re.compile(
+    r"^(?:我(?:认为|觉得|希望|想|觉得|相信|发现)|"
+    r"你(?:觉得|认为|可以|可能)|"
+    r"(?:这个|那个|其实|可能|应该|可以|因为|所以|但是|而且|"
+    r"或者|如果|虽然|然而|不过|同时|另外|首先|其次|"
+    r"最后|总的来说|总的来说|从某种角度|对我来说|在我看来|"
+    r"我们需要|一方面|另一方面|举个例子|比如说|比如说|"
+    r"换句话说|也就是说|值得注意的是|除此之外|相比之下|"
+    r"相比之下|更重要的是))",
+)
+# 包含这些标点的片段视为句子片段
+_SENTENCE_END_RE = re.compile(r"[。！？!?\n]")
 
-def _extract_keywords(text: str, limit: int = 10) -> List[str]:
-    """从段落文本中提取可能的关键词（数字序号、顿号/逗号分隔等）"""
+
+def _is_sentence_fragment(text: str) -> bool:
+    """判断文本是否像句子片段而非关键词（白名单过滤器）。
+
+    返回 True 表示应被过滤掉。
+    """
+    t = text.strip()
+    if not t:
+        return True
+    # 含句末标点 → 句子
+    if _SENTENCE_END_RE.search(t):
+        return True
+    # 以常见话语标记开头 → 句子
+    if _SENTENCE_STARTER_RE.match(t):
+        return True
+    return False
+
+
+def _extract_keywords(text: str, limit: int = 10, *, strict: bool = False) -> List[str]:
+    """从段落文本中提取可能的关键词（数字序号、顿号/逗号分隔等）。
+
+    strict=True 时启用白名单过滤，拒绝句子级片段并收紧长度上限，
+    用于 prior_context 全文回退场景，降低误判权重。
+    """
     if not text or not text.strip():
         return []
+    max_len = 20 if strict else 40
     found: List[str] = []
+
+    # 第一轮：数字序号列表项（如 "1. xxx"、"2、 xxx"）
     for m in re.finditer(r"\d+[\.、]\s*([^\d\n，。、；]+)", text):
         w = m.group(1).strip()
-        if w and len(w) <= 40 and w not in found:
+        if strict and _is_sentence_fragment(w):
+            continue
+        if w and len(w) <= max_len and w not in found:
             found.append(w)
             if len(found) >= limit:
                 return found
+
+    # 第二轮：按标点拆分的短片段（strict 模式下更严格）
     for part in re.split(r"[，、；;]", text):
         w = part.strip()
-        if w and len(w) <= 40 and w not in found:
+        if strict and _is_sentence_fragment(w):
+            continue
+        if w and len(w) <= max_len and w not in found:
             found.append(w)
             if len(found) >= limit:
                 return found
@@ -49,11 +108,28 @@ def _extract_keywords(text: str, limit: int = 10) -> List[str]:
 
 
 def _normalize_alpha_marker(text: Any) -> str:
-    """修复类似 '(a 文案' -> '(a) 文案' 的历史标记缺右括号问题。"""
+    """清洗文本前后的孤立括号字符。
+
+    修复场景：
+      - '(a 文案' -> '(a) 文案'（历史字母标记缺右括号）
+      - ')文案' / '）文案' 等左侧孤立闭括号 -> '文案'
+      - '（文案'（无配对闭括号时） -> '文案'
+      - '(文案'（无配对闭括号时） -> '文案'
+    """
     s = str(text or "").strip()
     if not s:
         return ""
-    return re.sub(r"^\(([A-Za-z])\s+", r"(\1) ", s)
+    # 修复 '(a 文案' -> '(a) 文案'（历史字母标记缺右括号）
+    s = re.sub(r"^\(([A-Za-z])\s+", r"(\1) ", s)
+    # 清除左侧孤立的闭括号（半角/全角）
+    s = re.sub(r"^[)）\u3011]+", "", s)
+    # 左侧孤立的开括号：无配对时移除（全角）
+    if s.startswith("（") and "）" not in s:
+        s = s.lstrip("（")
+    # 左侧孤立的开括号：无配对时移除（半角）
+    if s.startswith("(") and ")" not in s:
+        s = s.lstrip("(")
+    return s.strip()
 
 
 def gen_table(strengths: List[str], passions: List[str]) -> List[Dict[str, Any]]:
@@ -123,7 +199,7 @@ def structure_hypothesis_round1_table(table: List[Dict[str, Any]]) -> List[Dict[
     3. 为每行准备「假设1」「假设2」空槽位，由 ``fill_hypothesis_columns_for_table`` 写入两条推荐
       （个人事业向 / 公司职业向）；「假设3」固定为空，不再提供「第三条备选」文案。
     4. 保留行内已有「用户确认的假设」字符串（若历史上有值），前端仍可在该列选择：
-       两条推荐之一、「其他」自填、「暂未选定」不选本条——交互与列定义不变，仅少一条备选假设文本。
+       两条推荐之一、「自定义」自填、「无」不选本条——交互与列定义不变，仅少一条备选假设文本。
 
     假设文案由 LLM 或占位填充，见 ``rumination_hypothesis_service``。
     """
@@ -167,13 +243,13 @@ def generate_hypotheses_round2_table(table: List[Dict[str, Any]]) -> List[Dict[s
 
 def generate_hypotheses_round3_finalize(table: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    第五轮提交后：仍空的「用户确认的假设」标为「暂未选定」（假设列可由上一轮 LLM 填充）。
+    第五轮提交后：仍空的「用户确认的假设」标为「无」（假设列可由上一轮 LLM 填充）。历史值「暂未选定」「待定」仍被识别为同义。
     """
     out: List[Dict[str, Any]] = []
     for r in table:
         row = dict(r)
         if not (row.get("用户确认的假设") or "").strip():
-            row["用户确认的假设"] = "暂未选定"
+            row["用户确认的假设"] = "无"
         out.append(row)
     return out
 
@@ -351,49 +427,232 @@ def _keywords_from_stored_dimension_conclusion(
     return out[:limit]
 
 
+def _keywords_from_report_anchor(
+    record_obj: Optional[Dict[str, Any]], phase: str, limit: int
+) -> List[str]:
+    """从 report record.json 的 steps.<phase>.anchor_summary.goals 提取关键词。"""
+    if not record_obj or not isinstance(record_obj, dict):
+        return []
+    steps = record_obj.get("steps") or {}
+    st = steps.get(phase)
+    if not isinstance(st, dict):
+        return []
+    anchor = st.get("anchor_summary") or {}
+    g = str(anchor.get("goals") or "")
+    if not g:
+        return []
+    # purpose 维度特殊处理：优先提取引号内短语
+    if phase == "purpose":
+        q = re.search(r"[「""]([^」""]{2,120})[」""]", g)
+        if q:
+            return [q.group(1).strip()]
+    got = extract_keywords_from_anchor_goals(g, limit)
+    if phase == "strengths":
+        return cap_strengths_keywords_list(got)
+    return got
+
+
+def _read_prior_context(report_dir: Path, phase: str) -> str:
+    """读取 prior_context_{phase}.txt 文件内容（截断至 12000 字符）。"""
+    path = report_dir / f"prior_context_{phase}.txt"
+    if not path.is_file():
+        return ""
+    try:
+        raw = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    return raw[:12000] if len(raw) > 12000 else raw
+
+
+def _resolve_dimension(
+    phase: str,
+    store: Dict[str, Dict[str, Any]],
+    record_obj: Optional[Dict[str, Any]],
+    report_dir: Path,
+    limit: int,
+) -> Tuple[List[str], str]:
+    """按优先级级联解析单个维度的关键词列表。
+
+    优先级链路：
+      1. confirmed_card — 已确认结论卡关键词（dimension_conclusions.json）
+      2. report_anchor  — report record.json anchor_summary.goals
+      3. prior_text     — prior_context_{phase}.txt 全文摘词（strict 模式，降权）
+
+    返回 (keywords, source_tag)。
+    """
+    # ── 优先级 1：已确认结论卡（用户确认的高可信来源）──
+    confirmed = _keywords_from_stored_dimension_conclusion(store.get(phase), phase, limit)
+    if confirmed:
+        logger.info(
+            "[rumination] %s: source=%s, count=%d, sample=%s",
+            phase, _SOURCE_CONFIRMED, len(confirmed), confirmed[:3],
+        )
+        return confirmed, _SOURCE_CONFIRMED
+
+    # ── 优先级 2：report anchor（AI 中间产物的结构化目标）──
+    anchor_kw = _keywords_from_report_anchor(record_obj, phase, limit)
+    if anchor_kw:
+        logger.info(
+            "[rumination] %s: source=%s, count=%d, sample=%s",
+            phase, _SOURCE_ANCHOR, len(anchor_kw), anchor_kw[:3],
+        )
+        return anchor_kw, _SOURCE_ANCHOR
+
+    # ── 优先级 3：全文摘词回退（strict 模式，大幅降低权重）──
+    text = _read_prior_context(report_dir, phase)
+    if text:
+        extracted = _extract_keywords(text, limit, strict=True)
+        if extracted:
+            logger.info(
+                "[rumination] %s: source=%s(strict), count=%d, sample=%s",
+                phase, _SOURCE_TEXT, len(extracted), extracted[:3],
+            )
+            return extracted, _SOURCE_TEXT
+        else:
+            logger.warning(
+                "[rumination] %s: prior_context text found but strict extraction yielded 0 keywords",
+                phase,
+            )
+
+    # ── 无任何来源 ──
+    logger.warning("[rumination] %s: no keywords resolved from any source", phase)
+    return [], _SOURCE_NONE
+
+
 def extract_dimension_lists_for_rumination_table(
     reports_root: str,
     report_id: str,
     record_obj: Optional[Dict[str, Any]],
-) -> Tuple[List[str], List[str], List[str], List[str]]:
+) -> Tuple[List[str], List[str], List[str], List[str], Dict[str, str]]:
     """
     为筛选表生成「热爱×优势」等行数据用的关键词列表。
 
-    优先用 report record.json 中各维 anchor_summary.goals；其次 dimension_conclusions.json；
-    再回退 prior_context_{phase}.txt 全文摘词。
+    优先级（从高到低）：
+      1. 已确认结论卡关键词（dimension_conclusions.json，用户已确认）
+      2. report anchor（record.json 中各维 anchor_summary.goals）
+      3. prior_context 全文摘词（strict 模式，降权并过滤句子级碎片）
+
+    每个维度的来源通过 logger 输出 source tag，便于定位回退链路。
+
+    Returns:
+        (values, strengths, interests, purpose, sources)
+        sources 为 {"values": source_tag, "strengths": ..., "interests": ..., "purpose": ...}
     """
-    v, s, i, p = extract_lists_from_report_record(record_obj)
-    report_dir = Path(reports_root) / report_id
+    logger.info("[rumination] extract_dimension_lists: report_id=%s START", report_id)
+
     store = load_dimension_conclusions(report_id, reports_root)
+    report_dir = Path(reports_root) / report_id
 
-    def _read_phase_file(phase_key: str) -> str:
-        path = report_dir / f"prior_context_{phase_key}.txt"
-        if not path.is_file():
-            return ""
-        try:
-            raw = path.read_text(encoding="utf-8").strip()
-        except OSError:
-            return ""
-        return raw[:12000] if len(raw) > 12000 else raw
+    # 逐维度按优先级级联解析
+    v, v_src = _resolve_dimension("values", store, record_obj, report_dir, 12)
+    s_raw, s_src = _resolve_dimension("strengths", store, record_obj, report_dir, 12)
+    s = cap_strengths_keywords_list(s_raw)
+    i, i_src = _resolve_dimension("interests", store, record_obj, report_dir, 8)
+    p, p_src = _resolve_dimension("purpose", store, record_obj, report_dir, 8)
 
-    if not v:
-        v = _keywords_from_stored_dimension_conclusion(store.get("values"), "values", 12)
-    if not v:
-        v = _extract_keywords(_read_phase_file("values"), 12)
-    if not s:
-        s = _keywords_from_stored_dimension_conclusion(store.get("strengths"), "strengths", 12)
-    if not s:
-        s = cap_strengths_keywords_list(_extract_keywords(_read_phase_file("strengths"), 12))
-    if not i:
-        i = _keywords_from_stored_dimension_conclusion(store.get("interests"), "interests", 8)
-    if not i:
-        i = _extract_keywords(_read_phase_file("interests"), 8)
-    purpose_out: List[str] = list(p) if p else []
-    if not purpose_out:
-        purpose_out = _keywords_from_stored_dimension_conclusion(store.get("purpose"), "purpose", 8)
-    if not purpose_out:
-        purpose_out = _extract_keywords(_read_phase_file("purpose"), 8)
-    return (v, cap_strengths_keywords_list(s), i, purpose_out)
+    sources: Dict[str, str] = {
+        "values": v_src,
+        "strengths": s_src,
+        "interests": i_src,
+        "purpose": p_src,
+    }
+
+    logger.info(
+        "[rumination] extract_dimension_lists: report_id=%s DONE — "
+        "sources: values=%s(%d), strengths=%s(%d), interests=%s(%d), purpose=%s(%d)",
+        report_id,
+        v_src, len(v), s_src, len(s), i_src, len(i), p_src, len(p),
+    )
+    return (v, s, i, p, sources)
+
+
+# ---------------------------------------------------------------------------
+# 价值观关键词快照工具（保证下拉选项与右侧对话引用同一来源）
+# ---------------------------------------------------------------------------
+# 快照存储键名（存在 filter_step_snapshots["4"] 内）
+_VALUES_SNAPSHOT_KEY = "_values_snapshot"
+_VALUES_SNAPSHOT_FIELDS = ("keywords", "source")
+
+
+def build_values_snapshot(
+    values_keywords: List[str], source_tag: str
+) -> Dict[str, Any]:
+    """构建价值观关键词快照字典，供存储到 step 4 snapshot。"""
+    return {"keywords": list(values_keywords), "source": source_tag}
+
+
+def load_values_snapshot_from_snapshots(
+    snapshots: Dict[str, Any], step: int = 4
+) -> Optional[Tuple[List[str], str]]:
+    """从 filter_step_snapshots[step] 中加载价值观关键词快照。
+
+    Returns:
+        (keywords, source_tag) 或 None（快照不存在/格式不合法时）。
+    """
+    ent = (snapshots or {}).get(str(step))
+    if not isinstance(ent, dict):
+        return None
+    snap = ent.get(_VALUES_SNAPSHOT_KEY)
+    if not isinstance(snap, dict):
+        return None
+    kws = snap.get("keywords")
+    src = snap.get("source", "")
+    if not isinstance(kws, list):
+        return None
+    valid = [str(x).strip() for x in kws if str(x).strip()]
+    if not valid:
+        return None
+    return valid, str(src)
+
+
+def save_values_snapshot_to_snapshots(
+    snapshots: Dict[str, Any],
+    values_keywords: List[str],
+    source_tag: str,
+    step: int = 4,
+) -> Dict[str, Any]:
+    """将价值观关键词快照写入 filter_step_snapshots[step]，返回更新后的 snapshots。"""
+    snapshots = dict(snapshots or {})
+    sk = str(step)
+    ent = dict(snapshots.get(sk) or {})
+    ent[_VALUES_SNAPSHOT_KEY] = build_values_snapshot(values_keywords, source_tag)
+    snapshots[sk] = ent
+    return snapshots
+
+
+def resolve_values_for_step4(
+    reports_root: str,
+    report_id: str,
+    record_obj: Optional[Dict[str, Any]],
+    snapshots: Dict[str, Any],
+) -> Tuple[List[str], str]:
+    """统一解析 step 4 使用的价值观关键词：优先使用已有快照，无快照时实时解析。
+
+    保证下拉选项与右侧对话引用同一来源，避免关键词漂移。
+
+    Returns:
+        (values_keywords, source_tag)
+    """
+    # ── 优先使用已保存的快照（保证一致性）──
+    cached = load_values_snapshot_from_snapshots(snapshots, step=4)
+    if cached is not None:
+        kws, src = cached
+        logger.info(
+            "[rumination] resolve_values_for_step4: using snapshot, source=%s, count=%d",
+            src, len(kws),
+        )
+        return kws, src
+
+    # ── 无快照时实时解析（首次进入 step 4 或快照丢失）──
+    v, s, i, p, sources = extract_dimension_lists_for_rumination_table(
+        reports_root, report_id, record_obj
+    )
+    src = sources.get("values", _SOURCE_NONE)
+    logger.info(
+        "[rumination] resolve_values_for_step4: live resolve, source=%s, count=%d",
+        src, len(v),
+    )
+    return v, src
 
 
 def build_prior_keywords_summary(prior_context: str) -> str:

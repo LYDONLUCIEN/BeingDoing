@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export type PhaseCompleteWarmModalProps = {
@@ -8,19 +9,31 @@ export type PhaseCompleteWarmModalProps = {
   /** 纯展示文案，由父组件用 t() 注入，与动效/结构解耦 */
   body: string;
   continueLabel: string;
-  onContinue: () => void;
+  dontRemindLabel?: string;
+  /** 关闭回调，参数 dontRemind 表示用户是否勾选了"不再提醒" */
+  onContinue: (dontRemind?: boolean) => void;
 };
 
 /**
  * 阶段完成祝贺弹层：结构固定，文案全部由父组件传入。
+ * 可选"不再提醒"勾选框，勾选后父组件通过 dontRemind 回调持久化。
  */
 export default function PhaseCompleteWarmModal({
   open,
   title,
   body,
   continueLabel,
+  dontRemindLabel,
   onContinue,
 }: PhaseCompleteWarmModalProps) {
+  const [dontRemind, setDontRemind] = useState(false);
+
+  /** 弹窗重新打开时重置勾选状态 */
+  const handleContinue = () => {
+    onContinue(dontRemind);
+    setDontRemind(false);
+  };
+
   return (
     <AnimatePresence>
       {open ? (
@@ -35,7 +48,7 @@ export default function PhaseCompleteWarmModal({
             type="button"
             className="absolute inset-0 bg-stone-900/25 backdrop-blur-[2px]"
             aria-label="Close overlay"
-            onClick={onContinue}
+            onClick={handleContinue}
           />
           <motion.div
             role="dialog"
@@ -63,10 +76,21 @@ export default function PhaseCompleteWarmModal({
                 </h2>
               </div>
             </div>
-            <p className="mb-8 whitespace-pre-line text-[15px] leading-relaxed text-stone-600">{body}</p>
+            <p className="mb-6 whitespace-pre-line text-[15px] leading-relaxed text-stone-600">{body}</p>
+            {dontRemindLabel && (
+              <label className="mb-6 flex cursor-pointer items-center gap-2 text-sm text-stone-500">
+                <input
+                  type="checkbox"
+                  checked={dontRemind}
+                  onChange={(e) => setDontRemind(e.target.checked)}
+                  className="h-4 w-4 rounded border-neutral-300 accent-stone-700"
+                />
+                {dontRemindLabel}
+              </label>
+            )}
             <button
               type="button"
-              onClick={onContinue}
+              onClick={handleContinue}
               className="w-full rounded-xl bg-stone-900 py-3.5 text-sm font-medium text-white shadow-sm transition hover:bg-stone-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/80 focus-visible:ring-offset-2"
             >
               {continueLabel}

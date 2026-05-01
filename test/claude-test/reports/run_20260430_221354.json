@@ -1,0 +1,1569 @@
+{
+  "timestamp": "2026-04-30T22:13:54",
+  "checklist_file": "4.28开发待测清单.md",
+  "total_items": 109,
+  "automated_passed": 69,
+  "automated_failed": 24,
+  "automated_skipped": 0,
+  "human_reviewed_pending": 16,
+  "items": [
+    {
+      "task_ids": [
+        "O-02"
+      ],
+      "description": "登录后统一跳转到\"开始探索\"页，不会跳回上次页面",
+      "section": "1.1 登录跳转",
+      "category": "一、登录与入口流程",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_login_redirect.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "O-02"
+      ],
+      "description": "多种登录方式（手机号/密码等）跳转行为一致",
+      "section": "1.1 登录跳转",
+      "category": "一、登录与入口流程",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_login_redirect.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "O-02"
+      ],
+      "description": "清除浏览器缓存后重新登录，跳转目标仍是\"开始探索\"",
+      "section": "1.1 登录跳转",
+      "category": "一、登录与入口流程",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_login_redirect.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "O-04"
+      ],
+      "description": "登录后进入个人中心，无需先输入激活码即可看到问卷信息",
+      "section": "1.2 个人中心",
+      "category": "一、登录与入口流程",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_survey_user_dimension.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "O-04"
+      ],
+      "description": "个人中心问卷数据以用户维度读取，不依赖当前激活码上下文",
+      "section": "1.2 个人中心",
+      "category": "一、登录与入口流程",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_survey_user_dimension.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "O-04"
+      ],
+      "description": "旧数据（已绑激活码的历史问卷）兼容显示正常",
+      "section": "1.2 个人中心",
+      "category": "一、登录与入口流程",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_survey_user_dimension.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "O-03"
+      ],
+      "description": "正常激活码可正常使用，归属不变",
+      "section": "2.1 激活码归属安全",
+      "category": "二、激活码流程",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_activation_security.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "O-03"
+      ],
+      "description": "激活码归属变更操作有审计日志（code、old_owner、new_owner、时间）",
+      "section": "2.1 激活码归属安全",
+      "category": "二、激活码流程",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_activation_security.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "O-03"
+      ],
+      "description": "不会出现非预期的归属迁移（账号与数据被转移）",
+      "section": "2.1 激活码归属安全",
+      "category": "二、激活码流程",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_activation_security.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-04"
+      ],
+      "description": "已填写过问卷的用户，清缓存后重新登录+输入激活码，不会要求重填问卷",
+      "section": "2.2 问卷判定（用户维度）",
+      "category": "二、激活码流程",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_survey_user_dimension.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-04"
+      ],
+      "description": "切换不同激活码，问卷完成状态不丢失（跟 user 绑定）",
+      "section": "2.2 问卷判定（用户维度）",
+      "category": "二、激活码流程",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_survey_user_dimension.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-04"
+      ],
+      "description": "多账号切换，各自问卷状态独立正确",
+      "section": "2.2 问卷判定（用户维度）",
+      "category": "二、激活码流程",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_survey_user_dimension.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-04"
+      ],
+      "description": "从未填过问卷的新用户，激活后正确跳转到问卷页",
+      "section": "2.2 问卷判定（用户维度）",
+      "category": "二、激活码流程",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_survey_user_dimension.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-05"
+      ],
+      "description": "清缓存后重新登录，Journey 自动定位到最新进度的 phase",
+      "section": "3.1 进度恢复",
+      "category": "三、Journey 导航",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_journey_resume.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-05",
+        "O-06"
+      ],
+      "description": "Journey 节点显示正确的完成/当前/锁定状态",
+      "section": "3.1 进度恢复",
+      "category": "三、Journey 导航",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_journey_resume.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-05",
+        "S-06"
+      ],
+      "description": "点击已完成阶段 → 进入该阶段（回看模式，只读）",
+      "section": "3.2 节点点击",
+      "category": "三、Journey 导航",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_journey_resume.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-05"
+      ],
+      "description": "点击未解锁阶段 → 正确降级处理（提示或回到 resume_phase）",
+      "section": "3.2 节点点击",
+      "category": "三、Journey 导航",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_journey_resume.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "O-06"
+      ],
+      "description": "跨设备登录后 Journey 状态与原设备一致",
+      "section": "3.3 跨设备/清缓存",
+      "category": "三、Journey 导航",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_cross_device_sync.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "O-06"
+      ],
+      "description": "清缓存后 Journey 消息不丢失，从后端完整恢复",
+      "section": "3.3 跨设备/清缓存",
+      "category": "三、Journey 导航",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_cross_device_sync.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "U-05"
+      ],
+      "description": "hover 节点时不会放大遮挡相邻节点",
+      "section": "3.4 Journey 样式",
+      "category": "三、Journey 导航",
+      "item_type": "human_reviewed",
+      "priority": "",
+      "status": "pending",
+      "test_file": null,
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "U-05"
+      ],
+      "description": "hover 反馈改为阴影/描边，视觉效果精致",
+      "section": "3.4 Journey 样式",
+      "category": "三、Journey 导航",
+      "item_type": "human_reviewed",
+      "priority": "",
+      "status": "pending",
+      "test_file": null,
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "U-05"
+      ],
+      "description": "节点无上缘裁切问题",
+      "section": "3.4 Journey 样式",
+      "category": "三、Journey 导航",
+      "item_type": "human_reviewed",
+      "priority": "",
+      "status": "pending",
+      "test_file": null,
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "O-06"
+      ],
+      "description": "删除对话后刷新，该对话不再出现（后端删除成功后才删本地）",
+      "section": "3.5 对话管理",
+      "category": "三、Journey 导航",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_cross_device_sync.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "O-05"
+      ],
+      "description": "多次进入不会自动新增重复对话，先以后端列表确认为准",
+      "section": "3.5 对话管理",
+      "category": "三、Journey 导航",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_conversation_dedup.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "O-05"
+      ],
+      "description": "会话列表加载完成前不显示空状态，无闪烁",
+      "section": "3.5 对话管理",
+      "category": "三、Journey 导航",
+      "item_type": "human_reviewed",
+      "priority": "",
+      "status": "pending",
+      "test_file": "backend/test_conversation_dedup.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "O-05"
+      ],
+      "description": "对话预览内容正常显示",
+      "section": "3.5 对话管理",
+      "category": "三、Journey 导航",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_conversation_dedup.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "P-08"
+      ],
+      "description": "阶段开场引导语包含\"允许不确定/可逐步来\"的冷启动容错表达",
+      "section": "4.1 通用测试（信念/禀赋/热忱/使命）",
+      "category": "四、前四阶段：信念 → 禀赋 → 热忱 → 使命",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_prompt_strings.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-01"
+      ],
+      "description": "阶段完成后点\"完成并继续\"，一次点击即前进，不需要点两次",
+      "section": "4.1 通用测试（信念/禀赋/热忱/使命）",
+      "category": "四、前四阶段：信念 → 禀赋 → 热忱 → 使命",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_completion_flow.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-10"
+      ],
+      "description": "勾选\"不再提醒\"后，同一激活码+phase 的已完成提醒不再弹出",
+      "section": "4.1 通用测试（信念/禀赋/热忱/使命）",
+      "category": "四、前四阶段：信念 → 禀赋 → 热忱 → 使命",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_rumination_recall.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-10"
+      ],
+      "description": "\"不再提醒\"持久化：刷新页面或重开会话后仍生效",
+      "section": "4.1 通用测试（信念/禀赋/热忱/使命）",
+      "category": "四、前四阶段：信念 → 禀赋 → 热忱 → 使命",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_rumination_recall.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-10"
+      ],
+      "description": "重新填写（onRefill）后，\"不再提醒\"状态可重置",
+      "section": "4.1 通用测试（信念/禀赋/热忱/使命）",
+      "category": "四、前四阶段：信念 → 禀赋 → 热忱 → 使命",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_rumination_recall.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "U-08"
+      ],
+      "description": "点赞消息后，点赞图标变为彩色填充状态",
+      "section": "4.1 通用测试（信念/禀赋/热忱/使命）",
+      "category": "四、前四阶段：信念 → 禀赋 → 热忱 → 使命",
+      "item_type": "human_reviewed",
+      "priority": "",
+      "status": "pending",
+      "test_file": null,
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "U-08"
+      ],
+      "description": "点赞数据持久化到后端（刷新后仍保持）",
+      "section": "4.1 通用测试（信念/禀赋/热忱/使命）",
+      "category": "四、前四阶段：信念 → 禀赋 → 热忱 → 使命",
+      "item_type": "human_reviewed",
+      "priority": "",
+      "status": "pending",
+      "test_file": null,
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "P-02"
+      ],
+      "description": "使命阶段对话中，用户可自然语言表达多个价值观，系统不强制单选",
+      "section": "4.2 使命阶段专项（P-02, P-03）",
+      "category": "四、前四阶段：信念 → 禀赋 → 热忱 → 使命",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_prompt_strings.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "P-02"
+      ],
+      "description": "多个价值观不需要区分主次，不要求结构化排列",
+      "section": "4.2 使命阶段专项（P-02, P-03）",
+      "category": "四、前四阶段：信念 → 禀赋 → 热忱 → 使命",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_prompt_strings.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "P-03"
+      ],
+      "description": "使命阶段对话中，用户不可见任何\"出现X次/频次统计\"文案",
+      "section": "4.2 使命阶段专项（P-02, P-03）",
+      "category": "四、前四阶段：信念 → 禀赋 → 热忱 → 使命",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_prompt_strings.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "P-03"
+      ],
+      "description": "模型推理质量不下降（仍能归纳并引导用户确认）",
+      "section": "4.2 使命阶段专项（P-02, P-03）",
+      "category": "四、前四阶段：信念 → 禀赋 → 热忱 → 使命",
+      "item_type": "human_reviewed",
+      "priority": "",
+      "status": "pending",
+      "test_file": "backend/test_prompt_strings.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-06"
+      ],
+      "description": "回看已完成阶段：表格只读，右侧对话恢复到该阶段消息边界",
+      "section": "4.3 回看与重填",
+      "category": "四、前四阶段：信念 → 禀赋 → 热忱 → 使命",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_journey_resume.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-06"
+      ],
+      "description": "回看后点\"继续\"，正确前进到当前阶段，不影响已有数据",
+      "section": "4.3 回看与重填",
+      "category": "四、前四阶段：信念 → 禀赋 → 热忱 → 使命",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_journey_resume.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-06"
+      ],
+      "description": "重新填写：显式重置当前阶段快照，允许重新填写",
+      "section": "4.3 回看与重填",
+      "category": "四、前四阶段：信念 → 禀赋 → 热忱 → 使命",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_journey_resume.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-06"
+      ],
+      "description": "重新填写后右侧对话同步回退到对应消息切片",
+      "section": "4.3 回看与重填",
+      "category": "四、前四阶段：信念 → 禀赋 → 热忱 → 使命",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_journey_resume.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "P-08"
+      ],
+      "description": "进入 Rumination 阶段，开场引导语包含冷启动容错表达",
+      "section": "5.1 开场引导",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_prompt_strings.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "P-08"
+      ],
+      "description": "开场引导语简洁不过度铺垫，语气与前四阶段一致",
+      "section": "5.1 开场引导",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_prompt_strings.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "O-01"
+      ],
+      "description": "最后一轮（step7）引导语调用来源正确，不被其他阶段模板混用",
+      "section": "5.1 开场引导",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_opening_chain.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-02"
+      ],
+      "description": "\"优势标记\"列可见但不可编辑（只读）",
+      "section": "5.2 Step 1：热爱×优势组合表",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_table_widgets.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-02"
+      ],
+      "description": "确认按钮可直接点击，不做优势标记的必填校验",
+      "section": "5.2 Step 1：热爱×优势组合表",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_table_widgets.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-03"
+      ],
+      "description": "热爱关键词来源于已确认结论卡，不会出现编造/合并/拆分的异常词",
+      "section": "5.2 Step 1：热爱×优势组合表",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_rumination_ops.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "U-07"
+      ],
+      "description": "热爱列名称显示完整，左侧无多余半个括号",
+      "section": "5.2 Step 1：热爱×优势组合表",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_table_widgets.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-03"
+      ],
+      "description": "后端日志可查关键词来源标记（conclusion_card / dimension_store / report_anchor）",
+      "section": "5.2 Step 1：热爱×优势组合表",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_rumination_ops.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "P-06",
+        "U-04"
+      ],
+      "description": "\"匹配原因\"列已移除，UI 上不可见、不可编辑",
+      "section": "5.3 Step 2：匹配判断",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_table_widgets.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "U-04"
+      ],
+      "description": "剩余列布局合理，列宽重排正常",
+      "section": "5.3 Step 2：匹配判断",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_table_widgets.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "P-06"
+      ],
+      "description": "Step 2 opening 文案包含\"如何判断匹配/不匹配\"的标准引导话术",
+      "section": "5.3 Step 2：匹配判断",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_table_widgets.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "U-06"
+      ],
+      "description": "下拉选项命名统一：\"其他\"显示为\"自定义\"，\"暂未选定\"显示为\"无\"",
+      "section": "5.3 Step 2：匹配判断",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_dropdown_naming.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "U-06"
+      ],
+      "description": "placeholder 选项灰显且不可选",
+      "section": "5.3 Step 2：匹配判断",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_dropdown_naming.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "P-04"
+      ],
+      "description": "否定弹窗展示字段级模板内容（非整行摘要）",
+      "section": "5.3 Step 2：匹配判断",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "P-04"
+      ],
+      "description": "否定弹窗中选中否定项后，展示\"否定假设文本 + 对应热爱/优势\"",
+      "section": "5.3 Step 2：匹配判断",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "S-07"
+      ],
+      "description": "\"深入聊聊\"仅首次提交时触发弹窗",
+      "section": "5.3 Step 2：匹配判断",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "U-03"
+      ],
+      "description": "假设列宽度放宽，约 15 字才换行",
+      "section": "5.4 Step 3：假设确认",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "human_reviewed",
+      "priority": "",
+      "status": "pending",
+      "test_file": null,
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "U-03"
+      ],
+      "description": "超宽假设内容可横向滚动",
+      "section": "5.4 Step 3：假设确认",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "human_reviewed",
+      "priority": "",
+      "status": "pending",
+      "test_file": null,
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "U-02"
+      ],
+      "description": "假设悬浮气泡内容完整显示，无裁切",
+      "section": "5.4 Step 3：假设确认",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "human_reviewed",
+      "priority": "",
+      "status": "pending",
+      "test_file": null,
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "U-02"
+      ],
+      "description": "长假设内容在气泡内可滚动",
+      "section": "5.4 Step 3：假设确认",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "human_reviewed",
+      "priority": "",
+      "status": "pending",
+      "test_file": null,
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "U-02"
+      ],
+      "description": "气泡位置自适应（靠近视口底部时向上翻转）",
+      "section": "5.4 Step 3：假设确认",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "human_reviewed",
+      "priority": "",
+      "status": "pending",
+      "test_file": null,
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "P-04"
+      ],
+      "description": "否定弹窗字段级模板正确展示",
+      "section": "5.4 Step 3：假设确认",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "S-07"
+      ],
+      "description": "\"深入聊聊\"仅首次提交触发",
+      "section": "5.4 Step 3：假设确认",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "S-09"
+      ],
+      "description": "\"工作目的/价值观\"下拉来源与右侧对话引用同一快照，关键词不漂移",
+      "section": "5.5 Step 4：价值观筛选",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_rumination_ops.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "U-06"
+      ],
+      "description": "下拉选项命名统一（自定义/无/灰显 placeholder）",
+      "section": "5.5 Step 4：价值观筛选",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_dropdown_naming.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "P-04"
+      ],
+      "description": "否定弹窗字段级模板正确展示",
+      "section": "5.5 Step 4：价值观筛选",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "S-07"
+      ],
+      "description": "\"深入聊聊\"仅首次提交触发",
+      "section": "5.5 Step 4：价值观筛选",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "P-04"
+      ],
+      "description": "否定弹窗字段级模板正确展示",
+      "section": "5.6 Step 5：热爱筛选",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "S-07"
+      ],
+      "description": "\"深入聊聊\"仅首次提交触发",
+      "section": "5.6 Step 5：热爱筛选",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "P-04"
+      ],
+      "description": "否定弹窗字段级模板正确展示",
+      "section": "5.7 Step 6：现实筛选",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "S-07"
+      ],
+      "description": "\"深入聊聊\"仅首次提交触发",
+      "section": "5.7 Step 6：现实筛选",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "P-05"
+      ],
+      "description": "引导文案统一为\"在以下方向中选择1-3个\"",
+      "section": "5.8 Step 7：最终选择",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_table_widgets.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "P-05"
+      ],
+      "description": "仍保留\"可点击整行\"的交互说明",
+      "section": "5.8 Step 7：最终选择",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_table_widgets.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "P-04",
+        "P-07"
+      ],
+      "description": "弹窗选择\"深入聊聊\"后，AI 逐条处理否定项，不一次总结跳步",
+      "section": "5.9 \"深入聊聊\"流程（Step 2/3/5/6 通用）",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "P-07"
+      ],
+      "description": "每个步骤的深入聊聊有独立的 system 片段和差异化引导",
+      "section": "5.9 \"深入聊聊\"流程（Step 2/3/5/6 通用）",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "P-04"
+      ],
+      "description": "深入聊聊完成后正确返回 continue 分支",
+      "section": "5.9 \"深入聊聊\"流程（Step 2/3/5/6 通用）",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "P-07"
+      ],
+      "description": "深入聊聊过程中可正常对话交互",
+      "section": "5.9 \"深入聊聊\"流程（Step 2/3/5/6 通用）",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "P-07"
+      ],
+      "description": "多条否定项场景：逐条引导完成",
+      "section": "5.9 \"深入聊聊\"流程（Step 2/3/5/6 通用）",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "P-07"
+      ],
+      "description": "仅 1 条否定项场景：正常处理",
+      "section": "5.9 \"深入聊聊\"流程（Step 2/3/5/6 通用）",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "P-07"
+      ],
+      "description": "0 条否定项场景：不触发弹窗，直接继续",
+      "section": "5.9 \"深入聊聊\"流程（Step 2/3/5/6 通用）",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "S-07"
+      ],
+      "description": "每子步首次提交触发弹窗，后续提交不重复触发",
+      "section": "5.10 \"深入聊聊\"触发控制",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "S-07"
+      ],
+      "description": "选择\"继续\"后，不会因重新提交再次弹窗",
+      "section": "5.10 \"深入聊聊\"触发控制",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "S-07"
+      ],
+      "description": "重新填写（onRefill）后重置触发标记，可再次触发",
+      "section": "5.10 \"深入聊聊\"触发控制",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "S-07"
+      ],
+      "description": "不会出现\"永不触发\"的情况",
+      "section": "5.10 \"深入聊聊\"触发控制",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "U-01"
+      ],
+      "description": "表头背景不透明，内容不穿透表头",
+      "section": "5.11 表格通用样式",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "human_reviewed",
+      "priority": "",
+      "status": "pending",
+      "test_file": null,
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "U-01"
+      ],
+      "description": "表格横向/纵向滚动正常",
+      "section": "5.11 表格通用样式",
+      "category": "五、Rumination 沉淀阶段（7 个子步骤）",
+      "item_type": "human_reviewed",
+      "priority": "",
+      "status": "pending",
+      "test_file": null,
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-01"
+      ],
+      "description": "Rumination 完成后点\"完成并继续\"，一次点击即进入报告页",
+      "section": "6.1 完成并继续",
+      "category": "六、五轮结束与报告",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_completion_flow.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-01"
+      ],
+      "description": "无竞态导致的状态不一致（如 stepLocked / session 保存时机）",
+      "section": "6.1 完成并继续",
+      "category": "六、五轮结束与报告",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_completion_flow.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-08"
+      ],
+      "description": "五轮结束后回看 Rumination，默认展示 step7 的只读结果表",
+      "section": "6.2 回看 Rumination 结果",
+      "category": "六、五轮结束与报告",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_rumination_recall.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-08"
+      ],
+      "description": "无 step7 数据时，降级到最大已到达 step",
+      "section": "6.2 回看 Rumination 结果",
+      "category": "六、五轮结束与报告",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_rumination_recall.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-08"
+      ],
+      "description": "回看时表格为只读状态，不可编辑",
+      "section": "6.2 回看 Rumination 结果",
+      "category": "六、五轮结束与报告",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_rumination_recall.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "U-08"
+      ],
+      "description": "报告中展示用户点赞过的内容，且内容可溯源到点赞时的原文",
+      "section": "6.3 报告页",
+      "category": "六、五轮结束与报告",
+      "item_type": "human_reviewed",
+      "priority": "",
+      "status": "pending",
+      "test_file": null,
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "U-08"
+      ],
+      "description": "无点赞内容时不显示点赞模块",
+      "section": "6.3 报告页",
+      "category": "六、五轮结束与报告",
+      "item_type": "human_reviewed",
+      "priority": "",
+      "status": "pending",
+      "test_file": null,
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "P-02"
+      ],
+      "description": "使命阶段报告中可包含多个价值观（与对话输出一致）",
+      "section": "6.3 报告页",
+      "category": "六、五轮结束与报告",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_prompt_strings.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "P-02"
+      ],
+      "description": "Rumination 第 4 步的工作目的/价值观在报告展示中与对话一致",
+      "section": "6.3 报告页",
+      "category": "六、五轮结束与报告",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_prompt_strings.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-04",
+        "S-05",
+        "O-06"
+      ],
+      "description": "清缓存 → 登录 → 不重填问卷 → Journey 定位正确 → 各阶段数据完整",
+      "section": "7.1 清缓存全流程回归",
+      "category": "七、跨场景回归",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_survey_user_dimension.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-04",
+        "O-03"
+      ],
+      "description": "账号 A 的数据不会出现在账号 B 中",
+      "section": "7.2 多账号切换",
+      "category": "七、跨场景回归",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_survey_user_dimension.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-04"
+      ],
+      "description": "切换账号后问卷状态独立",
+      "section": "7.2 多账号切换",
+      "category": "七、跨场景回归",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_survey_user_dimension.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "O-06"
+      ],
+      "description": "设备 A 完成的进度，设备 B 登录后可见",
+      "section": "7.3 跨设备",
+      "category": "七、跨场景回归",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_cross_device_sync.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "O-06"
+      ],
+      "description": "删除操作跨设备同步",
+      "section": "7.3 跨设备",
+      "category": "七、跨场景回归",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_cross_device_sync.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "U-06"
+      ],
+      "description": "已有的旧下拉值（\"其他\"/\"暂未选定\"）正确映射为新命名（\"自定义\"/\"无\"）",
+      "section": "7.4 历史数据兼容",
+      "category": "七、跨场景回归",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_dropdown_naming.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-09"
+      ],
+      "description": "旧用户数据（关键词来源缺失时）有降级策略，不报错",
+      "section": "7.4 历史数据兼容",
+      "category": "七、跨场景回归",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_rumination_ops.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-03"
+      ],
+      "description": "rumination 关键词提取单元测试（来源优先级验证）",
+      "section": "",
+      "category": "八、后端自动化测试验证",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_rumination_ops.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "P-04"
+      ],
+      "description": "rumination 闸门文案生成测试（字段级模板 vs 整行摘要）",
+      "section": "",
+      "category": "八、后端自动化测试验证",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "S-07"
+      ],
+      "description": "rumination 深入聊聊触发控制测试（首次/重复/重填）",
+      "section": "",
+      "category": "八、后端自动化测试验证",
+      "item_type": "automated",
+      "priority": "",
+      "status": "failed",
+      "test_file": "backend/test_neg_gate.py",
+      "evidence": "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]\nbackend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]"
+    },
+    {
+      "task_ids": [
+        "O-03"
+      ],
+      "description": "激活码归属审计日志测试",
+      "section": "",
+      "category": "八、后端自动化测试验证",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_activation_security.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "S-04"
+      ],
+      "description": "问卷用户维度判定测试",
+      "section": "",
+      "category": "八、后端自动化测试验证",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_survey_user_dimension.py",
+      "evidence": null
+    },
+    {
+      "task_ids": [
+        "O-01"
+      ],
+      "description": "开场引导语调用链路测试",
+      "section": "",
+      "category": "八、后端自动化测试验证",
+      "item_type": "automated",
+      "priority": "",
+      "status": "passed",
+      "test_file": "backend/test_opening_chain.py",
+      "evidence": null
+    }
+  ],
+  "suite_results": [
+    {
+      "test_type": "backend",
+      "total": 137,
+      "passed": 132,
+      "failed": 5,
+      "skipped": 0,
+      "duration": 1.8885369300842285,
+      "details": [
+        {
+          "file": "backend/test_opening_chain.py",
+          "passed": 5,
+          "failed": 0,
+          "skipped": 0,
+          "fail_messages": []
+        },
+        {
+          "file": "backend/test_rumination_ops.py",
+          "passed": 22,
+          "failed": 0,
+          "skipped": 0,
+          "fail_messages": []
+        },
+        {
+          "file": "backend/test_conversation_dedup.py",
+          "passed": 5,
+          "failed": 0,
+          "skipped": 0,
+          "fail_messages": []
+        },
+        {
+          "file": "backend/test_table_widgets.py",
+          "passed": 11,
+          "failed": 0,
+          "skipped": 0,
+          "fail_messages": []
+        },
+        {
+          "file": "backend/test_survey_user_dimension.py",
+          "passed": 10,
+          "failed": 0,
+          "skipped": 0,
+          "fail_messages": []
+        },
+        {
+          "file": "backend/test_completion_flow.py",
+          "passed": 4,
+          "failed": 0,
+          "skipped": 0,
+          "fail_messages": []
+        },
+        {
+          "file": "backend/test_prompt_strings.py",
+          "passed": 8,
+          "failed": 0,
+          "skipped": 0,
+          "fail_messages": []
+        },
+        {
+          "file": "backend/test_activation_security.py",
+          "passed": 10,
+          "failed": 0,
+          "skipped": 0,
+          "fail_messages": []
+        },
+        {
+          "file": "backend/test_journey_resume.py",
+          "passed": 12,
+          "failed": 0,
+          "skipped": 0,
+          "fail_messages": []
+        },
+        {
+          "file": "backend/test_cross_device_sync.py",
+          "passed": 7,
+          "failed": 0,
+          "skipped": 0,
+          "fail_messages": []
+        },
+        {
+          "file": "backend/test_rumination_recall.py",
+          "passed": 11,
+          "failed": 0,
+          "skipped": 0,
+          "fail_messages": []
+        },
+        {
+          "file": "backend/test_dropdown_naming.py",
+          "passed": 8,
+          "failed": 0,
+          "skipped": 0,
+          "fail_messages": []
+        },
+        {
+          "file": "backend/test_neg_gate.py",
+          "passed": 11,
+          "failed": 5,
+          "skipped": 0,
+          "fail_messages": [
+            "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step2_injection_contains_field_level FAILED [ 40%]",
+            "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step3_injection_contains_hypothesis_field FAILED [ 40%]",
+            "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step5_injection_field_level FAILED [ 41%]",
+            "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_step6_injection_field_level FAILED [ 42%]",
+            "backend/test_neg_gate.py::TestFieldLevelTemplates::test_p04_bar_copy_not_line_summary FAILED [ 43%]"
+          ]
+        },
+        {
+          "file": "backend/test_login_redirect.py",
+          "passed": 8,
+          "failed": 0,
+          "skipped": 0,
+          "fail_messages": []
+        }
+      ]
+    },
+    {
+      "test_type": "frontend",
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 1,
+      "duration": 0.0,
+      "details": []
+    },
+    {
+      "test_type": "e2e",
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 1,
+      "duration": 0.0,
+      "details": []
+    }
+  ]
+}

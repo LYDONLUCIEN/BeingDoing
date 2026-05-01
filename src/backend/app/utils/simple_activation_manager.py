@@ -60,6 +60,7 @@ class ActivationRecord:
     created_at: str
     expires_at: str
     last_activity_at: str
+    activation_session_id: Optional[str] = None
     status: str = ActivationStatus.ACTIVE
     owner_user_id: Optional[str] = None
     owner_email: Optional[str] = None
@@ -174,15 +175,10 @@ def bind_session_id_for_ensure_report(rec: Optional["ActivationRecord"]) -> Opti
     """
     供 ReportRegistry.ensure_report(..., session_id=...) 使用。
 
-    沙箱 Fork 已从源端完整克隆 record.json（含各 step 的 session_ids），不应再把
-    「问卷/附属目录用」的 rec.session_id 追加进 values，否则会污染克隆状态。
+    新版严格语义下，activation_session_id 仅用于激活码级别的附属数据命名空间，
+    不再注入到步骤会话池（steps.*.session_ids）中，避免与 thread_id 混用。
     """
-    if rec is None:
-        return None
-    if getattr(rec, "is_sandbox", False):
-        return None
-    sid = (rec.session_id or "").strip()
-    return sid or None
+    return None
 
 
 def _default_base_dir() -> Path:
@@ -214,6 +210,13 @@ class SimpleActivationManager:
         for code, data in raw.items():
             try:
                 data = dict(data)
+                # strict IDs: activation_session_id is canonical; keep legacy session_id persisted for now.
+                activation_sid = data.get("activation_session_id")
+                session_sid = data.get("session_id")
+                if not activation_sid and session_sid:
+                    data["activation_session_id"] = session_sid
+                if not session_sid and activation_sid:
+                    data["session_id"] = activation_sid
                 data.setdefault("vip_level", 1)
                 data.setdefault("is_sandbox", False)
                 data.setdefault("sandbox_root", None)
@@ -296,6 +299,7 @@ class SimpleActivationManager:
         record = ActivationRecord(
             code=code,
             session_id=session_id,
+            activation_session_id=session_id,
             mode=mode,
             created_at=now.isoformat() + "Z",
             expires_at=expires_at.isoformat() + "Z",
@@ -354,8 +358,8 @@ class SimpleActivationManager:
         records[norm or code] = rec
         self._save_all(records)
 
-    def update_status(self, codes: List[str], status: str) -> int:
-        """批量更新状态（active / expired / revoked）"""
+    def update_status(self, codes: List[str], status: str, actor: Optional[dict] = None) -> int:
+        """批量更新状态（active / expired / revoked），记录审计日志。"""
         status = (status or "").strip().lower()
         if status not in {
             ActivationStatus.ACTIVE.value,
@@ -364,6 +368,7 @@ class SimpleActivationManager:
             ActivationStatus.DELETED.value,
         }:
             raise ValueError("不支持的状态")
+        from app.utils.activation_audit import append_activation_audit, EVENT_STATUS_CHANGED
         records = self._load_all()
         changed = 0
         for raw in codes or []:
@@ -373,30 +378,152 @@ class SimpleActivationManager:
                 continue
             if rec.status == status:
                 continue
+            old_status = rec.status
             rec.status = status
             if status == ActivationStatus.DELETED.value:
                 rec.deleted_at = self._now_iso()
             records[code] = rec
             changed += 1
+            append_activation_audit(
+                EVENT_STATUS_CHANGED,
+                code,
+                actor_user_id=(actor or {}).get("user_id"),
+                actor_email=(actor or {}).get("email"),
+                detail={"old_status": old_status, "new_status": status},
+            )
         if changed:
             self._save_all(records)
         return changed
 
+    def extend_and_activate(
+        self,
+        codes: List[str],
+        extend_days: int,
+        actor: Optional[dict] = None,
+    ) -> Dict[str, int]:
+        """
+        批量延期并自动激活：
+        - 仅处理 active / expired
+        - revoked / deleted 跳过（按产品约束）
+        - 新 expires_at = max(now, 原 expires_at) + extend_days
+        """
+        days = int(extend_days or 0)
+        if days <= 0:
+            raise ValueError("extend_days 必须大于 0")
+
+        from app.utils.activation_audit import append_activation_audit, EVENT_EXTENDED
+
+        records = self._load_all()
+        changed = 0
+        skipped = 0
+        now = datetime.utcnow()
+
+        for raw in codes or []:
+            code = (raw or "").strip().upper()
+            rec = records.get(code)
+            if not rec:
+                skipped += 1
+                continue
+
+            if rec.status in {ActivationStatus.REVOKED.value, ActivationStatus.DELETED.value}:
+                skipped += 1
+                continue
+
+            try:
+                old_expires_dt = datetime.fromisoformat(str(rec.expires_at or "").replace("Z", ""))
+            except ValueError:
+                old_expires_dt = now
+
+            base_dt = old_expires_dt if old_expires_dt > now else now
+            new_expires_dt = base_dt + timedelta(days=days)
+
+            old_status = rec.status
+            old_expires = rec.expires_at
+            rec.expires_at = new_expires_dt.isoformat() + "Z"
+            rec.status = ActivationStatus.ACTIVE.value
+            rec.deleted_at = None
+            rec.purge_after = None
+            records[code] = rec
+            changed += 1
+
+            append_activation_audit(
+                EVENT_EXTENDED,
+                code,
+                actor_user_id=(actor or {}).get("user_id"),
+                actor_email=(actor or {}).get("email"),
+                detail={
+                    "extend_days": days,
+                    "old_status": old_status,
+                    "new_status": rec.status,
+                    "old_expires_at": old_expires,
+                    "new_expires_at": rec.expires_at,
+                },
+            )
+
+        if changed:
+            self._save_all(records)
+        return {"changed": changed, "skipped": skipped}
+
     def claim_owner(self, code: str, user: dict) -> ActivationRecord:
-        """首次绑定激活码归属到当前用户。"""
+        """
+        首次绑定激活码归属到当前用户。
+
+        安全策略：原子性读-改-写，内部重新校验归属，防止 TOCTOU 竞态覆盖。
+        - 若激活码已有归属者且非当前用户，抛 PermissionError（而非静默覆盖）。
+        - 若归属者已一致，仅刷新 last_activity_at（幂等安全）。
+        """
         norm = (code or "").strip().upper()
         records = self._load_all()
         rec = records.get(norm) or records.get(code)
         if not rec:
             raise ValueError("激活码不存在")
 
+        uid = (user or {}).get("user_id")
+        email = (user or {}).get("email")
+
+        # ---- 归属安全校验：防止竞态覆盖 ----
+        if rec.owner_user_id or rec.owner_email:
+            # 已有归属者，仅当请求者完全匹配时允许（幂等刷新）
+            if rec.owner_user_id and uid != rec.owner_user_id:
+                raise PermissionError(
+                    f"归属冲突：激活码 {norm} 已被 user_id={rec.owner_user_id} 绑定，"
+                    f"当前请求 user_id={uid}"
+                )
+            if rec.owner_email and email != rec.owner_email:
+                raise PermissionError(
+                    f"归属冲突：激活码 {norm} 已被 email={rec.owner_email} 绑定，"
+                    f"当前请求 email={email}"
+                )
+
         now = datetime.utcnow().isoformat() + "Z"
-        rec.owner_user_id = (user or {}).get("user_id")
-        rec.owner_email = (user or {}).get("email")
+        old_owner_user_id = rec.owner_user_id
+        old_owner_email = rec.owner_email
+        rec.owner_user_id = uid
+        rec.owner_email = email
         rec.claimed_at = rec.claimed_at or now
         rec.last_activity_at = now
         records[norm or code] = rec
         self._save_all(records)
+
+        # ---- 审计日志：归属变更 ----
+        from app.utils.activation_audit import (
+            append_activation_audit,
+            EVENT_OWNER_CLAIMED,
+        )
+        append_activation_audit(
+            EVENT_OWNER_CLAIMED,
+            norm,
+            actor_user_id=uid,
+            actor_email=email,
+            detail={
+                "old_owner_user_id": old_owner_user_id,
+                "old_owner_email": old_owner_email,
+                "new_owner_user_id": uid,
+                "new_owner_email": email,
+                "is_new_claim": not bool(old_owner_user_id or old_owner_email),
+            },
+        )
+
         return rec
 
     def is_owner(self, rec: ActivationRecord, user: dict) -> bool:
@@ -457,6 +584,20 @@ class SimpleActivationManager:
                 deleted_by_email=(deleted_by or {}).get("email"),
             )
             changed += 1
+            # 审计日志：软删除
+            from app.utils.activation_audit import append_activation_audit, EVENT_SOFT_DELETED
+            append_activation_audit(
+                EVENT_SOFT_DELETED,
+                code,
+                actor_user_id=(deleted_by or {}).get("user_id"),
+                actor_email=(deleted_by or {}).get("email"),
+                detail={
+                    "owner_user_id": rec.owner_user_id,
+                    "owner_email": rec.owner_email,
+                    "caller_role": caller_role,
+                    "purge_after": purge_after,
+                },
+            )
 
         if changed:
             self._save_all(records)
@@ -466,8 +607,9 @@ class SimpleActivationManager:
     def list_recycle_bin(self) -> Dict[str, ActivationRecycleRecord]:
         return self._load_recycle_bin()
 
-    def restore_from_recycle_bin(self, codes: List[str]) -> int:
-        """从垃圾桶恢复到 activations.json"""
+    def restore_from_recycle_bin(self, codes: List[str], actor: Optional[dict] = None) -> int:
+        """从垃圾桶恢复到 activations.json，记录审计日志。"""
+        from app.utils.activation_audit import append_activation_audit, EVENT_RESTORED
         records = self._load_all()
         recycle = self._load_recycle_bin()
         changed = 0
@@ -489,6 +631,17 @@ class SimpleActivationManager:
             rec.purge_after = None
             records[code] = rec
             changed += 1
+            append_activation_audit(
+                EVENT_RESTORED,
+                code,
+                actor_user_id=(actor or {}).get("user_id"),
+                actor_email=(actor or {}).get("email"),
+                detail={
+                    "owner_user_id": rec.owner_user_id,
+                    "owner_email": rec.owner_email,
+                    "deleted_at": recycled.deleted_at,
+                },
+            )
         if changed:
             self._save_all(records)
             self._save_recycle_bin(recycle)
@@ -500,6 +653,7 @@ class SimpleActivationManager:
         reports_root: Optional[Path] = None,
         *,
         caller_role: str = "admin",
+        actor: Optional[dict] = None,
     ) -> int:
         """
         从垃圾桶立即永久删除指定激活码及其所有相关数据：
@@ -540,6 +694,19 @@ class SimpleActivationManager:
             recycle.pop(code, None)
             records.pop(code, None)
             deleted_count += 1
+            # 审计日志：永久删除
+            from app.utils.activation_audit import append_activation_audit, EVENT_PERMANENT_DELETED
+            append_activation_audit(
+                EVENT_PERMANENT_DELETED,
+                code,
+                actor_user_id=(actor or {}).get("user_id"),
+                actor_email=(actor or {}).get("email"),
+                detail={
+                    "owner_user_id": rec.owner_user_id,
+                    "owner_email": rec.owner_email,
+                    "caller_role": caller_role,
+                },
+            )
         if deleted_count:
             self._save_recycle_bin(recycle)
             self._save_all(records)

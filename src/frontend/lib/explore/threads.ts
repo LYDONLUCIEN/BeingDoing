@@ -16,6 +16,8 @@ export interface RuminationTablePayload {
   singleRowMode?: boolean;
   rowCursor?: number;
   totalRows?: number;
+  /** 价值观关键词来源标签（step 4 专用：confirmed_card / report_anchor / prior_text / none） */
+  valuesSource?: string;
 }
 
 export interface ThreadMessage {

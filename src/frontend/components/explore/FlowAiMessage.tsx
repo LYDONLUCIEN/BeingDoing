@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Copy, ThumbsUp } from 'lucide-react';
+import { Copy, Heart } from 'lucide-react';
 import MessageContent from './MessageContent';
 import { copyToClipboard } from '@/lib/utils/clipboard';
-import { recordLike } from '@/lib/api/analytics';
+import { toggleLike } from '@/lib/api/analytics';
 import { useLocale } from '@/hooks/useLocale';
 
 type PhaseClass = 'values' | 'strength' | 'interest' | 'purpose' | 'rumination';
@@ -44,10 +44,18 @@ interface FlowAiMessageProps {
   /** 消息时间戳（Unix ms） */
   timestamp?: number;
   onCopy?: () => void;
-  /** 埋点：session_id、log_index、dimension，点赞时上报 */
+  /** 埋点：session_id、log_index（旧版兼容） */
   sessionId?: string;
   logIndex?: number;
   dimension?: string;
+  /** 点赞 v2：消息唯一标识 */
+  messageId?: string;
+  /** 点赞 v2：线程 ID */
+  threadId?: string;
+  /** 点赞 v2：阶段 key */
+  phaseKey?: string;
+  /** 点赞 v2：激活码 */
+  activationCode?: string;
   toolbarCopyTitle?: string;
   toolbarLikeTitle?: string;
   /** 为 true 时不显示底部复制/点赞条（如静态引导文案） */
@@ -72,6 +80,10 @@ export default function FlowAiMessage({
   sessionId,
   logIndex,
   dimension,
+  messageId,
+  threadId,
+  phaseKey,
+  activationCode,
   toolbarCopyTitle,
   toolbarLikeTitle,
   hideToolbar = false,
@@ -104,12 +116,21 @@ export default function FlowAiMessage({
   const handleLike = () => {
     const next = !liked;
     setLiked(next);
-    if (next && sessionId != null && logIndex != null) {
-      recordLike({
+    if (sessionId) {
+      toggleLike({
         session_id: sessionId,
-        log_index: logIndex,
-        content_preview: content?.slice(0, 200) || undefined,
+        thread_id: threadId,
+        message_id: messageId || `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        role: 'assistant',
+        content_preview: content?.slice(0, 500) || undefined,
+        content_snapshot: content || undefined,
         dimension: dimension || phase,
+        phase: phaseKey || phase,
+        activation_code: activationCode,
+        log_index: logIndex,
+      }).then((res) => {
+        // 以服务端返回为准
+        if (res.data?.liked !== undefined) setLiked(res.data.liked);
       }).catch(() => {});
     }
   };
@@ -191,11 +212,16 @@ export default function FlowAiMessage({
           </button>
           <button
             type="button"
-            className={`flow-toolbar-btn ${liked ? 'liked' : ''}`}
+            className={`flow-toolbar-btn flow-toolbar-like-btn ${liked ? 'liked' : ''}`}
             title={likeTitle}
             onClick={handleLike}
+            aria-pressed={liked}
           >
-            <ThumbsUp size={14} strokeWidth={1.6} />
+            <Heart
+              size={14}
+              strokeWidth={1.6}
+              className={`flow-toolbar-like-icon ${liked ? 'filled' : ''}`}
+            />
           </button>
         </div>
       )}

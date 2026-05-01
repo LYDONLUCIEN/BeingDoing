@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple, Set
 from datetime import datetime
 
-from sqlalchemy import select, func, distinct
+from sqlalchemy import select, func, distinct, delete
 from app.models.database import AsyncSessionLocal
 from app.models.analytics import AnalyticsChatTurn, AnalyticsReport, AnalyticsLike
 from app.models.user import User
@@ -81,6 +81,224 @@ class AnalyticsService:
         except Exception:
             await db.rollback()
             raise
+
+    # ──────────────── 点赞 v2：toggle / query / traceback ────────────────
+
+    @staticmethod
+    async def toggle_like(
+        user_id: Optional[str],
+        session_id: str,
+        message_id: str,
+        thread_id: Optional[str] = None,
+        role: Optional[str] = None,
+        content_preview: Optional[str] = None,
+        content_snapshot: Optional[str] = None,
+        dimension: Optional[str] = None,
+        phase: Optional[str] = None,
+        activation_code: Optional[str] = None,
+        log_index: Optional[int] = None,
+    ) -> bool:
+        """
+        点赞 / 取消点赞（toggle）。
+        同一 user_id + message_id 已存在则删除（取消），否则新增（点赞）。
+        返回 True = 已点赞，False = 已取消。
+        """
+        try:
+            async with AsyncSessionLocal() as db:
+                # 查找是否已点赞
+                q = select(AnalyticsLike).where(AnalyticsLike.message_id == message_id)
+                if user_id:
+                    q = q.where(AnalyticsLike.user_id == user_id)
+                result = await db.execute(q)
+                existing = result.scalar_one_or_none()
+
+                if existing:
+                    # 取消点赞
+                    await db.delete(existing)
+                    await db.commit()
+                    logger.info("like removed: message_id=%s user_id=%s", message_id, user_id)
+                    return False
+                else:
+                    # 新增点赞，同时留存完整快照
+                    like = AnalyticsLike(
+                        user_id=user_id,
+                        session_id=session_id,
+                        thread_id=thread_id,
+                        message_id=message_id,
+                        role=role,
+                        content_preview=(content_preview or "")[:500],
+                        content_snapshot=content_snapshot,  # 完整原文，不限长度
+                        dimension=dimension,
+                        phase=phase,
+                        activation_code=activation_code,
+                        log_index=log_index,
+                    )
+                    db.add(like)
+                    await db.commit()
+                    logger.info("like added: message_id=%s user_id=%s", message_id, user_id)
+                    return True
+        except Exception:
+            await db.rollback()
+            raise
+
+    @staticmethod
+    async def remove_like(message_id: str, user_id: Optional[str] = None) -> bool:
+        """取消指定消息的点赞"""
+        try:
+            async with AsyncSessionLocal() as db:
+                q = delete(AnalyticsLike).where(AnalyticsLike.message_id == message_id)
+                if user_id:
+                    q = q.where(AnalyticsLike.user_id == user_id)
+                result = await db.execute(q)
+                await db.commit()
+                return result.rowcount > 0
+        except Exception:
+            await db.rollback()
+            raise
+
+    @staticmethod
+    async def get_likes(
+        activation_code: Optional[str] = None,
+        phase: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """
+        获取点赞列表。
+        用于报告页展示，每条包含 content_snapshot（原文快照）+ 元数据。
+        """
+        try:
+            async with AsyncSessionLocal() as db:
+                q = select(AnalyticsLike).order_by(AnalyticsLike.created_at.desc())
+                if activation_code:
+                    q = q.where(AnalyticsLike.activation_code == activation_code)
+                if phase:
+                    q = q.where(AnalyticsLike.phase == phase)
+
+                # 总数
+                count_q = select(func.count(AnalyticsLike.id))
+                if activation_code:
+                    count_q = count_q.where(AnalyticsLike.activation_code == activation_code)
+                if phase:
+                    count_q = count_q.where(AnalyticsLike.phase == phase)
+                total = (await db.scalar(count_q)) or 0
+
+                q = q.offset(offset).limit(limit)
+                result = await db.execute(q)
+                likes = result.scalars().all()
+
+                records = []
+                for like in likes:
+                    records.append({
+                        "id": like.id,
+                        "message_id": like.message_id,
+                        "role": like.role,
+                        "content_preview": like.content_preview,
+                        "content_snapshot": like.content_snapshot,
+                        "dimension": like.dimension,
+                        "phase": like.phase,
+                        "thread_id": like.thread_id,
+                        "created_at": like.created_at.isoformat() if like.created_at else None,
+                    })
+
+                return {"records": records, "total": total, "limit": limit, "offset": offset}
+        except Exception as e:
+            logger.exception("get_likes failed: %s", e)
+            return {"records": [], "total": 0, "limit": limit, "offset": offset}
+
+    @staticmethod
+    async def check_like_status(message_ids: List[str]) -> Dict[str, bool]:
+        """批量查询消息点赞状态"""
+        try:
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(AnalyticsLike.message_id).where(
+                        AnalyticsLike.message_id.in_(message_ids)
+                    )
+                )
+                liked_ids = {row[0] for row in result.all()}
+                return {mid: mid in liked_ids for mid in message_ids}
+        except Exception as e:
+            logger.exception("check_like_status failed: %s", e)
+            return {mid: False for mid in message_ids}
+
+    @staticmethod
+    async def get_liked_message_trace(message_id: str) -> Optional[Dict[str, Any]]:
+        """
+        按 message_id 回查原文。
+        优先返回 content_snapshot（点赞时快照留存），
+        若快照为空，则尝试从对话历史文件中加载原始消息。
+        """
+        try:
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(AnalyticsLike).where(AnalyticsLike.message_id == message_id)
+                )
+                like = result.scalar_one_or_none()
+
+            if not like:
+                return None
+
+            # 优先使用快照
+            source = "snapshot"
+            content = like.content_snapshot or like.content_preview or ""
+
+            # 快照为空时，尝试从对话历史回溯
+            if not content and like.session_id:
+                content = AnalyticsService._recover_message_from_history(
+                    session_id=like.session_id,
+                    thread_id=like.thread_id,
+                    message_id=message_id,
+                    phase=like.phase,
+                )
+                if content:
+                    source = "history_recovery"
+
+            return {
+                "message_id": message_id,
+                "role": like.role,
+                "content": content,
+                "source": source,  # snapshot | history_recovery | fallback
+                "content_preview": like.content_preview,
+                "dimension": like.dimension,
+                "phase": like.phase,
+                "session_id": like.session_id,
+                "thread_id": like.thread_id,
+                "created_at": like.created_at.isoformat() if like.created_at else None,
+            }
+        except Exception as e:
+            logger.exception("get_liked_message_trace failed: %s", e)
+            return None
+
+    @staticmethod
+    def _recover_message_from_history(
+        session_id: str,
+        thread_id: Optional[str],
+        message_id: str,
+        phase: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        从对话历史文件中恢复消息内容（快照兜底策略）。
+        扫描 simple 模式的 JSON 对话文件，匹配 message_id。
+        """
+        try:
+            simple_dir = get_simple_base_dir() / session_id
+            if not simple_dir.is_dir():
+                return None
+
+            # 遍历该 session 下所有对话 JSON 文件
+            for conv_file in simple_dir.glob("*.json"):
+                try:
+                    data = json.loads(conv_file.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    continue
+                messages = data.get("messages") or []
+                for msg in messages:
+                    if msg.get("id") == message_id:
+                        return msg.get("content") or ""
+        except Exception as e:
+            logger.warning("recover_message_from_history failed: %s", e)
+        return None
 
     @staticmethod
     def _empty_dashboard() -> Dict[str, Any]:
@@ -176,10 +394,16 @@ class AnalyticsService:
                 for like in like_result.scalars().all():
                     likes.append({
                         "id": like.id,
+                        "user_id": like.user_id,
                         "session_id": like.session_id,
+                        "thread_id": like.thread_id,
+                        "message_id": like.message_id,
+                        "role": like.role,
                         "log_index": like.log_index,
                         "content_preview": like.content_preview,
                         "dimension": like.dimension,
+                        "phase": like.phase,
+                        "activation_code": like.activation_code,
                         "created_at": like.created_at.isoformat() if like.created_at else None,
                     })
 

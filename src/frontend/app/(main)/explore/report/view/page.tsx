@@ -1,15 +1,20 @@
 'use client';
 
+import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { FileText, ChevronLeft } from 'lucide-react';
-import { PHASES } from '@/lib/explore/session';
+import { PHASES, getLastActivationCode } from '@/lib/explore/session';
+import LikedContentSection from '@/components/explore/LikedContentSection';
 
 export default function ReportViewPage() {
   const router = useRouter();
 
+  // 从 localStorage 读取当前激活码
+  const activationCode = useMemo(() => getLastActivationCode(), []);
+
   return (
-    <div className="min-h-screen bg-bd-gradient text-bd-fg flex items-center justify-center px-4">
+    <div className="min-h-screen bg-bd-gradient text-bd-fg flex items-center justify-center px-4 py-12">
       <motion.div
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
@@ -46,6 +51,9 @@ export default function ReportViewPage() {
             后续版本将在此呈现个性化的综合分析报告。
           </p>
         </div>
+
+        {/* 点赞精选模块：有点赞内容才展示 */}
+        {activationCode && <LikedContentSection activationCode={activationCode} />}
 
         <div className="grid grid-cols-2 gap-3">
           {PHASES.map((p) => (

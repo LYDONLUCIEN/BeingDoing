@@ -65,6 +65,10 @@ class ActivationBatchStatusRequest(ActivationBatchActionRequest):
     status: str
 
 
+class ActivationBatchExtendRequest(ActivationBatchActionRequest):
+    extend_days: int = Field(default=30, ge=1, le=3650)
+
+
 class ActivationSyncRequest(BaseModel):
     sources: List[str] = Field(default_factory=list)
     dry_run: bool = False
@@ -427,6 +431,16 @@ async def batch_create_activations(
         ttl_minutes=request.ttl_days * 24 * 60,
         count=request.count,
     )
+    # 审计日志：批量创建
+    from app.utils.activation_audit import append_activation_audit, EVENT_BATCH_CREATED
+    for rec in created:
+        append_activation_audit(
+            EVENT_BATCH_CREATED,
+            rec.code,
+            actor_user_id=(current_user or {}).get("user_id"),
+            actor_email=(current_user or {}).get("email"),
+            detail={"ttl_days": request.ttl_days, "mode": "combined"},
+        )
     return {
         "code": 200,
         "message": "success",
@@ -456,8 +470,24 @@ async def batch_update_activation_status(
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     manager = SimpleActivationManager()
-    changed = manager.update_status(request.codes, request.status)
+    changed = manager.update_status(request.codes, request.status, actor=current_user)
     return {"code": 200, "message": "success", "data": {"changed": changed}}
+
+
+@router.post("/activations/batch-extend")
+async def batch_extend_activation_codes(
+    request: ActivationBatchExtendRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    manager = SimpleActivationManager()
+    result = manager.extend_and_activate(
+        request.codes,
+        request.extend_days,
+        actor=current_user,
+    )
+    return {"code": 200, "message": "success", "data": result}
 
 
 @router.post("/activations/batch-delete")
@@ -514,7 +544,7 @@ async def restore_activations_from_recycle(
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     manager = SimpleActivationManager()
-    changed = manager.restore_from_recycle_bin(request.codes)
+    changed = manager.restore_from_recycle_bin(request.codes, actor=current_user)
     return {"code": 200, "message": "success", "data": {"changed": changed}}
 
 
@@ -539,7 +569,7 @@ async def permanent_delete_from_recycle_bin(
     manager = SimpleActivationManager()
     base = get_simple_base_dir()
     deleted = manager.permanent_delete_from_recycle_bin(
-        request.codes, reports_root=base / "reports"
+        request.codes, reports_root=base / "reports", actor=current_user
     )
     return {"code": 200, "message": "success", "data": {"deleted": deleted}}
 
@@ -637,6 +667,16 @@ async def sync_activations_from_db(
     inserted = 0
     if not req.dry_run:
         inserted = manager.upsert_from_db_rows(merged_rows)
+        # 审计日志：数据库同步
+        from app.utils.activation_audit import append_activation_audit, EVENT_SYNC_FROM_DB
+        for row in merged_rows[:50]:  # 限制日志量，避免大量同步时日志膨胀
+            append_activation_audit(
+                EVENT_SYNC_FROM_DB,
+                (row.get("activation_code") or "").upper(),
+                actor_user_id=(current_user or {}).get("user_id"),
+                actor_email=(current_user or {}).get("email"),
+                detail={"source": row.get("source"), "mode": "insert_only"},
+            )
         # 按 source 统计实际 inserted（insert_only 下与 would_insert 等价）
         for source in selected_sources:
             by_source[source]["inserted"] = by_source[source]["would_insert"]
@@ -1514,3 +1554,22 @@ async def activation_data_inspect(
         result["user_data_files"] = [f.name for f in user_data_dir.iterdir()]
 
     return {"code": 200, "message": "success", "data": result}
+
+
+@router.get("/activation-audit-logs")
+async def get_activation_audit_logs(
+    activation_code: Optional[str] = Query(None, description="过滤指定激活码"),
+    limit: int = Query(200, ge=1, le=5000),
+    test_root: bool = Query(False, description="读取测试根目录日志"),
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """
+    查询激活码审计日志（仅 super_admin）。
+    - activation_code: 过滤指定激活码
+    - test_root: True 读取测试/沙箱根目录日志
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    from app.utils.activation_audit import read_audit_logs
+    logs = read_audit_logs(code=activation_code, limit=limit, test_root=test_root)
+    return {"code": 200, "message": "success", "data": {"items": logs, "total": len(logs)}}

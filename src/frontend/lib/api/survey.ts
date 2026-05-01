@@ -32,8 +32,14 @@ export const priorContextApi = {
   },
 };
 
-/** Simple 模式：根据激活码保存调研 */
+/** 用户维度问卷状态（不依赖激活码，登录后即可调用） */
 export const surveyApi = {
+  /** 按当前登录用户查询 basic_info 是否已填写（用户维度） */
+  getUserSurveyStatus: async (): Promise<
+    ApiResponse<{ completed: boolean; survey_data: SurveyData }>
+  > => {
+    return apiClient.get('/simple-chat/user-survey-status');
+  },
   /** 保存调研（激活码模式） */
   saveForActivation: async (
     activationCode: string,

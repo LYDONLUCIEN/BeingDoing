@@ -3,6 +3,7 @@
 """
 import json
 import logging
+import uuid
 from typing import Optional
 
 from fastapi import HTTPException, status
@@ -23,6 +24,11 @@ from app.utils.admin_policy import is_admin_debug_policy_enabled
 from app.utils.admin_prompt_lab import resolve_simple_chat_prompt_override
 from app.utils.admin_policy import is_admin_sandbox_enabled
 from app.utils.super_admin import is_super_admin_user
+from app.utils.activation_audit import (
+    append_activation_audit,
+    EVENT_OWNER_DENIED,
+    EVENT_OWNER_VERIFIED,
+)
 from app.utils.survey_storage import (
     load_basic_info_by_user,
     load_basic_info,
@@ -66,7 +72,8 @@ def resolve_default_logical_thread_id(
 ) -> str:
     """
     解析当前阶段使用的对话线程 id。
-    策略：显式 thread_id → selected_session_id → 消息数最多的文件 → 非 activation_storage_session_id 的候选 → rec.session_id。
+    策略：显式 thread_id → selected_session_id → 消息数最多的文件
+    → 非 activation_storage_session_id 的候选 → 新建 thread_id。
     """
     tid = (thread_id or "").strip()
     if tid:
@@ -92,7 +99,7 @@ def resolve_default_logical_thread_id(
     non_act = [s for s in candidates if s != act_sid]
     if non_act:
         return non_act[0]
-    return act_sid
+    return f"t_{uuid.uuid4().hex}"
 
 
 def resolve_activation_for_user(
@@ -104,12 +111,35 @@ def resolve_activation_for_user(
     rec = manager.get_activation(activation_code)
     if not rec:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="激活码不存在")
+    uid = (current_user or {}).get("user_id")
+    email = (current_user or {}).get("email")
     if not manager.is_owner(rec, current_user):
+        # 审计日志：归属拒绝
+        append_activation_audit(
+            EVENT_OWNER_DENIED,
+            activation_code,
+            actor_user_id=uid,
+            actor_email=email,
+            detail={
+                "owner_user_id": rec.owner_user_id,
+                "owner_email": rec.owner_email,
+                "endpoint": "context_resolver.resolve_activation_for_user",
+            },
+        )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="该激活码已被其他用户使用")
     if rec.status in {ActivationStatus.REVOKED, ActivationStatus.DELETED}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="激活码不可用")
     if not rec.owner_user_id and not rec.owner_email:
         rec = manager.claim_owner(rec.code, current_user)
+    else:
+        # 审计日志：归属校验通过
+        append_activation_audit(
+            EVENT_OWNER_VERIFIED,
+            activation_code,
+            actor_user_id=uid,
+            actor_email=email,
+            detail={"endpoint": "context_resolver.resolve_activation_for_user"},
+        )
     try:
         assert_sandbox_not_expired(rec)
     except ValueError as e:

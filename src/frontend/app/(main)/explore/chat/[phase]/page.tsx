@@ -25,6 +25,7 @@ import RuminationSectionProgress from '@/components/explore/RuminationSectionPro
 import RuminationTableWidget, {
   HYP_CONFIRM_KEY,
   OTHER_SELECT_VALUE,
+  normalizeRuminationValue,
 } from '@/components/explore/RuminationTableWidget';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { apiClient, getApiErrorMessage } from '@/lib/api/client';
@@ -39,10 +40,12 @@ import {
   unlockNextPhase,
   getLastActivationCode,
   applyExploreResumeToSession,
+  getUserSurveyCompleted,
   type PhaseKey,
   type ExploreSession,
 } from '@/lib/explore/session';
 import { fetchExploreResumeFromJourneys } from '@/lib/explore/journeyResume';
+import { deleteThreadBackendFirst } from '@/lib/explore/sessionRecovery';
 import {
   getThreads,
   setThreadsForPhase,
@@ -65,10 +68,12 @@ import {
   ensureDefaultStepOne,
   cutMessagesForRuminationStepRefill,
   sliceMessagesForRuminationStep,
+  isRuminationReviewMode,
 } from '@/lib/explore/ruminationStepBoundaries';
 import {
   computeMaxReachedFromSnapshots,
   isRuminationFilterStepReachable,
+  resolveReviewStepAfterCompletion,
   RUMINATION_FILTER_STEP_MAX,
 } from '@/lib/explore/ruminationProgressNav';
 import {
@@ -158,7 +163,7 @@ function mapRuminationHypConfirmAfterRegen(
   let slot: Slot;
   if (pv === OTHER_SELECT_VALUE || !pv.trim()) {
     slot = 'other_empty';
-  } else if (pendingLabel && (pv === pendingLabel || pv === '待定')) {
+  } else if (pendingLabel && (pv === pendingLabel || pv === '待定' || pv === '暂未选定')) {
     slot = 'pending';
   } else if (o1 && pv === o1) {
     slot = 'h1';
@@ -318,6 +323,10 @@ export default function ChatPhasePage() {
   const [phaseCelebrateSignal, setPhaseCelebrateSignal] = useState(0);
   const [phaseCompleteModalOpen, setPhaseCompleteModalOpen] = useState(false);
   const pendingRuminationNavigateRef = useRef(false);
+  /** 防止"完成并继续"连点 / 多处导航竞态：导航中置 true，跳转完成后置 false */
+  const isNavigatingRef = useRef(false);
+  /** 同步 canContinue 到 ref，供异步回调读取最新值 */
+  const canContinueRef = useRef(false);
   const pendingStep7SubmitRef = useRef<{
     rows: Record<string, unknown>[];
     payload: NonNullable<ThreadMessage['tablePayload']>;
@@ -340,6 +349,8 @@ export default function ChatPhasePage() {
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  /** 防止同一个 (activationCode, phase) 多次触发自动新建线程（竞态 / effect 重复执行） */
+  const autoInitGuardRef = useRef<string>('');
 
   const phaseMeta = {
     color: PHASE_COLORS[phase],
@@ -509,7 +520,8 @@ export default function ChatPhasePage() {
     if (phase === 'rumination') setRuminationRowContext(null);
   }, [phase, ruminationTablePayload?.step, ruminationTablePayload?.rows]);
 
-  // Auth & redirect
+  // Auth & redirect — 强制等待 exploreResume 对齐后再做路由准入判断
+  // 清缓存后 localStorage 为默认值，必须以后端 resume 为准，避免闪到 values 再跳转
   useEffect(() => {
     if (!adminPolicyLoaded) return;
     if (!PHASES.find((p) => p.key === phase)) {
@@ -524,24 +536,31 @@ export default function ChatPhasePage() {
     setActivationCode(code);
     const s = loadSession(code);
     setSession(s);
-    if (!s?.surveyCompleted) {
+    // 用户维度 + 激活码维度双检查，防止清缓存后误跳问卷
+    if (!s?.surveyCompleted && !getUserSurveyCompleted()) {
       router.replace('/explore/survey');
       return;
     }
-    if (!adminDebugBypass && exploreResumeSynced && !s.unlockedPhases.includes(phase)) {
+    // 未完成 resume 同步时，不执行阶段准入校验（等待 exploreResumeSynced 变为 true）
+    if (!exploreResumeSynced) return;
+    // resume 同步后，若 URL phase 不在 unlockedPhases 中，重定向到 currentPhase
+    if (!adminDebugBypass && !s.unlockedPhases.includes(phase)) {
       router.replace(`/explore/chat/${s.currentPhase}`);
-      return;
     }
   }, [phase, router, adminPolicyLoaded, adminDebugBypass, exploreResumeSynced]);
 
   /**
-   * phase / 激活码切换时，在 useEffect 批处理前将 threadsFetched 置为 false。
+   * phase / 激活码切换时，在 useEffect 批处理前将 threadsFetched 置为 false，
+   * 并重置自动新建守卫，防止旧 guard 阻止新阶段的首次 init。
    * 否则「同步线程」effect 与「init」effect 同一次提交内先后执行时，init 仍可能读到上一阶段的 threadsFetched===true
    * 与旧 threads，误判为空并 createThreadId 新建会话。
    */
   useLayoutEffect(() => {
     if (!activationCode || !phase) return;
     setThreadsFetched(false);
+    autoInitGuardRef.current = '';
+    // 切换阶段时重置导航锁
+    isNavigatingRef.current = false;
   }, [activationCode, phase]);
 
   // 从后端同步线程列表（主数据源，支持跨设备）
@@ -679,7 +698,8 @@ export default function ChatPhasePage() {
     };
   }, [activationCode, phase, mapHistoryToThreadMessages, t]);
 
-  // 激活线程切换：优先直接使用已预加载内容；仅在“完全首次进入且无会话”时才触发 init。
+  // 激活线程切换：优先直接使用已预加载内容；仅在”完全首次进入且无会话”时才触发 init。
+  // autoInitGuardRef（声明在组件顶部）确保每组 (activationCode, phase) 只触发一次 init。
   useEffect(() => {
     if (!activationCode || !phase || !threadsFetched) return;
     let cancelled = false;
@@ -689,118 +709,20 @@ export default function ChatPhasePage() {
     const activeId = activeThreadId;
 
     if (list.length === 0) {
-      // 若该 step 已有历史（无 thread_id 默认会话），优先恢复，不主动 init 创建新会话
+      // 后端线程列表已确认空（上一 effect 已拉取 /simple-chat/threads + history 并 setThreads([])），
+      // 此处仅负责：检查后端 history（无 thread_id 的默认历史）→ 若也无则才新建。
+      // 不再重复调用 /simple-chat/threads，避免竞态。
+      const guardKey = `${activationCode}::${phase}`;
+      if (autoInitGuardRef.current === guardKey) {
+        // 本 (activationCode, phase) 已执行过 init，跳过（effect 依赖变化导致的重复触发）
+        setInitLoading(false);
+        return;
+      }
+      autoInitGuardRef.current = guardKey;
+
       (async () => {
         try {
-          // 防止刷新竞态导致误判为空：先再次确认后端 threads。
-          const threadsRes = await apiClient.get('/simple-chat/threads', {
-            params: { activation_code: activationCode, phase: BACKEND_PHASE[phase] },
-          });
-          const backendThreads = (threadsRes.data?.threads ?? []) as Array<{
-            id: string;
-            title: string;
-            status: string;
-            createdAt: number;
-            dimensionConclusion?: DimensionConclusionData;
-            selected?: boolean;
-          }>;
-          if (!cancelled && backendThreads.length > 0) {
-            const sel = backendThreads.find((t) => t.selected)?.id ?? null;
-            setReportSelectedThreadId(sel);
-            let syncedThreads: ChatThread[] = backendThreads.map((t) => ({
-              id: t.id,
-              title: t.title,
-              status: t.status as 'in-progress' | 'completed',
-              messages: [],
-              createdAt: t.createdAt,
-              dimensionConclusion: t.dimensionConclusion,
-            }));
-            if (phase === 'rumination' && syncedThreads.length > 1) {
-              syncedThreads = collapseRuminationThreadsToOne(syncedThreads);
-            }
-            const first =
-              phase === 'rumination'
-                ? pickCanonicalRuminationThread(syncedThreads) ?? syncedThreads[0]
-                : syncedThreads[0];
-            /** 沉淀：本地 threads 为空但后端已有会话时，必须拉 history + 必要时 init，否则 activeThreadId 无消息、表格提交 thread 不同步 */
-            if (phase === 'rumination') {
-              let msgs: ThreadMessage[] = [];
-              try {
-                const h = await apiClient.get('/simple-chat/history', {
-                  params: {
-                    activation_code: activationCode,
-                    phase: BACKEND_PHASE[phase],
-                    thread_id: first.id,
-                  },
-                });
-                const history: any[] = h.data.messages ?? [];
-                const meta = h.data?.metadata ?? {};
-                if (typeof meta?.step_locked === 'boolean') {
-                  setStepLocked(Boolean(meta.step_locked));
-                }
-                const actSid = readActivationSessionIdFromActivationApi(h.data?.activation);
-                if (actSid && !cancelled) {
-                  setBackendSessionId(actSid);
-                  const s = loadSession(activationCode);
-                  saveSession(setActivationSessionId(s, actSid));
-                }
-                const baseMsgs = mapHistoryToThreadMessages(history, meta);
-                msgs =
-                  phase === 'rumination'
-                    ? baseMsgs
-                    : mergePendingDraftIntoMessagesFromMeta(
-                        baseMsgs,
-                        meta as Record<string, unknown>
-                      );
-              } catch {
-                /* ignore */
-              }
-              if (!cancelled && msgs.length === 0) {
-                try {
-                  const initRes = await apiClient.post('/simple-chat/init', {
-                    activation_code: activationCode,
-                    phase: BACKEND_PHASE[phase],
-                    thread_id: first.id,
-                    locale: locale === 'en' ? 'en' : 'zh',
-                  });
-                  const initMsgs: any[] = initRes.data.messages ?? [];
-                  const now = Date.now();
-                  msgs = initMsgs.map((m, i) => ({
-                    id: `init_rum_sync_${now}_${i}`,
-                    role: m.role as 'user' | 'assistant',
-                    content: m.content ?? '',
-                    createdAt: now,
-                  }));
-                  const sid = readActivationSessionIdFromActivationApi(initRes.data?.activation);
-                  if (sid && !cancelled) {
-                    setBackendSessionId(sid);
-                    const s = loadSession(activationCode);
-                    saveSession(setActivationSessionId(s, sid));
-                  }
-                } catch {
-                  /* ignore */
-                }
-              }
-              const merged: ChatThread = { ...first, messages: msgs };
-              setThreadsForPhase(activationCode, phase, [merged]);
-              setThreads([merged]);
-              setActiveThreadIdState(merged.id);
-              setActiveThreadId(activationCode, phase, merged.id);
-              setBackendSyncedThreadId(merged.id);
-              setMessages(msgs);
-              setInitLoading(false);
-              return;
-            }
-            setThreadsForPhase(activationCode, phase, syncedThreads);
-            setThreads(syncedThreads);
-            setActiveThreadIdState(first.id);
-            setActiveThreadId(activationCode, phase, first.id);
-            setBackendSyncedThreadId(first.id);
-            setMessages([]);
-            setInitLoading(false);
-            return;
-          }
-
+          // 最终确认：检查无 thread_id 的默认 history（兼容后端无 threads 但有历史记录的边界情况）
           const historyRes = await apiClient.get('/simple-chat/history', {
             params: { activation_code: activationCode, phase: BACKEND_PHASE[phase] },
           });
@@ -816,7 +738,7 @@ export default function ChatPhasePage() {
             saveSession(setActivationSessionId(s, actSid));
           }
           if (!cancelled && history.length > 0) {
-            // 仅用于前端展示历史，不绑定后端 thread_id，避免刷新时误创建新会话
+            // 后端有历史记录（无 thread_id 默认会话），恢复展示，不创建新会话
             const recoveredId = getActiveThreadId(activationCode, phase) || `__history_fallback__${phase}`;
             const baseMsgs = mapHistoryToThreadMessages(history, meta);
             const msgs =
@@ -841,36 +763,48 @@ export default function ChatPhasePage() {
             setActiveThreadId(activationCode, phase, recoveredId);
             setBackendSyncedThreadId(null);
             setMessages(msgs);
-          } else {
-            // 仅首次且无历史时才触发 init 生成首轮问题
+          } else if (!cancelled) {
+            // 后端 threads + history 均为空 → 确认为首次进入，创建新会话
             const tid = createThreadId();
-            const initRes = await apiClient.post('/simple-chat/init', {
-              activation_code: activationCode,
-              phase: BACKEND_PHASE[phase],
-              thread_id: tid,
-              locale: locale === 'en' ? 'en' : 'zh',
-            });
-            const initMsgs: any[] = initRes.data.messages ?? [];
-            const now = Date.now();
-            const msgs: ThreadMessage[] = initMsgs.map((m, i) => ({
-              id: `init_${i}`,
-              role: m.role as 'user' | 'assistant',
-              content: m.content ?? '',
-              createdAt: now,
-            }));
-            const thread: ChatThread = {
-              id: tid,
-              title: '对话 1',
-              status: 'in-progress',
-              messages: msgs,
-              createdAt: Date.now(),
-            };
-            addThread(activationCode, phase, thread);
-            setThreads(getThreads(activationCode, phase));
-            setActiveThreadId(activationCode, phase, tid);
-            setActiveThreadIdState(tid);
-            setBackendSyncedThreadId(tid);
-            setMessages(msgs);
+            try {
+              const initRes = await apiClient.post('/simple-chat/init', {
+                activation_code: activationCode,
+                phase: BACKEND_PHASE[phase],
+                thread_id: tid,
+                locale: locale === 'en' ? 'en' : 'zh',
+              });
+              const initMsgs: any[] = initRes.data.messages ?? [];
+              const now = Date.now();
+              const msgs: ThreadMessage[] = initMsgs.map((m, i) => ({
+                id: `init_${now}_${i}`,
+                role: m.role as 'user' | 'assistant',
+                content: m.content ?? '',
+                createdAt: now,
+              }));
+              const thread: ChatThread = {
+                id: tid,
+                title: '对话 1',
+                status: 'in-progress',
+                messages: msgs,
+                createdAt: now,
+              };
+              addThread(activationCode, phase, thread);
+              setThreads(getThreads(activationCode, phase));
+              setActiveThreadId(activationCode, phase, tid);
+              setActiveThreadIdState(tid);
+              setBackendSyncedThreadId(tid);
+              setMessages(msgs);
+              const sid = readActivationSessionIdFromActivationApi(initRes.data?.activation);
+              if (sid && !cancelled) {
+                setBackendSessionId(sid);
+                const s = loadSession(activationCode);
+                saveSession(setActivationSessionId(s, sid));
+              }
+            } catch (initErr: any) {
+              if (!cancelled) {
+                setChatError(getApiErrorMessage(initErr, '初始化失败，请刷新后重试'));
+              }
+            }
           }
         } catch (err: any) {
           if (!cancelled && (err?.code === 'ERR_NETWORK' || err?.message?.includes('Network'))) {
@@ -983,22 +917,40 @@ export default function ChatPhasePage() {
       const last = lastDimensionConclusionMessage(messages);
       return !!(last && !last.conclusionCollapsed && !last.conclusionConfirmed);
     })();
+  /** 回看模式：正在查看历史已提交步骤（只读），不影响当前数据 */
+  const ruminationReviewMode = useMemo(
+    () => isRuminationReviewMode(ruminationViewStep, ruminationProgressState),
+    [ruminationViewStep, ruminationProgressState]
+  );
+
   const isReadOnly =
     isSelectedCompleted || // 用户已确认完成，锁定
     (stepLocked && !adminDebugBypass) || // 阶段已锁定，普通用户只读
     (!isBackendSynced && !!activeThreadId) || // 切到其它 thread 时暂不输入（未同步）
-    pendingConclusionChoiceBlocksChat;
+    pendingConclusionChoiceBlocksChat ||
+    ruminationReviewMode; // 回看模式：只读浏览历史步骤
   const selectionMatchesReportForContinue =
     adminDebugBypass ||
     !stepLocked ||
     !reportSelectedThreadId ||
     activeThreadId === reportSelectedThreadId;
 
+  /**
+   * threadsFetched 未完成前，stepLocked/reportSelectedThreadId 尚未从后端同步，
+   * 此时 canContinue 可能基于初始值（false/null）误判为 true。
+   * 加上 threadsFetched 门控，确保后端状态已就绪后才允许"完成并继续"。
+   */
   const canContinue =
-    !!selectedThread && isSelectedCompleted && selectionMatchesReportForContinue;
+    threadsFetched &&
+    !!selectedThread &&
+    isSelectedCompleted &&
+    selectionMatchesReportForContinue;
+
+  canContinueRef.current = canContinue;
 
   const continueDisabledHint = useMemo(() => {
     if (canContinue) return '';
+    if (!threadsFetched) return '';
     if (!selectedThread) return t('explore.chat.selectCompletedHint');
     if (
       stepLocked &&
@@ -1011,6 +963,7 @@ export default function ChatPhasePage() {
     return t('explore.chat.selectCompletedHint');
   }, [
     canContinue,
+    threadsFetched,
     selectedThread,
     stepLocked,
     adminDebugBypass,
@@ -1081,17 +1034,35 @@ export default function ChatPhasePage() {
       setPhaseLockNoticeDontRemind(false);
       if (navigateNext) {
         if (!activationCode || !session) return;
-        if (!canContinue) return;
-        const updated = unlockNextPhase({ ...session, currentPhase: phase });
-        saveSession(updated);
-        setSession(updated);
-        router.push(`/explore/transition?from=${phase}`);
+        if (isNavigatingRef.current) {
+          console.warn('[dismissPhaseLockNotice] 导航中，忽略重复导航');
+          return;
+        }
+        if (!canContinueRef.current) return;
+        // 去重保护：session 已前进则不再重复 push
+        if (session.currentPhase !== phase) {
+          console.warn('[dismissPhaseLockNotice] session 已前进，跳过');
+          return;
+        }
+        isNavigatingRef.current = true;
+        console.log('[dismissPhaseLockNotice] 开始导航', { phase });
+        try {
+          const updated = unlockNextPhase({ ...session, currentPhase: phase });
+          saveSession(updated);
+          setSession(updated);
+          router.push(`/explore/transition?from=${phase}`);
+        } catch (err) {
+          console.error('[dismissPhaseLockNotice] 导航异常', err);
+          isNavigatingRef.current = false;
+        }
       }
     },
-    [activationCode, phase, session, canContinue, router]
+    [activationCode, phase, session, router]
   );
 
-  // 与激活页一致：用旅程列表中的 explore_resume 对齐进度；仅当 URL 阶段未解锁时才拉回「当前应做」阶段（已解锁阶段可自由回看，如个人空间旅程入口）
+  // ── 核心修复：清缓存后强制以 explore_resume 覆盖本地阶段 ──
+  // 无论 localStorage 是否有数据，初始化时都从后端拉取真实进度，
+  // 再做路由准入。已完成同步后 setExploreResumeSynced(true) 放行 Auth & redirect。
   useEffect(() => {
     if (!adminPolicyLoaded) return;
     if (adminDebugBypass) {
@@ -1107,17 +1078,18 @@ export default function ChatPhasePage() {
       try {
         const resume = await fetchExploreResumeFromJourneys(activationCode);
         if (cancelled) return;
+        // 始终用后端 resume 覆盖本地阶段（清缓存后本地为默认值 values）
+        const s = loadSession(activationCode);
+        const next = resume?.resume_phase
+          ? applyExploreResumeToSession(s, resume)
+          : s;
+        saveSession(next);
+        setSession(next);
+        // 路由准入：若 URL phase 未解锁，重定向到 resume_phase
         if (resume?.resume_phase) {
           const rp = resume.resume_phase as PhaseKey;
-          if (PHASES.some((p) => p.key === rp)) {
-            const s = loadSession(activationCode);
-            const next = applyExploreResumeToSession(s, resume);
-            saveSession(next);
-            setSession(next);
-            const urlPhase = phaseRef.current;
-            if (!next.unlockedPhases.includes(urlPhase)) {
-              router.replace(`/explore/chat/${rp}`);
-            }
+          if (PHASES.some((p) => p.key === rp) && !next.unlockedPhases.includes(phaseRef.current)) {
+            router.replace(`/explore/chat/${rp}`);
           }
         }
       } finally {
@@ -1330,10 +1302,11 @@ export default function ChatPhasePage() {
         setRuminationProgressState(p);
         setRuminationMaxReached(mr);
 
-        /** 终态不再自动拉表；final_choice 下普通用户用结论卡，管理员走 adminFilterTableAfterDone */
-        const terminalNoTable = ['recommend', 'end'];
+        /** 终态（recommend/end）：自动加载 step7 submitted 快照作为只读结果表，无 step7 则回退到 max_reached */
+        const terminalSections = ['recommend', 'end'] as const;
+        const isTerminal = terminalSections.includes(p.main_section as typeof terminalSections[number]);
         const userFilterTableFlow =
-          !terminalNoTable.includes(p.main_section ?? '') &&
+          !isTerminal &&
           p.main_section !== 'final_choice' &&
           ((p.filter_step ?? 0) > 0 ||
             p.main_section === 'opening' ||
@@ -1342,26 +1315,47 @@ export default function ChatPhasePage() {
         /** 管理员在筛选表提交进入 final_choice 后仍应能加载左栏表做调试 */
         const adminFilterTableAfterDone =
           adminDebugBypass && p.main_section === 'final_choice';
-        if (!userFilterTableFlow && !adminFilterTableAfterDone) {
+        if (!userFilterTableFlow && !adminFilterTableAfterDone && !isTerminal) {
           return;
         }
 
         setChatError(null);
-        /** 历史里可能仍有旧 table_widget；不能以「消息里有没有表」跳过 getTable，否则会永远停在错误子步 */
-        const stepToLoad = Math.min(
-          RUMINATION_FILTER_STEP_MAX,
-          Math.max(1, p.filter_step || 1)
-        );
+        /**
+         * 终态回看：优先加载 step7 submitted 快照；无则回退到 max_reached step。
+         * 非终态：走原有逻辑，按后端 filter_step 决定加载哪步。
+         */
+        let stepToLoad: number;
+        if (isTerminal) {
+          const reviewStep = resolveReviewStepAfterCompletion(p);
+          if (reviewStep < 1) return; // 无任何快照可展示
+          stepToLoad = reviewStep;
+        } else {
+          stepToLoad = Math.min(
+            RUMINATION_FILTER_STEP_MAX,
+            Math.max(1, p.filter_step || 1)
+          );
+        }
         setRuminationViewStep(stepToLoad);
 
         let tb = await ruminationApi.getTable(activationCode, stepToLoad);
         if (cancelled) return;
 
         let r = applyTableResponse(tb, stepToLoad);
-        if (r === 'empty' && stepToLoad !== 1) {
-          tb = await ruminationApi.getTable(activationCode, 1);
-          if (cancelled) return;
-          r = applyTableResponse(tb, 1);
+        if (r === 'empty') {
+          /**
+           * 终态回看首次加载为空时，尝试回退到 max_reached 步。
+           * 非终态：原有的回退到第 1 步逻辑。
+           */
+          const fallbackStep = isTerminal
+            ? computeMaxReachedFromSnapshots(p)
+            : (stepToLoad !== 1 ? 1 : 0);
+          if (fallbackStep >= 1 && fallbackStep !== stepToLoad) {
+            stepToLoad = fallbackStep;
+            setRuminationViewStep(stepToLoad);
+            tb = await ruminationApi.getTable(activationCode, stepToLoad);
+            if (cancelled) return;
+            r = applyTableResponse(tb, stepToLoad);
+          }
         }
         if (r === 'empty') {
           setChatError(t('explore.chat.ruminationTableMissing'));
@@ -1810,15 +1804,39 @@ export default function ChatPhasePage() {
     setInitLoading(false);
   };
 
-  const handlePhaseCompleteModalContinue = useCallback(() => {
+  const handlePhaseCompleteModalContinue = useCallback((dontRemind?: boolean) => {
+    /** 按 activationCode + phase 持久化"不再提醒" */
+    if (activationCode && dontRemind) {
+      try {
+        localStorage.setItem(`bd_phase_complete_dismiss_${activationCode}_${phase}`, '1');
+      } catch {
+        /* private mode */
+      }
+    }
     setPhaseCompleteModalOpen(false);
     if (!pendingRuminationNavigateRef.current) return;
     pendingRuminationNavigateRef.current = false;
     if (!activationCode || !session) return;
-    const nextSession = unlockNextPhase({ ...session, currentPhase: phase });
-    saveSession(nextSession);
-    setSession(nextSession);
-    router.push('/explore/transition?from=rumination');
+    if (isNavigatingRef.current) {
+      console.warn('[PhaseCompleteModalContinue] 导航中，忽略重复导航');
+      return;
+    }
+    // 去重保护
+    if (session.currentPhase !== phase) {
+      console.warn('[PhaseCompleteModalContinue] session 已前进，跳过');
+      return;
+    }
+    isNavigatingRef.current = true;
+    console.log('[PhaseCompleteModalContinue] 开始导航', { phase });
+    try {
+      const nextSession = unlockNextPhase({ ...session, currentPhase: phase });
+      saveSession(nextSession);
+      setSession(nextSession);
+      router.push('/explore/transition?from=rumination');
+    } catch (err) {
+      console.error('[PhaseCompleteModalContinue] 导航异常', err);
+      isNavigatingRef.current = false;
+    }
   }, [activationCode, session, phase, router, setSession]);
 
   const handleConfirmConclusion = async () => {
@@ -1830,6 +1848,7 @@ export default function ChatPhasePage() {
     if (!th) return;
     const lastConcl = lastDimensionConclusionMessage(messages);
     if (!lastConcl?.conclusionData) return;
+    console.log('[ConfirmConclusion] 调用 thread/complete API', { phase, threadId: targetThreadId });
     let threadCompleteOk = false;
     try {
       const res = await apiClient.post('/simple-chat/thread/complete', {
@@ -1838,8 +1857,9 @@ export default function ChatPhasePage() {
         thread_id: targetThreadId,
       });
       threadCompleteOk = res.data?.code === 200;
+      console.log('[ConfirmConclusion] thread/complete API 返回', { ok: threadCompleteOk, phase, threadId: targetThreadId });
     } catch (e) {
-      console.warn('thread/complete API failed:', e);
+      console.warn('[ConfirmConclusion] thread/complete API failed:', e);
     }
     const confirmedMessages = messages.map((m) =>
       m.type === 'dimension_conclusion'
@@ -1864,7 +1884,19 @@ export default function ChatPhasePage() {
     if (threadCompleteOk) {
       pendingRuminationNavigateRef.current = phase === 'rumination';
       setPhaseCelebrateSignal((n) => n + 1);
-      setPhaseCompleteModalOpen(true);
+      /** 检查 localStorage：用户是否对该 activationCode+phase 勾选过"不再提醒"
+       *  管理员调试模式 (adminDebugBypass) 可强制忽略该状态 */
+      let skipModal = false;
+      if (!adminDebugBypass && activationCode) {
+        try {
+          skipModal = localStorage.getItem(`bd_phase_complete_dismiss_${activationCode}_${phase}`) === '1';
+        } catch {
+          /* private mode */
+        }
+      }
+      if (!skipModal) {
+        setPhaseCompleteModalOpen(true);
+      }
     } else {
       pendingRuminationNavigateRef.current = false;
     }
@@ -1930,14 +1962,33 @@ export default function ChatPhasePage() {
           return prev.map((t) => (t.id === targetThreadId ? updated : t));
         });
       }
+      // 防连点 / 去重
+      if (isNavigatingRef.current) {
+        console.warn('[RuminationStep7Finalize] 导航中，跳过重复跳转');
+        return;
+      }
+      if (session && session.currentPhase !== phase) {
+        console.warn('[RuminationStep7Finalize] session 已前进，跳过', {
+          sessionPhase: session.currentPhase,
+          urlPhase: phase,
+        });
+        return;
+      }
+      isNavigatingRef.current = true;
+      console.log('[RuminationStep7Finalize] 开始导航', { phase });
       if (session) {
         const nextSession = unlockNextPhase({ ...session, currentPhase: phase });
         saveSession(nextSession);
         setSession(nextSession);
+        console.log('[RuminationStep7Finalize] session 已更新', {
+          nextPhase: nextSession.currentPhase,
+        });
       }
       router.push('/explore/transition?from=rumination');
     } catch (err) {
+      console.error('[RuminationStep7Finalize] 提交异常', err);
       setChatError(getApiErrorMessage(err, t('explore.chat.ruminationUi.tableSubmitError')));
+      isNavigatingRef.current = false;
     } finally {
       setRuminationTableSubmitting(false);
     }
@@ -2006,45 +2057,95 @@ export default function ChatPhasePage() {
     }
   };
 
-  const handleCompleteAndContinue = () => {
-    if (!activationCode || !session || !canContinue) return;
-    const updated = unlockNextPhase({ ...session, currentPhase: phase });
-    saveSession(updated);
-    setSession(updated);
-    router.push(`/explore/transition?from=${phase}`);
-  };
+  /**
+   * "完成并继续"统一入口：所有非沉淀阶段的导航汇聚在此。
+   * 防护：isNavigatingRef 防连点 / 重复 push；canContinueRef 读取最新值避免闭包陈旧；
+   * 日志：链路可追踪（点击→API→session 写入→跳转）。
+   */
+  const handleCompleteAndContinue = useCallback(() => {
+    if (!activationCode || !session) return;
+    // 防连点：上一轮导航尚未完成时忽略
+    if (isNavigatingRef.current) {
+      console.warn('[CompleteAndContinue] 导航中，忽略重复点击');
+      return;
+    }
+    // 读取最新 canContinue，避免闭包陈旧
+    if (!canContinueRef.current) {
+      console.warn('[CompleteAndContinue] canContinue 为 false，忽略点击', {
+        selectedThread: !!session,
+        stepLocked: true,
+        reportSelectedThreadId: true,
+      });
+      return;
+    }
+    // 去重保护：如果 session 的 currentPhase 已经不是当前 URL phase，说明已经前进过
+    if (session.currentPhase !== phase) {
+      console.warn('[CompleteAndContinue] session.currentPhase !== url phase，跳过', {
+        sessionPhase: session.currentPhase,
+        urlPhase: phase,
+      });
+      return;
+    }
+    isNavigatingRef.current = true;
+    console.log('[CompleteAndContinue] 开始导航', { phase, sessionPhase: session.currentPhase });
+    try {
+      // unlockNextPhase 内部会 saveSession
+      const updated = unlockNextPhase({ ...session, currentPhase: phase });
+      setSession(updated);
+      console.log('[CompleteAndContinue] session 已更新', {
+        prevPhase: phase,
+        nextPhase: updated.currentPhase,
+        unlockedPhases: updated.unlockedPhases,
+      });
+      router.push(`/explore/transition?from=${phase}`);
+    } catch (err) {
+      console.error('[CompleteAndContinue] 导航异常', err);
+      isNavigatingRef.current = false;
+    }
+  }, [activationCode, session, phase, setSession, router]);
 
   const handleDeleteThread = (thread: ChatThread) => {
     if (!activationCode || !phase) return;
     if (stepLocked && !adminDebugBypass) return;
     void (async () => {
-      try {
-        await apiClient.post('/simple-chat/thread/delete', {
-          activation_code: activationCode,
-          phase: BACKEND_PHASE[phase],
-          thread_id: thread.id,
-        });
-      } catch (err: any) {
-        setChatError(getApiErrorMessage(err, '删除失败，请稍后重试'));
+      // 后端优先删除：先调后端 API，成功后再同步本地
+      // 使用后端返回的 remaining_thread_ids 确保一致性，避免本地计算偏差导致刷新后重现
+      const result = await deleteThreadBackendFirst(activationCode, phase, thread.id);
+      if (!result) {
+        setChatError('删除失败，请稍后重试');
         return;
       }
-      const list = removeThread(activationCode, phase, thread.id);
-      setThreads(list);
+
+      // 使用后端返回的 remaining_thread_ids 重建本地线程列表
+      const remaining = getThreads(activationCode, phase);
+      setStepLocked(result.stepLocked);
+      if (result.selectedThreadId !== null) {
+        setReportSelectedThreadId(result.selectedThreadId);
+      }
+
       if (thread.id === activeThreadId) {
-        if (list.length > 0) {
-          const next = list[0];
+        if (remaining.length > 0) {
+          // 使用后端 selected 或本地第一个线程
+          const nextActiveId =
+            result.selectedThreadId && remaining.some((t) => t.id === result.selectedThreadId)
+              ? result.selectedThreadId
+              : remaining[0].id;
+          const next = remaining.find((t) => t.id === nextActiveId) ?? remaining[0];
           setActiveThreadIdState(next.id);
           setActiveThreadId(activationCode, phase, next.id);
           setMessages(next.messages);
           setBackendSyncedThreadId(next.id);
         } else {
+          // 删除后已无任何线程：重置自动初始化 guard，
+          // 允许后续 effect 再次触发 /simple-chat/init，避免停在空白死状态
+          autoInitGuardRef.current = '';
           setActiveThreadIdState(null);
           setMessages([]);
           setBackendSyncedThreadId(null);
-          // A 方案：不在删除回调里主动创建，统一交给「list.length===0」初始化 effect 处理，
-          // 避免删除后与 effect 同时触发造成重复创建会话。
         }
       }
+
+      setThreads(remaining);
     })();
   };
 
@@ -2483,6 +2584,14 @@ export default function ChatPhasePage() {
     return ent != null && ent.submitted != null;
   }, [ruminationViewStep, ruminationProgressState]);
 
+  /** 回看模式下跳回当前活跃步（继续流程） */
+  const handleRuminationReviewContinue = useCallback(() => {
+    const fs = ruminationProgressState?.filter_step ?? 0;
+    if (fs > 0 && fs <= RUMINATION_FILTER_STEP_MAX) {
+      void loadRuminationTableStep(fs);
+    }
+  }, [ruminationProgressState?.filter_step, loadRuminationTableStep]);
+
   const handleRuminationFilterPrev = useCallback(() => {
     if (
       ruminationViewStep <= 1 ||
@@ -2606,8 +2715,11 @@ export default function ChatPhasePage() {
     ]
   );
 
+  /** 重新填写：仅当前活跃步可触发（回看模式下禁用） */
   const handleRuminationRefillRequest = useCallback(() => {
     if (!activationCode || phase !== 'rumination' || !activeThreadId) return;
+    // 回看模式（历史已提交步）不可重填
+    if (ruminationReviewMode) return;
     if (
       ruminationTableNavLoading ||
       ruminationTableSubmitting ||
@@ -2623,6 +2735,7 @@ export default function ChatPhasePage() {
     ruminationTableNavLoading,
     ruminationTableSubmitting,
     hypothesisRegeneratingRowIndex,
+    ruminationReviewMode,
   ]);
 
   const handleRuminationRefillConfirm = useCallback(() => {
@@ -2734,6 +2847,7 @@ export default function ChatPhasePage() {
             phaseInteractionLocked={phaseInteractionLocked}
             careeringMatte
             streamBlocksSessionSwitch={sending || ruminationGuideBusy}
+            threadsLoading={!threadsFetched || initLoading}
           />
         )}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -2895,6 +3009,7 @@ export default function ChatPhasePage() {
                     )}
                     hypothesisTagExtraLabel={t('explore.chat.ruminationUi.hypothesisTagExtra')}
                     hypothesisPendingLabel={t('explore.chat.ruminationUi.hypothesisPendingOption')}
+                    hypothesisOtherLabel={t('explore.chat.ruminationUi.hypothesisCustomOption')}
                     confirmDisabledAfterCommit={ruminationStepHasSubmitted}
                     hypothesisRegenerateLabel={t('explore.chat.ruminationUi.hypothesisRegenerate')}
                     hypothesisRegeneratingLabel={t(
@@ -2902,8 +3017,9 @@ export default function ChatPhasePage() {
                     )}
                     hypothesisRegeneratingRowIndex={hypothesisRegeneratingRowIndex}
                     onHypothesisRegenerate={handleHypothesisRegenerateRow}
-                    tableRefillMode={ruminationStepHasSubmitted}
+                    tableRefillMode={ruminationStepHasSubmitted && !ruminationReviewMode}
                     onRefill={handleRuminationRefillRequest}
+                    reviewReadOnly={ruminationReviewMode}
                     onRowContextChange={setRuminationRowContext}
                     submitting={ruminationTableSubmitting}
                     confirmSoftBlocked={ruminationNegTableSubmitBlocked}
@@ -2961,6 +3077,25 @@ export default function ChatPhasePage() {
                     </button>
                   </div>
                 </header>
+              )}
+              {phase === 'rumination' && ruminationReviewMode && (
+                <div className="shrink-0 border-b border-amber-200/60 bg-amber-50/80 px-4 py-2.5 sm:px-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs leading-relaxed text-amber-800 sm:text-sm">
+                      {t('explore.chat.ruminationUi.reviewModeBanner', {
+                        step: String(ruminationViewStep),
+                      })}
+                    </p>
+                    <button
+                      type="button"
+                      disabled={ruminationTableNavLoading || sending || ruminationGuideBusy}
+                      onClick={handleRuminationReviewContinue}
+                      className="shrink-0 rounded-full bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-40 sm:text-sm"
+                    >
+                      {t('explore.chat.ruminationUi.reviewModeContinue')}
+                    </button>
+                  </div>
+                </div>
               )}
 
               <div
@@ -3029,7 +3164,7 @@ export default function ChatPhasePage() {
                   </div>
                 )}
 
-                {initLoading ? (
+                {initLoading || !exploreResumeSynced ? (
                   <div className="flex justify-center py-12">
                     <div className="flex gap-1.5">
                       {[0, 1, 2].map((i) => (
@@ -3207,6 +3342,10 @@ export default function ChatPhasePage() {
                             .filter((x) => x.role === 'assistant' && x.type !== 'dimension_conclusion')
                             .length}
                           dimension={phase}
+                          messageId={m.id}
+                          threadId={threads.find((t) => t.id === activeThreadId)?.id}
+                          phaseKey={phase}
+                          activationCode={activationCode ?? undefined}
                           hideToolbar={
                             phaseInteractionLocked
                           }
@@ -3447,7 +3586,7 @@ export default function ChatPhasePage() {
               <div className="mb-1 text-xs font-semibold tracking-wide text-sky-700">
                 {t('explore.chat.ruminationUi.negGateModalTitle')}
               </div>
-              <p className="text-sm leading-relaxed text-neutral-800">
+              <p className="whitespace-pre-line text-sm leading-relaxed text-neutral-800">
                 {(ruminationProgressState?.rumination_neg_state?.bar_copy_zh || '').trim() ||
                   t('explore.chat.ruminationUi.negGateDefaultCopy')}
               </p>
@@ -3632,6 +3771,7 @@ export default function ChatPhasePage() {
         title={t('explore.phaseComplete.title')}
         body={t(`explore.phaseComplete.outro.${phase}`)}
         continueLabel={t('explore.phaseComplete.continue')}
+        dontRemindLabel={t('explore.phaseComplete.dontRemind')}
         onContinue={handlePhaseCompleteModalContinue}
       />
     </div>

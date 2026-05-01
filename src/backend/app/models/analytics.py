@@ -33,12 +33,19 @@ class AnalyticsReport(Base):
 
 
 class AnalyticsLike(Base):
-    """用户点赞埋点：关联原始记录索引，可点击查看详情"""
+    """用户点赞：支持按 message_id + user_id 去重，快照留存原文"""
     __tablename__ = "analytics_likes"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), nullable=True, index=True)  # 点赞用户 ID（未登录可为空）
     session_id = Column(String(128), nullable=False, index=True)
-    log_index = Column(Integer, nullable=False)  # 原始 runs.jsonl 中的索引
-    content_preview = Column(Text, nullable=True)  # 被点赞内容摘要，便于快速浏览
-    dimension = Column(String(50), nullable=True)
+    thread_id = Column(String(128), nullable=True, index=True)  # 对话线程 ID（simple-chat 多线程场景）
+    message_id = Column(String(128), nullable=False, index=True)  # 消息唯一标识（前端 ThreadMessage.id）
+    role = Column(String(20), nullable=True)  # 消息角色：assistant / user
+    log_index = Column(Integer, nullable=True)  # 保留兼容：原始 runs.jsonl 索引
+    content_preview = Column(Text, nullable=True)  # 内容摘要（前端截断传入，用于快速浏览）
+    content_snapshot = Column(Text, nullable=True)  # 完整原文快照（点赞时留存，删除兜底用）
+    dimension = Column(String(50), nullable=True)  # 探索维度
+    phase = Column(String(50), nullable=True)  # 阶段 key：values / strengths / interests / purpose / rumination
+    activation_code = Column(String(64), nullable=True, index=True)  # simple 模式激活码
     created_at = Column(DateTime, default=datetime.utcnow)

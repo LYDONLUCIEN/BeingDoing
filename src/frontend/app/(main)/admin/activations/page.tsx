@@ -5,6 +5,7 @@ import {
   type ActivationSyncSource,
   batchCreateActivations,
   batchDeleteActivations,
+  batchExtendActivations,
   batchUpdateActivationStatus,
   fetchActivationRecycleBin,
   fetchAdminActivations,
@@ -31,6 +32,7 @@ export default function AdminActivationsPage() {
   const [selectedCodes, setSelectedCodes] = useState<string[]>([]);
   const [createCount, setCreateCount] = useState(10);
   const [createTtlDays, setCreateTtlDays] = useState(30);
+  const [extendDays, setExtendDays] = useState(30);
   const [working, setWorking] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [syncSources, setSyncSources] = useState<ActivationSyncSource[]>([
@@ -163,6 +165,27 @@ export default function AdminActivationsPage() {
       setNotice(`已删除 ${selectedCodes.length} 条到垃圾桶`);
     } catch (e: any) {
       setError(e?.message || '批量删除失败');
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const handleBatchExtendAndActivate = async () => {
+    if (!selectedCodes.length) return;
+    setWorking(true);
+    setError(null);
+    try {
+      const res = await batchExtendActivations({
+        codes: selectedCodes,
+        extend_days: extendDays,
+      });
+      await loadActiveList();
+      setSelectedCodes([]);
+      setNotice(
+        `已延期并激活 ${(res as { changed?: number })?.changed ?? 0} 条，跳过 ${(res as { skipped?: number })?.skipped ?? 0} 条`,
+      );
+    } catch (e: any) {
+      setError(e?.message || '延期并激活失败');
     } finally {
       setWorking(false);
     }
@@ -456,6 +479,25 @@ export default function AdminActivationsPage() {
         <span className="text-bd-subtle">已选 {selectedCodes.length} 项</span>
         {tab === 'active' ? (
           <>
+            <div className="inline-flex items-center gap-2 rounded-lg border border-bd-border px-2 py-1">
+              <span className="text-[11px] text-bd-subtle">延期天数</span>
+              <input
+                type="number"
+                min={1}
+                max={3650}
+                value={extendDays}
+                onChange={(e) => setExtendDays(Number(e.target.value || 1))}
+                className="w-20 rounded-md border border-bd-border bg-bd-overlay px-2 py-1 text-[11px]"
+              />
+            </div>
+            <button
+              type="button"
+              disabled={working || !selectedCodes.length}
+              onClick={handleBatchExtendAndActivate}
+              className="px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 disabled:opacity-50"
+            >
+              延期并激活
+            </button>
             <button
               type="button"
               disabled={working || !selectedCodes.length}

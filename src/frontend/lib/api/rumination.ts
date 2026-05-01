@@ -45,6 +45,8 @@ export interface RuminationProgress {
   filter_step_snapshots?: Record<string, RuminationStepSnapshot>;
   pending_table_submit?: { step: number; table_data: Record<string, unknown>[] } | null;
   rumination_neg_state?: RuminationNegState | null;
+  /** 每子步「深入聊聊」闸门首次触发标记集合（已触发的子步号列表） */
+  neg_gate_triggered_steps?: number[];
 }
 
 export interface RuminationTablePayload {
@@ -59,6 +61,8 @@ export interface RuminationTablePayload {
   rowSelectionMode?: 'multi';
   rowSelectionMin?: number;
   rowSelectionMax?: number;
+  /** 价值观关键词来源标签（step 4 专用：confirmed_card / report_anchor / prior_text / none） */
+  valuesSource?: string;
 }
 
 export interface RuminationProgressSaveParams {

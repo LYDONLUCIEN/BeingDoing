@@ -5,14 +5,19 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import SurveyFormBd from '@/components/survey/SurveyFormBd';
 import { surveyApi } from '@/lib/api/survey';
-import { loadSession, saveSession, getLastActivationCode } from '@/lib/explore/session';
+import { getApiErrorMessage } from '@/lib/api/client';
+import { loadSession, saveSession, getLastActivationCode, setUserSurveyCompleted } from '@/lib/explore/session';
 import type { SurveyData } from '@/lib/survey/schema';
+import { useAuthStore } from '@/stores/authStore';
 
 export default function SurveyPage() {
   const router = useRouter();
   const [activationCode, setActivationCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [initialData, setInitialData] = useState<SurveyData>({});
+  const [preloadDone, setPreloadDone] = useState(false);
+  const { user } = useAuthStore();
 
   useEffect(() => {
     const code = getLastActivationCode();
@@ -21,6 +26,22 @@ export default function SurveyPage() {
       return;
     }
     setActivationCode(code);
+
+    // 用户级直读：通过 user-survey-status 加载已保存的问卷数据用于回填
+    surveyApi.getUserSurveyStatus().then((res) => {
+      if (res.data?.survey_data && Object.keys(res.data.survey_data).length > 0) {
+        setInitialData(res.data.survey_data);
+      }
+    }).catch(() => {
+      // 回退到激活码维度
+      if (code) {
+        surveyApi.getForActivation(code).then((sv) => {
+          if (sv.data?.survey_data && Object.keys(sv.data.survey_data).length > 0) {
+            setInitialData(sv.data.survey_data);
+          }
+        }).catch(() => {});
+      }
+    }).finally(() => setPreloadDone(true));
   }, [router]);
 
   const handleSubmit = async (data: SurveyData) => {
@@ -31,9 +52,16 @@ export default function SurveyPage() {
       await surveyApi.saveForActivation(activationCode, data);
       const session = loadSession(activationCode);
       saveSession({ ...session, surveyCompleted: true });
+      // 用户维度持久化：切换激活码或清缓存后仍可恢复
+      setUserSurveyCompleted(user?.user_id ?? '', true);
       router.push(`/explore/chat/values`);
-    } catch (e: any) {
-      setError(e?.message || '保存失败，请重试');
+    } catch (e: unknown) {
+      const msg = getApiErrorMessage(e, '保存失败，请重试');
+      if (msg.includes('激活码已过期')) {
+        setError(`${msg}，请返回激活页更换激活码`);
+        return;
+      }
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -42,16 +70,31 @@ export default function SurveyPage() {
   const handleSkip = async () => {
     if (!activationCode) return;
     setLoading(true);
+    setError(null);
+    let saved = false;
     try {
       await surveyApi.saveForActivation(activationCode, {});
       const session = loadSession(activationCode);
       saveSession({ ...session, surveyCompleted: true });
-    } catch {}
-    setLoading(false);
-    router.push(`/explore/chat/values`);
+      // 用户维度持久化
+      setUserSurveyCompleted(user?.user_id ?? '', true);
+      saved = true;
+    } catch (e: unknown) {
+      const msg = getApiErrorMessage(e, '暂时跳过失败，请重试');
+      if (msg.includes('激活码已过期')) {
+        setError(`${msg}，请返回激活页更换激活码`);
+      } else {
+        setError(msg);
+      }
+    } finally {
+      setLoading(false);
+    }
+    if (saved) {
+      router.push(`/explore/chat/values`);
+    }
   };
 
-  if (!activationCode) return null;
+  if (!activationCode || !preloadDone) return null;
 
   return (
     <div className="min-h-screen bg-bd-gradient text-bd-fg">
@@ -86,7 +129,7 @@ export default function SurveyPage() {
 
           <div className="rounded-2xl border border-bd-border bg-bd-card/80 backdrop-blur-lg p-6 sm:p-8 shadow-[0_4px_24px_rgba(0,0,0,0.06)]">
             <SurveyFormBd
-              initialData={{}}
+              initialData={initialData}
               loading={loading}
               saving={loading}
               submitLabel="提交并开始第一步 →"

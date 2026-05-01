@@ -216,8 +216,10 @@ function ComingSoonFlat() {
 
 const STORIES_PER_PAGE = 3;
 const TOTAL_PAGES = Math.ceil(TESTIMONIALS.length / STORIES_PER_PAGE);
+const HERO_VIDEO_SRC = process.env.NEXT_PUBLIC_HOME_HERO_VIDEO_SRC ?? '';
+const STORIES_VIDEO_SRC = process.env.NEXT_PUBLIC_HOME_STORIES_VIDEO_SRC ?? '';
 
-function TestimonialGrid() {
+function TestimonialGrid({ videoSrc }: { videoSrc?: string }) {
   const { t } = useLocale();
   const [page, setPage] = useState(0);
 
@@ -228,6 +230,20 @@ function TestimonialGrid() {
 
   return (
     <section className="relative z-10 w-full px-5 py-20">
+      {videoSrc ? (
+        <div className="absolute inset-0 -z-10 pointer-events-none overflow-hidden">
+          <video
+            className="w-full h-full object-cover opacity-20"
+            src={videoSrc}
+            autoPlay
+            loop
+            muted
+            playsInline
+            preload="metadata"
+            aria-hidden
+          />
+        </div>
+      ) : null}
       <div className="text-center mb-16 max-w-4xl mx-auto">
         <motion.h2
           initial={false}
@@ -262,51 +278,51 @@ function TestimonialGrid() {
           </button>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 px-4">
-          <AnimatePresence mode="wait">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={page}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.35, ease: [0.165, 0.84, 0.44, 1] }}
+            className="grid grid-cols-1 md:grid-cols-3 gap-6 px-4"
+          >
             {visible.map((item, i) => (
-              <motion.div
-                key={start + i}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -12 }}
-                transition={{ duration: 0.4, ease: [0.165, 0.84, 0.44, 1] }}
-                className="h-full"
-              >
+              <div key={start + i} className="h-full">
                 <div className="bd-testimonial-card px-6 py-8 min-h-[220px] h-full">
-                {/* 顶部：头像+姓名职业 ｜ 评分 */}
-                <div className="flex items-start justify-between gap-4 mb-6">
-                  <div className="flex items-center gap-3 min-w-0">
-                    {item.avatar ? (
-                      <img src={item.avatar} alt="" className="w-11 h-11 rounded-full object-cover flex-shrink-0" />
-                    ) : (
-                      <div
-                        className="w-11 h-11 rounded-full flex items-center justify-center text-base font-semibold flex-shrink-0"
-                        style={{ background: `rgba(${item.color}, 0.2)`, color: `rgb(${item.color})` }}
-                      >
-                        {item.name.slice(0, 1)}
+                  {/* 顶部：头像+姓名职业 ｜ 评分 */}
+                  <div className="flex items-start justify-between gap-4 mb-6">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {item.avatar ? (
+                        <img src={item.avatar} alt="" className="w-11 h-11 rounded-full object-cover flex-shrink-0" />
+                      ) : (
+                        <div
+                          className="w-11 h-11 rounded-full flex items-center justify-center text-base font-semibold flex-shrink-0"
+                          style={{ background: `rgba(${item.color}, 0.2)`, color: `rgb(${item.color})` }}
+                        >
+                          {item.name.slice(0, 1)}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <div className="font-semibold text-[15px] truncate" style={{ color: 'var(--bd-fg)' }}>{item.name}</div>
+                        <div className="text-xs truncate" style={{ color: 'var(--bd-fg-muted)' }}>{item.role}</div>
                       </div>
-                    )}
-                    <div className="min-w-0">
-                      <div className="font-semibold text-[15px] truncate" style={{ color: 'var(--bd-fg)' }}>{item.name}</div>
-                      <div className="text-xs truncate" style={{ color: 'var(--bd-fg-muted)' }}>{item.role}</div>
+                    </div>
+                    <div className="flex gap-0.5 flex-shrink-0" aria-label="5 星">
+                      {[1, 2, 3, 4, 5].map((j) => (
+                        <Star key={j} className="h-4 w-4 fill-amber-400 text-amber-400" />
+                      ))}
                     </div>
                   </div>
-                  <div className="flex gap-0.5 flex-shrink-0" aria-label="5 星">
-                    {[1, 2, 3, 4, 5].map((j) => (
-                      <Star key={j} className="h-4 w-4 fill-amber-400 text-amber-400" />
-                    ))}
-                  </div>
+                  {/* 下方：评价正文（黑色字体） */}
+                  <p className="bd-testimonial-quote text-sm leading-[1.75] font-normal">
+                    {item.quote}
+                  </p>
                 </div>
-                {/* 下方：评价正文（黑色字体） */}
-                <p className="bd-testimonial-quote text-sm leading-[1.75] font-normal">
-                  {item.quote}
-                </p>
-                </div>
-              </motion.div>
+              </div>
             ))}
-          </AnimatePresence>
-        </div>
+          </motion.div>
+        </AnimatePresence>
 
         {canNext && (
           <button
@@ -399,7 +415,19 @@ export default function LandingPage() {
   // 首页时覆盖布局背景为 #faf9f8，与 background4 一致
   useEffect(() => {
     document.documentElement.setAttribute('data-landing', 'true');
-    return () => document.documentElement.removeAttribute('data-landing');
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const lowCore = typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 4;
+    const lowMemory = typeof (navigator as Navigator & { deviceMemory?: number }).deviceMemory === 'number'
+      && ((navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 0) <= 4;
+    if (reduceMotion || lowCore || lowMemory) {
+      document.documentElement.setAttribute('data-landing-lite', 'true');
+    } else {
+      document.documentElement.removeAttribute('data-landing-lite');
+    }
+    return () => {
+      document.documentElement.removeAttribute('data-landing');
+      document.documentElement.removeAttribute('data-landing-lite');
+    };
   }, []);
 
   return (
@@ -413,12 +441,26 @@ export default function LandingPage() {
       <div className="landing-mesh-content min-h-screen">
 
       {/* ① Hero */}
-      <section className="flex flex-col items-center justify-center text-center px-6 pt-24 pb-8 min-h-[55vh]">
+      <section className="relative flex flex-col items-center justify-center text-center px-6 pt-20 md:pt-24 pb-12 md:pb-10 min-h-[52vh] md:min-h-[55vh]">
+        {HERO_VIDEO_SRC ? (
+          <div className="absolute inset-0 -z-10 pointer-events-none overflow-hidden">
+            <video
+              className="w-full h-full object-cover opacity-30"
+              src={HERO_VIDEO_SRC}
+              autoPlay
+              loop
+              muted
+              playsInline
+              preload="metadata"
+              aria-hidden
+            />
+          </div>
+        ) : null}
         <motion.h1
           initial={false}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7 }}
-          className="text-5xl md:text-7xl font-bold leading-tight mb-6 tracking-[0.05em]"
+          className="text-3xl sm:text-5xl md:text-7xl font-bold leading-tight mb-6 tracking-[0.05em]"
           style={{ color: 'var(--bd-fg)', fontFamily: 'var(--font-sans-cn)' }}
         >
           {t('home.heroTitle')}
@@ -458,7 +500,7 @@ export default function LandingPage() {
       <ComingSoonFlat />
 
       {/* ④ 他们的故事：3×3 平铺 */}
-      <TestimonialGrid />
+      <TestimonialGrid videoSrc={STORIES_VIDEO_SRC || undefined} />
 
       {/* ⑤ 页脚 */}
       <LandingFooter />

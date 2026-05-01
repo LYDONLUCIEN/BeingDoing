@@ -55,7 +55,7 @@ export default function ExploreIntroPage() {
       if (!canNavigate) {
         setAccelerated(true);
       } else if (!isAuthenticated) {
-        openAuthModal('/explore/activate');
+        openAuthModal('/explore/intro');
       } else {
         router.push('/explore/activate');
       }

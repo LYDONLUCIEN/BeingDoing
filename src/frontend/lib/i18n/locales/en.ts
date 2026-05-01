@@ -113,6 +113,7 @@ export const en = {
     phaseComplete: {
       title: 'You finished this stretch',
       continue: 'Thank you — continue',
+      dontRemind: "Don't show this again",
       outro: {
         values:
           "You've completed round one — values. Next we'll explore your strengths. See you in the next step.",
@@ -264,7 +265,10 @@ export const en = {
         hypothesisTagFreelance: 'Solo / business',
         hypothesisTagCompany: 'Company path',
         hypothesisTagExtra: 'Alternative path',
-        hypothesisPendingOption: 'Undecided for now',
+        hypothesisPendingOption: 'None',
+        hypothesisCustomOption: 'Custom',
+        hypothesisOtherLegacy: 'Other',
+        hypothesisPendingLegacy: 'Undecided for now',
         placeholderWithRow: 'Add a note for “{label}”…',
         tableEarlyTerminated: 'No rows left in this filter. Go back to review or earlier steps.',
         followShowFullTable: 'The table is updated to the final view—please review the list.',
@@ -282,13 +286,17 @@ export const en = {
         negGateDeep: 'Discuss further',
         negGateEndDeep: 'End discussion',
         negExploringHint:
-          'You are in deeper discussion: continue Q&A in the input box, then click the top-right “End discussion” to submit and move on.',
+          'You are in deeper discussion: I\'ll go through each item with you. Click “End discussion” when done to return to the table.',
+        negGateDeepEndCloseTip:
+          'Let\'s pause here. You can now edit the table on the left, then click Confirm to continue.',
         negGateRemoteStepHint:
           'Filter step {step} still has a pending follow-up or deep discussion. Go back there before continuing other steps.',
         negGateJumpToStep: 'Go to step {step}',
         messageRowContextPrefix: '【Selected table row】{label}',
         finalTableTextConfirmHint:
-          'This is the last filter step: review the final directions on the left—no need to tap the table “Confirm”. I’ll share a short summary in chat; please confirm via the **conclusion card** or follow the text instructions.',
+          'Choose 1-3 directions below. Click any row to select it, then tap the table "Confirm" to view the conclusion card.',
+        reviewModeBanner: 'Viewing step {step} (read-only review)',
+        reviewModeContinue: 'Continue current step',
       },
       ruminationTable: {
         confirm: 'Confirm',
@@ -332,6 +340,10 @@ export const en = {
       summary: 'Summary',
       summaryDesc: 'Values × Strengths × Interests = Purpose. Your data is saved. Personalized analysis will appear here in future versions.',
       reviewChat: 'Review Chat',
+      likedContentTitle: 'Liked Highlights',
+      likedContentCount: 'liked items',
+      likedContentEmpty: 'No likes yet',
+      likedContentNote: 'All liked content is saved as snapshots. Even if the original message is modified or deleted, you can still view the original text here.',
     },
   },
 
@@ -348,6 +360,7 @@ export const en = {
 
   dashboard: {
     currentProgress: 'Current Progress',
+    profileInfo: 'Profile Info',
     basicInfo: 'Basic Info',
     basicInfoDesc: 'Avatar & Nickname',
     clickAvatarToUpload: 'Click avatar to upload',

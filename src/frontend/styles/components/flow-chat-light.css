@@ -324,6 +324,19 @@
 }
 .flow-light .flow-toolbar-btn.liked { color: var(--flow-guide); }
 
+/* 点赞 Heart 图标：彩色填充 + 微缩放动画 */
+.flow-light .flow-toolbar-like-btn.liked .flow-toolbar-like-icon {
+  fill: #f43f5e;
+  color: #f43f5e;
+  transform: scale(1.15);
+}
+.flow-light .flow-toolbar-like-btn .flow-toolbar-like-icon {
+  transition: fill 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+.flow-light .flow-toolbar-like-btn:hover:not(.liked) .flow-toolbar-like-icon {
+  color: #fb7185;
+}
+
 /* 用户消息：纯白气泡 + 复制按钮 */
 .flow-light .flow-msg-user {
   display: flex;
