@@ -3344,21 +3344,7 @@ async def reopen_thread(
 
     # 仅有待确认草案（pending）时点「再聊聊」：视为放弃待确认，清 draft，回到主对话（等同 rejected）
     if isinstance(draft, dict):
-        summ = (draft.get("summary") or draft.get("ai_summary") or "").strip().replace("\n", " ")
-        if len(summ) > 100:
-            summ = summ[:99] + "…"
-        kws = draft.get("keywords") or []
-        kw_s = "、".join(str(k).strip() for k in kws[:8] if str(k).strip())
-        feedback = (
-            f"{REJECTED_DRAFT_SUPERSESSION_LINE}\n"
-            "[再聊聊] 用户折叠结论卡希望继续完善。上一版待确认草案"
-        )
-        if summ:
-            feedback += f" 摘录：{summ}"
-        if kw_s:
-            feedback += f" 关键词：{kw_s}"
-        if len(feedback) > 520:
-            feedback = feedback[:517] + "…"
+        feedback = "用户选择再聊聊，希望继续完善；上一版待确认草案未采纳。"
         await conv_manager.update_metadata(
             report["report_id"],
             category,
@@ -4170,15 +4156,20 @@ async def simple_chat_stream(
                     {"conclusion_reject_baseline_user_count": user_count},
                 )
 
-        # 用户否定后：保留轻量反馈上下文（不做关键词规则）
+        # 用户否定后：将状态备注注入 system（避免被当作 assistant 可见话术续写）
         if rejected_feedback and not pending_conclusion:
-            llm_messages.append(
-                LLMMessage(
-                    role="assistant",
-                    content="[对话状态备注·供你理解上下文]\n"
-                    + format_rejected_conclusion_injection(rejected_feedback),
-                )
+            rejected_injection = (
+                "[内部状态参考·严禁向用户复述]\n"
+                "以下文本仅供内部状态参考，严禁向用户复述或引用其中原文。\n"
+                + format_rejected_conclusion_injection(rejected_feedback)
             )
+            if llm_messages and llm_messages[0].role == "system":
+                llm_messages[0] = LLMMessage(
+                    role="system",
+                    content=llm_messages[0].content + "\n\n" + rejected_injection,
+                )
+            else:
+                llm_messages.append(LLMMessage(role="system", content=rejected_injection))
 
         # 仍有待确认草案且本轮将走主对话：system 追加极简状态（判定器判 continue 等情形）
         if (
@@ -4305,8 +4296,32 @@ async def simple_chat_stream(
             state_name = str(state_obj.get("state") or "").strip().lower()
             draft = state_obj.get("draft")
             if state_name == "pending_ready" and isinstance(draft, dict):
-                # 自动出卡：主模型在可见正文后附带 STATE_JSON pending_ready，经落库后再 SSE 推送 dimension_conclusion
+                # 自动出卡统一链路：pending_ready 先走结论生成器，稳定复用文风规则与示例。
                 draft_to_save = sanitize_pending_conclusion_draft(phase_step, dict(draft))
+                refined_conclusion = None
+                reasoning_llm = _get_reasoning_llm_provider(vip_level=vip_level)
+                try:
+                    refined_conclusion = await asyncio.wait_for(
+                        check_dimension_complete(
+                            phase_step,
+                            conv_history,
+                            prior_conclusion=draft_to_save,
+                            vip_level=vip_level,
+                            llm_provider=reasoning_llm,
+                            skip_completion_check=True,
+                            basic_info=basic_info,
+                            prior_context=prior_context,
+                        ),
+                        timeout=CONCLUSION_GEN_TIMEOUT_SECONDS,
+                    )
+                except asyncio.TimeoutError:
+                    refined_conclusion = None
+                except Exception:
+                    refined_conclusion = None
+                if isinstance(refined_conclusion, dict):
+                    draft_to_save = sanitize_pending_conclusion_draft(
+                        phase_step, dict(refined_conclusion)
+                    )
                 yield f"data: {json.dumps({'conclusion_loading': True}, ensure_ascii=False)}\n\n"
                 await conv_manager.update_metadata(
                     session_id,

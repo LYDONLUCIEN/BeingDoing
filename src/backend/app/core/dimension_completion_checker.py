@@ -21,7 +21,7 @@ from app.domain.dimension_completion import get_dimension_config
 # 结论卡专用：勿复用主对话 system（含 STATE_JSON 与流程），避免干扰纯 JSON 输出或诱发多余协议块。
 _CONCLUSION_GENERATION_SYSTEM = (
     "你是与来访者一对一谈话的职业咨询师。"
-    "当前任务：只根据用户消息里提供的对话记录，输出**一条**合法 JSON 对象（结论卡字段），不要输出任何 JSON 以外的文字。"
+    "当前任务：根据用户消息里提供的对话记录，输出**一条**合法 JSON 对象（结论卡字段），不要输出任何 JSON 以外的文字。"
     "其中 summary 要像当面收口：直接对「你」说话，简短、有温度；禁止元叙述（如「从对话可见」「综上所述」「作为模型/AI」）、"
     "禁止内部推理、分析报告体或提纲式分条评析。"
     "keywords 与扩展字段必须严格来自用户已明确说出的内容，禁止编造。"
@@ -193,15 +193,16 @@ def build_conclusion_generation_messages(
 ---
 
 """
-    values_extra = ""
-    if phase == "values":
-        values_extra = """
+# 【zkx】 高冗余，且有冲突，后面要求进制自创，这里允许进行改写。
+#     values_extra = ""
+#     if phase == "values":
+#         values_extra = """
 
-【values 阶段特别要求】
-请从用户对话中寻找 5 个核心价值观关键词。
-1) 尽可能只使用用户亲口提到的原词，优先保留用户原话；
-2) 实在没有足够原词时，再进行同义词改写；
-3) 尽量是精准的 2~4 字词语（如：诚实、成长、家庭、自由）。"""
+# 【values 阶段特别要求】
+# 请从用户对话中寻找 5 个核心价值观关键词。
+# 1) 尽可能只使用用户亲口提到的原词，优先保留用户原话；
+# 2) 实在没有足够原词时，再进行同义词改写；
+# 3) 尽量是精准的 2~4 字词语（如：诚实、成长、家庭、自由）。"""
 
     conclusion_rules = get_conclusion_rules(phase)
     anti_fabrication = """
@@ -240,7 +241,7 @@ def build_conclusion_generation_messages(
     context_blocks.append(f"【当前阶段对话内容】\n---\n{conv_text}\n---")
     composed_context = "\n\n".join(context_blocks)
 
-    summary_prompt = f"""基于以下对话，生成「{label}」维度的探索结论汇总。{prior_hint}{values_extra}
+    summary_prompt = f"""基于以下对话，生成「{label}」维度的探索结论汇总。{prior_hint}
 {composed_context}
 
 该维度的目标：{goal}
@@ -254,7 +255,7 @@ def build_conclusion_generation_messages(
 {style_rules_block}
 {style_examples_block}
 {schema_instructions}"""
-
+# 【zkx】 高冗余，且有冲突，后面要求进制自创，这里允许进行改写。去除了{values_extra}
     return [
         LLMMessage(role="system", content=_CONCLUSION_GENERATION_SYSTEM),
         LLMMessage(role="user", content=summary_prompt),

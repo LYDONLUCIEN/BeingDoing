@@ -203,6 +203,19 @@
       "thread_id": "t_516530240331",
       "message": "结论卡显示了很奇怪的内容，没有summary，还加了提示词内容",
       "mock": {}
+    },
+    {
+      "name": "savepoint_snap_values_20260501_conclusion_card_repo_right",
+      "start_state_code": "1-3-a",
+      "end_state_code": "1-3-d",
+      "seed_fixture": {
+        "report_dir": "test/backend/fixtures/simple_chat_reports/snap_values_20260501_conclusion_card_repo_right",
+        "ttl_minutes": 180
+      },
+      "phase": "values",
+      "thread_id": "t_76ed6f87e834",
+      "message": "结论卡这次的结果对了！",
+      "mock": {}
     }
   ]
 }

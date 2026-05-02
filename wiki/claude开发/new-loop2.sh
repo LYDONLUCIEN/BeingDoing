@@ -1,5 +1,12 @@
 #!/bin/bash
 # orchestrator.sh v2 - 智能调度版（修复版）
+# 检查是否 root，是则拒绝运行
+if [ "$(id -u)" -eq 0 ]; then
+    echo "❌ 请勿使用 root 用户运行此脚本"
+    echo "请切换到普通用户：su - claude-runner"
+    exit 1
+fi
+
 
 TODO_FILE="${1:-todo.md}"    # 支持传参指定文件
 LOG_DIR="/home/gitclone/BeingDoing/wiki/claude开发/agent-logs"

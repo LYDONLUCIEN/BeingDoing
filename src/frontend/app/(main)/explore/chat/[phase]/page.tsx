@@ -929,11 +929,9 @@ export default function ChatPhasePage() {
     (!isBackendSynced && !!activeThreadId) || // 切到其它 thread 时暂不输入（未同步）
     pendingConclusionChoiceBlocksChat ||
     ruminationReviewMode; // 回看模式：只读浏览历史步骤
-  const selectionMatchesReportForContinue =
-    adminDebugBypass ||
-    !stepLocked ||
-    !reportSelectedThreadId ||
-    activeThreadId === reportSelectedThreadId;
+  const selectionMatchesReportForContinue = !stepLocked
+    ? true
+    : !!reportSelectedThreadId && activeThreadId === reportSelectedThreadId;
 
   /**
    * threadsFetched 未完成前，stepLocked/reportSelectedThreadId 尚未从后端同步，
@@ -943,7 +941,7 @@ export default function ChatPhasePage() {
   const canContinue =
     threadsFetched &&
     !!selectedThread &&
-    isSelectedCompleted &&
+    (isSelectedCompleted || (stepLocked && selectionMatchesReportForContinue)) &&
     selectionMatchesReportForContinue;
 
   canContinueRef.current = canContinue;
@@ -952,12 +950,7 @@ export default function ChatPhasePage() {
     if (canContinue) return '';
     if (!threadsFetched) return '';
     if (!selectedThread) return t('explore.chat.selectCompletedHint');
-    if (
-      stepLocked &&
-      !adminDebugBypass &&
-      reportSelectedThreadId &&
-      activeThreadId !== reportSelectedThreadId
-    ) {
+    if (stepLocked && reportSelectedThreadId && activeThreadId !== reportSelectedThreadId) {
       return t('explore.chat.selectSubmittedThreadHint');
     }
     return t('explore.chat.selectCompletedHint');
@@ -1041,7 +1034,11 @@ export default function ChatPhasePage() {
         if (!canContinueRef.current) return;
         // 去重保护：session 已前进则不再重复 push
         if (session.currentPhase !== phase) {
-          console.warn('[dismissPhaseLockNotice] session 已前进，跳过');
+          console.warn('[dismissPhaseLockNotice] session 已前进，改为跳转到当前阶段', {
+            sessionPhase: session.currentPhase,
+            urlPhase: phase,
+          });
+          router.push(`/explore/chat/${session.currentPhase}`);
           return;
         }
         isNavigatingRef.current = true;
@@ -2063,34 +2060,57 @@ export default function ChatPhasePage() {
    * 日志：链路可追踪（点击→API→session 写入→跳转）。
    */
   const handleCompleteAndContinue = useCallback(() => {
-    if (!activationCode || !session) return;
+    if (!activationCode) {
+      setChatError('激活码上下文丢失，请返回激活页重新进入');
+      return;
+    }
+    let sessionSnapshot = session;
+    if (!sessionSnapshot) {
+      // 防止极端情况下 session state 丢失导致“按钮可点但点击无响应”
+      try {
+        sessionSnapshot = loadSession(activationCode);
+        setSession(sessionSnapshot);
+      } catch {
+        setChatError('会话状态读取失败，请刷新页面后重试');
+        return;
+      }
+    }
     // 防连点：上一轮导航尚未完成时忽略
     if (isNavigatingRef.current) {
       console.warn('[CompleteAndContinue] 导航中，忽略重复点击');
       return;
     }
-    // 读取最新 canContinue，避免闭包陈旧
-    if (!canContinueRef.current) {
+    // 兼容极端竞态：按钮状态来自 canContinue，而回调内优先读 ref；
+    // 两者瞬时不一致时，允许按 canContinue 兜底继续，避免“可点击但无响应”。
+    const canContinueNow = canContinueRef.current || canContinue;
+    if (!canContinueNow) {
       console.warn('[CompleteAndContinue] canContinue 为 false，忽略点击', {
-        selectedThread: !!session,
-        stepLocked: true,
-        reportSelectedThreadId: true,
+        canContinueRef: canContinueRef.current,
+        canContinueState: canContinue,
+        threadsFetched,
+        selectedThreadId: selectedThread?.id || null,
+        selectedThreadStatus: selectedThread?.status || null,
+        stepLocked,
+        reportSelectedThreadId,
+        activeThreadId,
       });
+      setChatError(continueDisabledHint || '当前线程尚未满足“完成并继续”条件');
       return;
     }
     // 去重保护：如果 session 的 currentPhase 已经不是当前 URL phase，说明已经前进过
-    if (session.currentPhase !== phase) {
-      console.warn('[CompleteAndContinue] session.currentPhase !== url phase，跳过', {
-        sessionPhase: session.currentPhase,
+    if (sessionSnapshot.currentPhase !== phase) {
+      console.warn('[CompleteAndContinue] session.currentPhase !== url phase，改为跳转到当前阶段', {
+        sessionPhase: sessionSnapshot.currentPhase,
         urlPhase: phase,
       });
+      router.push(`/explore/chat/${sessionSnapshot.currentPhase}`);
       return;
     }
     isNavigatingRef.current = true;
-    console.log('[CompleteAndContinue] 开始导航', { phase, sessionPhase: session.currentPhase });
+    console.log('[CompleteAndContinue] 开始导航', { phase, sessionPhase: sessionSnapshot.currentPhase });
     try {
       // unlockNextPhase 内部会 saveSession
-      const updated = unlockNextPhase({ ...session, currentPhase: phase });
+      const updated = unlockNextPhase({ ...sessionSnapshot, currentPhase: phase });
       setSession(updated);
       console.log('[CompleteAndContinue] session 已更新', {
         prevPhase: phase,
@@ -2098,11 +2118,30 @@ export default function ChatPhasePage() {
         unlockedPhases: updated.unlockedPhases,
       });
       router.push(`/explore/transition?from=${phase}`);
+      // App Router push 为异步且无 Promise，防止偶发未跳转时导航锁卡死。
+      window.setTimeout(() => {
+        isNavigatingRef.current = false;
+      }, 1800);
     } catch (err) {
       console.error('[CompleteAndContinue] 导航异常', err);
       isNavigatingRef.current = false;
+      setChatError('跳转失败，请刷新页面后重试');
     }
-  }, [activationCode, session, phase, setSession, router]);
+  }, [
+    activationCode,
+    session,
+    phase,
+    canContinue,
+    threadsFetched,
+    selectedThread,
+    stepLocked,
+    reportSelectedThreadId,
+    activeThreadId,
+    continueDisabledHint,
+    setSession,
+    router,
+    setChatError,
+  ]);
 
   const handleDeleteThread = (thread: ChatThread) => {
     if (!activationCode || !phase) return;

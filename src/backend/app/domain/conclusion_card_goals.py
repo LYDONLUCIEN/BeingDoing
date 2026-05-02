@@ -65,7 +65,7 @@ CONCLUSION_RULES: Dict[str, str] = {
     "purpose": (
         _COMMON_NO_NEXT_PHASE
         + "- 使命陈述必须来自用户确认的表达\n"
-        + "- 必须是用户为他人提供价值的10个行为或者经历。\n"
+        + "- 必须是用户为他人提供价值的10个行为或者经历。经历写入 experience_value_rows；keywords 为使命核心词\n"
         + _NAMING_SINGLE_CONCEPT
         + "\n"
     ),
@@ -94,7 +94,7 @@ CONCLUSION_CARD_GOALS: Dict[str, dict] = {
     },
     "strengths": {
         "name": "禀赋结论卡",
-        "objective": "沉淀用户确认的优势项，并凸显可迁移的能力线索",
+        "objective": "沉淀用户确认的5个优势项，并凸显可迁移的能力线索",
         "must_capture": [
             "confirmed_strengths",
             "strength_tags_optional",
@@ -107,27 +107,27 @@ CONCLUSION_CARD_GOALS: Dict[str, dict] = {
     },
     "interests": {
         "name": "热忱结论卡",
-        "objective": "沉淀用户确认的核心热爱方向，突出投入感和持续性",
+        "objective": "沉淀用户确认的3个核心热爱方向，突出投入感和持续性",
         "must_capture": [
             "top_interests",
             "interest_reasons_optional",
         ],
         "validation": {
             "min_keywords": 3,
-            "max_keywords": 8,
+            "max_keywords": 3,
             "strict_match_user_confirmed_keywords": False,
         },
     },
     "purpose": {
         "name": "使命结论卡",
-        "objective": "沉淀用户使命表达与价值整合线索",
+        "objective": "沉淀用户使命表达与价值整合的10条经历线索",
         "must_capture": [
             "purpose_statement",
             "supporting_evidence_optional",
         ],
         "validation": {
             "min_keywords": 1,
-            "max_keywords": 8,
+            "max_keywords": 10,
             "strict_match_user_confirmed_keywords": False,
         },
     },
@@ -139,8 +139,8 @@ CONCLUSION_CARD_GOALS: Dict[str, dict] = {
             "next_actions",
         ],
         "validation": {
-            "min_keywords": 1,
-            "max_keywords": 10,
+            #"min_keywords": 1, #【zkx】注释避免影响
+            #"max_keywords": 10,#【zkx】注释避免影响
             "strict_match_user_confirmed_keywords": False,
         },
     },
@@ -177,5 +177,4 @@ def get_goal_prompt_hint(step_id: str) -> str:
     return (
         f"本结论卡目标：{goal.get('objective', '')}\n"
         f"必须覆盖的信息：{capture_text}\n"
-        "请避免泛化抒情，优先输出可核对的结构化要点。"
     )

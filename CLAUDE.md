@@ -103,3 +103,10 @@ Data Layer (SQLite dev / PostgreSQL prod)
 ### Data Files
 - `data/` — Conversation records, knowledge base files
 - Root-level CSV files — Knowledge base content for values, passion, and talent exploration (Chinese filenames)
+
+
+## 开发文档
+
+所有开发文档的任务和结果都写在：/home/gitclone/BeingDoing/wiki/开发文档这个里
+以claude-todo-list开头的md文档，这里内容是所有代办事项
+以claude-completed开头的md文档，是所有完成的内容的记录描述
