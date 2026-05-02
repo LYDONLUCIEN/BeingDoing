@@ -41,7 +41,7 @@ BACKEND_DIR="$REPO_ROOT/src/backend"
 FRONTEND_DIR="$REPO_ROOT/src/frontend"
 ENV_LOAD_CMD="unset DEBUG DEBUG_MODE LLM_PROVIDER LLM_BASE_URL LLM_MODEL OPENAI_API_KEY DEEPSEEK_API_KEY GLM_API_KEY KIMI_API_KEY CLAUDE_API_KEY NEXT_PUBLIC_API_URL FRONTEND_MODE; set -a; [ -f \"$REPO_ROOT/.env\" ] && source \"$REPO_ROOT/.env\"; set +a"
 
-CONDA_BASE="/mnt/vdb1/miniconda3"
+CONDA_BASE="${CONDA_BASE:-/mnt/vdb1/miniconda3}"
 CONDA_ENV="py312"
 # source conda.sh 使 conda activate 在非交互式 shell 里生效
 BACKEND_CMD="$ENV_LOAD_CMD && source '$CONDA_BASE/etc/profile.d/conda.sh' && conda activate $CONDA_ENV && cd '$BACKEND_DIR' && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
@@ -120,8 +120,12 @@ kill_window() {
 
 cmd_start() {
   if session_exists; then
-    warn "tmux session '$SESSION' 已存在，直接附加。如需重启请用: ./start.sh restart"
-    tmux attach-session -t "$SESSION"
+    warn "tmux session '$SESSION' 已存在。如需重启请用: ./start.sh restart"
+    if [ -t 1 ] && [ -t 0 ] && [ "${BD_SKIP_TMUX_ATTACH:-0}" != "1" ]; then
+      tmux attach-session -t "$SESSION"
+    else
+      info "已跳过 tmux attach；查看会话： tmux attach -t $SESSION"
+    fi
     return
   fi
 
@@ -143,7 +147,12 @@ cmd_start() {
   echo "  附加到终端查看日志：  tmux attach -t $SESSION"
   echo "  在 tmux 中分离：      Ctrl-B  d"
   echo ""
-  tmux attach-session -t "$SESSION"
+  # 无 TTY 时 attach 会报错 open terminal failed: not a terminal，脚本以非 0 退出，误判为启动失败
+  if [ -t 1 ] && [ -t 0 ] && [ "${BD_SKIP_TMUX_ATTACH:-0}" != "1" ]; then
+    tmux attach-session -t "$SESSION"
+  else
+    info "已跳过 tmux attach（当前无交互终端或已设 BD_SKIP_TMUX_ATTACH=1）。进程在 tmux 后台运行；查看日志仍可用： tmux attach -t $SESSION"
+  fi
 }
 
 cmd_stop() {

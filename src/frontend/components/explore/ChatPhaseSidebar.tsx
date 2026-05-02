@@ -339,7 +339,13 @@ export default function ChatPhaseSidebar({
                     }
                     className={`min-w-0 cursor-pointer rounded-xl px-3 py-2 text-left transition-all ${
                       isActive ? 'shadow-md' : 'hover:opacity-90'
-                    } ${streamSwitchCue ? 'opacity-[0.82] ring-1 ring-amber-400/35' : ''}`}
+                    } ${
+                      streamSwitchCue
+                        ? careeringMatte
+                          ? 'opacity-[0.82] ring-1 ring-neutral-400/30'
+                          : 'opacity-[0.82] ring-1 ring-amber-400/35'
+                        : ''
+                    }`}
                     style={{
                       background: isActive ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)',
                       border: isActive ? '1px solid rgba(0,0,0,0.08)' : '1px solid transparent',
@@ -353,14 +359,11 @@ export default function ChatPhaseSidebar({
                     <div className="flex items-start gap-2">
                       {careeringMatte ? (
                         <span
-                          className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full"
-                          style={{
-                            backgroundColor: thread.status === 'completed' ? '#22c55e' : '#fbbf24',
-                            boxShadow:
-                              thread.status === 'completed'
-                                ? '0 0 0 1px rgba(34,197,94,0.25)'
-                                : '0 0 0 1px rgba(251,191,36,0.35)',
-                          }}
+                          className={`mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full ${
+                            thread.status === 'completed'
+                              ? 'careering-thread-status-dot--done'
+                              : 'careering-thread-status-dot--doing'
+                          }`}
                           title={
                             thread.status === 'completed'
                               ? t('explore.chat.statusCompleted')
@@ -395,9 +398,17 @@ export default function ChatPhaseSidebar({
                           .join(' · ')}
                       </span>
                       <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-medium text-white ${
-                          thread.status === 'completed' ? 'bg-emerald-500' : 'bg-amber-500'
-                        }`}
+                        className={
+                          careeringMatte
+                            ? `rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                thread.status === 'completed'
+                                  ? 'careering-thread-status-badge--done'
+                                  : 'careering-thread-status-badge--doing'
+                              }`
+                            : `rounded-full px-2 py-0.5 text-[10px] font-medium text-white ${
+                                thread.status === 'completed' ? 'bg-emerald-500' : 'bg-amber-500'
+                              }`
+                        }
                       >
                         {thread.status === 'completed'
                           ? t('explore.chat.statusCompleted')

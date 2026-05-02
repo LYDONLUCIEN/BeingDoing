@@ -661,7 +661,10 @@ def _resolve_default_logical_thread_id(
     act_sid = (activation_storage_session_id or "").strip()
     candidates = [str(s).strip() for s in (step.get("session_ids") or []) if str(s).strip()]
     if not candidates:
-        return act_sid
+        # session_ids 为空说明该阶段没有任何已注册线程（可能用户已全部删除）。
+        # 返回空字符串让调用方自行处理，而非 fallback 到 act_sid——
+        # act_sid 指向的对话文件可能残留于磁盘，导致"删光了又恢复"。
+        return ""
     best_sid = None
     best_n = -1
     for sid in candidates:
@@ -774,7 +777,9 @@ def _resolve_report_context(
         rec.session_id,
     )
     if not logical_session_id:
-        logical_session_id = f"t_{uuid.uuid4().hex}"
+        # 不自动生成新 thread_id：POST 端点应传入显式 thread_id，
+        # GET 端点不应触发任何写入。返回空 logical_session_id 让调用方判断。
+        pass
 
     # 进入新阶段前，锁定上一阶段（管理员调试工作区可豁免，支持回退/跳步）
     if not _can_bypass_flow_limits(current_user, rec):
@@ -783,8 +788,6 @@ def _resolve_report_context(
         except ValueError as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
-    # 将当前会话纳入 step 的会话池
-    registry.bind_session(report["report_id"], phase_step, logical_session_id)
     category = _storage_category(phase_step, logical_session_id)
     conv_manager = ConversationFileManager(base_dir=str(root / "reports"))
     return rec, report, phase_step, logical_session_id, category, conv_manager
@@ -1602,6 +1605,9 @@ async def rumination_step_opening_stream(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="会话上下文无效，请刷新后重试",
         ) from e
+
+    registry = ReportRegistry(base_dir=str(get_effective_simple_root(rec)))
+    registry.bind_session(report["report_id"], phase_step, logical_session_id)
 
     if phase_step != "rumination":
         raise HTTPException(status_code=400, detail="仅支持沉淀阶段")
@@ -2950,6 +2956,9 @@ async def simple_chat(
         thread_id=None,
     )
 
+    registry = ReportRegistry(base_dir=str(get_effective_simple_root(rec)))
+    registry.bind_session(report["report_id"], phase_step, logical_session_id)
+
     if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -2962,7 +2971,6 @@ async def simple_chat(
 
     # 使用 report 目录保存对话
     session_id = report["report_id"]
-    registry = ReportRegistry(base_dir=str(get_effective_simple_root(rec)))
     _assert_step_editable(
         registry=registry,
         report_id=report["report_id"],
@@ -3134,6 +3142,8 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
         phase=request.phase,
         thread_id=request.thread_id,
     )
+    registry = ReportRegistry(base_dir=str(get_effective_simple_root(rec)))
+    registry.bind_session(report["report_id"], phase_step, logical_session_id)
     if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -3326,6 +3336,7 @@ async def reopen_thread(
             detail="解析会话上下文失败，请刷新页面后重试",
         ) from e
     registry = ReportRegistry(base_dir=str(get_effective_simple_root(rec)))
+    registry.bind_session(report["report_id"], phase_step, logical_session_id)
     _assert_step_editable(
         registry=registry,
         report_id=report["report_id"],
@@ -3406,6 +3417,7 @@ async def mark_thread_complete(
     )
     root = get_effective_simple_root(rec)
     registry = ReportRegistry(base_dir=str(root))
+    registry.bind_session(report["report_id"], phase_step, logical_session_id)
     try:
         registry.select_session(report["report_id"], phase_step, logical_session_id)
     except ValueError as e:
@@ -3610,6 +3622,31 @@ async def simple_history(
             phase=phase,
             thread_id=thread_id,
         )
+        # 该阶段无任何已注册线程（用户已全部删除）→ 返回空历史，
+        # 避免 fallback 到磁盘上的旧 act_sid 残留文件。
+        if not logical_session_id:
+            root = get_effective_simple_root(rec)
+            registry = ReportRegistry(base_dir=str(root))
+            record = registry.get_report_by_id(report["report_id"]) or {}
+            step_payload = ((record.get("steps") or {}).get(phase_step)) or {}
+            return SimpleHistoryResponse(
+                code=200,
+                message="success",
+                data={
+                    "messages": [],
+                    "metadata": {
+                        **IDCodec.build_history_metadata_ids(
+                            thread_id=None,
+                            activation_session_id=IDCodec.activation_session_id_from_rec(rec),
+                        ),
+                        "thread_completed": False,
+                        "step_locked": bool(step_payload.get("locked", False)),
+                    },
+                    "activation": IDCodec.build_activation_client_view(rec, None),
+                    "report_id": report["report_id"],
+                    "step_id": phase_step,
+                },
+            )
         session_id = report["report_id"]
         root = get_effective_simple_root(rec)
         registry = ReportRegistry(base_dir=str(root))
@@ -3681,6 +3718,8 @@ async def simple_chat_stream(
         phase=request.phase,
         thread_id=request.thread_id,
     )
+    registry = ReportRegistry(base_dir=str(get_effective_simple_root(rec)))
+    registry.bind_session(report["report_id"], phase_step, logical_session_id)
     if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -4507,11 +4546,30 @@ async def delete_thread(
     try:
         if file.is_file():
             file.unlink()
+        # 清理对应的 .lock 文件
+        lock_file = file.with_suffix(file.suffix + ".lock")
+        lock_file.unlink(missing_ok=True)
     except OSError as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"删除会话文件失败: {e}")
 
     updated = registry.remove_session(report_id, phase_step, thread_id) or {}
     step_payload = ((updated.get("steps") or {}).get(phase_step)) or {}
+
+    # 清理残留的 act_sid 对话文件：当 session_ids 清空后，
+    # 如果磁盘上仍存在 {phase}__{rec.session_id}.json（历史遗留），
+    # 一并删除，防止 GET /history fallback 到该文件。
+    remaining_sids = step_payload.get("session_ids") or []
+    if not remaining_sids:
+        act_sid = (rec.session_id or "").strip()
+        if act_sid:
+            stale = registry.get_step_session_file(report_id, phase_step, act_sid)
+            try:
+                if stale.is_file():
+                    stale.unlink()
+                lock_file = stale.with_suffix(stale.suffix + ".lock")
+                lock_file.unlink(missing_ok=True)
+            except OSError:
+                pass
     return SimpleChatResponse(
         code=200,
         message="success",

@@ -130,13 +130,16 @@
   border-bottom-color: rgba(0, 0, 0, 0.06) !important;
 }
 
-/* 顶栏：仅「01 信念」与「完成并继续」同一行、垂直居中（无会话主题/说明文案） */
+/* 顶栏：阶段标题相对主栏全宽水平居中；「完成并继续」保留在右侧 */
 .careering-chat-header {
+  position: relative;
+  z-index: 2;
+  isolation: isolate;
   flex-shrink: 0;
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 1rem;
   min-width: 0;
   padding: 1.25rem 1.5rem 0.875rem;
@@ -147,25 +150,67 @@
   }
 }
 .careering-chat-phase-title {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 2;
+  transform: translate(-50%, -50%);
   margin: 0;
-  min-width: 0;
-  flex: 1;
+  max-width: min(320px, calc(100% - 11rem));
+  padding: 0 0.5rem;
   font-size: 1.35rem;
   font-weight: 700;
   color: #1d1d1f;
   letter-spacing: -0.02em;
   line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
 }
 @media (min-width: 640px) {
   .careering-chat-phase-title {
+    max-width: min(380px, calc(100% - 13rem));
     font-size: 1.4rem;
   }
 }
 .careering-chat-header-actions {
   flex-shrink: 0;
+  position: relative;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: flex-end;
+}
+
+/* 侧栏线程状态：进行中浅灰 / 已完成炭黑质感（仅 careering matte） */
+.flow-light.careering-matte .careering-thread-status-dot--doing {
+  background-color: #d4d4d4;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+.flow-light.careering-matte .careering-thread-status-dot--done {
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.14), transparent 45%),
+    linear-gradient(160deg, #2c2c2c 0%, #0d0d0d 48%, #1a1a1a 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+.flow-light.careering-matte .careering-thread-status-badge--doing {
+  color: #525252;
+  background-color: #ebebeb;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+.flow-light.careering-matte .careering-thread-status-badge--done {
+  color: #fafafa;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.14), transparent 45%),
+    linear-gradient(160deg, #2c2c2c 0%, #0d0d0d 48%, #1a1a1a 100%);
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 /*

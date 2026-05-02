@@ -1,5 +1,3 @@
-'use client';
-
 import ConversationThread, { type ConversationItem } from './ConversationThread';
 import { type AnswerChangeType } from '@/lib/api/answers';
 

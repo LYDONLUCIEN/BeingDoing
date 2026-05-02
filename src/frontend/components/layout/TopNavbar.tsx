@@ -135,7 +135,7 @@ export default function TopNavbar() {
       </div>
     )}
     <nav
-      className="bd-nav-glass fixed top-0 left-0 right-0 z-50 h-14"
+      className="bd-nav-glass fixed top-0 left-0 right-0 z-50 isolate h-14"
       style={{ backgroundColor: 'var(--bd-nav-bg)', borderBottom: '1px solid var(--bd-nav-border)' }}
       suppressHydrationWarning
     >

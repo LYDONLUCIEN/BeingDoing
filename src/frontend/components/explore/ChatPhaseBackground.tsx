@@ -1,5 +1,3 @@
-'use client';
-
 import type { PhaseKey } from '@/lib/explore/session';
 
 /** rumination：保留原悬浮球光晕 */

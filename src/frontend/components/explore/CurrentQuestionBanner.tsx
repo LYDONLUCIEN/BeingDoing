@@ -1,5 +1,3 @@
-'use client';
-
 interface Question {
   id: number;
   category: string;

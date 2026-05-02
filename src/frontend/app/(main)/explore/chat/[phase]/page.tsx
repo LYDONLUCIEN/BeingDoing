@@ -3,6 +3,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter, useParams, usePathname } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
 import {
   ChevronRight,
@@ -16,17 +17,27 @@ import {
 } from 'lucide-react';
 import FlowAiMessage from '@/components/explore/FlowAiMessage';
 import DimensionConclusionCard, { type DimensionConclusionData } from '@/components/explore/DimensionConclusionCard';
-import PhaseCelebrateBurst from '@/components/explore/PhaseCelebrateBurst';
 import PhaseCompleteWarmModal from '@/components/explore/PhaseCompleteWarmModal';
 import ChatPhaseBackground from '@/components/explore/ChatPhaseBackground';
 import ExploreLandingMeshLayers from '@/components/explore/ExploreLandingMeshLayers';
-import ChatPhaseSidebar from '@/components/explore/ChatPhaseSidebar';
-import RuminationSectionProgress from '@/components/explore/RuminationSectionProgress';
-import RuminationTableWidget, {
-  HYP_CONFIRM_KEY,
-  OTHER_SELECT_VALUE,
-  normalizeRuminationValue,
-} from '@/components/explore/RuminationTableWidget';
+import { HYP_CONFIRM_KEY, OTHER_SELECT_VALUE } from '@/lib/explore/ruminationConstants';
+
+const PhaseCelebrateBurst = dynamic(
+  () => import('@/components/explore/PhaseCelebrateBurst'),
+  { ssr: false },
+);
+const ChatPhaseSidebar = dynamic(
+  () => import('@/components/explore/ChatPhaseSidebar'),
+  { ssr: false },
+);
+const RuminationSectionProgress = dynamic(
+  () => import('@/components/explore/RuminationSectionProgress'),
+  { ssr: false },
+);
+const RuminationTableWidget = dynamic(
+  () => import('@/components/explore/RuminationTableWidget'),
+  { ssr: false },
+);
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { apiClient, getApiErrorMessage } from '@/lib/api/client';
 import { authApi } from '@/lib/api/auth';
@@ -1152,7 +1163,14 @@ export default function ChatPhasePage() {
     ta.style.overflowY = ta.scrollHeight > 24 * 7 ? 'auto' : 'hidden';
   }, [input]);
 
-  // 兜底：避免初始化请求异常时长期停留在“正在准备中”
+  // 发送完成后将焦点还给输入框，支持连续 Enter 对话无需再点鼠标。
+  useEffect(() => {
+    if (!sending && !isReadOnly) {
+      inputRef.current?.focus();
+    }
+  }, [sending, isReadOnly]);
+
+  // 兜底：避免初始化请求异常时长期停留在”正在准备中”
   useEffect(() => {
     if (!initLoading) return;
     const timer = window.setTimeout(() => {
@@ -1670,10 +1688,6 @@ export default function ChatPhasePage() {
         return normalized;
       });
       abortControllerRef.current = null;
-      // 发送完成后将焦点还给输入框，支持连续 Enter 对话无需再点鼠标。
-      requestAnimationFrame(() => {
-        if (!isReadOnly) inputRef.current?.focus();
-      });
     }
   };
 
@@ -1878,22 +1892,23 @@ export default function ChatPhasePage() {
       return prev.map((t) => (t.id === targetThreadId ? updated : t));
     });
 
+    setPhaseCelebrateSignal((n) => n + 1);
+
+    /** 与庆祝粒子一致：本地确认后即弹出祝贺层；是否进过渡页仍由 threadCompleteOk + pendingRuminationNavigateRef 决定 */
+    let skipModal = false;
+    if (!adminDebugBypass && activationCode) {
+      try {
+        skipModal = localStorage.getItem(`bd_phase_complete_dismiss_${activationCode}_${phase}`) === '1';
+      } catch {
+        /* private mode */
+      }
+    }
+    if (!skipModal) {
+      setPhaseCompleteModalOpen(true);
+    }
+
     if (threadCompleteOk) {
       pendingRuminationNavigateRef.current = phase === 'rumination';
-      setPhaseCelebrateSignal((n) => n + 1);
-      /** 检查 localStorage：用户是否对该 activationCode+phase 勾选过"不再提醒"
-       *  管理员调试模式 (adminDebugBypass) 可强制忽略该状态 */
-      let skipModal = false;
-      if (!adminDebugBypass && activationCode) {
-        try {
-          skipModal = localStorage.getItem(`bd_phase_complete_dismiss_${activationCode}_${phase}`) === '1';
-        } catch {
-          /* private mode */
-        }
-      }
-      if (!skipModal) {
-        setPhaseCompleteModalOpen(true);
-      }
     } else {
       pendingRuminationNavigateRef.current = false;
     }
@@ -3813,7 +3828,7 @@ export default function ChatPhasePage() {
       <PhaseCompleteWarmModal
         open={phaseCompleteModalOpen}
         title={t('explore.phaseComplete.title')}
-        body={t(`explore.phaseComplete.outro.${phase}`)}
+        body={`${t('explore.phaseComplete.subtitle')}\n\n${t(`explore.phaseComplete.outro.${phase}`)}`}
         continueLabel={t('explore.phaseComplete.continue')}
         dontRemindLabel={t('explore.phaseComplete.dontRemind')}
         onContinue={handlePhaseCompleteModalContinue}

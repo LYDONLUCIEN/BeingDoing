@@ -110,3 +110,17 @@ Data Layer (SQLite dev / PostgreSQL prod)
 所有开发文档的任务和结果都写在：/home/gitclone/BeingDoing/wiki/开发文档这个里
 以claude-todo-list开头的md文档，这里内容是所有代办事项
 以claude-completed开头的md文档，是所有完成的内容的记录描述
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `LYDONLUCIEN/BeingDoing`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary (needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` + `docs/adr/` at repo root. See `docs/agents/domain.md`.

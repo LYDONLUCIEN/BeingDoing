@@ -70,7 +70,13 @@ class ConversationFileManager:
         def _do():
             file_lock = FileLock(str(lock_path), timeout=30)
             with file_lock:
-                return fn(file_path)
+                result = fn(file_path)
+            # 释放锁后清理 lock 文件，避免磁盘残留
+            try:
+                lock_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            return result
 
         return await asyncio.to_thread(_do)
 

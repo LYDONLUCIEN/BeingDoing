@@ -1,5 +1,3 @@
-'use client';
-
 import AnswerCard from './AnswerCard';
 
 interface HistoryCard {

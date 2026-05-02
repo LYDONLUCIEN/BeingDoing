@@ -57,11 +57,34 @@ class _FcntlPairLock:
             finally:
                 self._fp.close()
                 self._fp = None
+                try:
+                    self._path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+
+class _CleanupFileLock:
+    """filelock.FileLock 包装：with 退出后自动删除 lock 文件。"""
+
+    def __init__(self, path: str, timeout: float = 30) -> None:
+        self._lock = _FileLock(path, timeout=timeout)
+        self._path = Path(path)
+
+    def __enter__(self) -> "_CleanupFileLock":
+        self._lock.__enter__()
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        self._lock.__exit__(*args)
+        try:
+            self._path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def _pair_file_lock(lock_path: Path):
     if _FileLock is not None:
-        return _FileLock(str(lock_path), timeout=30)
+        return _CleanupFileLock(str(lock_path), timeout=30)
     if sys.platform == "win32":
         raise ImportError("请安装 filelock 依赖（Windows 上 report 锁需要）")
     return _FcntlPairLock(lock_path)

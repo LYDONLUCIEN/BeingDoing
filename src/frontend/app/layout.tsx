@@ -20,10 +20,10 @@ const playfair = localFont({
 
 const notoSansSC = localFont({
   src: [
-    { path: '../public/fonts/NotoSansSC-Light.ttf', weight: '300', style: 'normal' },
-    { path: '../public/fonts/NotoSansSC-Regular.ttf', weight: '400', style: 'normal' },
-    { path: '../public/fonts/NotoSansSC-Medium.ttf', weight: '500', style: 'normal' },
-    { path: '../public/fonts/NotoSansSC-SemiBold.ttf', weight: '600', style: 'normal' },
+    { path: '../public/fonts/NotoSansSC-Light.woff2', weight: '300', style: 'normal' },
+    { path: '../public/fonts/NotoSansSC-Regular.woff2', weight: '400', style: 'normal' },
+    { path: '../public/fonts/NotoSansSC-Medium.woff2', weight: '500', style: 'normal' },
+    { path: '../public/fonts/NotoSansSC-SemiBold.woff2', weight: '600', style: 'normal' },
   ],
   variable: '--font-noto-sans-sc',
   display: 'swap',
@@ -31,8 +31,8 @@ const notoSansSC = localFont({
 
 const notoSerifSC = localFont({
   src: [
-    { path: '../public/fonts/NotoSerifSC-Regular.ttf', weight: '400', style: 'normal' },
-    { path: '../public/fonts/NotoSerifSC-SemiBold.ttf', weight: '600', style: 'normal' },
+    { path: '../public/fonts/NotoSerifSC-Regular.woff2', weight: '400', style: 'normal' },
+    { path: '../public/fonts/NotoSerifSC-SemiBold.woff2', weight: '600', style: 'normal' },
   ],
   variable: '--font-noto-serif-sc',
   display: 'swap',

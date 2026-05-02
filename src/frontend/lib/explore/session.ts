@@ -97,7 +97,13 @@ export interface ExploreResumePayload {
 }
 
 /**
- * 用后端 explore_resume 覆盖 currentPhase / unlockedPhases（重新登录时与服务器进度对齐）。
+ * 用后端 explore_resume 合并 currentPhase / unlockedPhases。
+ *
+ * 取本地与后端的并集（取阶段更靠前者），避免后端 lock_step 尚未触发时
+ * 将前端已前进的阶段回退（竞态修复）。
+ *
+ * - unlockedPhases：本地 ∪ 后端，保持 PHASES 顺序
+ * - currentPhase：取 index 更大的（更靠后的阶段）
  */
 export function applyExploreResumeToSession(
   session: ExploreSession,
@@ -106,21 +112,43 @@ export function applyExploreResumeToSession(
   if (!resume?.resume_phase) return session;
   const rp = resume.resume_phase as PhaseKey;
   if (!PHASES.some((p) => p.key === rp)) return session;
+
+  // Build backend's unlocked list
   const raw = resume.unlocked_phases;
-  let unlocked: PhaseKey[] = [];
+  let backendUnlocked: PhaseKey[] = [];
   if (Array.isArray(raw)) {
-    unlocked = raw.filter((k): k is PhaseKey =>
+    backendUnlocked = raw.filter((k): k is PhaseKey =>
       PHASES.some((p) => p.key === k)
     );
   }
-  if (unlocked.length === 0) {
+  if (backendUnlocked.length === 0) {
     const idx = PHASES.findIndex((p) => p.key === rp);
-    unlocked = PHASES.slice(0, idx + 1).map((p) => p.key);
+    backendUnlocked = PHASES.slice(0, idx + 1).map((p) => p.key);
   }
+
+  // Union of local + backend unlocked phases, preserving phase order
+  const mergedUnlocked = PHASES.filter(
+    (p) => session.unlockedPhases.includes(p.key) || backendUnlocked.includes(p.key)
+  ).map((p) => p.key);
+
+  // currentPhase: whichever is further ahead
+  const localIdx = PHASES.findIndex((p) => p.key === session.currentPhase);
+  const backendIdx = PHASES.findIndex((p) => p.key === rp);
+  const mergedCurrentPhase = backendIdx > localIdx ? rp : session.currentPhase;
+
+  // Short-circuit if nothing changed
+  if (
+    mergedCurrentPhase === session.currentPhase &&
+    mergedUnlocked.length === session.unlockedPhases.length &&
+    mergedUnlocked.every((k, i) => k === session.unlockedPhases[i])
+  ) {
+    return session;
+  }
+
   return {
     ...session,
-    currentPhase: rp,
-    unlockedPhases: unlocked,
+    currentPhase: mergedCurrentPhase,
+    unlockedPhases: mergedUnlocked,
   };
 }
 

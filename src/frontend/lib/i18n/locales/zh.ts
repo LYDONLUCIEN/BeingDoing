@@ -106,7 +106,8 @@ export const zh = {
       submitLabel: '提交并开始探索',
     },
     phaseComplete: {
-      title: '这一段探索完成了',
+      title: '恭喜完成！ 🌿',
+      subtitle: '休息一下，我们再继续',
       continue: '谢谢，继续',
       dontRemind: '不再提醒',
       outro: {

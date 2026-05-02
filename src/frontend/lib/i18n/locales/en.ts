@@ -111,7 +111,8 @@ export const en = {
       submitLabel: 'Submit & Start Exploring',
     },
     phaseComplete: {
-      title: 'You finished this stretch',
+      title: 'Nice work! 🌿',
+      subtitle: 'Take a short break — we will keep going when you are ready.',
       continue: 'Thank you — continue',
       dontRemind: "Don't show this again",
       outro: {
