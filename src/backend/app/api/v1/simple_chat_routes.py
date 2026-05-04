@@ -56,7 +56,7 @@ from app.utils.rumination_progress import (
     merge_rumination_progress_fields,
     save_rumination_progress,
 )
-from app.utils.rumination_neg_gate import try_build_neg_gate_response
+from app.utils.rumination_neg_gate import build_zero_results_gate, try_build_neg_gate_response
 from app.utils.rumination_table_widgets import build_table_widget_payload
 from app.utils.rumination_ops import (
     gen_table,
@@ -1914,24 +1914,18 @@ def _rumination_persist_skip_to_step7(
     *,
     filter_early_terminated: bool,
     clear_snapshots_from: int,
-    preserve_step6_initial: Optional[List[dict]] = None,
 ) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]], int]:
-    """直达第 7 步：清理中间快照、写入 7 的 initial、更新 progress。
-
-    preserve_step6_initial：短链跳过第 6 步 UI 时仍写入第 6 步 initial，便于用户「上一阶段」回看（能看即可）。
-    """
+    """直达第 7 步：清理中间快照、标记 skipped、写入 7 的 initial、更新 progress。"""
     _rumination_clear_snapshots_from_step(snapshots, clear_snapshots_from)
+    # 标记被短链跳过的中间子步为 skipped，前端据此灰显并禁止操作
+    for skip_step in range(clear_snapshots_from, 7):
+        snapshots[str(skip_step)] = {"skipped": True}
     wrows = _rumination_step7_rows_for_widget(step7_rows)
     s7 = snapshots.setdefault("7", {})
     if s7.get("initial") is None:
         s7["initial"] = deepcopy(_rumination_strip_meta_keys(wrows))
     s7["submitted"] = None
     snapshots["7"] = s7
-    if preserve_step6_initial is not None:
-        s6 = snapshots.setdefault("6", {})
-        s6["initial"] = deepcopy(preserve_step6_initial)
-        s6["submitted"] = None
-        snapshots["6"] = s6
     progress = save_rumination_progress(
         reports_root,
         report_id,
@@ -1983,6 +1977,14 @@ async def rumination_table_submit(
         sk = str(step)
         ent = snapshots.setdefault(sk, {})
         table_data = request.table_data
+
+        # 被短链跳过的子步禁止提交
+        step_snap = progress0.get("filter_step_snapshots", {}).get(sk, {})
+        if step_snap.get("skipped"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="该步骤已被跳过，不可提交",
+            )
 
         pending0 = progress0.get("pending_table_submit")
         neg0_early = progress0.get("rumination_neg_state") or {}
@@ -2122,7 +2124,7 @@ async def rumination_table_submit(
                 ent1["submitted"] = None
                 snapshots["1"] = ent1
                 _rumination_clear_snapshots_from_step(snapshots, 2)
-                progress = save_rumination_progress(
+                save_rumination_progress(
                     reports_root,
                     report_id,
                     main_section="filter",
@@ -2132,11 +2134,33 @@ async def rumination_table_submit(
                     filter_early_terminated=False,
                     filter_terminate_reason=None,
                 )
-                next_table = build_table_widget_payload(1, rows1, values_list)
-                if next_table:
-                    base_g = str(next_table.get("guideText") or "")
-                    next_table["guideText"] = f"{RUMINATION_GUIDE_ZERO_SELECTION_ZH}\n\n{base_g}".strip()
-                next_step_val = 1
+                gate_pkg = build_zero_results_gate(
+                    step=1,
+                    initial_rows=rows1,
+                    kind="zero_strength",
+                )
+                merge_rumination_progress_fields(
+                    reports_root,
+                    report_id,
+                    {
+                        "pending_table_submit": gate_pkg["pending"],
+                        "rumination_neg_state": gate_pkg["neg_state"],
+                        "filter_table": rows1,
+                    },
+                )
+                progress = load_rumination_progress(reports_root, report_id)
+                snaps_gate = progress.get("filter_step_snapshots") or {}
+                return SimpleChatResponse(
+                    code=200,
+                    message="success",
+                    data={
+                        "progress": progress,
+                        "next_step": 1,
+                        "max_reached_filter_step": max_reached_filter_step(snaps_gate),
+                        "next_action": "rumination_neg_confirm",
+                        "neg_confirm": gate_pkg["confirm"],
+                    },
+                )
             else:
                 step2_rows = filter_match(filtered)
                 next_table = _build_table_widget_payload(
@@ -2190,7 +2214,7 @@ async def rumination_table_submit(
                 ent2["submitted"] = None
                 snapshots["2"] = ent2
                 _rumination_clear_snapshots_from_step(snapshots, 3)
-                progress = save_rumination_progress(
+                save_rumination_progress(
                     reports_root,
                     report_id,
                     main_section="filter",
@@ -2200,11 +2224,33 @@ async def rumination_table_submit(
                     filter_early_terminated=False,
                     filter_terminate_reason=None,
                 )
-                next_table = build_table_widget_payload(2, rows2, values_list)
-                if next_table:
-                    base_g = str(next_table.get("guideText") or "")
-                    next_table["guideText"] = f"{RUMINATION_GUIDE_ZERO_SELECTION_ZH}\n\n{base_g}".strip()
-                next_step_val = 2
+                gate_pkg = build_zero_results_gate(
+                    step=2,
+                    initial_rows=rows2,
+                    kind="zero_match",
+                )
+                merge_rumination_progress_fields(
+                    reports_root,
+                    report_id,
+                    {
+                        "pending_table_submit": gate_pkg["pending"],
+                        "rumination_neg_state": gate_pkg["neg_state"],
+                        "filter_table": rows2,
+                    },
+                )
+                progress = load_rumination_progress(reports_root, report_id)
+                snaps_gate = progress.get("filter_step_snapshots") or {}
+                return SimpleChatResponse(
+                    code=200,
+                    message="success",
+                    data={
+                        "progress": progress,
+                        "next_step": 2,
+                        "max_reached_filter_step": max_reached_filter_step(snaps_gate),
+                        "next_action": "rumination_neg_confirm",
+                        "neg_confirm": gate_pkg["confirm"],
+                    },
+                )
             else:
                 vip_level = getattr(rec, "vip_level", 1) or 1
                 llm = _get_dialogue_llm_provider(vip_level=vip_level)
@@ -2254,7 +2300,7 @@ async def rumination_table_submit(
                 ent3["submitted"] = None
                 snapshots["3"] = ent3
                 _rumination_clear_snapshots_from_step(snapshots, 4)
-                progress = save_rumination_progress(
+                save_rumination_progress(
                     reports_root,
                     report_id,
                     main_section="filter",
@@ -2264,17 +2310,82 @@ async def rumination_table_submit(
                     filter_early_terminated=False,
                     filter_terminate_reason=None,
                 )
-                next_table = build_table_widget_payload(3, rows3, values_list)
-                if next_table:
-                    base_g = str(next_table.get("guideText") or "")
-                    next_table["guideText"] = f"{RUMINATION_GUIDE_ALL_PENDING_ZH}\n\n{base_g}".strip()
-                next_step_val = 3
+                gate_pkg = build_zero_results_gate(
+                    step=3,
+                    initial_rows=rows3,
+                    kind="zero_valid",
+                )
+                merge_rumination_progress_fields(
+                    reports_root,
+                    report_id,
+                    {
+                        "pending_table_submit": gate_pkg["pending"],
+                        "rumination_neg_state": gate_pkg["neg_state"],
+                        "filter_table": rows3,
+                    },
+                )
+                progress = load_rumination_progress(reports_root, report_id)
+                snaps_gate = progress.get("filter_step_snapshots") or {}
+                return SimpleChatResponse(
+                    code=200,
+                    message="success",
+                    data={
+                        "progress": progress,
+                        "next_step": 3,
+                        "max_reached_filter_step": max_reached_filter_step(snaps_gate),
+                        "next_action": "rumination_neg_confirm",
+                        "neg_confirm": gate_pkg["confirm"],
+                    },
+                )
             else:
                 step4_rows = value_filter(finalized, values_list)
                 if not step4_rows:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="没有可进入价值观筛选的有效假设，请至少保留一行非「无」的有效选择。",
+                    # 价值观筛选后 0 条：弹窗兜底
+                    ent3v = snapshots.setdefault("3", {})
+                    initial3v = ent3v.get("initial")
+                    if not initial3v:
+                        initial3v = deepcopy(finalized)
+                        ent3v["initial"] = deepcopy(initial3v)
+                    rows3v = deepcopy(initial3v)
+                    ent3v["submitted"] = None
+                    snapshots["3"] = ent3v
+                    _rumination_clear_snapshots_from_step(snapshots, 4)
+                    save_rumination_progress(
+                        reports_root,
+                        report_id,
+                        main_section="filter",
+                        filter_step=3,
+                        filter_table=rows3v,
+                        filter_step_snapshots=snapshots,
+                        filter_early_terminated=False,
+                        filter_terminate_reason=None,
+                    )
+                    gate_pkg = build_zero_results_gate(
+                        step=3,
+                        initial_rows=rows3v,
+                        kind="zero_value",
+                    )
+                    merge_rumination_progress_fields(
+                        reports_root,
+                        report_id,
+                        {
+                            "pending_table_submit": gate_pkg["pending"],
+                            "rumination_neg_state": gate_pkg["neg_state"],
+                            "filter_table": rows3v,
+                        },
+                    )
+                    progress = load_rumination_progress(reports_root, report_id)
+                    snaps_gate = progress.get("filter_step_snapshots") or {}
+                    return SimpleChatResponse(
+                        code=200,
+                        message="success",
+                        data={
+                            "progress": progress,
+                            "next_step": 3,
+                            "max_reached_filter_step": max_reached_filter_step(snaps_gate),
+                            "next_action": "rumination_neg_confirm",
+                            "neg_confirm": gate_pkg["confirm"],
+                        },
                     )
                 if 1 <= len(step4_rows) <= 3:
                     step7_r = _rumination_step7_via_456_chain(step4_rows)
@@ -2287,7 +2398,7 @@ async def rumination_table_submit(
                         step7_r,
                         values_list,
                         filter_early_terminated=True,
-                        clear_snapshots_from=5,
+                        clear_snapshots_from=4,
                     )
                 else:
                     next_table = build_table_widget_payload(4, step4_rows, values_list, values_source=values_source)
@@ -2320,7 +2431,7 @@ async def rumination_table_submit(
                     step7_r,
                     values_list,
                     filter_early_terminated=True,
-                    clear_snapshots_from=6,
+                    clear_snapshots_from=5,
                 )
             elif 1 <= len(step5_rows) <= 3:
                 step7_r = _rumination_step7_via_456_chain(step5_rows)
@@ -2333,7 +2444,7 @@ async def rumination_table_submit(
                     step7_r,
                     values_list,
                     filter_early_terminated=True,
-                    clear_snapshots_from=6,
+                    clear_snapshots_from=5,
                 )
             else:
                 next_table = build_table_widget_payload(5, step5_rows, values_list)
@@ -2377,7 +2488,6 @@ async def rumination_table_submit(
                     values_list,
                     filter_early_terminated=True,
                     clear_snapshots_from=6,
-                    preserve_step6_initial=step6_rows,
                 )
             else:
                 next_table = build_table_widget_payload(6, step6_rows, values_list)
@@ -2408,7 +2518,6 @@ async def rumination_table_submit(
                     values_list,
                     filter_early_terminated=True,
                     clear_snapshots_from=7,
-                    preserve_step6_initial=incoming6,
                 )
             else:
                 wrows = _rumination_step7_rows_for_widget(step7_plain)
@@ -2635,6 +2744,23 @@ async def rumination_neg_resolve(
             )
 
         if request.action == "continue":
+            # zero_results 弹窗不能 continue（相同数据会循环），按 dismiss 处理
+            neg_kind = str(neg.get("kind") or "")
+            if neg_kind.startswith("zero_"):
+                gate_step = int(neg.get("step") or progress.get("filter_step") or 0)
+                merge_rumination_progress_fields(
+                    reports_root,
+                    report_id,
+                    {"rumination_neg_state": None, "pending_table_submit": None},
+                )
+                if gate_step >= 1:
+                    clear_neg_gate_triggered_step(reports_root, report_id, gate_step)
+                progress2 = load_rumination_progress(reports_root, report_id)
+                return SimpleChatResponse(
+                    code=200,
+                    message="success",
+                    data={"progress": progress2, "next_action": "rumination_neg_dismissed"},
+                )
             fallback_table = progress.get("filter_table")
             if (
                 (not isinstance(pending, dict) or pending.get("table_data") is None)

@@ -277,6 +277,8 @@ export const zh = {
         negExploringRegionLabel: '深入讨论进行中',
         negGateDefaultCopy: '请先选择：进入下一步，或与 AI 深入讨论后再继续。',
         negGateModalTitle: '继续前请先确认这一点',
+        negGateZeroTitle: '筛选结果为空',
+        negGateZeroHint: '表格已恢复为初始状态，你可以修改选项后重新确认。',
         negGateNoTableEditHint:
           '提示：这里的热爱、优势等前提项来自前面已确认内容，请不要在本轮讨论里改动这些前提。',
         negGateContinue: '进入下一步',

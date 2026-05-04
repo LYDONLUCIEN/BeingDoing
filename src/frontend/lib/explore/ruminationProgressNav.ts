@@ -9,6 +9,7 @@ export function computeMaxReachedFromSnapshots(p: RuminationProgress | null): nu
   for (const [key, snap] of Object.entries(p.filter_step_snapshots)) {
     const n = parseInt(key, 10);
     if (Number.isNaN(n)) continue;
+    if (snap?.skipped) continue;
     if (snap?.submitted != null) m = Math.max(m, n);
   }
   return m;
@@ -26,6 +27,10 @@ export function isRuminationFilterStepReachable(
 ): boolean {
   if (step < 1 || step > RUMINATION_FILTER_STEP_MAX) return false;
   if (!p) return step === 1;
+
+  // 被短链跳过的子步完全不可达
+  const stepSnap = p.filter_step_snapshots?.[String(step)];
+  if (stepSnap?.skipped) return false;
 
   const ms = p.main_section;
   const fs = p.filter_step ?? 0;
@@ -69,6 +74,17 @@ export function isRuminationFilterStepReachable(
     return true;
   }
   return false;
+}
+
+/**
+ * 某筛选子步是否被短链跳过（用于进度条灰显）。
+ */
+export function isRuminationFilterStepSkipped(
+  step: number,
+  p: RuminationProgress | null
+): boolean {
+  if (!p?.filter_step_snapshots) return false;
+  return Boolean(p.filter_step_snapshots[String(step)]?.skipped);
 }
 
 /**

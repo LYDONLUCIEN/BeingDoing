@@ -330,7 +330,9 @@ class ConversationFileManager:
         category: str,
         from_step: int,
     ) -> int:
-        """删除对话文件中 filter_step >= from_step 的消息，并清除对应 step_anchors。
+        """删除对话文件中 filter_step >= from_step 的消息及其之后的全部消息（含 filter_step=None 的引导文案）。
+
+        保留 event=init_rumination_intro 的消息（开场白）。
 
         用于 rumination 阶段「重新填写」时从某子步起重置对话。
 
@@ -345,10 +347,31 @@ class ConversationFileManager:
                 return 0
             msgs = data.get("messages") or []
             before = len(msgs)
-            data["messages"] = [
-                m for m in msgs
-                if not isinstance(m, dict) or int(m.get("filter_step") or 0) < from_step
-            ]
+
+            # 找到第一条 filter_step >= from_step 的消息位置
+            cut_idx = len(msgs)
+            for i, m in enumerate(msgs):
+                if not isinstance(m, dict):
+                    continue
+                fs = m.get("filter_step")
+                if fs is not None and int(fs) >= from_step:
+                    cut_idx = i
+                    break
+
+            # 从 cut_idx 开始删除，但保留 init_rumination_intro
+            if cut_idx < len(msgs):
+                kept = msgs[:cut_idx]
+                for m in msgs[cut_idx:]:
+                    if isinstance(m, dict) and m.get("event") == "init_rumination_intro":
+                        kept.append(m)
+                data["messages"] = kept
+            else:
+                # 没有找到 filter_step >= from_step 的消息，仅按旧逻辑过滤
+                data["messages"] = [
+                    m for m in msgs
+                    if not isinstance(m, dict) or int(m.get("filter_step") or 0) < from_step
+                ]
+
             deleted = before - len(data["messages"])
             # 清除 metadata 中 step_anchor_N 条目（N >= from_step）
             meta = data.setdefault("metadata", {})

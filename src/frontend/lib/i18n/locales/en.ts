@@ -281,6 +281,8 @@ export const en = {
         negGateDefaultCopy:
           'Choose below: continue to the next step, or discuss with the AI first, then continue.',
         negGateModalTitle: 'Please confirm before continuing',
+        negGateZeroTitle: 'No results from filtering',
+        negGateZeroHint: 'The table has been restored. You can modify your selections and confirm again.',
         negGateNoTableEditHint:
           'Note: prerequisites like Interests and Strengths were confirmed earlier—do not edit these premises during this discussion.',
         negGateContinue: 'Continue to next step',

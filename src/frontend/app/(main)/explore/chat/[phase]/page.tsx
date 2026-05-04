@@ -1986,29 +1986,11 @@ export default function ChatPhasePage() {
           return prev.map((t) => (t.id === targetThreadId ? updated : t));
         });
       }
-      // 防连点 / 去重
-      if (isNavigatingRef.current) {
-        console.warn('[RuminationStep7Finalize] 导航中，跳过重复跳转');
-        return;
-      }
-      if (session && session.currentPhase !== phase) {
-        console.warn('[RuminationStep7Finalize] session 已前进，跳过', {
-          sessionPhase: session.currentPhase,
-          urlPhase: phase,
-        });
-        return;
-      }
-      isNavigatingRef.current = true;
-      console.log('[RuminationStep7Finalize] 开始导航', { phase });
-      if (session) {
-        const nextSession = unlockNextPhase({ ...session, currentPhase: phase });
-        saveSession(nextSession);
-        setSession(nextSession);
-        console.log('[RuminationStep7Finalize] session 已更新', {
-          nextPhase: nextSession.currentPhase,
-        });
-      }
-      router.push('/explore/transition?from=rumination');
+      // --- 庆祝：粒子 + 弹窗，rumination 每次必现 ---
+      setPhaseCelebrateSignal((n) => n + 1);
+
+      pendingRuminationNavigateRef.current = true;
+      setPhaseCompleteModalOpen(true);
     } catch (err) {
       console.error('[RuminationStep7Finalize] 提交异常', err);
       setChatError(getApiErrorMessage(err, t('explore.chat.ruminationUi.tableSubmitError')));
@@ -2446,6 +2428,7 @@ export default function ChatPhasePage() {
       ruminationNegHeaderStrip
     );
   }, [ruminationProgressState?.rumination_neg_state?.status, ruminationNegHeaderStrip]);
+  const isZeroResultsNeg = (ruminationProgressState?.rumination_neg_state?.kind ?? '').startsWith('zero_');
   const ruminationNegExploringPinned = useMemo(() => {
     return (
       ruminationProgressState?.rumination_neg_state?.status === 'exploring' && ruminationNegHeaderStrip
@@ -3677,14 +3660,18 @@ export default function ChatPhasePage() {
               } rounded-2xl border border-white/70 bg-[linear-gradient(160deg,rgba(255,255,255,0.98),rgba(248,250,255,0.95))] p-5 shadow-[0_24px_65px_rgba(15,23,42,0.24)] transition-all duration-300`}
             >
               <div className="mb-1 text-xs font-semibold tracking-wide text-sky-700">
-                {t('explore.chat.ruminationUi.negGateModalTitle')}
+                {isZeroResultsNeg
+                  ? t('explore.chat.ruminationUi.negGateZeroTitle')
+                  : t('explore.chat.ruminationUi.negGateModalTitle')}
               </div>
               <p className="whitespace-pre-line text-sm leading-relaxed text-neutral-800">
                 {(ruminationProgressState?.rumination_neg_state?.bar_copy_zh || '').trim() ||
                   t('explore.chat.ruminationUi.negGateDefaultCopy')}
               </p>
               <p className="mt-2 text-xs leading-relaxed text-neutral-500">
-                {t('explore.chat.ruminationUi.negGateNoTableEditHint')}
+                {isZeroResultsNeg
+                  ? t('explore.chat.ruminationUi.negGateZeroHint')
+                  : t('explore.chat.ruminationUi.negGateNoTableEditHint')}
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <button
@@ -3694,6 +3681,7 @@ export default function ChatPhasePage() {
                 >
                   {t('explore.chat.ruminationUi.negGateDismiss')}
                 </button>
+                {!isZeroResultsNeg && (
                 <button
                   type="button"
                   disabled={ruminationTableSubmitting}
@@ -3702,6 +3690,7 @@ export default function ChatPhasePage() {
                 >
                   {t('explore.chat.ruminationUi.negGateContinue')}
                 </button>
+                )}
                 <button
                   type="button"
                   disabled={ruminationTableSubmitting}
@@ -3871,7 +3860,7 @@ export default function ChatPhasePage() {
         title={t('explore.phaseComplete.title')}
         body={`${t('explore.phaseComplete.subtitle')}\n\n${t(`explore.phaseComplete.outro.${phase}`)}`}
         continueLabel={t('explore.phaseComplete.continue')}
-        dontRemindLabel={t('explore.phaseComplete.dontRemind')}
+        dontRemindLabel={phase === 'rumination' ? undefined : t('explore.phaseComplete.dontRemind')}
         onContinue={handlePhaseCompleteModalContinue}
       />
     </div>

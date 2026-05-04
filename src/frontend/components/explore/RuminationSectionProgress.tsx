@@ -8,7 +8,7 @@ import {
   type RuminationProgress,
 } from '@/lib/api/rumination';
 import { useLocale } from '@/hooks/useLocale';
-import { isRuminationFilterStepReachable } from '@/lib/explore/ruminationProgressNav';
+import { isRuminationFilterStepReachable, isRuminationFilterStepSkipped } from '@/lib/explore/ruminationProgressNav';
 
 const SECTION_ORDER: RuminationMainSection[] = [
   'opening',
@@ -39,7 +39,7 @@ function countFilterSubmittedSteps(progress: RuminationProgress): number {
   let n = 0;
   for (let k = 1; k <= FILTER_STEP_CAP; k++) {
     const ent = snaps[String(k)];
-    if (ent != null && ent.submitted != null) n++;
+    if (ent != null && !ent.skipped && ent.submitted != null) n++;
   }
   return n;
 }
@@ -355,29 +355,32 @@ export default function RuminationSectionProgress({
                     const step = i + 1;
                     const vf = viewFilterStep ?? 0;
                     const reachable = isRuminationFilterStepReachable(step, displayProgress);
+                    const skipped = isRuminationFilterStepSkipped(step, displayProgress);
                     const current = vf === step;
-                    const disabled = Boolean(segJump.jumpDisabled) || !reachable;
+                    const disabled = Boolean(segJump.jumpDisabled) || !reachable || skipped;
                     return (
                       <button
                         key={step}
                         type="button"
                         disabled={disabled}
-                        title={t('explore.chat.ruminationProgress.jumpToFilterStep', {
+                        title={skipped ? '已跳过' : t('explore.chat.ruminationProgress.jumpToFilterStep', {
                           step: String(step),
                         })}
-                        aria-label={t('explore.chat.ruminationProgress.jumpToFilterStep', {
+                        aria-label={skipped ? `步骤 ${step} 已跳过` : t('explore.chat.ruminationProgress.jumpToFilterStep', {
                           step: String(step),
                         })}
                         aria-current={current ? 'step' : undefined}
                         className={`rumination-filter-seg relative min-w-0 flex-1 border-l border-white/45 first:border-l-0 first:rounded-l-[10px] last:rounded-r-[10px] transition-[background-color,box-shadow,transform] duration-200 ease-out ${
-                          current
-                            ? 'bg-white/[0.22] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.55)]'
-                            : ''
+                          skipped
+                            ? 'bg-neutral-300/40 cursor-not-allowed opacity-60'
+                            : current
+                              ? 'bg-white/[0.22] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.55)]'
+                              : ''
                         } ${
-                          !disabled
+                          !disabled && !skipped
                             ? 'cursor-pointer hover:bg-white/14 hover:-translate-y-0.5 hover:scale-[1.06] active:bg-white/20 active:translate-y-0 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-400/50'
                             : ''
-                        } disabled:cursor-not-allowed disabled:opacity-30`}
+                        } ${disabled && !skipped ? 'disabled:cursor-not-allowed disabled:opacity-30' : ''}`}
                         onClick={() => segJump.onJump(step)}
                       />
                     );

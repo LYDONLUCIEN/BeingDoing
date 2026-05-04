@@ -510,3 +510,101 @@ async def try_build_neg_gate_response(
         "llm_failed": llm_failed,
     }
     return {"neg_state": neg_state, "pending": pending, "confirm": confirm}
+
+
+# ---------------------------------------------------------------------------
+# 筛选结果为零的兜底弹窗（step 1/2/3 过滤后 0 条）
+# ---------------------------------------------------------------------------
+
+_ZERO_BAR_COPY: Dict[str, str] = {
+    "zero_strength": (
+        "看起来你把所有优势都标记为了「不确定」，"
+        "这意味着暂时没有可继续的方向进入下一步。\n\n"
+        "我们可以聊聊为什么这些方向暂时不确定，或者你也可以回到表格重新选择。"
+    ),
+    "zero_match": (
+        "所有热爱和优势组合都被标记为「不匹配」，暂时无法进入假设生成环节。\n\n"
+        "我们可以一起讨论：是都不匹配，还是需要调整判断标准？"
+    ),
+    "zero_valid": (
+        "所有假设行都标记了「无」，暂时无法进入价值观筛选。\n\n"
+        "我们可以聊聊是什么让你对目前的假设都还不确定。"
+    ),
+    "zero_value": (
+        "价值观筛选后没有匹配的方向，暂时无法继续。\n\n"
+        "我们可以聊聊为什么这些假设都不太符合你的核心价值观。"
+    ),
+}
+
+_ZERO_OPENING: Dict[str, str] = {
+    "zero_strength": (
+        "你好呀，我注意到你把所有的优势都标记为了「不确定」。\n"
+        "这完全没问题——有时候我们对自己的优势习以为常，反而意识不到它就是优势。\n\n"
+        "我们可以聊聊：在做这些事情的时候，有没有哪些是你觉得特别自然、不费力的？"
+        "讨论完请点右上角「结束讨论」回到表格。"
+    ),
+    "zero_match": (
+        "你好呀，我注意到你把所有热爱与优势的组合都标记为了「不匹配」。\n"
+        "这其实很值得聊聊——也许它们不是真的不匹配，而是匹配的方式和你想象的不太一样。\n\n"
+        "我们可以逐条看看：第一个「不匹配」的组合，当时你心里是怎么想的？"
+        "讨论完请点右上角「结束讨论」回到表格。"
+    ),
+    "zero_valid": (
+        "你好呀，我注意到你对所有生成的职业假设都选择了「无」。\n"
+        "这很正常——也许这些假设没有击中你心里真正想做的事。\n\n"
+        "我们可以聊聊：如果不考虑任何限制，你最想做的三件事是什么？"
+        "讨论完请点右上角「结束讨论」回到表格。"
+    ),
+    "zero_value": (
+        "你好呀，价值观筛选后暂时没有匹配的方向。\n"
+        "这可能意味着目前的假设方向和你的核心价值观之间还有些距离。\n\n"
+        "我们可以聊聊：对你来说最重要的价值观是什么？"
+        "讨论完请点右上角「结束讨论」回到表格。"
+    ),
+}
+
+_ZERO_INJECTION_SUFFIX = (
+    "\n\n回复风格要求：\n"
+    "- 语气温和、简洁，优先短段落；\n"
+    "- 一次只问一个问题，不要连发多问；\n"
+    "- 引导用户重新审视被过滤的内容，帮助发现遗漏的可能性。\n\n"
+    "讨论充分后，请只引导点击右上角「结束讨论」回到左侧表格修改。"
+)
+
+
+def build_zero_results_gate(
+    *,
+    step: int,
+    initial_rows: List[Dict[str, Any]],
+    kind: str,
+) -> Dict[str, Any]:
+    """筛选结果为零时的兜底弹窗包（与 neg_gate gate_pkg 结构一致，同步，无需 LLM）。"""
+    bar = _ZERO_BAR_COPY.get(kind, _ZERO_BAR_COPY["zero_strength"])
+    opening = _ZERO_OPENING.get(kind, _ZERO_OPENING["zero_strength"])
+
+    # injection: 步骤专属 system（如有）+ zero_results 后缀
+    step_system = get_deep_chat_step_system(step, llm_failed=False)
+    inj = (f"\n{step_system}\n\n" if step_system else "") + _ZERO_INJECTION_SUFFIX
+
+    neg_state: Dict[str, Any] = {
+        "status": "awaiting_choice",
+        "step": step,
+        "kind": kind,
+        "items": [],
+        "llm_failed": False,
+        "injection_zh": inj,
+        "opening_zh": opening,
+        "bar_copy_zh": bar,
+    }
+    pending: Dict[str, Any] = {
+        "step": step,
+        "table_data": initial_rows,
+    }
+    confirm = {
+        "filter_step": step,
+        "kind": kind,
+        "items": [],
+        "bar_copy_zh": bar,
+        "llm_failed": False,
+    }
+    return {"neg_state": neg_state, "pending": pending, "confirm": confirm}

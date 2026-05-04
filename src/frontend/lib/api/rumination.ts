@@ -12,10 +12,11 @@ export type RuminationMainSection =
   | 'recommend'
   | 'end';
 
-/** 每步表格快照：initial=首次生成；submitted=确认后（用于回退查看） */
+/** 每步表格快照：initial=首次生成；submitted=确认后（用于回退查看）；skipped=短链跳过 */
 export type RuminationStepSnapshot = {
   initial?: Record<string, unknown>[] | null;
   submitted?: Record<string, unknown>[] | null;
+  skipped?: boolean;
 };
 
 /** 表格确认闸门：待提交暂存 + 跟进状态（与后端 rumination_progress 对齐） */
