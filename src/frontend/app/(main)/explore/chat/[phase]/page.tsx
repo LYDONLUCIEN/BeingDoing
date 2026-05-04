@@ -2262,7 +2262,7 @@ export default function ChatPhasePage() {
       setRuminationGuideBusy(true);
       setMessages((prev) => [
         ...prev,
-        { id: assistantId, role: 'assistant', content: '', createdAt: now },
+        { id: assistantId, role: 'assistant', content: '', createdAt: now, filterStep: newStep },
       ]);
 
       try {
@@ -2515,7 +2515,8 @@ export default function ChatPhasePage() {
           if (typeof data.max_reached_filter_step === 'number') {
             setRuminationMaxReached(data.max_reached_filter_step);
           }
-          setRuminationProgressNonce((n) => n + 1);
+          // 不递增 ruminationProgressNonce：闸门弹窗不影响当前表格，
+          // 递增会触发 effect 重新拉 get-table 覆盖用户编辑
           return;
         }
         ingestRuminationSubmitData(data, submitThreadId, payload, messagesRef.current);
@@ -2540,6 +2541,21 @@ export default function ChatPhasePage() {
       t,
     ]
   );
+
+  /** 闸门弹窗「我再看看」：关闭弹窗，保留 pending，用户可继续编辑表格 */
+  const handleRuminationNegDismiss = useCallback(async () => {
+    if (!activationCode || phase !== 'rumination') return;
+    const submitThreadId = resolveRuminationTableThreadId();
+    if (!submitThreadId.trim()) return;
+    try {
+      const res = await ruminationApi.negResolve(activationCode, submitThreadId, 'dismiss');
+      if (res.code === 200 && res.data?.progress) {
+        setRuminationProgressState(res.data.progress);
+      }
+    } catch {
+      /* dismiss 失败不阻断，弹窗会在 progress 同步后自然消失 */
+    }
+  }, [activationCode, phase, resolveRuminationTableThreadId]);
 
   const handleRuminationNegContinue = useCallback(async () => {
     if (!activationCode || phase !== 'rumination') return;
@@ -2589,18 +2605,18 @@ export default function ChatPhasePage() {
         const aid = `rum_neg_open_${Date.now()}`;
         setMessages((prev) => [
           ...prev,
-          { id: aid, role: 'assistant', content: oz, createdAt: Date.now() },
+          { id: aid, role: 'assistant', content: oz, createdAt: Date.now(), filterStep: ruminationViewStep },
         ]);
       }
       if (res.data.progress) setRuminationProgressState(res.data.progress);
-      setRuminationProgressNonce((n) => n + 1);
+      // 不递增 nonce：deep_start 不需要重新拉表格
     } catch (err) {
       setChatError(getApiErrorMessage(err, t('explore.chat.ruminationUi.tableSubmitError')));
     } finally {
       window.setTimeout(() => setRuminationNegMorphing(false), 260);
       setRuminationTableSubmitting(false);
     }
-  }, [activationCode, phase, resolveRuminationTableThreadId, t]);
+  }, [activationCode, phase, resolveRuminationTableThreadId, ruminationViewStep, t]);
 
   const handleRuminationNegDeepEnd = useCallback(async () => {
     if (!activationCode || phase !== 'rumination') return;
@@ -2623,7 +2639,7 @@ export default function ChatPhasePage() {
         const aid = `rum_neg_close_${Date.now()}`;
         setMessages((prev) => [
           ...prev,
-          { id: aid, role: 'assistant', content: closeTip, createdAt: Date.now() },
+          { id: aid, role: 'assistant', content: closeTip, createdAt: Date.now(), filterStep: ruminationViewStep },
         ]);
       }
       setRuminationProgressNonce((n) => n + 1);
@@ -2636,6 +2652,7 @@ export default function ChatPhasePage() {
     activationCode,
     phase,
     resolveRuminationTableThreadId,
+    ruminationViewStep,
     t,
   ]);
 
@@ -3664,6 +3681,13 @@ export default function ChatPhasePage() {
                 {t('explore.chat.ruminationUi.negGateNoTableEditHint')}
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleRuminationNegDismiss()}
+                  className="rounded-full border border-neutral-200 bg-neutral-50 px-4 py-2 text-xs font-semibold text-neutral-600 transition-colors hover:bg-neutral-100 sm:text-sm"
+                >
+                  {t('explore.chat.ruminationUi.negGateDismiss')}
+                </button>
                 <button
                   type="button"
                   disabled={ruminationTableSubmitting}

@@ -337,3 +337,69 @@ class TestRuminationLlmContextFiltering:
         accumulated = "\n---\n".join(parts)
         assert "[子步 1 要点] 热爱：感官创作" in accumulated
         assert "[子步 2 要点] 假设已确认" in accumulated
+
+
+class TestNegGateDismiss:
+    """neg_gate dismiss（「我再看看」）：关闭闸门弹窗但保留 pending 提交和触发标记。"""
+
+    def _make_progress_file(self, tmp: Path) -> tuple:
+        """创建临时 progress JSON，返回 (reports_root, report_id)"""
+        rid = "test_dismiss"
+        (tmp / rid).mkdir(parents=True, exist_ok=True)
+        prog = {
+            "main_section": "filter",
+            "filter_step": 3,
+            "filter_table": [{"id": "1", "热爱": "写作"}],
+            "filter_step_snapshots": {},
+            "neg_gate_triggered_steps": [3],
+            "pending_table_submit": {"step": 3, "table_data": [{"id": "1", "热爱": "写作"}]},
+            "rumination_neg_state": {"status": "awaiting_choice", "step": 3, "opening_zh": "测试文案"},
+        }
+        (tmp / rid / "rumination_progress.json").write_text(
+            json.dumps(prog, ensure_ascii=False), encoding="utf-8"
+        )
+        return tmp, rid
+
+    def test_dismiss_clears_neg_state_pending_and_triggered(self):
+        """dismiss 应清除 rumination_neg_state、pending_table_submit 和 triggered_steps，让下次确认重新检测闸门"""
+        from app.utils.rumination_progress import (
+            load_rumination_progress,
+            merge_rumination_progress_fields,
+            clear_neg_gate_triggered_step,
+            is_neg_gate_triggered,
+        )
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            reports_root, report_id = self._make_progress_file(tmp)
+
+            # 模拟 dismiss: 清除 neg_state、pending 和 triggered
+            merge_rumination_progress_fields(
+                reports_root,
+                report_id,
+                {"rumination_neg_state": None, "pending_table_submit": None},
+            )
+            clear_neg_gate_triggered_step(reports_root, report_id, 3)
+
+            prog = load_rumination_progress(reports_root, report_id)
+            # neg_state 已清除
+            assert prog.get("rumination_neg_state") is None
+            # pending_table_submit 已清除
+            assert prog.get("pending_table_submit") is None
+            # triggered_steps 也已清除
+            assert is_neg_gate_triggered(prog, 3) is False
+
+    def test_dismiss_keeps_filter_step_unchanged(self):
+        """dismiss 不应修改 filter_step"""
+        from app.utils.rumination_progress import load_rumination_progress, merge_rumination_progress_fields
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            reports_root, report_id = self._make_progress_file(tmp)
+
+            merge_rumination_progress_fields(
+                reports_root, report_id, {"rumination_neg_state": None}
+            )
+
+            prog = load_rumination_progress(reports_root, report_id)
+            assert prog["filter_step"] == 3

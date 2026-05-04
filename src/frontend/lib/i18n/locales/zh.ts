@@ -281,6 +281,7 @@ export const zh = {
           '提示：这里的热爱、优势等前提项来自前面已确认内容，请不要在本轮讨论里改动这些前提。',
         negGateContinue: '进入下一步',
         negGateDeep: '深入讨论',
+        negGateDismiss: '我再看看',
         negGateEndDeep: '结束讨论',
         negExploringHint:
           '你已进入深入讨论：我会逐条陪你聊。结束时请点击右上角「结束讨论」回到左侧表格继续修改。',

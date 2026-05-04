@@ -208,7 +208,7 @@ export const ruminationApi = {
   negResolve: async (
     activationCode: string,
     threadId: string,
-    action: 'continue' | 'deep_start' | 'deep_end'
+    action: 'continue' | 'deep_start' | 'deep_end' | 'dismiss'
   ): Promise<ApiResponse<RuminationSubmitData>> => {
     const res = await apiClient.post(
       '/simple-chat/rumination-neg-resolve',

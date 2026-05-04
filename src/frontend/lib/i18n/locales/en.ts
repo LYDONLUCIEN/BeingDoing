@@ -285,6 +285,7 @@ export const en = {
           'Note: prerequisites like Interests and Strengths were confirmed earlier—do not edit these premises during this discussion.',
         negGateContinue: 'Continue to next step',
         negGateDeep: 'Discuss further',
+        negGateDismiss: 'Let me check',
         negGateEndDeep: 'End discussion',
         negExploringHint:
           'You are in deeper discussion: I\'ll go through each item with you. Click “End discussion” when done to return to the table.',

@@ -1360,13 +1360,13 @@ class RuminationTableSubmitRequest(BaseModel):
 
 
 class RuminationNegResolveRequest(BaseModel):
-    """闸门：继续推进 / 开始深入讨论 / 结束讨论并推进。"""
+    """闸门：继续推进 / 开始深入讨论 / 结束讨论并推进 / 暂时关闭弹窗。"""
 
     model_config = ConfigDict(extra="ignore")
 
     activation_code: str
     thread_id: str = ""
-    action: Literal["continue", "deep_start", "deep_end"]
+    action: Literal["continue", "deep_start", "deep_end", "dismiss"]
 
 
 class RuminationStepOpeningStreamRequest(BaseModel):
@@ -1985,7 +1985,9 @@ async def rumination_table_submit(
         table_data = request.table_data
 
         pending0 = progress0.get("pending_table_submit")
-        if isinstance(pending0, dict) and not request.neg_force_commit:
+        neg0_early = progress0.get("rumination_neg_state") or {}
+        neg0_active = neg0_early.get("status") in ("awaiting_choice", "exploring")
+        if isinstance(pending0, dict) and not request.neg_force_commit and neg0_active:
             if int(pending0.get("step") or 0) == step and table_data is not None:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -2553,6 +2555,28 @@ async def rumination_neg_resolve(
         progress = load_rumination_progress(reports_root, report_id)
         neg = progress.get("rumination_neg_state") or {}
         pending = progress.get("pending_table_submit")
+
+        if request.action == "dismiss":
+            """用户点击「我再看看」：关闭闸门弹窗，清除 pending 和 triggered 标记，下次确认重新检测。"""
+            if not isinstance(neg, dict) or neg.get("status") != "awaiting_choice":
+                raise HTTPException(status_code=400, detail="当前没有待确认的闸门弹窗")
+            gate_step = int(neg.get("step") or progress.get("filter_step") or 0)
+            merge_rumination_progress_fields(
+                reports_root,
+                report_id,
+                {"rumination_neg_state": None, "pending_table_submit": None},
+            )
+            if gate_step >= 1:
+                clear_neg_gate_triggered_step(reports_root, report_id, gate_step)
+            progress2 = load_rumination_progress(reports_root, report_id)
+            return SimpleChatResponse(
+                code=200,
+                message="success",
+                data={
+                    "progress": progress2,
+                    "next_action": "rumination_neg_dismissed",
+                },
+            )
 
         if request.action == "deep_start":
             if not isinstance(pending, dict) or pending.get("table_data") is None:

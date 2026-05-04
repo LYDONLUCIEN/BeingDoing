@@ -468,6 +468,10 @@ export default function RuminationTableWidget({
         const strVal = raw != null ? String(raw).trim() : '';
 
         if (col.key === HYP_CONFIRM_KEY && filterStep === 3) {
+          // 假设确认列：空值 / placeholder / 选了自定义但没填内容 → 无效
+          if (!strVal || isPlaceholderToken(strVal) || strVal === OTHER_SELECT_VALUE) {
+            return { rowIdx, colKey: col.key };
+          }
           continue;
         }
 

@@ -162,6 +162,29 @@ def _is_pending_label(s: str) -> bool:
     return t in ("", "暂未选定", "待定", "无")
 
 
+def collect_step3_pending_rows(table_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """选了「无」/空/待定/暂未选定的行 — 必须进入深度讨论。"""
+    out: List[Dict[str, Any]] = []
+    for r in table_data:
+        if not isinstance(r, dict):
+            continue
+        hyp = str(r.get("用户确认的假设") or "").strip()
+        if not _is_pending_label(hyp):
+            continue
+        out.append(
+            {
+                "id": str(r.get("id", "")),
+                "line": _row_summary(r),
+                "label": _format_hypothesis_item(r),
+                "热爱": str(r.get("热爱") or ""),
+                "优势": str(r.get("优势") or ""),
+                "假设": hyp,
+                "_kind": "pending",
+            }
+        )
+    return out
+
+
 def collect_step3_hypothesis_candidates(table_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """需做「是否符合假设定义」检测的行：非「假设1/假设2」内置选项的文案（含自填、其他）。"""
     out: List[Dict[str, Any]] = []
@@ -183,6 +206,7 @@ def collect_step3_hypothesis_candidates(table_data: List[Dict[str, Any]]) -> Lis
                 "热爱": str(r.get("热爱") or ""),
                 "优势": str(r.get("优势") or ""),
                 "假设": hyp,
+                "_kind": "custom",
             }
         )
     return out
@@ -433,15 +457,18 @@ async def try_build_neg_gate_response(
         items = collect_step6_future(table_data)
         kind = "future"
     elif step == 3:
+        pending_rows = collect_step3_pending_rows(table_data)
         cand = collect_step3_hypothesis_candidates(table_data)
-        if not cand:
-            return None
-        flagged, llm_failed = await llm_flag_step3_hypotheses(llm, cand)
         kind = "hypothesis_def"
-        if llm_failed:
-            items = list(cand)
-        else:
-            items = list(flagged)
+        llm_reviewed: List[Dict[str, Any]] = []
+        if cand:
+            flagged, llm_failed = await llm_flag_step3_hypotheses(llm, cand)
+            if llm_failed:
+                llm_reviewed = list(cand)
+            else:
+                llm_reviewed = list(flagged)
+        # pending 行强制讨论 + LLM 判定的不合格行
+        items = pending_rows + llm_reviewed
         if not items:
             return None
     else:
