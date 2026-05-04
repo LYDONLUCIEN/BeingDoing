@@ -452,6 +452,10 @@ export default function ChatPhasePage() {
           base.type = 'table_widget';
           base.tablePayload = m.card_payload as ThreadMessage['tablePayload'];
         }
+        // 沉淀子步标签：后端消息中的 filter_step 用于按子步隔离展示
+        if (m.filter_step != null && typeof m.filter_step === 'number') {
+          base.filterStep = m.filter_step;
+        }
         return base;
       }),
     []
@@ -1433,17 +1437,37 @@ export default function ChatPhasePage() {
       phase === 'rumination' && rowSnap
         ? `${t('explore.chat.ruminationUi.messageRowContextPrefix', { label: rowSnap.label })}\n\n${text}`
         : text;
+    const ruminationFilterForApi =
+      phase === 'rumination'
+        ? Math.max(
+            1,
+            Math.min(
+              7,
+              (ruminationProgressState?.filter_step && ruminationProgressState.filter_step > 0
+                ? ruminationProgressState.filter_step
+                : ruminationViewStep) || 1
+            )
+          )
+        : undefined;
     const userMsg: ThreadMessage = {
       id: `u_${now}`,
       role: 'user',
       content: text,
       createdAt: now,
       ...(rowSnap ? { ruminationRowLabel: rowSnap.label } : {}),
+      ...(phase === 'rumination' && ruminationFilterForApi ? { filterStep: ruminationFilterForApi } : {}),
     };
     const assistantId = `a_${now}`;
+    const assistantMsg: ThreadMessage = {
+      id: assistantId,
+      role: 'assistant' as const,
+      content: '',
+      createdAt: now,
+      ...(phase === 'rumination' && ruminationFilterForApi ? { filterStep: ruminationFilterForApi } : {}),
+    };
     const toAdd = skipAddUser
-      ? [{ id: assistantId, role: 'assistant' as const, content: '', createdAt: now }]
-      : [userMsg, { id: assistantId, role: 'assistant' as const, content: '', createdAt: now }];
+      ? [assistantMsg]
+      : [userMsg, assistantMsg];
     setMessages((prev) => [...prev, ...toAdd]);
     setChatError(null);
     setConclusionLoading(false);
@@ -1473,18 +1497,6 @@ export default function ChatPhasePage() {
         };
       })();
       const apiLocale = locale === 'en' ? 'en' : 'zh';
-      const ruminationFilterForApi =
-        phase === 'rumination'
-          ? Math.max(
-              1,
-              Math.min(
-                7,
-                (ruminationProgressState?.filter_step && ruminationProgressState.filter_step > 0
-                  ? ruminationProgressState.filter_step
-                  : ruminationViewStep) || 1
-              )
-            )
-          : undefined;
       const doStreamFetch = async (accessToken: string | null) =>
         fetch(streamUrl, {
           method: 'POST',
@@ -2641,10 +2653,11 @@ export default function ChatPhasePage() {
   /** 回看模式下跳回当前活跃步（继续流程） */
   const handleRuminationReviewContinue = useCallback(() => {
     const fs = ruminationProgressState?.filter_step ?? 0;
-    if (fs > 0 && fs <= RUMINATION_FILTER_STEP_MAX) {
+    // 已在当前活跃步则不跳转
+    if (fs > 0 && fs <= RUMINATION_FILTER_STEP_MAX && fs !== ruminationViewStep) {
       void loadRuminationTableStep(fs);
     }
-  }, [ruminationProgressState?.filter_step, loadRuminationTableStep]);
+  }, [ruminationProgressState?.filter_step, loadRuminationTableStep, ruminationViewStep]);
 
   const handleRuminationFilterPrev = useCallback(() => {
     if (
@@ -2769,11 +2782,9 @@ export default function ChatPhasePage() {
     ]
   );
 
-  /** 重新填写：仅当前活跃步可触发（回看模式下禁用） */
+  /** 重新填写：有已提交快照的步骤可触发 */
   const handleRuminationRefillRequest = useCallback(() => {
     if (!activationCode || phase !== 'rumination' || !activeThreadId) return;
-    // 回看模式（历史已提交步）不可重填
-    if (ruminationReviewMode) return;
     if (
       ruminationTableNavLoading ||
       ruminationTableSubmitting ||
@@ -3071,7 +3082,7 @@ export default function ChatPhasePage() {
                     )}
                     hypothesisRegeneratingRowIndex={hypothesisRegeneratingRowIndex}
                     onHypothesisRegenerate={handleHypothesisRegenerateRow}
-                    tableRefillMode={ruminationStepHasSubmitted && !ruminationReviewMode}
+                    tableRefillMode={ruminationStepHasSubmitted}
                     onRefill={handleRuminationRefillRequest}
                     reviewReadOnly={ruminationReviewMode}
                     onRowContextChange={setRuminationRowContext}

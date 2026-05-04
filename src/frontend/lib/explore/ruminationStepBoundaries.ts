@@ -70,6 +70,15 @@ export function sliceMessagesForRuminationStep(
     return messages.filter((m) => m.type !== 'table_widget');
   }
 
+  // ── 优先按 filterStep 标签过滤（后端已打标签的消息）──
+  const hasFilterStepTags = messages.some((m) => m.filterStep != null && m.filterStep !== undefined);
+  if (hasFilterStepTags) {
+    return messages.filter(
+      (m) => m.filterStep === viewStep && m.type !== 'table_widget',
+    );
+  }
+
+  // ── 降级：按下标切片（兼容历史无标签数据）──
   const b = ensureDefaultStepOne(boundaries);
   let start =
     viewStep === 1
@@ -117,18 +126,28 @@ export function sliceMessagesForRuminationStep(
  */
 export function isRuminationReviewMode(
   viewStep: number,
-  progress: { main_section?: string | null; filter_step?: number | null; filter_step_snapshots?: Record<string, { submitted?: unknown }> } | null
+  progress: { main_section?: string | null; filter_step?: number | null; filter_step_snapshots?: Record<string, { submitted?: unknown }>; rumination_neg_state?: { status?: string | null; step?: number | null } | null; pending_table_submit?: { step?: number | null } | null } | null
 ): boolean {
   if (!progress || viewStep < 1) return false;
   const ms = progress.main_section;
-  const fs = progress.filter_step ?? 0;
 
   // 不在筛选段（或已完成）：所有步骤都是回看
   if (ms !== 'filter') return true;
 
-  // 在筛选段：只有 viewStep !== 当前活跃步时为回看
-  if (fs > 0 && viewStep !== fs) return true;
+  // neg_gate 正在进行的步骤不是回看（用户正在该步深度讨论）
+  const negState = progress.rumination_neg_state;
+  if (negState && negState.status && negState.status !== 'closed') {
+    if (typeof negState.step === 'number' && negState.step === viewStep) return false;
+  }
+  // pending_table_submit 指向的步骤也不是回看
+  const pending = progress.pending_table_submit;
+  if (pending && typeof pending.step === 'number' && pending.step === viewStep) return false;
 
+  // 有 submitted 快照 → 该步已确认 → 回看
+  const snap = progress.filter_step_snapshots?.[String(viewStep)];
+  if (snap?.submitted != null) return true;
+
+  // 无 submitted → 尚未确认 → 可编辑
   return false;
 }
 

@@ -72,6 +72,7 @@ from app.utils.rumination_ops import (
     resolve_values_for_step4,
     save_values_snapshot_to_snapshots,
     load_values_snapshot_from_snapshots,
+    load_strength_markers,
 )
 from app.utils.rumination_hypothesis_service import (
     ensure_row_has_pair_hypotheses,
@@ -80,8 +81,10 @@ from app.utils.rumination_hypothesis_service import (
 )
 from app.utils.context_refiner import (
     refine_and_save_anchor,
+    refine_and_save_rumination_step_anchor,
     format_anchor_for_prompt,
     load_anchor_for_phase,
+    load_rumination_step_anchors,
 )
 from app.utils.survey_storage import (
     save_basic_info_by_user,
@@ -2056,6 +2059,17 @@ async def rumination_table_submit(
             filter_step_snapshots=snapshots,
         )
 
+        # ── 后台异步生成当前子步的 anchor 摘要（供后续子步使用）──
+        try:
+            rum_cat = category  # rumination__{thread_id}
+            asyncio.create_task(
+                refine_and_save_rumination_step_anchor(
+                    report_id, step, rum_cat, vip_level=getattr(rec, "vip_level", 1) or 1
+                )
+            )
+        except Exception as e:
+            logger.warning("rumination_submit: anchor task spawn failed: %s", e)
+
         # ── 读取维度关键词（step 3 LLM 需要 values_hint，假设后各步需要 values_list）──
         record_path = reports_root / report_id / "record.json"
         record_obj: Optional[dict] = None
@@ -2086,6 +2100,7 @@ async def rumination_table_submit(
         values_hint = "、".join(values_list[:8]) if values_list else ""
         passions = interests_list if interests_list else ["热爱1", "热爱2"]
         strengths_for_gen = strengths_list if strengths_list else ["优势1", "优势2"]
+        strength_markers = load_strength_markers(str(reports_root), report_id)
 
         next_table = None
         next_step_val = step
@@ -2099,7 +2114,7 @@ async def rumination_table_submit(
                 ent1 = snapshots.setdefault("1", {})
                 initial1 = ent1.get("initial")
                 if not initial1:
-                    initial1 = gen_table(strengths_for_gen, passions)
+                    initial1 = gen_table(strengths_for_gen, passions, strength_markers)
                     ent1["initial"] = deepcopy(initial1)
                 rows1 = deepcopy(initial1)
                 ent1["submitted"] = None
@@ -2566,14 +2581,24 @@ async def rumination_neg_resolve(
         if request.action == "deep_end":
             if not isinstance(neg, dict) or neg.get("status") != "exploring":
                 raise HTTPException(status_code=400, detail="当前不在深入讨论状态")
+            gate_step = int(neg.get("step") or progress.get("filter_step") or 0)
+            # 结束讨论后保留 pending 表格数据到 filter_table，防止数据丢失
+            update_fields: Dict[str, Any] = {
+                "pending_table_submit": None,
+                "rumination_neg_state": None,
+            }
+            if isinstance(pending, dict) and isinstance(pending.get("table_data"), list):
+                update_fields["filter_table"] = pending["table_data"]
+            if gate_step >= 1:
+                update_fields["filter_step"] = gate_step
             merge_rumination_progress_fields(
                 reports_root,
                 report_id,
-                {
-                    "pending_table_submit": None,
-                    "rumination_neg_state": None,
-                },
+                update_fields,
             )
+            # 清除本步闸门触发标记，允许重新提交时再次触发 neg_gate
+            if gate_step >= 1:
+                clear_neg_gate_triggered_step(reports_root, report_id, gate_step)
             progress2 = load_rumination_progress(reports_root, report_id)
             snaps2 = progress2.get("filter_step_snapshots") or {}
             return SimpleChatResponse(
@@ -2581,7 +2606,7 @@ async def rumination_neg_resolve(
                 message="success",
                 data={
                     "progress": progress2,
-                    "next_step": int(progress2.get("filter_step") or 1),
+                    "next_step": gate_step or int(progress2.get("filter_step") or 1),
                     "max_reached_filter_step": max_reached_filter_step(snaps2),
                     "next_action": "rumination_neg_deep_ended",
                     "opening_zh": "这段讨论先收在这里。你可以先回到左侧表格修改答案，改完再点确认继续。",
@@ -2665,13 +2690,12 @@ async def rumination_get_table(
     )
     passions = interests_list if interests_list else ["热爱1", "热爱2"]
     strengths_list = strengths_list if strengths_list else ["优势1", "优势2"]
+    strength_markers = load_strength_markers(str(reports_root), report_id)
 
     sk = str(step)
 
     def _persist(rows: List[dict], snap: Dict[str, Any]) -> Dict[str, Any]:
         kw: Dict[str, Any] = dict(
-            filter_step=step,
-            filter_table=rows,
             filter_step_snapshots=snap,
         )
         # 首次拉取第 1 步表时同步进入筛选段，否则前端仅靠 progress 不会请求 get-table
@@ -2681,6 +2705,8 @@ async def rumination_get_table(
         ):
             kw["main_section"] = "filter"
             kw["filter_early_terminated"] = False
+            kw["filter_step"] = step
+            kw["filter_table"] = rows
         return save_rumination_progress(reports_root, report_id, **kw)
 
     if reset_initial:
@@ -2692,17 +2718,16 @@ async def rumination_get_table(
                 message="该步暂无初始表格快照，无法重新填写",
                 data={"progress": progress, "table_widget": None},
             )
-        # 从本步起之后整段作废：删除后续子步快照，本步恢复 initial、清空 submitted
+        # 从本步起之后整段作废：删除后续子步快照
         for d in range(step + 1, MAX_FILTER_STEP + 1):
             snapshots.pop(str(d), None)
+
+        # 统一逻辑：所有 step（1-7）恢复 initial 快照，清除 submitted
         rows = deepcopy(initial)
-        if step == 7:
-            rows = _rumination_step7_rows_for_widget(rows)
         ent = {**ent, "submitted": None}
         snapshots[sk] = ent
-        # 与筛选主线对齐：回到 filter、当前子步；清除提前终止标记
         hr = 1 if step <= 3 else 2
-        prog = save_rumination_progress(
+        save_rumination_progress(
             reports_root,
             report_id,
             main_section="filter",
@@ -2719,9 +2744,19 @@ async def rumination_get_table(
             report_id,
             {"pending_table_submit": None, "rumination_neg_state": None},
         )
-        # 重新填写时重置本子步的闸门触发标记，允许再次触发「深入聊聊」
         clear_neg_gate_triggered_step(reports_root, report_id, step)
+        try:
+            rum_step = report.get("steps", {}).get("rumination") or {}
+            rum_tid = (rum_step.get("selected_session_id") or "").strip()
+            if rum_tid:
+                conv_mgr = ConversationFileManager(base_dir=str(root / "reports"))
+                rum_cat = f"rumination__{rum_tid}"
+                await conv_mgr.delete_messages_from_filter_step(report_id, rum_cat, step)
+        except Exception as e:
+            logger.warning("[rumination] reset_initial: failed to clear messages: %s", e)
         prog = load_rumination_progress(reports_root, report_id)
+        if step == 7:
+            rows = _rumination_step7_rows_for_widget(rows)
         payload = build_table_widget_payload(step, rows, values_list, values_source=values_source)
         return _rumination_get_table_response(prog, payload)
 
@@ -2735,7 +2770,7 @@ async def rumination_get_table(
         return _rumination_get_table_response(prog, payload)
 
     if step == 1:
-        rows = gen_table(strengths_list, passions)
+        rows = gen_table(strengths_list, passions, strength_markers)
         ent = snapshots.setdefault(sk, {})
         if ent.get("initial") is None:
             ent["initial"] = deepcopy(rows)
@@ -2771,6 +2806,44 @@ async def rumination_get_table(
             prog = _persist(rows, snapshots)
             payload = build_table_widget_payload(step, rows, values_list, values_source=values_source)
             return _rumination_get_table_response(prog, payload)
+
+    # ── neg_gate 进行中：使用 pending_table_submit 的数据作为表格（不重新生成）──
+    neg = progress.get("rumination_neg_state") or {}
+    pending = progress.get("pending_table_submit")
+    if (
+        neg.get("status") in ("awaiting_choice", "exploring")
+        and isinstance(pending, dict)
+        and int(pending.get("step") or 0) == step
+        and isinstance(pending.get("table_data"), list)
+    ):
+        rows = deepcopy(pending["table_data"])
+        if step == 7:
+            rows = _rumination_step7_rows_for_widget(rows)
+        # 保存为 initial 快照（下次不再走此分支），但不写 submitted
+        ent_any["initial"] = deepcopy(pending["table_data"])
+        snapshots[sk] = ent_any
+        save_rumination_progress(
+            reports_root, report_id,
+            filter_step=step, filter_step_snapshots=snapshots,
+        )
+        payload = build_table_widget_payload(step, rows, values_list, values_source=values_source)
+        return _rumination_get_table_response(progress, payload)
+
+    # 无快照但 filter_table 存在且 filter_step 指向目标步骤：直接使用（deep_end 后 / 覆盖恢复的兜底）
+    # 仅当 filter_step == step 时生效，避免用上一步的 filter_table 错误填充后续步骤
+    current_filter_step = progress.get("filter_step") or 0
+    if current_filter_step == step and isinstance(progress.get("filter_table"), list):
+        rows = deepcopy(progress["filter_table"])
+        if step == 7:
+            rows = _rumination_step7_rows_for_widget(rows)
+        ent_any["initial"] = deepcopy(progress["filter_table"])
+        snapshots[sk] = ent_any
+        save_rumination_progress(
+            reports_root, report_id,
+            filter_step=step, filter_step_snapshots=snapshots,
+        )
+        payload = build_table_widget_payload(step, rows, values_list, values_source=values_source)
+        return _rumination_get_table_response(load_rumination_progress(reports_root, report_id), payload)
 
     # 无快照：从前一步 submitted 生成
     prev_sk = str(step - 1)
@@ -3828,13 +3901,41 @@ async def simple_chat_stream(
         )
         llm_messages = [LLMMessage(role="system", content=system_prompt)]
 
-        # 若有锚点摘要，插入 [此前对话要点] 再拼接最近 N 轮
-        anchor = load_anchor_for_phase(session_id, phase_step, storage_root)
-        anchor_text = format_anchor_for_prompt(anchor)
-        if anchor_text:
-            llm_messages.append(LLMMessage(role="assistant", content=f"[此前对话要点]\n{anchor_text}"))
+        # ── 构建历史上下文（rumination 按子步隔离，其他阶段保持原逻辑）──
+        rumination_filter_step_val = int(request.rumination_filter_step) if phase_step == "rumination" and request.rumination_filter_step else 0
 
-        trimmed = _trim_history_messages_for_llm(history_messages)
+        if rumination_filter_step_val > 0:
+            # Rumination：只取当前子步的消息 + 之前子步的累积 anchor
+            step_messages = [
+                m for m in history_messages
+                if int(m.get("filter_step") or 0) == rumination_filter_step_val
+            ]
+            trimmed = step_messages[-30:]
+
+            # 加载之前子步的 anchor 并拼接
+            try:
+                step_anchors = await load_rumination_step_anchors(
+                    session_id, category, conv_manager
+                )
+            except Exception:
+                step_anchors = {}
+            anchor_parts = []
+            for s in range(1, rumination_filter_step_val):
+                a = step_anchors.get(str(s))
+                if a:
+                    anchor_parts.append(f"[子步 {s} 要点] {a}")
+            if anchor_parts:
+                accumulated = "\n---\n".join(anchor_parts)
+                llm_messages.append(
+                    LLMMessage(role="assistant", content=f"[此前对话要点]\n{accumulated}")
+                )
+        else:
+            # 非 rumination 阶段：使用原有 anchor + trim 逻辑
+            anchor = load_anchor_for_phase(session_id, phase_step, storage_root)
+            anchor_text = format_anchor_for_prompt(anchor)
+            if anchor_text:
+                llm_messages.append(LLMMessage(role="assistant", content=f"[此前对话要点]\n{anchor_text}"))
+            trimmed = _trim_history_messages_for_llm(history_messages)
 
         for m in trimmed:
             role = m.get("role") or "user"
@@ -3861,6 +3962,7 @@ async def simple_chat_stream(
                         activation_session_id=rec.session_id,
                     ),
                     "step_id": phase_step,
+                    "filter_step": int(request.rumination_filter_step) if phase_step == "rumination" and request.rumination_filter_step else None,
                     "agent_id": None,
                     "event": "user_message",
                 },
@@ -4302,6 +4404,7 @@ async def simple_chat_stream(
                     activation_session_id=rec.session_id,
                 ),
                 "step_id": phase_step,
+                "filter_step": int(request.rumination_filter_step) if phase_step == "rumination" and request.rumination_filter_step else None,
                 "agent_id": "coach",
                 "event": "assistant_reply",
                 "token_usage": stream_usage,
@@ -4325,6 +4428,7 @@ async def simple_chat_stream(
                             activation_session_id=rec.session_id,
                         ),
                         "step_id": phase_step,
+                        "filter_step": int(request.rumination_filter_step) if phase_step == "rumination" and request.rumination_filter_step else None,
                         "agent_id": "coach",
                         "event": "table_output",
                         "table_format": "markdown",

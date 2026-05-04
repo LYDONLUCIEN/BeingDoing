@@ -45,6 +45,8 @@ export interface ThreadMessage {
   tablePayload?: RuminationTablePayload;
   /** 沉淀：发送时绑定的表格行摘要（展示在气泡上方） */
   ruminationRowLabel?: string;
+  /** 沉淀：消息所属的筛选子步（1-7），用于按子步隔离对话展示 */
+  filterStep?: number | null;
 }
 
 /** 使命阶段结构化「经历 → 价值观」行（与后端 payload 一致） */

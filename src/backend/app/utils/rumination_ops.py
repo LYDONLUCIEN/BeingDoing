@@ -132,32 +132,76 @@ def _normalize_alpha_marker(text: Any) -> str:
     return s.strip()
 
 
-def gen_table(strengths: List[str], passions: List[str]) -> List[Dict[str, Any]]:
+# a/b/c 标记 → 表格「优势标记」下拉选项文本
+_MARKER_TO_LABEL: Dict[str, str] = {
+    "a": "有充实感，与成功有关",
+    "b": "有充实感",
+    "c": "不确定",
+}
+
+# 允许的标记值
+_MARKER_ALLOWED = frozenset({"a", "b", "c"})
+
+
+def load_strength_markers(reports_root: str, report_id: str) -> List[str]:
+    """从 dimension_conclusions.json 读取 strengths 的 strength_markers。
+
+    Returns:
+        与 strengths keywords 等长的标记列表（小写 a/b/c），
+        缺失或格式异常时返回空列表。
+    """
+    store = load_dimension_conclusions(report_id, reports_root)
+    conclusion = store.get("strengths")
+    if not isinstance(conclusion, dict):
+        return []
+    markers = conclusion.get("strength_markers")
+    if not isinstance(markers, list):
+        return []
+    out: List[str] = []
+    for m in markers:
+        v = str(m).strip().lower()
+        out.append(v if v in _MARKER_ALLOWED else "")
+    return out
+
+
+def gen_table(
+    strengths: List[str],
+    passions: List[str],
+    strength_markers: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
     """
     第一步：生成热爱×优势组合表格。
     列：id, 热爱, 优势, 优势标记
+
+    strength_markers: 与 strengths 等长的标记列表（小写 a/b/c），
+      来自 dimension_conclusions.json。为空或长度不匹配时默认 "有充实感"。
     """
     if not strengths:
         strengths = ["优势1", "优势2"]
     if not passions:
         passions = ["热爱1", "热爱2"]
+    # 归一化标记
+    markers = strength_markers if isinstance(strength_markers, list) else []
     rows: List[Dict[str, Any]] = []
     idx = 1
     for p in passions[:6]:
         p_norm = _normalize_alpha_marker(p)
-        for s in strengths[:5]:
+        for si, s in enumerate(strengths[:5]):
             s_norm = _normalize_alpha_marker(s)
+            # 标记按 strengths 索引对应（多热爱复用同一组标记）
+            mk = ""
+            if si < len(markers):
+                mk = str(markers[si]).strip().lower()
+            label = _MARKER_TO_LABEL.get(mk, "有充实感")
             rows.append(
                 {
                     "id": str(idx),
                     "热爱": p_norm,
                     "优势": s_norm,
-                    "优势标记": "有充实感",
+                    "优势标记": label,
                 }
             )
             idx += 1
-            if idx > 12:
-                return rows
     return rows
 
 

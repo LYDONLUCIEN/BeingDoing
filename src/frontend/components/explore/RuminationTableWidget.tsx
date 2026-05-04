@@ -171,6 +171,7 @@ export default function RuminationTableWidget({
     h2: string;
   } | null>(null);
   const hypothesisPreviewCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tableScrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   const cancelHypothesisPreviewClose = useCallback(() => {
     if (hypothesisPreviewCloseTimer.current) {
@@ -202,14 +203,41 @@ export default function RuminationTableWidget({
     [cancelHypothesisPreviewClose]
   );
 
+  /*
+   * Close tooltip on page-level interactions, but **not** when the user is
+   * scrolling *inside* the tooltip itself.
+   *
+   * - pointerdown on anything outside the tooltip → close.
+   * - wheel outside the tooltip → close.
+   * - wheel inside the tooltip → let it scroll naturally (do nothing).
+   */
   useEffect(() => {
-    if (!hypothesisPreview || typeof window === 'undefined') return;
+    if (!hypothesisPreview || typeof document === 'undefined') return;
     const close = () => setHypothesisPreview(null);
-    window.addEventListener('scroll', close, true);
-    window.addEventListener('resize', close);
+
+    const onPointerDown = (e: Event) => {
+      const tooltipEl = document.querySelector('[role="tooltip"]');
+      if (!tooltipEl || !tooltipEl.contains(e.target as Node)) {
+        close();
+      }
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      const tooltipEl = document.querySelector('[role="tooltip"]');
+      if (!tooltipEl || !tooltipEl.contains(e.target as Node)) {
+        close();
+      }
+    };
+
+    const onResize = () => close();
+
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('wheel', onWheel, true);
+    window.addEventListener('resize', onResize);
     return () => {
-      window.removeEventListener('scroll', close, true);
-      window.removeEventListener('resize', close);
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('wheel', onWheel, true);
+      window.removeEventListener('resize', onResize);
     };
   }, [hypothesisPreview]);
 
@@ -517,15 +545,19 @@ export default function RuminationTableWidget({
     ? 'shrink-0 rounded-full border border-neutral-200 bg-white/70 px-4 py-2 text-sm font-medium text-neutral-600 transition-all hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed'
     : 'rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50';
 
-  /** 回看模式：隐藏所有操作按钮（确认/重填均不可用） */
+  /** 回看模式但仍可重新填写：仅显示重填按钮 */
   const tableHeaderActions =
-    reviewReadOnly || (hideConfirmButton && !(tableRefillMode && onRefill)) ? null : (
-      <div className="flex items-center gap-3">
-        {tableRefillMode && onRefill && (
-          <button type="button" onClick={() => onRefill?.()} disabled={disabled} className={refillBtnCls}>
-            {refillLabel}
-          </button>
-        )}
+    (hideConfirmButton && !(tableRefillMode && onRefill))
+      ? null
+      : (reviewReadOnly && !(tableRefillMode && onRefill))
+        ? null
+        : (
+          <div className="flex items-center gap-3">
+            {tableRefillMode && onRefill && (
+              <button type="button" onClick={() => onRefill?.()} disabled={disabled} className={refillBtnCls}>
+                {refillLabel}
+              </button>
+            )}
         {!hideConfirmButton && (
           <button
             type="button"
@@ -773,113 +805,120 @@ export default function RuminationTableWidget({
     );
   };
 
-  const hypothesisPreviewLayer =
-    hypothesisPreview && typeof document !== 'undefined'
-      ? createPortal(
-          (() => {
-            const { anchorRect, h1: ph1, h2: ph2 } = hypothesisPreview;
-            const pad = 12;
-            const vw = window.innerWidth;
-            const vh = window.innerHeight;
-            const cardW = Math.min(400, Math.max(260, vw - pad * 2));
+  const hypothesisPreviewLayer = (() => {
+    if (!hypothesisPreview || typeof document === 'undefined') return null;
 
-            /* ── Horizontal: center on anchor, clamp to viewport edges ── */
-            let left = anchorRect.left + anchorRect.width / 2 - cardW / 2;
-            left = Math.max(pad, Math.min(left, vw - pad - cardW));
+    const { anchorRect, h1: ph1, h2: ph2 } = hypothesisPreview;
+    const pad = 12;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const cardW = Math.min(400, Math.max(260, vw - pad * 2));
 
-            /* ── Vertical: measure real space above / below the anchor ── */
-            const gap = 6;
-            const spaceBelow = vh - anchorRect.bottom - pad;
-            const spaceAbove = anchorRect.top - pad;
+    /* ── Horizontal: center on anchor, clamp to viewport edges ── */
+    let left = anchorRect.left + anchorRect.width / 2 - cardW / 2;
+    left = Math.max(pad, Math.min(left, vw - pad - cardW));
 
-            /*
-             * Pick the side with more room.  If the preferred side is still
-             * too small (< 120 px usable) fall back to the other side.
-             */
-            const preferBelow = spaceBelow >= spaceAbove;
-            const primarySpace = preferBelow ? spaceBelow : spaceAbove;
-            const fallbackSpace = preferBelow ? spaceAbove : spaceBelow;
-            const MIN_USABLE = 120;
-            const useBelow =
-              preferBelow
-                ? primarySpace >= MIN_USABLE || fallbackSpace < MIN_USABLE
-                : fallbackSpace >= MIN_USABLE;
+    /* ── Vertical: use table scroll container as boundary ── */
+    const gap = 6;
+    const MIN_SHOW = 60;
 
-            // max-height: up to 420 px but never exceed available space
-            const availSpace = useBelow ? spaceBelow : spaceAbove;
-            const maxCardH = Math.max(MIN_USABLE, Math.min(420, availSpace - gap));
+    // Default to viewport edges; prefer table container if available
+    const container = tableScrollContainerRef.current;
+    const containerRect = container?.getBoundingClientRect() ?? null;
+    const boundTop = containerRect ? containerRect.top : pad;
+    const boundBottom = containerRect ? containerRect.bottom : vh - pad;
 
-            /* ── Position: pin to anchor on the chosen side, clamp to viewport ── */
-            let top: number;
-            if (useBelow) {
-              top = anchorRect.bottom + gap;
-              // Ensure bottom edge stays inside viewport
-              if (top + maxCardH > vh - pad) top = vh - pad - maxCardH;
-              if (top < pad) top = pad;
-            } else {
-              // Bottom of card sits `gap` above anchor top
-              top = anchorRect.top - gap - maxCardH;
-              if (top < pad) top = pad;
-            }
+    const spaceBelow = boundBottom - anchorRect.bottom;
+    const spaceAbove = anchorRect.top - boundTop;
 
-            const shellCls = isGlass
-              ? 'rounded-2xl border border-white/55 bg-white/[0.93] shadow-[0_24px_56px_-14px_rgba(15,23,42,0.38)] backdrop-blur-xl ring-1 ring-neutral-900/[0.05]'
-              : 'rounded-2xl border border-neutral-200/95 bg-white shadow-[0_24px_56px_-14px_rgba(15,23,42,0.26)] ring-1 ring-black/[0.04]';
+    // If neither side has enough room, skip rendering entirely
+    if (spaceBelow < MIN_SHOW && spaceAbove < MIN_SHOW) return null;
 
-            return (
-              <div
-                role="tooltip"
-                aria-label={hypothesisPreviewTitle}
-                style={{
-                  position: 'fixed',
-                  top,
-                  left,
-                  width: cardW,
-                  maxHeight: maxCardH,
-                  zIndex: 10040,
-                }}
-                className={`pointer-events-auto flex flex-col overflow-hidden ${shellCls}`}
-                onMouseEnter={cancelHypothesisPreviewClose}
-                onMouseLeave={scheduleHypothesisPreviewClose}
-              >
-                <div className="shrink-0 border-b border-neutral-200/55 bg-gradient-to-r from-violet-600/[0.08] via-white to-fuchsia-600/[0.07] px-3.5 py-2">
-                  <p className="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-neutral-500">
-                    {hypothesisPreviewTitle}
-                  </p>
-                </div>
-                <div className="rumination-hyp-preview-scroll min-h-0 flex-1 space-y-3 overflow-y-auto px-3.5 py-3">
-                  {ph1.trim() ? (
-                    <div className="space-y-1.5">
-                      <div className="inline-flex items-center gap-1.5 rounded-full bg-violet-500/10 px-2 py-0.5">
-                        <span className="h-1.5 w-1.5 rounded-full bg-violet-500 ring-2 ring-violet-400/30" />
-                        <span className="text-[10px] font-semibold uppercase tracking-wide text-violet-800">
-                          {hypothesisTagFreelanceLabel}
-                        </span>
-                      </div>
-                      <p className="text-[0.8125rem] leading-relaxed text-neutral-800">{ph1}</p>
-                    </div>
-                  ) : null}
-                  {ph1.trim() && ph2.trim() ? (
-                    <div className="h-px bg-gradient-to-r from-transparent via-neutral-200/90 to-transparent" />
-                  ) : null}
-                  {ph2.trim() ? (
-                    <div className="space-y-1.5">
-                      <div className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia-500/10 px-2 py-0.5">
-                        <span className="h-1.5 w-1.5 rounded-full bg-fuchsia-500 ring-2 ring-fuchsia-400/30" />
-                        <span className="text-[10px] font-semibold uppercase tracking-wide text-fuchsia-900/80">
-                          {hypothesisTagCompanyLabel}
-                        </span>
-                      </div>
-                      <p className="text-[0.8125rem] leading-relaxed text-neutral-800">{ph2}</p>
-                    </div>
-                  ) : null}
-                </div>
+    /*
+     * Decide direction: prefer the side with more room.
+     * When space is roughly equal (within 20%), prefer above — users
+     * naturally expect a hover card near the bottom to go upward.
+     */
+    const useBelow = spaceBelow > spaceAbove * 1.2;
+
+    // max-height: use as much available space as possible
+    const availSpace = useBelow ? spaceBelow : spaceAbove;
+    const maxCardH = availSpace - gap;
+
+    /* ── Position: pin to anchor on the chosen side, clamp to container ── */
+    let top: number;
+    if (useBelow) {
+      top = anchorRect.bottom + gap;
+      if (top + maxCardH > boundBottom) top = boundBottom - maxCardH;
+    } else {
+      // Bottom of card sits `gap` above anchor top
+      top = anchorRect.top - gap - maxCardH;
+      if (top < boundTop) top = boundTop;
+    }
+
+    // Final viewport safety clamp
+    if (top < pad) top = pad;
+    if (top + maxCardH > vh - pad) {
+      const clamped = vh - pad - top;
+      if (clamped < MIN_SHOW) return null; // truly no room
+    }
+
+    const shellCls = isGlass
+      ? 'rounded-2xl border border-white/55 bg-white/[0.93] shadow-[0_24px_56px_-14px_rgba(15,23,42,0.38)] backdrop-blur-xl ring-1 ring-neutral-900/[0.05]'
+      : 'rounded-2xl border border-neutral-200/95 bg-white shadow-[0_24px_56px_-14px_rgba(15,23,42,0.26)] ring-1 ring-black/[0.04]';
+
+    return createPortal(
+      <div
+        role="tooltip"
+        aria-label={hypothesisPreviewTitle}
+        style={{
+          position: 'fixed',
+          top,
+          left,
+          width: cardW,
+          maxHeight: maxCardH,
+          zIndex: 10040,
+        }}
+        className={`pointer-events-auto flex flex-col overflow-hidden ${shellCls}`}
+        onMouseEnter={cancelHypothesisPreviewClose}
+        onMouseLeave={scheduleHypothesisPreviewClose}
+      >
+        <div className="shrink-0 border-b border-neutral-200/55 bg-gradient-to-r from-violet-600/[0.08] via-white to-fuchsia-600/[0.07] px-3.5 py-2">
+          <p className="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-neutral-500">
+            {hypothesisPreviewTitle}
+          </p>
+        </div>
+        <div className="rumination-hyp-preview-scroll min-h-0 flex-1 space-y-3 overflow-y-auto px-3.5 py-3">
+          {ph1.trim() ? (
+            <div className="space-y-1.5">
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-violet-500/10 px-2 py-0.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-violet-500 ring-2 ring-violet-400/30" />
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-violet-800">
+                  {hypothesisTagFreelanceLabel}
+                </span>
               </div>
-            );
-          })(),
-          document.body
-        )
-      : null;
+              <p className="text-[0.8125rem] leading-relaxed text-neutral-800">{ph1}</p>
+            </div>
+          ) : null}
+          {ph1.trim() && ph2.trim() ? (
+            <div className="h-px bg-gradient-to-r from-transparent via-neutral-200/90 to-transparent" />
+          ) : null}
+          {ph2.trim() ? (
+            <div className="space-y-1.5">
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia-500/10 px-2 py-0.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-fuchsia-500 ring-2 ring-fuchsia-400/30" />
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-fuchsia-900/80">
+                  {hypothesisTagCompanyLabel}
+                </span>
+              </div>
+              <p className="text-[0.8125rem] leading-relaxed text-neutral-800">{ph2}</p>
+            </div>
+          ) : null}
+        </div>
+      </div>,
+      document.body
+    );
+  })();
 
   /** 列自带 options 且含「自定义」：选「自定义」后出现输入框（如工作目的） */
   const renderSelectWithOther = (
@@ -1165,7 +1204,7 @@ export default function RuminationTableWidget({
 
   const tableBlock = isGlass ? (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-neutral-300/50 bg-white/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
-      <div className="rumination-beautiful-table-scroll rumination-beautiful-table-widget min-h-0 flex-1 overflow-x-auto overflow-y-auto">
+      <div ref={tableScrollContainerRef} className="rumination-beautiful-table-scroll rumination-beautiful-table-widget min-h-0 flex-1 overflow-x-auto overflow-y-auto">
         {tableInner}
       </div>
       {embeddedSubmitOverlay && submitting && (

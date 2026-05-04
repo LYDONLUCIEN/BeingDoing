@@ -17,6 +17,7 @@ export function computeMaxReachedFromSnapshots(p: RuminationProgress | null): nu
 /**
  * 某筛选子步是否允许进入（进度条点击 / 上一阶段·下一阶段）。
  * 规则：已提交过的步（submitted）任意回看；未提交的步仅当等于当前后端 filter_step 时可进入。
+ * 额外：neg_gate 正在进行的子步也允许进入（即使没有 submitted 快照且 filter_step 被覆盖）。
  * 不将「仅有 initial、无 submitted」的快照视为已到达（短链保险快照否则会误开 step6）。
  */
 export function isRuminationFilterStepReachable(
@@ -39,9 +40,34 @@ export function isRuminationFilterStepReachable(
     return true;
   }
 
+  // neg_gate 正在进行（awaiting_choice / exploring）的子步必须可达
+  const negState = p.rumination_neg_state;
+  if (negState && negState.status && negState.status !== 'closed') {
+    const negStep = negState.step;
+    if (typeof negStep === 'number' && negStep >= 1 && step === negStep) {
+      return true;
+    }
+  }
+  // pending_table_submit 指向的子步也应可达
+  const pending = p.pending_table_submit;
+  if (pending && typeof pending.step === 'number' && pending.step >= 1 && step === pending.step) {
+    return true;
+  }
+
   const mr = computeMaxReachedFromSnapshots(p);
   if (step <= mr) return true;
   if (fs > 0 && step === fs) return true;
+  // 兜底：fs + 1 在上一步有 submitted 快照时允许进入
+  // 覆盖 _persist 覆盖 filter_step 后的恢复场景（上一步已确认但 filter_step 被回写到上一步）
+  if (
+    fs > 0 &&
+    step === fs + 1 &&
+    step <= RUMINATION_FILTER_STEP_MAX &&
+    ms === 'filter' &&
+    (p.filter_step_snapshots?.[String(fs)]?.submitted != null)
+  ) {
+    return true;
+  }
   return false;
 }
 

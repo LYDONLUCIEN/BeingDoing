@@ -323,3 +323,43 @@ class ConversationFileManager:
         if session_dir.exists():
             import shutil
             shutil.rmtree(session_dir)
+
+    async def delete_messages_from_filter_step(
+        self,
+        session_id: str,
+        category: str,
+        from_step: int,
+    ) -> int:
+        """删除对话文件中 filter_step >= from_step 的消息，并清除对应 step_anchors。
+
+        用于 rumination 阶段「重新填写」时从某子步起重置对话。
+
+        Returns:
+            删除的消息条数。
+        """
+        def _do(fp: Path) -> int:
+            try:
+                with open(fp, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError, OSError):
+                return 0
+            msgs = data.get("messages") or []
+            before = len(msgs)
+            data["messages"] = [
+                m for m in msgs
+                if not isinstance(m, dict) or int(m.get("filter_step") or 0) < from_step
+            ]
+            deleted = before - len(data["messages"])
+            # 清除 metadata 中 step_anchor_N 条目（N >= from_step）
+            meta = data.setdefault("metadata", {})
+            keys_to_remove = [k for k in meta if k.startswith("step_anchor_") and k[len("step_anchor_"):].isdigit() and int(k[len("step_anchor_"):]) >= from_step]
+            for k in keys_to_remove:
+                del meta[k]
+            meta["updated_at"] = datetime.utcnow().isoformat() + "Z"
+            meta["total_messages"] = len(data["messages"])
+            fp.parent.mkdir(parents=True, exist_ok=True)
+            with open(fp, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            return deleted
+
+        return await self._with_file_lock(session_id, category, _do)

@@ -172,3 +172,127 @@ def load_anchor_for_phase(report_id: str, phase: str, base_dir: str) -> Optional
         return None
     step = (record.get("steps") or {}).get(phase) or {}
     return step.get("anchor_summary")
+
+
+# ---------------------------------------------------------------------------
+# Rumination per-step anchor（沉淀筛选阶段，按子步独立生成摘要）
+# ---------------------------------------------------------------------------
+
+_RUMINATION_STEP_OBJECTIVES = {
+    1: "确认用户的热爱领域与核心优势，生成热爱×优势组合表",
+    2: "分析热爱与优势的匹配性，用户确认或修改匹配结果",
+    3: "为每个热爱+优势组合生成并确认具体假设方向",
+    4: "用价值观过滤假设，判断每个假设的工作目的",
+    5: "用激情过滤假设，区分「忍不住想做」与「应该做」",
+    6: "用现实性过滤假设，区分「现在可做」与「未来再做」",
+    7: "最终选择并确认要投入的核心假设",
+}
+
+
+async def refine_and_save_rumination_step_anchor(
+    report_id: str,
+    filter_step: int,
+    category: str,
+    conv_manager: Any,
+    vip_level: int = 1,
+) -> Optional[str]:
+    """为 rumination 的单个子步生成摘要，存入对话文件 metadata.step_anchors。
+
+    Args:
+        report_id: 报告 ID
+        filter_step: 当前子步（1-7）
+        category: 对话文件 category（rumination__{thread_id}）
+        conv_manager: ConversationFileManager 实例
+        vip_level: 用户 VIP 等级
+
+    Returns:
+        生成的摘要文本（goals），失败返回 None
+    """
+    if not (1 <= filter_step <= 7):
+        return None
+
+    try:
+        conv_data = await conv_manager.get_conversation_data(report_id, category)
+        messages = conv_data.get("messages") or []
+    except Exception as e:
+        logger.warning("rumination_anchor: get_conversation_data failed: %s", e)
+        return None
+
+    # 只取当前 step 的消息
+    step_msgs = [m for m in messages if int(m.get("filter_step") or 0) == filter_step]
+    if not step_msgs:
+        return None
+
+    conv_text = "\n\n".join(
+        f"{m.get('role', 'user')}: {m.get('content', '')}" for m in step_msgs[-30:]
+    )
+    if not conv_text.strip():
+        return None
+
+    objective = _RUMINATION_STEP_OBJECTIVES.get(filter_step, "完成筛选子步")
+
+    prompt = f"""基于以下对话，生成该筛选子步的摘要（2-4句话）。
+
+子步：第 {filter_step} 步
+目标：{objective}
+
+请只输出摘要文本，不要 JSON 或其他格式。如果对话内容很少，可以简短总结。
+
+对话内容：
+---
+{conv_text[:4000]}
+---"""
+
+    try:
+        llm = get_default_llm_provider(vip_level=vip_level)
+        resp = await llm.chat([LLMMessage(role="user", content=prompt)], temperature=0.2)
+        text = (resp.content or "").strip()
+    except Exception as e:
+        logger.exception("rumination_anchor: LLM failed step=%d: %s", filter_step, e)
+        return None
+
+    if not text:
+        return None
+
+    # 清理可能的 markdown 包裹
+    if "```" in text:
+        parts = text.split("```")
+        text = parts[1] if len(parts) > 1 else parts[0]
+        text = text.strip()
+
+    # 存入对话文件 metadata.step_anchors
+    try:
+        await conv_manager.update_metadata(
+            report_id,
+            category,
+            {"step_anchor_" + str(filter_step): text},
+        )
+    except Exception as e:
+        logger.warning("rumination_anchor: save failed step=%d: %s", filter_step, e)
+
+    logger.info("rumination_anchor: saved step=%d len=%d", filter_step, len(text))
+    return text
+
+
+async def load_rumination_step_anchors(
+    report_id: str,
+    category: str,
+    conv_manager: Any,
+) -> Dict[str, str]:
+    """从对话文件 metadata 中加载所有 rumination 子步 anchor。
+
+    Returns:
+        {"1": "摘要...", "2": "摘要...", ...}
+    """
+    try:
+        conv_data = await conv_manager.get_conversation_data(report_id, category)
+        meta = conv_data.get("metadata") or {}
+    except Exception:
+        return {}
+    anchors = {}
+    for k, v in meta.items():
+        if k.startswith("step_anchor_") and isinstance(v, str) and v.strip():
+            step_num = k.replace("step_anchor_", "")
+            if step_num.isdigit():
+                anchors[step_num] = v.strip()
+    return anchors
