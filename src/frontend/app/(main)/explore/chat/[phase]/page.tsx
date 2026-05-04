@@ -2593,7 +2593,6 @@ export default function ChatPhasePage() {
     const submitThreadId = resolveRuminationTableThreadId();
     if (!submitThreadId.trim()) return;
     setRuminationTableSubmitting(true);
-    setRuminationNegMorphing(true);
     try {
       const res = await ruminationApi.negResolve(activationCode, submitThreadId, 'deep_start');
       if (res.code !== 200 || !res.data) {
@@ -2613,7 +2612,6 @@ export default function ChatPhasePage() {
     } catch (err) {
       setChatError(getApiErrorMessage(err, t('explore.chat.ruminationUi.tableSubmitError')));
     } finally {
-      window.setTimeout(() => setRuminationNegMorphing(false), 260);
       setRuminationTableSubmitting(false);
     }
   }, [activationCode, phase, resolveRuminationTableThreadId, ruminationViewStep, t]);
@@ -2840,6 +2838,9 @@ export default function ChatPhasePage() {
       setMessages(cut.messages);
       setRuminationStepBoundaries(cut.boundaries);
       saveRuminationStepBoundaries(activationCode, activeThreadId, cut.boundaries);
+      // 重新播放当前 step 的引导文案
+      const refillStep = ruminationViewStep;
+      const refillThreadId = activeThreadId;
       const th = threads.find((t) => t.id === activeThreadId);
       if (th) {
         try {
@@ -2861,6 +2862,10 @@ export default function ChatPhasePage() {
           prev.map((t) => (t.id === activeThreadId ? updated : t))
         );
       }
+      // 重新播放当前 step 的引导文案
+      if (refillThreadId) {
+        void playRuminationStepOpeningAfterSubmit(refillStep, refillThreadId);
+      }
       setRuminationProgressNonce((n) => n + 1);
     })();
   }, [
@@ -2868,6 +2873,7 @@ export default function ChatPhasePage() {
     activeThreadId,
     loadRuminationTableStep,
     phase,
+    playRuminationStepOpeningAfterSubmit,
     ruminationViewStep,
     threads,
   ]);

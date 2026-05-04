@@ -2287,7 +2287,7 @@ async def rumination_table_submit(
                         step7_r,
                         values_list,
                         filter_early_terminated=True,
-                        clear_snapshots_from=4,
+                        clear_snapshots_from=5,
                     )
                 else:
                     next_table = build_table_widget_payload(4, step4_rows, values_list, values_source=values_source)
@@ -2320,7 +2320,7 @@ async def rumination_table_submit(
                     step7_r,
                     values_list,
                     filter_early_terminated=True,
-                    clear_snapshots_from=5,
+                    clear_snapshots_from=6,
                 )
             elif 1 <= len(step5_rows) <= 3:
                 step7_r = _rumination_step7_via_456_chain(step5_rows)
@@ -2333,7 +2333,7 @@ async def rumination_table_submit(
                     step7_r,
                     values_list,
                     filter_early_terminated=True,
-                    clear_snapshots_from=5,
+                    clear_snapshots_from=6,
                 )
             else:
                 next_table = build_table_widget_payload(5, step5_rows, values_list)
@@ -2363,7 +2363,7 @@ async def rumination_table_submit(
                     step7_r,
                     values_list,
                     filter_early_terminated=True,
-                    clear_snapshots_from=5,
+                    clear_snapshots_from=6,
                 )
             elif 1 <= len(step6_rows) <= 3:
                 step7_r = _rumination_step7_via_456_chain(step6_rows)
@@ -2376,7 +2376,7 @@ async def rumination_table_submit(
                     step7_r,
                     values_list,
                     filter_early_terminated=True,
-                    clear_snapshots_from=5,
+                    clear_snapshots_from=6,
                     preserve_step6_initial=step6_rows,
                 )
             else:
@@ -2407,7 +2407,7 @@ async def rumination_table_submit(
                     step7_plain,
                     values_list,
                     filter_early_terminated=True,
-                    clear_snapshots_from=6,
+                    clear_snapshots_from=7,
                     preserve_step6_initial=incoming6,
                 )
             else:
@@ -2620,9 +2620,6 @@ async def rumination_neg_resolve(
                 report_id,
                 update_fields,
             )
-            # 清除本步闸门触发标记，允许重新提交时再次触发 neg_gate
-            if gate_step >= 1:
-                clear_neg_gate_triggered_step(reports_root, report_id, gate_step)
             progress2 = load_rumination_progress(reports_root, report_id)
             snaps2 = progress2.get("filter_step_snapshots") or {}
             return SimpleChatResponse(

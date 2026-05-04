@@ -58,7 +58,8 @@ export function computeRuminationFilterMilestone11(progress: RuminationProgress)
 
 /**
  * 筛选表进度展示刻度（0..10）：与「上一阶段/下一阶段」联动——
- * 取「已提交子步数」与「当前查看子步」的较小值，回退查看时进度条随之回落。
+ * 当 viewFilterStep 存在时直接使用（反映用户正在查看的步数），
+ * 否则回退到已提交子步数。
  */
 export function computeDisplayedRuminationMilestone(
   progress: RuminationProgress,
@@ -78,7 +79,7 @@ export function computeDisplayedRuminationMilestone(
     fs >= FILTER_STEP_CAP ? Math.max(submitted, FILTER_STEP_CAP) : submitted;
   if (viewFilterStep == null || viewFilterStep < 1) return Math.min(8, effectiveSubmitted);
   const v = Math.min(FILTER_STEP_CAP, Math.max(1, viewFilterStep));
-  return Math.min(effectiveSubmitted, v);
+  return v;
 }
 
 /** 当前阶段内部完成比例 0–1（与后端 main_section / review_sub_index / filter_step 对齐） */
@@ -368,13 +369,13 @@ export default function RuminationSectionProgress({
                           step: String(step),
                         })}
                         aria-current={current ? 'step' : undefined}
-                        className={`rumination-filter-seg relative min-w-0 flex-1 border-l border-white/45 first:border-l-0 first:rounded-l-[10px] last:rounded-r-[10px] transition-[background-color,box-shadow] duration-200 ease-out ${
+                        className={`rumination-filter-seg relative min-w-0 flex-1 border-l border-white/45 first:border-l-0 first:rounded-l-[10px] last:rounded-r-[10px] transition-[background-color,box-shadow,transform] duration-200 ease-out ${
                           current
                             ? 'bg-white/[0.22] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.55)]'
                             : ''
                         } ${
                           !disabled
-                            ? 'cursor-pointer hover:bg-white/14 active:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-400/50'
+                            ? 'cursor-pointer hover:bg-white/14 hover:-translate-y-0.5 hover:scale-[1.06] active:bg-white/20 active:translate-y-0 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-400/50'
                             : ''
                         } disabled:cursor-not-allowed disabled:opacity-30`}
                         onClick={() => segJump.onJump(step)}

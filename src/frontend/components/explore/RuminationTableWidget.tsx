@@ -159,8 +159,10 @@ export default function RuminationTableWidget({
   const [validationCycle, setValidationCycle] = useState(0);
   const [hypOtherDraftByKey, setHypOtherDraftByKey] = useState<Record<string, string>>({});
   const cellWrapRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
-  /** 已确认本步 / 回看模式：锁定格内与选行 */
+  /** 已确认本步 / 回看模式：锁定格内编辑 */
   const cellDisabled = disabled || confirmDisabledAfterCommit || reviewReadOnly;
+  /** 回看模式 / disabled：锁定行选中 */
+  const rowPickDisabled = reviewReadOnly || disabled;
 
   const tableRowRefs = useRef<Map<number, HTMLTableRowElement | null>>(new Map());
   const [hypRegenOverlayW, setHypRegenOverlayW] = useState(0);
@@ -322,6 +324,11 @@ export default function RuminationTableWidget({
   }, [confirmDisabledAfterCommit]);
 
   useEffect(() => {
+    if (!disabled) return;
+    setSelectedRowIdx(null);
+  }, [disabled]);
+
+  useEffect(() => {
     if (!onRowContextChange) return;
     if (selectedRowIdx == null || selectedRowIdx < 0) {
       onRowContextChange(null);
@@ -360,7 +367,7 @@ export default function RuminationTableWidget({
 
   const handleRowPickToggle = useCallback(
     (rowIdx: number) => {
-      if (cellDisabled) return;
+      if (rowPickDisabled) return;
       const cap = payload.rowSelectionMax ?? 3;
       setRows((prev) => {
         const row = prev[rowIdx];
@@ -378,7 +385,7 @@ export default function RuminationTableWidget({
       });
       setSelectedRowIdx(rowIdx);
     },
-    [cellDisabled, payload.rowSelectionMax]
+    [rowPickDisabled, payload.rowSelectionMax]
   );
 
   /** 数据列超过该宽度时由单元格内换行，避免整表被单格撑得过宽 */
@@ -1023,10 +1030,10 @@ export default function RuminationTableWidget({
             <tr
               key={rowIdx}
               ref={setTableRowRef(rowIdx)}
-              role={isGlass && !cellDisabled ? 'button' : undefined}
-              tabIndex={isGlass && !cellDisabled ? 0 : undefined}
+              role={isGlass && !rowPickDisabled ? 'button' : undefined}
+              tabIndex={isGlass && !rowPickDisabled ? 0 : undefined}
               onClick={(e) => {
-                if (!isGlass || cellDisabled) return;
+                if (!isGlass || rowPickDisabled) return;
                 if (
                   (e.target as HTMLElement).closest(
                     'input,select,textarea,button,a,label,option'
@@ -1038,7 +1045,7 @@ export default function RuminationTableWidget({
                 else handleGlassRowActivate(rowIdx);
               }}
               onKeyDown={(e) => {
-                if (!isGlass || cellDisabled) return;
+                if (!isGlass || rowPickDisabled) return;
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
                   if (rowSelectionMulti) handleRowPickToggle(rowIdx);
@@ -1052,10 +1059,10 @@ export default function RuminationTableWidget({
                         ? 'bg-[rgba(145,194,255,0.38)] text-neutral-900 shadow-[inset_3px_0_0_0_#91C2FF]'
                         : !rowSelectionMulti && selectedRowIdx === rowIdx
                           ? 'bg-[rgba(145,194,255,0.38)] text-neutral-900 shadow-[inset_3px_0_0_0_#91C2FF]'
-                          : cellDisabled
+                          : rowPickDisabled
                             ? ''
                             : 'hover:bg-white/30'
-                    } ${isGlass && !cellDisabled ? 'cursor-pointer' : isGlass ? 'cursor-default' : ''}`
+                    } ${isGlass && !rowPickDisabled ? 'cursor-pointer' : isGlass ? 'cursor-default' : ''}`
                   : 'border-b border-neutral-100 hover:bg-neutral-50/50'
               }
             >
