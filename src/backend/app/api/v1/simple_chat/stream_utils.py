@@ -44,6 +44,25 @@ def looks_like_markdown_table(text: str) -> bool:
     return has_row and has_sep
 
 
+def split_visible_reply_and_row_state(raw_text: str) -> tuple[str, Optional[Dict]]:
+    """从模型输出拆分可见文本与 [ROW_STATE_JSON] … 块（子步 3 逐行解锁）。"""
+    if not raw_text:
+        return "", None
+    start_marker = "[ROW_STATE_JSON]"
+    end_marker = "[/ROW_STATE_JSON]"
+    start = raw_text.rfind(start_marker)
+    end = raw_text.rfind(end_marker)
+    if start < 0 or end < 0 or end <= start:
+        return raw_text.strip(), None
+    json_part = raw_text[start + len(start_marker) : end].strip()
+    visible = raw_text[:start].rstrip()
+    try:
+        obj = json.loads(json_part)
+        return visible, obj if isinstance(obj, dict) else None
+    except (json.JSONDecodeError, TypeError):
+        return (visible if visible else raw_text.strip()), None
+
+
 def split_visible_reply_and_state(raw_text: str) -> tuple[str, Optional[Dict]]:
     """
     从模型输出中拆分用户可见文本和状态 JSON。

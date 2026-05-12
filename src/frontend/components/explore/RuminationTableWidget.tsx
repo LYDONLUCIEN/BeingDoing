@@ -4,14 +4,12 @@ import {
   useState,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
   useMemo,
   type ChangeEvent,
   type MouseEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { Loader2, RefreshCw } from 'lucide-react';
 import {
   HYP_CONFIRM_KEY,
   OTHER_SELECT_VALUE,
@@ -78,6 +76,8 @@ interface RuminationTableWidgetProps {
   embeddedSubmitOverlay?: boolean;
   /** 选中行摘要，用于输入框上下文 */
   onRowContextChange?: (ctx: { rowIndex: number; label: string } | null) => void;
+  /** 子步 3：表格内存行变更时通知父级（用于 debounce 同步 filter_table） */
+  onLiveRowsChange?: (rows: Record<string, unknown>[]) => void;
   /** 假设确认列：「无」文案 */
   hypothesisPendingLabel?: string;
   /** 假设确认列：「自定义」文案（替代旧「其他」） */
@@ -132,6 +132,7 @@ export default function RuminationTableWidget({
   loadingLabel = '…',
   submitting = false,
   onRowContextChange,
+  onLiveRowsChange,
   hypothesisPendingLabel = '无',
   hypothesisOtherLabel = '自定义',
   otherTextPlaceholder = '请填写自定义内容…',
@@ -165,7 +166,6 @@ export default function RuminationTableWidget({
   const rowPickDisabled = reviewReadOnly || disabled;
 
   const tableRowRefs = useRef<Map<number, HTMLTableRowElement | null>>(new Map());
-  const [hypRegenOverlayW, setHypRegenOverlayW] = useState(0);
 
   const [hypothesisPreview, setHypothesisPreview] = useState<{
     anchorRect: DOMRect;
@@ -257,20 +257,6 @@ export default function RuminationTableWidget({
     else tableRowRefs.current.delete(idx);
   }, []);
 
-  useLayoutEffect(() => {
-    if (hypothesisRegeneratingRowIndex == null) {
-      setHypRegenOverlayW(0);
-      return;
-    }
-    const measure = () => {
-      const tr = tableRowRefs.current.get(hypothesisRegeneratingRowIndex);
-      if (tr) setHypRegenOverlayW(tr.getBoundingClientRect().width);
-    };
-    measure();
-    const id = requestAnimationFrame(() => measure());
-    return () => cancelAnimationFrame(id);
-  }, [hypothesisRegeneratingRowIndex, rows, payload.step]);
-
   const rowsPayloadSig = JSON.stringify(payload.rows ?? []);
   useEffect(() => {
     try {
@@ -301,6 +287,11 @@ export default function RuminationTableWidget({
     payload.rows?.length,
     payload.singleRowMode,
   ]);
+
+  useEffect(() => {
+    if ((payload.step ?? 0) !== 3 || !onLiveRowsChange) return;
+    onLiveRowsChange(rows);
+  }, [rows, onLiveRowsChange, payload.step]);
 
   const setCellWrapRef = useCallback((rowIdx: number, colKey: string) => {
     const key = `${rowIdx}:${colKey}`;
@@ -412,13 +403,15 @@ export default function RuminationTableWidget({
 
   const handleCellChange = useCallback((rowIdx: number, colKey: string, value: unknown) => {
     if (cellDisabled) return;
+    const fs = payload.step ?? 0;
+    if (fs === 3 && rowIdx > (payload.rowCursor ?? 0)) return;
     setRows((prev) => {
       const next = [...prev];
       if (rowIdx < 0 || rowIdx >= next.length) return prev;
       next[rowIdx] = { ...next[rowIdx], [colKey]: value };
       return next;
     });
-  }, [cellDisabled]);
+  }, [cellDisabled, payload.step, payload.rowCursor]);
 
   const normalizeOptionText = useCallback((s: unknown) => {
     return String(s)
@@ -475,8 +468,7 @@ export default function RuminationTableWidget({
         const strVal = raw != null ? String(raw).trim() : '';
 
         if (col.key === HYP_CONFIRM_KEY && filterStep === 3) {
-          // 假设确认列：空值 / placeholder / 选了自定义但没填内容 → 无效
-          if (!strVal || isPlaceholderToken(strVal) || strVal === OTHER_SELECT_VALUE) {
+          if (!strVal || strVal === OTHER_SELECT_VALUE || strVal === STEP3_OPT_FILL) {
             return { rowIdx, colKey: col.key };
           }
           continue;
@@ -535,7 +527,7 @@ export default function RuminationTableWidget({
     const sanitized = rows.map((row) => {
       const next = { ...row };
       for (const k of Object.keys(next)) {
-        if (next[k] === OTHER_SELECT_VALUE) next[k] = '';
+        if (next[k] === OTHER_SELECT_VALUE || next[k] === STEP3_OPT_FILL) next[k] = '';
       }
       return next;
     });
@@ -610,213 +602,104 @@ export default function RuminationTableWidget({
     ? 'w-full min-h-[2.75rem] min-w-[100px] resize-y px-2 py-1.5 text-sm leading-snug border border-neutral-200/90 rounded-lg bg-white/80 focus:ring-2 focus:ring-[rgba(145,194,255,0.55)] break-words whitespace-pre-wrap'
     : 'w-full min-w-[100px] px-2 py-1 text-sm border border-neutral-200 rounded-md focus:ring-2 focus:ring-sky-300/50 focus:border-sky-400/70';
 
-  const tagLabels = {
-    freelance: hypothesisTagFreelanceLabel,
-    company: hypothesisTagCompanyLabel,
-    extra: hypothesisTagExtraLabel,
-  } as const;
+  const STEP3_OPT_NONE = '__rum_s3_none__';
+  const STEP3_OPT_FILL = '__rum_s3_fill__';
+  const step3FillLabel = '填写假设';
 
-  const renderHypothesisConfirmCell = (row: Record<string, unknown>, rowIdx: number, strVal: string) => {
-    const h1 = String(row['假设1'] ?? '').trim();
-    const h2 = String(row['假设2'] ?? '').trim();
-    const h3 = String(row['假设3'] ?? '').trim();
+  const renderHypothesisConfirmCell = (
+    row: Record<string, unknown>,
+    rowIdx: number,
+    strVal: string,
+    rowLocked: boolean
+  ) => {
     const pendingOk =
       hypothesisPendingLabel && !isPlaceholderToken(hypothesisPendingLabel);
-
-    type HypPick = 'h1' | 'h2' | 'h3' | 'pending' | 'other' | '';
-    let active: HypPick = '';
-    if (strVal === OTHER_SELECT_VALUE) active = 'other';
-    else if (!strVal) active = '';
-    else if (
+    const isNone =
       pendingOk &&
-      (strVal === hypothesisPendingLabel || strVal === '待定' || strVal === '暂未选定')
-    )
-      active = 'pending';
-    else if (h1 && strVal === h1) active = 'h1';
-    else if (h2 && strVal === h2) active = 'h2';
-    else if (h3 && strVal === h3) active = 'h3';
-    else active = 'other';
+      (strVal === hypothesisPendingLabel || strVal === '待定' || strVal === '暂未选定');
+    const isFillMarker = strVal === STEP3_OPT_FILL;
+    const isFill = Boolean(strVal && !isNone && !isFillMarker);
+    let selectControlValue = '';
+    if (isNone) selectControlValue = STEP3_OPT_NONE;
+    else if (isFillMarker || isFill) selectControlValue = STEP3_OPT_FILL;
 
-    const draftKey = `h${filterStep}-${rowIdx}`;
-    const storedDraft = hypOtherDraftByKey[draftKey] ?? '';
-    const otherInputValue =
-      active === 'other'
-        ? strVal === OTHER_SELECT_VALUE
-          ? storedDraft
-          : strVal
-        : storedDraft;
+    const fillText = isFill ? strVal : '';
+    const fieldDisabled = cellDisabled || rowLocked;
 
-    const OPT_H1 = '__rum_hyp_h1__';
-    const OPT_H2 = '__rum_hyp_h2__';
-    const OPT_H3 = '__rum_hyp_h3__';
-    const OPT_OTHER = '__rum_hyp_other__';
-    const OPT_PENDING = '__rum_hyp_pending__';
-
-    const selectControlValue =
-      active === ''
-        ? ''
-        : active === 'h1'
-          ? OPT_H1
-          : active === 'h2'
-            ? OPT_H2
-            : active === 'h3'
-              ? OPT_H3
-              : active === 'pending'
-                ? OPT_PENDING
-                : OPT_OTHER;
-
-    const h3TagLabel = String(tagLabels.extra ?? '').trim() || '备选方向';
-    const showRegen = Boolean(onHypothesisRegenerate && filterStep === 3);
-
-    const persistOtherDraftFromCell = () => {
-      if (active !== 'other') return;
-      if (strVal && strVal !== OTHER_SELECT_VALUE) {
-        setHypOtherDraftByKey((p) => ({ ...p, [draftKey]: strVal }));
-      } else if (storedDraft.trim()) {
-        setHypOtherDraftByKey((p) => ({ ...p, [draftKey]: storedDraft }));
-      }
-    };
-
-    const onHypSelectChange = (e: ChangeEvent<HTMLSelectElement>) => {
+    const onStep3SelectChange = (e: ChangeEvent<HTMLSelectElement>) => {
       const v = e.target.value;
-      if (active === 'other' && v !== OPT_OTHER) persistOtherDraftFromCell();
-      if (v === '') {
+      if (!v) {
         handleCellChange(rowIdx, HYP_CONFIRM_KEY, '');
         return;
       }
-      if (v === OPT_H1 && h1) {
-        handleCellChange(rowIdx, HYP_CONFIRM_KEY, h1);
-        return;
-      }
-      if (v === OPT_H2 && h2) {
-        handleCellChange(rowIdx, HYP_CONFIRM_KEY, h2);
-        return;
-      }
-      if (v === OPT_H3) {
-        if (h3) handleCellChange(rowIdx, HYP_CONFIRM_KEY, h3);
-        return;
-      }
-      if (v === OPT_PENDING && pendingOk) {
+      if (v === STEP3_OPT_NONE && pendingOk) {
         handleCellChange(rowIdx, HYP_CONFIRM_KEY, hypothesisPendingLabel);
         return;
       }
-      if (v === OPT_OTHER) {
-        // 从三条假设/待定切到「自定义」时，不得把当前选项的完整文案当成自定义内容
-        const wasOtherCustom =
-          Boolean(strVal && strVal !== OTHER_SELECT_VALUE) &&
-          !(
-            (pendingOk &&
-              (strVal === hypothesisPendingLabel ||
-                strVal === '待定' ||
-                strVal === '暂未选定')) ||
-            (h1 && strVal === h1) ||
-            (h2 && strVal === h2) ||
-            (h3 && strVal === h3)
-          );
-        const fromCell = wasOtherCustom ? strVal : '';
-        const d = (fromCell || hypOtherDraftByKey[draftKey] || '').trim();
-        if (d) handleCellChange(rowIdx, HYP_CONFIRM_KEY, d);
-        else handleCellChange(rowIdx, HYP_CONFIRM_KEY, OTHER_SELECT_VALUE);
+      if (v === STEP3_OPT_FILL) {
+        handleCellChange(rowIdx, HYP_CONFIRM_KEY, STEP3_OPT_FILL);
         return;
       }
     };
 
-    const otherTextInputCls = isGlass
-      ? 'min-w-0 w-full rounded-lg border border-neutral-200/90 bg-white/90 px-2.5 py-1.5 text-sm leading-snug text-neutral-800 placeholder:text-neutral-400 focus:border-[#91C2FF] focus:outline-none focus:ring-2 focus:ring-[rgba(145,194,255,0.4)]'
-      : 'min-w-0 w-full rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-sm leading-snug focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-300/50';
+    const hypSelectStep3Class = isGlass
+      ? `${selectShellClass} !min-w-0 shrink-0 max-w-[13rem] sm:max-w-[15rem]`
+      : `${selectShellClass} !min-w-0 shrink-0 max-w-[13rem] sm:max-w-[15rem]`;
 
-    /** 子步 3：左侧窄下拉（覆盖 selectShellClass 的 w-full） */
-    const hypSelectNarrowClass = isGlass
-      ? `${selectShellClass} !w-[7rem] sm:!w-[8.25rem] !min-w-0 shrink-0`
-      : `${selectShellClass} !w-[7rem] sm:!w-[8.25rem] !min-w-0 shrink-0`;
-
-    const hypRightTextCls =
-      'text-sm leading-snug text-neutral-800 break-words [overflow-wrap:anywhere] min-w-0';
-
-    const regenBtn = showRegen ? (
+    return (
       <div
-        className="flex shrink-0 flex-col justify-center self-stretch border-l border-neutral-200/75 pl-2 pr-0.5"
+        className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:gap-3"
         onMouseDown={(e) => isGlass && e.stopPropagation()}
         onClick={(e) => isGlass && e.stopPropagation()}
       >
-        <button
-          type="button"
-          title={hypothesisRegenerateHint}
-          aria-label={hypothesisRegenerateHint}
-          disabled={cellDisabled || hypothesisRegeneratingRowIndex === rowIdx}
-          className="shrink-0 border-0 bg-transparent p-1 text-blue-950 opacity-90 transition-opacity hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-35"
-          onMouseDown={(e) => isGlass && e.stopPropagation()}
-          onClick={(e) => {
-            if (isGlass) e.stopPropagation();
-            const rid = String(row.id ?? rowIdx);
-            void onHypothesisRegenerate?.(rowIdx, rid, rows);
-          }}
+        <select
+          value={selectControlValue}
+          disabled={fieldDisabled}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          onChange={onStep3SelectChange}
+          className={hypSelectStep3Class}
+          style={selectArrowStyle}
         >
-          <RefreshCw className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-        </button>
-      </div>
-    ) : null;
-
-    const rightSlot =
-      active === 'h1' ? (
-        <p className={`${hypRightTextCls} m-0`}>{h1}</p>
-      ) : active === 'h2' ? (
-        <p className={`${hypRightTextCls} m-0`}>{h2}</p>
-      ) : active === 'h3' ? (
-        <p className={`${hypRightTextCls} m-0`}>{h3}</p>
-      ) : active === 'other' ? (
-        <input
-          type="text"
-          value={otherInputValue}
-          disabled={cellDisabled}
-          placeholder={otherTextPlaceholder}
-          onMouseDown={(e) => isGlass && e.stopPropagation()}
-          onClick={(e) => isGlass && e.stopPropagation()}
-          onChange={(e) => {
-            const v = e.target.value;
-            setHypOtherDraftByKey((p) => ({ ...p, [draftKey]: v }));
-            if (v === '') handleCellChange(rowIdx, HYP_CONFIRM_KEY, OTHER_SELECT_VALUE);
-            else handleCellChange(rowIdx, HYP_CONFIRM_KEY, v);
-          }}
-          className={otherTextInputCls}
-        />
-      ) : null;
-
-    return (
-      <div className="flex min-w-0 flex-row items-center gap-2 pb-1 pl-0.5 pr-1 pt-0.5">
-        <div
-          className="relative shrink-0"
-          title={hypothesisPreviewHint || undefined}
-          onMouseEnter={(e) => {
-            if (cellDisabled) return;
-            openHypothesisPreview(e.currentTarget, h1, h2);
-          }}
-          onMouseLeave={scheduleHypothesisPreviewClose}
-        >
-          <select
-            value={selectControlValue}
-            disabled={cellDisabled}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-            onChange={onHypSelectChange}
-            className={hypSelectNarrowClass}
-            style={selectArrowStyle}
-          >
-            <option value="" disabled className="text-neutral-400">{selectPlaceholder}</option>
-            {h1 ? <option value={OPT_H1}>{tagLabels.freelance}</option> : null}
-            {h2 ? <option value={OPT_H2}>{tagLabels.company}</option> : null}
-            {h3 ? <option value={OPT_H3}>{h3TagLabel}</option> : null}
-            <option value={OPT_OTHER}>{hypothesisOtherLabel}</option>
-            {pendingOk ? <option value={OPT_PENDING}>{hypothesisPendingLabel}</option> : null}
-          </select>
-        </div>
-        <div className="flex min-h-0 min-w-0 flex-1 items-center">{rightSlot}</div>
-        {regenBtn}
+          <option value="" disabled className="text-neutral-400">
+            {selectPlaceholder}
+          </option>
+          {pendingOk ? <option value={STEP3_OPT_NONE}>{hypothesisPendingLabel}</option> : null}
+          <option value={STEP3_OPT_FILL}>{step3FillLabel}</option>
+        </select>
+        {selectControlValue === STEP3_OPT_FILL ? (
+          isGlass ? (
+            <textarea
+              value={fillText}
+              disabled={fieldDisabled}
+              placeholder={otherTextPlaceholder}
+              onMouseDown={(e) => isGlass && e.stopPropagation()}
+              onClick={(e) => isGlass && e.stopPropagation()}
+              onChange={(e) =>
+                handleCellChange(rowIdx, HYP_CONFIRM_KEY, e.target.value)
+              }
+              rows={3}
+              className={textareaShellClass}
+            />
+          ) : (
+            <textarea
+              value={fillText}
+              disabled={fieldDisabled}
+              placeholder={otherTextPlaceholder}
+              onChange={(e) =>
+                handleCellChange(rowIdx, HYP_CONFIRM_KEY, e.target.value)
+              }
+              rows={3}
+              className="w-full min-w-[100px] px-2 py-1.5 text-sm border border-neutral-200 rounded-md focus:ring-2 focus:ring-sky-300/50 focus:border-sky-400/70"
+            />
+          )
+        ) : null}
       </div>
     );
   };
 
   const hypothesisPreviewLayer = (() => {
+    if ((payload.step ?? 0) === 3) return null;
     if (!hypothesisPreview || typeof document === 'undefined') return null;
 
     const { anchorRect, h1: ph1, h2: ph2 } = hypothesisPreview;
@@ -1066,7 +949,7 @@ export default function RuminationTableWidget({
                   : 'border-b border-neutral-100 hover:bg-neutral-50/50'
               }
             >
-              {displayColumns.map((col, colIdx) => {
+              {displayColumns.map((col) => {
                 const isEditable = editableSet.has(col.key);
                 const val = row[col.key];
                 const strVal =
@@ -1080,11 +963,7 @@ export default function RuminationTableWidget({
                     validationFlashKey === `${rowIdx}:__pick` &&
                     col.key === firstColKey);
 
-                const filterStepNow = payload.step ?? 0;
-                const showHypRegenOverlay =
-                  colIdx === 0 &&
-                  hypothesisRegeneratingRowIndex === rowIdx &&
-                  filterStepNow === 3;
+                const step3RowLocked = filterStep === 3 && rowIdx > (payload.rowCursor ?? 0);
 
                 const tdBase =
                   col.key === 'id'
@@ -1102,24 +981,8 @@ export default function RuminationTableWidget({
                       minWidth: colMinWidth(col),
                       maxWidth: colMaxWidth(col) ?? (col.key === 'id' ? 48 : undefined),
                     }}
-                    className={`${showHypRegenOverlay ? 'relative overflow-visible ' : ''}${tdBase}`}
+                    className={tdBase}
                   >
-                    {showHypRegenOverlay && (
-                      <div
-                        className="absolute left-0 top-0 z-[45] flex min-h-full items-center justify-center bg-white/80 backdrop-blur-[6px]"
-                        style={{
-                          width:
-                            hypRegenOverlayW > 0 ? `${hypRegenOverlayW}px` : '100%',
-                        }}
-                        aria-busy="true"
-                        aria-live="polite"
-                      >
-                        <Loader2
-                          className="h-7 w-7 shrink-0 animate-spin text-blue-950"
-                          aria-hidden
-                        />
-                      </div>
-                    )}
                     <div
                       key={
                         cellFlash ? `${cellKey}-v${validationCycle}` : cellKey
@@ -1148,7 +1011,7 @@ export default function RuminationTableWidget({
                       }}
                     >
                       {isEditable && col.key === HYP_CONFIRM_KEY && filterStep === 3 ? (
-                        renderHypothesisConfirmCell(row, rowIdx, strVal)
+                        renderHypothesisConfirmCell(row, rowIdx, strVal, step3RowLocked)
                       ) : isEditable && (col.options?.includes(hypothesisOtherLabel) || col.options?.includes('其他')) ? (
                         renderSelectWithOther(col, rowIdx, strVal, hypothesisOtherLabel)
                       ) : isEditable && col.options?.length ? (
@@ -1157,7 +1020,7 @@ export default function RuminationTableWidget({
                           onChange={(e) => handleCellChange(rowIdx, col.key, e.target.value)}
                           onMouseDown={(e) => isGlass && e.stopPropagation()}
                           onClick={(e) => isGlass && e.stopPropagation()}
-                          disabled={cellDisabled}
+                          disabled={cellDisabled || step3RowLocked}
                           className={selectShellClass}
                           style={selectArrowStyle}
                         >
@@ -1177,7 +1040,7 @@ export default function RuminationTableWidget({
                             onChange={(e) => handleCellChange(rowIdx, col.key, e.target.value)}
                             onMouseDown={(e) => isGlass && e.stopPropagation()}
                             onClick={(e) => isGlass && e.stopPropagation()}
-                            disabled={cellDisabled}
+                            disabled={cellDisabled || step3RowLocked}
                             placeholder={inputPlaceholder}
                             rows={2}
                             className="w-full min-h-[2.75rem] min-w-[100px] resize-y px-2 py-1.5 text-sm leading-snug border border-neutral-200/90 rounded-lg bg-white/80 focus:ring-2 focus:ring-[rgba(145,194,255,0.55)] break-words whitespace-pre-wrap"
@@ -1189,7 +1052,7 @@ export default function RuminationTableWidget({
                             onChange={(e) => handleCellChange(rowIdx, col.key, e.target.value)}
                             onMouseDown={(e) => isGlass && e.stopPropagation()}
                             onClick={(e) => isGlass && e.stopPropagation()}
-                            disabled={cellDisabled}
+                            disabled={cellDisabled || step3RowLocked}
                             placeholder={inputPlaceholder}
                             className="w-full min-w-[100px] px-2 py-1 text-sm border border-neutral-200 rounded-md focus:ring-2 focus:ring-sky-300/50 focus:border-sky-400/70"
                           />

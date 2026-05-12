@@ -29,7 +29,7 @@ def _cols_step2() -> List[Dict[str, Any]]:
 
 
 def _cols_step345() -> List[Dict[str, Any]]:
-    """假设1–2 仅作行内数据供下拉选项使用，不单独占列（一列「假设」选择两条推荐之一或自填）。"""
+    """子步 3：热爱/优势/匹配性 + 「假设」列（显式选「无」或自填，逐行解锁由 rowCursor 控制）。"""
     return [
         {"key": "id", "label": "id"},
         {"key": "热爱", "label": "热爱"},
@@ -104,7 +104,11 @@ def _cols_step7_final() -> List[Dict[str, Any]]:
 GUIDE_TEXT: Dict[int, str] = {
     1: "请审阅下表中的「优势标记」，确认后点击「确认」进入下一步。",
     2: "判断标准参考——匹配：热爱与优势能够互相增强，结合起来让你感到充实且方向清晰；不匹配：两者难以协同，或结合后反而消耗精力。请逐行审阅并修改「匹配性」，确认后点击「确认」进入下一步。",
-    3: "请在「假设」列选择：「个人事业」或「职业路径」两条推荐之一，或选「无」「自定义」并自填。可点单元格旁图标重新生成推荐。至少一行需为有效假设后才能进入价值观筛选。",
+    3: (
+        "请在右侧与咨询师逐行完成假设探索；当前可编辑行见表下说明。"
+        "在「假设」列请先在「无 / 填写假设」中选择：选「无」表示本行跳过；选「填写假设」请填入具体内容。"
+        "每行在对话中确认后才会解锁下一行。全部行处理完毕后，点击「确认」进入价值观筛选。"
+    ),
     4: "请为各行选择价值观标签（若多个价值观同样重要，可先选一个最具代表性的，或选「自定义」将多个一并填写）、选「都不符合」或「自定义」并填写后整表确认。",
     5: "请在本页为各行选择「忍不住想做」或「应该做」后整表确认。",
     6: "请在本页为各行选择「现在」或「未来」后整表确认。",
@@ -141,6 +145,44 @@ def columns_for_step(step: int, values_keywords: List[str], values_source: str =
     return _cols_step1()
 
 
+STEP3_WIDGET_REDACT_KEYS = (
+    "热爱",
+    "优势",
+    "匹配性",
+    "用户确认的假设",
+    "假设1",
+    "假设2",
+    "假设3",
+    "假设填写方式",
+)
+
+
+def redact_step3_rows_for_widget(rows: List[dict], cursor: int) -> List[dict]:
+    """子步 3：索引 > cursor 的行不返回业务字段（仅保留 id）；已解锁行去掉假设1/2/3 出参。
+
+    cursor 可为 len(rows)，表示本步逐行对话已全部完成，此时不再脱敏任何行。
+    """
+    n = len(rows)
+    c = max(0, min(int(cursor), n))
+    out: List[dict] = []
+    for i, r in enumerate(rows):
+        if not isinstance(r, dict):
+            continue
+        if i > c:
+            rid = r.get("id", "")
+            clean: Dict[str, Any] = {"id": rid}
+            for k in STEP3_WIDGET_REDACT_KEYS:
+                clean[k] = ""
+            out.append(clean)
+        else:
+            row = {k: v for k, v in r.items() if k not in ("假设1", "假设2", "假设3")}
+            row["假设1"] = ""
+            row["假设2"] = ""
+            row["假设3"] = ""
+            out.append(row)
+    return out
+
+
 def build_table_widget_payload(
     step: int,
     rows: List[dict],
@@ -150,6 +192,7 @@ def build_table_widget_payload(
     row_cursor: int = 0,
     total_rows: int = 0,
     values_source: str = "",
+    hypothesis_row_cursor: Optional[int] = None,
 ) -> Optional[Dict[str, Any]]:
     """构建 table_widget 的 card_payload；无行时返回 None。
 
@@ -160,19 +203,13 @@ def build_table_widget_payload(
     if not rows:
         return None
     display_rows: List[dict] = list(rows)
+    total = len(rows)
+    eff_cursor = row_cursor
     if step == 3:
-        from app.utils.rumination_hypothesis_service import ensure_row_has_pair_hypotheses
-
-        patched: List[dict] = []
-        for i, r in enumerate(rows):
-            row = dict(r)
-            passion = str(row.get("热爱") or "")
-            strength = str(row.get("优势") or "")
-            ensure_row_has_pair_hypotheses(
-                row, passion=passion, strength=strength, row_index=i
-            )
-            patched.append(row)
-        display_rows = patched
+        if hypothesis_row_cursor is not None:
+            eff_cursor = int(hypothesis_row_cursor)
+        eff_cursor = max(0, min(eff_cursor, total))
+        display_rows = redact_step3_rows_for_widget(display_rows, eff_cursor)
     cols = columns_for_step(step, values_keywords, values_source=values_source)
     guide = GUIDE_TEXT.get(step, "")
     # step 4 降级提示：无价值观关键词来源时，引导用户自填
@@ -181,8 +218,20 @@ def build_table_widget_payload(
             "当前暂未解析到您的价值观关键词，请在「工作目的」列选择「自定义」手动填写。"
         )
         guide = f"{degradation_hint}\n{guide}" if guide else degradation_hint
-    if single_row_mode and total_rows > 0:
-        guide = f"第 {min(row_cursor + 1, total_rows)}/{total_rows} 行。{guide}"
+    eff_total = total_rows if total_rows > 0 else total
+    if step == 3:
+        eff_total = total
+        row_cursor = eff_cursor
+    if single_row_mode and eff_total > 0:
+        guide = f"第 {min(row_cursor + 1, eff_total)}/{eff_total} 行。{guide}"
+    if step == 3 and eff_total > 0:
+        if row_cursor >= eff_total:
+            line_prog = f"已完成全部 {eff_total} 行的对话，请检查表格后点击「确认」进入下一步。"
+        else:
+            line_prog = (
+                f"当前进行第 {row_cursor + 1}/{eff_total} 行（右侧对话同步进行）。"
+            )
+        guide = f"{line_prog}\n{guide}"
     payload: Dict[str, Any] = {
         "columns": cols,
         "rows": display_rows,
@@ -191,7 +240,7 @@ def build_table_widget_payload(
         "step": step,
         "singleRowMode": single_row_mode,
         "rowCursor": row_cursor,
-        "totalRows": total_rows,
+        "totalRows": eff_total if eff_total else total,
     }
     # step 4 附带价值观来源标签，供前端展示与降级处理
     if step == 4:

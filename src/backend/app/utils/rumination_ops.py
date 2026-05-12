@@ -32,6 +32,22 @@ def is_rumination_hypothesis_pending(val: Any) -> bool:
     return not t or t in RUMINATION_HYP_PENDING_MARKERS
 
 
+def is_rumination_step3_row_hypothesis_complete(val: Any) -> bool:
+    """子步 3：用户须显式选「无」或填写非空文案（不允许留空或前端内部标记）。"""
+    t = str(val or "").strip()
+    if not t or t.startswith("__rum_s3_"):
+        return False
+    return True
+
+
+def is_rumination_step3_positive_hypothesis(val: Any) -> bool:
+    """非「无 / 待定」类的自填假设（用于统计是否至少有一条实质方向）。"""
+    t = str(val or "").strip()
+    if not t:
+        return False
+    return t not in RUMINATION_HYP_PENDING_MARKERS
+
+
 # 与 survey_storage / prior 块标题一致：【信念/禀赋/热忱/使命 阶段结果】
 _RE_VALUES = re.compile(r"【信念[^】]*阶段结果】\s*\n(.*?)(?=【|$)", re.DOTALL)
 _RE_STRENGTHS = re.compile(r"【禀赋[^】]*阶段结果】\s*\n(.*?)(?=【|$)", re.DOTALL)
@@ -235,24 +251,22 @@ def _remove_keys(row: Dict[str, Any], keys: Tuple[str, ...]) -> Dict[str, Any]:
 
 def structure_hypothesis_round1_table(table: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    假设子步（第 3 步）入口：把第 2 步「匹配性」表变成可选假设的表结构。
+    假设子步入口：把第 2 步「匹配性」表变成第 3 步表结构。
 
     处理逻辑：
-    1. 仅保留「匹配性 != 不匹配」的行（不匹配组合不进入假设轮）。
-    2. 去掉「匹配原因」列（后续列由 table_widget 与 LLM 填充）。
-    3. 为每行准备「假设1」「假设2」空槽位，由 ``fill_hypothesis_columns_for_table`` 写入两条推荐
-      （个人事业向 / 公司职业向）；「假设3」固定为空，不再提供「第三条备选」文案。
-    4. 保留行内已有「用户确认的假设」字符串（若历史上有值），前端仍可在该列选择：
-       两条推荐之一、「自定义」自填、「无」不选本条——交互与列定义不变，仅少一条备选假设文本。
+    1. 仅保留「匹配性 != 不匹配」的行。
+    2. 去掉「匹配原因」列。
+    3. 「假设1」「假设2」「假设3」清空（假设仅在对话中探讨，不写入表的二选一推荐列）。
+    4. 保留行内已有「用户确认的假设」。
 
-    假设文案由 LLM 或占位填充，见 ``rumination_hypothesis_service``。
+    不再批量调用 LLM 预填假设列。
     """
     matched = _strip_non_matching_rows(table)
     out: List[Dict[str, Any]] = []
     for r in matched:
         row = _remove_keys(r, ("匹配原因",))
-        row["假设1"] = row.get("假设1") or ""
-        row["假设2"] = row.get("假设2") or ""
+        row["假设1"] = ""
+        row["假设2"] = ""
         row["假设3"] = ""
         row["用户确认的假设"] = (row.get("用户确认的假设") or "").strip()
         out.append(row)

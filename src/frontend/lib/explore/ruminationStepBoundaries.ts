@@ -154,6 +154,7 @@ export function isRuminationReviewMode(
 /**
  * 「重新填写」从当前筛选子步起直到对话末尾整段删除（与后端从本步起清空后续快照一致）。
  * 保留本子步起点边界 b[viewStep]，删除 viewStep+1.. 的边界键。
+ * 若 b[viewStep] 不存在，向前回退到最近的已有 boundary；若仍无则截断到 0。
  * 仅允许从当前活跃步（非回看模式）执行。
  */
 export function cutMessagesForRuminationStepRefill(
@@ -163,9 +164,16 @@ export function cutMessagesForRuminationStepRefill(
 ): { messages: ThreadMessage[]; boundaries: Record<string, number> } {
   const b = ensureDefaultStepOne({ ...boundaries });
   const sk = String(viewStep);
-  const lo = b[sk];
+  let lo = b[sk];
   if (lo === undefined) {
-    return { messages, boundaries: b };
+    // 向前回退到最近的已有 boundary
+    for (let s = viewStep - 1; s >= 1; s--) {
+      if (b[String(s)] !== undefined) {
+        lo = b[String(s)];
+        break;
+      }
+    }
+    if (lo === undefined) lo = 0;
   }
   const hi = messages.length;
   const newB: Record<string, number> = { ...b };

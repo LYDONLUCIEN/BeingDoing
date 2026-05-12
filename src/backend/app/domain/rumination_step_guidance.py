@@ -74,6 +74,7 @@ from app.domain.rumination_prompt_strings import (
 OpeningMode = Literal["fixed", "llm"]
 
 STEP_OPENING_MODE: Dict[int, OpeningMode] = {i: "llm" for i in range(1, 8)}
+STEP_OPENING_MODE[3] = "fixed"
 
 
 @dataclass

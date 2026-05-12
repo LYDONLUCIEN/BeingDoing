@@ -163,40 +163,37 @@ def _is_pending_label(s: str) -> bool:
 
 
 def collect_step3_pending_rows(table_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """选了「无」/空/待定/暂未选定的行 — 必须进入深度讨论。"""
+    """需深度讨论的行：文案为空（未显式选「无」）或仍为旧版待定占位。"""
     out: List[Dict[str, Any]] = []
     for r in table_data:
         if not isinstance(r, dict):
             continue
         hyp = str(r.get("用户确认的假设") or "").strip()
-        if not _is_pending_label(hyp):
+        if hyp in ("无",):
             continue
-        out.append(
-            {
-                "id": str(r.get("id", "")),
-                "line": _row_summary(r),
-                "label": _format_hypothesis_item(r),
-                "热爱": str(r.get("热爱") or ""),
-                "优势": str(r.get("优势") or ""),
-                "假设": hyp,
-                "_kind": "pending",
-            }
-        )
+        if hyp in ("", "暂未选定", "待定"):
+            out.append(
+                {
+                    "id": str(r.get("id", "")),
+                    "line": _row_summary(r),
+                    "label": _format_hypothesis_item(r),
+                    "热爱": str(r.get("热爱") or ""),
+                    "优势": str(r.get("优势") or ""),
+                    "假设": hyp,
+                    "_kind": "pending",
+                }
+            )
     return out
 
 
 def collect_step3_hypothesis_candidates(table_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """需做「是否符合假设定义」检测的行：非「假设1/假设2」内置选项的文案（含自填、其他）。"""
+    """需做「是否符合假设定义」检测的行：用户自填的正向假设（排除「无」与空）。"""
     out: List[Dict[str, Any]] = []
     for r in table_data:
         if not isinstance(r, dict):
             continue
         hyp = str(r.get("用户确认的假设") or "").strip()
-        if _is_pending_label(hyp):
-            continue
-        h1 = str(r.get("假设1") or "").strip()
-        h2 = str(r.get("假设2") or "").strip()
-        if h1 and h2 and (hyp == h1 or hyp == h2):
+        if _is_pending_label(hyp) or hyp in ("无", "待定", "暂未选定"):
             continue
         out.append(
             {

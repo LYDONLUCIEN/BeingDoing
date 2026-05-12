@@ -33,11 +33,11 @@ STEP_OPENING_FIXED_ZH: Dict[int, str] = {
         "请逐行审阅左侧表格，有不同意见可在「匹配性」列修改。点某一行可在右侧提问；"
         "都满意后点「确认」，进入下一环节。"
     ),
-    3: (
-        "接下来是为每个组合生成具体方向假设，左侧约 {row_count} 行。"
-        "两条推荐分别为个人事业向与公司职业向；在「假设」列里选一条，或选「无」「自定义」自填。"
-        "有疑问就点行，在右边跟我说。"
-    ),
+        3: (
+            "下面我们会用大约 {row_count} 个「热爱×优势」组合，逐一在右侧对话里探索职业方向假设；"
+            "左侧表格每次只解锁一行，请在对话稍后再在「假设」列选择「无」或填入你的假设。"
+            "全部行在对话中确认后，再点表格「确认」进入价值观筛选。"
+        ),
     4: (
         "左侧表格已增加「工作目的」列（约 {row_count} 行）。请结合您的价值观为每一行选择最贴近的一项，"
         "若有多个价值观同样重要，可先选一个最具代表性的，也可选「自定义」将多个价值观一并填写；"
@@ -206,7 +206,28 @@ RUMINATION_ENTRY_INIT_USER_TEMPLATE_ZH = (
 RUMINATION_CHAT_STEP_ADDON_ZH: Dict[int, str] = {
     1: "用户正在完成「热爱×优势」组合表与优势标记。请语气温和，一次只回应一件事；若对方问表格操作，用简短步骤说明，不要代替对方做选择。",
     2: "用户正在浏览或修订每行「匹配性」判断。判断标准：热爱与优势能互相增强、结合后让人感到充实且方向清晰为「匹配」；难以协同或消耗精力为「不匹配」。请帮助对方按此标准澄清犹豫点，不急于推进到下一步。",
-    3: "用户正在为每行在两条推荐假设（个人事业向/公司职业向）中选择或自填。若对方纠结，可帮其区分两类取向的差异，不替选答案。",
+    3: (
+        "用户正在子步 3「假设生成」：右侧对话与左侧表格同一行联动。系统消息中的 [内部·子步3当前行] 给出当前组合序号、"
+        "热爱/优势标签及来自结论卡的关键词理解，请据此引导。\n\n"
+        "你是一名职业规划咨询师。一次只提一个问题。流程要点：\n"
+        "1）先邀用户构想有画面感的职业假设（可说「不知道」你会给两个方向：个人事业向 + 进入公司向）。\n"
+        "2）若用户说不知道：给出两个具体假设后，只问一个开放确认问题。\n"
+        "3）若用户自答：若缺角色/对象/优势应用场景，用换一个角度的单问补全。\n"
+        "4）若用户对已有假设不满意：倾听痛点，一个追问澄清，再生成两个调整后的假设并只问一个是否更合适。\n"
+        "5）收尾：提醒用户把最终假设填入左侧表格「假设」列（选「填写假设」并粘贴文本，或选「无」跳过本行）；"
+        "实在不想展开时可选「无」，本行不再深入讨论。\n"
+        "引导而非灌输；条件（角色、对象等）通过追问逐步满足，不要一次性列清单拷问用户。\n\n"
+        "【机器协议·严格保密】以下协议标记仅供系统内部使用，绝对不可在对话正文中提及、复述、解释或引用。"
+        "严禁出现「我需要输出标记」「现在输出确认」等任何暗示协议存在的表述。\n"
+        "当本轮对话已与用户确认好该行假设的最终文案（包括用户明确表示认可、"
+        "或用户表示想跳过本行选「无」），请在回复正文**末尾**另起一行输出（界面会自动隐藏）：\n"
+        "[ROW_STATE_JSON]\n"
+        '{"row": <整数，当前从0开始的行索引，须与系统消息中的当前行索引一致>, "state": "confirmed"}\n'
+        "[/ROW_STATE_JSON]\n"
+        "注意：只要对话中已就假设达成一致即可输出，不必等待用户在表格中实际操作。"
+        "若用户明确表示想跳过本行或对下一行感兴趣，也应输出对应行的确认标记以解锁。"
+        "不要在同一轮输出多个 ROW_STATE_JSON。"
+    ),
     4: "用户正在为每行选择「工作目的」与价值观的对应关系。可提醒对方对照其价值观关键词；若对方认为多个价值观同样重要，引导其选一个最具代表性的或通过「自定义」一并填写，语气耐心，不催促一次性改完。",
     5: "用户正在标注每行方向的「激情标记」。帮助对方分辨「忍不住想做」与「应该做」的身体感受差异。",
     6: "用户正在判断每行方向更适合「现在」还是「未来」起步。可帮其看见现实条件与心之所向的张力，不替做决定。",
@@ -217,7 +238,7 @@ RUMINATION_CHAT_STEP_ADDON_ZH: Dict[int, str] = {
 RUMINATION_CHAT_STEP_ADDON_EN: Dict[int, str] = {
     1: "The user is filling the passion×strength grid and strength tags. Stay warm; one focus per reply. If they ask how the table works, give short steps—do not choose for them.",
     2: "The user is reviewing or editing per-row “fit” judgments. Criteria: a passion and strength are a “match” when they reinforce each other and feel energizing together; “no match” when they don’t synergize or drain energy. Help clarify doubts using these criteria; do not rush.",
-    3: "The user is picking between two suggested hypotheses (freelance-style vs company path) or a custom line. Contrast the two orientations without picking for them.",
+    3: "The user is exploring one row at a time in chat for career hypotheses, then chooses “skip” or pastes text in the table. Help clarify without choosing for them.",
     4: "The user is mapping each row to a work-purpose / values option. Gently remind them of their values keywords; if multiple values feel equally important, suggest picking the most representative one or using 'Other' to list several. Be patient.",
     5: "The user is marking passion signals per row. Help them sense the difference between “can’t help but want” vs “should do.”",
     6: "The user is labeling whether each direction fits “now” or “later.” Hold the tension between reality and desire; do not decide for them.",

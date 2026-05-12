@@ -20,8 +20,6 @@ import DimensionConclusionCard, { type DimensionConclusionData } from '@/compone
 import PhaseCompleteWarmModal from '@/components/explore/PhaseCompleteWarmModal';
 import ChatPhaseBackground from '@/components/explore/ChatPhaseBackground';
 import ExploreLandingMeshLayers from '@/components/explore/ExploreLandingMeshLayers';
-import { HYP_CONFIRM_KEY, OTHER_SELECT_VALUE } from '@/lib/explore/ruminationConstants';
-
 const PhaseCelebrateBurst = dynamic(
   () => import('@/components/explore/PhaseCelebrateBurst'),
   { ssr: false },
@@ -156,48 +154,6 @@ function mergePendingDraftIntoMessagesFromMeta(
   ];
 }
 
-/** 重新生成假设后按「槽位」写回确认列，避免新文案导致选中丢失 */
-function mapRuminationHypConfirmAfterRegen(
-  prevRow: Record<string, unknown>,
-  nextRow: Record<string, unknown>,
-  pendingLabel: string
-): string {
-  const pv = String(prevRow[HYP_CONFIRM_KEY] ?? '');
-  const o1 = String(prevRow['假设1'] ?? '').trim();
-  const o2 = String(prevRow['假设2'] ?? '').trim();
-  const o3 = String(prevRow['假设3'] ?? '').trim();
-  const n1 = String(nextRow['假设1'] ?? '').trim();
-  const n2 = String(nextRow['假设2'] ?? '').trim();
-  const n3 = String(nextRow['假设3'] ?? '').trim();
-
-  type Slot = 'h1' | 'h2' | 'h3' | 'pending' | 'other_empty' | 'other_custom';
-  let slot: Slot;
-  if (pv === OTHER_SELECT_VALUE || !pv.trim()) {
-    slot = 'other_empty';
-  } else if (pendingLabel && (pv === pendingLabel || pv === '待定' || pv === '暂未选定')) {
-    slot = 'pending';
-  } else if (o1 && pv === o1) {
-    slot = 'h1';
-  } else if (o2 && pv === o2) {
-    slot = 'h2';
-  } else if (o3 && pv === o3) {
-    slot = 'h3';
-  } else {
-    slot = 'other_custom';
-  }
-
-  if (slot === 'h1' && n1) return n1;
-  if (slot === 'h2' && n2) return n2;
-  if (slot === 'h3' && n3) return n3;
-  if (slot === 'pending') return pendingLabel;
-  if (slot === 'other_custom') {
-    if (pv && pv !== OTHER_SELECT_VALUE && ![n1, n2, n3].includes(pv)) return pv;
-    return OTHER_SELECT_VALUE;
-  }
-  return OTHER_SELECT_VALUE;
-}
-
-/** 表格提交：全屏遮罩 + 动态省略号（Portal 挂到 body） */
 function RuminationTableSubmitPortal({
   open,
   lineBefore,
@@ -326,9 +282,6 @@ export default function ChatPhasePage() {
   const [ruminationNegMorphing, setRuminationNegMorphing] = useState(false);
   const [ruminationNegConfirmPulseTick, setRuminationNegConfirmPulseTick] = useState(0);
   const [ruminationTableNavLoading, setRuminationTableNavLoading] = useState(false);
-  const [hypothesisRegeneratingRowIndex, setHypothesisRegeneratingRowIndex] = useState<number | null>(
-    null
-  );
   const [ruminationRefillConfirmOpen, setRuminationRefillConfirmOpen] = useState(false);
   const [ruminationStep7FinalizeOpen, setRuminationStep7FinalizeOpen] = useState(false);
   const [phaseCelebrateSignal, setPhaseCelebrateSignal] = useState(0);
@@ -343,11 +296,18 @@ export default function ChatPhasePage() {
     payload: NonNullable<ThreadMessage['tablePayload']>;
     submitThreadId: string;
   } | null>(null);
+  const ruminationProgressStateRef = useRef<RuminationProgress | null>(null);
+  const ruminationTablePayloadRef = useRef<ThreadMessage['tablePayload'] | null>(null);
   const [ruminationRowContext, setRuminationRowContext] = useState<{
     rowIndex: number;
     label: string;
   } | null>(null);
+  ruminationProgressStateRef.current = ruminationProgressState;
+  ruminationTablePayloadRef.current = ruminationTablePayload;
   const ruminationWorkbenchRef = useRef<HTMLDivElement>(null);
+  /** 子步 3：左表内存行，用于 debounce / 发送前 flush 到 rumination-progress */
+  const ruminationLiveRowsRef = useRef<Record<string, unknown>[] | null>(null);
+  const ruminationStep3SaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { user, setTokens } = useAuthStore();
   const userChatAvatarInitials = (user?.username || user?.email || 'U').slice(0, 2).toUpperCase();
 
@@ -1449,6 +1409,9 @@ export default function ChatPhasePage() {
             )
           )
         : undefined;
+    if (phase === 'rumination' && ruminationFilterForApi === 3 && activationCode) {
+      await flushRuminationStep3TableToServer();
+    }
     const userMsg: ThreadMessage = {
       id: `u_${now}`,
       role: 'user',
@@ -1647,6 +1610,24 @@ export default function ChatPhasePage() {
                   createdAt: Date.now(),
                 };
                 setMessages((prev) => [...prev, tableMsg]);
+              }
+            }
+            if (payload.rumination_progress && phase === 'rumination' && activationCode) {
+              const rp = payload.rumination_progress as RuminationProgress;
+              setRuminationProgressState((prev) => (prev ? { ...prev, ...rp } : rp));
+              const fs =
+                typeof rp.filter_step === 'number' && rp.filter_step > 0 ? rp.filter_step : 3;
+              if (fs === 3) {
+                void ruminationApi.getTable(activationCode, 3).then((tb) => {
+                  if (tb.code !== 200) return;
+                  if (tb.data?.table_widget) {
+                    setRuminationTablePayload(tb.data.table_widget as ThreadMessage['tablePayload']);
+                  }
+                  if (tb.data?.progress) setRuminationProgressState(tb.data.progress);
+                  if (typeof tb.data?.max_reached_filter_step === 'number') {
+                    setRuminationMaxReached(tb.data.max_reached_filter_step);
+                  }
+                });
               }
             }
             if (payload.done && payload.response != null) {
@@ -2661,8 +2642,7 @@ export default function ChatPhasePage() {
     if (
       ruminationViewStep <= 1 ||
       ruminationGuideBusy ||
-      ruminationTableNavLoading ||
-      hypothesisRegeneratingRowIndex !== null
+      ruminationTableNavLoading
     ) {
       return;
     }
@@ -2678,15 +2658,10 @@ export default function ChatPhasePage() {
     loadRuminationTableStep,
     ruminationGuideBusy,
     ruminationTableNavLoading,
-    hypothesisRegeneratingRowIndex,
   ]);
 
   const handleRuminationFilterNext = useCallback(() => {
-    if (
-      ruminationGuideBusy ||
-      ruminationTableNavLoading ||
-      hypothesisRegeneratingRowIndex !== null
-    ) {
+    if (ruminationGuideBusy || ruminationTableNavLoading) {
       return;
     }
     const next = ruminationViewStep + 1;
@@ -2699,85 +2674,68 @@ export default function ChatPhasePage() {
     loadRuminationTableStep,
     ruminationGuideBusy,
     ruminationTableNavLoading,
-    hypothesisRegeneratingRowIndex,
   ]);
 
-  const handleHypothesisRegenerateRow = useCallback(
-    async (
-      rowIdx: number,
-      rowId: string,
-      liveRowsFromWidget?: Record<string, unknown>[]
-    ) => {
-      if (!activationCode || phase !== 'rumination') return;
-      const filterStep = ruminationTablePayload?.step ?? ruminationViewStep;
-      if (filterStep !== 3) return;
-      setHypothesisRegeneratingRowIndex(rowIdx);
-      setChatError(null);
-      try {
-        const res = await ruminationApi.regenerateHypotheses(activationCode, filterStep, rowId);
-        const rawTw = res.data?.table_widget;
-        if (res.code !== 200 || !rawTw) {
-          setChatError(
-            res.message || t('explore.chat.ruminationUi.hypothesisRegenerateError')
-          );
-          return;
-        }
-        const tw = rawTw as NonNullable<ThreadMessage['tablePayload']>;
-        const pendingLabel = t('explore.chat.ruminationUi.hypothesisPendingOption');
-        const payloadRows = (ruminationTablePayload?.rows ?? []) as Record<string, unknown>[];
-        const prevRows =
-          liveRowsFromWidget && liveRowsFromWidget.length > 0
-            ? liveRowsFromWidget
-            : payloadRows;
-        const prevRow = prevRows[rowIdx];
-        let nextPayload: NonNullable<ThreadMessage['tablePayload']> = tw;
-        if (Array.isArray(tw.rows) && rowIdx >= 0 && rowIdx < tw.rows.length) {
-          const incoming = tw.rows as Record<string, unknown>[];
-          const hypCols = ['假设1', '假设2', '假设3'] as const;
-          const newRows = incoming.map((r, i) => {
-            const pr = prevRows[i];
-            if (i === rowIdx && prevRow) {
-              const mapped = mapRuminationHypConfirmAfterRegen(prevRow, r, pendingLabel);
-              return { ...r, [HYP_CONFIRM_KEY]: mapped };
-            }
-            if (!pr) return r;
-            const merged = { ...r };
-            for (const k of hypCols) {
-              const nextS = String(r[k] ?? '').trim();
-              const prevS = String(pr[k] ?? '').trim();
-              if (!nextS && prevS) merged[k] = pr[k];
-            }
-            if (Object.prototype.hasOwnProperty.call(pr, HYP_CONFIRM_KEY)) {
-              merged[HYP_CONFIRM_KEY] = pr[HYP_CONFIRM_KEY];
-            }
-            return merged;
-          });
-          nextPayload = { ...tw, rows: newRows } as NonNullable<ThreadMessage['tablePayload']>;
-        }
-        setRuminationTablePayload(nextPayload);
-        if (res.data.progress) setRuminationProgressState(res.data.progress);
-        if (typeof res.data.max_reached_filter_step === 'number') {
-          setRuminationMaxReached(res.data.max_reached_filter_step);
-        } else if (res.data.progress) {
-          setRuminationMaxReached(computeMaxReachedFromSnapshots(res.data.progress));
-        }
-        // 勿递增 ruminationProgressNonce：会触发全量 get-table effect，用服务端表覆盖本地，导致其它行未提交的选项被清空
-      } catch (err) {
-        setChatError(
-          getApiErrorMessage(err, t('explore.chat.ruminationUi.hypothesisRegenerateError'))
-        );
-      } finally {
-        setHypothesisRegeneratingRowIndex(null);
+  /** 子步 3：将当前左表行同步到服务端（发送消息前须 flush，避免解锁校验读到旧表） */
+  const flushRuminationStep3TableToServer = useCallback(async () => {
+    if (!activationCode) return;
+    if (ruminationStep3SaveTimerRef.current) {
+      clearTimeout(ruminationStep3SaveTimerRef.current);
+      ruminationStep3SaveTimerRef.current = null;
+    }
+    const r = ruminationLiveRowsRef.current;
+    if (!r?.length) return;
+    const cur = ruminationProgressStateRef.current;
+    const tc = ruminationTablePayloadRef.current;
+    const cursor =
+      (typeof cur?.filter_row_cursor === 'number' ? cur.filter_row_cursor : tc?.rowCursor) ?? 0;
+    try {
+      const res = await ruminationApi.save(activationCode, {
+        filter_step: 3,
+        filter_table: r,
+        filter_row_cursor: cursor,
+      });
+      if (res.data?.progress) setRuminationProgressState(res.data.progress);
+    } catch {
+      /* 无声失败：主流程仍继续；解锁失败时用户可重试 */
+    }
+  }, [activationCode]);
+
+  const handleRuminationLiveRowsChange = useCallback(
+    (rows: Record<string, unknown>[]) => {
+      ruminationLiveRowsRef.current = rows;
+      if (
+        phase !== 'rumination' ||
+        ruminationViewStep !== 3 ||
+        !activationCode ||
+        ruminationReviewMode
+      ) {
+        return;
       }
+      if (ruminationStep3SaveTimerRef.current) {
+        clearTimeout(ruminationStep3SaveTimerRef.current);
+      }
+      ruminationStep3SaveTimerRef.current = setTimeout(() => {
+        ruminationStep3SaveTimerRef.current = null;
+        void flushRuminationStep3TableToServer();
+      }, 450);
     },
     [
-      activationCode,
       phase,
-      ruminationTablePayload?.rows,
-      ruminationTablePayload?.step,
       ruminationViewStep,
-      t,
+      activationCode,
+      ruminationReviewMode,
+      flushRuminationStep3TableToServer,
     ]
+  );
+
+  useEffect(
+    () => () => {
+      if (ruminationStep3SaveTimerRef.current) {
+        clearTimeout(ruminationStep3SaveTimerRef.current);
+      }
+    },
+    []
   );
 
   /** 重新填写：有已提交快照的步骤可触发 */
@@ -2785,8 +2743,7 @@ export default function ChatPhasePage() {
     if (!activationCode || phase !== 'rumination' || !activeThreadId) return;
     if (
       ruminationTableNavLoading ||
-      ruminationTableSubmitting ||
-      hypothesisRegeneratingRowIndex !== null
+      ruminationTableSubmitting
     ) {
       return;
     }
@@ -2797,7 +2754,6 @@ export default function ChatPhasePage() {
     phase,
     ruminationTableNavLoading,
     ruminationTableSubmitting,
-    hypothesisRegeneratingRowIndex,
     ruminationReviewMode,
   ]);
 
@@ -2967,13 +2923,11 @@ export default function ChatPhasePage() {
                               sending ||
                               ruminationGuideBusy ||
                               ruminationTableNavLoading ||
-                              hypothesisRegeneratingRowIndex !== null ||
                               phaseInteractionLocked,
                             nextDisabled:
                               sending ||
                               ruminationGuideBusy ||
                               ruminationTableNavLoading ||
-                              hypothesisRegeneratingRowIndex !== null ||
                               phaseInteractionLocked ||
                               ruminationViewStep >= RUMINATION_FILTER_STEP_MAX ||
                               !isRuminationFilterStepReachable(
@@ -2987,7 +2941,6 @@ export default function ChatPhasePage() {
                                 sending ||
                                 ruminationGuideBusy ||
                                 ruminationTableNavLoading ||
-                                hypothesisRegeneratingRowIndex !== null ||
                                 phaseInteractionLocked,
                               onJump: (step) => {
                                 if (step === ruminationViewStep) return;
@@ -3082,16 +3035,11 @@ export default function ChatPhasePage() {
                     hypothesisPendingLabel={t('explore.chat.ruminationUi.hypothesisPendingOption')}
                     hypothesisOtherLabel={t('explore.chat.ruminationUi.hypothesisCustomOption')}
                     confirmDisabledAfterCommit={ruminationStepHasSubmitted}
-                    hypothesisRegenerateLabel={t('explore.chat.ruminationUi.hypothesisRegenerate')}
-                    hypothesisRegeneratingLabel={t(
-                      'explore.chat.ruminationUi.hypothesisRegenerating'
-                    )}
-                    hypothesisRegeneratingRowIndex={hypothesisRegeneratingRowIndex}
-                    onHypothesisRegenerate={handleHypothesisRegenerateRow}
                     tableRefillMode={ruminationStepHasSubmitted}
                     onRefill={handleRuminationRefillRequest}
                     reviewReadOnly={ruminationReviewMode}
                     onRowContextChange={setRuminationRowContext}
+                    onLiveRowsChange={handleRuminationLiveRowsChange}
                     submitting={ruminationTableSubmitting}
                     confirmSoftBlocked={ruminationNegTableSubmitBlocked}
                     confirmSoftBlockedPulseTick={ruminationNegConfirmPulseTick}
@@ -3104,7 +3052,6 @@ export default function ChatPhasePage() {
                       ruminationTableSubmitting ||
                       ruminationGuideBusy ||
                       ruminationTableNavLoading ||
-                      hypothesisRegeneratingRowIndex !== null ||
                       phaseInteractionLocked ||
                       ruminationNegTableSubmitBlocked
                     }
