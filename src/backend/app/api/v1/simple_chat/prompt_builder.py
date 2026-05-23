@@ -94,6 +94,7 @@ def build_system_prompt(
     *,
     values_info: str = "",
     rumination_step_addon: str = "",
+    purpose_progress_injection: str = "",
 ) -> str:
     """根据阶段构建 system prompt（通过模板渲染，避免超长硬编码）。"""
     prior_block = f"\n\n以下是该来访者在上一轮咨询中的谈话结果，供你参考：\n{prior_context}" if prior_context.strip() else ""
@@ -112,6 +113,10 @@ def build_system_prompt(
         base_prompt = get_simple_chat_system_prompt(context)
     if (extra_goal_hint or "").strip():
         base_prompt = f"{base_prompt}\n\n[管理员调试目标补充]\n{extra_goal_hint.strip()}"
+    # 使命阶段进度注入（仅 purpose 阶段且非空时追加）
+    purpose_block = ""
+    if phase == "purpose" and (purpose_progress_injection or "").strip():
+        purpose_block = f"\n\n{purpose_progress_injection.strip()}"
     protocol = f"""
 
 [输出协议 - 必须遵守]
@@ -132,5 +137,5 @@ def build_system_prompt(
 - 禁止用「系统将弹出结论卡」「即将输出 pending」「严格遵循协议」等元话术代替真实隐藏块；界面是否出卡仅由隐藏块触发，口头承诺无效。
 - 对用户只说话题本身，就像没有后台协议存在。
 """
-    return f"{base_prompt}\n{protocol}"
+    return f"{base_prompt}{purpose_block}\n{protocol}"
 

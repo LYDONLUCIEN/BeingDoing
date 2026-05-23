@@ -86,7 +86,8 @@ def resolve_default_logical_thread_id(
     act_sid = (activation_storage_session_id or "").strip()
     candidates = [str(s).strip() for s in (step.get("session_ids") or []) if str(s).strip()]
     if not candidates:
-        return act_sid
+        # session_ids 为空时不 fallback 到 act_sid，避免已删线程从残留文件复活
+        return ""
     best_sid = None
     best_n = -1
     for sid in candidates:
@@ -181,8 +182,6 @@ def resolve_report_context(
         thread_id,
         IDCodec.activation_session_id_from_rec(rec),
     )
-    if not logical_session_id:
-        logical_session_id = IDCodec.activation_session_id_from_rec(rec)
 
     if not can_bypass_flow_limits(current_user, rec):
         try:
@@ -190,7 +189,8 @@ def resolve_report_context(
         except ValueError as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
-    registry.bind_session(report["report_id"], phase_step, logical_session_id)
+    if logical_session_id:
+        registry.bind_session(report["report_id"], phase_step, logical_session_id)
     category = storage_category(phase_step, logical_session_id)
     conv_manager = ConversationFileManager(base_dir=str(root / "reports"))
     return rec, report, phase_step, logical_session_id, category, conv_manager

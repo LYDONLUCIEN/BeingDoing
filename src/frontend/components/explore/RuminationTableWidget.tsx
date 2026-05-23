@@ -110,6 +110,10 @@ interface RuminationTableWidgetProps {
     rowId: string,
     currentTableRows: Record<string, unknown>[]
   ) => void | Promise<void>;
+  /** 子步 3：用户在假设列选「无」 */
+  onStep3NoneSelected?: (rowIndex: number, rows: Record<string, unknown>[]) => void;
+  /** 子步 3：用户填写假设后失焦/回车提交 */
+  onStep3HypothesisCommit?: (rowIndex: number, text: string, rows: Record<string, unknown>[]) => void;
 }
 
 export default function RuminationTableWidget({
@@ -148,6 +152,8 @@ export default function RuminationTableWidget({
   hypothesisPreviewHint,
   hypothesisRegeneratingRowIndex = null,
   onHypothesisRegenerate,
+  onStep3NoneSelected,
+  onStep3HypothesisCommit,
   embeddedSubmitOverlay = false,
 }: RuminationTableWidgetProps) {
   const [rows, setRows] = useState<Record<string, unknown>[]>(
@@ -633,13 +639,33 @@ export default function RuminationTableWidget({
         return;
       }
       if (v === STEP3_OPT_NONE && pendingOk) {
-        handleCellChange(rowIdx, HYP_CONFIRM_KEY, hypothesisPendingLabel);
+        setRows((prev) => {
+          const next = [...prev];
+          if (rowIdx >= 0 && rowIdx < next.length) {
+            next[rowIdx] = { ...next[rowIdx], [HYP_CONFIRM_KEY]: hypothesisPendingLabel };
+          }
+          onStep3NoneSelected?.(rowIdx, next);
+          return next;
+        });
         return;
       }
       if (v === STEP3_OPT_FILL) {
         handleCellChange(rowIdx, HYP_CONFIRM_KEY, STEP3_OPT_FILL);
         return;
       }
+    };
+
+    const commitHypothesisIfFilled = () => {
+      const text = fillText.trim();
+      if (!text) return;
+      setRows((prev) => {
+        const next = [...prev];
+        if (rowIdx >= 0 && rowIdx < next.length) {
+          next[rowIdx] = { ...next[rowIdx], [HYP_CONFIRM_KEY]: text };
+        }
+        onStep3HypothesisCommit?.(rowIdx, text, next);
+        return next;
+      });
     };
 
     const hypSelectStep3Class = isGlass
@@ -678,6 +704,13 @@ export default function RuminationTableWidget({
               onChange={(e) =>
                 handleCellChange(rowIdx, HYP_CONFIRM_KEY, e.target.value)
               }
+              onBlur={commitHypothesisIfFilled}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  commitHypothesisIfFilled();
+                }
+              }}
               rows={3}
               className={textareaShellClass}
             />
@@ -689,6 +722,13 @@ export default function RuminationTableWidget({
               onChange={(e) =>
                 handleCellChange(rowIdx, HYP_CONFIRM_KEY, e.target.value)
               }
+              onBlur={commitHypothesisIfFilled}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  commitHypothesisIfFilled();
+                }
+              }}
               rows={3}
               className="w-full min-w-[100px] px-2 py-1.5 text-sm border border-neutral-200 rounded-md focus:ring-2 focus:ring-sky-300/50 focus:border-sky-400/70"
             />

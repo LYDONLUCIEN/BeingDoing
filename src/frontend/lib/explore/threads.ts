@@ -52,6 +52,9 @@ export interface ThreadMessage {
 /** 使命阶段结构化「经历 → 价值观」行（与后端 payload 一致） */
 export interface ExperienceValueRow {
   experience?: string;
+  /** 新格式：数组（一段经历可匹配多个价值观）；兼容旧格式单字符串 */
+  values?: string[];
+  /** @deprecated 旧格式，保留读取兼容 */
   value?: string;
 }
 

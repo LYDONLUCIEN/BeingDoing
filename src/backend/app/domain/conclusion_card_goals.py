@@ -65,7 +65,7 @@ CONCLUSION_RULES: Dict[str, str] = {
     "purpose": (
         _COMMON_NO_NEXT_PHASE
         + "- 使命陈述必须来自用户确认的表达\n"
-        + "- 必须是用户为他人提供价值的10个行为或者经历。经历写入 experience_value_rows；keywords 为使命核心词\n"
+        + "- 必须是用户为他人提供价值的10个行为或者经历。经历写入 experience_value_rows（每行 values 为数组）；keywords 为使命核心词，优先使用第一轮价值观阶段 5 词子集，允许少量新概括词\n"
         + _NAMING_SINGLE_CONCEPT
         + "\n"
     ),

@@ -46,6 +46,12 @@ from app.services.analytics_service import AnalyticsService
 from app.utils.report_registry import ReportRegistry, STEP_IDS, STEP_ORDER
 from copy import deepcopy
 
+from app.utils.purpose_progress import (
+    normalize_progress,
+    build_progress_injection,
+    apply_progress_update,
+    progress_to_experience_value_rows,
+)
 from app.utils.rumination_progress import (
     MAX_FILTER_STEP,
     clear_neg_gate_triggered_step,
@@ -3089,6 +3095,7 @@ def _build_system_prompt(
     values_info: str = "",
     rumination_step_addon: str = "",
     rumination_neg_injection: str = "",
+    purpose_progress_injection: str = "",
 ) -> str:
     """根据阶段构建 system prompt（通过模板渲染，避免超长硬编码）。"""
     prior_block = f"\n\n以下是该来访者在上一轮咨询中的谈话结果，供你参考：\n{prior_context}" if prior_context.strip() else ""
@@ -3110,6 +3117,9 @@ def _build_system_prompt(
     inj = (rumination_neg_injection or "").strip()
     if inj:
         base_prompt = f"{base_prompt}\n{inj}"
+    # 使命阶段进度注入
+    if (phase or "").strip().lower() == "purpose" and (purpose_progress_injection or "").strip():
+        base_prompt = f"{base_prompt}\n\n{purpose_progress_injection.strip()}"
     # rumination 阶段不使用结论卡 pending 协议：仅保留自然对话与表格流程。
     if (phase or "").strip().lower() == "rumination":
         return base_prompt
@@ -3270,6 +3280,16 @@ async def simple_chat(
         request.rumination_filter_step,
         loc,
     )
+    # 使命阶段：加载 purpose_progress 并构建注入块
+    purpose_prog_injection = ""
+    if phase_step == "purpose":
+        try:
+            conv_data = await conv_manager.get_conversation_data(session_id, category)
+            meta = conv_data.get("metadata") or {}
+            prog = normalize_progress(meta.get("purpose_progress"))
+            purpose_prog_injection = build_progress_injection(prog)
+        except Exception:
+            purpose_prog_injection = ""
     system_prompt = _build_system_prompt(
         phase_step,
         question_bank=question_bank,
@@ -3280,6 +3300,7 @@ async def simple_chat(
         values_info=vi,
         rumination_step_addon=ra,
         rumination_neg_injection="",
+        purpose_progress_injection=purpose_prog_injection,
     )
     llm_messages = [LLMMessage(role="system", content=system_prompt)]
 
@@ -3497,6 +3518,16 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
     vi_i, ra_i = _system_prompt_dimension_extras(
         phase_step, report, _reports_root, None, init_loc
     )
+    # 使命阶段：加载 purpose_progress 并构建注入块
+    purpose_prog_injection_i = ""
+    if phase_step == "purpose":
+        try:
+            conv_data_i = await conv_manager.get_conversation_data(session_id, category)
+            meta_i = conv_data_i.get("metadata") or {}
+            prog_i = normalize_progress(meta_i.get("purpose_progress"))
+            purpose_prog_injection_i = build_progress_injection(prog_i)
+        except Exception:
+            purpose_prog_injection_i = ""
     system_prompt = _build_system_prompt(
         phase_step,
         question_bank=question_bank,
@@ -3507,6 +3538,7 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
         values_info=vi_i,
         rumination_step_addon=ra_i,
         rumination_neg_injection="",
+        purpose_progress_injection=purpose_prog_injection_i,
     )
     llm_messages = [
         LLMMessage(role="system", content=system_prompt),
@@ -4072,6 +4104,16 @@ async def simple_chat_stream(
                             rumination_neg_inj = inj
             except Exception:
                 pass
+        # 使命阶段：加载 purpose_progress 并构建注入块
+        purpose_prog_injection_s = ""
+        if phase_step == "purpose":
+            try:
+                conv_data_s = await conv_manager.get_conversation_data(session_id, category)
+                meta_s = conv_data_s.get("metadata") or {}
+                prog_s = normalize_progress(meta_s.get("purpose_progress"))
+                purpose_prog_injection_s = build_progress_injection(prog_s)
+            except Exception:
+                purpose_prog_injection_s = ""
         system_prompt = _build_system_prompt(
             phase_step,
             question_bank=question_bank,
@@ -4082,6 +4124,7 @@ async def simple_chat_stream(
             values_info=vi_s,
             rumination_step_addon=ra_s,
             rumination_neg_injection=rumination_neg_inj,
+            purpose_progress_injection=purpose_prog_injection_s,
         )
         llm_messages = [LLMMessage(role="system", content=system_prompt)]
 
@@ -4600,6 +4643,21 @@ async def simple_chat_stream(
         else:
             visible_reply, state_obj = _split_visible_reply_and_state(raw_full_reply)
             full_reply = visible_reply
+            # 使命阶段：解析 purpose_progress 并更新 metadata
+            if phase_step == "purpose" and state_obj:
+                draft_raw = state_obj.get("draft")
+                if isinstance(draft_raw, dict) and "purpose_progress" in draft_raw:
+                    try:
+                        conv_data_pp = await conv_manager.get_conversation_data(session_id, category)
+                        meta_pp = conv_data_pp.get("metadata") or {}
+                        cur_prog = normalize_progress(meta_pp.get("purpose_progress"))
+                        updated_prog = apply_progress_update(cur_prog, draft_raw["purpose_progress"])
+                        await conv_manager.update_metadata(
+                            session_id, category,
+                            {"purpose_progress": updated_prog},
+                        )
+                    except Exception:
+                        pass
 
         # 保存助手回复（只保存用户可见文本）
         if full_reply:
@@ -4657,6 +4715,17 @@ async def simple_chat_stream(
             if state_name == "pending_ready" and isinstance(draft, dict):
                 # 自动出卡统一链路：pending_ready 先走结论生成器，稳定复用文风规则与示例。
                 draft_to_save = sanitize_pending_conclusion_draft(phase_step, dict(draft))
+                # 使命阶段：用 metadata 的 confirmed_rows 覆盖 LLM 的 experience_value_rows
+                if phase_step == "purpose":
+                    try:
+                        conv_data_pr = await conv_manager.get_conversation_data(session_id, category)
+                        meta_pr = conv_data_pr.get("metadata") or {}
+                        prog_pr = normalize_progress(meta_pr.get("purpose_progress"))
+                        meta_rows = progress_to_experience_value_rows(prog_pr)
+                        if meta_rows:
+                            draft_to_save["experience_value_rows"] = meta_rows
+                    except Exception:
+                        pass
                 refined_conclusion = None
                 reasoning_llm = _get_reasoning_llm_provider(vip_level=vip_level)
                 try:

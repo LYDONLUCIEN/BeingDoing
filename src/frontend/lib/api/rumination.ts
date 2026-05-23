@@ -27,6 +27,10 @@ export interface RuminationNegState {
   step?: number;
   kind?: string;
   items?: Record<string, unknown>[];
+  /** 0-based，深入讨论当前条目索引 */
+  current_index?: number;
+  /** UI 条带：第 i / N 条 + 字段 */
+  progress_header_zh?: string;
   llm_failed?: boolean;
   injection_zh?: string;
   opening_zh?: string;
@@ -75,7 +79,22 @@ export interface RuminationProgressSaveParams {
   hypothesis_round?: number;
   filter_early_terminated?: boolean;
   filter_terminate_reason?: string | null;
+  /** 子步 3 表格显式触发：none=选「无」；hypothesis_commit=填假设失焦/确认 */
+  step3_trigger?: 'none' | 'hypothesis_commit';
 }
+
+export type RuminationStep3SideEffect =
+  | {
+      type: 'skip_row';
+      message: string;
+      from_row: number;
+      to_row: number;
+    }
+  | {
+      type: 'confirm_prompt';
+      message: string;
+      row: number;
+    };
 
 export type RuminationSubmitMode = 'full_step' | 'single_row';
 
@@ -143,7 +162,9 @@ export const ruminationApi = {
   save: async (
     activationCode: string,
     params: RuminationProgressSaveParams
-  ): Promise<ApiResponse<{ progress: RuminationProgress }>> => {
+  ): Promise<
+    ApiResponse<{ progress: RuminationProgress; step3_side_effect?: RuminationStep3SideEffect }>
+  > => {
     const res = await apiClient.post('/simple-chat/rumination-progress', {
       activation_code: activationCode,
       ...params,

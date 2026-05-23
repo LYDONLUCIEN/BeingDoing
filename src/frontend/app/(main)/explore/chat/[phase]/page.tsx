@@ -88,6 +88,7 @@ import {
 import {
   ruminationApi,
   type RuminationProgress,
+  type RuminationStep3SideEffect,
   type RuminationSubmitData,
 } from '@/lib/api/rumination';
 import {
@@ -684,12 +685,9 @@ export default function ChatPhasePage() {
     const activeId = activeThreadId;
 
     if (list.length === 0) {
-      // 后端线程列表已确认空（上一 effect 已拉取 /simple-chat/threads + history 并 setThreads([])），
-      // 此处仅负责：检查后端 history（无 thread_id 的默认历史）→ 若也无则才新建。
-      // 不再重复调用 /simple-chat/threads，避免竞态。
+      // 后端 /threads 已确认空：直接新建线程，禁止无 thread_id 的 history fallback（防 act_sid 幽灵恢复）
       const guardKey = `${activationCode}::${phase}`;
       if (autoInitGuardRef.current === guardKey) {
-        // 本 (activationCode, phase) 已执行过 init，跳过（effect 依赖变化导致的重复触发）
         setInitLoading(false);
         return;
       }
@@ -697,96 +695,49 @@ export default function ChatPhasePage() {
 
       (async () => {
         try {
-          // 最终确认：检查无 thread_id 的默认 history（兼容后端无 threads 但有历史记录的边界情况）
-          const historyRes = await apiClient.get('/simple-chat/history', {
-            params: { activation_code: activationCode, phase: BACKEND_PHASE[phase] },
+          const tid = createThreadId();
+          const initRes = await apiClient.post('/simple-chat/init', {
+            activation_code: activationCode,
+            phase: BACKEND_PHASE[phase],
+            thread_id: tid,
+            locale: locale === 'en' ? 'en' : 'zh',
           });
-          const history: any[] = historyRes.data.messages ?? [];
-          const meta = historyRes.data?.metadata ?? {};
-          if (typeof meta?.step_locked === 'boolean') {
-            setStepLocked(Boolean(meta.step_locked));
-          }
-          const actSid = readActivationSessionIdFromActivationApi(historyRes.data?.activation);
-          if (actSid && !cancelled) {
-            setBackendSessionId(actSid);
-            const s = loadSession(activationCode);
-            saveSession(setActivationSessionId(s, actSid));
-          }
-          if (!cancelled && history.length > 0) {
-            // 后端有历史记录（无 thread_id 默认会话），恢复展示，不创建新会话
-            const recoveredId = getActiveThreadId(activationCode, phase) || `__history_fallback__${phase}`;
-            const baseMsgs = mapHistoryToThreadMessages(history, meta);
-            const msgs =
-              phase === 'rumination'
-                ? baseMsgs
-                : mergePendingDraftIntoMessagesFromMeta(
-                    baseMsgs,
-                    meta as Record<string, unknown>
-                  );
-            const recoveredThread: ChatThread = {
-              id: recoveredId,
-              title: '对话 1',
-              status: meta.thread_completed ? 'completed' : 'in-progress',
-              messages: msgs,
-              createdAt: Date.now(),
-              dimensionConclusion: (meta.dimension_conclusion as DimensionConclusionData | undefined) || undefined,
-            };
-            addThread(activationCode, phase, recoveredThread);
-            const merged = getThreads(activationCode, phase);
-            setThreads(merged);
-            setActiveThreadIdState(recoveredId);
-            setActiveThreadId(activationCode, phase, recoveredId);
-            setBackendSyncedThreadId(null);
+          const initMsgs: any[] = initRes.data.messages ?? [];
+          const now = Date.now();
+          const msgs: ThreadMessage[] = initMsgs.map((m, i) => ({
+            id: `init_${now}_${i}`,
+            role: m.role as 'user' | 'assistant',
+            content: m.content ?? '',
+            createdAt: now,
+          }));
+          const thread: ChatThread = {
+            id: tid,
+            title: '对话 1',
+            status: 'in-progress',
+            messages: msgs,
+            createdAt: now,
+          };
+          if (!cancelled) {
+            addThread(activationCode, phase, thread);
+            setThreads(getThreads(activationCode, phase));
+            setActiveThreadId(activationCode, phase, tid);
+            setActiveThreadIdState(tid);
+            setBackendSyncedThreadId(tid);
             setMessages(msgs);
-          } else if (!cancelled) {
-            // 后端 threads + history 均为空 → 确认为首次进入，创建新会话
-            const tid = createThreadId();
-            try {
-              const initRes = await apiClient.post('/simple-chat/init', {
-                activation_code: activationCode,
-                phase: BACKEND_PHASE[phase],
-                thread_id: tid,
-                locale: locale === 'en' ? 'en' : 'zh',
-              });
-              const initMsgs: any[] = initRes.data.messages ?? [];
-              const now = Date.now();
-              const msgs: ThreadMessage[] = initMsgs.map((m, i) => ({
-                id: `init_${now}_${i}`,
-                role: m.role as 'user' | 'assistant',
-                content: m.content ?? '',
-                createdAt: now,
-              }));
-              const thread: ChatThread = {
-                id: tid,
-                title: '对话 1',
-                status: 'in-progress',
-                messages: msgs,
-                createdAt: now,
-              };
-              addThread(activationCode, phase, thread);
-              setThreads(getThreads(activationCode, phase));
-              setActiveThreadId(activationCode, phase, tid);
-              setActiveThreadIdState(tid);
-              setBackendSyncedThreadId(tid);
-              setMessages(msgs);
-              const sid = readActivationSessionIdFromActivationApi(initRes.data?.activation);
-              if (sid && !cancelled) {
-                setBackendSessionId(sid);
-                const s = loadSession(activationCode);
-                saveSession(setActivationSessionId(s, sid));
-              }
-            } catch (initErr: any) {
-              if (!cancelled) {
-                setChatError(getApiErrorMessage(initErr, '初始化失败，请刷新后重试'));
-              }
+            const sid = readActivationSessionIdFromActivationApi(initRes.data?.activation);
+            if (sid) {
+              setBackendSessionId(sid);
+              const s = loadSession(activationCode);
+              saveSession(setActivationSessionId(s, sid));
             }
           }
-        } catch (err: any) {
-          if (!cancelled && (err?.code === 'ERR_NETWORK' || err?.message?.includes('Network'))) {
-            setChatError(t('explore.chat.networkError'));
+        } catch (initErr: any) {
+          if (!cancelled) {
+            setChatError(getApiErrorMessage(initErr, '初始化失败，请刷新后重试'));
           }
+        } finally {
+          if (!cancelled) setInitLoading(false);
         }
-        if (!cancelled) setInitLoading(false);
       })();
       return;
     }
@@ -1630,6 +1581,12 @@ export default function ChatPhasePage() {
                 });
               }
             }
+            if (payload.rumination_neg_state && phase === 'rumination') {
+              const neg = payload.rumination_neg_state as RuminationProgress['rumination_neg_state'];
+              setRuminationProgressState((prev) =>
+                prev ? { ...prev, rumination_neg_state: neg ?? null } : prev
+              );
+            }
             if (payload.done && payload.response != null) {
               fullReply = payload.response;
               if (String(payload.response || '').trim()) assistantHasVisibleOutput = true;
@@ -1809,10 +1766,10 @@ export default function ChatPhasePage() {
   };
 
   const handlePhaseCompleteModalContinue = useCallback((dontRemind?: boolean) => {
-    /** 按 activationCode + phase 持久化"不再提醒" */
+    /** 按 activationCode 全局持久化"不再提醒"（五阶段均生效） */
     if (activationCode && dontRemind) {
       try {
-        localStorage.setItem(`bd_phase_complete_dismiss_${activationCode}_${phase}`, '1');
+        localStorage.setItem(`bd_phase_complete_dismiss_${activationCode}`, '1');
       } catch {
         /* private mode */
       }
@@ -1891,7 +1848,7 @@ export default function ChatPhasePage() {
     let skipModal = false;
     if (!adminDebugBypass && activationCode) {
       try {
-        skipModal = localStorage.getItem(`bd_phase_complete_dismiss_${activationCode}_${phase}`) === '1';
+        skipModal = localStorage.getItem(`bd_phase_complete_dismiss_${activationCode}`) === '1';
       } catch {
         /* private mode */
       }
@@ -2701,6 +2658,86 @@ export default function ChatPhasePage() {
     }
   }, [activationCode]);
 
+  const applyStep3SideEffect = useCallback(
+    async (effect: RuminationStep3SideEffect) => {
+      const msg = effect.message?.trim();
+      if (msg) {
+        const aid = `rum_s3_${effect.type}_${Date.now()}`;
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: aid,
+            role: 'assistant',
+            content: msg,
+            createdAt: Date.now(),
+            filterStep: 3,
+          },
+        ]);
+      }
+      if (effect.type === 'skip_row') {
+        await loadRuminationTableStep(3);
+      }
+    },
+    [loadRuminationTableStep]
+  );
+
+  const flushRuminationStep3WithTrigger = useCallback(
+    async (
+      trigger: 'none' | 'hypothesis_commit',
+      rowsSnapshot: Record<string, unknown>[]
+    ) => {
+      if (!activationCode || !rowsSnapshot.length) return;
+      if (ruminationStep3SaveTimerRef.current) {
+        clearTimeout(ruminationStep3SaveTimerRef.current);
+        ruminationStep3SaveTimerRef.current = null;
+      }
+      ruminationLiveRowsRef.current = rowsSnapshot;
+      const cur = ruminationProgressStateRef.current;
+      const tc = ruminationTablePayloadRef.current;
+      const cursor =
+        (typeof cur?.filter_row_cursor === 'number' ? cur.filter_row_cursor : tc?.rowCursor) ?? 0;
+      try {
+        const res = await ruminationApi.save(activationCode, {
+          filter_step: 3,
+          filter_table: rowsSnapshot,
+          filter_row_cursor: cursor,
+          step3_trigger: trigger,
+        });
+        if (res.data?.progress) setRuminationProgressState(res.data.progress);
+        const effect = res.data?.step3_side_effect;
+        if (effect) await applyStep3SideEffect(effect);
+      } catch {
+        /* 无声失败 */
+      }
+    },
+    [activationCode, applyStep3SideEffect]
+  );
+
+  const handleStep3NoneSelected = useCallback(
+    (rowIdx: number, rowsSnapshot: Record<string, unknown>[]) => {
+      const cur =
+        (typeof ruminationProgressStateRef.current?.filter_row_cursor === 'number'
+          ? ruminationProgressStateRef.current.filter_row_cursor
+          : ruminationTablePayloadRef.current?.rowCursor) ?? 0;
+      if (rowIdx !== cur) return;
+      void flushRuminationStep3WithTrigger('none', rowsSnapshot);
+    },
+    [flushRuminationStep3WithTrigger]
+  );
+
+  const handleStep3HypothesisCommit = useCallback(
+    (rowIdx: number, text: string, rowsSnapshot: Record<string, unknown>[]) => {
+      if (!text.trim()) return;
+      const cur =
+        (typeof ruminationProgressStateRef.current?.filter_row_cursor === 'number'
+          ? ruminationProgressStateRef.current.filter_row_cursor
+          : ruminationTablePayloadRef.current?.rowCursor) ?? 0;
+      if (rowIdx !== cur) return;
+      void flushRuminationStep3WithTrigger('hypothesis_commit', rowsSnapshot);
+    },
+    [flushRuminationStep3WithTrigger]
+  );
+
   const handleRuminationLiveRowsChange = useCallback(
     (rows: Record<string, unknown>[]) => {
       ruminationLiveRowsRef.current = rows;
@@ -3040,6 +3077,8 @@ export default function ChatPhasePage() {
                     reviewReadOnly={ruminationReviewMode}
                     onRowContextChange={setRuminationRowContext}
                     onLiveRowsChange={handleRuminationLiveRowsChange}
+                    onStep3NoneSelected={handleStep3NoneSelected}
+                    onStep3HypothesisCommit={handleStep3HypothesisCommit}
                     submitting={ruminationTableSubmitting}
                     confirmSoftBlocked={ruminationNegTableSubmitBlocked}
                     confirmSoftBlockedPulseTick={ruminationNegConfirmPulseTick}
@@ -3131,7 +3170,10 @@ export default function ChatPhasePage() {
                           {t('explore.chat.ruminationUi.chatTitle')}
                         </h2>
                         <p className="mt-0.5 text-xs text-neutral-500">
-                          {t('explore.chat.ruminationUi.chatSubtitle')}
+                          {ruminationNegExploringPinned &&
+                          (ruminationProgressState?.rumination_neg_state?.progress_header_zh || '').trim()
+                            ? ruminationProgressState?.rumination_neg_state?.progress_header_zh
+                            : t('explore.chat.ruminationUi.chatSubtitle')}
                         </p>
                       </div>
                       {ruminationNegExploringPinned && (
@@ -3807,7 +3849,7 @@ export default function ChatPhasePage() {
         title={t('explore.phaseComplete.title')}
         body={`${t('explore.phaseComplete.subtitle')}\n\n${t(`explore.phaseComplete.outro.${phase}`)}`}
         continueLabel={t('explore.phaseComplete.continue')}
-        dontRemindLabel={phase === 'rumination' ? undefined : t('explore.phaseComplete.dontRemind')}
+        dontRemindLabel={t('explore.phaseComplete.dontRemind')}
         onContinue={handlePhaseCompleteModalContinue}
       />
     </div>

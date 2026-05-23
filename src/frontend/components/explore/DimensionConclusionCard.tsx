@@ -6,6 +6,9 @@ import MessageContent from '@/components/explore/MessageContent';
 /** 使命阶段结构化「经历 → 价值观」行（与后端 payload 一致） */
 export interface ExperienceValueRow {
   experience?: string;
+  /** 新格式：数组（一段经历可匹配多个价值观）；兼容旧格式单字符串 */
+  values?: string[];
+  /** @deprecated 旧格式，保留读取兼容 */
   value?: string;
 }
 
@@ -87,7 +90,11 @@ export default function DimensionConclusionCard({
   const interestReasons = Array.isArray(data.interest_reasons) ? data.interest_reasons : [];
   const expRowsRaw = Array.isArray(data.experience_value_rows) ? data.experience_value_rows : [];
   const expRows = expRowsRaw.filter(
-    (row) => (row.experience || '').trim() || (row.value || '').trim()
+    (row) => {
+      const vals = Array.isArray(row.values) ? row.values : [];
+      const legacyVal = (row.value || '').trim();
+      return (row.experience || '').trim() || vals.length > 0 || legacyVal;
+    }
   );
 
   const toggleCollapsed = () => {
@@ -233,11 +240,21 @@ export default function DimensionConclusionCard({
               <tbody>
                 {expRows.map((row, ri) => {
                   const ex = (row.experience || '').trim();
-                  const val = (row.value || '').trim();
+                  const vals = Array.isArray(row.values) && row.values.length > 0
+                    ? row.values
+                    : (row.value ? [row.value] : []);
                   return (
                     <tr key={`ev-${ri}`}>
                       <td>{ex || '—'}</td>
-                      <td>{val || '—'}</td>
+                      <td>
+                        {vals.length > 0
+                          ? vals.map((v, vi) => (
+                              <span key={`vt-${ri}-${vi}`} className="flow-conclusion-tag flow-conclusion-tag-sm">
+                                {v}
+                              </span>
+                            ))
+                          : '—'}
+                      </td>
                     </tr>
                   );
                 })}

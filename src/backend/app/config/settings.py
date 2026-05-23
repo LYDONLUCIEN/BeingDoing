@@ -76,6 +76,9 @@ class Settings(BaseSettings):
     # 并发限制：同时进行的 LLM 调用数（0=不限制）
     LLM_MAX_CONCURRENT: int = 0
 
+    # 子步 3：AI 回复后若假设已完整则自动 cursor+1（默认关，避免抢跑跳行）
+    RUMINATION_STEP3_AUTO_UNLOCK_ENABLED: bool = False
+
     # SMTP 邮件配置（忘记密码验证码）
     SMTP_HOST: Optional[str] = None
     SMTP_PORT: int = 465

@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.core.llmapi.base import LLMMessage
@@ -23,6 +24,14 @@ logger = logging.getLogger(__name__)
 NEG_GATED_STEPS = frozenset({2, 3, 5, 6})
 
 OTHER_TOKEN = "__RUMINATION_OTHER__"
+
+NEG_ITEM_DONE_START = "[NEG_ITEM_DONE]"
+NEG_ITEM_DONE_END = "[/NEG_ITEM_DONE]"
+
+_USER_NEG_ADVANCE_RE = re.compile(
+    r"(下一条|下一条吧|这条聊完了|聊完了|下一个|继续下一条|换下一条|换一条)",
+    re.IGNORECASE,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -257,56 +266,170 @@ async def llm_flag_step3_hypotheses(llm: Any, rows: List[Dict[str, Any]]) -> Tup
 def _item_lines(kind: str, items: List[Dict[str, Any]], limit: int = 12) -> str:
     """将条目列表按字段级直角引号格式化为编号列表。"""
     return "\n".join(f"{i + 1}. {_item_label(kind, it)}" for i, it in enumerate(items[:limit]))
-    return "\n".join(blocks)
 
 
-def build_injection_zh(step: int, kind: str, items: List[Dict[str, Any]], llm_failed: bool) -> str:
+def get_neg_items(neg_state: Dict[str, Any]) -> List[Dict[str, Any]]:
+    raw = neg_state.get("items") or []
+    return [x for x in raw if isinstance(x, dict)]
+
+
+def build_neg_progress_header(neg_state: Dict[str, Any]) -> str:
+    """UI 条带：第 i / N 条 + 当前条字段。"""
+    items = get_neg_items(neg_state)
+    n = len(items)
+    if n == 0:
+        return ""
+    idx = int(neg_state.get("current_index") or 0)
+    if idx >= n:
+        return f"已全部讨论（{n}/{n} 条）"
+    item = items[idx]
+    kind = str(neg_state.get("kind") or "")
+    struct = _item_struct_lines(kind, item)
+    fields = " / ".join(struct[:2]) if struct else _item_label(kind, item)
+    return f"第 {idx + 1} / {n} 条 · {fields}"
+
+
+def build_neg_all_done_injection() -> str:
+    return (
+        "\n【沉淀·深入讨论·条目已全部完成】\n"
+        "所有待讨论条目均已聊完。请引导用户点击右上角「结束讨论」回到左侧表格修改，"
+        "不要继续展开新条目，不要推进到结论卡。"
+    )
+
+
+def build_neg_transition_message(
+    next_index_1based: int,
+    total: int,
+    kind: str,
+    item: Dict[str, Any],
+) -> str:
+    """推进到下一条时的固定短句（非 LLM）。"""
+    struct = _item_struct_lines(kind, item)
+    block = "\n".join(f"- {line}" for line in struct) if struct else f"- {_item_label(kind, item)}"
+    return (
+        f"好的，这一条我们先聊到这里。接下来看第 {next_index_1based} / {total} 条：\n"
+        f"{block}\n"
+        f"我们继续围绕这一条聊。"
+    )
+
+
+def user_wants_neg_advance(message: str) -> bool:
+    t = (message or "").strip()
+    if not t:
+        return False
+    return bool(_USER_NEG_ADVANCE_RE.search(t))
+
+
+def refresh_neg_state_injection(neg_state: Dict[str, Any]) -> Dict[str, Any]:
+    """按 current_index 重建 injection_zh 与 progress_header_zh。"""
+    step = int(neg_state.get("step") or 0)
+    kind = str(neg_state.get("kind") or "")
+    items = get_neg_items(neg_state)
+    idx = int(neg_state.get("current_index") or 0)
+    llm_failed = bool(neg_state.get("llm_failed"))
+    if not items or idx >= len(items):
+        inj = build_neg_all_done_injection()
+    else:
+        inj = build_injection_zh(
+            step, kind, items, llm_failed, current_index=idx
+        )
+    out = dict(neg_state)
+    out["injection_zh"] = inj
+    out["progress_header_zh"] = build_neg_progress_header(out)
+    return out
+
+
+def advance_neg_index(neg_state: Dict[str, Any]) -> Tuple[Dict[str, Any], Optional[str]]:
+    """
+    current_index += 1；返回更新后的 neg_state 与可选固定过渡句。
+    若已全部聊完，transition 提示点「结束讨论」。
+    """
+    items = get_neg_items(neg_state)
+    idx = int(neg_state.get("current_index") or 0)
+    n = len(items)
+    if n == 0 or idx >= n:
+        updated = refresh_neg_state_injection({**neg_state, "current_index": n})
+        return updated, "这些条目我们都聊完了。请点击右上角「结束讨论」回到左侧表格修改。"
+
+    new_idx = idx + 1
+    updated = refresh_neg_state_injection({**neg_state, "current_index": new_idx})
+    if new_idx >= n:
+        return (
+            updated,
+            "这些条目我们都聊完了。请点击右上角「结束讨论」回到左侧表格修改。",
+        )
+    kind = str(neg_state.get("kind") or "")
+    msg = build_neg_transition_message(new_idx + 1, n, kind, items[new_idx])
+    return updated, msg
+
+
+def build_injection_zh(
+    step: int,
+    kind: str,
+    items: List[Dict[str, Any]],
+    llm_failed: bool,
+    *,
+    current_index: Optional[int] = None,
+) -> str:
     """注入主对话 system 末尾的补充段（探索中）。
 
     v3: 使用步骤差异化 system 片段替代旧版统一模板。
-    结构：[步骤专属 system 片段] + [条目编号列表] + [结束引导提示]
-
-    步骤专属 system 片段包含：
-    - 步骤角色定位与目标
-    - 字段上下文模板（本步关注哪些字段、哪些不可修改）
-    - 逐条处理流程约束（防跳步）
-    - 禁止行为清单
+    当提供 current_index 时，**仅注入当前一条**（程序逐条推进）。
     """
-    # 获取步骤专属 system 片段
     step_system = get_deep_chat_step_system(step, llm_failed=llm_failed)
 
-    # 格式化条目列表
-    lines = _item_lines(kind, items)
+    if current_index is not None:
+        if current_index < 0 or current_index >= len(items):
+            return build_neg_all_done_injection()
+        display_items = [items[current_index]]
+        pos_hint = (
+            f"当前仅讨论第 {current_index + 1} / {len(items)} 条"
+            f"（row id: {items[current_index].get('id', '')}）。"
+            "禁止讨论列表外条目；禁止一次聊多条。\n"
+        )
+    else:
+        display_items = items
+        pos_hint = "待讨论条目（按序逐条进行）：\n"
 
-    # 对话风格与边界约束（所有步骤共用）
+    lines = _item_lines(kind, display_items, limit=1 if current_index is not None else 12)
+
     style_guard = (
         "回复风格要求：\n"
         "- 语气温和、简洁，优先短段落；\n"
         "- 一次只问一个问题，不要连发多问；\n"
         "- 每轮回复最多出现一个问号（? 或 ？）；\n"
         "- 引用条目时优先使用字段名（热爱/优势/假设），不要整段复读；\n"
-        "- 每条讨论结束后明确提示「这条我们聊完了」，再进入下一条。"
+        "- 仅聚焦当前条目；聊完当前条后在回复末尾输出 [NEG_ITEM_DONE][/NEG_ITEM_DONE]（对用户不可见）。"
     )
 
-    # 通用结束引导提示
-    closing = "讨论充分后，请只引导点击右上角「结束讨论」回到左侧表格修改。不要在当前对话中推进到结论卡。"
+    protocol = (
+        "【机器协议·严格保密】当本轮已与用户充分讨论完**当前这一条**后，"
+        "请在回复正文末尾另起一行输出（界面会自动隐藏）：\n"
+        f"{NEG_ITEM_DONE_START}\n{NEG_ITEM_DONE_END}\n"
+        "禁止输出当前条目以外的内容；禁止在同一轮标记多条完成。"
+    )
+
+    closing = "全部条目讨论充分后，请只引导点击右上角「结束讨论」回到左侧表格修改。不要在当前对话中推进到结论卡。"
 
     if step_system:
-        # v3 路径：使用步骤专属 system 片段 + 条目列表
         return (
             f"\n{step_system}\n\n"
-            f"待讨论条目（按序逐条进行）：\n{lines}\n\n"
+            f"{pos_hint}"
+            f"{lines}\n\n"
             f"{style_guard}\n\n"
+            f"{protocol}\n\n"
             f"提醒：{closing}"
         )
-    else:
-        # 降级路径：步骤不在映射中（理论上不应发生）
-        logger.warning("rumination neg gate: step %d not in DEEP_CHAT_STEP_SYSTEM_MAP, using fallback", step)
-        return (
-            f"\n【沉淀·待跟进标记项】\n"
-            "请一次一问陪伴用户澄清以下条目，逐一讨论不跳过。\n"
-            f"条目：\n{lines}\n{closing}"
-        )
+
+    logger.warning("rumination neg gate: step %d not in DEEP_CHAT_STEP_SYSTEM_MAP, using fallback", step)
+    return (
+        f"\n【沉淀·待跟进标记项】\n"
+        f"{pos_hint}"
+        f"{lines}\n"
+        f"{style_guard}\n\n"
+        f"{protocol}\n\n"
+        f"{closing}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -479,7 +602,6 @@ async def try_build_neg_gate_response(
         if "label" not in item:
             item["label"] = _item_label(kind, item)
 
-    inj = build_injection_zh(step, kind, items, llm_failed)
     opening = build_opening_user_visible_zh(step, kind, items, llm_failed)
     bar = build_bar_copy_zh(kind, items, llm_failed)
 
@@ -488,11 +610,13 @@ async def try_build_neg_gate_response(
         "step": step,
         "kind": kind,
         "items": items[:20],
+        "current_index": 0,
         "llm_failed": llm_failed,
-        "injection_zh": inj,
         "opening_zh": opening,
         "bar_copy_zh": bar,
+        "injection_zh": "",
     }
+    neg_state = refresh_neg_state_injection(neg_state)
     pending: Dict[str, Any] = {
         "step": step,
         "table_data": table_data,
@@ -588,11 +712,13 @@ def build_zero_results_gate(
         "step": step,
         "kind": kind,
         "items": [],
+        "current_index": 0,
         "llm_failed": False,
         "injection_zh": inj,
         "opening_zh": opening,
         "bar_copy_zh": bar,
     }
+    neg_state = refresh_neg_state_injection(neg_state)
     pending: Dict[str, Any] = {
         "step": step,
         "table_data": initial_rows,

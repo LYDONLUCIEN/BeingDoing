@@ -782,6 +782,30 @@
   filter: brightness(0.95);
   transform: none;
 }
+.flow-light .flow-conclusion-tag-sm {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  background-color: var(--n-tag-bg);
+  color: var(--n-text);
+  border: none;
+  box-shadow: none;
+  cursor: default;
+  margin-right: 4px;
+  margin-bottom: 2px;
+}
+.flow-light .flow-conclusion-tag-sm::before {
+  content: '';
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: var(--n-dot);
+  flex-shrink: 0;
+}
 .flow-light .flow-conclusion-actions {
   display: flex;
   flex-wrap: nowrap;

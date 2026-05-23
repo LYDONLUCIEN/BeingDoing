@@ -42,11 +42,10 @@ def format_step3_row_context_block(
     prev = (prev_combo_summary or "").strip() or "（无，当前为首个组合。）"
     return (
         "[内部·子步3当前行]\n"
-        f"当前组合序号：{combo_index_1based}/{total_combos}\n"
-        f"上一组合摘要：{prev}\n"
-        f"热爱（标签）：{passion or '（未填）'}\n"
+        f"第 {combo_index_1based} 行（共 {total_combos} 行）\n"
+        f"上一行摘要：{prev}\n"
+        f"热爱：{passion or '（未填）'} / 优势：{strength or '（未填）'}\n"
         f"热爱（解释/用户理解）：{pe}\n"
-        f"优势（标签）：{strength or '（未填）'}\n"
         f"优势（解释/用户理解）：{se}\n"
     )
 

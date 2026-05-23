@@ -44,6 +44,20 @@ def looks_like_markdown_table(text: str) -> bool:
     return has_row and has_sep
 
 
+def split_visible_reply_and_neg_item_done(raw_text: str) -> tuple[str, bool]:
+    """从模型输出拆分可见文本与 [NEG_ITEM_DONE] 标记（neg_gate 逐条推进）。"""
+    if not raw_text:
+        return "", False
+    start_marker = "[NEG_ITEM_DONE]"
+    end_marker = "[/NEG_ITEM_DONE]"
+    start = raw_text.rfind(start_marker)
+    end = raw_text.rfind(end_marker)
+    if start < 0 or end < 0 or end <= start:
+        return raw_text.strip(), False
+    visible = raw_text[:start].rstrip()
+    return visible, True
+
+
 def split_visible_reply_and_row_state(raw_text: str) -> tuple[str, Optional[Dict]]:
     """从模型输出拆分可见文本与 [ROW_STATE_JSON] … 块（子步 3 逐行解锁）。"""
     if not raw_text:
