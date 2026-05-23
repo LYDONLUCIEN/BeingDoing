@@ -86,6 +86,7 @@ from app.utils.rumination_row_context import (
     format_step3_confirmed_rows_block,
     summarize_prev_combo_row,
 )
+from app.utils.rumination_step3_flow import apply_step3_table_trigger
 from app.utils.context_refiner import (
     refine_and_save_anchor,
     refine_and_save_rumination_step_anchor,
@@ -1378,6 +1379,10 @@ class RuminationProgressSaveRequest(BaseModel):
     filter_step: Optional[int] = None
     filter_table: Optional[List[Dict[str, Any]]] = None
     filter_row_cursor: Optional[int] = None
+    hypothesis_round: Optional[int] = None
+    filter_early_terminated: Optional[bool] = None
+    filter_terminate_reason: Optional[str] = None
+    step3_trigger: Optional[str] = None
 
 
 class RuminationTableSubmitRequest(BaseModel):
@@ -1502,8 +1507,28 @@ def save_rumination_progress_endpoint(
         filter_step=request.filter_step,
         filter_table=save_table,
         filter_row_cursor=request.filter_row_cursor,
+        hypothesis_round=request.hypothesis_round,
+        filter_early_terminated=request.filter_early_terminated,
+        filter_terminate_reason=request.filter_terminate_reason,
     )
-    return SimpleChatResponse(code=200, message="success", data={"progress": progress})
+    # step3 表格触发（none / hypothesis_commit）：处理副作用并推进 cursor
+    step3_side_effect = None
+    trigger = request.step3_trigger
+    if trigger and int(request.filter_step or 0) == 3:
+        merged_table = progress.get("filter_table")
+        if isinstance(merged_table, list):
+            side_effect, new_cursor = apply_step3_table_trigger(
+                existing_prog=progress,
+                merged_table=merged_table,
+                trigger=trigger,
+            )
+            if new_cursor is not None:
+                progress = save_rumination_progress(
+                    reports_root, report_id, filter_row_cursor=new_cursor
+                )
+            if side_effect:
+                step3_side_effect = side_effect
+    return SimpleChatResponse(code=200, message="success", data={"progress": progress, "step3_side_effect": step3_side_effect})
 
 
 def _rumination_snapshots_copy(progress: Dict[str, Any]) -> Dict[str, Any]:
