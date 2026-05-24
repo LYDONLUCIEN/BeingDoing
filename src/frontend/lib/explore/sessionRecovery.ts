@@ -400,9 +400,9 @@ export async function deleteThreadBackendFirst(
     const selectedThreadId: string | null = data.selected_thread_id ?? null;
     const stepLocked: boolean = data.step_locked ?? false;
 
-    // 后端成功后，使用后端返回的 remaining_thread_ids 同步本地线程列表
+    // 后端成功后，直接移除被删除的线程（不依赖 remaining_thread_ids 的 ID 格式匹配）
     const currentThreads = getThreads(activationCode, phase as PhaseKey);
-    const updatedThreads = currentThreads.filter((t) => remainingThreadIds.includes(t.id));
+    const updatedThreads = currentThreads.filter((t) => t.id !== threadId);
     setThreadsForPhase(activationCode, phase as PhaseKey, updatedThreads);
 
     // 更新活跃线程：若删除的是活跃线程，切换到后端 selected 或第一个

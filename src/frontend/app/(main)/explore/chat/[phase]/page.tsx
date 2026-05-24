@@ -247,6 +247,8 @@ export default function ChatPhasePage() {
   const [ruminationGuideBusy, setRuminationGuideBusy] = useState(false);
   const ruminationGuideAbortRef = useRef<AbortController | null>(null);
   const [initLoading, setInitLoading] = useState(true);
+  /** 删除线程进行中：防止 "load messages" effect 在删除后竞态触发新建线程 */
+  const deleteInProgressRef = useRef(false);
   const [threadsFetched, setThreadsFetched] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const [backendSessionId, setBackendSessionId] = useState<string | null>(null);
@@ -678,6 +680,8 @@ export default function ChatPhasePage() {
   // autoInitGuardRef（声明在组件顶部）确保每组 (activationCode, phase) 只触发一次 init。
   useEffect(() => {
     if (!activationCode || !phase || !threadsFetched) return;
+    // 删除线程期间不触发加载逻辑，避免竞态导致误建新线程
+    if (deleteInProgressRef.current) return;
     let cancelled = false;
     setInitLoading(true);
 
@@ -928,7 +932,7 @@ export default function ChatPhasePage() {
     if (!activationCode || !threadsFetched || initLoading) return;
     if (typeof window === 'undefined') return;
     try {
-      if (localStorage.getItem(`bd_phase_lock_notice_hide_${activationCode}_${phase}`) === '1') {
+      if (localStorage.getItem(`bd_phase_lock_notice_hide_${activationCode}`) === '1') {
         return;
       }
     } catch {
@@ -944,7 +948,7 @@ export default function ChatPhasePage() {
     (dontRemind: boolean, navigateNext: boolean) => {
       if (activationCode && dontRemind) {
         try {
-          localStorage.setItem(`bd_phase_lock_notice_hide_${activationCode}_${phase}`, '1');
+          localStorage.setItem(`bd_phase_lock_notice_hide_${activationCode}`, '1');
         } catch {
           /* ignore */
         }
@@ -2094,44 +2098,49 @@ export default function ChatPhasePage() {
     if (!activationCode || !phase) return;
     if (stepLocked && !adminDebugBypass) return;
     void (async () => {
-      // 后端优先删除：先调后端 API，成功后再同步本地
-      // 使用后端返回的 remaining_thread_ids 确保一致性，避免本地计算偏差导致刷新后重现
-      const result = await deleteThreadBackendFirst(activationCode, phase, thread.id);
-      if (!result) {
-        setChatError('删除失败，请稍后重试');
-        return;
-      }
-
-      // 使用后端返回的 remaining_thread_ids 重建本地线程列表
-      const remaining = getThreads(activationCode, phase);
-      setStepLocked(result.stepLocked);
-      if (result.selectedThreadId !== null) {
-        setReportSelectedThreadId(result.selectedThreadId);
-      }
-
-      if (thread.id === activeThreadId) {
-        if (remaining.length > 0) {
-          // 使用后端 selected 或本地第一个线程
-          const nextActiveId =
-            result.selectedThreadId && remaining.some((t) => t.id === result.selectedThreadId)
-              ? result.selectedThreadId
-              : remaining[0].id;
-          const next = remaining.find((t) => t.id === nextActiveId) ?? remaining[0];
-          setActiveThreadIdState(next.id);
-          setActiveThreadId(activationCode, phase, next.id);
-          setMessages(next.messages);
-          setBackendSyncedThreadId(next.id);
-        } else {
-          // 删除后已无任何线程：重置自动初始化 guard，
-          // 允许后续 effect 再次触发 /simple-chat/init，避免停在空白死状态
-          autoInitGuardRef.current = '';
-          setActiveThreadIdState(null);
-          setMessages([]);
-          setBackendSyncedThreadId(null);
+      // 标记删除进行中，防止 "load messages" effect 竞态触发新建线程
+      deleteInProgressRef.current = true;
+      try {
+        // 后端优先删除：先调后端 API，成功后再同步本地
+        const result = await deleteThreadBackendFirst(activationCode, phase, thread.id);
+        if (!result) {
+          setChatError('删除失败，请稍后重试');
+          return;
         }
-      }
 
-      setThreads(remaining);
+        // 直接从当前 React state 过滤掉被删除的线程（不依赖 localStorage，避免竞态）
+        const remaining = threads.filter((t) => t.id !== thread.id);
+        setStepLocked(result.stepLocked);
+        if (result.selectedThreadId !== null) {
+          setReportSelectedThreadId(result.selectedThreadId);
+        }
+
+        if (thread.id === activeThreadId) {
+          if (remaining.length > 0) {
+            // 使用后端 selected 或本地第一个线程
+            const nextActiveId =
+              result.selectedThreadId && remaining.some((t) => t.id === result.selectedThreadId)
+                ? result.selectedThreadId
+                : remaining[0].id;
+            const next = remaining.find((t) => t.id === nextActiveId) ?? remaining[0];
+            setActiveThreadIdState(next.id);
+            setActiveThreadId(activationCode, phase, next.id);
+            setMessages(next.messages);
+            setBackendSyncedThreadId(next.id);
+          } else {
+            // 删除后已无任何线程：重置自动初始化 guard，
+            // 允许后续 effect 再次触发 /simple-chat/init，避免停在空白死状态
+            autoInitGuardRef.current = '';
+            setActiveThreadIdState(null);
+            setMessages([]);
+            setBackendSyncedThreadId(null);
+          }
+        }
+
+        setThreads(remaining);
+      } finally {
+        deleteInProgressRef.current = false;
+      }
     })();
   };
 
