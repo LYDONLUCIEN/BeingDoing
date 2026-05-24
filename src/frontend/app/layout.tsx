@@ -39,7 +39,7 @@ const notoSerifSC = localFont({
 });
 
 export const metadata: Metadata = {
-  title: '职引 — 不是找到方向，而是认出自己',
+  title: '寻录 — 不是找到方向，而是认出自己',
   description: '通过信念、禀赋、热忱与使命四个维度的深度对话，发现属于你的职业方向。',
 };
 

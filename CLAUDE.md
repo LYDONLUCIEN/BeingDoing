@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-BeingDoing is a full-stack AI-powered career guidance system (Chinese-language UI) that helps users discover their calling through exploring values, talents, and interests. Core formula: **Passion x Talent x Values = True Calling**.
+寻录 (xunlu) is a full-stack AI-powered career guidance system (Chinese-language UI) that helps users discover their calling through exploring values, talents, and interests. Core formula: **Passion x Talent x Values = True Calling**.
 
 ## Commands
 

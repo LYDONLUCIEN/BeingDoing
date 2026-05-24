@@ -21,7 +21,7 @@ export const en = {
   },
 
   nav: {
-    brand: 'Careering',
+    brand: 'xunlu',
     home: 'Home',
     personalHomepage: 'Dashboard',
     uploadAvatar: 'Upload Avatar',
@@ -36,8 +36,8 @@ export const en = {
   },
 
   home: {
-    tagline: 'Careering',
-    heroTitle: 'Careering',
+    tagline: 'xunlu',
+    heroTitle: 'xunlu',
     heroSlogan: 'All passions deserve to be careers.',
     dimensionsTitle: 'Explore Dimensions',
     dimensionsHeading: 'Look inward for answers',
@@ -395,7 +395,7 @@ export const en = {
     qrCode: 'QR Code',
     privacyPolicy: 'Privacy Policy',
     termsOfService: 'Terms of Service',
-    copyright: '© {year} Careering. All rights reserved.',
+    copyright: '© {year} xunlu. All rights reserved.',
   },
   admin: {
     title: 'Admin',

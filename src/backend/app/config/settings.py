@@ -85,7 +85,7 @@ class Settings(BaseSettings):
     SMTP_USER: Optional[str] = None
     SMTP_PASS: Optional[str] = None
     SMTP_FROM_EMAIL: Optional[str] = None
-    SMTP_FROM_NAME: str = "BeingDoing"
+    SMTP_FROM_NAME: str = "xunlu"
     SMTP_USE_SSL: bool = True
     SMTP_USE_TLS: bool = False
     SMTP_TIMEOUT_SECONDS: int = 20

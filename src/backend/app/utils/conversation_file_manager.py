@@ -358,6 +358,20 @@ class ConversationFileManager:
                     cut_idx = i
                     break
 
+            # 向前清除无 filter_step 的 assistant 消息（step opening 残留）
+            while cut_idx > 0:
+                prev = msgs[cut_idx - 1]
+                if not isinstance(prev, dict):
+                    break
+                if prev.get("event") == "init_rumination_intro":
+                    break
+                if prev.get("filter_step") is not None:
+                    break
+                if prev.get("role") == "assistant":
+                    cut_idx -= 1
+                    continue
+                break
+
             # 从 cut_idx 开始删除，但保留 init_rumination_intro
             if cut_idx < len(msgs):
                 kept = msgs[:cut_idx]

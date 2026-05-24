@@ -15,10 +15,10 @@ class EmailService:
 
     @staticmethod
     async def send_password_reset_code(to_email: str, code: str, valid_minutes: int = 5) -> None:
-        subject = "【BeingDoing】密码重置验证码"
+        subject = "【寻录】密码重置验证码"
         body = (
             f"您好，\n\n"
-            f"您正在重置 BeingDoing 账号密码。\n"
+            f"您正在重置寻录账号密码。\n"
             f"本次验证码为：{code}\n"
             f"有效期：{valid_minutes} 分钟。\n\n"
             f"如果这不是您的操作，请忽略本邮件。\n"
@@ -38,7 +38,7 @@ class EmailService:
             raise ValueError(f"邮件服务未配置完整：缺少 {', '.join(missing)}")
 
         from_email = settings.SMTP_FROM_EMAIL or settings.SMTP_USER
-        from_name = settings.SMTP_FROM_NAME or "BeingDoing"
+        from_name = settings.SMTP_FROM_NAME or "xunlu"
 
         msg = EmailMessage()
         msg["Subject"] = subject

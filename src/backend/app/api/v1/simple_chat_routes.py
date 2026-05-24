@@ -1868,6 +1868,7 @@ async def rumination_step_opening_stream(
                             activation_session_id=rec.session_id,
                         ),
                         "step_id": phase_step,
+                        "filter_step": step,
                         "agent_id": "coach",
                         "event": "assistant_reply",
                         "token_usage": stream_usage,

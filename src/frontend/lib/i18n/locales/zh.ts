@@ -19,7 +19,7 @@ export const zh = {
     startExploreArrow: '开始探索 →',
   },
   nav: {
-    brand: '职引',
+    brand: '寻录',
     home: '首页',
     personalHomepage: '个人空间',
     uploadAvatar: '上传头像',
@@ -33,8 +33,8 @@ export const zh = {
     logoutUserTemplate: '退出（{name}）',
   },
   home: {
-    tagline: '职引',
-    heroTitle: '职引',
+    tagline: '寻录',
+    heroTitle: '寻录',
     heroSlogan: '所有热爱都值得成为事业。',
     dimensionsTitle: '探索维度',
     dimensionsHeading: '向内寻找答案',
@@ -388,7 +388,7 @@ export const zh = {
     qrCode: '二维码',
     privacyPolicy: '隐私政策',
     termsOfService: '服务条款',
-    copyright: '© {year} 职引. 保留所有权利。',
+    copyright: '© {year} 寻录. 保留所有权利。',
   },
   admin: {
     title: '管理后台',
