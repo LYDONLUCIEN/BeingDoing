@@ -6,9 +6,9 @@
 export type PhaseKey = 'values' | 'strengths' | 'interests' | 'purpose' | 'rumination';
 
 export const PHASES: { key: PhaseKey; label: string; color: string; num: string }[] = [
-  { key: 'values',    label: '信念',  color: 'blue',    num: '01' },
-  { key: 'strengths', label: '禀赋',  color: 'amber',   num: '02' },
-  { key: 'interests', label: '热忱',  color: 'rose',    num: '03' },
+  { key: 'values',    label: '价值观', color: 'blue',    num: '01' },
+  { key: 'strengths', label: '优势',  color: 'amber',   num: '02' },
+  { key: 'interests', label: '热爱',  color: 'rose',    num: '03' },
   { key: 'purpose',   label: '使命',  color: 'emerald', num: '04' },
   { key: 'rumination', label: '沉淀', color: 'violet',  num: '05' },
 ];

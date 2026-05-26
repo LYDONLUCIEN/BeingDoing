@@ -20,6 +20,7 @@ import { fetchExploreResumeFromJourneys } from '@/lib/explore/journeyResume';
 import { surveyApi } from '@/lib/api/survey';
 import { useAuthStore } from '@/stores/authStore';
 import { fetchAdminSystemSettings } from '@/lib/api/admin';
+import { useLocale } from '@/hooks/useLocale';
 
 function useActivateBg() {
   useEffect(() => {
@@ -31,6 +32,7 @@ function useActivateBg() {
 function ActivatePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { t } = useLocale();
   useActivateBg();
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -206,16 +208,14 @@ function ActivatePageContent() {
           onClick={() => router.push('/')}
           className="text-sm text-bd-subtle hover:text-bd-muted transition-colors"
         >
-          ← 返回首页
+          ← {t('explore.intro.back')}
         </button>
 
         {/* Header */}
         <div className="space-y-2">
-          <p className="text-xs tracking-widest uppercase text-neutral-600">Step 0</p>
-          <h1 className="text-3xl font-bold text-bd-fg">输入激活码</h1>
-          <p className="text-bd-muted text-sm leading-relaxed">
-            激活码是你专属的探索通行证。整个探索过程中，所有对话记录都会自动保存，可随时回来继续。
-          </p>
+          <p className="text-xs tracking-widest uppercase text-neutral-600">{t('explore.activate.step')}</p>
+          <h1 className="text-3xl font-bold text-bd-fg">{t('explore.activate.title')}</h1>
+          <p className="text-bd-muted text-sm leading-relaxed">{t('explore.activate.desc')}</p>
         </div>
 
         {/* Input */}
@@ -225,7 +225,7 @@ function ActivatePageContent() {
             value={code}
             onChange={(e) => setCode(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !loading) handleActivate(); }}
-            placeholder="请输入你的激活码"
+            placeholder={t('explore.activate.placeholder')}
             className="w-full rounded-xl border bg-bd-overlay px-4 py-3.5 text-base outline-none transition-colors focus:border-neutral-400 focus:ring-2 focus:ring-neutral-300 focus:ring-opacity-50"
             style={{
               color: 'var(--bd-fg)',
@@ -239,7 +239,7 @@ function ActivatePageContent() {
             disabled={loading || !code.trim()}
             className="bd-btn-black w-full rounded-xl px-4 py-3.5 text-base font-semibold text-white transition-all disabled:opacity-40"
           >
-            {loading ? '验证中…' : '开始探索 →'}
+            {loading ? t('explore.activate.validating') : t('explore.activate.submit')}
           </button>
           {showReport && (
             <button
@@ -247,7 +247,7 @@ function ActivatePageContent() {
               onClick={() => router.push('/explore/report/view')}
               className="bd-btn-report w-full rounded-xl px-4 py-3 text-base font-medium flex items-center justify-center gap-2"
             >
-              查看报告
+              {t('common.viewReport')}
             </button>
           )}
         </div>

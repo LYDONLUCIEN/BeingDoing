@@ -78,7 +78,7 @@ def _cols_step7() -> List[Dict[str, Any]]:
         {"key": "工作目的", "label": "工作目的"},
         {
             "key": "激情标记",
-            "label": "激情标记",
+            "label": "热爱标记",
             "options": ["忍不住想做", "应该做"],
         },
     ]
@@ -88,7 +88,7 @@ def _cols_step8() -> List[Dict[str, Any]]:
     return [
         {"key": "id", "label": "id"},
         {"key": "用户确认的假设", "label": "用户确认的假设"},
-        {"key": "激情标记", "label": "激情标记"},
+        {"key": "激情标记", "label": "热爱标记"},
         {"key": "现实标记", "label": "现实标记", "options": ["现在", "未来"]},
     ]
 

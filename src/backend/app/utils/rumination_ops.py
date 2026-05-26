@@ -48,10 +48,16 @@ def is_rumination_step3_positive_hypothesis(val: Any) -> bool:
     return t not in RUMINATION_HYP_PENDING_MARKERS
 
 
-# 与 survey_storage / prior 块标题一致：【信念/禀赋/热忱/使命 阶段结果】
-_RE_VALUES = re.compile(r"【信念[^】]*阶段结果】\s*\n(.*?)(?=【|$)", re.DOTALL)
-_RE_STRENGTHS = re.compile(r"【禀赋[^】]*阶段结果】\s*\n(.*?)(?=【|$)", re.DOTALL)
-_RE_INTERESTS = re.compile(r"【热忱[^】]*阶段结果】\s*\n(.*?)(?=【|$)", re.DOTALL)
+# 与 survey_storage prior 块标题一致；正则兼容新旧四维名称
+_RE_VALUES = re.compile(
+    r"【(?:价值观|信念)[^】]*阶段结果】\s*\n(.*?)(?=【|$)", re.DOTALL
+)
+_RE_STRENGTHS = re.compile(
+    r"【(?:优势|禀赋)[^】]*阶段结果】\s*\n(.*?)(?=【|$)", re.DOTALL
+)
+_RE_INTERESTS = re.compile(
+    r"【(?:热爱|热忱)[^】]*阶段结果】\s*\n(.*?)(?=【|$)", re.DOTALL
+)
 _RE_PURPOSE = re.compile(r"【使命[^】]*阶段结果】\s*\n(.*?)(?=【|$)", re.DOTALL)
 
 # ---------------------------------------------------------------------------

@@ -15,17 +15,17 @@ const TESTIMONIALS: Array<{
   color: string;
 }> = [
   { quote: '我第一次意识到，我一直在做别人期待的事，而不是我认为重要的事。这个过程让我看清了自己。', name: '小林', role: '产品经理', avatar: '', color: '129, 140, 248' },
-  { quote: '原来沟通协调这件事对我来说真的是禀赋，不是习惯。这个区分让我第一次觉得自己有竞争力。', name: 'Maggie', role: '市场运营', avatar: '', color: '251, 113, 133' },
+  { quote: '原来沟通协调这件事对我来说真的是优势，不是习惯。这个区分让我第一次觉得自己有竞争力。', name: 'Maggie', role: '市场运营', avatar: '', color: '251, 113, 133' },
   { quote: '帮助别人成长这件事，让我忘我。我以为那只是爱好，没想到可以成为职业核心。', name: '阿文', role: '应届生', avatar: '', color: '251, 191, 36' },
   { quote: '使命感这个词以前对我太虚了。但当我说出「我想帮普通人做出好决策」的时候，我哭了。', name: '晓敏', role: '咨询顾问', avatar: '', color: '52, 211, 153' },
   { quote: '以为自己什么都喜欢，其实是什么都没认真想过。四个维度逼着我去想清楚，很有价值。', name: '老K', role: '创业者', avatar: '', color: '34, 211, 238' },
   { quote: '第一次做完就哭了，太多东西压在心里没被看见。这是一份给自己的礼物。', name: '苏苏', role: '教师', avatar: '', color: '244, 114, 182' },
   { quote: '以前觉得职业规划是套路，但这里的对话让我真正在思考「我」是谁。', name: '浩然', role: '程序员', avatar: '', color: '129, 140, 248' },
-  { quote: '热忱那一关，我写了五件小事。没想到它们可以串成一条清晰的线。', name: '小雨', role: '设计师', avatar: '', color: '251, 191, 36' },
+  { quote: '热爱那一关，我写了五件小事。没想到它们可以串成一条清晰的线。', name: '小雨', role: '设计师', avatar: '', color: '251, 191, 36' },
   { quote: '和伴侣一起做完探索，才发现我们原来有这么多共振点。', name: '阿杰', role: '创业合伙人', avatar: '', color: '52, 211, 153' },
 ];
 
-// ── 四个核心维度（配色：信念=蓝/禀赋=绿/热忱=红/使命=黄，文案来自 i18n）──
+// ── 四个核心维度（配色：价值观=蓝/优势=绿/热爱=红/使命=黄，文案来自 i18n）──
 const DIMENSION_KEYS = ['values', 'strengths', 'interests', 'purpose'] as const;
 const DIMENSION_VARS: Record<(typeof DIMENSION_KEYS)[number], { varColor: string; varBorder: string; varBg: string }> = {
   values: { varColor: 'var(--bd-phase-values)', varBorder: 'color-mix(in srgb, var(--bd-phase-values) 25%, transparent)', varBg: 'var(--bd-phase-values-dim, color-mix(in srgb, var(--bd-phase-values) 8%, transparent))' },

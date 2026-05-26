@@ -7,11 +7,13 @@ import { Sparkles, FileText } from 'lucide-react';
 import { PHASES } from '@/lib/explore/session';
 import { getLastActivationCode, loadSession, saveSession } from '@/lib/explore/session';
 import { recordReportGenerated } from '@/lib/api/analytics';
+import { useLocale } from '@/hooks/useLocale';
 
 const PROGRESS_DURATION_MS = 4200;
 
 export default function ReportPrepPage() {
   const router = useRouter();
+  const { t } = useLocale();
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState<'loading' | 'ready'>('loading');
 
@@ -62,12 +64,12 @@ export default function ReportPrepPage() {
         </div>
 
         <div className="space-y-3">
-          <p className="text-xs tracking-widest uppercase text-bd-subtle">探索完成</p>
-          <h1 className="text-3xl font-bold">四力共鸣</h1>
+          <p className="text-xs tracking-widest uppercase text-bd-subtle">{t('explore.report.complete')}</p>
+          <h1 className="text-3xl font-bold">{t('explore.report.title')}</h1>
           <p className="text-bd-muted leading-relaxed">
-            你已完成信念、禀赋、热忱与使命的全部探索。
+            {t('explore.report.desc')}
             <br />
-            {status === 'loading' ? '正在生成综合报告…' : '报告已就绪'}
+            {status === 'loading' ? t('explore.chat.generating') : t('explore.chat.reportReady')}
           </p>
         </div>
 
@@ -123,7 +125,7 @@ export default function ReportPrepPage() {
                 }}
               >
                 <FileText className="w-5 h-5" />
-                查看报告
+                {t('explore.report.viewReport')}
               </button>
 
               <div className="grid grid-cols-2 gap-3">
@@ -136,7 +138,7 @@ export default function ReportPrepPage() {
                   >
                     <span className="text-xs font-mono text-bd-ghost block mb-0.5">{p.num}</span>
                     <span className="font-medium text-bd-fg">{p.label}</span>
-                    <span className="text-xs text-bd-subtle block mt-0.5">回顾对话</span>
+                    <span className="text-xs text-bd-subtle block mt-0.5">{t('explore.report.reviewChat')}</span>
                   </button>
                 ))}
               </div>
@@ -149,7 +151,7 @@ export default function ReportPrepPage() {
           onClick={() => router.push('/')}
           className="text-sm text-bd-subtle hover:text-bd-muted transition-colors underline underline-offset-4"
         >
-          返回首页
+          {t('explore.report.backHome')}
         </button>
       </motion.div>
     </div>

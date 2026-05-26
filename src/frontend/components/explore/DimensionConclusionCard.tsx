@@ -20,9 +20,9 @@ export interface DimensionConclusionData {
   final_answer?: string;
   /** 与 keywords 等长的简短理解（价值观阶段） */
   keyword_notes?: string[];
-  /** 与 keywords 等长：a/b/c 禀赋标记 */
+  /** 与 keywords 等长：a/b/c 优势标记 */
   strength_markers?: string[];
-  /** 与 keywords 等长：选择理由（热忱阶段） */
+  /** 与 keywords 等长：选择理由（热爱阶段） */
   interest_reasons?: string[];
   mission_core?: string;
   mission_detail?: string;

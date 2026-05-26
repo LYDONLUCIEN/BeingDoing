@@ -86,7 +86,7 @@ export default function AdminConversationsPage() {
     () => ({
       values: '价值观',
       strengths: '优势',
-      interests: '热忱',
+      interests: '热爱',
       purpose: '使命',
       rumination: '沉淀',
     }),

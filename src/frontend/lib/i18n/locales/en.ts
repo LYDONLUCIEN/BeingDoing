@@ -38,7 +38,7 @@ export const en = {
   home: {
     tagline: 'xunlu',
     heroTitle: 'xunlu',
-    heroSlogan: 'All passions deserve to be careers.',
+    heroSlogan: 'All interests deserve to be careers.',
     dimensionsTitle: 'Explore Dimensions',
     dimensionsHeading: 'Look inward for answers',
     dimensionsDescBefore: 'Career direction isn\'t "',
@@ -68,7 +68,7 @@ export const en = {
   dimensions: {
     values: { name: 'Clarify Your Values', step: 'Step 1', desc: 'Identify the core values that matter most to you. Understand the root of past job dissatisfaction and establish the right criteria to evaluate future choices.' },
     strengths: { name: 'Discover Your Strengths', step: 'Step 2', desc: 'Uncover your unique talents and what you naturally excel at. See the distinct advantages that make you valuable.' },
-    interests: { name: 'Find Your "Flow"', step: 'Step 3', desc: 'Explore the activities and topics that energize you. Identify passions that can sustain long-term motivation.' },
+    interests: { name: 'Find Your Interests', step: 'Step 3', desc: 'Explore the activities and topics that energize you. Identify interests that can sustain long-term motivation.' },
     purpose: { name: 'Define Your Purpose', step: 'Step 4', desc: 'Connect your future work to a larger mission. Identify the social value or impact your desired work can create.' },
   },
 
@@ -82,7 +82,7 @@ export const en = {
       blockLabel: 'Your exploration path',
       step1: { cn: 'Values', en: 'Values' },
       step2: { cn: 'Strengths', en: 'Strengths' },
-      step3: { cn: 'Passions', en: 'Passions' },
+      step3: { cn: 'Interests', en: 'Interests' },
       step4: { cn: 'Purpose', en: 'Purpose' },
       soul: 'No need for perfection—\njust capture the truest flow of the moment.',
       cta: 'Begin',
@@ -121,7 +121,7 @@ export const en = {
         strengths:
           "You've completed strengths. Next we'll discover what truly energizes you. See you soon!",
         interests:
-          "You've completed passions. Next we'll explore your sense of purpose. See you soon!",
+          "You've completed interests. Next we'll explore your sense of purpose. See you soon!",
         purpose:
           "Wonderful — purpose is done. Next is the final dialogue to integrate everything into directions. See you soon!",
         rumination: "You've completed the full journey. Your personalized insight report is on the way.",
@@ -133,7 +133,7 @@ export const en = {
       titleRuminationDone: 'Filtering complete',
       blurbGeneric: 'Take a short break, then continue when you feel ready.',
       blurbRuminationDone:
-        'Your table choices are saved. You can generate a growth report that weaves values, strengths, passions, and purpose together.',
+        'Your table choices are saved. You can generate a growth report that weaves values, strengths, interests, and purpose together.',
       soulRuminationDone:
         'This is the closing loop: turn your choices into a readable report you can revisit anytime.',
       soulNext: 'Next: 「{next}」. Continue when you feel ready.',
@@ -236,9 +236,9 @@ export const en = {
       phaseMeta: {
         values: { desc: 'Explore your deepest beliefs. What matters most to you? What principles are non-negotiable?', hint: 'This step helps you discover 5 core value keywords.' },
         strengths: { desc: 'Explore your innate talents and strengths. Some things come effortlessly to you yet amaze others.', hint: 'This step helps you discover 10 things you truly excel at.' },
-        interests: { desc: 'Explore your passions. What topics make you lose track of time? What scenarios make time disappear?', hint: 'This step helps you find what truly captivates you.' },
+        interests: { desc: 'Explore your interests. What topics make you lose track of time? What scenarios make time disappear?', hint: 'This step helps you find what truly captivates you.' },
         purpose: { desc: 'Explore your purpose. Who do you want to serve? What do you want to leave in this world?', hint: 'This step helps you find the deeper drive behind your work.' },
-        rumination: { desc: 'Synthesize your four dimensions and identify three final career directions through systematic filtering.', hint: 'Review, match, hypothesis generation, value and passion filters — then choose what you want most.' },
+        rumination: { desc: 'Synthesize your four dimensions and identify three final career directions through systematic filtering.', hint: 'Review, match, hypothesis generation, values and interests filters — then choose what you want most.' },
       },
       ruminationUi: {
         chatEmptyHint: 'Start with the table on the left; add notes below whenever you need.',
@@ -335,7 +335,7 @@ export const en = {
     },
     report: {
       complete: 'Exploration Complete',
-      title: 'Four Forces',
+      title: 'Four-Dimension Resonance',
       desc: 'You have completed the exploration of Values, Strengths, Interests, and Purpose.',
       developing: 'The comprehensive report is in development. Stay tuned.',
       viewReport: 'View Report',

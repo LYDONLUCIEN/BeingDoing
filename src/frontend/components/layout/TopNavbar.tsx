@@ -140,7 +140,7 @@ export default function TopNavbar() {
       suppressHydrationWarning
     >
       <div className="w-full h-full px-4 md:px-8 flex items-center justify-between relative">
-        {/* 左侧：品牌 Logo（寻录 / xunlu） */}
+        {/* 左侧：品牌 Logo（寻路 / xunlu） */}
         <div className="flex items-center flex-shrink-0">
           <Link
             href="/"

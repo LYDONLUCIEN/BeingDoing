@@ -13,9 +13,9 @@ interface LikedContentSectionProps {
 
 /** 阶段标签映射 */
 const PHASE_LABELS: Record<string, string> = {
-  values: '信念',
-  strengths: '禀赋',
-  interests: '热忱',
+  values: '价值观',
+  strengths: '优势',
+  interests: '热爱',
   purpose: '使命',
   rumination: '沉淀',
 };

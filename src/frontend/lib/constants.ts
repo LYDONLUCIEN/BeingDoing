@@ -5,8 +5,8 @@ import type { ConversationItem } from '@/components/explore/ConversationThread';
 
 export const FLOW_STEPS: StepItem[] = [
   { id: 'values_exploration', name: '探索重要的事（价值观）', description: '了解你认为重要的事', order: 1 },
-  { id: 'strengths_exploration', name: '探索擅长的事（才能）', description: '了解你的优势和才能', order: 2 },
-  { id: 'interests_exploration', name: '探索喜欢的事（热情）', description: '了解你的兴趣和热情', order: 3 },
+  { id: 'strengths_exploration', name: '探索擅长的事（优势）', description: '了解你的优势和擅长的事', order: 2 },
+  { id: 'interests_exploration', name: '探索喜欢的事（热爱）', description: '了解你的热爱与兴趣', order: 3 },
   { id: 'combination', name: '组合分析', description: '将三个要素进行组合分析', order: 4 },
   { id: 'refinement', name: '精炼结果', description: '精炼和验证最终结果', order: 5 },
 ];

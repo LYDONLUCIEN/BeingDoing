@@ -70,9 +70,9 @@ export interface DimensionConclusionData {
   final_answer?: string;
   /** 与 keywords 等长（价值观） */
   keyword_notes?: string[];
-  /** 与 keywords 等长：a/b/c（禀赋） */
+  /** 与 keywords 等长：a/b/c（优势标记） */
   strength_markers?: string[];
-  /** 与 keywords 等长（热忱） */
+  /** 与 keywords 等长（热爱阶段选择理由） */
   interest_reasons?: string[];
   mission_core?: string;
   mission_detail?: string;

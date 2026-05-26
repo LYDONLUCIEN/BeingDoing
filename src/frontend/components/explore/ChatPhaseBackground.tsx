@@ -36,7 +36,7 @@ const PHASE_BLOBS: Record<PhaseKey, [string, string, string, string]> = {
 
 /**
  * Silk 背景主题键（与 careering-chat-matte.css 中 data-careering-theme 对应）
- * 约定：信念 Blue · 禀赋 Green · 热忱 Pink · 使命 Yellow
+ * 约定：价值观 Blue · 优势 Green · 热爱 Pink · 使命 Yellow
  */
 const SILK_THEME_KEY: Partial<Record<PhaseKey, 'blue' | 'yellow' | 'green' | 'pink'>> = {
   values: 'blue',

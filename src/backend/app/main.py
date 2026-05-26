@@ -26,7 +26,7 @@ for noisy in ("httpcore", "httpx", "urllib3", "asyncio", "watchfiles", "multipar
     logging.getLogger(noisy).setLevel(logging.WARNING)
 
 app = FastAPI(
-    title="寻录 - 智能引导系统",
+    title="寻路 - 智能引导系统",
     description="一个沉浸式的智能引导系统，帮助用户找到真正想做的事",
     version="1.0.0",
     debug=settings.DEBUG,
@@ -95,7 +95,7 @@ async def _stop_background_tasks():
 @app.get("/")
 async def root():
     """根路径"""
-    return {"message": "寻录 - 智能引导系统 API", "version": "1.0.0"}
+    return {"message": "寻路 - 智能引导系统 API", "version": "1.0.0"}
 
 
 @app.get("/health")

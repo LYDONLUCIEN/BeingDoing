@@ -1097,8 +1097,8 @@ def _build_pending_confirmation_text(phase: str, conclusion: dict) -> str:
     keyword_line = "、".join([str(k).strip() for k in keywords if str(k).strip()][:8])
     phase_label_map = {
         "values": "价值观",
-        "strengths": "禀赋",
-        "interests": "热忱",
+        "strengths": "优势",
+        "interests": "热爱",
         "purpose": "使命",
         "rumination": "沉淀",
     }
@@ -3811,7 +3811,7 @@ async def mark_thread_complete(
             kw_text = str(keywords)
         prior_text = f"{summary}\n关键词：{kw_text}".strip() if (summary or kw_text) else ""
         if prior_text:
-            phase_labels = {"values": "信念", "strengths": "禀赋", "interests": "热忱", "purpose": "使命"}
+            phase_labels = {"values": "价值观", "strengths": "优势", "interests": "热爱", "purpose": "使命"}
             label = phase_labels.get(phase_step, phase_step)
             prior_block = f"【{label} 阶段结果】\n{prior_text}"
             next_phase = {"values": "strengths", "strengths": "interests", "interests": "purpose", "purpose": "rumination"}.get(phase_step)

@@ -159,9 +159,9 @@ _PRIOR_CONTEXT_FILENAME = "prior_context_{phase}.txt"
 DIMENSION_CONCLUSIONS_FILENAME = "dimension_conclusions.json"
 DIMENSION_PHASE_IDS: Tuple[str, ...] = ("values", "strengths", "interests", "purpose")
 DIMENSION_LABEL_CN: Dict[str, str] = {
-    "values": "信念",
-    "strengths": "禀赋",
-    "interests": "热忱",
+    "values": "价值观",
+    "strengths": "优势",
+    "interests": "热爱",
     "purpose": "使命",
 }
 # 合并多阶段结论文本时的上限（略高于单文件 PRIOR_CONTEXT_MAX_CHARS）
@@ -358,7 +358,7 @@ def load_prior_context_for_report(report_id: str, phase: str, reports_root: str)
             return _truncate_prior_context("\n\n".join(parts))
 
     if phase == "rumination":
-        phase_labels = {"values": "信念", "strengths": "禀赋", "interests": "热忱", "purpose": "使命"}
+        phase_labels = dict(DIMENSION_LABEL_CN)
         parts = []
         for prev_phase in ("values", "strengths", "interests", "purpose"):
             prev_path = report_dir / _PRIOR_CONTEXT_FILENAME.format(phase=prev_phase)
@@ -437,7 +437,7 @@ def load_prior_context(session_id: str, phase: str, base_dir: str) -> str:
 
     # rumination 阶段 → 合并 values, strengths, interests, purpose
     if phase == "rumination":
-        phase_labels = {"values": "信念", "strengths": "禀赋", "interests": "热忱", "purpose": "使命"}
+        phase_labels = dict(DIMENSION_LABEL_CN)
         parts = []
         for prev_phase in ("values", "strengths", "interests", "purpose"):
             prev_path = session_dir / _PRIOR_CONTEXT_FILENAME.format(phase=prev_phase)
