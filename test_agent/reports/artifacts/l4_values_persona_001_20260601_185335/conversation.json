@@ -1,0 +1,32 @@
+{
+  "timeline": [
+    {
+      "turn": 1,
+      "thought": "先进入价值观阶段页面",
+      "action": "goto",
+      "params": {
+        "url": "/explore/chat/values"
+      },
+      "status": "pass",
+      "observation": "playwright_step_ok",
+      "duration_ms": 5596,
+      "raw_llm_io": null,
+      "error": null,
+      "failure_type": null
+    },
+    {
+      "turn": 2,
+      "thought": "继续推进目标达成",
+      "action": "chat_send",
+      "params": {
+        "text": "我是测试用户，第2轮回答。表达简洁，偶尔犹豫，围绕目标：在 12 轮内完成价值观阶段，并生成可解"
+      },
+      "status": "fail",
+      "observation": "",
+      "duration_ms": 5061,
+      "raw_llm_io": null,
+      "error": "未找到聊天输入框",
+      "failure_type": "selector_not_found"
+    }
+  ]
+}

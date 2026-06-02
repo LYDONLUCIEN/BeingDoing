@@ -3713,7 +3713,24 @@ async def reopen_thread(
                 "conclusion_reject_baseline_user_count": None,
             },
         )
-    return SimpleChatResponse(code=200, message="success", data={})
+    # 沉淀阶段重新填写 step1 时，重新生成 phase 级别引导语
+    result_data: dict = {}
+    if phase_step == "rumination":
+        vip_r = getattr(rec, "vip_level", 1) or 1
+        llm_r = _get_dialogue_llm_provider(vip_level=vip_r)
+        basic_info_r = _load_basic_info_from_activation(request.activation_code)
+        prior_r = _load_prior_context_from_activation(
+            request.activation_code, phase_step, report
+        )
+        greeting_text, _ = await synthesize_rumination_entry_greeting(
+            llm_r,
+            basic_info=basic_info_r,
+            prior_block=prior_r,
+            normalize_token_usage=_normalize_token_usage,
+        )
+        result_data["entry_greeting"] = greeting_text
+
+    return SimpleChatResponse(code=200, message="success", data=result_data)
 
 
 @router.post("/thread/complete", response_model=SimpleChatResponse)

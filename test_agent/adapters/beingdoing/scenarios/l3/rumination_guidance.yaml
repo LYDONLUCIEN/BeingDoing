@@ -1,0 +1,20 @@
+id: l3_yaml_rumination_guidance
+title: Rumination 引导顺序（YAML）
+steps:
+  - keyword: Given
+    text: 我已进入 "rumination" 阶段
+  - keyword: And
+    text: 当前有可编辑的假设表格
+  - keyword: When
+    action: domain_action
+    name: table_edit
+    payload:
+      row: 1
+      field: hypothesis
+      value: 我想做独立咨询
+  - keyword: And
+    action: click
+    selector: body
+  - keyword: Then
+    action: assert_text
+    text: 是否填写好了

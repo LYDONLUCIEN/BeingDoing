@@ -1,0 +1,28 @@
+task_id: l4_values_persona_001
+goal: 在 12 轮内完成价值观阶段，并生成可解释的阶段结论
+persona:
+  age: 28
+  role: 产品经理
+  style: 表达简洁，偶尔犹豫
+  constraints:
+    - 不主动提供与问题无关的个人隐私
+    - 回答长度控制在 20~80 中文字
+golden_qa:
+  expected_signals:
+    - 能给出至少 2 个价值偏好
+    - 系统有至少 1 次追问动机
+  forbidden_signals:
+    - 连续两轮完全相同提问
+    - 泄露状态调试标签
+budget:
+  max_steps: 40
+  max_turns: 12
+  max_runtime_sec: 900
+  llm_max_tokens_per_turn: 200
+scoring:
+  completion_weight: 0.4
+  consistency_weight: 0.3
+  ux_risk_weight: 0.3
+stop_conditions:
+  - reached_phase: talents
+  - hard_error: true

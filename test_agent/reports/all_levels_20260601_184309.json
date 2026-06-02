@@ -1,0 +1,17 @@
+{
+  "levels": [
+    "l4"
+  ],
+  "total_levels": 1,
+  "failed_levels": [],
+  "passed": true,
+  "stopped_early": false,
+  "dry_run": true,
+  "results": [
+    {
+      "level": "l4",
+      "exit_code": 0,
+      "command": "/mnt/vdb1/miniconda3/bin/python /home/gitclone/BeingDoing/test_agent/pipelines/run_l4_batch.py --tasks-dir test_agent/adapters/beingdoing/scenarios/l4 --bridge-mode stub --report-dir /home/gitclone/BeingDoing/test_agent/reports --dry-run"
+    }
+  ]
+}

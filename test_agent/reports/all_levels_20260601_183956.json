@@ -1,0 +1,29 @@
+{
+  "levels": [
+    "l1",
+    "l2",
+    "l3"
+  ],
+  "total_levels": 3,
+  "failed_levels": [],
+  "passed": true,
+  "stopped_early": false,
+  "dry_run": true,
+  "results": [
+    {
+      "level": "l1",
+      "exit_code": 0,
+      "command": "/mnt/vdb1/miniconda3/bin/python /home/gitclone/BeingDoing/test_agent/l1/run_l1.py --pytest-target test/backend --report-dir /home/gitclone/BeingDoing/test_agent/reports --dry-run"
+    },
+    {
+      "level": "l2",
+      "exit_code": 0,
+      "command": "/mnt/vdb1/miniconda3/bin/python /home/gitclone/BeingDoing/test_agent/l2/run_batch.py --scenarios-dir test_agent/scenarios/l2 --engine auto --dry-run"
+    },
+    {
+      "level": "l3",
+      "exit_code": 0,
+      "command": "/mnt/vdb1/miniconda3/bin/python /home/gitclone/BeingDoing/test_agent/pipelines/run_l3_batch.py --scenarios-dir test_agent/adapters/beingdoing/scenarios/l3 --engine local --dry-run"
+    }
+  ]
+}

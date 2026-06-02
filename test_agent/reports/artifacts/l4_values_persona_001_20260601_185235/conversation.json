@@ -1,0 +1,18 @@
+{
+  "timeline": [
+    {
+      "turn": 1,
+      "thought": "先进入价值观阶段页面",
+      "action": "goto",
+      "params": {
+        "url": "/explore/chat/values"
+      },
+      "status": "fail",
+      "observation": "",
+      "duration_ms": 788,
+      "raw_llm_io": null,
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:3000/explore/chat/values\nCall log:\n  - navigating to \"http://127.0.0.1:3000/explore/chat/values\", waiting until \"domcontentloaded\"\n",
+      "failure_type": "runtime_error"
+    }
+  ]
+}

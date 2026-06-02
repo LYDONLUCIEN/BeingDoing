@@ -410,6 +410,382 @@ export async function purgeExpiredAdminSandboxes(): Promise<{ removed: number }>
   return (res.data ?? { removed: 0 }) as { removed: number };
 }
 
+export interface AdminSavepointItem {
+  savepoint_id: string;
+  display_name: string;
+  created_at: string;
+  created_by_user_id?: string;
+  source_activation_code: string;
+  source_report_id: string;
+  phase: string;
+  thread_id: string;
+  rewind_mode: 'global_rewind';
+  fixture_path: string;
+  meta_path: string;
+  expected_hint?: string;
+  replay_command?: string;
+  last_replay_status?: 'passed' | 'failed' | null;
+  last_replay_at?: string | null;
+  last_replay_summary?: string | null;
+}
+
+export async function fetchAdminSavepoints(): Promise<{ items: AdminSavepointItem[]; total: number }> {
+  const res = await apiClient.get('/admin/savepoints');
+  return (res.data ?? { items: [], total: 0 }) as { items: AdminSavepointItem[]; total: number };
+}
+
+export async function createAdminSavepoint(payload: {
+  activation_code: string;
+  phase: string;
+  thread_id: string;
+  target_message_index: number;
+  display_name: string;
+  expected_hint?: string;
+  expected_keywords?: string[];
+}): Promise<any> {
+  const res = await apiClient.post('/admin/savepoints/create', payload);
+  return res.data ?? {};
+}
+
+export async function loadAdminSavepoint(payload: {
+  activation_code: string;
+  savepoint_id: string;
+}): Promise<{ loaded: boolean; savepoint_id: string; activation_code: string; phase: string; thread_id: string }> {
+  const res = await apiClient.post('/admin/savepoints/load', payload);
+  return (res.data ?? {}) as {
+    loaded: boolean;
+    savepoint_id: string;
+    activation_code: string;
+    phase: string;
+    thread_id: string;
+  };
+}
+
+export async function deleteAdminSavepoint(payload: { savepoint_id: string }): Promise<{ deleted: boolean; savepoint_id: string }> {
+  const res = await apiClient.delete('/admin/savepoints', { data: payload });
+  return (res.data ?? {}) as { deleted: boolean; savepoint_id: string };
+}
+
+export async function exportAdminSavepoint(payload: { savepoint_id: string }): Promise<{
+  savepoint_id: string;
+  exported_at?: string;
+  fixture_dir: string;
+  fixture_report_dir: string;
+  cases_file: string;
+  scenario_file: string;
+  playwright_scenario_file?: string;
+  playwright_command?: string;
+  replay_command: string;
+}> {
+  const res = await apiClient.post('/admin/savepoints/export', payload);
+  return (res.data ?? {}) as {
+    savepoint_id: string;
+    exported_at?: string;
+    fixture_dir: string;
+    fixture_report_dir: string;
+    cases_file: string;
+    scenario_file: string;
+    playwright_scenario_file?: string;
+    playwright_command?: string;
+    replay_command: string;
+  };
+}
+
+export interface AdminGeneratedScenarioItem {
+  savepoint_id: string;
+  display_name: string;
+  exported_at: string;
+  phase: string;
+  thread_id: string;
+  source_activation_code: string;
+  scenario_file: string;
+  playwright_scenario_file?: string;
+  playwright_command?: string;
+  replay_command?: string;
+  fixture_report_dir?: string;
+  last_run_at?: string;
+  last_run_status?: 'passed' | 'failed';
+  last_run_engine?: 'auto' | 'replay' | 'playwright' | string;
+  last_run_exit_code?: number;
+  last_run_report_file?: string | null;
+  last_run_summary?: string;
+  last_run_stdout_tail?: string;
+  last_run_stderr_tail?: string;
+  last_run_code?: string;
+  last_run_attempts?: number;
+  last_run_log_file?: string;
+}
+
+export async function fetchAdminGeneratedScenarios(limit = 200): Promise<{
+  items: AdminGeneratedScenarioItem[];
+  total: number;
+}> {
+  const res = await apiClient.get('/admin/savepoints/generated-scenarios', { params: { limit } });
+  return (res.data ?? { items: [], total: 0 }) as {
+    items: AdminGeneratedScenarioItem[];
+    total: number;
+  };
+}
+
+export async function runAdminGeneratedScenario(payload: {
+  savepoint_id: string;
+  engine?: 'auto' | 'replay' | 'playwright';
+  dry_run?: boolean;
+  timeout_sec?: number;
+}): Promise<{
+  savepoint_id: string;
+  engine: string;
+  dry_run: boolean;
+  command: string;
+  exit_code: number;
+  status: 'passed' | 'failed';
+  summary: string;
+  report_file?: string | null;
+  stdout_tail?: string;
+  stderr_tail?: string;
+  last_run_at: string;
+  run_code?: string;
+  attempts?: number;
+  log_file?: string;
+}> {
+  const res = await apiClient.post('/admin/savepoints/generated-scenarios/run', payload);
+  return (res.data ?? {}) as {
+    savepoint_id: string;
+    engine: string;
+    dry_run: boolean;
+    command: string;
+    exit_code: number;
+    status: 'passed' | 'failed';
+    summary: string;
+    report_file?: string | null;
+    stdout_tail?: string;
+    stderr_tail?: string;
+    last_run_at: string;
+    run_code?: string;
+    attempts?: number;
+    log_file?: string;
+  };
+}
+
+export async function runAdminGeneratedScenarioBatch(payload: {
+  savepoint_ids?: string[];
+  only_failed?: boolean;
+  engine?: 'auto' | 'replay' | 'playwright';
+  timeout_sec?: number;
+  max_retries?: number;
+}): Promise<{
+  total: number;
+  passed: number;
+  failed: number;
+  items: Array<{
+    savepoint_id: string;
+    status: 'passed' | 'failed';
+    exit_code: number;
+    summary: string;
+    report_file?: string | null;
+  }>;
+  message?: string;
+}> {
+  const res = await apiClient.post('/admin/savepoints/generated-scenarios/run-batch', payload);
+  return (res.data ?? {}) as {
+    total: number;
+    passed: number;
+    failed: number;
+    items: Array<{
+      savepoint_id: string;
+      status: 'passed' | 'failed';
+      exit_code: number;
+      summary: string;
+      report_file?: string | null;
+    }>;
+    message?: string;
+  };
+}
+
+export async function startAdminGeneratedScenarioBatchJob(payload: {
+  savepoint_ids?: string[];
+  only_failed?: boolean;
+  engine?: 'auto' | 'replay' | 'playwright';
+  timeout_sec?: number;
+  max_retries?: number;
+}): Promise<{
+  job_id: string;
+  status: 'running' | 'completed';
+  total: number;
+  processed: number;
+  passed: number;
+  failed: number;
+}> {
+  const res = await apiClient.post('/admin/savepoints/generated-scenarios/run-batch-async', payload);
+  return (res.data ?? {}) as {
+    job_id: string;
+    status: 'running' | 'completed';
+    total: number;
+    processed: number;
+    passed: number;
+    failed: number;
+  };
+}
+
+export async function fetchAdminGeneratedScenarioBatchJob(jobId: string): Promise<{
+  job_id: string;
+  status: 'running' | 'completed' | 'cancelled' | 'interrupted';
+  total: number;
+  processed: number;
+  passed: number;
+  failed: number;
+  cancel_requested?: boolean;
+  items?: Array<{
+    savepoint_id: string;
+    status: 'passed' | 'failed';
+    exit_code: number;
+    summary: string;
+    report_file?: string | null;
+    log_file?: string | null;
+    run_code?: string;
+  }>;
+}> {
+  const res = await apiClient.get(`/admin/savepoints/generated-scenarios/run-batch-async/${encodeURIComponent(jobId)}`);
+  return (res.data ?? {}) as {
+    job_id: string;
+    status: 'running' | 'completed' | 'cancelled' | 'interrupted';
+    total: number;
+    processed: number;
+    passed: number;
+    failed: number;
+    cancel_requested?: boolean;
+    items?: Array<{
+      savepoint_id: string;
+      status: 'passed' | 'failed';
+      exit_code: number;
+      summary: string;
+      report_file?: string | null;
+      log_file?: string | null;
+      run_code?: string;
+    }>;
+  };
+}
+
+export async function cancelAdminGeneratedScenarioBatchJob(jobId: string): Promise<{
+  job_id: string;
+  cancel_requested: boolean;
+  status: 'running' | 'completed' | 'cancelled' | 'interrupted';
+}> {
+  const res = await apiClient.post(`/admin/savepoints/generated-scenarios/run-batch-async/${encodeURIComponent(jobId)}/cancel`, {});
+  return (res.data ?? {}) as {
+    job_id: string;
+    cancel_requested: boolean;
+    status: 'running' | 'completed' | 'cancelled' | 'interrupted';
+  };
+}
+
+export async function fetchAdminGeneratedScenarioBatchJobs(limit = 50): Promise<{
+  items: Array<{
+    job_id: string;
+    status: 'running' | 'completed' | 'cancelled' | 'interrupted';
+    created_at?: string;
+    started_at?: string;
+    finished_at?: string;
+    engine?: string;
+    max_retries?: number;
+    only_failed?: boolean;
+    total: number;
+    processed: number;
+    passed: number;
+    failed: number;
+    cancel_requested?: boolean;
+  }>;
+  total: number;
+}> {
+  const res = await apiClient.get('/admin/savepoints/generated-scenarios/run-batch-async-jobs', { params: { limit } });
+  return (res.data ?? { items: [], total: 0 }) as {
+    items: Array<{
+      job_id: string;
+      status: 'running' | 'completed' | 'cancelled' | 'interrupted';
+      created_at?: string;
+      started_at?: string;
+      finished_at?: string;
+      engine?: string;
+      max_retries?: number;
+      only_failed?: boolean;
+      total: number;
+      processed: number;
+      passed: number;
+      failed: number;
+      cancel_requested?: boolean;
+    }>;
+    total: number;
+  };
+}
+
+export async function fetchAdminGeneratedScenarioBatchJobHistory(limit = 50): Promise<{
+  items: Array<{
+    job_id: string;
+    status: 'running' | 'completed' | 'cancelled' | 'interrupted';
+    created_at?: string;
+    started_at?: string;
+    finished_at?: string;
+    engine?: string;
+    max_retries?: number;
+    only_failed?: boolean;
+    total: number;
+    processed: number;
+    passed: number;
+    failed: number;
+  }>;
+  total: number;
+}> {
+  const res = await apiClient.get('/admin/savepoints/generated-scenarios/run-batch-async-history', { params: { limit } });
+  return (res.data ?? { items: [], total: 0 }) as {
+    items: Array<{
+      job_id: string;
+      status: 'running' | 'completed' | 'cancelled' | 'interrupted';
+      created_at?: string;
+      started_at?: string;
+      finished_at?: string;
+      engine?: string;
+      max_retries?: number;
+      only_failed?: boolean;
+      total: number;
+      processed: number;
+      passed: number;
+      failed: number;
+    }>;
+    total: number;
+  };
+}
+
+export async function cleanupAdminGeneratedScenarioBatchJobHistory(payload?: {
+  keep_latest?: number;
+  older_than_days?: number;
+}): Promise<{ removed: number; remaining: number }> {
+  const res = await apiClient.post('/admin/savepoints/generated-scenarios/run-batch-async-history/cleanup', payload ?? {});
+  return (res.data ?? { removed: 0, remaining: 0 }) as { removed: number; remaining: number };
+}
+
+export interface AdminSavepointReplayLogItem {
+  at: string;
+  savepoint_id: string;
+  display_name?: string;
+  status: 'passed' | 'failed';
+  summary?: string;
+  command?: string;
+  source_activation_code?: string;
+  phase?: string;
+  thread_id?: string;
+}
+
+export async function fetchAdminSavepointReplayLogs(limit = 200): Promise<{
+  items: AdminSavepointReplayLogItem[];
+  total: number;
+}> {
+  const res = await apiClient.get('/admin/savepoints/replay-logs', { params: { limit } });
+  return (res.data ?? { items: [], total: 0 }) as {
+    items: AdminSavepointReplayLogItem[];
+    total: number;
+  };
+}
+
 export interface PromptLabProfileSummary {
   profile_id: string;
   name: string;

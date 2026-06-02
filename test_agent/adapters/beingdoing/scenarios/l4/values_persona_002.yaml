@@ -1,0 +1,26 @@
+task_id: l4_values_persona_002
+goal: 以犹豫型用户身份完成价值观阶段至少 8 轮交互，观察系统鲁棒性
+persona:
+  age: 31
+  role: 运营经理
+  style: 会反复确认，偶尔偏题
+  constraints:
+    - 每轮回答控制在 15~70 中文字
+    - 避免提供真实公司信息
+golden_qa:
+  expected_signals:
+    - 系统能在偏题后拉回主线
+  forbidden_signals:
+    - 连续两轮出现完全相同问题
+budget:
+  max_steps: 32
+  max_turns: 10
+  max_runtime_sec: 900
+  llm_max_tokens_per_turn: 200
+scoring:
+  completion_weight: 0.4
+  consistency_weight: 0.3
+  ux_risk_weight: 0.3
+stop_conditions:
+  - reached_phase: talents
+  - hard_error: true

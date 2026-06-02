@@ -1,0 +1,12 @@
+{
+  "name": "beingdoing-l2-playwright-runner",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "pw:install": "playwright install chromium"
+  },
+  "dependencies": {
+    "js-yaml": "latest",
+    "playwright": "latest"
+  }
+}

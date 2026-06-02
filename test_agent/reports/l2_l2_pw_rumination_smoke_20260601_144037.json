@@ -1,0 +1,40 @@
+{
+  "scenario_id": "l2_pw_rumination_smoke",
+  "scenario_file": "/home/gitclone/BeingDoing/test_agent/scenarios/l2/sample_playwright_rumination.yaml",
+  "engine": "playwright",
+  "input": {
+    "scenario_id": "l2_pw_rumination_smoke",
+    "scenario_file": "/home/gitclone/BeingDoing/test_agent/scenarios/l2/sample_playwright_rumination.yaml",
+    "base_url": "http://127.0.0.1:3000"
+  },
+  "command": "node /home/gitclone/BeingDoing/test_agent/l2/playwright_runner.mjs --scenario /home/gitclone/BeingDoing/test_agent/scenarios/l2/sample_playwright_rumination.yaml --base-url http://127.0.0.1:3000",
+  "exit_code": 1,
+  "summary": {
+    "scenario_id": "l2_pw_rumination_smoke",
+    "engine": "playwright",
+    "phase": "rumination",
+    "base_url": "http://127.0.0.1:3000",
+    "start_url": "http://127.0.0.1:3000/explore/chat/rumination",
+    "passed": false,
+    "steps_total": 5,
+    "steps_ok": 2,
+    "steps_failed": 1,
+    "assertion_failures": [
+      "expected_keywords 未命中: 确认"
+    ],
+    "action_failures": [
+      {
+        "step_index": 2,
+        "action": "chat_send",
+        "message": "未找到聊天输入框"
+      }
+    ],
+    "artifacts": {
+      "final_screenshot": "/home/gitclone/BeingDoing/test_agent/reports/artifacts/l2_pw_rumination_smoke_2026-06-01T06-40-38-116Z/final.png",
+      "trace": "/home/gitclone/BeingDoing/test_agent/reports/artifacts/l2_pw_rumination_smoke_2026-06-01T06-40-38-116Z/trace.zip",
+      "artifacts_dir": "/home/gitclone/BeingDoing/test_agent/reports/artifacts/l2_pw_rumination_smoke_2026-06-01T06-40-38-116Z"
+    },
+    "elapsed_ms": 21884,
+    "error": "未找到聊天输入框"
+  }
+}

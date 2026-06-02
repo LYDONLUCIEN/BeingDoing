@@ -1,0 +1,124 @@
+{
+  "timeline": [
+    {
+      "turn": 1,
+      "thought": "先进入价值观阶段页面",
+      "action": "goto",
+      "params": {
+        "url": "/explore/chat/values"
+      },
+      "status": "pass",
+      "observation": "goto /explore/chat/values",
+      "duration_ms": 0,
+      "raw_llm_io": null
+    },
+    {
+      "turn": 2,
+      "thought": "继续推进目标达成",
+      "action": "chat_send",
+      "params": {
+        "text": "我是测试用户，第2轮回答。会反复确认，偶尔偏题，围绕目标：以犹豫型用户身份完成价值观阶段至少 8 "
+      },
+      "status": "pass",
+      "observation": "chat_sent",
+      "duration_ms": 0,
+      "raw_llm_io": null
+    },
+    {
+      "turn": 3,
+      "thought": "继续推进目标达成",
+      "action": "chat_send",
+      "params": {
+        "text": "我是测试用户，第3轮回答。会反复确认，偶尔偏题，围绕目标：以犹豫型用户身份完成价值观阶段至少 8 "
+      },
+      "status": "pass",
+      "observation": "chat_sent",
+      "duration_ms": 0,
+      "raw_llm_io": null
+    },
+    {
+      "turn": 4,
+      "thought": "继续推进目标达成",
+      "action": "chat_send",
+      "params": {
+        "text": "我是测试用户，第4轮回答。会反复确认，偶尔偏题，围绕目标：以犹豫型用户身份完成价值观阶段至少 8 "
+      },
+      "status": "pass",
+      "observation": "chat_sent",
+      "duration_ms": 0,
+      "raw_llm_io": null
+    },
+    {
+      "turn": 5,
+      "thought": "继续推进目标达成",
+      "action": "chat_send",
+      "params": {
+        "text": "我是测试用户，第5轮回答。会反复确认，偶尔偏题，围绕目标：以犹豫型用户身份完成价值观阶段至少 8 "
+      },
+      "status": "pass",
+      "observation": "chat_sent",
+      "duration_ms": 0,
+      "raw_llm_io": null
+    },
+    {
+      "turn": 6,
+      "thought": "继续推进目标达成",
+      "action": "chat_send",
+      "params": {
+        "text": "我是测试用户，第6轮回答。会反复确认，偶尔偏题，围绕目标：以犹豫型用户身份完成价值观阶段至少 8 "
+      },
+      "status": "pass",
+      "observation": "chat_sent",
+      "duration_ms": 0,
+      "raw_llm_io": null
+    },
+    {
+      "turn": 7,
+      "thought": "继续推进目标达成",
+      "action": "chat_send",
+      "params": {
+        "text": "我是测试用户，第7轮回答。会反复确认，偶尔偏题，围绕目标：以犹豫型用户身份完成价值观阶段至少 8 "
+      },
+      "status": "pass",
+      "observation": "chat_sent",
+      "duration_ms": 0,
+      "raw_llm_io": null
+    },
+    {
+      "turn": 8,
+      "thought": "继续推进目标达成",
+      "action": "chat_send",
+      "params": {
+        "text": "我是测试用户，第8轮回答。会反复确认，偶尔偏题，围绕目标：以犹豫型用户身份完成价值观阶段至少 8 "
+      },
+      "status": "pass",
+      "observation": "chat_sent",
+      "duration_ms": 0,
+      "raw_llm_io": null
+    },
+    {
+      "turn": 9,
+      "thought": "继续推进目标达成",
+      "action": "chat_send",
+      "params": {
+        "text": "我是测试用户，第9轮回答。会反复确认，偶尔偏题，围绕目标：以犹豫型用户身份完成价值观阶段至少 8 "
+      },
+      "status": "pass",
+      "observation": "chat_sent",
+      "duration_ms": 0,
+      "raw_llm_io": null
+    },
+    {
+      "turn": 10,
+      "thought": "达到轮次上限，停止",
+      "action": "stop",
+      "params": {
+        "reason": "turn_budget_reached"
+      },
+      "status": "pass",
+      "observation": "agent_stop",
+      "duration_ms": 0,
+      "raw_llm_io": null
+    }
+  ]
+}

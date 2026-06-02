@@ -1,0 +1,19 @@
+schema_version: 1
+id: sp_sample_smoke
+title: Savepoint smoke 回放
+primary_level: L2
+support_levels: [L3]
+data:
+  mode: fixture_seed
+  fixture_report_dir: test/backend/fixtures/simple_chat_reports/mock_rumination_opening
+  phase: rumination
+  thread_id: t_rum_chat_001
+steps:
+  - action: goto
+    url: /explore/chat/rumination
+  - action: chat_send
+    text: "确认，可以继续"
+assertions:
+  expected_hint: "确认，可以继续"
+  expected_keywords: ["确认", "继续"]
+  no_leak_tags: ["[STATE_JSON]", "[ROW_STATE_JSON]"]

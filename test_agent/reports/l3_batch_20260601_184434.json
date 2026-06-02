@@ -1,0 +1,23 @@
+{
+  "total": 3,
+  "passed": 3,
+  "failed": 0,
+  "stopped_early": false,
+  "dry_run": true,
+  "engine": "local",
+  "filter": null,
+  "results": [
+    {
+      "scenario": "/home/gitclone/BeingDoing/test_agent/adapters/beingdoing/scenarios/l3/rumination_guidance.feature",
+      "exit_code": 0
+    },
+    {
+      "scenario": "/home/gitclone/BeingDoing/test_agent/adapters/beingdoing/scenarios/l3/values_no_repeat.feature",
+      "exit_code": 0
+    },
+    {
+      "scenario": "/home/gitclone/BeingDoing/test_agent/adapters/beingdoing/scenarios/l3/rumination_guidance.yaml",
+      "exit_code": 0
+    }
+  ]
+}

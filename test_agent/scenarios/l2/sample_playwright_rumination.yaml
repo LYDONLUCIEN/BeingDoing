@@ -1,0 +1,23 @@
+schema_version: 1
+id: l2_pw_rumination_smoke
+title: Rumination Playwright smoke
+primary_level: L2
+support_levels: [L3]
+engine: playwright
+data:
+  base_url: http://127.0.0.1:3000
+  phase: rumination
+steps:
+  - action: goto
+    url: /explore/chat/rumination
+  - action: wait_ms
+    ms: 1000
+  - action: chat_send
+    text: "确认，可以继续"
+  - action: wait_for_ai
+    delta: 1
+  - action: screenshot
+    name: after_send.png
+assertions:
+  expected_keywords: ["确认", "继续"]
+  no_leak_tags: ["[STATE_JSON]", "[ROW_STATE_JSON]"]

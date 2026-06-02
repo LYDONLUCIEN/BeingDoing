@@ -1,0 +1,187 @@
+{
+  "run_id": "l3_02c363e71d05",
+  "scenario_id": "l3_bdd_values_no_repeat",
+  "level": "L3",
+  "status": "pass",
+  "started_at": "2026-06-01T10:33:11.706407+00:00",
+  "finished_at": "2026-06-01T10:33:11.706562+00:00",
+  "duration_ms": 0,
+  "steps": [
+    {
+      "step_id": "step_01",
+      "keyword": "Given",
+      "text": "我使用测试账号 \"qa_values_01\" 登录系统",
+      "status": "pass",
+      "duration_ms": 0,
+      "action_input": [
+        {
+          "action": "domain_action",
+          "params": {
+            "name": "ensure_login",
+            "account": "qa_values_01"
+          }
+        }
+      ],
+      "observation_summary": "测试账号登录上下文已准备",
+      "assertions": [],
+      "artifacts": [],
+      "error": null
+    },
+    {
+      "step_id": "step_02",
+      "keyword": "Given",
+      "text": "我已进入 \"values\" 页面",
+      "status": "pass",
+      "duration_ms": 0,
+      "action_input": [
+        {
+          "action": "goto",
+          "params": {
+            "url": "/explore/chat/values",
+            "phase": "values"
+          }
+        }
+      ],
+      "observation_summary": "进入页面: /explore/chat/values",
+      "assertions": [],
+      "artifacts": [],
+      "error": null
+    },
+    {
+      "step_id": "step_03",
+      "keyword": "When",
+      "text": "我输入 \"我更喜欢有影响力的工作\"",
+      "status": "pass",
+      "duration_ms": 0,
+      "action_input": [
+        {
+          "action": "chat_send",
+          "params": {
+            "text": "我更喜欢有影响力的工作"
+          }
+        }
+      ],
+      "observation_summary": "发送消息: 我更喜欢有影响力的工作",
+      "assertions": [],
+      "artifacts": [],
+      "error": null
+    },
+    {
+      "step_id": "step_04",
+      "keyword": "When",
+      "text": "我点击发送",
+      "status": "pass",
+      "duration_ms": 0,
+      "action_input": [
+        {
+          "action": "click",
+          "params": {
+            "selector": "[data-testid=\"chat-send\"]"
+          }
+        }
+      ],
+      "observation_summary": "点击元素: [data-testid=\"chat-send\"]",
+      "assertions": [],
+      "artifacts": [],
+      "error": null
+    },
+    {
+      "step_id": "step_05",
+      "keyword": "Then",
+      "text": "我应该看到助手继续追问细节",
+      "status": "pass",
+      "duration_ms": 0,
+      "action_input": [
+        {
+          "action": "assert_text",
+          "params": {
+            "text": "追问"
+          }
+        }
+      ],
+      "observation_summary": "断言文本存在: 追问",
+      "assertions": [
+        {
+          "assertion": "assert_text",
+          "params": {
+            "text": "追问"
+          },
+          "status": "pass",
+          "message": "断言文本存在: 追问"
+        }
+      ],
+      "artifacts": [],
+      "error": null
+    },
+    {
+      "step_id": "step_06",
+      "keyword": "Then",
+      "text": "在后续 3 轮内，不应出现“完全同一句问题重复两次”",
+      "status": "pass",
+      "duration_ms": 0,
+      "action_input": [
+        {
+          "action": "domain_assert",
+          "params": {
+            "name": "no_repeat_question",
+            "turns": 3,
+            "text": "完全同一句问题重复两次"
+          }
+        }
+      ],
+      "observation_summary": "",
+      "assertions": [
+        {
+          "assertion": "domain_assert",
+          "params": {
+            "name": "no_repeat_question",
+            "turns": 3,
+            "text": "完全同一句问题重复两次"
+          },
+          "status": "pass",
+          "message": "未发现重复追问"
+        }
+      ],
+      "artifacts": [],
+      "error": null
+    },
+    {
+      "step_id": "step_07",
+      "keyword": "Then",
+      "text": "当前阶段应保持在 \"values\" 或进入下一步",
+      "status": "pass",
+      "duration_ms": 0,
+      "action_input": [
+        {
+          "action": "domain_assert",
+          "params": {
+            "name": "phase_in_or_next",
+            "phase": "values"
+          }
+        }
+      ],
+      "observation_summary": "",
+      "assertions": [
+        {
+          "assertion": "domain_assert",
+          "params": {
+            "name": "phase_in_or_next",
+            "phase": "values"
+          },
+          "status": "pass",
+          "message": "阶段迁移符合预期"
+        }
+      ],
+      "artifacts": [],
+      "error": null
+    }
+  ],
+  "failure_type": null,
+  "metadata": {
+    "feature": "价值观探索流程",
+    "scenario": "模糊回答后，不应重复同一问题",
+    "engine": "local",
+    "base_url": null,
+    "backend_url": null
+  }
+}

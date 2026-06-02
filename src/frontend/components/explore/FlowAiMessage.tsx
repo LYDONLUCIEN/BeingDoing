@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Copy, Heart } from 'lucide-react';
+import { BookmarkPlus, Copy, Heart } from 'lucide-react';
 import MessageContent from './MessageContent';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { toggleLike } from '@/lib/api/analytics';
@@ -58,6 +58,8 @@ interface FlowAiMessageProps {
   activationCode?: string;
   toolbarCopyTitle?: string;
   toolbarLikeTitle?: string;
+  toolbarSavepointTitle?: string;
+  onSavepoint?: () => void;
   /** 为 true 时不显示底部复制/点赞条（如静态引导文案） */
   hideToolbar?: boolean;
 }
@@ -86,6 +88,8 @@ export default function FlowAiMessage({
   activationCode,
   toolbarCopyTitle,
   toolbarLikeTitle,
+  toolbarSavepointTitle,
+  onSavepoint,
   hideToolbar = false,
 }: FlowAiMessageProps) {
   const { t } = useLocale();
@@ -137,6 +141,7 @@ export default function FlowAiMessage({
 
   const copyTitle = toolbarCopyTitle ?? t('explore.chat.messageToolbar.copy');
   const likeTitle = toolbarLikeTitle ?? t('explore.chat.messageToolbar.like');
+  const savepointTitle = toolbarSavepointTitle ?? '保存为检查点';
   const wrapClass =
     variant === 'ruminationWorkbench'
       ? 'flow-msg-ai-wrap flow-msg-ai-wrap--rumination-wb'
@@ -223,6 +228,16 @@ export default function FlowAiMessage({
               className={`flow-toolbar-like-icon ${liked ? 'filled' : ''}`}
             />
           </button>
+          {onSavepoint && (
+            <button
+              type="button"
+              className="flow-toolbar-btn"
+              title={savepointTitle}
+              onClick={onSavepoint}
+            >
+              <BookmarkPlus size={14} strokeWidth={1.6} />
+            </button>
+          )}
         </div>
       )}
     </div>

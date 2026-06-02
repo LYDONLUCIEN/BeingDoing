@@ -38,6 +38,24 @@ from app.utils.admin_policy import (
     is_admin_debug_workspace_enabled,
     is_admin_sandbox_enabled,
 )
+from app.utils.admin_savepoints import (
+    cancel_generated_scenarios_batch_job,
+    cleanup_batch_job_history,
+    create_savepoint,
+    delete_savepoint,
+    export_savepoint_assets,
+    list_batch_jobs,
+    list_generated_scenarios,
+    list_batch_job_history,
+    list_savepoints,
+    list_replay_logs,
+    load_savepoint,
+    record_savepoint_replay_result,
+    get_generated_scenarios_batch_job,
+    run_generated_scenario,
+    run_generated_scenarios_batch,
+    start_generated_scenarios_batch_job,
+)
 from app.utils.admin_prompt_lab import (
     add_profile_version,
     bind_profile_to_activation,
@@ -80,6 +98,64 @@ class SandboxForkRequest(BaseModel):
     """从正式激活码 Fork 调试沙箱（独立目录，默认保留 15 天）"""
 
     source_activation_code: str = Field(..., min_length=1)
+
+
+class SavepointCreateRequest(BaseModel):
+    activation_code: str = Field(..., min_length=1)
+    phase: str = Field(..., min_length=1)
+    thread_id: str = Field(..., min_length=1)
+    target_message_index: int = Field(..., ge=0)
+    display_name: str = Field(..., min_length=1)
+    expected_hint: Optional[str] = None
+    expected_keywords: Optional[List[str]] = None
+
+
+class SavepointLoadRequest(BaseModel):
+    activation_code: str = Field(..., min_length=1)
+    savepoint_id: str = Field(..., min_length=1)
+
+
+class SavepointDeleteRequest(BaseModel):
+    savepoint_id: str = Field(..., min_length=1)
+
+
+class SavepointExportRequest(BaseModel):
+    savepoint_id: str = Field(..., min_length=1)
+
+
+class SavepointReplayResultRequest(BaseModel):
+    savepoint_id: str = Field(..., min_length=1)
+    status: str = Field(..., min_length=1)
+    summary: str = Field(default="")
+    command: Optional[str] = None
+
+
+class SavepointGeneratedScenarioRunRequest(BaseModel):
+    savepoint_id: str = Field(..., min_length=1)
+    engine: str = Field(default="auto", min_length=1)
+    dry_run: bool = False
+    timeout_sec: int = Field(default=600, ge=5, le=3600)
+
+
+class SavepointGeneratedScenarioBatchRunRequest(BaseModel):
+    savepoint_ids: List[str] = Field(default_factory=list)
+    only_failed: bool = False
+    engine: str = Field(default="auto", min_length=1)
+    timeout_sec: int = Field(default=600, ge=5, le=3600)
+    max_retries: int = Field(default=1, ge=0, le=3)
+
+
+class SavepointGeneratedScenarioBatchJobRequest(BaseModel):
+    savepoint_ids: List[str] = Field(default_factory=list)
+    only_failed: bool = False
+    engine: str = Field(default="auto", min_length=1)
+    timeout_sec: int = Field(default=600, ge=5, le=3600)
+    max_retries: int = Field(default=1, ge=0, le=3)
+
+
+class SavepointGeneratedScenarioBatchHistoryCleanupRequest(BaseModel):
+    keep_latest: int = Field(default=200, ge=1, le=5000)
+    older_than_days: Optional[int] = Field(default=None, ge=1, le=3650)
 
 
 _SYNC_SOURCES = ("analytics_reports", "reports_registry", "simple_activations_file")
@@ -1388,6 +1464,278 @@ async def admin_list_sandboxes(current_user: Optional[dict] = Depends(get_curren
             "retention_days": SANDBOX_RETENTION_DAYS,
         },
     }
+
+
+@router.get("/savepoints")
+async def admin_list_savepoints(current_user: Optional[dict] = Depends(get_current_user)):
+    """列出调试 Savepoint 索引（仅 super_admin）。"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    items = list_savepoints()
+    return {"code": 200, "message": "success", "data": {"items": items, "total": len(items)}}
+
+
+@router.post("/savepoints/create")
+async def admin_create_savepoint(
+    req: SavepointCreateRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """
+    以当前调试线程中的 AI 消息为锚点创建 Savepoint（global_rewind）。
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    try:
+        data = create_savepoint(
+            activation_code=req.activation_code.strip().upper(),
+            phase=req.phase,
+            thread_id=req.thread_id,
+            target_message_index=req.target_message_index,
+            display_name=req.display_name,
+            created_by=current_user or {},
+            expected_hint=req.expected_hint,
+            expected_keywords=req.expected_keywords,
+        )
+        return {"code": 200, "message": "success", "data": data}
+    except FileExistsError as e:
+        try:
+            payload = json.loads(str(e))
+        except json.JSONDecodeError:
+            payload = {"detail": str(e)}
+        raise HTTPException(status_code=409, detail={"message": "savepoint 名称已存在", **payload})
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/savepoints/load")
+async def admin_load_savepoint(
+    req: SavepointLoadRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """将 Savepoint 投影回当前调试激活码并返回跳转定位信息。"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    try:
+        data = load_savepoint(
+            activation_code=req.activation_code.strip().upper(),
+            savepoint_id=req.savepoint_id,
+        )
+        return {"code": 200, "message": "success", "data": data}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/savepoints")
+async def admin_delete_savepoint(
+    req: SavepointDeleteRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    try:
+        data = delete_savepoint(savepoint_id=req.savepoint_id)
+        return {"code": 200, "message": "success", "data": data}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/savepoints/export")
+async def admin_export_savepoint(
+    req: SavepointExportRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    try:
+        data = export_savepoint_assets(savepoint_id=req.savepoint_id)
+        return {"code": 200, "message": "success", "data": data}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/savepoints/replay-result")
+async def admin_savepoint_replay_result(
+    req: SavepointReplayResultRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    try:
+        data = record_savepoint_replay_result(
+            savepoint_id=req.savepoint_id,
+            status=req.status,
+            summary=req.summary,
+            command=req.command,
+        )
+        return {"code": 200, "message": "success", "data": data}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/savepoints/replay-logs")
+async def admin_savepoint_replay_logs(
+    limit: int = Query(200, ge=1, le=2000),
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    items = list_replay_logs(limit=limit)
+    return {"code": 200, "message": "success", "data": {"items": items, "total": len(items)}}
+
+
+@router.get("/savepoints/generated-scenarios")
+async def admin_savepoint_generated_scenarios(
+    limit: int = Query(200, ge=1, le=2000),
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    items = list_generated_scenarios(limit=limit)
+    return {"code": 200, "message": "success", "data": {"items": items, "total": len(items)}}
+
+
+@router.post("/savepoints/generated-scenarios/run")
+async def admin_run_generated_scenario(
+    req: SavepointGeneratedScenarioRunRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    try:
+        data = run_generated_scenario(
+            savepoint_id=req.savepoint_id,
+            engine=req.engine,
+            dry_run=req.dry_run,
+            timeout_sec=req.timeout_sec,
+        )
+        return {"code": 200, "message": "success", "data": data}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except TimeoutError:
+        raise HTTPException(status_code=408, detail="执行超时")
+
+
+@router.post("/savepoints/generated-scenarios/run-batch")
+async def admin_run_generated_scenarios_batch(
+    req: SavepointGeneratedScenarioBatchRunRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    try:
+        data = run_generated_scenarios_batch(
+            savepoint_ids=req.savepoint_ids,
+            only_failed=req.only_failed,
+            engine=req.engine,
+            timeout_sec=req.timeout_sec,
+            max_retries=req.max_retries,
+        )
+        return {"code": 200, "message": "success", "data": data}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/savepoints/generated-scenarios/run-batch-async")
+async def admin_run_generated_scenarios_batch_async(
+    req: SavepointGeneratedScenarioBatchJobRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    try:
+        data = start_generated_scenarios_batch_job(
+            savepoint_ids=req.savepoint_ids,
+            only_failed=req.only_failed,
+            engine=req.engine,
+            timeout_sec=req.timeout_sec,
+            max_retries=req.max_retries,
+        )
+        return {"code": 200, "message": "success", "data": data}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/savepoints/generated-scenarios/run-batch-async/{job_id}")
+async def admin_get_generated_scenarios_batch_async_job(
+    job_id: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    try:
+        data = get_generated_scenarios_batch_job(job_id=job_id)
+        return {"code": 200, "message": "success", "data": data}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/savepoints/generated-scenarios/run-batch-async-jobs")
+async def admin_list_generated_scenarios_batch_async_jobs(
+    limit: int = Query(50, ge=1, le=500),
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    items = list_batch_jobs(limit=limit)
+    return {"code": 200, "message": "success", "data": {"items": items, "total": len(items)}}
+
+
+@router.post("/savepoints/generated-scenarios/run-batch-async/{job_id}/cancel")
+async def admin_cancel_generated_scenarios_batch_async_job(
+    job_id: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    try:
+        data = cancel_generated_scenarios_batch_job(job_id=job_id)
+        return {"code": 200, "message": "success", "data": data}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/savepoints/generated-scenarios/run-batch-async-history")
+async def admin_generated_scenarios_batch_async_history(
+    limit: int = Query(50, ge=1, le=500),
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    items = list_batch_job_history(limit=limit)
+    return {"code": 200, "message": "success", "data": {"items": items, "total": len(items)}}
+
+
+@router.post("/savepoints/generated-scenarios/run-batch-async-history/cleanup")
+async def admin_generated_scenarios_batch_async_history_cleanup(
+    req: SavepointGeneratedScenarioBatchHistoryCleanupRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    try:
+        data = cleanup_batch_job_history(
+            keep_latest=req.keep_latest,
+            older_than_days=req.older_than_days,
+        )
+        return {"code": 200, "message": "success", "data": data}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/workspace/ensure")

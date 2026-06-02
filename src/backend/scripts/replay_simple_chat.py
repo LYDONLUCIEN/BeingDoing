@@ -451,6 +451,7 @@ def main() -> None:
     parser.add_argument("--seed-ttl-minutes", type=int, default=180)
     parser.add_argument("--cases-file", default="")
     parser.add_argument("--output-json", default="")
+    parser.add_argument("--savepoint-id", default="", help="可选：回放后回写该 savepoint 的最近执行结果")
 
     # mock flags (可选)
     parser.add_argument("--mock-stream-reply", default="")
@@ -499,6 +500,27 @@ def main() -> None:
         out_file.parent.mkdir(parents=True, exist_ok=True)
         out_file.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"saved: {out_file}")
+
+    savepoint_id = (args.savepoint_id or "").strip()
+    if savepoint_id:
+        try:
+            from app.utils.admin_savepoints import record_savepoint_replay_result
+
+            status = "failed" if failures else "passed"
+            replay_summary = f"total={summary['total']}, passed={summary['passed']}, failed={summary['failed']}"
+            cmd = " ".join(sys.argv)
+            ret = record_savepoint_replay_result(
+                savepoint_id=savepoint_id,
+                status=status,
+                summary=replay_summary,
+                command=cmd,
+            )
+            print(
+                f"savepoint replay recorded: id={ret.get('savepoint_id')} "
+                f"status={ret.get('last_replay_status')} at={ret.get('last_replay_at')}"
+            )
+        except Exception as e:
+            print(f"savepoint replay record skipped: {type(e).__name__}: {e}")
 
     if failures:
         raise SystemExit(1)

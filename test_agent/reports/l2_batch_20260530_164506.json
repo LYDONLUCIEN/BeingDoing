@@ -1,0 +1,19 @@
+{
+  "total": 2,
+  "passed": 2,
+  "failed": 0,
+  "stopped_early": false,
+  "dry_run": true,
+  "filter": null,
+  "engine": "auto",
+  "results": [
+    {
+      "scenario": "/home/gitclone/BeingDoing/test_agent/scenarios/l2/sample_playwright_rumination.yaml",
+      "exit_code": 0
+    },
+    {
+      "scenario": "/home/gitclone/BeingDoing/test_agent/scenarios/l2/sample_savepoint_smoke.yaml",
+      "exit_code": 0
+    }
+  ]
+}

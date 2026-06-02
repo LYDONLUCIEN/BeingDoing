@@ -1,0 +1,19 @@
+{
+  "total": 2,
+  "passed": 2,
+  "failed": 0,
+  "stopped_early": false,
+  "dry_run": false,
+  "bridge_mode": "stub",
+  "filter": null,
+  "results": [
+    {
+      "task": "/home/gitclone/BeingDoing/test_agent/adapters/beingdoing/scenarios/l4/values_persona_001.yaml",
+      "exit_code": 0
+    },
+    {
+      "task": "/home/gitclone/BeingDoing/test_agent/adapters/beingdoing/scenarios/l4/values_persona_002.yaml",
+      "exit_code": 0
+    }
+  ]
+}

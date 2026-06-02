@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { useRouter, useParams, usePathname } from 'next/navigation';
+import { useRouter, useParams, usePathname, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
 import {
@@ -102,7 +102,7 @@ import {
 } from '@/lib/explore/ruminationStepOpeningFlags';
 import { useLocale } from '@/hooks/useLocale';
 import { useAuthStore } from '@/stores/authStore';
-import { fetchAdminSystemSettings } from '@/lib/api/admin';
+import { createAdminSavepoint, fetchAdminSystemSettings } from '@/lib/api/admin';
 
 // Phase metadata (color only; desc/hint come from i18n)
 const PHASE_COLORS: Record<PhaseKey, string> = {
@@ -219,6 +219,7 @@ export default function ChatPhasePage() {
   const router = useRouter();
   const params = useParams();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { t, locale } = useLocale();
   const phase = (params.phase as string) as PhaseKey;
   const phaseRef = useRef(phase);
@@ -258,6 +259,11 @@ export default function ChatPhasePage() {
   /** 已收到 conclusion_loading、结论卡尚未推送（与消息区 spinner 一致） */
   const [waitingForConclusionCardUi, setWaitingForConclusionCardUi] = useState(false);
   const [adminDebugBypass, setAdminDebugBypass] = useState(false);
+  const [savepointBusy, setSavepointBusy] = useState(false);
+  const [savepointModalOpen, setSavepointModalOpen] = useState(false);
+  const [savepointDraftName, setSavepointDraftName] = useState('');
+  const [savepointDraftHint, setSavepointDraftHint] = useState('');
+  const [savepointDraftMsgIndex, setSavepointDraftMsgIndex] = useState<number | null>(null);
   const [adminPolicyLoaded, setAdminPolicyLoaded] = useState(false);
   /** 已从 /simple-auth/journeys 拉取并对齐 localStorage 后，才用 unlockedPhases 做路由校验，避免刷新时先用陈旧缓存误跳转 */
   const [exploreResumeSynced, setExploreResumeSynced] = useState(false);
@@ -506,7 +512,11 @@ export default function ChatPhasePage() {
       router.replace('/explore/activate');
       return;
     }
-    const code = getLastActivationCode();
+    const forcedCode = searchParams.get('code')?.trim() || null;
+    if (forcedCode) {
+      setLastActivationCode(forcedCode);
+    }
+    const code = forcedCode || getLastActivationCode();
     if (!code) {
       router.replace('/explore/activate');
       return;
@@ -525,7 +535,14 @@ export default function ChatPhasePage() {
     if (!adminDebugBypass && !s.unlockedPhases.includes(phase)) {
       router.replace(`/explore/chat/${s.currentPhase}`);
     }
-  }, [phase, router, adminPolicyLoaded, adminDebugBypass, exploreResumeSynced]);
+  }, [phase, router, adminPolicyLoaded, adminDebugBypass, exploreResumeSynced, searchParams]);
+
+  useEffect(() => {
+    if (!activationCode || !phase) return;
+    const targetThreadId = searchParams.get('thread_id')?.trim();
+    if (!targetThreadId) return;
+    setActiveThreadId(activationCode, phase, targetThreadId);
+  }, [activationCode, phase, searchParams]);
 
   /**
    * phase / 激活码切换时，在 useEffect 批处理前将 threadsFetched 置为 false，
@@ -904,6 +921,60 @@ export default function ChatPhasePage() {
 
   /** 本阶段已提交：普通用户仅可点「完成并继续」，主输入区与侧栏新建等置灰 */
   const phaseInteractionLocked = stepLocked && !adminDebugBypass;
+  const canUseAdminSavepoint =
+    Boolean(user?.is_super_admin) &&
+    adminDebugBypass &&
+    Boolean(activationCode) &&
+    Boolean(activeThreadId);
+
+  const handleOpenSavepointModal = useCallback(
+    (msg: ThreadMessage, fullMessageIndex: number) => {
+      if (!canUseAdminSavepoint || !activationCode || !activeThreadId) return;
+      const defaultName = `${phase}-sp-${new Date().toISOString().slice(0, 16).replace('T', ' ')}`;
+      setSavepointDraftName(defaultName);
+      setSavepointDraftHint((msg.content || '').trim().slice(0, 120));
+      setSavepointDraftMsgIndex(Math.max(0, fullMessageIndex));
+      setSavepointModalOpen(true);
+    },
+    [activationCode, activeThreadId, canUseAdminSavepoint, phase],
+  );
+
+  const handleCreateSavepoint = useCallback(async () => {
+    if (!canUseAdminSavepoint || !activationCode || !activeThreadId) return;
+    if (savepointBusy) return;
+    if (savepointDraftMsgIndex == null) return;
+    const displayName = savepointDraftName.trim();
+    if (!displayName) {
+      alert('请填写检查点名称');
+      return;
+    }
+    setSavepointBusy(true);
+    try {
+      await createAdminSavepoint({
+        activation_code: activationCode,
+        phase: BACKEND_PHASE[phase],
+        thread_id: activeThreadId,
+        target_message_index: savepointDraftMsgIndex,
+        display_name: displayName,
+        expected_hint: savepointDraftHint.trim() || undefined,
+      });
+      setSavepointModalOpen(false);
+      alert(`Savepoint 已创建：${displayName}`);
+    } catch (e: unknown) {
+      alert(getApiErrorMessage(e, '创建 Savepoint 失败'));
+    } finally {
+      setSavepointBusy(false);
+    }
+  }, [
+    activationCode,
+    activeThreadId,
+    canUseAdminSavepoint,
+    phase,
+    savepointBusy,
+    savepointDraftHint,
+    savepointDraftMsgIndex,
+    savepointDraftName,
+  ]);
 
   /** 流式请求中：仅在 LLM 段结束后的尾部阶段展示（与输入框上方 status 行文案一致、分结论卡/其它） */
   const streamTailInputPlaceholder = useMemo(() => {
@@ -2827,13 +2898,15 @@ export default function ChatPhasePage() {
       const refillStep = ruminationViewStep;
       const refillThreadId = activeThreadId;
       const th = threads.find((t) => t.id === activeThreadId);
+      let entryGreeting: string | undefined;
       if (th) {
         try {
-          await apiClient.post('/simple-chat/thread/reopen', {
+          const reopenRes = await apiClient.post('/simple-chat/thread/reopen', {
             activation_code: activationCode,
             phase: BACKEND_PHASE[phase],
             thread_id: activeThreadId,
           });
+          entryGreeting = reopenRes?.data?.entry_greeting;
         } catch {
           /* 与「继续完善」一致：失败不阻断本地状态 */
         }
@@ -2846,6 +2919,14 @@ export default function ChatPhasePage() {
         setThreads((prev) =>
           prev.map((t) => (t.id === activeThreadId ? updated : t))
         );
+      }
+      // step1 refill 时，先展示 phase 级别引导语，再播放 step 引导语
+      if (refillStep === 1 && entryGreeting) {
+        const phaseGreetingId = `rum_phase_greeting_${Date.now()}`;
+        setMessages((prev) => [
+          ...prev,
+          { id: phaseGreetingId, role: 'assistant', content: entryGreeting, createdAt: Date.now(), filterStep: 1 },
+        ]);
       }
       // 重新播放当前 step 的引导文案
       if (refillThreadId) {
@@ -3410,6 +3491,7 @@ export default function ChatPhasePage() {
                           timestamp={m.createdAt}
                           toolbarCopyTitle={t('explore.chat.messageToolbar.copy')}
                           toolbarLikeTitle={t('explore.chat.messageToolbar.like')}
+                          toolbarSavepointTitle={savepointBusy ? '保存中…' : '保存为检查点'}
                           sessionId={backendSessionId ?? undefined}
                           logIndex={messages
                             .slice(0, aiIndexForHandlers)
@@ -3420,6 +3502,11 @@ export default function ChatPhasePage() {
                           threadId={threads.find((t) => t.id === activeThreadId)?.id}
                           phaseKey={phase}
                           activationCode={activationCode ?? undefined}
+                          onSavepoint={
+                            canUseAdminSavepoint && !savepointBusy && msgIdxInFull >= 0
+                              ? () => void handleOpenSavepointModal(m, aiIndexForHandlers)
+                              : undefined
+                          }
                           hideToolbar={
                             phaseInteractionLocked
                           }
@@ -3750,6 +3837,63 @@ export default function ChatPhasePage() {
                 className="rounded-xl bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {t('explore.chat.completeAndContinue')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {savepointModalOpen && (
+        <div
+          className="fixed inset-0 z-[62] flex items-center justify-center bg-black/35 backdrop-blur-sm"
+          role="presentation"
+          onClick={() => !savepointBusy && setSavepointModalOpen(false)}
+        >
+          <div
+            className="mx-4 w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="savepoint-create-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="savepoint-create-title" className="mb-3 text-lg font-semibold text-[var(--flow-text-body)]">
+              保存为检查点
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs text-[var(--flow-text-muted)]">检查点名称（唯一）</label>
+                <input
+                  className="w-full rounded-xl border border-bd-border bg-bd-bg px-3 py-2 text-sm text-bd-fg"
+                  value={savepointDraftName}
+                  onChange={(e) => setSavepointDraftName(e.target.value)}
+                  disabled={savepointBusy}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-[var(--flow-text-muted)]">断言参考（可编辑）</label>
+                <textarea
+                  className="min-h-[92px] w-full rounded-xl border border-bd-border bg-bd-bg px-3 py-2 text-sm text-bd-fg"
+                  value={savepointDraftHint}
+                  onChange={(e) => setSavepointDraftHint(e.target.value)}
+                  disabled={savepointBusy}
+                />
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                className="rounded-xl px-4 py-2 text-sm font-medium text-[var(--flow-text-muted)] hover:bg-neutral-100"
+                onClick={() => setSavepointModalOpen(false)}
+                disabled={savepointBusy}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="rounded-xl bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+                onClick={() => void handleCreateSavepoint()}
+                disabled={savepointBusy}
+              >
+                {savepointBusy ? '保存中…' : '确认保存'}
               </button>
             </div>
           </div>

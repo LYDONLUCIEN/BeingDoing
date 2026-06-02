@@ -1,0 +1,130 @@
+{
+  "run_id": "l3_e4b9a628bcda",
+  "scenario_id": "l3_yaml_rumination_guidance",
+  "level": "L3",
+  "status": "pass",
+  "started_at": "2026-06-01T10:18:31.150116+00:00",
+  "finished_at": "2026-06-01T10:18:31.150253+00:00",
+  "duration_ms": 0,
+  "steps": [
+    {
+      "step_id": "step_01",
+      "keyword": "Given",
+      "text": "我已进入 \"rumination\" 阶段",
+      "status": "pass",
+      "duration_ms": 0,
+      "action_input": [
+        {
+          "action": "goto",
+          "params": {
+            "url": "/explore/chat/rumination",
+            "phase": "rumination"
+          }
+        }
+      ],
+      "observation_summary": "进入页面: /explore/chat/rumination",
+      "assertions": [],
+      "artifacts": [],
+      "error": null
+    },
+    {
+      "step_id": "step_02",
+      "keyword": "And",
+      "text": "当前有可编辑的假设表格",
+      "status": "pass",
+      "duration_ms": 0,
+      "action_input": [
+        {
+          "action": "assert_dom",
+          "params": {
+            "selector": "[data-testid=\"rumination-table\"]"
+          }
+        }
+      ],
+      "observation_summary": "DOM 存在: [data-testid=\"rumination-table\"]",
+      "assertions": [
+        {
+          "assertion": "assert_dom",
+          "params": {
+            "selector": "[data-testid=\"rumination-table\"]"
+          },
+          "status": "pass",
+          "message": "DOM 存在: [data-testid=\"rumination-table\"]"
+        }
+      ],
+      "artifacts": [],
+      "error": null
+    },
+    {
+      "step_id": "step_03",
+      "keyword": "When",
+      "text": "ACTION::domain_action",
+      "status": "pass",
+      "duration_ms": 0,
+      "action_input": [
+        {
+          "action": "domain_action",
+          "params": {
+            "name": "table_edit",
+            "payload": {
+              "row": 1,
+              "field": "hypothesis",
+              "value": "我想做独立咨询"
+            }
+          }
+        }
+      ],
+      "observation_summary": "已记录假设表格编辑动作",
+      "assertions": [],
+      "artifacts": [],
+      "error": null
+    },
+    {
+      "step_id": "step_04",
+      "keyword": "And",
+      "text": "ACTION::click",
+      "status": "pass",
+      "duration_ms": 0,
+      "action_input": [
+        {
+          "action": "click",
+          "params": {
+            "selector": "body"
+          }
+        }
+      ],
+      "observation_summary": "点击元素: body",
+      "assertions": [],
+      "artifacts": [],
+      "error": null
+    },
+    {
+      "step_id": "step_05",
+      "keyword": "Then",
+      "text": "是否填写好了",
+      "status": "pass",
+      "duration_ms": 0,
+      "action_input": [
+        {
+          "action": "assert_text",
+          "params": {}
+        }
+      ],
+      "observation_summary": "断言文本存在: ",
+      "assertions": [
+        {
+          "assertion": "assert_text",
+          "params": {},
+          "status": "pass",
+          "message": "断言文本存在: "
+        }
+      ],
+      "artifacts": [],
+      "error": null
+    }
+  ],
+  "failure_type": null,
+  "metadata": {
+    "title": "Rumination 引导顺序（YAML）"
+  }
+}

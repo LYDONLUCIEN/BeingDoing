@@ -1,0 +1,38 @@
+{
+  "run_id": "l3_92088f2bb68f",
+  "scenario_id": "l3_yaml_rumination_guidance",
+  "level": "L3",
+  "status": "fail",
+  "started_at": "2026-06-01T10:23:19.955403+00:00",
+  "finished_at": "2026-06-01T10:23:20.458667+00:00",
+  "duration_ms": 503,
+  "steps": [
+    {
+      "step_id": "step_01",
+      "keyword": "Given",
+      "text": "我已进入 \"rumination\" 阶段",
+      "status": "fail",
+      "duration_ms": 503,
+      "action_input": [
+        {
+          "action": "goto",
+          "params": {
+            "url": "/explore/chat/rumination",
+            "phase": "rumination"
+          }
+        }
+      ],
+      "observation_summary": "",
+      "assertions": [],
+      "artifacts": [],
+      "error": "runtime_error: browserType.launch: Executable doesn't exist at /tmp/cursor-sandbox-cache/99e396cc6ec2db2feb1d35c7ba6ab66b/playwright/chromium_headless_shell-1223/chrome-headless-shell-linux64/chrome-headless-shell\n╔════════════════════════════════════════════════════════════╗\n║ Looks like Playwright was just installed or updated.       ║\n║ Please run the following command to download new browsers: ║\n║                                                            ║\n║     npx playwright install                                 ║\n║                                                            ║\n║ <3 Playwright Team                                         ║\n╚════════════════════════════════════════════════════════════╝"
+    }
+  ],
+  "failure_type": "runtime_error",
+  "metadata": {
+    "title": "Rumination 引导顺序（YAML）",
+    "engine": "playwright",
+    "base_url": "http://127.0.0.1:3000",
+    "backend_url": "http://127.0.0.1:8000"
+  }
+}

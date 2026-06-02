@@ -1,0 +1,12 @@
+{
+  "total": 1,
+  "passed": 1,
+  "failed": 0,
+  "dry_run": true,
+  "results": [
+    {
+      "scenario": "/home/gitclone/BeingDoing/test_agent/scenarios/l2/sample_savepoint_smoke.yaml",
+      "exit_code": 0
+    }
+  ]
+}
