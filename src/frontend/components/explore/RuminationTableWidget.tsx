@@ -114,6 +114,12 @@ interface RuminationTableWidgetProps {
   onStep3NoneSelected?: (rowIndex: number, rows: Record<string, unknown>[]) => void;
   /** 子步 3：用户填写假设后失焦/回车提交 */
   onStep3HypothesisCommit?: (rowIndex: number, text: string, rows: Record<string, unknown>[]) => void;
+  /** 子步 3：选「无」后短暂冷却，期间禁用表格交互（防止连点） */
+  step3Cooldown?: boolean;
+  /** 子步 3：外部填入假设 { rowIndex, text }。设为非 null 后组件写入并清空。 */
+  step3ExternalHypFill?: { rowIndex: number; text: string } | null;
+  /** neg gate 深度讨论时：需要讨论的行 id 集合，非此集合的行模糊化显示 */
+  activeItemIds?: Set<string> | null;
 }
 
 export default function RuminationTableWidget({
@@ -154,7 +160,10 @@ export default function RuminationTableWidget({
   onHypothesisRegenerate,
   onStep3NoneSelected,
   onStep3HypothesisCommit,
+  step3Cooldown = false,
+  step3ExternalHypFill = null,
   embeddedSubmitOverlay = false,
+  activeItemIds = null,
 }: RuminationTableWidgetProps) {
   const [rows, setRows] = useState<Record<string, unknown>[]>(
     () => JSON.parse(JSON.stringify(payload.rows)) || []
@@ -167,11 +176,47 @@ export default function RuminationTableWidget({
   const [hypOtherDraftByKey, setHypOtherDraftByKey] = useState<Record<string, string>>({});
   const cellWrapRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
   /** 已确认本步 / 回看模式：锁定格内编辑 */
-  const cellDisabled = disabled || confirmDisabledAfterCommit || reviewReadOnly;
+  const cellDisabled = disabled || confirmDisabledAfterCommit || reviewReadOnly || step3Cooldown;
   /** 回看模式 / disabled：锁定行选中 */
   const rowPickDisabled = reviewReadOnly || disabled;
 
   const tableRowRefs = useRef<Map<number, HTMLTableRowElement | null>>(new Map());
+  /** step3：tag 点击后需要聚焦的 textarea 行号（-1 表示无） */
+  const textareaFocusRowRef = useRef<number>(-1);
+  /** step3：per-row textarea ref，用于 tag 点击后自动聚焦 */
+  const hypTextareaRefs = useRef<Map<number, HTMLTextAreaElement | null>>(new Map());
+
+  /** 外部填入假设：写入指定行 textarea，不自动 commit */
+  useEffect(() => {
+    if (!step3ExternalHypFill) return;
+    const { rowIndex, text } = step3ExternalHypFill;
+    if (rowIndex < 0 || rowIndex >= rows.length) return;
+    setRows((prev) => {
+      const next = [...prev];
+      next[rowIndex] = { ...next[rowIndex], [HYP_CONFIRM_KEY]: text };
+      return next;
+    });
+    setSelectedRowIdx(rowIndex);
+    // 标记需要聚焦，等 textarea 渲染后聚焦
+    textareaFocusRowRef.current = rowIndex;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step3ExternalHypFill]);
+
+  /** step3：textarea 渲染后自动聚焦（tag 点击后） */
+  useEffect(() => {
+    const targetRow = textareaFocusRowRef.current;
+    if (targetRow < 0) return;
+    const raf = requestAnimationFrame(() => {
+      const ta = hypTextareaRefs.current.get(targetRow);
+      if (ta) {
+        ta.focus();
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+      }
+      textareaFocusRowRef.current = -1;
+    });
+    return () => cancelAnimationFrame(raf);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows]);
 
   const [hypothesisPreview, setHypothesisPreview] = useState<{
     anchorRect: DOMRect;
@@ -336,11 +381,13 @@ export default function RuminationTableWidget({
       onRowContextChange(null);
       return;
     }
-    const bits = payload.columns
+    const nonIdCols = payload.columns.filter((c) => c.key !== 'id');
+    const bits = nonIdCols
       .slice(0, 3)
       .map((c) => String(row[c.key] ?? '').trim())
       .filter(Boolean);
-    const label = bits.join(' · ') || `${selectedRowIdx + 1}`;
+    const rowLabel = bits.length > 0 ? bits.join(' · ') : `第${selectedRowIdx + 1}行`;
+    const label = `#${selectedRowIdx + 1} ${rowLabel}`;
     onRowContextChange({ rowIndex: selectedRowIdx, label });
   }, [selectedRowIdx, rows, payload.columns, onRowContextChange]);
 
@@ -669,12 +716,12 @@ export default function RuminationTableWidget({
     };
 
     const hypSelectStep3Class = isGlass
-      ? `${selectShellClass} !min-w-0 shrink-0 max-w-[13rem] sm:max-w-[15rem]`
-      : `${selectShellClass} !min-w-0 shrink-0 max-w-[13rem] sm:max-w-[15rem]`;
+      ? `${selectShellClass} !min-w-0 shrink max-w-[8rem] sm:max-w-[12rem]`
+      : `${selectShellClass} !min-w-0 shrink max-w-[8rem] sm:max-w-[12rem]`;
 
     return (
       <div
-        className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:gap-3"
+        className="flex min-w-0 max-w-full flex-col gap-2 sm:flex-row sm:items-start sm:gap-3"
         onMouseDown={(e) => isGlass && e.stopPropagation()}
         onClick={(e) => isGlass && e.stopPropagation()}
       >
@@ -696,6 +743,7 @@ export default function RuminationTableWidget({
         {selectControlValue === STEP3_OPT_FILL ? (
           isGlass ? (
             <textarea
+              ref={(el) => { hypTextareaRefs.current.set(rowIdx, el); }}
               value={fillText}
               disabled={fieldDisabled}
               placeholder={otherTextPlaceholder}
@@ -712,10 +760,11 @@ export default function RuminationTableWidget({
                 }
               }}
               rows={3}
-              className={textareaShellClass}
+              className={`${textareaShellClass} !min-w-0 shrink-1`}
             />
           ) : (
             <textarea
+              ref={(el) => { hypTextareaRefs.current.set(rowIdx, el); }}
               value={fillText}
               disabled={fieldDisabled}
               placeholder={otherTextPlaceholder}
@@ -730,7 +779,7 @@ export default function RuminationTableWidget({
                 }
               }}
               rows={3}
-              className="w-full min-w-[100px] px-2 py-1.5 text-sm border border-neutral-200 rounded-md focus:ring-2 focus:ring-sky-300/50 focus:border-sky-400/70"
+              className="min-w-0 shrink-1 flex-1 px-2 py-1.5 text-sm border border-neutral-200 rounded-md focus:ring-2 focus:ring-sky-300/50 focus:border-sky-400/70"
             />
           )
         ) : null}
@@ -949,7 +998,10 @@ export default function RuminationTableWidget({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, rowIdx) => (
+          {rows.map((row, rowIdx) => {
+            const rowId = String(row.id ?? '');
+            const rowDimmed = activeItemIds && activeItemIds.size > 0 && !activeItemIds.has(rowId);
+            return (
             <tr
               key={rowIdx}
               ref={setTableRowRef(rowIdx)}
@@ -985,8 +1037,10 @@ export default function RuminationTableWidget({
                           : rowPickDisabled
                             ? ''
                             : 'hover:bg-white/30'
-                    } ${isGlass && !rowPickDisabled ? 'cursor-pointer' : isGlass ? 'cursor-default' : ''}`
-                  : 'border-b border-neutral-100 hover:bg-neutral-50/50'
+                    } ${isGlass && !rowPickDisabled ? 'cursor-pointer' : isGlass ? 'cursor-default' : ''} ${
+                      rowDimmed ? 'rumination-row-dimmed' : ''
+                    }`
+                  : `border-b border-neutral-100 hover:bg-neutral-50/50 ${rowDimmed ? 'rumination-row-dimmed' : ''}`
               }
             >
               {displayColumns.map((col) => {
@@ -1020,6 +1074,7 @@ export default function RuminationTableWidget({
                     style={{
                       minWidth: colMinWidth(col),
                       maxWidth: colMaxWidth(col) ?? (col.key === 'id' ? 48 : undefined),
+                      overflow: 'hidden',
                     }}
                     className={tdBase}
                   >
@@ -1032,7 +1087,7 @@ export default function RuminationTableWidget({
                           ? setCellWrapRef(rowIdx, col.key)
                           : undefined
                       }
-                      className={`min-w-0 ${cellFlash ? 'rumination-validation-cell-flash' : ''}`}
+                      className={`min-w-0 max-w-full overflow-hidden ${cellFlash ? 'rumination-validation-cell-flash' : ''}`}
                       onAnimationEnd={(e) => {
                         if (e.target !== e.currentTarget) return;
                         const name = (e.animationName || '').split(',')[0]?.trim();
@@ -1111,7 +1166,8 @@ export default function RuminationTableWidget({
                 );
               })}
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
   );
