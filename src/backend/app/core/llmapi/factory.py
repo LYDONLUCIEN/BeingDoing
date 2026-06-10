@@ -28,7 +28,7 @@ def create_llm_provider(
     if provider == "deepseek":
         final_api_key = api_key or settings.DEEPSEEK_API_KEY
         final_base_url = base_url or settings.LLM_BASE_URL or "https://api.deepseek.com"
-        final_model = model or "deepseek-chat"
+        final_model = model or "deepseek-v4-pro"
         return OpenAIProvider(model=final_model, api_key=final_api_key, base_url=final_base_url)
 
     if provider == "kimi":
@@ -69,7 +69,7 @@ def _get_vip_provider_config(vip_level: int) -> tuple[str, Optional[str], Option
     if p == "deepseek":
         return (
             "deepseek",
-            getattr(settings, "LLM_VIP1_MODEL", None) or "deepseek-reasoner",
+            getattr(settings, "LLM_VIP1_MODEL", None) or "deepseek-v4-pro",
             settings.DEEPSEEK_API_KEY,
             settings.LLM_BASE_URL or "https://api.deepseek.com",
         )

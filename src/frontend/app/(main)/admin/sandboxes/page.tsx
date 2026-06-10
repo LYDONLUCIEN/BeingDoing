@@ -16,7 +16,6 @@ import {
   ensureAdminWorkspace,
   fetchAdminSandboxes,
   forkAdminSandbox,
-  loadAdminSavepoint,
   purgeExpiredAdminSandboxes,
   fetchAdminGeneratedScenarioBatchJob,
   runAdminGeneratedScenario,
@@ -26,6 +25,7 @@ import {
   type AdminSavepointItem,
   type AdminSavepointReplayLogItem,
 } from '@/lib/api/admin';
+import { loadSavepointAndNavigate } from '@/hooks/useAdminSavepoints';
 import { FlaskConical, ExternalLink, Trash2, Copy, RefreshCw } from 'lucide-react';
 
 export default function AdminSandboxesPage() {
@@ -257,10 +257,7 @@ export default function AdminSandboxesPage() {
     setWorking(true);
     setError(null);
     try {
-      const ret = await loadAdminSavepoint({
-        activation_code: sp.source_activation_code,
-        savepoint_id: sp.savepoint_id,
-      });
+      const ret = await loadSavepointAndNavigate(sp);
       setNotice(`已加载检查点：${sp.display_name}（${ret.phase}/${ret.thread_id}）`);
       setLastLoadedInfo({
         savepointName: sp.display_name,
@@ -268,10 +265,6 @@ export default function AdminSandboxesPage() {
         threadId: ret.thread_id,
         at: new Date().toISOString(),
       });
-      window.location.href =
-        `/explore/chat/${encodeURIComponent(ret.phase)}` +
-        `?code=${encodeURIComponent(ret.activation_code)}` +
-        `&thread_id=${encodeURIComponent(ret.thread_id)}`;
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : '加载检查点失败');
     } finally {

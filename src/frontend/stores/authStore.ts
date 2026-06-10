@@ -8,6 +8,7 @@ interface User {
   username?: string;
   avatar_url?: string;
   is_super_admin?: boolean;
+  email_verified?: boolean;
 }
 
 interface AuthState {

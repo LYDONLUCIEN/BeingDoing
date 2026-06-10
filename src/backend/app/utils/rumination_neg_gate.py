@@ -25,14 +25,6 @@ NEG_GATED_STEPS = frozenset({2, 3, 5, 6})
 
 OTHER_TOKEN = "__RUMINATION_OTHER__"
 
-NEG_ITEM_DONE_START = "[NEG_ITEM_DONE]"
-NEG_ITEM_DONE_END = "[/NEG_ITEM_DONE]"
-
-_USER_NEG_ADVANCE_RE = re.compile(
-    r"(下一条|下一条吧|这条聊完了|聊完了|下一个|继续下一条|换下一条|换一条)",
-    re.IGNORECASE,
-)
-
 
 # ---------------------------------------------------------------------------
 # 字段级摘要：按步骤分别提取关键字段，避免整行噪音
@@ -49,13 +41,13 @@ def _format_hypothesis_item(r: Dict[str, Any]) -> str:
     """步骤 3 假设定义不符条目：展示 假设文本 + 对应热爱/优势。"""
     passion = str(r.get("热爱") or "").strip()
     strength = str(r.get("优势") or "").strip()
-    hypo = str(r.get("假设") or "").strip()
+    hypo = str(r.get("假设") or r.get("用户确认的假设") or "").strip()
     return f"假设「{hypo}」（热爱：{passion}；优势：{strength}）"
 
 
 def _format_should_do_item(r: Dict[str, Any]) -> str:
     """步骤 5 应该做条目：展示 假设文本。"""
-    hypo = str(r.get("假设") or "").strip()
+    hypo = str(r.get("假设") or r.get("用户确认的假设") or "").strip()
     passion = str(r.get("热爱") or "").strip()
     strength = str(r.get("优势") or "").strip()
     return f"假设「{hypo}」（热爱：{passion}；优势：{strength}）"
@@ -63,7 +55,7 @@ def _format_should_do_item(r: Dict[str, Any]) -> str:
 
 def _format_future_item(r: Dict[str, Any]) -> str:
     """步骤 6 未来条目：展示 假设文本。"""
-    hypo = str(r.get("假设") or "").strip()
+    hypo = str(r.get("假设") or r.get("用户确认的假设") or "").strip()
     passion = str(r.get("热爱") or "").strip()
     strength = str(r.get("优势") or "").strip()
     return f"假设「{hypo}」（热爱：{passion}；优势：{strength}）"
@@ -165,36 +157,6 @@ def collect_step6_future(table_data: List[Dict[str, Any]]) -> List[Dict[str, Any
     return out
 
 
-def _is_pending_label(s: str) -> bool:
-    t = (s or "").strip()
-    # 当前文案「无」，兼容旧值「暂未选定」「待定」
-    return t in ("", "暂未选定", "待定", "无")
-
-
-def collect_step3_pending_rows(table_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """需深度讨论的行：文案为空（未显式选「无」）或仍为旧版待定占位。"""
-    out: List[Dict[str, Any]] = []
-    for r in table_data:
-        if not isinstance(r, dict):
-            continue
-        hyp = str(r.get("用户确认的假设") or "").strip()
-        if hyp in ("无",):
-            continue
-        if hyp in ("", "暂未选定", "待定"):
-            out.append(
-                {
-                    "id": str(r.get("id", "")),
-                    "line": _row_summary(r),
-                    "label": _format_hypothesis_item(r),
-                    "热爱": str(r.get("热爱") or ""),
-                    "优势": str(r.get("优势") or ""),
-                    "假设": hyp,
-                    "_kind": "pending",
-                }
-            )
-    return out
-
-
 def collect_step3_hypothesis_candidates(table_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """需做「是否符合假设定义」检测的行：用户自填的正向假设（排除「无」与空）。"""
     out: List[Dict[str, Any]] = []
@@ -202,7 +164,7 @@ def collect_step3_hypothesis_candidates(table_data: List[Dict[str, Any]]) -> Lis
         if not isinstance(r, dict):
             continue
         hyp = str(r.get("用户确认的假设") or "").strip()
-        if _is_pending_label(hyp) or hyp in ("无", "待定", "暂未选定"):
+        if hyp in ("", "无", "待定", "暂未选定"):
             continue
         out.append(
             {
@@ -297,70 +259,25 @@ def build_neg_all_done_injection() -> str:
     )
 
 
-def build_neg_transition_message(
-    next_index_1based: int,
-    total: int,
-    kind: str,
-    item: Dict[str, Any],
-) -> str:
-    """推进到下一条时的固定短句（非 LLM）。"""
-    struct = _item_struct_lines(kind, item)
-    block = "\n".join(f"- {line}" for line in struct) if struct else f"- {_item_label(kind, item)}"
-    return (
-        f"好的，这一条我们先聊到这里。接下来看第 {next_index_1based} / {total} 条：\n"
-        f"{block}\n"
-        f"我们继续围绕这一条聊。"
-    )
-
-
 def user_wants_neg_advance(message: str) -> bool:
-    t = (message or "").strip()
-    if not t:
-        return False
-    return bool(_USER_NEG_ADVANCE_RE.search(t))
+    """保留此函数以兼容现有测试，但不再用于程序控制流。"""
+    return False
 
 
 def refresh_neg_state_injection(neg_state: Dict[str, Any]) -> Dict[str, Any]:
-    """按 current_index 重建 injection_zh 与 progress_header_zh。"""
+    """重建 injection_zh 与 progress_header_zh。"""
     step = int(neg_state.get("step") or 0)
     kind = str(neg_state.get("kind") or "")
     items = get_neg_items(neg_state)
-    idx = int(neg_state.get("current_index") or 0)
     llm_failed = bool(neg_state.get("llm_failed"))
-    if not items or idx >= len(items):
+    if not items:
         inj = build_neg_all_done_injection()
     else:
-        inj = build_injection_zh(
-            step, kind, items, llm_failed, current_index=idx
-        )
+        inj = build_injection_zh(step, kind, items, llm_failed)
     out = dict(neg_state)
     out["injection_zh"] = inj
     out["progress_header_zh"] = build_neg_progress_header(out)
     return out
-
-
-def advance_neg_index(neg_state: Dict[str, Any]) -> Tuple[Dict[str, Any], Optional[str]]:
-    """
-    current_index += 1；返回更新后的 neg_state 与可选固定过渡句。
-    若已全部聊完，transition 提示点「结束讨论」。
-    """
-    items = get_neg_items(neg_state)
-    idx = int(neg_state.get("current_index") or 0)
-    n = len(items)
-    if n == 0 or idx >= n:
-        updated = refresh_neg_state_injection({**neg_state, "current_index": n})
-        return updated, "这些条目我们都聊完了。请点击右上角「结束讨论」回到左侧表格修改。"
-
-    new_idx = idx + 1
-    updated = refresh_neg_state_injection({**neg_state, "current_index": new_idx})
-    if new_idx >= n:
-        return (
-            updated,
-            "这些条目我们都聊完了。请点击右上角「结束讨论」回到左侧表格修改。",
-        )
-    kind = str(neg_state.get("kind") or "")
-    msg = build_neg_transition_message(new_idx + 1, n, kind, items[new_idx])
-    return updated, msg
 
 
 def build_injection_zh(
@@ -368,66 +285,48 @@ def build_injection_zh(
     kind: str,
     items: List[Dict[str, Any]],
     llm_failed: bool,
-    *,
-    current_index: Optional[int] = None,
 ) -> str:
     """注入主对话 system 末尾的补充段（探索中）。
 
-    v3: 使用步骤差异化 system 片段替代旧版统一模板。
-    当提供 current_index 时，**仅注入当前一条**（程序逐条推进）。
+    一次性注入所有待讨论条目，由 LLM 自行逐条讨论、自然过渡。
     """
     step_system = get_deep_chat_step_system(step, llm_failed=llm_failed)
 
-    if current_index is not None:
-        if current_index < 0 or current_index >= len(items):
-            return build_neg_all_done_injection()
-        display_items = [items[current_index]]
-        pos_hint = (
-            f"当前仅讨论第 {current_index + 1} / {len(items)} 条"
-            f"（row id: {items[current_index].get('id', '')}）。"
-            "禁止讨论列表外条目；禁止一次聊多条。\n"
-        )
-    else:
-        display_items = items
-        pos_hint = "待讨论条目（按序逐条进行）：\n"
-
-    lines = _item_lines(kind, display_items, limit=1 if current_index is not None else 12)
+    total = len(items)
+    pos_hint = f"待讨论条目（共 {total} 条，按序逐条进行）：\n"
+    lines = _item_lines(kind, items, limit=12)
 
     style_guard = (
         "回复风格要求：\n"
-        "- 语气温和、简洁，优先短段落；\n"
-        "- 一次只问一个问题，不要连发多问；\n"
+        "- 语气温和、有亲和力，像一个真正关心用户的咨询师；\n"
+        "- 每条条目要充分探讨：先理解用户表层回答，再追问背后的原因、感受或具体场景，层层深入；\n"
+        "- 一次只问一个问题，但问题要有深度（为什么、具体是什么感受、能不能想象一个场景）；\n"
         "- 每轮回复最多出现一个问号（? 或 ？）；\n"
         "- 引用条目时优先使用字段名（热爱/优势/假设），不要整段复读；\n"
-        "- 仅聚焦当前条目；聊完当前条后在回复末尾输出 [NEG_ITEM_DONE][/NEG_ITEM_DONE]（对用户不可见）。"
+        "- 当前讨论某一条时，仅聚焦该条；不得同时讨论多条；\n"
+        "- 除非用户明确要求跳过了，否则不要急于过渡到下一条——当你觉得这个条目还有值得追问的角度时，继续深入。；\n"
+        "- 聊完一条后用简短过渡句引出下一条（如「好的，那我们来看下一条」），然后继续提问。"
     )
 
-    protocol = (
-        "【机器协议·严格保密】当本轮已与用户充分讨论完**当前这一条**后，"
-        "请在回复正文末尾另起一行输出（界面会自动隐藏）：\n"
-        f"{NEG_ITEM_DONE_START}\n{NEG_ITEM_DONE_END}\n"
-        "禁止输出当前条目以外的内容；禁止在同一轮标记多条完成。"
+    closing = (
+        "注意：请逐条讨论以上所有条目。全部讨论完成后，用温和的语气告诉用户："
+        "「我们聊得很充分了，现在可以点击右上角「结束讨论」回到左侧表格，你可以继续调整讨论结果，也可以修改其他行的内容。」"
+        "不要在未讨论完所有条目时引导用户「结束讨论」。不要推进到结论卡。"
     )
-
-    closing = "全部条目讨论充分后，请只引导点击右上角「结束讨论」回到左侧表格修改。不要在当前对话中推进到结论卡。"
 
     if step_system:
         return (
             f"\n{step_system}\n\n"
-            f"{pos_hint}"
-            f"{lines}\n\n"
+            f"{pos_hint}{lines}\n\n"
             f"{style_guard}\n\n"
-            f"{protocol}\n\n"
             f"提醒：{closing}"
         )
 
     logger.warning("rumination neg gate: step %d not in DEEP_CHAT_STEP_SYSTEM_MAP, using fallback", step)
     return (
         f"\n【沉淀·待跟进标记项】\n"
-        f"{pos_hint}"
-        f"{lines}\n"
+        f"{pos_hint}{lines}\n"
         f"{style_guard}\n\n"
-        f"{protocol}\n\n"
         f"{closing}"
     )
 
@@ -521,16 +420,16 @@ def build_bar_copy_zh(kind: str, items: List[Dict[str, Any]], llm_failed: bool) 
 
     if kind == "mismatch":
         head = f"我注意到你标记了以下「不匹配」的项（共 {n} 条）："
-        explain = "我们可以一起分析背后的原因、影响，以及是否存在调整后的匹配可能。"
+        explain = "对于这些不匹配的地方，你是否希望我们进行更深入的沟通？我们可以一起分析背后的原因、影响以及可能的调整方向。"
     elif kind == "hypothesis_def":
         head = "我注意到，你写的这几条职业假设，与我们通常理解的（比如具体、可检验、有边界）有一些不同。对于这些内容，我想带你深入探讨，发掘出你可能还没意识到的可能性。"
         explain = "我们会基于你的热爱和优势，逐条把假设聊得更具体。"
     elif kind == "should_do":
         head = f"我注意到你标记了以下「应该做」的项（共 {n} 条）："
-        explain = "我们可以一起看看这些选择背后是外界期待，还是也存在内在驱动力。"
+        explain = "对于这些应该做的职业可能性，你是否希望我们进行更深入的沟通？我们可以一起分析你认为“应该做”的原因，也许可以帮助你发现它的闪光点。"
     elif kind == "future":
         head = f"我注意到你标记了以下「未来」的项（共 {n} 条）："
-        explain = "我们可以一起梳理：哪些条件还缺，哪些小步其实现在就能开始。"
+        explain = "对于这些未来才能做的职业可能性，你是否希望我们进行更深入的沟通？我们可以一起分析你认为“未来做”的原因，并且探讨现在可以做怎样的积累。"
     else:
         head = "我注意到以下条目："
         explain = "如果你愿意，我们可以逐条深入讨论。"
@@ -577,18 +476,14 @@ async def try_build_neg_gate_response(
         items = collect_step6_future(table_data)
         kind = "future"
     elif step == 3:
-        pending_rows = collect_step3_pending_rows(table_data)
         cand = collect_step3_hypothesis_candidates(table_data)
         kind = "hypothesis_def"
-        llm_reviewed: List[Dict[str, Any]] = []
         if cand:
             flagged, llm_failed = await llm_flag_step3_hypotheses(llm, cand)
             if llm_failed:
-                llm_reviewed = list(cand)
+                items = list(cand)
             else:
-                llm_reviewed = list(flagged)
-        # pending 行强制讨论 + LLM 判定的不合格行
-        items = pending_rows + llm_reviewed
+                items = list(flagged)
         if not items:
             return None
     else:

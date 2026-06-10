@@ -247,3 +247,20 @@ def clear_neg_gate_triggered_step(
             encoding="utf-8",
         )
     return current
+
+
+def clear_neg_gate_triggered_from_step(reports_root: Path, report_id: str, from_step: int) -> Dict[str, Any]:
+    """清除指定步骤及所有后续步骤的闸门触发标记（回到某步重新填写时调用）。"""
+    current = load_rumination_progress(reports_root, report_id)
+    triggered: list = current.get("neg_gate_triggered_steps") or []
+    steps_to_clear = {s for s in triggered if isinstance(s, int) and s >= from_step}
+    if steps_to_clear:
+        triggered = [s for s in triggered if s not in steps_to_clear]
+        current["neg_gate_triggered_steps"] = triggered
+        path = _rumination_progress_file(reports_root, report_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(current, ensure_ascii=False, indent=2, default=str),
+            encoding="utf-8",
+        )
+    return current

@@ -9,7 +9,7 @@ interface AuthModalState {
 
 export const useAuthModalStore = create<AuthModalState>((set) => ({
   isOpen: false,
-  redirectTo: '/explore/intro',
-  openAuthModal: (redirectTo = '/explore/intro') => set({ isOpen: true, redirectTo }),
+  redirectTo: '/',
+  openAuthModal: (redirectTo = '/') => set({ isOpen: true, redirectTo }),
   closeAuthModal: () => set({ isOpen: false }),
 }));

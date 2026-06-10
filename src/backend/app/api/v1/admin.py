@@ -66,6 +66,7 @@ from app.utils.admin_prompt_lab import (
     list_profiles as list_prompt_profiles,
     set_current_version,
 )
+from app.services.prompt_catalog import build_prompt_catalog
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -1448,6 +1449,27 @@ async def admin_bind_prompt_profile_to_activation(
     return {"code": 200, "message": "success", "data": result}
 
 
+@router.get("/prompt-catalog")
+async def admin_get_prompt_catalog(
+    locale: str = Query("zh", pattern="^(zh|en)$"),
+    profile_id: Optional[str] = Query(None),
+    preview_phase: str = Query("values"),
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """
+    Prompt Catalog 只读视图（sandbox_only，与 Prompt Lab 相同守卫）。
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    _assert_admin_sandbox_enabled()
+    data = build_prompt_catalog(
+        locale,
+        profile_id=(profile_id or "").strip() or None,
+        preview_phase=(preview_phase or "values").strip().lower(),
+    )
+    return {"code": 200, "message": "success", "data": data}
+
+
 @router.get("/sandboxes")
 async def admin_list_sandboxes(current_user: Optional[dict] = Depends(get_current_user)):
     """列出所有调试沙箱 Fork"""
@@ -1921,3 +1943,231 @@ async def get_activation_audit_logs(
     from app.utils.activation_audit import read_audit_logs
     logs = read_audit_logs(code=activation_code, limit=limit, test_root=test_root)
     return {"code": 200, "message": "success", "data": {"items": logs, "total": len(logs)}}
+
+
+# ─── Admin Users ──────────────────────────────────────────────
+
+
+class UserStatusPatchRequest(BaseModel):
+    is_active: bool
+
+
+@router.get("/users")
+async def admin_list_users(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    q: Optional[str] = Query(None, description="按 email 或 username 模糊搜索"),
+    is_active: Optional[bool] = Query(None, description="筛选是否活跃"),
+    profile_completed: Optional[bool] = Query(None, description="筛选是否填完 profile"),
+    created_after: Optional[str] = Query(None, description="注册时间下界（ISO 格式）"),
+    created_before: Optional[str] = Query(None, description="注册时间上界（ISO 格式）"),
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """用户列表（分页 + 搜索筛选，仅 super_admin）"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+
+    from app.core.database import UserDB
+
+    manager = SimpleActivationManager()
+    all_activations = manager.list_activations()
+
+    # 按 user_id 分组激活码
+    user_activation_map: Dict[str, List[Dict[str, Any]]] = {}
+    for _code, rec in all_activations.items():
+        uid = (rec.owner_user_id or "").strip()
+        if not uid:
+            continue
+        user_activation_map.setdefault(uid, []).append(
+            {
+                "activation_code": rec.code,
+                "status": rec.status,
+                "created_at": rec.created_at,
+                "expires_at": rec.expires_at,
+                "claimed_at": rec.claimed_at,
+            }
+        )
+
+    async with AsyncSessionLocal() as db:
+        user_db = UserDB(db)
+        users, total = await user_db.list_users(
+            page=page,
+            page_size=page_size,
+            search=q,
+            is_active=is_active,
+            profile_completed=profile_completed,
+            created_after=created_after,
+            created_before=created_before,
+        )
+
+        items = []
+        for u in users:
+            profile = u.profile
+            activations = user_activation_map.get(u.id, [])
+            items.append(
+                {
+                    "user_id": u.id,
+                    "email": u.email,
+                    "username": u.username,
+                    "is_active": u.is_active,
+                    "email_verified": getattr(u, "email_verified", True),
+                    "created_at": u.created_at.isoformat() + "Z" if u.created_at else None,
+                    "last_login_at": u.last_login_at.isoformat() + "Z" if u.last_login_at else None,
+                    "profile_completed": profile.profile_completed if profile else False,
+                    "activation_count": len(activations),
+                }
+            )
+
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "items": items,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        },
+    }
+
+
+@router.get("/users/{user_id}")
+async def admin_get_user_detail(
+    user_id: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """用户详情（基本信息 + 绑定激活码 + 工作履历 + 项目经历，仅 super_admin）"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+
+    from app.core.database import UserDB
+
+    manager = SimpleActivationManager()
+    all_activations = manager.list_activations()
+
+    # 该用户绑定的激活码
+    bound_activations = []
+    for _code, rec in all_activations.items():
+        uid = (rec.owner_user_id or "").strip()
+        if uid != user_id:
+            continue
+        bound_activations.append(
+            {
+                "activation_code": rec.code,
+                "session_id": rec.session_id,
+                "status": rec.status,
+                "created_at": rec.created_at,
+                "expires_at": rec.expires_at,
+                "claimed_at": rec.claimed_at,
+                "is_sandbox": bool(getattr(rec, "is_sandbox", False)),
+            }
+        )
+
+    async with AsyncSessionLocal() as db:
+        user_db = UserDB(db)
+        user = await user_db.get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+
+        profile = await user_db.get_user_profile(user_id)
+        work_histories = await user_db.get_user_work_histories(user_id)
+
+        wh_list = []
+        for wh in work_histories:
+            projects = await user_db.get_work_history_projects(wh.id)
+            wh_list.append(
+                {
+                    "id": wh.id,
+                    "company": wh.company,
+                    "position": wh.position,
+                    "start_date": str(wh.start_date) if wh.start_date else None,
+                    "end_date": str(wh.end_date) if wh.end_date else None,
+                    "evaluation": wh.evaluation,
+                    "skills_used": wh.skills_used,
+                    "projects": [
+                        {
+                            "id": p.id,
+                            "name": p.name,
+                            "description": p.description,
+                            "role": p.role,
+                            "achievements": p.achievements,
+                        }
+                        for p in projects
+                    ],
+                }
+            )
+
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "user_id": user.id,
+            "email": user.email,
+            "phone": user.phone,
+            "username": user.username,
+            "is_active": user.is_active,
+            "created_at": user.created_at.isoformat() + "Z" if user.created_at else None,
+            "updated_at": user.updated_at.isoformat() + "Z" if user.updated_at else None,
+            "last_login_at": user.last_login_at.isoformat() + "Z" if user.last_login_at else None,
+            "profile": {
+                "gender": profile.gender if profile else None,
+                "age": profile.age if profile else None,
+                "profile_completed": profile.profile_completed if profile else False,
+            },
+            "activations": bound_activations,
+            "work_histories": wh_list,
+        },
+    }
+
+
+@router.patch("/users/{user_id}/status")
+async def admin_patch_user_status(
+    user_id: str,
+    req: UserStatusPatchRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """禁用/启用用户（仅改 is_active 标记，仅 super_admin）"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+
+    from app.core.database import UserDB
+
+    async with AsyncSessionLocal() as db:
+        user_db = UserDB(db)
+        user = await user_db.get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        user = await user_db.update_user(user_id, is_active=req.is_active)
+
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "user_id": user.id,
+            "is_active": user.is_active,
+        },
+    }
+
+
+@router.post("/users/{user_id}/verify-email")
+async def admin_verify_user_email(
+    user_id: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """管理员一键验证用户邮箱（仅 super_admin）"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+
+    from app.core.database import UserDB
+
+    async with AsyncSessionLocal() as db:
+        user_db = UserDB(db)
+        user = await user_db.get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        user = await user_db.update_user(user_id, email_verified=True)
+
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {"user_id": user.id, "email_verified": True},
+    }

@@ -346,3 +346,17 @@ html[data-rumination-mesh-page='true']:not([data-color-scheme='dark'])
 .rumination-beautiful-root .rumination-filter-seg {
   -webkit-tap-highlight-color: transparent;
 }
+
+/* ── 深度讨论：非讨论行模糊化 ── */
+.rumination-row-dimmed {
+  filter: blur(3px);
+  opacity: 0.3;
+  transition: filter 0.2s ease, opacity 0.2s ease;
+  pointer-events: none;
+}
+.rumination-row-dimmed:hover {
+  filter: blur(0px);
+  opacity: 1;
+  pointer-events: auto;
+  cursor: default;
+}

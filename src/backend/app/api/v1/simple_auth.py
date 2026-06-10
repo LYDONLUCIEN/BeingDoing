@@ -146,6 +146,14 @@ async def activate(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="激活码不可用",
         )
+
+    # 邮箱验证门控：未验证邮箱的用户不能使用激活码
+    email_verified = (current_user or {}).get("email_verified", True)
+    if not email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="请先验证邮箱再使用激活码",
+        )
     if not rec.owner_user_id and not rec.owner_email:
         rec = manager.claim_owner(rec.code, current_user)
     else:

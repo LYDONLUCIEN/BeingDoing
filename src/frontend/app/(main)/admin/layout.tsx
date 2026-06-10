@@ -13,6 +13,7 @@ import {
   Settings,
   FlaskConical,
   Wand2,
+  Users,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useLocale } from '@/hooks/useLocale';
@@ -20,6 +21,7 @@ import { useLocale } from '@/hooks/useLocale';
 const ADMIN_NAV_ITEMS = [
   { path: '/admin', icon: BarChart3, label: '总览 Dashboard' },
   { path: '/admin/activations', icon: KeyRound, label: '激活码管理' },
+  { path: '/admin/users', icon: Users, label: '用户管理' },
   { path: '/admin/sandboxes', icon: FlaskConical, label: '调试沙箱 Fork' },
   { path: '/admin/conversations', icon: MessageSquare, label: '会话记录' },
   { path: '/admin/prompt-lab', icon: Wand2, label: 'Prompt Lab（sandbox）' },

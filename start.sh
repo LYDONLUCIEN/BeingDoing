@@ -3,10 +3,15 @@
 # start.sh — BeingDoing 开发服务管理脚本
 #
 # 用法：
-#   ./start.sh              启动 backend + frontend（默认）
+#   ./start.sh              启动 backend + frontend（默认，仅加载 .env）
 #   ./start.sh start        同上
-#   ./start.sh start-dev    以开发模式启动（frontend: next dev）
-#   ./start.sh start-run    以运行模式启动（frontend: 清理 .next + build + start）
+#   ./start.sh start dev    开发环境：clean build + start（默认）
+#   ./start.sh start prod   生产环境：clean build + start（默认）
+#   ./start.sh start test   测试环境：clean build + start（默认）
+#   ./start.sh start dev --hot    开发环境：热更新模式 (npm run dev)
+#   ./start.sh start prod --hot  生产环境：热更新模式
+#   ./start.sh start-dev    同 start dev（向后兼容）
+#   ./start.sh start-run    同 start prod（向后兼容）
 #   ./start.sh stop         关闭所有窗口并销毁 tmux session
 #   ./start.sh restart      重启所有服务
 #   ./start.sh restart backend   仅重启 backend
@@ -21,63 +26,100 @@ set -e
 SESSION="beingdoing"
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
-# 关键：每次启动前先清理容易串项目的环境变量，再仅加载本项目 .env
+# ── 解析命令与环境参数 ───────────────────────────────────
+COMMAND="${1:-start}"
+TARGET="${2:-}"
+# 第三个参数：--hot 表示前端使用热更新模式 (npm run dev)
+HOT_MODE=false
+if [ "${3:-}" = "--hot" ]; then
+  HOT_MODE=true
+fi
+
+# 向后兼容：start-dev → dev, start-run → prod
+if [ "$COMMAND" = "start-dev" ]; then
+  TARGET="dev"; COMMAND="start"
+elif [ "$COMMAND" = "start-run" ]; then
+  TARGET="prod"; COMMAND="start"
+fi
+
+# 确定环境文件（dev / prod / test / 空）
+ENV_FILE=""
+ENV_LABEL=""
+if [ -n "$TARGET" ]; then
+  case "$TARGET" in
+    dev|prod|test)
+      ENV_FILE="$REPO_ROOT/.env.$TARGET"
+      ENV_LABEL="$TARGET"
+      if [ ! -f "$ENV_FILE" ]; then
+        echo "[start.sh] 错误: $ENV_FILE 不存在"
+        exit 1
+      fi
+      ;;
+    *)
+      echo "用法: ./start.sh start [dev|prod|test]"
+      exit 1
+      ;;
+  esac
+fi
+
+# ── 关键：每次启动前先清理容易串项目的环境变量 ─────────
 CONFLICT_ENV_VARS=(
   DEBUG DEBUG_MODE
   LLM_PROVIDER LLM_BASE_URL LLM_MODEL
   OPENAI_API_KEY DEEPSEEK_API_KEY
   GLM_API_KEY KIMI_API_KEY CLAUDE_API_KEY
-  NEXT_PUBLIC_API_URL FRONTEND_MODE
+  NEXT_PUBLIC_API_URL FRONTEND_MODE FRONTEND_URL
 )
 for v in "${CONFLICT_ENV_VARS[@]}"; do
   unset "$v" 2>/dev/null || true
 done
+
+# 加载 .env（base），再加载环境覆盖文件
 if [ -f "$REPO_ROOT/.env" ]; then
-  set -a
-  source "$REPO_ROOT/.env"
-  set +a
+  set -a; source "$REPO_ROOT/.env"; set +a
 fi
+if [ -n "$ENV_FILE" ]; then
+  set -a; source "$ENV_FILE"; set +a
+fi
+
 BACKEND_DIR="$REPO_ROOT/src/backend"
 FRONTEND_DIR="$REPO_ROOT/src/frontend"
-ENV_LOAD_CMD="unset DEBUG DEBUG_MODE LLM_PROVIDER LLM_BASE_URL LLM_MODEL OPENAI_API_KEY DEEPSEEK_API_KEY GLM_API_KEY KIMI_API_KEY CLAUDE_API_KEY NEXT_PUBLIC_API_URL FRONTEND_MODE; set -a; [ -f \"$REPO_ROOT/.env\" ] && source \"$REPO_ROOT/.env\"; set +a"
+
+# 构建 tmux 窗口内的环境加载命令（需要重新 unset + source）
+UNSET_VARS="unset DEBUG DEBUG_MODE LLM_PROVIDER LLM_BASE_URL LLM_MODEL OPENAI_API_KEY DEEPSEEK_API_KEY GLM_API_KEY KIMI_API_KEY CLAUDE_API_KEY NEXT_PUBLIC_API_URL FRONTEND_MODE FRONTEND_URL"
+ENV_LOAD_CMD="$UNSET_VARS; set -a; [ -f '$REPO_ROOT/.env' ] && source '$REPO_ROOT/.env'"
+if [ -n "$ENV_FILE" ]; then
+  ENV_LOAD_CMD="$ENV_LOAD_CMD; source '$ENV_FILE'"
+fi
+ENV_LOAD_CMD="$ENV_LOAD_CMD; set +a"
 
 CONDA_BASE="${CONDA_BASE:-/mnt/vdb1/miniconda3}"
 CONDA_ENV="py312"
 # source conda.sh 使 conda activate 在非交互式 shell 里生效
 BACKEND_CMD="$ENV_LOAD_CMD && source '$CONDA_BASE/etc/profile.d/conda.sh' && conda activate $CONDA_ENV && cd '$BACKEND_DIR' && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
 
-COMMAND="${1:-start}"
-TARGET="${2:-}"
+# ── 前端运行模式 ────────────────────────────────────────
+# 默认（dev/prod/test）：clean build + npm run start
+# 加 --hot：热更新模式 npm run dev
+# 无 TARGET（仅 ./start.sh）：按 .env 的 FRONTEND_MODE 决定
 
-# 默认根据 .env 的 FRONTEND_MODE 推断；可被 start-dev / start-run 覆盖
-if [ "${FRONTEND_MODE:-}" = "production" ]; then
+if [ "$HOT_MODE" = "true" ]; then
+  RUN_MODE="dev"
+elif [ -n "$TARGET" ]; then
+  # 有明确环境参数（dev/prod/test）→ 一律 clean build + start
+  RUN_MODE="production"
+elif [ "${FRONTEND_MODE:-}" = "production" ]; then
   RUN_MODE="production"
 else
   RUN_MODE="dev"
-fi
-
-if [ "$COMMAND" = "start-dev" ]; then
-  RUN_MODE="dev"
-  COMMAND="start"
-fi
-
-if [ "$COMMAND" = "start-run" ]; then
-  RUN_MODE="production"
-  FORCE_CLEAN_BUILD="1"
-  COMMAND="start"
 fi
 
 if [ "$RUN_MODE" = "production" ]; then
-  if [ "${FORCE_CLEAN_BUILD:-0}" = "1" ]; then
-    # start-run 场景：强制清理构建缓存并重新 build，避免旧产物/manifest 导致线上异常
-    FRONTEND_CMD="$ENV_LOAD_CMD && cd '$FRONTEND_DIR' && rm -rf .next && npm run build && FRONTEND_MODE=production npm run start"
-  else
-    FRONTEND_CMD="$ENV_LOAD_CMD && cd '$FRONTEND_DIR' && (test -f .next/BUILD_ID || npm run build) && FRONTEND_MODE=production npm run start"
-  fi
-  FRONTEND_MODE_LABEL="production"
+  FRONTEND_CMD="$ENV_LOAD_CMD && cd '$FRONTEND_DIR' && rm -rf .next && npm run build && FRONTEND_MODE=production npm run start"
+  FRONTEND_MODE_LABEL="production (clean build)"
 else
   FRONTEND_CMD="$ENV_LOAD_CMD && cd '$FRONTEND_DIR' && FRONTEND_MODE=dev npm run dev"
-  FRONTEND_MODE_LABEL="dev"
+  FRONTEND_MODE_LABEL="dev (hot reload)"
 fi
 
 # ── 颜色输出 ────────────────────────────────────────────────
@@ -89,7 +131,7 @@ warn()  { echo -e "${YELLOW}[start.sh]${RESET} $*"; }
 # Next.js 生产 Server Actions：稳定密钥可避免多次 build 后旧标签页请求解密失败（日志里偶见 Failed to find Server Action "x"）
 if [ "$RUN_MODE" = "production" ] && [ -z "${NEXT_SERVER_ACTIONS_ENCRYPTION_KEY:-}" ]; then
   warn "生产模式 frontend：.env 未设置 NEXT_SERVER_ACTIONS_ENCRYPTION_KEY。"
-  warn "建议写入 openssl rand -base64 32 的随机串（不要写命令本身），保存后 ./start.sh start-run 重新 build。"
+  warn "建议写入 openssl rand -base64 32 的随机串（不要写命令本身），保存后 ./start.sh start prod 重新 build。"
 fi
 
 # ── 辅助函数 ────────────────────────────────────────────────
@@ -129,6 +171,11 @@ cmd_start() {
     return
   fi
 
+  local env_info="($FRONTEND_MODE_LABEL)"
+  if [ -n "$ENV_LABEL" ]; then
+    env_info="($ENV_LABEL, $FRONTEND_MODE_LABEL)"
+  fi
+
   info "创建 tmux session '$SESSION'…"
   # 创建 session，第一个窗口先命名为 backend
   tmux new-session -d -s "$SESSION" -n backend
@@ -139,7 +186,7 @@ cmd_start() {
   # 默认选中 backend 窗口
   tmux select-window -t "$SESSION:backend"
 
-  ok "服务已启动！（frontend mode: $FRONTEND_MODE_LABEL）"
+  ok "服务已启动！$env_info"
   echo ""
   echo "  Backend  → http://localhost:8000"
   echo "  Frontend → http://localhost:3000"
@@ -236,6 +283,6 @@ case "$COMMAND" in
   attach)
     cmd_attach ;;
   *)
-    echo "用法: ./start.sh [start|start-dev|start-run|stop|restart [backend|frontend|all]|attach]"
+    echo "用法: ./start.sh [start [dev|prod|test] [--hot]] | start-dev | start-run | stop | restart [backend|frontend|all] | attach"
     exit 1 ;;
 esac

@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     # API 池与 VIP 模型（按 vip_level 选择）
     # VIP1 = 基础（DeepSeek），VIP2 = 高级（Kimi/Qwen）
     LLM_VIP1_PROVIDER: str = "deepseek"
-    LLM_VIP1_MODEL: Optional[str] = None  # 默认 deepseek-reasoner（推理模式），可设为 deepseek-chat 关闭
+    LLM_VIP1_MODEL: Optional[str] = None  # 默认 deepseek-v4-pro
     LLM_VIP2_PROVIDER: str = "kimi"  # kimi | qwen
     KIMI_API_KEY: Optional[str] = None
     KIMI_BASE_URL: Optional[str] = "https://api.moonshot.cn/v1"
@@ -79,6 +79,9 @@ class Settings(BaseSettings):
     # 子步 3：AI 回复后若假设已完整则自动 cursor+1（默认关，避免抢跑跳行）
     RUMINATION_STEP3_AUTO_UNLOCK_ENABLED: bool = False
 
+    # 全局思维链开关：控制 v4-pro 等模型是否开启 thinking 模式（默认关，提升响应速度）
+    LLM_THINKING_ENABLED: bool = False
+
     # SMTP 邮件配置（忘记密码验证码）
     SMTP_HOST: Optional[str] = None
     SMTP_PORT: int = 465
@@ -89,6 +92,9 @@ class Settings(BaseSettings):
     SMTP_USE_SSL: bool = True
     SMTP_USE_TLS: bool = False
     SMTP_TIMEOUT_SECONDS: int = 20
+
+    # 前端地址（用于邮箱验证链接）
+    FRONTEND_URL: str = "http://localhost:3000"
     
     # ASR配置
     ASR_PROVIDER: str = "openai"

@@ -12,7 +12,7 @@ if "DEBUG" in os.environ:
 
 from app.api.v1.simple_chat.stream_utils import split_visible_reply_and_row_state
 from app.api.v1.simple_chat_routes import _try_rumination_step3_row_unlock
-from app.utils.rumination_neg_gate import collect_step3_pending_rows
+from app.utils.rumination_neg_gate import collect_step3_hypothesis_candidates
 from app.utils.rumination_ops import is_rumination_step3_row_hypothesis_complete
 from app.utils.rumination_table_widgets import redact_step3_rows_for_widget
 
@@ -111,14 +111,16 @@ def test_step3_unlock_skips_incomplete_hypothesis():
         assert _try_rumination_step3_row_unlock(root, rid, {"row": 0, "state": "confirmed"}) is None
 
 
-def test_collect_step3_pending_skips_explicit_none():
+def test_collect_step3_candidates_skips_none_and_empty():
+    """step 3 candidates 应排除「无」和空行，只保留用户自填假设。"""
     rows = [
         {"id": "1", "热爱": "a", "优势": "b", "用户确认的假设": "无"},
         {"id": "2", "热爱": "c", "优势": "d", "用户确认的假设": ""},
+        {"id": "3", "热爱": "e", "优势": "f", "用户确认的假设": "做个自由职业者"},
     ]
-    pending = collect_step3_pending_rows(rows)
-    assert len(pending) == 1
-    assert pending[0]["id"] == "2"
+    cand = collect_step3_hypothesis_candidates(rows)
+    assert len(cand) == 1
+    assert cand[0]["id"] == "3"
 
 
 # ── Bug fix 验证：前端内部标记值不得被视为有效假设 ──

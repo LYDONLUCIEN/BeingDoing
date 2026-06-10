@@ -26,7 +26,7 @@
 3. 筛选子步引导语（filter step opening — 每个子步进入时）
    - 优先级: 由 STEP_OPENING_MODE 控制
      a) mode="llm"（当前全量）: POST /rumination-step-opening-stream → build_opening_llm_messages()
-        - system prompt: STEP_{1..7}_OPENING_SYSTEM_ZH（per-step 专用提示词）
+        - system prompt: STEP_{1..7}_OPENING_SYSTEM_ZH（per-step @@专用提示词）
         - user prompt:   OPENING_USER_WITH_TABLE_ZH（标准）/ STEP_4_OPENING_USER_TEMPLATE_ZH（步骤4专用）
      b) mode="fixed":    GET /rumination-step-opening → render_fixed_opening_zh()
         - 模板来源:       STEP_OPENING_FIXED_ZH（固定文案字典）
@@ -74,7 +74,8 @@ from app.domain.rumination_prompt_strings import (
 OpeningMode = Literal["fixed", "llm"]
 
 STEP_OPENING_MODE: Dict[int, OpeningMode] = {i: "llm" for i in range(1, 8)}
-STEP_OPENING_MODE[3] = "fixed"
+STEP_OPENING_MODE[1] = "llm"
+STEP_OPENING_MODE[3] = "llm"
 
 
 @dataclass

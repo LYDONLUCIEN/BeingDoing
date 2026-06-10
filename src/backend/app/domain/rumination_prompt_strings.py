@@ -206,6 +206,30 @@ RUMINATION_ENTRY_INIT_USER_TEMPLATE_ZH = (
 )
 
 # [chat_addon] — 主对话追加 system 片段（非引导语，按步骤注入）
+
+# 子步主题名（行点击发问模板用）
+RUMINATION_STEP_TOPIC_ZH: Dict[int, str] = {
+    1: "热爱×优势展示",
+    2: "匹配性判断",
+    3: "假设生成",
+    4: "工作目的",
+    5: "激情标记",
+    6: "现实标记",
+    7: "方向收束",
+}
+
+# 用户点选表格行发问时的 user 消息模板
+RUMINATION_ROW_CHAT_USER_TEMPLATE_ZH = (
+    "[表格行点击·子步 {current_step_topic}]\n"
+    "第 {row_id} 行数据：\n{row_json}\n"
+    "用户提问：{user_query}"
+)
+
+# 子步 3 行点击消息附带的 cursor 说明
+RUMINATION_ROW_CHAT_STEP3_CURSOR_NOTE_ZH = (
+    "（提示：当前对话聚焦于子步 3 逐行假设生成，"
+    "请围绕该行热爱与优势展开讨论，引导用户构想具体假设。）"
+)
 RUMINATION_CHAT_STEP_ADDON_ZH: Dict[int, str] = {
     1: (
         "【最高优先级 · 当前步范围锁定 — 第 1 步】\n"
@@ -250,7 +274,7 @@ RUMINATION_CHAT_STEP_ADDON_ZH: Dict[int, str] = {
         "4）若没有下一行预览，告知用户所有行已完成。\n\n"
         "收到普通文字消息（无 [表格操作] 标记）时：\n"
         "继续当前行的讨论引导。一次只提一个问题，引导而非灌输。\n\n"
-        "【HYP_CANDIDATE 规则】\n"
+        "【HYP_CANDIDATE 规则·机器协议·必须严格遵守】\n"
         "- 当 [内部·子步3当前行] 对应的行是**刚解锁的新行**（用户尚未针对该行发表过观点）时，\n"
         "  不得立即输出 [HYP_CANDIDATE]。应先基于该行的热爱、优势数据向用户提问，\n"
         "  引导用户表达对该方向的想法和补充信息。不得与已有数据矛盾。\n"
@@ -259,7 +283,10 @@ RUMINATION_CHAT_STEP_ADDON_ZH: Dict[int, str] = {
         "  第一条偏「个人事业向」（自由职业/独立创作者/个人品牌等），\n"
         "  第二条偏「职业路径向」（进入公司/组织/团队协作等）。两条缺一不可。\n"
         "- 输出 HYP_CANDIDATE 前，在正文中自然引导用户：\n"
-        '  "你可以点击下方的建议快速填入左侧表格「假设」列，也可以自己输入修改后确认。"\n\n'
+        '  "你可以点击下方的建议快速填入左侧表格「假设」列，也可以自己输入修改后确认。"\n'
+        "- ⚠️ 严格执行：当你说了上述引导语后，必须在同一轮回复末尾紧接着输出 [HYP_CANDIDATE]...[/HYP_CANDIDATE] 标记。\n"
+        "  引导语和标记是配对出现的，说了引导语就必须输出标记，不可只说引导语而省略标记。\n"
+        "  标记格式必须精确为 [HYP_CANDIDATE]假设内容[/HYP_CANDIDATE]，不得添加空格、换行或其他变形。\n\n"
         "【机器协议·严格保密】\n"
         "当用户确认当前行操作后，请在回复正文**末尾**另起一行输出（界面会自动隐藏）：\n"
         "[ROW_STATE_JSON]\n"
@@ -489,3 +516,20 @@ DEEP_CHAT_STEP_SYSTEM_MAP: Dict[int, str] = {
     5: STEP_5_DEEP_CHAT_SYSTEM_ZH,
     6: STEP_6_DEEP_CHAT_SYSTEM_ZH,
 }
+
+# 子步 3 兜底追问模板：AI 说了引导语但未输出 HYP_CANDIDATE 标记时的 system 追问
+HYP_CANDIDATE_RETRY_SYSTEM_TEMPLATE_ZH = (
+    "【系统兜底·假设补充输出】\n"
+    "你刚才在回复中引导用户点击假设建议，但遗漏了输出 HYP_CANDIDATE 标记。\n"
+    "请立即为当前行补充输出假设候选。\n\n"
+    "当前行信息：\n"
+    "热爱：{passion}\n"
+    "优势：{strength}\n\n"
+    "输出要求（严格遵守）：\n"
+    "- 只输出两个 HYP_CANDIDATE 标记块，不要输出任何其他文字\n"
+    "- 格式精确为 [HYP_CANDIDATE]假设内容[/HYP_CANDIDATE]\n"
+    "- 第一条偏「个人事业向」（自由职业/独立创作者/小型创业者）\n"
+    "- 第二条偏「职业路径向」（进入公司/组织/团队协作）\n"
+    "- 假设需具体、有画面感，包含角色、对象、动作、目的\n"
+    "- 不要输出引导语、不要解释、不要道歉，只输出标记"
+)

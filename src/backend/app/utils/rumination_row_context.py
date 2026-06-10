@@ -1,11 +1,63 @@
 """
 子步 3 逐行对话：从 dimension_conclusions 解析「热爱/优势」标签对应的 keyword_notes。
+
+沉淀点选表格行发问：build_rumination_row_chat_user_message 包装 user 消息正文。
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+import json
+from typing import Any, Dict, List, Optional
 
+from app.domain.rumination_prompt_strings import (
+    RUMINATION_ROW_CHAT_STEP3_CURSOR_NOTE_ZH,
+    RUMINATION_ROW_CHAT_USER_TEMPLATE_ZH,
+    RUMINATION_STEP_TOPIC_ZH,
+)
 from app.utils.survey_storage import load_dimension_conclusions
+
+_ROW_PROMPT_META_KEYS = frozenset(
+    {"__pick", "_rumination_selected", "假设1", "假设2", "假设3", "假设填写方式"}
+)
+
+
+def clean_row_for_row_chat_prompt(row: Dict[str, Any]) -> Dict[str, Any]:
+    """去掉表格内部/meta 字段，供行点击包装 prompt 使用。"""
+    return {k: v for k, v in row.items() if k not in _ROW_PROMPT_META_KEYS}
+
+
+def build_rumination_row_chat_user_message(
+    *,
+    filter_step: int,
+    row_index: int,
+    user_query: str,
+    filter_table: List[Any],
+) -> Optional[str]:
+    """点选表格行发问时，将用户原文包装为结构化 user 消息（存盘与送 LLM 一致）。"""
+    query = (user_query or "").strip()
+    if not query:
+        return None
+    step = max(1, min(7, int(filter_step)))
+    idx = int(row_index)
+    if not isinstance(filter_table, list) or idx < 0 or idx >= len(filter_table):
+        return None
+    raw = filter_table[idx]
+    if not isinstance(raw, dict):
+        return None
+    topic = RUMINATION_STEP_TOPIC_ZH.get(step, "")
+    row_clean = clean_row_for_row_chat_prompt(raw)
+    try:
+        row_json = json.dumps(row_clean, ensure_ascii=False)
+    except (TypeError, ValueError):
+        row_json = str(row_clean)
+    text = RUMINATION_ROW_CHAT_USER_TEMPLATE_ZH.format(
+        current_step_topic=topic,
+        row_id=idx + 1,
+        row_json=row_json,
+        user_query=query,
+    )
+    if step == 3:
+        text = f"{text}\n\n{RUMINATION_ROW_CHAT_STEP3_CURSOR_NOTE_ZH}"
+    return text
 
 
 def _note_for_label(block: Dict[str, Any], label: str) -> str:
@@ -47,6 +99,18 @@ def format_step3_row_context_block(
         f"热爱：{passion or '（未填）'} / 优势：{strength or '（未填）'}\n"
         f"热爱（解释/用户理解）：{pe}\n"
         f"优势（解释/用户理解）：{se}\n"
+    )
+
+
+def format_step3_next_row_preview(row: Dict[str, Any], next_index_1based: int, total: int) -> str:
+    """下一行简要预览，供 AI 在确认当前行后直接过渡提问。"""
+    p = str(row.get("热爱") or "").strip() or "（未填）"
+    s = str(row.get("优势") or "").strip() or "（未填）"
+    return (
+        "[内部·子步3下一行预览]\n"
+        f"第 {next_index_1based} 行（共 {total} 行）\n"
+        f"热爱：{p} / 优势：{s}\n"
+        "（仅用于过渡提问参考，不要在用户确认前提前提及此行内容。）"
     )
 
 

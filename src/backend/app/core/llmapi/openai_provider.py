@@ -108,8 +108,11 @@ class OpenAIProvider(BaseLLMProvider):
             raise LLMError(f"OpenAI API调用失败: {str(e)}")
     
     def _is_reasoning_model(self) -> bool:
-        """是否推理模型（如 deepseek-reasoner），会输出 reasoning_content"""
-        return "reasoner" in (self.model or "").lower()
+        """是否启用思维链：需要模型支持 + 全局开关开启"""
+        if not settings.LLM_THINKING_ENABLED:
+            return False
+        m = (self.model or "").lower()
+        return "reasoner" in m or "v4-pro" in m
 
     async def chat_stream(
         self,
@@ -132,7 +135,7 @@ class OpenAIProvider(BaseLLMProvider):
                 for msg in messages
             ]
 
-            # deepseek-reasoner 不支持 temperature 等参数（会静默忽略）
+            # deepseek-reasoner / v4-pro 思维链模式下 temperature 等参数会被静默忽略
             create_kwargs = dict(
                 model=self.model,
                 messages=openai_messages,

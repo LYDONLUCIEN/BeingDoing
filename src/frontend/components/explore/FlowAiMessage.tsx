@@ -62,6 +62,10 @@ interface FlowAiMessageProps {
   onSavepoint?: () => void;
   /** 为 true 时不显示底部复制/点赞条（如静态引导文案） */
   hideToolbar?: boolean;
+  /** 子步 3：假设候选列表 */
+  hypCandidates?: string[];
+  /** 子步 3：点击假设候选回调 */
+  onHypCandidateClick?: (text: string) => void;
 }
 
 /**
@@ -91,6 +95,8 @@ export default function FlowAiMessage({
   toolbarSavepointTitle,
   onSavepoint,
   hideToolbar = false,
+  hypCandidates,
+  onHypCandidateClick,
 }: FlowAiMessageProps) {
   const { t } = useLocale();
   const [liked, setLiked] = useState(false);
@@ -206,7 +212,7 @@ export default function FlowAiMessage({
               ) : null}
             </div>
           ) : (
-            <MessageContent content={content} markdown colorMode="light" />
+            <MessageContent content={content} markdown colorMode="light" hypCandidates={hypCandidates} onHypCandidateClick={onHypCandidateClick} />
           )}
         </div>
       )}

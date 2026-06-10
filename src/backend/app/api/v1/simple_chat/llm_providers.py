@@ -35,25 +35,33 @@ def _resolve_provider_and_key_for_vip(vip_level: int) -> tuple[str, Optional[str
 
 
 def to_non_reasoning_model(model: str) -> str:
-    """将推理模型名转换为对话模型名。示例：deepseek-reasoner -> deepseek-chat"""
+    """将推理模型名转换为对话模型名。示例：deepseek-reasoner -> deepseek-chat
+    v4 系列模型通过 API 参数控制思维链，无需换模型名，直接返回。
+    """
     m = (model or "").strip()
     if not m:
-        return "deepseek-chat"
+        return "deepseek-v4-pro"
+    if "v4" in m.lower():
+        return m  # v4 系列通过 extra_body 控制思维链，不换模型名
     if "reasoner" in m.lower():
         return re.sub(r"reasoner", "chat", m, flags=re.IGNORECASE)
     return m
 
 
 def to_reasoning_model(model: str) -> str:
-    """将对话模型名转换为推理模型名。示例：deepseek-chat -> deepseek-reasoner"""
+    """将对话模型名转换为推理模型名。示例：deepseek-chat -> deepseek-reasoner
+    v4 系列模型通过 API 参数控制思维链，无需换模型名，直接返回。
+    """
     m = (model or "").strip()
     if not m:
-        return "deepseek-reasoner"
+        return "deepseek-v4-pro"
+    if "v4" in m.lower():
+        return m  # v4 系列通过 extra_body 控制思维链，不换模型名
     if "reasoner" in m.lower():
         return m
     if "chat" in m.lower():
         return re.sub(r"chat", "reasoner", m, flags=re.IGNORECASE)
-    return "deepseek-reasoner"
+    return "deepseek-v4-pro"
 
 
 def get_dialogue_llm_provider(vip_level: int = 1):
@@ -63,7 +71,7 @@ def get_dialogue_llm_provider(vip_level: int = 1):
     if "reasoner" not in model:
         return llm
     provider, api_key, base_url = _resolve_provider_and_key_for_vip(vip_level)
-    dialog_model = to_non_reasoning_model(getattr(llm, "model", "") or "deepseek-chat")
+    dialog_model = to_non_reasoning_model(getattr(llm, "model", "") or "deepseek-v4-pro")
     try:
         return create_llm_provider(
             provider=provider,
@@ -82,7 +90,7 @@ def get_reasoning_llm_provider(vip_level: int = 1):
     if "reasoner" in model:
         return llm
     provider, api_key, base_url = _resolve_provider_and_key_for_vip(vip_level)
-    reasoning_model = to_reasoning_model(getattr(llm, "model", "") or "deepseek-reasoner")
+    reasoning_model = to_reasoning_model(getattr(llm, "model", "") or "deepseek-v4-pro")
     try:
         return create_llm_provider(
             provider=provider,

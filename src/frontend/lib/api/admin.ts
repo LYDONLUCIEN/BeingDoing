@@ -898,3 +898,199 @@ export async function bindPromptLabProfile(payload: {
   return (res.data ?? {}) as { activation_code: string; profile_id: string };
 }
 
+export interface PromptContentSegment {
+  type: 'text' | 'variable';
+  content?: string;
+  name?: string;
+  raw?: string;
+}
+
+export interface PromptCatalogLayer {
+  id: string;
+  kind: 'static' | 'runtime';
+  category?: string;
+  label: string;
+  phase_match?: string;
+  active?: boolean;
+  content?: string;
+  segments?: PromptContentSegment[];
+  nested_conditions?: Array<{
+    condition: string;
+    content: string;
+    segments?: PromptContentSegment[];
+  }>;
+  inject_after?: string;
+  trigger?: string;
+  source_path?: string;
+  collapsed_default?: boolean;
+}
+
+export interface PromptCatalogSection {
+  key: string;
+  label: string;
+  category: string;
+  source_path?: string;
+  content?: string;
+  segments?: PromptContentSegment[];
+  layer_stack?: PromptCatalogLayer[];
+  opening_mode?: string;
+  items?: Array<{
+    role: string;
+    label?: string;
+    content?: string;
+    segments?: PromptContentSegment[];
+    source_path?: string;
+  }>;
+}
+
+export interface PromptCatalogRuminationStep {
+  step: number;
+  label: string;
+  opening_mode: string;
+  sections: PromptCatalogSection[];
+}
+
+export interface PromptCatalogPhase {
+  key: string;
+  label: string;
+  color: string;
+  sections: PromptCatalogSection[];
+  rumination_steps?: PromptCatalogRuminationStep[];
+}
+
+export interface PromptCatalogSimpleChatDiff {
+  canonical_source: string;
+  canonical_template: string;
+  override_template?: string | null;
+  override_meta?: {
+    profile_id?: string;
+    profile_name?: string;
+    version_id?: string;
+  } | null;
+  effective_preview: string;
+  effective_phase: string;
+  active_branch_content?: string;
+  has_override: boolean;
+}
+
+export interface PromptCatalogData {
+  locale: string;
+  phases: PromptCatalogPhase[];
+  variable_samples: Record<string, string>;
+  runtime_injection_catalog: Array<Record<string, unknown>>;
+  simple_chat_system_diff: PromptCatalogSimpleChatDiff;
+  test_links: { savepoint_resume: string; fork_from_scratch: string };
+}
+
+export async function fetchPromptCatalog(params?: {
+  locale?: 'zh' | 'en';
+  profileId?: string;
+  previewPhase?: string;
+}): Promise<PromptCatalogData> {
+  const res = await apiClient.get('/admin/prompt-catalog', {
+    params: {
+      locale: params?.locale ?? 'zh',
+      profile_id: params?.profileId,
+      preview_phase: params?.previewPhase ?? 'values',
+    },
+  });
+  return (res.data ?? {}) as PromptCatalogData;
+}
+
+// ─── Admin Users ──────────────────────────────────────────────
+
+export interface AdminUserItem {
+  user_id: string;
+  email?: string | null;
+  username?: string | null;
+  is_active: boolean;
+  email_verified?: boolean;
+  created_at?: string | null;
+  last_login_at?: string | null;
+  profile_completed: boolean;
+  activation_count: number;
+}
+
+export interface AdminUserActivation {
+  activation_code: string;
+  session_id?: string;
+  status: string;
+  created_at?: string;
+  expires_at?: string;
+  claimed_at?: string;
+  is_sandbox?: boolean;
+}
+
+export interface AdminUserDetail {
+  user_id: string;
+  email?: string | null;
+  phone?: string | null;
+  username?: string | null;
+  is_active: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+  last_login_at?: string | null;
+  profile: {
+    gender?: string | null;
+    age?: number | null;
+    profile_completed: boolean;
+  };
+  activations: AdminUserActivation[];
+  work_histories: Array<{
+    id: string;
+    company?: string | null;
+    position?: string | null;
+    start_date?: string | null;
+    end_date?: string | null;
+    evaluation?: string | null;
+    skills_used?: string | null;
+    projects: Array<{
+      id: string;
+      name: string;
+      description?: string | null;
+      role?: string | null;
+      achievements?: string | null;
+    }>;
+  }>;
+}
+
+export async function fetchAdminUsers(params?: {
+  page?: number;
+  page_size?: number;
+  q?: string;
+  is_active?: boolean | null;
+  profile_completed?: boolean | null;
+  created_after?: string;
+  created_before?: string;
+}): Promise<{ items: AdminUserItem[]; total: number; page: number; page_size: number }> {
+  const res = await apiClient.get('/admin/users', { params });
+  return (res.data ?? { items: [], total: 0, page: 1, page_size: 50 }) as {
+    items: AdminUserItem[];
+    total: number;
+    page: number;
+    page_size: number;
+  };
+}
+
+export async function fetchAdminUserDetail(userId: string): Promise<AdminUserDetail> {
+  const res = await apiClient.get(`/admin/users/${encodeURIComponent(userId)}`);
+  return (res.data ?? {}) as AdminUserDetail;
+}
+
+export async function patchAdminUserStatus(
+  userId: string,
+  isActive: boolean,
+): Promise<{ user_id: string; is_active: boolean }> {
+  const res = await apiClient.patch(`/admin/users/${encodeURIComponent(userId)}/status`, {
+    is_active: isActive,
+  });
+  return (res.data ?? {}) as { user_id: string; is_active: boolean };
+}
+
+export async function adminVerifyUserEmail(
+  userId: string,
+): Promise<{ user_id: string; email_verified: boolean }> {
+  const res = await apiClient.post(`/admin/users/${encodeURIComponent(userId)}/verify-email`);
+  return (res.data?.data ?? {}) as { user_id: string; email_verified: boolean };
+}
+

@@ -105,15 +105,15 @@ class UserDB:
         """更新用户信息"""
         profile = await self.get_user_profile(user_id)
         if not profile:
-            return await self.create_user_profile(user_id, gender, age)
-        
+            profile = await self.create_user_profile(user_id, gender, age)
+
         if gender is not None:
             profile.gender = gender
         if age is not None:
             profile.age = age
         if profile_completed is not None:
             profile.profile_completed = profile_completed
-        
+
         await self.session.commit()
         await self.session.refresh(profile)
         return profile
@@ -181,3 +181,60 @@ class UserDB:
             .where(ProjectExperience.work_history_id == work_history_id)
         )
         return list(result.scalars().all())
+
+    async def list_users(
+        self,
+        page: int = 1,
+        page_size: int = 50,
+        search: Optional[str] = None,
+        is_active: Optional[bool] = None,
+        profile_completed: Optional[bool] = None,
+        created_after: Optional[str] = None,
+        created_before: Optional[str] = None,
+    ) -> tuple[List[User], int]:
+        """
+        分页查询用户列表（含 profile 子查询）。
+        返回 (users, total_count)
+        """
+        from datetime import datetime as dt
+        base = select(User).options(selectinload(User.profile))
+        count_q = select(func.count()).select_from(User)
+
+        if search:
+            pattern = f"%{search}%"
+            cond = User.email.ilike(pattern) | User.username.ilike(pattern)
+            base = base.where(cond)
+            count_q = count_q.where(cond)
+        if is_active is not None:
+            base = base.where(User.is_active == is_active)
+            count_q = count_q.where(User.is_active == is_active)
+        if profile_completed is not None:
+            base = base.join(UserProfile, UserProfile.user_id == User.id).where(
+                UserProfile.profile_completed == profile_completed
+            )
+            count_q = count_q.join(UserProfile, UserProfile.user_id == User.id).where(
+                UserProfile.profile_completed == profile_completed
+            )
+        if created_after:
+            try:
+                dt_after = dt.fromisoformat(created_after)
+                base = base.where(User.created_at >= dt_after)
+                count_q = count_q.where(User.created_at >= dt_after)
+            except ValueError:
+                pass
+        if created_before:
+            try:
+                dt_before = dt.fromisoformat(created_before)
+                base = base.where(User.created_at <= dt_before)
+                count_q = count_q.where(User.created_at <= dt_before)
+            except ValueError:
+                pass
+
+        total = (await self.session.execute(count_q)).scalar() or 0
+
+        base = base.order_by(User.created_at.desc())
+        offset = (page - 1) * page_size
+        base = base.offset(offset).limit(page_size)
+        result = await self.session.execute(base)
+        users = list(result.scalars().all())
+        return users, total

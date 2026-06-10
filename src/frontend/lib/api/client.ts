@@ -115,8 +115,8 @@ class ApiClient {
           if (!isAuthRequest && typeof window !== 'undefined') {
             this.clearTokens();
             useAuthStore.getState().logout();
-            // 会话失效后重新登录：统一跳到开始探索页
-            emitAuthRequired('/explore/intro');
+            // 会话失效后重新登录：回到当前页面
+            emitAuthRequired(window.location.pathname || '/');
           }
         }
         return Promise.reject(error);

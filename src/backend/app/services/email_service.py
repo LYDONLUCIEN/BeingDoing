@@ -26,6 +26,19 @@ class EmailService:
         await EmailService.send_email(to_email=to_email, subject=subject, body_text=body)
 
     @staticmethod
+    async def send_email_verification(to_email: str, token: str) -> None:
+        base_url = settings.FRONTEND_URL.rstrip("/")
+        link = f"{base_url}/verify-email?token={token}"
+        subject = "【寻路】邮箱验证"
+        body = (
+            f"您好，\n\n"
+            f"感谢您注册寻路！请点击以下链接验证您的邮箱：\n\n"
+            f"{link}\n\n"
+            f"链接 24 小时内有效。如果这不是您的操作，请忽略本邮件。\n"
+        )
+        await EmailService.send_email(to_email=to_email, subject=subject, body_text=body)
+
+    @staticmethod
     async def send_email(to_email: str, subject: str, body_text: str) -> None:
         missing = [
             k for k, v in {

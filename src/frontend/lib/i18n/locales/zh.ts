@@ -288,7 +288,7 @@ export const zh = {
         negExploringHint:
           '你已进入深入讨论：我会逐条陪你聊。结束时请点击右上角「结束讨论」回到左侧表格继续修改。',
         negGateDeepEndCloseTip:
-          '这段讨论先收在这里。你可以先回到左侧表格修改答案，改完再点确认继续。',
+          '这段讨论我们先收束在这里。现在你可以回到左侧表格修改答案，完成后再点确认继续。',
         negGateRemoteStepHint:
           '筛选第 {step} 步有待处理的跟进或深入讨论，请先回到该步完成后再继续其它子步。',
         negGateJumpToStep: '回到第 {step} 步',
@@ -355,6 +355,19 @@ export const zh = {
     registerFailed: '注册失败，请重试',
     gotoRegister: '立即注册',
     gotoLogin: '立即登录',
+    emailVerify: '邮箱验证',
+    emailVerified: '已验证',
+    emailNotVerified: '未验证',
+    sendVerifyEmail: '发送验证邮件',
+    verifyEmailSent: '验证邮件已发送',
+    verifyEmailCooldown: '请等待后再试',
+    linkExpired: '验证链接已过期',
+    resendVerifyEmail: '重新发送验证邮件',
+    verifySuccess: '邮箱验证成功',
+    verifyFailed: '验证失败',
+    verifyEmailDesc: '验证邮箱后即可使用激活码开始探索',
+    needVerifyFirst: '请先验证邮箱再使用激活码',
+    goToVerify: '前往验证',
   },
   dashboard: {
     currentProgress: '当前进度',

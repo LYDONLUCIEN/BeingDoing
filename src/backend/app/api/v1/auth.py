@@ -58,6 +58,10 @@ class LogoutRequest(BaseModel):
     refresh_token: Optional[str] = None
 
 
+class EmailVerifyRequest(BaseModel):
+    email: EmailStr
+
+
 class AuthResponse(BaseModel):
     """认证响应"""
     code: int = 200
@@ -310,6 +314,29 @@ async def confirm_password_reset_sms(request: PasswordResetSMSConfirmRequest):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
+
+
+# ===================== 邮箱验证 =====================
+
+
+@router.post("/email-verify/request", response_model=AuthResponse)
+async def request_email_verification(request: EmailVerifyRequest, current_user: dict = Depends(get_current_user)):
+    """发送邮箱验证链接"""
+    try:
+        await AuthService.request_email_verification(request.email)
+        return AuthResponse(code=200, message="验证邮件已发送", data={})
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.get("/email-verify", response_model=AuthResponse)
+async def verify_email(token: str):
+    """验证邮箱验证 token"""
+    try:
+        result = await AuthService.verify_email_token(token)
+        return AuthResponse(code=200, message="邮箱验证成功", data=result)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @router.get("/me", response_model=AuthResponse)

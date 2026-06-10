@@ -44,37 +44,60 @@ def looks_like_markdown_table(text: str) -> bool:
     return has_row and has_sep
 
 
-def split_visible_reply_and_neg_item_done(raw_text: str) -> tuple[str, bool]:
-    """从模型输出拆分可见文本与 [NEG_ITEM_DONE] 标记（neg_gate 逐条推进）。"""
-    if not raw_text:
-        return "", False
-    start_marker = "[NEG_ITEM_DONE]"
-    end_marker = "[/NEG_ITEM_DONE]"
-    start = raw_text.rfind(start_marker)
-    end = raw_text.rfind(end_marker)
-    if start < 0 or end < 0 or end <= start:
-        return raw_text.strip(), False
-    visible = raw_text[:start].rstrip()
-    return visible, True
-
-
 def split_visible_reply_and_row_state(raw_text: str) -> tuple[str, Optional[Dict]]:
-    """从模型输出拆分可见文本与 [ROW_STATE_JSON] … 块（子步 3 逐行解锁）。"""
+    """从模型输出拆分可见文本与 [ROW_STATE_JSON] … 块（子步 3 逐行解锁）。
+
+    用 regex 先剥离所有已闭合的 ROW_STATE_JSON 块，取最后一个有内容的块解析。
+    """
     if not raw_text:
         return "", None
     start_marker = "[ROW_STATE_JSON]"
     end_marker = "[/ROW_STATE_JSON]"
-    start = raw_text.rfind(start_marker)
-    end = raw_text.rfind(end_marker)
-    if start < 0 or end < 0 or end <= start:
-        return raw_text.strip(), None
-    json_part = raw_text[start + len(start_marker) : end].strip()
-    visible = raw_text[:start].rstrip()
+    import re
+    # 收集所有已闭合的 ROW_STATE_JSON 块内容（取最后一个有内容的）
+    last_json_str: Optional[str] = None
+    for m in re.finditer(
+        re.escape(start_marker) + r"(.*?)" + re.escape(end_marker),
+        raw_text,
+        flags=re.DOTALL,
+    ):
+        candidate = m.group(1).strip()
+        if candidate:
+            last_json_str = candidate
+    # 从文本中移除所有已闭合块
+    visible = re.sub(
+        re.escape(start_marker) + r".*?" + re.escape(end_marker),
+        "",
+        raw_text,
+        flags=re.DOTALL,
+    ).strip()
+    if not last_json_str:
+        return visible, None
     try:
-        obj = json.loads(json_part)
+        obj = json.loads(last_json_str)
         return visible, obj if isinstance(obj, dict) else None
     except (json.JSONDecodeError, TypeError):
-        return (visible if visible else raw_text.strip()), None
+        return visible, None
+
+
+def extract_hyp_candidates(raw_text: str) -> tuple[str, list[str]]:
+    """从模型输出提取 [HYP_CANDIDATE]...[/HYP_CANDIDATE] 块，返回 (清理后文本, 候选假设列表)。"""
+    if not raw_text:
+        return "", []
+    start_marker = "[HYP_CANDIDATE]"
+    end_marker = "[/HYP_CANDIDATE]"
+    candidates: list[str] = []
+    txt = raw_text
+    while True:
+        s = txt.find(start_marker)
+        e = txt.find(end_marker)
+        if s < 0 or e < 0 or e <= s:
+            break
+        candidate = txt[s + len(start_marker) : e].strip()
+        if candidate:
+            candidates.append(candidate)
+        txt = txt[:s] + txt[e + len(end_marker) :]
+    return txt.strip(), candidates
 
 
 def split_visible_reply_and_state(raw_text: str) -> tuple[str, Optional[Dict]]:

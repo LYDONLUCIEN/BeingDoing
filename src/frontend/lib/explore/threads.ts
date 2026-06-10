@@ -47,6 +47,10 @@ export interface ThreadMessage {
   ruminationRowLabel?: string;
   /** 沉淀：消息所属的筛选子步（1-7），用于按子步隔离对话展示 */
   filterStep?: number | null;
+  /** 子步 3：AI 生成的假设候选列表，渲染为可点击 chip */
+  hypCandidates?: string[];
+  /** 子步 3：表格操作类型（区分操作消息和文字消息） */
+  tableAction?: 'select_none' | 'fill_hypothesis';
 }
 
 /** 使命阶段结构化「经历 → 价值观」行（与后端 payload 一致） */

@@ -137,15 +137,23 @@ async function fetchBackendHistory(
 /** 将后端消息格式转换为前端 ThreadMessage */
 function mapBackendMessage(msg: BackendMessage, index: number): ThreadMessage {
   const id = msg.id ?? `m_${index}`;
+  const role = msg.role === 'user' ? 'user' : 'assistant';
+  const displayContent =
+    role === 'user' &&
+    typeof (msg as any).rumination_user_query === 'string' &&
+    (msg as any).rumination_user_query.trim()
+      ? (msg as any).rumination_user_query
+      : (msg.content ?? '');
   return {
     id,
-    role: msg.role === 'user' ? 'user' : 'assistant',
-    content: msg.content ?? '',
+    role,
+    content: displayContent,
     thinkContent: msg.think_content,
     type: (msg.type as ThreadMessage['type']) ?? 'text',
     conclusionData: msg.conclusion_data as any,
     tablePayload: msg.table_payload as any,
-    ruminationRowLabel: msg.rumination_row_label,
+    ruminationRowLabel:
+      (msg as any).rumination_row_label ?? msg.rumination_row_label,
     createdAt: msg.created_at
       ? new Date(msg.created_at).getTime()
       : Date.now() - (100 - index) * 1000,

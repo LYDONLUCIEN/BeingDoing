@@ -40,6 +40,15 @@ export const surveyApi = {
   > => {
     return apiClient.get('/simple-chat/user-survey-status');
   },
+
+  /** 保存调研（用户维度，不依赖激活码，登录后即可调用） */
+  saveForUser: async (
+    surveyData: SurveyData
+  ): Promise<ApiResponse<void>> => {
+    return apiClient.post('/simple-chat/user-survey', {
+      survey_data: surveyData,
+    });
+  },
   /** 保存调研（激活码模式） */
   saveForActivation: async (
     activationCode: string,

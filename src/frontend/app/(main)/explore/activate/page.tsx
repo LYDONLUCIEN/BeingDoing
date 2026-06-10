@@ -21,6 +21,7 @@ import { surveyApi } from '@/lib/api/survey';
 import { useAuthStore } from '@/stores/authStore';
 import { fetchAdminSystemSettings } from '@/lib/api/admin';
 import { useLocale } from '@/hooks/useLocale';
+import { authApi } from '@/lib/api/auth';
 
 function useActivateBg() {
   useEffect(() => {
@@ -38,7 +39,25 @@ function ActivatePageContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showReport, setShowReport] = useState(false);
-  const { user } = useAuthStore();
+  const { user, setUser, isAuthenticated } = useAuthStore();
+
+  // 从后端同步 email_verified 到本地 store
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    authApi.getCurrentUser().then((me) => {
+      const d = me?.data;
+      if (d) {
+        setUser({
+          user_id: d.user_id ?? user?.user_id,
+          email: d.email ?? user?.email,
+          phone: d.phone ?? user?.phone,
+          username: d.username ?? user?.username,
+          is_super_admin: d.is_super_admin ?? user?.is_super_admin,
+          email_verified: d.email_verified,
+        });
+      }
+    }).catch(() => {});
+  }, [isAuthenticated]);
 
   useEffect(() => {
     const fromUrl = searchParams.get('code')?.trim();
@@ -218,7 +237,24 @@ function ActivatePageContent() {
           <p className="text-bd-muted text-sm leading-relaxed">{t('explore.activate.desc')}</p>
         </div>
 
-        {/* Input */}
+        {/* Email verification gate */}
+        {user && !user.email_verified && (
+          <div className="rounded-xl border border-amber-300/40 bg-amber-50/80 p-6 text-center space-y-4">
+            <p className="text-sm font-medium" style={{ color: 'var(--bd-fg)' }}>
+              {t('auth.needVerifyFirst')}
+            </p>
+            <button
+              type="button"
+              onClick={() => router.push('/dashboard/settings')}
+              className="bd-btn-black px-5 py-2.5 rounded-xl text-sm font-medium text-white transition-all"
+            >
+              {t('auth.goToVerify')}
+            </button>
+          </div>
+        )}
+
+        {/* Input — only shown when email is verified */}
+        {!user || user.email_verified !== false && (
         <div className="space-y-3">
           <input
             type="text"
@@ -251,6 +287,7 @@ function ActivatePageContent() {
             </button>
           )}
         </div>
+        )}
 
       </motion.div>
     </div>

@@ -33,6 +33,7 @@ REFRESH_TOKEN_SECRET_KEY = settings.REFRESH_TOKEN_SECRET_KEY or SECRET_KEY
 # key: email/phone, value: {"code": str, "expires_at": datetime, "sent_at": datetime}
 _password_reset_email_codes: Dict[str, Dict[str, any]] = {}
 _password_reset_phone_codes: Dict[str, Dict[str, any]] = {}
+_email_verify_cooldowns: Dict[str, datetime] = {}
 _refresh_schema_ready: bool = False
 
 
@@ -502,7 +503,59 @@ class AuthService:
             await user_db.update_user(user.id, password_hash=password_hash)
         
         _password_reset_phone_codes.pop(phone, None)
-    
+
+    # ===================== 邮箱验证相关 =====================
+
+    @staticmethod
+    async def request_email_verification(email: str) -> None:
+        """发送邮箱验证链接（JWT token，24 小时有效，5 分钟冷却）"""
+        email = _normalize_email(email)
+        if not email:
+            raise ValueError("邮箱不能为空")
+
+        async with AsyncSessionLocal() as db:
+            user_db = UserDB(db)
+            user = await user_db.get_user_by_email(email)
+            if not user:
+                raise ValueError("用户不存在或未绑定该邮箱")
+            if user.email_verified:
+                raise ValueError("邮箱已验证，无需重复操作")
+
+        # 5 分钟冷却
+        last_sent = _email_verify_cooldowns.get(email)
+        if last_sent and (datetime.utcnow() - last_sent).total_seconds() < 300:
+            remaining = 300 - (datetime.utcnow() - last_sent).total_seconds()
+            raise ValueError(f"发送过于频繁，请 {int(remaining // 60)} 分钟后再试")
+
+        token = AuthService.create_access_token(
+            data={"sub": user.id, "email": email, "type": "email_verify"},
+            expires_delta=timedelta(hours=24),
+        )
+        await EmailService.send_email_verification(to_email=email, token=token)
+        _email_verify_cooldowns[email] = datetime.utcnow()
+
+    @staticmethod
+    async def verify_email_token(token: str) -> Dict:
+        """验证邮箱验证 token，将 email_verified 设为 True"""
+        payload = AuthService.verify_token(token, expected_type="email_verify")
+        if not payload:
+            raise ValueError("验证链接无效或已过期")
+
+        user_id = str(payload.get("sub") or "").strip()
+        if not user_id:
+            raise ValueError("验证链接无效")
+
+        async with AsyncSessionLocal() as db:
+            user_db = UserDB(db)
+            user = await user_db.get_user_by_id(user_id)
+            if not user:
+                raise ValueError("用户不存在")
+            if user.email_verified:
+                return {"user_id": user.id, "email": user.email, "already_verified": True}
+            await user_db.update_user(user_id, email_verified=True)
+
+        return {"user_id": user_id, "email": payload.get("email"), "already_verified": False}
+
     @staticmethod
     async def register(
         email: Optional[str] = None,
@@ -558,6 +611,9 @@ class AuthService:
                 username=username,
                 password_hash=password_hash
             )
+            # 新注册用户邮箱未验证
+            if email:
+                await user_db.update_user(user.id, email_verified=False)
             
             token_pair = await AuthService._issue_token_pair(user)
             return {
@@ -658,5 +714,6 @@ class AuthService:
                 "user_id": user.id,
                 "email": user.email,
                 "phone": user.phone,
-                "username": user.username
+                "username": user.username,
+                "email_verified": getattr(user, "email_verified", True),
             }

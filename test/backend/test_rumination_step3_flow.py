@@ -1,4 +1,4 @@
-"""子步 3 表格触发：选「无」跳过、填假设确认提示、auto_unlock 开关。"""
+"""子步 3 表格操作辅助函数测试。"""
 
 from pathlib import Path
 
@@ -7,11 +7,7 @@ from app.domain.rumination_prompt_strings import (
     STEP_3_OPENING_SYSTEM_ZH,
     STEP_OPENING_FIXED_ZH,
 )
-from app.utils.rumination_step3_flow import (
-    apply_step3_table_trigger,
-    build_step3_confirm_prompt,
-    build_step3_skip_message,
-)
+from app.utils.rumination_step3_flow import row_hyp, row_fields_line
 
 
 def _sample_rows():
@@ -21,65 +17,24 @@ def _sample_rows():
     ]
 
 
-class TestStep3SkipMessage:
-    def test_skip_points_to_next_row(self):
-        rows = _sample_rows()
-        msg = build_step3_skip_message(2, rows[1])
-        assert "第 2 行" in msg
-        assert "教育" in msg
-        assert "写作" in msg
+class TestRowHelpers:
+    def test_row_hyp_empty(self):
+        assert row_hyp({"用户确认的假设": ""}) == ""
+        assert row_hyp({}) == ""
 
-    def test_skip_last_row_message(self):
-        msg = build_step3_skip_message(None, None)
-        assert "全部行已处理完毕" in msg
+    def test_row_hyp_with_value(self):
+        assert row_hyp({"用户确认的假设": "成为教师"}) == "成为教师"
 
+    def test_row_fields_line(self):
+        row = {"热爱": "音乐", "优势": "编程"}
+        result = row_fields_line(row)
+        assert "热爱：音乐" in result
+        assert "优势：编程" in result
 
-class TestApplyStep3TableTrigger:
-    def test_none_advances_cursor(self):
-        rows = _sample_rows()
-        rows[0]["用户确认的假设"] = "无"
-        prog = {"filter_row_cursor": 0, "filter_table": rows}
-        effect, new_cursor = apply_step3_table_trigger(
-            existing_prog=prog,
-            merged_table=rows,
-            trigger="none",
-        )
-        assert effect is not None
-        assert effect["type"] == "skip_row"
-        assert new_cursor == 1
-        assert "跳过" in effect["message"]
-
-    def test_none_does_not_skip_multiple_rows(self):
-        rows = _sample_rows()
-        rows[0]["用户确认的假设"] = "无"
-        prog = {"filter_row_cursor": 0}
-        _, new_cursor = apply_step3_table_trigger(
-            existing_prog=prog,
-            merged_table=rows,
-            trigger="none",
-        )
-        assert new_cursor == 1
-
-    def test_hypothesis_commit_does_not_advance_cursor(self):
-        rows = _sample_rows()
-        rows[0]["用户确认的假设"] = "成为户外故事领队"
-        prog = {"filter_row_cursor": 0}
-        effect, new_cursor = apply_step3_table_trigger(
-            existing_prog=prog,
-            merged_table=rows,
-            trigger="hypothesis_commit",
-        )
-        assert effect is not None
-        assert effect["type"] == "confirm_prompt"
-        assert new_cursor is None
-        assert "确认" in effect["message"]
-
-    def test_confirm_prompt_references_row_fields(self):
-        rows = _sample_rows()
-        rows[0]["用户确认的假设"] = "成为户外故事领队"
-        msg = build_step3_confirm_prompt(1, rows[0])
-        assert "第 1 行" in msg
-        assert "热爱：教育" in msg
+    def test_row_fields_line_missing(self):
+        row = {}
+        result = row_fields_line(row)
+        assert "（未填）" in result
 
 
 class TestStep3PromptCopyNoLegacyUi:

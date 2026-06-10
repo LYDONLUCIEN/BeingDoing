@@ -9,8 +9,12 @@ import { useAuthStore } from '@/stores/authStore';
 export async function simulateFixedRuminationOpening(
   fullText: string,
   signal: AbortSignal,
-  onContent: (accumulated: string) => void
+  onContent: (accumulated: string) => void,
+  /** 首字前等待毫秒，让"思考中"气泡先展示 */
+  initialDelayMs = 600,
 ): Promise<void> {
+  if (signal.aborted) return;
+  await new Promise((r) => window.setTimeout(r, initialDelayMs));
   const step = 2;
   const delayMs = 22;
   let acc = '';

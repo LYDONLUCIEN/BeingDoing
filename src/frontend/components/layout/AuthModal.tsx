@@ -42,7 +42,7 @@ interface AuthModalProps {
   redirectTo?: string;
 }
 
-export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intro' }: AuthModalProps) {
+export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthModalProps) {
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(false);
@@ -106,6 +106,7 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intr
             phone: userData?.phone ?? resData.phone,
             username: userData?.username ?? resData.username,
             is_super_admin: userData?.is_super_admin,
+            email_verified: userData?.email_verified ?? resData.email_verified,
           });
         } catch {
           setUser({
@@ -114,6 +115,7 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intr
             phone: resData.phone,
             username: resData.username,
             is_super_admin: false,
+            email_verified: resData.email_verified,
           });
         }
         setToken(resData.token);
@@ -156,6 +158,7 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intr
             phone: userData?.phone ?? resData.phone,
             username: userData?.username ?? resData.username,
             is_super_admin: userData?.is_super_admin,
+            email_verified: userData?.email_verified ?? resData.email_verified,
           });
         } catch {
           setUser({
@@ -164,6 +167,7 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/explore/intr
             phone: resData.phone,
             username: resData.username,
             is_super_admin: false,
+            email_verified: resData.email_verified,
           });
         }
         setSuccessMsg('注册成功！');

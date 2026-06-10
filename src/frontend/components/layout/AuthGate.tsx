@@ -23,7 +23,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       </div>
       {needsAuth && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-xl">
-          <AuthModal isOpen={true} onClose={handleModalClose} redirectTo="/explore/intro" />
+          <AuthModal isOpen={true} onClose={handleModalClose} redirectTo={pathname} />
         </div>
       )}
     </>

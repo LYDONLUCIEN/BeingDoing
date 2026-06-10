@@ -255,22 +255,4 @@ export const ruminationApi = {
         filter_step: filterStep,
       },
     }),
-
-  /** 子步 3：单行重新生成假设1、假设2 */
-  regenerateHypotheses: (
-    activationCode: string,
-    filterStep: number,
-    rowId: string
-  ): Promise<
-    ApiResponse<{
-      table_widget: RuminationTablePayload;
-      progress: RuminationProgress;
-      max_reached_filter_step?: number;
-    }>
-  > =>
-    apiClient.post('/simple-chat/rumination-regenerate-hypotheses', {
-      activation_code: activationCode,
-      filter_step: filterStep,
-      row_id: rowId,
-    }),
 };

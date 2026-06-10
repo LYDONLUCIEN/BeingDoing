@@ -50,9 +50,22 @@ def _get_user_basic_info_path(user_id: str) -> Path:
     return user_dir / "basic_info.json"
 
 
+def _basic_info_has_content(data: Dict[str, Any]) -> bool:
+    """判断 basic_info 是否包含有效内容（不止空壳）"""
+    if not data or not isinstance(data, dict):
+        return False
+    meaningful_keys = {"gender", "age", "nickname", "career_status", "industry", "position"}
+    for k in meaningful_keys:
+        v = data.get(k)
+        if v is not None and v != "":
+            return True
+    return False
+
+
 def save_basic_info_by_user(user_id: str, data: Dict[str, Any]) -> None:
     """
     按用户保存调研问卷（主入口，仅保留最新 1 份）。
+    同时同步更新数据库 user_profiles 表，确保 admin 面板能正确展示。
 
     Args:
         user_id: 用户 ID
@@ -60,6 +73,33 @@ def save_basic_info_by_user(user_id: str, data: Dict[str, Any]) -> None:
     """
     path = _get_user_basic_info_path(user_id)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # 同步更新数据库 user_profiles 表
+    try:
+        import asyncio
+        from app.models.database import AsyncSessionLocal
+        from app.core.database.user_db import UserDB
+
+        gender = data.get("gender") if data else None
+        profile_completed = _basic_info_has_content(data) if data else False
+
+        async def _sync():
+            async with AsyncSessionLocal() as db:
+                user_db = UserDB(db)
+                await user_db.update_user_profile(
+                    user_id=user_id,
+                    gender=gender,
+                    profile_completed=profile_completed,
+                )
+
+        # 尝试获取已有事件循环
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_sync())
+        except RuntimeError:
+            asyncio.run(_sync())
+    except Exception:
+        pass  # 数据库写入失败不影响 JSON 文件保存
 
 
 def load_basic_info_by_user(user_id: str) -> Optional[Dict[str, Any]]:

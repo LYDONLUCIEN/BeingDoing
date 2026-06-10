@@ -48,6 +48,7 @@ import {
   readActivationSessionIdFromActivationApi,
   unlockNextPhase,
   getLastActivationCode,
+  setLastActivationCode,
   applyExploreResumeToSession,
   getUserSurveyCompleted,
   type PhaseKey,
@@ -274,6 +275,10 @@ export default function ChatPhasePage() {
   const [ruminationTablePayload, setRuminationTablePayload] = useState<
     ThreadMessage['tablePayload'] | null
   >(null);
+  /** 首次进入 rumination 时等待用户回复开场白后再加载 step1 表格 */
+  const [ruminationAwaitingReady, setRuminationAwaitingReady] = useState(false);
+  /** 标记首次从 awaitingReady 过渡时需要播放 step1 opening */
+  const pendingStep1OpeningRef = useRef(false);
   /** 表格提交等操作后递增，驱动标题区六段进度条重新拉取 */
   const [ruminationProgressNonce, setRuminationProgressNonce] = useState(0);
   /** 与后端 filter_step（1–7）对齐：当前查看的筛选子步、已提交到的最远步、完整 progress（含快照） */
@@ -411,12 +416,19 @@ export default function ChatPhasePage() {
         }
 
         const role = (m.role === 'table_widget' ? 'assistant' : m.role) as 'user' | 'assistant';
+        const displayContent =
+          role === 'user' && typeof m.rumination_user_query === 'string' && m.rumination_user_query.trim()
+            ? m.rumination_user_query
+            : (m.content ?? '');
         const base: ThreadMessage = {
           id,
           role,
-          content: m.content ?? '',
+          content: displayContent,
           createdAt,
         };
+        if (role === 'user' && typeof m.rumination_row_label === 'string' && m.rumination_row_label.trim()) {
+          base.ruminationRowLabel = m.rumination_row_label.trim();
+        }
         if (m.role === 'table_widget' && m.card_payload) {
           base.type = 'table_widget';
           base.tablePayload = m.card_payload as ThreadMessage['tablePayload'];
@@ -739,12 +751,42 @@ export default function ChatPhasePage() {
             createdAt: now,
           };
           if (!cancelled) {
-            addThread(activationCode, phase, thread);
-            setThreads(getThreads(activationCode, phase));
-            setActiveThreadId(activationCode, phase, tid);
-            setActiveThreadIdState(tid);
-            setBackendSyncedThreadId(tid);
-            setMessages(msgs);
+            // 首次进入 rumination：entry greeting 模拟流式打字效果
+            if (phase === 'rumination' && msgs.length > 0 && msgs[msgs.length - 1].role === 'assistant') {
+              const greetingMsg = msgs[msgs.length - 1];
+              const greetingText = greetingMsg.content;
+              // 先展示空消息，再模拟打字
+              const streamMsgs = [...msgs.slice(0, -1), { ...greetingMsg, content: '' }];
+              addThread(activationCode, phase, { ...thread, messages: msgs });
+              setThreads(getThreads(activationCode, phase));
+              setActiveThreadId(activationCode, phase, tid);
+              setActiveThreadIdState(tid);
+              setBackendSyncedThreadId(tid);
+              setMessages(streamMsgs);
+              setRuminationAwaitingReady(true);
+              // 模拟流式打字
+              const greetingId = greetingMsg.id;
+              const ac = new AbortController();
+              ruminationGuideAbortRef.current = ac;
+              setRuminationGuideBusy(true);
+              void simulateFixedRuminationOpening(greetingText, ac.signal, (acc) => {
+                setMessages((prev) =>
+                  prev.map((m) => (m.id === greetingId ? { ...m, content: acc } : m))
+                );
+              }).then(() => {
+                setRuminationGuideBusy(false);
+                // 同步更新 thread 里的完整内容
+                const fullMsgs = [...msgs.slice(0, -1), { ...greetingMsg, content: greetingText }];
+                saveThread(activationCode, phase, { ...thread, messages: fullMsgs });
+              });
+            } else {
+              addThread(activationCode, phase, thread);
+              setThreads(getThreads(activationCode, phase));
+              setActiveThreadId(activationCode, phase, tid);
+              setActiveThreadIdState(tid);
+              setBackendSyncedThreadId(tid);
+              setMessages(msgs);
+            }
             const sid = readActivationSessionIdFromActivationApi(initRes.data?.activation);
             if (sid) {
               setBackendSessionId(sid);
@@ -791,6 +833,10 @@ export default function ChatPhasePage() {
                 setThreads(getThreads(activationCode, phase));
                 setMessages(msgs);
                 setBackendSyncedThreadId(activeId);
+                // 首次进入 rumination：等待用户回复开场白后再加载表格
+                if (phase === 'rumination' && msgs.length > 0) {
+                  setRuminationAwaitingReady(true);
+                }
               }
             } catch (err: any) {
               if (!cancelled) {
@@ -1250,7 +1296,8 @@ export default function ChatPhasePage() {
       phase !== 'rumination' ||
       !activationCode ||
       initLoading ||
-      !threadsFetched
+      !threadsFetched ||
+      ruminationAwaitingReady
     ) {
       return;
     }
@@ -1365,6 +1412,14 @@ export default function ChatPhasePage() {
         if (r === 'empty') {
           setChatError(t('explore.chat.ruminationTableMissing'));
         }
+        // 首次从 awaitingReady 过渡时，播放 step1 opening
+        if (r === 'ok' && pendingStep1OpeningRef.current && stepToLoad === 1 && activeThreadIdRef.current) {
+          pendingStep1OpeningRef.current = false;
+          const tid1 = activeThreadIdRef.current;
+          queueMicrotask(() => {
+            void playRuminationStepOpeningAfterSubmit(1, tid1);
+          });
+        }
       } catch {
         if (!cancelled) {
           setChatError(t('explore.chat.ruminationTableLoadError'));
@@ -1380,6 +1435,7 @@ export default function ChatPhasePage() {
     initLoading,
     threadsFetched,
     ruminationProgressNonce,
+    ruminationAwaitingReady,
     adminDebugBypass,
     t,
   ]);
@@ -1403,6 +1459,23 @@ export default function ChatPhasePage() {
       return next;
     });
     if (phase === 'rumination' && ruminationTableNavLoading) return;
+    // 用户回复开场白"准备好了"时：不调 AI 流式接口，直接加载表格 + step1 opening
+    if (ruminationAwaitingReady) {
+      const now2 = Date.now();
+      const userMsgOnly: ThreadMessage = {
+        id: `u_${now2}`,
+        role: 'user',
+        content: text,
+        createdAt: now2,
+        filterStep: 1,
+      };
+      setMessages((prev) => [...prev, userMsgOnly]);
+      if (!prefill) setInput('');
+      setRuminationAwaitingReady(false);
+      pendingStep1OpeningRef.current = true;
+      // 表格 effect 会因 awaitingReady 变化自动重新执行，加载表格后播放 step1 opening
+      return;
+    }
     if (phase === 'rumination' && ruminationGuideBusy) {
       // 用户主动输入时，优先进入自由问答：终止子步引导流
       ruminationGuideAbortRef.current?.abort();
@@ -1419,10 +1492,7 @@ export default function ChatPhasePage() {
             : null
           : ruminationRowContext
         : null;
-    const messageForApi =
-      phase === 'rumination' && rowSnap
-        ? `${t('explore.chat.ruminationUi.messageRowContextPrefix', { label: rowSnap.label })}\n\n${text}`
-        : text;
+    const messageForApi = text;
     const ruminationFilterForApi =
       phase === 'rumination'
         ? Math.max(
@@ -1502,6 +1572,15 @@ export default function ChatPhasePage() {
             locale: apiLocale,
             ...(ruminationFilterForApi !== undefined
               ? { rumination_filter_step: ruminationFilterForApi }
+              : {}),
+            ...(phase === 'rumination' &&
+            rowSnap &&
+            'rowIndex' in rowSnap &&
+            typeof rowSnap.rowIndex === 'number'
+              ? {
+                  rumination_row_index: rowSnap.rowIndex,
+                  rumination_row_label: rowSnap.label,
+                }
               : {}),
             ...(uiSnap ? { client_conclusion_ui: uiSnap } : {}),
           }),
@@ -1662,6 +1741,20 @@ export default function ChatPhasePage() {
                 prev ? { ...prev, rumination_neg_state: neg ?? null } : prev
               );
             }
+            if (payload.hyp_candidates && Array.isArray(payload.hyp_candidates)) {
+              const cands = payload.hyp_candidates as string[];
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? { ...m, hypCandidates: cands }
+                    : m
+                )
+              );
+            }
+            // neg gate 推进后的 progress 更新
+            if (payload.rumination_progress && phase === 'rumination') {
+              setRuminationProgressState(payload.rumination_progress as RuminationProgress);
+            }
             if (payload.done && payload.response != null) {
               fullReply = payload.response;
               if (String(payload.response || '').trim()) assistantHasVisibleOutput = true;
@@ -1713,6 +1806,11 @@ export default function ChatPhasePage() {
         return normalized;
       });
       abortControllerRef.current = null;
+      // AI 回复完成后，如果用户刚回复了开场白，现在加载表格 + step1 opening
+      if (ruminationAwaitingReady) {
+        setRuminationAwaitingReady(false);
+        pendingStep1OpeningRef.current = true;
+      }
     }
   };
 
@@ -2447,6 +2545,17 @@ export default function ChatPhasePage() {
     );
   }, [ruminationProgressState?.rumination_neg_state?.status, ruminationNegHeaderStrip]);
   const isZeroResultsNeg = (ruminationProgressState?.rumination_neg_state?.kind ?? '').startsWith('zero_');
+  /** neg gate 深度讨论时：需要讨论的行 id 集合（用于表格行模糊化） */
+  const ruminationNegActiveItemIds = useMemo(() => {
+    const neg = ruminationProgressState?.rumination_neg_state;
+    if (!neg || neg.status !== 'exploring' || !Array.isArray(neg.items) || neg.items.length === 0) return null;
+    const ids = new Set<string>();
+    for (const item of neg.items) {
+      const id = String(item.id ?? '').trim();
+      if (id) ids.add(id);
+    }
+    return ids.size > 0 ? ids : null;
+  }, [ruminationProgressState?.rumination_neg_state]);
   const ruminationNegExploringPinned = useMemo(() => {
     return (
       ruminationProgressState?.rumination_neg_state?.status === 'exploring' && ruminationNegHeaderStrip
@@ -2738,24 +2847,199 @@ export default function ChatPhasePage() {
     }
   }, [activationCode]);
 
+  /** 子步 3 选「无」后 1s 冷却，防止连点跳过所有行 */
+  const [step3Cooldown, setStep3Cooldown] = useState(false);
+  /** 子步 3：外部填入假设（点击 AI 候选 chip 时） */
+  const [step3ExternalHypFill, setStep3ExternalHypFill] = useState<{ rowIndex: number; text: string } | null>(null);
+
+  /** 子步 3：发送表格操作消息到 /message/stream，让 AI 看到完整操作链路 */
+  const sendStep3TableAction = useCallback(
+    async (action: 'select_none' | 'fill_hypothesis', rowIdx: number, hypText?: string) => {
+      if (!activationCode || sending) return;
+      const now = Date.now();
+      const actionLabel =
+        action === 'select_none'
+          ? `[表格操作] 第 ${rowIdx + 1} 行选择了「无」`
+          : `[表格操作] 第 ${rowIdx + 1} 行填入了假设：「${hypText || ''}」`;
+      // 不插入 user 消息气泡（操作记录仅在 AI 可见的 conversation history 中）
+      // 但插入 assistant 消息占位，接收 AI 回复
+      const assistantId = `a_${now}`;
+      const assistantMsg: ThreadMessage = {
+        id: assistantId,
+        role: 'assistant' as const,
+        content: '',
+        createdAt: now,
+        filterStep: 3,
+      };
+      setMessages((prev) => [...prev, assistantMsg]);
+      setSending(true);
+      stickToBottomRef.current = true;
+      let assistantHasVisibleOutput = false;
+      try {
+        const apiBase = (process.env.NEXT_PUBLIC_API_URL || '').trim();
+        const streamUrl = `${apiBase ? apiBase.replace(/\/+$/, '') : ''}/api/v1/simple-chat/message/stream`;
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        const effectiveThreadId =
+          activeThreadId && backendSyncedThreadId && activeThreadId === backendSyncedThreadId
+            ? activeThreadId
+            : undefined;
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+        const res = await fetch(streamUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            activation_code: activationCode,
+            message: actionLabel,
+            phase: BACKEND_PHASE[phase],
+            thread_id: effectiveThreadId,
+            locale: locale === 'en' ? 'en' : 'zh',
+            rumination_filter_step: 3,
+            step3_table_action: action,
+            step3_action_row: rowIdx,
+            step3_action_hyp_text: action === 'fill_hypothesis' ? hypText : undefined,
+          }),
+          signal: controller.signal,
+        });
+        if (res.status === 401) {
+          try {
+            const refreshed = await authApi.refresh();
+            const nextToken = refreshed?.data?.token || null;
+            if (nextToken) {
+              apiClient.setToken(nextToken);
+              setTokens(nextToken);
+            }
+          } catch {}
+        }
+        const reader = res.body?.getReader();
+        if (!reader) { setSending(false); return; }
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let fullReply = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const payload = JSON.parse(line.slice(6));
+              if (payload.error) {
+                setChatError(String(payload.error));
+                reader.cancel();
+                break;
+              }
+              if (payload.chunk) {
+                fullReply += payload.chunk;
+                if (String(payload.chunk || '').trim()) assistantHasVisibleOutput = true;
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId ? { ...m, content: (m.content || '') + payload.chunk } : m
+                  )
+                );
+              }
+              if (payload.llm_stream_end) {
+                setPostLlmTailActive(true);
+              }
+              if (payload.rumination_progress && phase === 'rumination') {
+                const rp = payload.rumination_progress as RuminationProgress;
+                setRuminationProgressState((prev) => (prev ? { ...prev, ...rp } : rp));
+                if (activationCode) {
+                  void ruminationApi.getTable(activationCode, 3).then((tb) => {
+                    if (tb.code !== 200) return;
+                    if (tb.data?.table_widget) {
+                      setRuminationTablePayload(tb.data.table_widget as ThreadMessage['tablePayload']);
+                    }
+                    if (tb.data?.progress) setRuminationProgressState(tb.data.progress);
+                    if (typeof tb.data?.max_reached_filter_step === 'number') {
+                      setRuminationMaxReached(tb.data.max_reached_filter_step);
+                    }
+                  });
+                }
+              }
+              if (payload.hyp_candidates && Array.isArray(payload.hyp_candidates)) {
+                const cands = payload.hyp_candidates as string[];
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId ? { ...m, hypCandidates: cands } : m
+                  )
+                );
+              }
+              if (payload.done && payload.response != null) {
+                fullReply = payload.response;
+                if (String(payload.response || '').trim()) assistantHasVisibleOutput = true;
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? { ...m, content: fullReply, thinkStreaming: false, thinkChunkContent: undefined, createdAt: m.createdAt ?? Date.now() }
+                      : m
+                  )
+                );
+                break;
+              }
+            } catch {}
+          }
+        }
+      } catch (err: any) {
+        if (err?.name !== 'AbortError') setChatError(err?.message || '发送失败，请重试');
+      } finally {
+        setSending(false);
+        setPostLlmTailActive(false);
+        setMessages((prev) => {
+          if (!assistantHasVisibleOutput) {
+            return prev.filter((m) => !(m.id === assistantId && !(m.content || '').trim()));
+          }
+          return prev;
+        });
+        abortControllerRef.current = null;
+      }
+    },
+    [activationCode, sending, phase, activeThreadId, backendSyncedThreadId, locale, authApi, apiClient, setTokens]
+  );
+
   const applyStep3SideEffect = useCallback(
     async (effect: RuminationStep3SideEffect) => {
       const msg = effect.message?.trim();
       if (msg) {
         const aid = `rum_s3_${effect.type}_${Date.now()}`;
+        // 先插入一条空的 assistant 消息占位
         setMessages((prev) => [
           ...prev,
           {
             id: aid,
-            role: 'assistant',
-            content: msg,
+            role: 'assistant' as const,
+            content: '',
             createdAt: Date.now(),
             filterStep: 3,
           },
         ]);
+        stickToBottomRef.current = true;
+        // 模拟流式：每 2~3 个字符一批，间隔 ~40ms，节奏接近 AI 流式
+        const chunkSize = 3;
+        const interval = 40;
+        for (let i = 0; i < msg.length; i += chunkSize) {
+          const partial = msg.slice(0, i + chunkSize);
+          await new Promise<void>((r) => setTimeout(r, interval));
+          setMessages((prev) =>
+            prev.map((m) => (m.id === aid ? { ...m, content: partial } : m))
+          );
+        }
+        // 确保最终内容完整
+        setMessages((prev) =>
+          prev.map((m) => (m.id === aid ? { ...m, content: msg } : m))
+        );
+      }
+      if (effect.type === 'skip_row' || effect.type === 'confirm_prompt') {
+        await loadRuminationTableStep(3);
       }
       if (effect.type === 'skip_row') {
-        await loadRuminationTableStep(3);
+        setStep3Cooldown(true);
+        setTimeout(() => setStep3Cooldown(false), 1000);
       }
     },
     [loadRuminationTableStep]
@@ -2800,9 +3084,15 @@ export default function ChatPhasePage() {
           ? ruminationProgressStateRef.current.filter_row_cursor
           : ruminationTablePayloadRef.current?.rowCursor) ?? 0;
       if (rowIdx !== cur) return;
-      void flushRuminationStep3WithTrigger('none', rowsSnapshot);
+      // 保存表格数据到后端（不触发 side effect）
+      ruminationLiveRowsRef.current = rowsSnapshot;
+      void flushRuminationStep3TableToServer();
+      // 发送操作消息给 AI
+      void sendStep3TableAction('select_none', rowIdx);
+      setStep3Cooldown(true);
+      setTimeout(() => setStep3Cooldown(false), 1000);
     },
-    [flushRuminationStep3WithTrigger]
+    [flushRuminationStep3TableToServer, sendStep3TableAction]
   );
 
   const handleStep3HypothesisCommit = useCallback(
@@ -2813,9 +3103,32 @@ export default function ChatPhasePage() {
           ? ruminationProgressStateRef.current.filter_row_cursor
           : ruminationTablePayloadRef.current?.rowCursor) ?? 0;
       if (rowIdx !== cur) return;
-      void flushRuminationStep3WithTrigger('hypothesis_commit', rowsSnapshot);
+      // 只在假设超过 8 个字时发操作消息
+      if (text.trim().length > 8) {
+        ruminationLiveRowsRef.current = rowsSnapshot;
+        void flushRuminationStep3TableToServer();
+        void sendStep3TableAction('fill_hypothesis', rowIdx, text);
+      } else {
+        // 短假设只保存，不触发 AI
+        ruminationLiveRowsRef.current = rowsSnapshot;
+        void flushRuminationStep3TableToServer();
+      }
     },
-    [flushRuminationStep3WithTrigger]
+    [flushRuminationStep3TableToServer, sendStep3TableAction]
+  );
+
+  /** 子步 3：点击 AI 生成的假设候选 chip → 填入当前选中行（或 cursor 行） */
+  const handleHypCandidateClick = useCallback(
+    (text: string) => {
+      const cur =
+        (typeof ruminationProgressStateRef.current?.filter_row_cursor === 'number'
+          ? ruminationProgressStateRef.current.filter_row_cursor
+          : ruminationTablePayloadRef.current?.rowCursor) ?? 0;
+      setStep3ExternalHypFill({ rowIndex: cur, text });
+      // 清除以便下次点击可以再次触发
+      setTimeout(() => setStep3ExternalHypFill(null), 100);
+    },
+    []
   );
 
   const handleRuminationLiveRowsChange = useCallback(
@@ -2883,6 +3196,66 @@ export default function ChatPhasePage() {
     setInput('');
     setChatError(null);
     void (async () => {
+      const refillStep = ruminationViewStep;
+      const refillThreadId = activeThreadId;
+      // step1 refill：复用首次进入逻辑（展示 entry greeting → 等用户回复 → 加载表格 + opening）
+      if (refillStep === 1) {
+        clearRuminationStepOpeningShownFromStep(activationCode, activeThreadId, 1);
+        const cut = cutMessagesForRuminationStepRefill(
+          messagesRef.current,
+          ruminationViewStep,
+          ruminationStepBoundariesRef.current
+        );
+        setMessages(cut.messages);
+        setRuminationStepBoundaries(cut.boundaries);
+        saveRuminationStepBoundaries(activationCode, activeThreadId, cut.boundaries);
+        // 先调用后端 resetInitial 刷新 progress（清除 submitted 快照，退出 reviewMode）
+        await loadRuminationTableStep(1, { resetInitial: true });
+        // 清除旧表格，避免在 entry greeting 阶段显示
+        setRuminationTablePayload(null);
+        // 请求后端重新生成 entry greeting
+        const th = threads.find((t) => t.id === activeThreadId);
+        if (th) {
+          try {
+            const reopenRes = await apiClient.post('/simple-chat/thread/reopen', {
+              activation_code: activationCode,
+              phase: BACKEND_PHASE[phase],
+              thread_id: activeThreadId,
+            });
+            const entryGreeting = reopenRes?.data?.entry_greeting;
+            if (entryGreeting) {
+              const updated: ChatThread = { ...th, status: 'in-progress', messages: cut.messages };
+              saveThread(activationCode, phase, updated);
+              setThreads((prev) =>
+                prev.map((t) => (t.id === activeThreadId ? updated : t))
+              );
+              // 模拟流式打字展示 entry greeting，与首次进入一致
+              const phaseGreetingId = `rum_phase_greeting_${Date.now()}`;
+              const ac = new AbortController();
+              ruminationGuideAbortRef.current = ac;
+              setRuminationGuideBusy(true);
+              setMessages((prev) => [
+                ...prev,
+                { id: phaseGreetingId, role: 'assistant' as const, content: '', createdAt: Date.now(), filterStep: 1 },
+              ]);
+              void simulateFixedRuminationOpening(entryGreeting, ac.signal, (acc) => {
+                setMessages((prev) =>
+                  prev.map((m) => (m.id === phaseGreetingId ? { ...m, content: acc } : m))
+                );
+              }).then(() => {
+                setRuminationGuideBusy(false);
+              });
+            }
+          } catch {
+            /* 失败不阻断 */
+          }
+        }
+        // 设 awaitingReady：等用户回复后 handleSend 拦截会自动加载表格 + 播放 opening
+        setRuminationAwaitingReady(true);
+        setRuminationProgressNonce((n) => n + 1);
+        return;
+      }
+      // 非 step1 的 refill：保持原有逻辑
       const ok = await loadRuminationTableStep(ruminationViewStep, { resetInitial: true });
       if (!ok) return;
       clearRuminationStepOpeningShownFromStep(activationCode, activeThreadId, ruminationViewStep);
@@ -2894,41 +3267,6 @@ export default function ChatPhasePage() {
       setMessages(cut.messages);
       setRuminationStepBoundaries(cut.boundaries);
       saveRuminationStepBoundaries(activationCode, activeThreadId, cut.boundaries);
-      // 重新播放当前 step 的引导文案
-      const refillStep = ruminationViewStep;
-      const refillThreadId = activeThreadId;
-      const th = threads.find((t) => t.id === activeThreadId);
-      let entryGreeting: string | undefined;
-      if (th) {
-        try {
-          const reopenRes = await apiClient.post('/simple-chat/thread/reopen', {
-            activation_code: activationCode,
-            phase: BACKEND_PHASE[phase],
-            thread_id: activeThreadId,
-          });
-          entryGreeting = reopenRes?.data?.entry_greeting;
-        } catch {
-          /* 与「继续完善」一致：失败不阻断本地状态 */
-        }
-        const updated: ChatThread = {
-          ...th,
-          status: 'in-progress',
-          messages: cut.messages,
-        };
-        saveThread(activationCode, phase, updated);
-        setThreads((prev) =>
-          prev.map((t) => (t.id === activeThreadId ? updated : t))
-        );
-      }
-      // step1 refill 时，先展示 phase 级别引导语，再播放 step 引导语
-      if (refillStep === 1 && entryGreeting) {
-        const phaseGreetingId = `rum_phase_greeting_${Date.now()}`;
-        setMessages((prev) => [
-          ...prev,
-          { id: phaseGreetingId, role: 'assistant', content: entryGreeting, createdAt: Date.now(), filterStep: 1 },
-        ]);
-      }
-      // 重新播放当前 step 的引导文案
       if (refillThreadId) {
         void playRuminationStepOpeningAfterSubmit(refillStep, refillThreadId);
       }
@@ -3169,6 +3507,8 @@ export default function ChatPhasePage() {
                     onLiveRowsChange={handleRuminationLiveRowsChange}
                     onStep3NoneSelected={handleStep3NoneSelected}
                     onStep3HypothesisCommit={handleStep3HypothesisCommit}
+                    step3Cooldown={step3Cooldown}
+                    step3ExternalHypFill={step3ExternalHypFill}
                     submitting={ruminationTableSubmitting}
                     confirmSoftBlocked={ruminationNegTableSubmitBlocked}
                     confirmSoftBlockedPulseTick={ruminationNegConfirmPulseTick}
@@ -3184,6 +3524,7 @@ export default function ChatPhasePage() {
                       phaseInteractionLocked ||
                       ruminationNegTableSubmitBlocked
                     }
+                    activeItemIds={ruminationNegActiveItemIds}
                   />
                 ) : (
                   <div className="flex min-h-0 flex-1 flex-col items-center justify-center py-10 text-center">
@@ -3409,6 +3750,19 @@ export default function ChatPhasePage() {
                           <div
                             className={`flow-msg-user-anchor${m.ruminationRowLabel ? ' has-row-context' : ''}`}
                           >
+                            {m.tableAction ? (
+                              <div className="flow-msg-user-context-bar">
+                                <Square
+                                  size={14}
+                                  strokeWidth={2}
+                                  className="flow-msg-user-context-icon shrink-0"
+                                  aria-hidden
+                                />
+                                <span className="flow-msg-user-context-text">
+                                  {m.tableAction === 'select_none' ? '选择了「无」' : '填入了假设'}
+                                </span>
+                              </div>
+                            ) : null}
                             {m.ruminationRowLabel ? (
                               <div
                                 className="flow-msg-user-context-bar"
@@ -3510,6 +3864,8 @@ export default function ChatPhasePage() {
                           hideToolbar={
                             phaseInteractionLocked
                           }
+                          hypCandidates={m.hypCandidates || undefined}
+                          onHypCandidateClick={handleHypCandidateClick}
                         />
                       )}
                     </div>

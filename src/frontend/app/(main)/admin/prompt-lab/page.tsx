@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { PromptCatalogViewer } from '@/components/admin/PromptCatalogViewer';
 import {
   activatePromptLabVersion,
   addPromptLabProfileVersion,
@@ -15,7 +16,10 @@ import {
   type PromptLabProfileSummary,
 } from '@/lib/api/admin';
 
+type TabKey = 'lab' | 'catalog';
+
 export default function AdminPromptLabPage() {
+  const [activeTab, setActiveTab] = useState<TabKey>('catalog');
   const [profiles, setProfiles] = useState<PromptLabProfileSummary[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string>('');
   const [detail, setDetail] = useState<PromptLabProfileDetail | null>(null);
@@ -201,8 +205,30 @@ export default function AdminPromptLabPage() {
           <code className="mx-1">SBX/ADM</code>
           工作区、且管理员调试开关开启时生效。生产用户流程不受影响。
         </p>
+        <div className="mt-4 inline-flex rounded-xl border border-bd-border overflow-hidden text-sm">
+          <button
+            type="button"
+            onClick={() => setActiveTab('catalog')}
+            className={`px-4 py-2 ${activeTab === 'catalog' ? 'bg-bd-ui-accent text-bd-ui-accent-fg' : 'hover:bg-bd-overlay-sm text-bd-fg'}`}
+          >
+            Prompt Catalog
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('lab')}
+            className={`px-4 py-2 ${activeTab === 'lab' ? 'bg-bd-ui-accent text-bd-ui-accent-fg' : 'hover:bg-bd-overlay-sm text-bd-fg'}`}
+          >
+            Profile 编辑
+          </button>
+        </div>
       </header>
 
+      {activeTab === 'catalog' ? (
+        <PromptCatalogViewer profileId={selectedProfileId} bindings={bindings} />
+      ) : null}
+
+      {activeTab === 'lab' ? (
+        <>
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-xs">{error}</div>
       )}
@@ -408,6 +434,8 @@ export default function AdminPromptLabPage() {
           )}
         </div>
       </section>
+        </>
+      ) : null}
     </div>
   );
 }

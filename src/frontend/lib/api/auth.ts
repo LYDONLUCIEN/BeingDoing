@@ -20,6 +20,7 @@ export interface AuthResponse {
   username?: string;
   token: string;
   expires_in: number;
+  email_verified?: boolean;
 }
 
 export interface PasswordResetCodeRequest {
