@@ -324,6 +324,13 @@ RUMINATION_ENTRY_INIT_PRIOR_MAX_CHARS = 8000
 RUMINATION_CLOSING_SUMMARY_MAX_CHARS = 2000
 RUMINATION_CLOSING_USER_SUMMARY_IN_PROMPT_MAX = 4000
 
+# step2 全不匹配但用户仍推进到 step3 时的过渡引导语
+RUMINATION_STEP2_ALL_UNMATCHED_TRANSITION_ZH = (
+    "上一步你表示所有选项都不太匹配，没关系——\n"
+    "下面我们换一种方式，从你已有的「热爱 × 优势」组合出发来探索假设。\n"
+    "请认真填写每一行的「假设」列，或点击下方的建议快速填入。"
+)
+
 # ---------------------------------------------------------------------------
 # 深入聊天（neg gate exploring）步骤差异化 system prompt 片段
 #

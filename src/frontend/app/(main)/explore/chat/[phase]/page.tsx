@@ -1022,13 +1022,14 @@ export default function ChatPhasePage() {
     savepointDraftName,
   ]);
 
-  /** 流式请求中：仅在 LLM 段结束后的尾部阶段展示（与输入框上方 status 行文案一致、分结论卡/其它） */
+  /** 流式请求中：仅在 LLM 段结束后的尾部阶段展示（与输入框上方 status 行文案一致、分结论卡/假设生成/其它） */
   const streamTailInputPlaceholder = useMemo(() => {
     if (!sending) return null;
     if (waitingForConclusionCardUi) return t('explore.chat.streamStatusConclusion');
+    if (postLlmTailActive && ruminationViewStep === 3) return t('explore.chat.streamStatusHypothesis');
     if (postLlmTailActive) return t('explore.chat.streamStatusGeneric');
     return null;
-  }, [sending, waitingForConclusionCardUi, postLlmTailActive, t]);
+  }, [sending, waitingForConclusionCardUi, postLlmTailActive, ruminationViewStep, t]);
 
   useLayoutEffect(() => {
     const prev = prevPathnameForLockModalRef.current;
@@ -3956,7 +3957,9 @@ export default function ChatPhasePage() {
                       {waitingForConclusionCardUi ||
                       (sending && conclusionLoading)
                         ? t('explore.chat.streamStatusConclusion')
-                        : t('explore.chat.streamStatusGeneric')}
+                        : ruminationViewStep === 3
+                          ? t('explore.chat.streamStatusHypothesis')
+                          : t('explore.chat.streamStatusGeneric')}
                     </p>
                   )}
                   <div className="flex w-full min-w-0 items-end gap-2.5">

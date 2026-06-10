@@ -150,6 +150,7 @@ export const zh = {
       /** 流式：模型输出结束后，输入区提示（结论卡相关与通用分支分开维护文案） */
       streamStatusConclusion: '请稍后，正在为您生成结论卡片…',
       streamStatusGeneric: '模型回复已结束，正在处理中，请稍候…',
+      streamStatusHypothesis: '正在为您生成假设建议，请稍后…',
       conclusionChoiceRequiredBanner:
         '请先在上方结论卡片上点击「确认没有问题」或「我想再聊聊」，之后才能继续输入。',
       completeStep: '完成此步，进入下一步',
