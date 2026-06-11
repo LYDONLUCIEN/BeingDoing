@@ -358,8 +358,11 @@
   max-width: min(820px, 86%);
   vertical-align: top;
 }
+.flow-light .flow-msg-user-anchor.has-row-context {
+  margin-top: 28px;
+}
 .flow-light .flow-msg-user-anchor.has-row-context .flow-msg-user-content {
-  margin-top: 22px;
+  margin-top: 0;
   border-top-right-radius: 6px;
   min-width: min(100px, 100%);
 }

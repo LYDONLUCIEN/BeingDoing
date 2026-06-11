@@ -152,9 +152,9 @@ export const en = {
       placeholderRefine: 'Add more or go deeper…',
       placeholderPostLlmProcessing: 'Processing, please wait…',
       placeholderAwaitingConclusionCard: 'Generating your conclusion card, please wait…',
-      streamStatusConclusion: ‘Generating your conclusion card, please wait…’,
-      streamStatusGeneric: ‘The reply has finished; we\u2019re still processing—please wait…’,
-      streamStatusHypothesis: ‘Generating hypothesis suggestions for you, please wait…’,
+      streamStatusConclusion: 'Generating your conclusion card, please wait…',
+      streamStatusGeneric: 'The reply has finished; we\u2019re still processing—please wait…',
+      streamStatusHypothesis: 'Generating hypothesis suggestions for you, please wait…',
       conclusionChoiceRequiredBanner:
         'Please use the conclusion card above: tap “Confirm” or “Chat more” before you can type here.',
       completeStep: 'Complete This Step',
@@ -285,7 +285,7 @@ export const en = {
         negGateZeroTitle: 'No results from filtering',
         negGateZeroHint: 'The table has been restored. You can modify your selections and confirm again.',
         negGateNoTableEditHint:
-          'Note: prerequisites like Interests and Strengths were confirmed earlier—do not edit these premises during this discussion.',
+          'Tip: You can edit markers on rows under discussion directly in the table. Click "End discussion" when done.',
         negGateContinue: 'Continue to next step',
         negGateDeep: 'Discuss further',
         negGateDismiss: 'Let me check',

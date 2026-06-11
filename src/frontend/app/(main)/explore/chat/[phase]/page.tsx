@@ -160,13 +160,22 @@ function RuminationTableSubmitPortal({
   open,
   lineBefore,
   lineAfter,
+  step,
 }: {
   open: boolean;
   lineBefore: string;
   lineAfter: string;
+  step?: number;
 }) {
   const [mounted, setMounted] = useState(false);
   const [dots, setDots] = useState('');
+  const STEP3_MESSAGES = [
+    '正在分析你的假设…',
+    'AI 正在逐条检查假设是否足够具体…',
+    '马上就好，请稍候…',
+    '还在分析中，你的假设比较多…',
+  ];
+  const [step3MsgIndex, setStep3MsgIndex] = useState(0);
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -182,6 +191,19 @@ function RuminationTableSubmitPortal({
     }, 400);
     return () => window.clearInterval(id);
   }, [open]);
+  useEffect(() => {
+    if (!open || step !== 3) {
+      setStep3MsgIndex(0);
+      return;
+    }
+    let i = 0;
+    const id = window.setInterval(() => {
+      i = (i + 1) % STEP3_MESSAGES.length;
+      setStep3MsgIndex(i);
+    }, 6000);
+    return () => window.clearInterval(id);
+  }, [open, step]);
+  const isStep3 = step === 3;
   if (!mounted || !open) return null;
   return createPortal(
     <motion.div
@@ -204,11 +226,24 @@ function RuminationTableSubmitPortal({
           aria-hidden
         />
         <p className="text-balance text-center text-[0.95rem] font-semibold leading-relaxed text-neutral-800 sm:text-base">
-          <span>{lineBefore}</span>
-          <span className="inline-block min-w-[1.15em] text-left font-bold tabular-nums tracking-tight text-sky-700">
-            {dots}
-          </span>
-          <span>{lineAfter}</span>
+          {isStep3 ? (
+            <motion.span
+              key={step3MsgIndex}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              {STEP3_MESSAGES[step3MsgIndex]}
+            </motion.span>
+          ) : (
+            <>
+              <span>{lineBefore}</span>
+              <span className="inline-block min-w-[1.15em] text-left font-bold tabular-nums tracking-tight text-sky-700">
+                {dots}
+              </span>
+              <span>{lineAfter}</span>
+            </>
+          )}
         </p>
       </motion.div>
     </motion.div>,
@@ -3522,10 +3557,10 @@ export default function ChatPhasePage() {
                       ruminationTableSubmitting ||
                       ruminationGuideBusy ||
                       ruminationTableNavLoading ||
-                      phaseInteractionLocked ||
-                      ruminationNegTableSubmitBlocked
+                      phaseInteractionLocked
                     }
                     activeItemIds={ruminationNegActiveItemIds}
+                    negGateExploring={ruminationNegTableSubmitBlocked}
                   />
                 ) : (
                   <div className="flex min-h-0 flex-1 flex-col items-center justify-center py-10 text-center">
@@ -4353,6 +4388,7 @@ export default function ChatPhasePage() {
           open={ruminationTableSubmitting}
           lineBefore={t('explore.chat.ruminationUi.tableSubmittingOrganizing')}
           lineAfter={t('explore.chat.ruminationUi.tableSubmittingWait')}
+          step={ruminationViewStep}
         />
       )}
       <PhaseCelebrateBurst playSignal={phaseCelebrateSignal} />

@@ -281,7 +281,7 @@ export const zh = {
         negGateZeroTitle: '筛选结果为空',
         negGateZeroHint: '表格已恢复为初始状态，你可以修改选项后重新确认。',
         negGateNoTableEditHint:
-          '提示：这里的热爱、优势等前提项来自前面已确认内容，请不要在本轮讨论里改动这些前提。',
+          '提示：讨论中的行可以直接在表格里修改标记；讨论结束后请点击右上角「结束讨论」提交。',
         negGateContinue: '进入下一步',
         negGateDeep: '深入讨论',
         negGateDismiss: '我再看看',

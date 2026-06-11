@@ -120,6 +120,8 @@ interface RuminationTableWidgetProps {
   step3ExternalHypFill?: { rowIndex: number; text: string } | null;
   /** neg gate 深度讨论时：需要讨论的行 id 集合，非此集合的行模糊化显示 */
   activeItemIds?: Set<string> | null;
+  /** neg gate 深度讨论进行中：允许 activeItemIds 行编辑，其余行锁定 */
+  negGateExploring?: boolean;
 }
 
 export default function RuminationTableWidget({
@@ -164,6 +166,7 @@ export default function RuminationTableWidget({
   step3ExternalHypFill = null,
   embeddedSubmitOverlay = false,
   activeItemIds = null,
+  negGateExploring = false,
 }: RuminationTableWidgetProps) {
   const [rows, setRows] = useState<Record<string, unknown>[]>(
     () => JSON.parse(JSON.stringify(payload.rows)) || []
@@ -663,7 +666,8 @@ export default function RuminationTableWidget({
     row: Record<string, unknown>,
     rowIdx: number,
     strVal: string,
-    rowLocked: boolean
+    rowLocked: boolean,
+    overrideCellDisabled?: boolean,
   ) => {
     const pendingOk =
       hypothesisPendingLabel && !isPlaceholderToken(hypothesisPendingLabel);
@@ -677,7 +681,7 @@ export default function RuminationTableWidget({
     else if (isFillMarker || isFill) selectControlValue = STEP3_OPT_FILL;
 
     const fillText = isFill ? strVal : '';
-    const fieldDisabled = cellDisabled || rowLocked;
+    const fieldDisabled = (overrideCellDisabled ?? cellDisabled) || rowLocked;
 
     const onStep3SelectChange = (e: ChangeEvent<HTMLSelectElement>) => {
       const v = e.target.value;
@@ -909,6 +913,7 @@ export default function RuminationTableWidget({
     rowIdx: number,
     strVal: string,
     otherLabel: string,
+    overrideCellDisabled?: boolean,
   ) => {
     const opts = optionsWithoutPlaceholder(col.options ?? []).filter(
       (o) => !isPlaceholderToken(normalizeOptionText(o))
@@ -936,11 +941,13 @@ export default function RuminationTableWidget({
       if (isGlass) e.stopPropagation();
     };
 
+    const cd = overrideCellDisabled ?? cellDisabled;
+
     return (
       <div className="space-y-2" onMouseDown={stopRow} onClick={stopRow}>
         <select
           value={selectVal}
-          disabled={cellDisabled}
+          disabled={cd}
           onChange={(e) => {
             const v = e.target.value;
             if (v === OTHER_SELECT_VALUE) handleCellChange(rowIdx, col.key, OTHER_SELECT_VALUE);
@@ -962,7 +969,7 @@ export default function RuminationTableWidget({
         {selectVal === OTHER_SELECT_VALUE && (
           <textarea
             value={otherTextareaDisplay}
-            disabled={cellDisabled}
+            disabled={cd}
             onChange={(e) => handleCellChange(rowIdx, col.key, e.target.value)}
             placeholder={otherTextPlaceholder}
             rows={2}
@@ -1001,6 +1008,10 @@ export default function RuminationTableWidget({
           {rows.map((row, rowIdx) => {
             const rowId = String(row.id ?? '');
             const rowDimmed = activeItemIds && activeItemIds.size > 0 && !activeItemIds.has(rowId);
+            /** neg gate 探索中：非讨论行锁定单元格编辑；讨论行保持可编辑 */
+            const rowNegLocked = negGateExploring && rowDimmed;
+            /** per-row 单元格禁用：全局禁用 + neg gate 非讨论行锁定 */
+            const rowCellDisabled = !!(cellDisabled || rowNegLocked);
             return (
             <tr
               key={rowIdx}
@@ -1008,7 +1019,7 @@ export default function RuminationTableWidget({
               role={isGlass && !rowPickDisabled ? 'button' : undefined}
               tabIndex={isGlass && !rowPickDisabled ? 0 : undefined}
               onClick={(e) => {
-                if (!isGlass || rowPickDisabled) return;
+                if (!isGlass || rowPickDisabled || rowNegLocked) return;
                 if (
                   (e.target as HTMLElement).closest(
                     'input,select,textarea,button,a,label,option'
@@ -1020,7 +1031,7 @@ export default function RuminationTableWidget({
                 else handleGlassRowActivate(rowIdx);
               }}
               onKeyDown={(e) => {
-                if (!isGlass || rowPickDisabled) return;
+                if (!isGlass || rowPickDisabled || rowNegLocked) return;
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
                   if (rowSelectionMulti) handleRowPickToggle(rowIdx);
@@ -1106,16 +1117,16 @@ export default function RuminationTableWidget({
                       }}
                     >
                       {isEditable && col.key === HYP_CONFIRM_KEY && filterStep === 3 ? (
-                        renderHypothesisConfirmCell(row, rowIdx, strVal, step3RowLocked)
+                        renderHypothesisConfirmCell(row, rowIdx, strVal, step3RowLocked, rowCellDisabled)
                       ) : isEditable && (col.options?.includes(hypothesisOtherLabel) || col.options?.includes('其他')) ? (
-                        renderSelectWithOther(col, rowIdx, strVal, hypothesisOtherLabel)
+                        renderSelectWithOther(col, rowIdx, strVal, hypothesisOtherLabel, rowCellDisabled)
                       ) : isEditable && col.options?.length ? (
                         <select
                           value={strVal}
                           onChange={(e) => handleCellChange(rowIdx, col.key, e.target.value)}
                           onMouseDown={(e) => isGlass && e.stopPropagation()}
                           onClick={(e) => isGlass && e.stopPropagation()}
-                          disabled={cellDisabled || step3RowLocked}
+                          disabled={rowCellDisabled || step3RowLocked}
                           className={selectShellClass}
                           style={selectArrowStyle}
                         >
@@ -1135,7 +1146,7 @@ export default function RuminationTableWidget({
                             onChange={(e) => handleCellChange(rowIdx, col.key, e.target.value)}
                             onMouseDown={(e) => isGlass && e.stopPropagation()}
                             onClick={(e) => isGlass && e.stopPropagation()}
-                            disabled={cellDisabled || step3RowLocked}
+                            disabled={rowCellDisabled || step3RowLocked}
                             placeholder={inputPlaceholder}
                             rows={2}
                             className="w-full min-h-[2.75rem] min-w-[100px] resize-y px-2 py-1.5 text-sm leading-snug border border-neutral-200/90 rounded-lg bg-white/80 focus:ring-2 focus:ring-[rgba(145,194,255,0.55)] break-words whitespace-pre-wrap"
@@ -1147,7 +1158,7 @@ export default function RuminationTableWidget({
                             onChange={(e) => handleCellChange(rowIdx, col.key, e.target.value)}
                             onMouseDown={(e) => isGlass && e.stopPropagation()}
                             onClick={(e) => isGlass && e.stopPropagation()}
-                            disabled={cellDisabled || step3RowLocked}
+                            disabled={rowCellDisabled || step3RowLocked}
                             placeholder={inputPlaceholder}
                             className="w-full min-w-[100px] px-2 py-1 text-sm border border-neutral-200 rounded-md focus:ring-2 focus:ring-sky-300/50 focus:border-sky-400/70"
                           />

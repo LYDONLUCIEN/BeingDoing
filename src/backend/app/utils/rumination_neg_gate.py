@@ -203,8 +203,8 @@ async def llm_flag_step3_hypotheses(llm: Any, rows: List[Dict[str, Any]]) -> Tup
             LLMMessage(role="system", content=STEP3_LLM_SYSTEM),
             LLMMessage(role="user", content=user),
         ]
-        # 该质检仅用于闸门辅助，超时后会自动降级；避免拖慢第三轮提交主链路
-        resp = await asyncio.wait_for(llm.chat(msgs, temperature=0.2, max_tokens=800), timeout=8.0)
+        # 该质检用于闸门辅助，超时后自动降级；45s 留足 LLM 响应余量
+        resp = await asyncio.wait_for(llm.chat(msgs, temperature=0.2, max_tokens=800), timeout=45.0)
         raw = (resp.content or "").strip()
         start = raw.find("[")
         end = raw.rfind("]")
@@ -216,8 +216,14 @@ async def llm_flag_step3_hypotheses(llm: Any, rows: List[Dict[str, Any]]) -> Tup
         invalid_ids = {str(x.get("id")) for x in data if isinstance(x, dict) and x.get("invalid")}
         invalid_rows = [r for r in rows if str(r.get("id")) in invalid_ids]
         return invalid_rows, False
+    except asyncio.TimeoutError:
+        logger.warning("rumination step3 hypothesis LLM gate timed out (45s)")
+        return [], True
+    except json.JSONDecodeError as e:
+        logger.warning("rumination step3 hypothesis LLM gate JSON parse failed: %s", e)
+        return [], True
     except Exception as e:
-        logger.warning("rumination step3 hypothesis LLM gate failed: %s", e)
+        logger.warning("rumination step3 hypothesis LLM gate unexpected error: %s", e)
         return [], True
 
 
