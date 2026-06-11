@@ -4894,14 +4894,29 @@ async def simple_chat_stream(
                         Path(reports_root), str(rid_sp)
                     )
 
-                # 兜底：AI 说了引导语但未输出 HYP_CANDIDATE 标记 → 追问补充
+                # 兜底：AI 说了引导语但未输出 HYP_CANDIDATE 标记，或回溯讨论时遗漏 → 追问补充
                 _STEP3_GUIDE_PHRASE = "你可以点击下方的建议快速填入左侧表格"
+                _is_lookback = False
+                if rid_sp:
+                    _prog_lookback = load_rumination_progress(Path(reports_root), str(rid_sp))
+                    _ft_lookback = _prog_lookback.get("filter_table")
+                    _cur_lookback = int(_prog_lookback.get("filter_row_cursor") or 0)
+                    if isinstance(_ft_lookback, list) and len(_ft_lookback) > 0:
+                        _confirmed_count = sum(
+                            1 for r in _ft_lookback
+                            if isinstance(r, dict) and str(r.get("假设") or "").strip()
+                        )
+                        # 所有行已确认（cursor >= 总行数）或已有确认行且用户在讨论
+                        _is_lookback = _cur_lookback >= len(_ft_lookback) or (
+                            _confirmed_count > 0 and not row_st
+                        )
                 if (
                     not hyp_candidates
-                    and _STEP3_GUIDE_PHRASE in full_reply
                     and rid_sp
+                    and (_STEP3_GUIDE_PHRASE in full_reply or _is_lookback)
                 ):
-                    logger.info("[step3] fallback: guide phrase found but no HYP_CANDIDATE, triggering retry")
+                    trigger_reason = "guide phrase" if _STEP3_GUIDE_PHRASE in full_reply else "lookback"
+                    logger.info("[step3] fallback: %s found but no HYP_CANDIDATE, triggering retry", trigger_reason)
                     try:
                         retry_candidates = await _hyp_candidate_fallback_retry(
                             reports_root=Path(reports_root),
