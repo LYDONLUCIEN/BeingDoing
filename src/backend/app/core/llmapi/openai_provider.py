@@ -95,12 +95,29 @@ class OpenAIProvider(BaseLLMProvider):
             # 解析响应
             choice = response.choices[0]
             usage = response.usage.model_dump() if response.usage else None
-            
+            tool_calls: Optional[List[Dict]] = None
+            raw_tool_calls = getattr(choice.message, "tool_calls", None)
+            if raw_tool_calls:
+                tool_calls = []
+                for tc in raw_tool_calls:
+                    fn = getattr(tc, "function", None)
+                    tool_calls.append(
+                        {
+                            "id": getattr(tc, "id", None),
+                            "type": getattr(tc, "type", "function"),
+                            "function": {
+                                "name": getattr(fn, "name", "") if fn else "",
+                                "arguments": getattr(fn, "arguments", "") if fn else "",
+                            },
+                        }
+                    )
+
             return LLMResponse(
                 content=choice.message.content or "",
                 model=self.model,
                 usage=usage,
-                finish_reason=choice.finish_reason
+                finish_reason=choice.finish_reason,
+                tool_calls=tool_calls,
             )
         
         except Exception as e:

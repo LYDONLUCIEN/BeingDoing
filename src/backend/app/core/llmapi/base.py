@@ -18,6 +18,7 @@ class LLMResponse(BaseModel):
     model: str
     usage: Optional[Dict] = None  # token使用情况
     finish_reason: Optional[str] = None
+    tool_calls: Optional[List[Dict]] = None  # OpenAI 兼容 function calling
 
 
 class LLMError(Exception):

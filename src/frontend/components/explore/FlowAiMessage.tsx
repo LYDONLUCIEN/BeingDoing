@@ -64,8 +64,14 @@ interface FlowAiMessageProps {
   hideToolbar?: boolean;
   /** 子步 3：假设候选列表 */
   hypCandidates?: string[];
+  /** 子步 3：假设目标行（0-based） */
+  hypTargetRow?: number;
+  /** 子步 3：未能确定目标行 */
+  hypRowUnresolved?: boolean;
+  /** 子步 3：用户点选表格行后作为填入目标 */
+  selectedRowFallback?: number | null;
   /** 子步 3：点击假设候选回调 */
-  onHypCandidateClick?: (text: string) => void;
+  onHypCandidateClick?: (text: string, meta: { hypTargetRow?: number; hypRowUnresolved?: boolean }) => void;
 }
 
 /**
@@ -96,6 +102,9 @@ export default function FlowAiMessage({
   onSavepoint,
   hideToolbar = false,
   hypCandidates,
+  hypTargetRow,
+  hypRowUnresolved,
+  selectedRowFallback,
   onHypCandidateClick,
 }: FlowAiMessageProps) {
   const { t } = useLocale();
@@ -212,7 +221,16 @@ export default function FlowAiMessage({
               ) : null}
             </div>
           ) : (
-            <MessageContent content={content} markdown colorMode="light" hypCandidates={hypCandidates} onHypCandidateClick={onHypCandidateClick} />
+            <MessageContent
+              content={content}
+              markdown
+              colorMode="light"
+              hypCandidates={hypCandidates}
+              hypTargetRow={hypTargetRow}
+              hypRowUnresolved={hypRowUnresolved}
+              selectedRowFallback={selectedRowFallback}
+              onHypCandidateClick={onHypCandidateClick}
+            />
           )}
         </div>
       )}

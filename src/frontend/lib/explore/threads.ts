@@ -49,6 +49,10 @@ export interface ThreadMessage {
   filterStep?: number | null;
   /** 子步 3：AI 生成的假设候选列表，渲染为可点击 chip */
   hypCandidates?: string[];
+  /** 子步 3：假设应填入的表格行（0-based） */
+  hypTargetRow?: number;
+  /** 子步 3：有候选但未能确定目标行 → 禁用 chip */
+  hypRowUnresolved?: boolean;
   /** 子步 3：表格操作类型（区分操作消息和文字消息） */
   tableAction?: 'select_none' | 'fill_hypothesis';
 }

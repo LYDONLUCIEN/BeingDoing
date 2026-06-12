@@ -80,6 +80,62 @@ def split_visible_reply_and_row_state(raw_text: str) -> tuple[str, Optional[Dict
         return visible, None
 
 
+STEP3_HYP_JSON_START = "[STEP3_HYP_JSON]"
+STEP3_HYP_JSON_END = "[/STEP3_HYP_JSON]"
+
+
+def extract_step3_hyp_json(raw_text: str) -> tuple[str, list[str], Optional[int]]:
+    """从 [STEP3_HYP_JSON] 块提取假设与目标行，返回 (清理后文本, 候选列表, row 或 None)。"""
+    if not raw_text:
+        return "", [], None
+    import re
+
+    row: Optional[int] = None
+    candidates: list[str] = []
+    visible = raw_text
+    for m in re.finditer(
+        re.escape(STEP3_HYP_JSON_START) + r"(.*?)" + re.escape(STEP3_HYP_JSON_END),
+        raw_text,
+        flags=re.DOTALL,
+    ):
+        json_str = m.group(1).strip()
+        if not json_str:
+            continue
+        try:
+            obj = json.loads(json_str)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(obj, dict):
+            continue
+        raw_cands = obj.get("candidates")
+        if isinstance(raw_cands, list):
+            parsed = [str(c).strip() for c in raw_cands if str(c).strip()]
+            if parsed:
+                candidates = parsed
+        raw_row = obj.get("row")
+        if raw_row is not None:
+            try:
+                row = int(raw_row)
+            except (TypeError, ValueError):
+                row = None
+    visible = re.sub(
+        re.escape(STEP3_HYP_JSON_START) + r".*?" + re.escape(STEP3_HYP_JSON_END),
+        "",
+        visible,
+        flags=re.DOTALL,
+    ).strip()
+    return visible, candidates, row
+
+
+def extract_step3_hyp_output(raw_text: str) -> tuple[str, list[str], Optional[int]]:
+    """解析子步 3 假设输出：优先 STEP3_HYP_JSON，兼容 legacy [HYP_CANDIDATE] 块。"""
+    visible, candidates, row = extract_step3_hyp_json(raw_text)
+    if candidates:
+        return visible, candidates, row
+    visible_legacy, legacy_cands = extract_hyp_candidates(raw_text)
+    return visible_legacy, legacy_cands, None
+
+
 def extract_hyp_candidates(raw_text: str) -> tuple[str, list[str]]:
     """从模型输出提取 [HYP_CANDIDATE]...[/HYP_CANDIDATE] 块，返回 (清理后文本, 候选假设列表)。"""
     if not raw_text:

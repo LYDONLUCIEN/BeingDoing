@@ -723,6 +723,53 @@ export default function RuminationTableWidget({
       ? `${selectShellClass} !min-w-0 shrink max-w-[8rem] sm:max-w-[12rem]`
       : `${selectShellClass} !min-w-0 shrink max-w-[8rem] sm:max-w-[12rem]`;
 
+    const hasFilledHypothesis =
+      isFill && fillText.trim().length > 0 && fillText !== STEP3_OPT_FILL;
+    const canRegenerateHyp =
+      Boolean(onHypothesisRegenerate) && !fieldDisabled && hasFilledHypothesis;
+    const isRegenerating = hypothesisRegeneratingRowIndex === rowIdx;
+
+    const regenerateIconBtnClass = isGlass
+      ? 'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-white/60 bg-white/75 text-neutral-500 shadow-sm backdrop-blur-sm transition hover:border-sky-300/70 hover:bg-sky-50/90 hover:text-sky-600 disabled:pointer-events-none disabled:opacity-40'
+      : 'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-neutral-200/90 bg-white text-neutral-500 shadow-sm transition hover:border-sky-300/70 hover:bg-sky-50 hover:text-sky-600 disabled:pointer-events-none disabled:opacity-40';
+
+    const renderRegenerateIconButton = () =>
+      canRegenerateHyp ? (
+        <button
+          type="button"
+          title={hypothesisRegenerateHint}
+          aria-label={hypothesisRegenerateLabel}
+          disabled={isRegenerating}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            const rowId = String(row.id ?? rowIdx + 1);
+            onHypothesisRegenerate!(rowIdx, rowId, rows);
+          }}
+          className={regenerateIconBtnClass}
+        >
+          {isRegenerating ? (
+            <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-sky-400/30 border-t-sky-500" />
+          ) : (
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-3.5 w-3.5"
+              aria-hidden
+            >
+              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
+              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+              <path d="M16 21h5v-5" />
+            </svg>
+          )}
+        </button>
+      ) : null;
+
     return (
       <div
         className="flex min-w-0 max-w-full flex-col gap-2 sm:flex-row sm:items-start sm:gap-3"
@@ -746,45 +793,59 @@ export default function RuminationTableWidget({
         </select>
         {selectControlValue === STEP3_OPT_FILL ? (
           isGlass ? (
-            <textarea
-              ref={(el) => { hypTextareaRefs.current.set(rowIdx, el); }}
-              value={fillText}
-              disabled={fieldDisabled}
-              placeholder={otherTextPlaceholder}
-              onMouseDown={(e) => isGlass && e.stopPropagation()}
-              onClick={(e) => isGlass && e.stopPropagation()}
-              onChange={(e) =>
-                handleCellChange(rowIdx, HYP_CONFIRM_KEY, e.target.value)
-              }
-              onBlur={commitHypothesisIfFilled}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  commitHypothesisIfFilled();
+            <div className="relative min-w-0 flex-1">
+              <textarea
+                ref={(el) => { hypTextareaRefs.current.set(rowIdx, el); }}
+                value={fillText}
+                disabled={fieldDisabled}
+                placeholder={otherTextPlaceholder}
+                onMouseDown={(e) => isGlass && e.stopPropagation()}
+                onClick={(e) => isGlass && e.stopPropagation()}
+                onChange={(e) =>
+                  handleCellChange(rowIdx, HYP_CONFIRM_KEY, e.target.value)
                 }
-              }}
-              rows={3}
-              className={`${textareaShellClass} !min-w-0 shrink-1`}
-            />
+                onBlur={commitHypothesisIfFilled}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    commitHypothesisIfFilled();
+                  }
+                }}
+                rows={3}
+                className={`${textareaShellClass} !min-w-0 shrink-1 ${canRegenerateHyp ? '!pr-9' : ''}`}
+              />
+              {canRegenerateHyp ? (
+                <div className="pointer-events-none absolute right-1.5 top-1.5">
+                  <div className="pointer-events-auto">{renderRegenerateIconButton()}</div>
+                </div>
+              ) : null}
+            </div>
           ) : (
-            <textarea
-              ref={(el) => { hypTextareaRefs.current.set(rowIdx, el); }}
-              value={fillText}
-              disabled={fieldDisabled}
-              placeholder={otherTextPlaceholder}
-              onChange={(e) =>
-                handleCellChange(rowIdx, HYP_CONFIRM_KEY, e.target.value)
-              }
-              onBlur={commitHypothesisIfFilled}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  commitHypothesisIfFilled();
+            <div className="relative min-w-0 flex-1">
+              <textarea
+                ref={(el) => { hypTextareaRefs.current.set(rowIdx, el); }}
+                value={fillText}
+                disabled={fieldDisabled}
+                placeholder={otherTextPlaceholder}
+                onChange={(e) =>
+                  handleCellChange(rowIdx, HYP_CONFIRM_KEY, e.target.value)
                 }
-              }}
-              rows={3}
-              className="min-w-0 shrink-1 flex-1 px-2 py-1.5 text-sm border border-neutral-200 rounded-md focus:ring-2 focus:ring-sky-300/50 focus:border-sky-400/70"
-            />
+                onBlur={commitHypothesisIfFilled}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    commitHypothesisIfFilled();
+                  }
+                }}
+                rows={3}
+                className={`min-w-0 shrink-1 flex-1 px-2 py-1.5 text-sm border border-neutral-200 rounded-md focus:ring-2 focus:ring-sky-300/50 focus:border-sky-400/70 ${canRegenerateHyp ? 'pr-9' : ''}`}
+              />
+              {canRegenerateHyp ? (
+                <div className="pointer-events-none absolute right-1.5 top-1.5">
+                  <div className="pointer-events-auto">{renderRegenerateIconButton()}</div>
+                </div>
+              ) : null}
+            </div>
           )
         ) : null}
       </div>

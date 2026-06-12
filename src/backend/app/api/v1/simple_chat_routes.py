@@ -93,7 +93,21 @@ from app.utils.rumination_row_context import (
     format_step3_next_row_preview,
     summarize_prev_combo_row,
 )
-from app.utils.rumination_step3_flow import row_hyp, row_fields_line
+from app.utils.rumination_step3_flow import (
+    row_hyp,
+    row_fields_line,
+    format_step3_unlocked_rows_block,
+    count_discuss_user_turns_since_last_forward,
+    get_step3_row_passion_strength,
+    resolve_step3_explicit_row_index,
+    resolve_step3_prompt_mode,
+    resolve_step3_hyp_delivery,
+    is_strict_hyp_candidate_retry,
+    parse_step3_hyp_tool_call,
+    sanitize_hyp_candidates,
+    guide_phrase_present_in_reply,
+    should_trigger_hyp_candidate_fallback,
+)
 from app.utils.context_refiner import (
     refine_and_save_anchor,
     refine_and_save_rumination_step_anchor,
@@ -121,7 +135,14 @@ from app.domain.conclusion_card_payload import (
     sanitize_pending_conclusion_draft,
 )
 from app.domain.prompts import get_simple_chat_system_prompt, get_step_copy
-from app.domain.rumination_prompt_strings import RUMINATION_CLOSING_SUMMARY_MAX_CHARS, RUMINATION_STEP2_ALL_UNMATCHED_TRANSITION_ZH, HYP_CANDIDATE_RETRY_SYSTEM_TEMPLATE_ZH
+from app.domain.rumination_prompt_strings import (
+    RUMINATION_CLOSING_SUMMARY_MAX_CHARS,
+    RUMINATION_STEP2_ALL_UNMATCHED_TRANSITION_ZH,
+    HYP_CANDIDATE_RETRY_SYSTEM_TEMPLATE_ZH,
+    HYP_CANDIDATE_RETRY_CONTEXT_TEMPLATE_ZH,
+    HYP_CANDIDATE_RETRY_STRICT_TEMPLATE_ZH,
+    STEP3_HYP_SUBMIT_TOOL,
+)
 from app.domain.rumination_step_guidance import (
     build_opening_context,
     build_opening_llm_messages,
@@ -142,6 +163,7 @@ from app.api.v1.simple_chat.stream_utils import (
     extract_json_object as _extract_json_object,
     extract_state_content_tokens as _extract_state_content_tokens,
     extract_hyp_candidates as _extract_hyp_candidates,
+    extract_step3_hyp_output as _extract_step3_hyp_output,
     looks_like_markdown_table as _looks_like_markdown_table,
     split_visible_reply_and_state as _split_visible_reply_and_state,
     split_visible_reply_and_row_state as _split_visible_reply_and_row_state,
@@ -342,6 +364,9 @@ def _system_prompt_dimension_extras(
     reports_root: str,
     rumination_filter_step: Optional[int],
     locale: str,
+    *,
+    rumination_row_index: Optional[int] = None,
+    step3_prompt_mode: Optional[str] = None,
 ) -> Tuple[str, str]:
     """purpose 的 values_info + rumination 子步注入段。"""
     rid = (report or {}).get("report_id") if report else None
@@ -352,7 +377,11 @@ def _system_prompt_dimension_extras(
         values_info = build_values_info_for_prompt(rid, reports_root)
     rumination_step_addon = ""
     if phase_step == "rumination" and rumination_filter_step is not None:
-        rumination_step_addon = get_rumination_chat_step_addon(rumination_filter_step, locale)
+        rumination_step_addon = get_rumination_chat_step_addon(
+            rumination_filter_step,
+            locale,
+            step3_mode=step3_prompt_mode if int(rumination_filter_step) == 3 else None,
+        )
         if int(rumination_filter_step) == 3:
             try:
                 prog_ex = load_rumination_progress(Path(reports_root), str(rid))
@@ -362,6 +391,34 @@ def _system_prompt_dimension_extras(
                     # 已确认行摘要（cursor 之前的行）
                     confirmed_block = format_step3_confirmed_rows_block(ft_ex, cur_ex)
                     rumination_step_addon = f"{rumination_step_addon}\n\n{confirmed_block}".strip()
+                    # 点选行与 cursor 不一致：注入讨论行上下文
+                    discuss_idx = rumination_row_index
+                    if (
+                        discuss_idx is not None
+                        and 0 <= discuss_idx < len(ft_ex)
+                        and discuss_idx != cur_ex
+                    ):
+                        row_disc = ft_ex[discuss_idx]
+                        if isinstance(row_disc, dict):
+                            prev_s = ""
+                            if discuss_idx > 0:
+                                pr = ft_ex[discuss_idx - 1]
+                                if isinstance(pr, dict):
+                                    prev_s = summarize_prev_combo_row(pr)
+                            disc_block = format_step3_row_context_block(
+                                str(rid),
+                                reports_root,
+                                row_disc,
+                                combo_index_1based=discuss_idx + 1,
+                                total_combos=len(ft_ex),
+                                prev_combo_summary=prev_s,
+                            )
+                            disc_block = disc_block.replace(
+                                "[内部·子步3当前行]",
+                                "[内部·子步3讨论行]",
+                                1,
+                            )
+                            rumination_step_addon = f"{rumination_step_addon}\n\n{disc_block}".strip()
                     # 当前行上下文（正常推进模式）
                     if 0 <= cur_ex < len(ft_ex):
                         row_ex = ft_ex[cur_ex]
@@ -393,6 +450,9 @@ def _system_prompt_dimension_extras(
                         # 回溯模式：cursor 到末尾，注入全表摘要供 AI 定位用户指定的行
                         full_block = format_step3_confirmed_rows_block(ft_ex, len(ft_ex))
                         rumination_step_addon = f"{rumination_step_addon}\n\n{full_block}".strip()
+                    unlocked_block = format_step3_unlocked_rows_block(ft_ex, cur_ex)
+                    if unlocked_block:
+                        rumination_step_addon = f"{rumination_step_addon}\n\n{unlocked_block}".strip()
             except Exception:
                 pass
     return values_info, rumination_step_addon
@@ -1198,7 +1258,7 @@ class SimpleChatStreamRequest(BaseModel):
     # 点选行展示标签（前端 UI 锚点，如 #3 热爱·优势）
     rumination_row_label: Optional[str] = None
     # 子步 3 表格操作：选"无"或填假设，作为 user 消息发给 AI
-    step3_table_action: Optional[str] = None  # "select_none" | "fill_hypothesis"
+    step3_table_action: Optional[str] = None  # "select_none" | "fill_hypothesis" | "regenerate_hyp"
     step3_action_row: Optional[int] = None  # 操作行索引（0-based）
     step3_action_hyp_text: Optional[str] = None  # 填假设时的假设文本
 
@@ -4067,52 +4127,169 @@ async def _hyp_candidate_fallback_retry(
     stream_usage: dict,
     phase_step: str,
     request: Any,
-) -> list[str]:
-    """兜底追问：AI 说了引导语但未输出 HYP_CANDIDATE 标记时，追加 system 消息让它补充输出。
+    explicit_row_index: Optional[int] = None,
+    strict: bool = False,
+) -> tuple[list[str], Optional[int]]:
+    """兜底追问：主回复未含结构化假设时，用 function calling 补充。
 
-    返回提取到的假设候选列表；失败或仍无标记则返回空列表。
+    retry_messages = llm_messages（含完整用户/助手对话）+ system 指令 + 已解锁行表格块。
+    - 有明确点选/表格操作行 → 行级 retry
+    - strict=True（主回复含引导语）→ 必须 function call
+    - 否则 → 上下文 retry（AI 判定是否提交）
     """
-    # 1. 从 progress 中获取当前行上下文
     prog = load_rumination_progress(reports_root, report_id)
-    ft = prog.get("filter_table")
+    ft = prog.get("filter_table") if isinstance(prog.get("filter_table"), list) else []
     cur = int(prog.get("filter_row_cursor") or 0)
-    passion = ""
-    strength = ""
-    if isinstance(ft, list) and 0 <= cur < len(ft):
-        row = ft[cur]
-        if isinstance(row, dict):
-            passion = str(row.get("热爱") or "").strip()
-            strength = str(row.get("优势") or "").strip()
-
-    # 2. 构造追问 system 消息
-    retry_system = HYP_CANDIDATE_RETRY_SYSTEM_TEMPLATE_ZH.format(
-        passion=passion or "（未填）",
-        strength=strength or "（未填）",
+    row_idx = resolve_step3_explicit_row_index(
+        filter_table=ft,
+        rumination_row_index=explicit_row_index if explicit_row_index is not None else request.rumination_row_index,
+        step3_action_row=request.step3_action_row,
     )
+    unlocked_block = format_step3_unlocked_rows_block(ft, cur)
+    if not unlocked_block:
+        unlocked_block = "（暂无已解锁行。）"
 
-    # 3. 调用 AI（非流式，低温度）
+    retry_event = "hyp_candidate_retry_context"
+    if strict:
+        retry_system = HYP_CANDIDATE_RETRY_STRICT_TEMPLATE_ZH.format(
+            unlocked_rows_block=unlocked_block,
+        )
+        retry_event = "hyp_candidate_retry_strict"
+    elif row_idx is not None:
+        passion, strength = get_step3_row_passion_strength(ft, row_idx)
+        retry_system = HYP_CANDIDATE_RETRY_SYSTEM_TEMPLATE_ZH.format(
+            row_index=row_idx,
+            passion=passion or "（未填）",
+            strength=strength or "（未填）",
+            unlocked_rows_block=unlocked_block,
+        )
+        retry_event = "hyp_candidate_retry_row"
+    else:
+        retry_system = HYP_CANDIDATE_RETRY_CONTEXT_TEMPLATE_ZH.format(
+            unlocked_rows_block=unlocked_block,
+        )
+
     retry_messages = list(llm_messages) + [
         LLMMessage(role="system", content=retry_system),
     ]
-    try:
-        resp = await asyncio.wait_for(
-            llm.chat(retry_messages, temperature=0.2, max_tokens=800),
+
+    async def _call_with_tools(*, force_tool: bool) -> Any:
+        chat_kwargs: dict = {
+            "tools": [STEP3_HYP_SUBMIT_TOOL],
+            "temperature": 0.2,
+            "max_tokens": 800,
+        }
+        if force_tool:
+            chat_kwargs["tool_choice"] = {
+                "type": "function",
+                "function": {"name": "submit_step3_hypotheses"},
+            }
+        else:
+            chat_kwargs["tool_choice"] = "auto"
+        return await asyncio.wait_for(
+            llm.chat(retry_messages, **chat_kwargs),
             timeout=15.0,
         )
+
+    async def _call_json_fallback() -> tuple[list[str], Optional[int]]:
+        json_addon = (
+            "\n\n【JSON 兜底】你刚才未成功提交假设。请结合上方对话与已解锁行，"
+            "**仅**输出一个 JSON 对象（不要 markdown、不要解释），格式：\n"
+            '{"row": <0-based行index>, "candidates": ["个人事业向假设", "职业路径向假设"]}\n'
+            "row 必须是已解锁行 index；candidates 恰好两个字符串。"
+        )
+        json_messages = retry_messages + [LLMMessage(role="system", content=json_addon)]
+        try:
+            resp_j = await asyncio.wait_for(
+                llm.chat(
+                    json_messages,
+                    temperature=0.2,
+                    max_tokens=800,
+                    response_format={"type": "json_object"},
+                ),
+                timeout=15.0,
+            )
+        except Exception as e:
+            logger.warning("[step3] fallback retry JSON mode failed: %s", e)
+            return [], None
+        raw_j = (resp_j.content or "").strip()
+        logger.info("[step3] fallback retry JSON raw tail: %s", raw_j[-300:])
+        try:
+            obj = json.loads(raw_j)
+        except (json.JSONDecodeError, TypeError):
+            obj = _extract_json_object(raw_j)
+        if not isinstance(obj, dict):
+            return [], None
+        raw_cands = obj.get("candidates")
+        cands: list[str] = []
+        if isinstance(raw_cands, list):
+            cands = sanitize_hyp_candidates([str(c) for c in raw_cands])
+        row_j: Optional[int] = None
+        if obj.get("row") is not None:
+            try:
+                row_j = int(obj["row"])
+            except (TypeError, ValueError):
+                row_j = None
+        if len(cands) >= 2:
+            return cands[:2], row_j
+        return [], row_j
+
+    resp = None
+    force_tool = strict or row_idx is not None
+    try:
+        resp = await _call_with_tools(force_tool=force_tool)
     except Exception as e:
-        logger.warning("[step3] fallback retry LLM call failed: %s", e)
-        return []
+        logger.warning(
+            "[step3] fallback retry function call failed (force=%s): %s",
+            force_tool,
+            e,
+        )
+        if force_tool:
+            try:
+                resp = await _call_with_tools(force_tool=False)
+            except Exception as e2:
+                logger.warning("[step3] fallback retry function call auto failed: %s", e2)
 
-    raw = (resp.content or "").strip()
-    logger.info("[step3] fallback retry raw response: %s", raw[-300:])
+    candidates: list[str] = []
+    ai_row: Optional[int] = None
+    cleaned = ""
+    if resp is not None:
+        candidates, ai_row = parse_step3_hyp_tool_call(getattr(resp, "tool_calls", None))
+        candidates = sanitize_hyp_candidates(candidates)
+        if not candidates:
+            raw = (resp.content or "").strip()
+            logger.info("[step3] fallback retry: no tool call, content tail: %s", raw[-300:])
+            cleaned, legacy_cands, legacy_row = _extract_step3_hyp_output(raw)
+            candidates = sanitize_hyp_candidates(legacy_cands)
+            ai_row = legacy_row if legacy_row is not None else ai_row
+        else:
+            cleaned = (resp.content or "").strip()
+            logger.info(
+                "[step3] fallback retry tool call: row=%s candidates=%s",
+                ai_row,
+                len(candidates),
+            )
 
-    # 4. 提取 HYP_CANDIDATE
-    cleaned, candidates = _extract_hyp_candidates(raw)
-    if not candidates:
-        logger.info("[step3] fallback retry: still no HYP_CANDIDATE extracted")
-        return []
+    if len(candidates) < 2 and (strict or force_tool):
+        logger.info("[step3] fallback retry: invoking JSON mode fallback (strict=%s)", strict)
+        json_cands, json_row = await _call_json_fallback()
+        if len(json_cands) >= 2:
+            candidates = json_cands
+            ai_row = json_row if json_row is not None else ai_row
+            retry_event = f"{retry_event}_json"
 
-    # 5. 落盘：追问 system 消息 + AI 回复（审计可追溯）
+    if len(candidates) < 2:
+        logger.info("[step3] fallback retry: still no valid hypotheses after all attempts")
+        return [], None
+
+    resolved_row, _unresolved = resolve_step3_hyp_delivery(
+        candidates=candidates,
+        cursor=cur,
+        filter_table=ft,
+        explicit_row_index=row_idx,
+        ai_declared_row=ai_row,
+    )
+
     try:
         await conv_manager.append_message(
             session_id=session_id,
@@ -4127,14 +4304,16 @@ async def _hyp_candidate_fallback_retry(
                 "step_id": phase_step,
                 "filter_step": int(request.rumination_filter_step) if phase_step == "rumination" and request.rumination_filter_step else None,
                 "event": "hyp_candidate_retry_system",
+                "hyp_candidate_retry_kind": retry_event,
             },
         )
+        audit_content = cleaned or f"[function_call submit_step3_hypotheses row={resolved_row}]"
         await conv_manager.append_message(
             session_id=session_id,
             category=category,
             message={
                 "role": "assistant",
-                "content": cleaned,
+                "content": audit_content,
                 **IDCodec.build_message_ids(
                     thread_id=logical_session_id,
                     activation_session_id=activation_session_id,
@@ -4143,12 +4322,13 @@ async def _hyp_candidate_fallback_retry(
                 "filter_step": int(request.rumination_filter_step) if phase_step == "rumination" and request.rumination_filter_step else None,
                 "event": "hyp_candidate_retry_reply",
                 "token_usage": stream_usage,
+                "hyp_target_row": resolved_row,
             },
         )
     except Exception as e:
         logger.warning("[step3] fallback retry save failed: %s", e)
 
-    return candidates
+    return candidates, resolved_row
 
 
 @router.post("/message/stream")
@@ -4248,12 +4428,38 @@ async def simple_chat_stream(
         override_cfg = _resolve_prompt_lab_override_for_request(rec, current_user)
         stream_loc = _normalize_client_locale(request.locale)
         reports_root = str(Path(storage_root) / "reports")
+        rumination_filter_step_val = (
+            int(request.rumination_filter_step)
+            if phase_step == "rumination" and request.rumination_filter_step
+            else 0
+        )
+        step3_prompt_mode: Optional[str] = None
+        step3_explicit_row_index: Optional[int] = None
+        if phase_step == "rumination" and rumination_filter_step_val == 3:
+            try:
+                rid_s3 = report.get("report_id")
+                if rid_s3:
+                    rp_s3 = load_rumination_progress(Path(reports_root), str(rid_s3))
+                    ft_s3 = rp_s3.get("filter_table")
+                    cur_s3 = int(rp_s3.get("filter_row_cursor") or 0)
+                    step3_prompt_mode = resolve_step3_prompt_mode(
+                        step3_table_action=request.step3_table_action,
+                    )
+                    step3_explicit_row_index = resolve_step3_explicit_row_index(
+                        filter_table=ft_s3 if isinstance(ft_s3, list) else [],
+                        rumination_row_index=request.rumination_row_index,
+                        step3_action_row=request.step3_action_row,
+                    )
+            except Exception:
+                pass
         vi_s, ra_s = _system_prompt_dimension_extras(
             phase_step,
             report,
             reports_root,
             request.rumination_filter_step,
             stream_loc,
+            rumination_row_index=request.rumination_row_index,
+            step3_prompt_mode=step3_prompt_mode,
         )
         rumination_neg_inj = ""
         if phase_step == "rumination":
@@ -4293,7 +4499,6 @@ async def simple_chat_stream(
         llm_messages = [LLMMessage(role="system", content=system_prompt)]
 
         # ── 构建历史上下文（rumination 按子步隔离，其他阶段保持原逻辑）──
-        rumination_filter_step_val = int(request.rumination_filter_step) if phase_step == "rumination" and request.rumination_filter_step else 0
 
         if rumination_filter_step_val > 0:
             # Rumination：只取当前子步的消息 + 之前子步的累积 anchor
@@ -4363,6 +4568,11 @@ async def simple_chat_stream(
                                 step3_action_content = (
                                     f"[表格操作·填假设] 用户在第 {row_idx + 1} 行"
                                     f"（热爱：{p} / 优势：{s}）填入了假设：「{hyp}」。"
+                                )
+                            elif request.step3_table_action == "regenerate_hyp":
+                                step3_action_content = (
+                                    f"[表格操作·重新生成] 用户请求重新生成第 {row_idx + 1} 行"
+                                    f"（热爱：{p} / 优势：{s}）的假设候选。"
                                 )
                 except Exception:
                     pass
@@ -4806,7 +5016,11 @@ async def simple_chat_stream(
             rfs_stream = int(request.rumination_filter_step or 0) if phase_step == "rumination" else 0
             if phase_step == "rumination":
                 stream_markers: List[Tuple[str, str]] = (
-                    [("[ROW_STATE_JSON]", "[/ROW_STATE_JSON]"), ("[HYP_CANDIDATE]", "[/HYP_CANDIDATE]")]
+                    [
+                        ("[ROW_STATE_JSON]", "[/ROW_STATE_JSON]"),
+                        ("[HYP_CANDIDATE]", "[/HYP_CANDIDATE]"),
+                        ("[STEP3_HYP_JSON]", "[/STEP3_HYP_JSON]"),
+                    ]
                     if rfs_stream == 3
                     else []
                 )
@@ -4869,21 +5083,47 @@ async def simple_chat_stream(
         state_obj = None
         step3_row_unlock_progress: Optional[Dict[str, Any]] = None
         hyp_candidates: list[str] = []
+        hyp_target_row: Optional[int] = None
+        hyp_row_unresolved: bool = False
         rfs_parse = int(request.rumination_filter_step or 0) if phase_step == "rumination" else 0
         if phase_step == "rumination":
             if rfs_parse == 3:
                 visible_r, row_st = _split_visible_reply_and_row_state(raw_full_reply)
                 full_reply = visible_r
-                # 提取假设候选标记
+                has_hyp_json = "[STEP3_HYP_JSON]" in full_reply
                 has_hyp_marker = "[HYP_CANDIDATE]" in full_reply
                 has_end_marker = "[/HYP_CANDIDATE]" in full_reply
                 logger.info(
-                    "[step3] HYP_CANDIDATE markers: start=%s end=%s | last 300 chars: %s",
-                    has_hyp_marker, has_end_marker, full_reply[-300:],
+                    "[step3] hyp markers: STEP3_HYP_JSON=%s HYP_CANDIDATE=%s/%s | last 300: %s",
+                    has_hyp_json,
+                    has_hyp_marker,
+                    has_end_marker,
+                    full_reply[-300:],
                 )
-                full_reply, hyp_candidates = _extract_hyp_candidates(full_reply)
-                logger.info("[step3] extracted hyp_candidates count=%s", len(hyp_candidates))
+                full_reply, hyp_candidates, ai_declared_row = _extract_step3_hyp_output(full_reply)
+                hyp_candidates = sanitize_hyp_candidates(hyp_candidates)
+                _guide_present = guide_phrase_present_in_reply(raw_full_reply, full_reply)
+                logger.info(
+                    "[step3] extracted hyp_candidates count=%s ai_row=%s guide=%s",
+                    len(hyp_candidates),
+                    ai_declared_row,
+                    _guide_present,
+                )
                 rid_sp = report.get("report_id")
+                prog_hyp = (
+                    load_rumination_progress(Path(reports_root), str(rid_sp))
+                    if rid_sp
+                    else {}
+                )
+                ft_hyp = prog_hyp.get("filter_table") if isinstance(prog_hyp.get("filter_table"), list) else []
+                cur_hyp = int(prog_hyp.get("filter_row_cursor") or 0)
+                hyp_target_row, hyp_row_unresolved = resolve_step3_hyp_delivery(
+                    candidates=hyp_candidates,
+                    cursor=cur_hyp,
+                    filter_table=ft_hyp,
+                    explicit_row_index=step3_explicit_row_index,
+                    ai_declared_row=ai_declared_row,
+                )
                 if row_st and rid_sp:
                     step3_row_unlock_progress = _try_rumination_step3_row_unlock(
                         Path(reports_root), str(rid_sp), row_st
@@ -4894,31 +5134,41 @@ async def simple_chat_stream(
                         Path(reports_root), str(rid_sp)
                     )
 
-                # 兜底：AI 说了引导语但未输出 HYP_CANDIDATE 标记，或回溯讨论时遗漏 → 追问补充
-                _STEP3_GUIDE_PHRASE = "你可以点击下方的建议快速填入左侧表格"
-                _is_lookback = False
-                if rid_sp:
-                    _prog_lookback = load_rumination_progress(Path(reports_root), str(rid_sp))
-                    _ft_lookback = _prog_lookback.get("filter_table")
-                    _cur_lookback = int(_prog_lookback.get("filter_row_cursor") or 0)
-                    if isinstance(_ft_lookback, list) and len(_ft_lookback) > 0:
-                        _confirmed_count = sum(
-                            1 for r in _ft_lookback
-                            if isinstance(r, dict) and str(r.get("假设") or "").strip()
-                        )
-                        # 所有行已确认（cursor >= 总行数）或已有确认行且用户在讨论
-                        _is_lookback = _cur_lookback >= len(_ft_lookback) or (
-                            _confirmed_count > 0 and not row_st
-                        )
+                # 兜底：discuss 且满足分层条件时 retry（显式行 or 已解锁表+对话）
+                _discuss_user_turns = count_discuss_user_turns_since_last_forward(llm_messages)
+                _strict_hyp_retry = is_strict_hyp_candidate_retry(raw_full_reply, full_reply)
+                _will_fallback = should_trigger_hyp_candidate_fallback(
+                    hyp_candidates=hyp_candidates,
+                    step3_table_action=request.step3_table_action,
+                    step3_prompt_mode=step3_prompt_mode or "discuss",
+                    visible_reply=full_reply,
+                    explicit_row_index=step3_explicit_row_index,
+                    discuss_user_turns_since_forward=_discuss_user_turns,
+                    guide_phrase_present=_guide_present,
+                )
+                if not _will_fallback and _guide_present and len(hyp_candidates) < 2:
+                    logger.info(
+                        "[step3] fallback skipped despite guide phrase: mode=%s action=%s candidates=%s",
+                        step3_prompt_mode,
+                        request.step3_table_action,
+                        len(hyp_candidates),
+                    )
                 if (
-                    not hyp_candidates
+                    _will_fallback
                     and rid_sp
-                    and (_STEP3_GUIDE_PHRASE in full_reply or _is_lookback)
                 ):
-                    trigger_reason = "guide phrase" if _STEP3_GUIDE_PHRASE in full_reply else "lookback"
-                    logger.info("[step3] fallback: %s found but no HYP_CANDIDATE, triggering retry", trigger_reason)
+                    retry_kind = (
+                        "strict"
+                        if _strict_hyp_retry
+                        else ("row" if step3_explicit_row_index is not None else "context")
+                    )
+                    logger.info(
+                        "[step3] fallback: discuss mode, no structured hyp — %s retry (explicit_row=%s)",
+                        retry_kind,
+                        step3_explicit_row_index,
+                    )
                     try:
-                        retry_candidates = await _hyp_candidate_fallback_retry(
+                        retry_candidates, retry_row = await _hyp_candidate_fallback_retry(
                             reports_root=Path(reports_root),
                             report_id=str(rid_sp),
                             llm_messages=llm_messages,
@@ -4931,10 +5181,24 @@ async def simple_chat_stream(
                             stream_usage=stream_usage,
                             phase_step=phase_step,
                             request=request,
+                            explicit_row_index=step3_explicit_row_index,
+                            strict=_strict_hyp_retry,
                         )
                         if retry_candidates:
                             hyp_candidates = retry_candidates
-                            logger.info("[step3] fallback retry succeeded, got %s candidates", len(retry_candidates))
+                            hyp_target_row, hyp_row_unresolved = resolve_step3_hyp_delivery(
+                                candidates=hyp_candidates,
+                                cursor=cur_hyp,
+                                filter_table=ft_hyp,
+                                explicit_row_index=step3_explicit_row_index,
+                                ai_declared_row=retry_row,
+                            )
+                            logger.info(
+                                "[step3] fallback retry succeeded: candidates=%s row=%s unresolved=%s",
+                                len(hyp_candidates),
+                                hyp_target_row,
+                                hyp_row_unresolved,
+                            )
                     except Exception as retry_err:
                         logger.warning("[step3] fallback retry failed: %s", retry_err)
             else:
@@ -5012,15 +5276,17 @@ async def simple_chat_stream(
                     )
                     + "\n\n"
                 )
-            if hyp_candidates:
-                yield (
-                    "data: "
-                    + json.dumps(
-                        {"hyp_candidates": hyp_candidates},
-                        ensure_ascii=False,
-                    )
-                    + "\n\n"
-                )
+        if hyp_candidates:
+            hyp_sse: dict = {"hyp_candidates": hyp_candidates}
+            if hyp_target_row is not None:
+                hyp_sse["hyp_target_row"] = hyp_target_row
+            if hyp_row_unresolved:
+                hyp_sse["hyp_row_unresolved"] = True
+            yield (
+                "data: "
+                + json.dumps(hyp_sse, ensure_ascii=False)
+                + "\n\n"
+            )
         pending_spawned_in_turn = False
         if state_obj and not cmeta.get("thread_completed"):
             state_name = str(state_obj.get("state") or "").strip().lower()
@@ -5195,9 +5461,7 @@ async def simple_chat_stream(
         except Exception:
             pass
 
-        # 子步 3：在 done 前单独发送假设候选列表
-        if hyp_candidates:
-            yield f"data: {json.dumps({'hyp_candidates': hyp_candidates}, ensure_ascii=False)}\n\n"
+        # 子步 3 hyp_candidates 已在 full_reply 落盘块中发送，此处不再重复
 
         yield (
             f"data: {{\"done\": true, \"response\": {json.dumps(full_reply, ensure_ascii=False)}, "

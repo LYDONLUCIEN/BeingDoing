@@ -67,6 +67,7 @@ from app.domain.rumination_prompt_strings import (
     STEP_OPENING_FIXED_ZH,
     RUMINATION_CHAT_STEP_ADDON_EN,
     RUMINATION_CHAT_STEP_ADDON_ZH,
+    RUMINATION_CHAT_STEP3_MODE_ADDONS_ZH,
     DEEP_CHAT_STEP_SYSTEM_MAP,
     STEP_3_LLM_FAILED_DEEP_CHAT_SYSTEM_ZH,
 )
@@ -232,14 +233,24 @@ def build_rumination_entry_init_messages(*, basic_info: str, prior_block: str) -
     ]
 
 
-def get_rumination_chat_step_addon(filter_step: int, locale: str = "zh") -> str:
+def get_rumination_chat_step_addon(
+    filter_step: int,
+    locale: str = "zh",
+    *,
+    step3_mode: Optional[str] = None,
+) -> str:
     step = max(1, min(7, int(filter_step)))
     loc = (locale or "zh").strip().lower()
     if loc.startswith("en"):
         text = RUMINATION_CHAT_STEP_ADDON_EN.get(step, "")
     else:
         text = RUMINATION_CHAT_STEP_ADDON_ZH.get(step, "")
-    return (text or "").strip()
+    text = (text or "").strip()
+    if step == 3 and step3_mode and not loc.startswith("en"):
+        mode_addon = RUMINATION_CHAT_STEP3_MODE_ADDONS_ZH.get(step3_mode, "")
+        if mode_addon:
+            text = f"{text}\n\n{mode_addon}".strip()
+    return text
 
 
 def get_deep_chat_step_system(step: int, llm_failed: bool = False) -> str:

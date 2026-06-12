@@ -51,10 +51,11 @@ class TestStep3PromptCopyNoLegacyUi:
 
     def test_step3_addon_no_legacy(self):
         addon = RUMINATION_CHAT_STEP_ADDON_ZH[3]
-        for phrase in ["两个推荐", "个人事业向 + 进入公司向", "重新生成"]:
+        for phrase in ["两个推荐", "个人事业向 + 进入公司向", "🔄"]:
             assert phrase not in addon
         assert "ROW_STATE" in addon
         assert "选「无」" in addon or "「无」" in addon
+        assert "表格操作·重新生成" in addon
 
 
 class TestAutoUnlockFlagDefault:

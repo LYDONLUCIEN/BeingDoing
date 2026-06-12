@@ -356,6 +356,8 @@ export default function ChatPhasePage() {
   const ruminationWorkbenchRef = useRef<HTMLDivElement>(null);
   /** 子步 3：左表内存行，用于 debounce / 发送前 flush 到 rumination-progress */
   const ruminationLiveRowsRef = useRef<Record<string, unknown>[] | null>(null);
+  /** 子步 3：最近一次生成 hyp_candidates 的目标行（重新生成 / 点选行） */
+  const step3HypTargetRowRef = useRef<number | null>(null);
   const ruminationStep3SaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { user, setTokens } = useAuthStore();
   const userChatAvatarInitials = (user?.username || user?.email || 'U').slice(0, 2).toUpperCase();
@@ -1779,10 +1781,21 @@ export default function ChatPhasePage() {
             }
             if (payload.hyp_candidates && Array.isArray(payload.hyp_candidates)) {
               const cands = payload.hyp_candidates as string[];
+              const targetRow =
+                typeof payload.hyp_target_row === 'number' ? payload.hyp_target_row : undefined;
+              const rowUnresolved = Boolean(payload.hyp_row_unresolved);
+              if (typeof targetRow === 'number') {
+                step3HypTargetRowRef.current = targetRow;
+              }
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === assistantId
-                    ? { ...m, hypCandidates: cands }
+                    ? {
+                        ...m,
+                        hypCandidates: cands,
+                        hypTargetRow: targetRow,
+                        hypRowUnresolved: rowUnresolved,
+                      }
                     : m
                 )
               );
@@ -2887,16 +2900,24 @@ export default function ChatPhasePage() {
   const [step3Cooldown, setStep3Cooldown] = useState(false);
   /** 子步 3：外部填入假设（点击 AI 候选 chip 时） */
   const [step3ExternalHypFill, setStep3ExternalHypFill] = useState<{ rowIndex: number; text: string } | null>(null);
+  /** 子步 3：表格行「重新生成」进行中 */
+  const [step3RegeneratingRowIndex, setStep3RegeneratingRowIndex] = useState<number | null>(null);
 
   /** 子步 3：发送表格操作消息到 /message/stream，让 AI 看到完整操作链路 */
   const sendStep3TableAction = useCallback(
-    async (action: 'select_none' | 'fill_hypothesis', rowIdx: number, hypText?: string) => {
+    async (
+      action: 'select_none' | 'fill_hypothesis' | 'regenerate_hyp',
+      rowIdx: number,
+      hypText?: string
+    ) => {
       if (!activationCode || sending) return;
       const now = Date.now();
       const actionLabel =
         action === 'select_none'
           ? `[表格操作] 第 ${rowIdx + 1} 行选择了「无」`
-          : `[表格操作] 第 ${rowIdx + 1} 行填入了假设：「${hypText || ''}」`;
+          : action === 'regenerate_hyp'
+            ? `[表格操作] 第 ${rowIdx + 1} 行请求重新生成假设`
+            : `[表格操作] 第 ${rowIdx + 1} 行填入了假设：「${hypText || ''}」`;
       // 不插入 user 消息气泡（操作记录仅在 AI 可见的 conversation history 中）
       // 但插入 assistant 消息占位，接收 AI 回复
       const assistantId = `a_${now}`;
@@ -2909,6 +2930,10 @@ export default function ChatPhasePage() {
       };
       setMessages((prev) => [...prev, assistantMsg]);
       setSending(true);
+      if (action === 'regenerate_hyp') {
+        setStep3RegeneratingRowIndex(rowIdx);
+        step3HypTargetRowRef.current = rowIdx;
+      }
       stickToBottomRef.current = true;
       let assistantHasVisibleOutput = false;
       try {
@@ -3000,9 +3025,22 @@ export default function ChatPhasePage() {
               }
               if (payload.hyp_candidates && Array.isArray(payload.hyp_candidates)) {
                 const cands = payload.hyp_candidates as string[];
+                const targetRow =
+                  typeof payload.hyp_target_row === 'number' ? payload.hyp_target_row : undefined;
+                const rowUnresolved = Boolean(payload.hyp_row_unresolved);
+                if (typeof targetRow === 'number') {
+                  step3HypTargetRowRef.current = targetRow;
+                }
                 setMessages((prev) =>
                   prev.map((m) =>
-                    m.id === assistantId ? { ...m, hypCandidates: cands } : m
+                    m.id === assistantId
+                      ? {
+                          ...m,
+                          hypCandidates: cands,
+                          hypTargetRow: targetRow,
+                          hypRowUnresolved: rowUnresolved,
+                        }
+                      : m
                   )
                 );
               }
@@ -3026,6 +3064,7 @@ export default function ChatPhasePage() {
       } finally {
         setSending(false);
         setPostLlmTailActive(false);
+        setStep3RegeneratingRowIndex(null);
         setMessages((prev) => {
           if (!assistantHasVisibleOutput) {
             return prev.filter((m) => !(m.id === assistantId && !(m.content || '').trim()));
@@ -3153,18 +3192,53 @@ export default function ChatPhasePage() {
     [flushRuminationStep3TableToServer, sendStep3TableAction]
   );
 
-  /** 子步 3：点击 AI 生成的假设候选 chip → 填入当前选中行（或 cursor 行） */
+  const handleStep3HypothesisRegenerate = useCallback(
+    (_rowIdx: number, _rowId: string, rowsSnapshot: Record<string, unknown>[]) => {
+      ruminationLiveRowsRef.current = rowsSnapshot;
+      void sendStep3TableAction('regenerate_hyp', _rowIdx);
+    },
+    [sendStep3TableAction]
+  );
+
+  /** 子步 3：用户点选表格行时，可作为未绑定行号的假设 chip 填入目标 */
+  const step3SelectedRowForHypFill = useMemo(() => {
+    if (phase !== 'rumination' || ruminationViewStep !== 3) return null;
+    const rowIdx = ruminationRowContext?.rowIndex;
+    if (rowIdx == null || rowIdx < 0) return null;
+    const cursor =
+      (typeof ruminationProgressState?.filter_row_cursor === 'number'
+        ? ruminationProgressState.filter_row_cursor
+        : ruminationTablePayload?.rowCursor) ?? 0;
+    if (rowIdx > cursor) return null;
+    return rowIdx;
+  }, [
+    phase,
+    ruminationViewStep,
+    ruminationRowContext?.rowIndex,
+    ruminationProgressState?.filter_row_cursor,
+    ruminationTablePayload?.rowCursor,
+  ]);
+
+  /** 子步 3：点击 AI 生成的假设候选 chip → 填入消息绑定的目标行 */
   const handleHypCandidateClick = useCallback(
-    (text: string) => {
-      const cur =
-        (typeof ruminationProgressStateRef.current?.filter_row_cursor === 'number'
-          ? ruminationProgressStateRef.current.filter_row_cursor
-          : ruminationTablePayloadRef.current?.rowCursor) ?? 0;
-      setStep3ExternalHypFill({ rowIndex: cur, text });
-      // 清除以便下次点击可以再次触发
+    (
+      text: string,
+      meta?: { hypTargetRow?: number; hypRowUnresolved?: boolean }
+    ) => {
+      const targetRow =
+        meta?.hypTargetRow ??
+        (meta?.hypRowUnresolved ? step3SelectedRowForHypFill : null);
+      if (targetRow == null) {
+        setChatError(
+          '未能确定目标行，请点击左侧表格对应行后再聊，或点该行「重新生成」以生成假设。'
+        );
+        return;
+      }
+      setChatError(null);
+      setStep3ExternalHypFill({ rowIndex: targetRow, text });
       setTimeout(() => setStep3ExternalHypFill(null), 100);
     },
-    []
+    [step3SelectedRowForHypFill]
   );
 
   const handleRuminationLiveRowsChange = useCallback(
@@ -3524,6 +3598,14 @@ export default function ChatPhasePage() {
                     hypothesisRegenerateHint={t(
                       'explore.chat.ruminationUi.hypothesisRegenerateHint'
                     )}
+                    hypothesisRegenerateLabel={t(
+                      'explore.chat.ruminationUi.hypothesisRegenerate'
+                    )}
+                    hypothesisRegeneratingLabel={t(
+                      'explore.chat.ruminationUi.hypothesisRegenerating'
+                    )}
+                    hypothesisRegeneratingRowIndex={step3RegeneratingRowIndex}
+                    onHypothesisRegenerate={handleStep3HypothesisRegenerate}
                     hypothesisPreviewTitle={t('explore.chat.ruminationUi.hypothesisPreviewTitle')}
                     hypothesisPreviewHint={t('explore.chat.ruminationUi.hypothesisPreviewHint')}
                     hypothesisTagFreelanceLabel={t(
@@ -3901,6 +3983,9 @@ export default function ChatPhasePage() {
                             phaseInteractionLocked
                           }
                           hypCandidates={m.hypCandidates || undefined}
+                          hypTargetRow={m.hypTargetRow}
+                          hypRowUnresolved={m.hypRowUnresolved}
+                          selectedRowFallback={step3SelectedRowForHypFill}
                           onHypCandidateClick={handleHypCandidateClick}
                         />
                       )}
