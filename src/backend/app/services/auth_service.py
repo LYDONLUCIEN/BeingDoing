@@ -51,6 +51,28 @@ def _hash_refresh_token(raw_token: str) -> str:
     return hashlib.sha256((raw_token or "").encode("utf-8")).hexdigest()
 
 
+def _create_token(data: Dict, expires_delta: Optional[timedelta] = None, token_type: str = "access") -> str:
+    """
+    底层 JWT 编码：写入 exp 和 type，由上层业务方法调用。
+
+    Args:
+        data: Token 载荷（如 sub, email 等）
+        expires_delta: 过期时间增量，None 时使用 ACCESS_TOKEN_EXPIRE_MINUTES
+        token_type: token 类型标识（access / email_verify 等）
+
+    Returns:
+        JWT Token 字符串
+    """
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+
+    to_encode.update({"exp": expire, "type": token_type})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
 class AuthService:
     """用户认证服务"""
     
@@ -286,24 +308,32 @@ class AuthService:
     @staticmethod
     def create_access_token(data: Dict, expires_delta: Optional[timedelta] = None) -> str:
         """
-        创建JWT Token
-        
+        创建访问令牌（JWT）
+
         Args:
             data: Token数据（通常包含user_id等）
             expires_delta: 过期时间增量
-        
+
         Returns:
             JWT Token字符串
         """
-        to_encode = data.copy()
-        if expires_delta:
-            expire = datetime.utcnow() + expires_delta
-        else:
-            expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        
-        to_encode.update({"exp": expire, "type": "access"})
-        encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-        return encoded_jwt
+        return _create_token(data, expires_delta=expires_delta, token_type="access")
+
+    @staticmethod
+    def create_email_verify_token(data: Dict, expires_delta: Optional[timedelta] = None) -> str:
+        """
+        创建邮箱验证令牌（JWT）
+
+        Args:
+            data: Token数据（需包含 sub 和 email）
+            expires_delta: 过期时间增量，默认 24 小时
+
+        Returns:
+            JWT Token字符串
+        """
+        if expires_delta is None:
+            expires_delta = timedelta(hours=24)
+        return _create_token(data, expires_delta=expires_delta, token_type="email_verify")
     
     @staticmethod
     def verify_token(token: str, expected_type: str = "access") -> Optional[Dict]:
@@ -527,9 +557,8 @@ class AuthService:
             remaining = 300 - (datetime.utcnow() - last_sent).total_seconds()
             raise ValueError(f"发送过于频繁，请 {int(remaining // 60)} 分钟后再试")
 
-        token = AuthService.create_access_token(
-            data={"sub": user.id, "email": email, "type": "email_verify"},
-            expires_delta=timedelta(hours=24),
+        token = AuthService.create_email_verify_token(
+            data={"sub": user.id, "email": email},
         )
         await EmailService.send_email_verification(to_email=email, token=token)
         _email_verify_cooldowns[email] = datetime.utcnow()
