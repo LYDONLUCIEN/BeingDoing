@@ -55,6 +55,8 @@ export interface ThreadMessage {
   hypRowUnresolved?: boolean;
   /** 子步 3：表格操作类型（区分操作消息和文字消息） */
   tableAction?: 'select_none' | 'fill_hypothesis';
+  /** v3: 组合矩阵模式 — 所属组合 ID（如 "02" = 热爱1×优势3） */
+  comboId?: string;
 }
 
 /** 使命阶段结构化「经历 → 价值观」行（与后端 payload 一致） */

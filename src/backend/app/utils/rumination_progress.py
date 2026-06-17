@@ -17,7 +17,7 @@ MAX_FILTER_STEP = 7
 FILTER_STEPS = tuple(range(1, MAX_FILTER_STEP + 1))  # 1-7
 
 DEFAULT_PROGRESS: Dict[str, Any] = {
-    "schema_version": 2,
+    "schema_version": 3,
     "main_section": "opening",
     "review_sub_index": 0,
     "filter_step": 0,
@@ -35,6 +35,15 @@ DEFAULT_PROGRESS: Dict[str, Any] = {
     "rumination_neg_state": None,
     # 每子步「深入聊聊」闸门首次触发标记：集合，触发的子步号写入；重新填写时仅清除当前步
     "neg_gate_triggered_steps": [],
+    # --- v3: 组合矩阵模式 ---
+    # filter_step=3 时的子阶段：None=旧版兼容 | "matrix"=组合假设填写 | "discussion"=深度讨论(3b)
+    "filter_sub_step": None,
+    # {combo_id: {"text": str, "state": "empty"|"confirmed"|"skipped"}}
+    "combo_conclusions": {},
+    # [{combo_id, passion_idx, strength_idx, passion_name, strength_name}]
+    "combo_matrix": None,
+    # 用户勾选"不再提示"后为 True
+    "combo_completion_modal_dismissed": False,
 }
 
 
@@ -85,6 +94,134 @@ def _migrate_progress_v1_to_v2(data: Dict[str, Any]) -> None:
     data["schema_version"] = 2
 
 
+def _migrate_progress_v2_to_v3(data: Dict[str, Any]) -> None:
+    """v2→v3：为 filter_step=3 的旧数据构建 combo_matrix 和 combo_conclusions。
+
+    规则：
+    - 已提交的 step3 快照（submitted）→ filter_sub_step="discussion"
+    - 未提交但有 filter_table → filter_sub_step="matrix"
+    - filter_step != 3 的数据不做任何变更。
+    """
+    if int(data.get("schema_version", 2)) >= 3:
+        return
+    fs = int(data.get("filter_step", 0))
+    if fs != 3:
+        return
+
+    # v3 新字段默认值
+    data.setdefault("filter_sub_step", None)
+    data.setdefault("combo_conclusions", {})
+    data.setdefault("combo_matrix", None)
+    data.setdefault("combo_completion_modal_dismissed", False)
+
+    # 已提交 step3 → 直接进入 discussion 模式
+    snapshots = data.get("filter_step_snapshots") or {}
+    snap3 = snapshots.get("3") or {}
+    if isinstance(snap3, dict) and snap3.get("submitted"):
+        data["filter_sub_step"] = "discussion"
+        submitted_rows = snap3.get("submitted") or []
+        if isinstance(submitted_rows, list):
+            conclusions: Dict[str, Dict[str, str]] = {}
+            for r in submitted_rows:
+                if not isinstance(r, dict):
+                    continue
+                p = str(r.get("热爱") or "")
+                s = str(r.get("优势") or "")
+                h = str(r.get("用户确认的假设") or "").strip()
+                if not p or not s:
+                    continue
+                cid = _build_combo_id_from_table(submitted_rows, p, s)
+                if not cid:
+                    continue
+                if h and h not in ("无", "待定", "暂未选定"):
+                    conclusions[cid] = {"text": h, "state": "confirmed"}
+                else:
+                    conclusions[cid] = {"text": h, "state": "skipped"}
+            data["combo_conclusions"] = conclusions
+        data["schema_version"] = 3
+        return
+
+    # 有 filter_table 但未提交 → matrix 模式
+    ft = data.get("filter_table")
+    if isinstance(ft, list) and ft:
+        data["filter_sub_step"] = "matrix"
+        matrix = _build_combo_matrix_from_table(ft)
+        data["combo_matrix"] = matrix
+        conclusions: Dict[str, Dict[str, str]] = {}
+        for r in ft:
+            if not isinstance(r, dict):
+                continue
+            p = str(r.get("热爱") or "")
+            s = str(r.get("优势") or "")
+            h = str(r.get("用户确认的假设") or "").strip()
+            if not p or not s:
+                continue
+            cid = _build_combo_id_from_table(ft, p, s)
+            if not cid:
+                continue
+            if h and h not in ("无", "待定", "暂未选定"):
+                conclusions[cid] = {"text": h, "state": "confirmed"}
+            else:
+                conclusions[cid] = {"text": "", "state": "empty"}
+        data["combo_conclusions"] = conclusions
+        data["schema_version"] = 3
+        return
+
+    data["schema_version"] = 3
+
+
+def _build_combo_id_from_table(table: list, passion: str, strength: str) -> str:
+    """从表格行中查找热爱/优势的索引位置，构建 combo_id。"""
+    passions_seen: list[str] = []
+    for r in table:
+        if not isinstance(r, dict):
+            continue
+        p = str(r.get("热爱") or "").strip()
+        if p and p not in passions_seen:
+            passions_seen.append(p)
+    strengths_seen: list[str] = []
+    for r in table:
+        if not isinstance(r, dict):
+            continue
+        s = str(r.get("优势") or "").strip()
+        if s and s not in strengths_seen:
+            strengths_seen.append(s)
+    p_idx = passions_seen.index(passion) if passion in passions_seen else -1
+    s_idx = strengths_seen.index(strength) if strength in strengths_seen else -1
+    if p_idx < 0 or s_idx < 0:
+        return ""
+    return f"{p_idx}{s_idx}"
+
+
+def _build_combo_matrix_from_table(table: list) -> list:
+    """从已有表格行构建 combo_matrix 列表。"""
+    passions_seen: list[str] = []
+    for r in table:
+        if not isinstance(r, dict):
+            continue
+        p = str(r.get("热爱") or "").strip()
+        if p and p not in passions_seen:
+            passions_seen.append(p)
+    strengths_seen: list[str] = []
+    for r in table:
+        if not isinstance(r, dict):
+            continue
+        s = str(r.get("优势") or "").strip()
+        if s and s not in strengths_seen:
+            strengths_seen.append(s)
+    matrix = []
+    for pi, p in enumerate(passions_seen[:3]):
+        for si, s in enumerate(strengths_seen[:5]):
+            matrix.append({
+                "combo_id": f"{pi}{si}",
+                "passion_idx": pi,
+                "strength_idx": si,
+                "passion_name": p,
+                "strength_name": s,
+            })
+    return matrix
+
+
 def _normalize_loaded(data: Dict[str, Any]) -> Dict[str, Any]:
     out = {**DEFAULT_PROGRESS, **data}
     out["main_section"] = out.get("main_section") or "opening"
@@ -92,7 +229,8 @@ def _normalize_loaded(data: Dict[str, Any]) -> Dict[str, Any]:
     out["filter_row_cursor"] = int(out.get("filter_row_cursor", 0))
     out["hypothesis_round"] = max(1, min(3, int(out.get("hypothesis_round", 1))))
     _migrate_progress_v1_to_v2(out)
-    out["schema_version"] = int(out.get("schema_version", 2))
+    _migrate_progress_v2_to_v3(out)
+    out["schema_version"] = max(int(out.get("schema_version", 3)), 3)
     out["filter_step"] = max(0, min(MAX_FILTER_STEP, int(out.get("filter_step", 0))))
     if "filter_early_terminated" not in data:
         out["filter_early_terminated"] = False
@@ -110,6 +248,7 @@ def _normalize_loaded(data: Dict[str, Any]) -> Dict[str, Any]:
         out["neg_gate_triggered_steps"] = []
     else:
         out["neg_gate_triggered_steps"] = [int(x) for x in raw_triggered if isinstance(x, (int, float, str))]
+    # v3 字段已由 DEFAULT_PROGRESS + _migrate_progress_v2_to_v3 处理，无需额外 setdefault
     return out
 
 

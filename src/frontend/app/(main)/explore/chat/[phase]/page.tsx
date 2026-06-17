@@ -9,6 +9,7 @@ import {
   ChevronRight,
   ChevronDown,
   ArrowUp,
+  ArrowLeft,
   Square,
   Copy,
   FileText,
@@ -34,6 +35,10 @@ const RuminationSectionProgress = dynamic(
 );
 const RuminationTableWidget = dynamic(
   () => import('@/components/explore/RuminationTableWidget'),
+  { ssr: false },
+);
+const Step3MatrixLeftPanel = dynamic(
+  () => import('@/components/explore/step3/Step3MatrixLeftPanel'),
   { ssr: false },
 );
 import { copyToClipboard } from '@/lib/utils/clipboard';
@@ -395,9 +400,29 @@ export default function ChatPhasePage() {
     return threads.map((th) => (th.id === activeThreadId ? { ...th, messages } : th));
   }, [threads, activeThreadId, messages]);
 
+  /** Matrix mode: step3 + filter_sub_step === 'matrix' → use Step3MatrixLeftPanel inside aside */
+  const isStep3MatrixMode = useMemo(
+    () =>
+      phase === 'rumination' &&
+      ruminationViewStep === 3 &&
+      ruminationProgressState?.filter_sub_step === 'matrix' &&
+      !!ruminationProgressState,
+    [phase, ruminationViewStep, ruminationProgressState],
+  );
+
+  /** Matrix mode: which combo is currently selected for chat filtering */
+  const [matrixModeSelectedComboId, setMatrixModeSelectedComboId] = useState<string | null>(null);
+
   /** 沉淀：按筛选子步切片同一线程消息（localStorage 持久化下标，见 ruminationStepBoundaries） */
   const displayMessages = useMemo(() => {
     if (phase !== 'rumination') return messages;
+    // Matrix mode: filter by selected comboId
+    if (isStep3MatrixMode) {
+      if (!matrixModeSelectedComboId) return [];
+      return messages.filter(
+        (m) => m.comboId === matrixModeSelectedComboId && m.type !== 'table_widget',
+      );
+    }
     const fs = ruminationProgressState?.filter_step ?? 0;
     const inFilterSection =
       (ruminationProgressState?.main_section === 'filter' && fs > 0) ||
@@ -420,6 +445,8 @@ export default function ChatPhasePage() {
     ruminationProgressState?.main_section,
     ruminationProgressState?.filter_step,
     adminDebugBypass,
+    isStep3MatrixMode,
+    matrixModeSelectedComboId,
   ]);
 
   const latestConclusionMessageId = lastDimensionConclusionMessage(messages)?.id;
@@ -962,6 +989,11 @@ export default function ChatPhasePage() {
   const selectionMatchesReportForContinue = !stepLocked
     ? true
     : !!reportSelectedThreadId && activeThreadId === reportSelectedThreadId;
+
+  /** Reset matrix combo selection when exiting matrix mode */
+  useEffect(() => {
+    if (!isStep3MatrixMode) setMatrixModeSelectedComboId(null);
+  }, [isStep3MatrixMode]);
 
   /**
    * threadsFetched 未完成前，stepLocked/reportSelectedThreadId 尚未从后端同步，
@@ -3200,6 +3232,196 @@ export default function ChatPhasePage() {
     [sendStep3TableAction]
   );
 
+  /**
+   * Send a message for a specific combo in matrix mode (step3).
+   * Tags messages with combo_id and streams via the same simple-chat endpoint.
+   */
+  const handleComboSendMessage = useCallback(
+    (comboId: string, text: string) => {
+      if (!activationCode || sending) return;
+      const now = Date.now();
+      const userMsg: ThreadMessage = {
+        id: `u_combo_${now}`,
+        role: 'user',
+        content: text,
+        createdAt: now,
+        comboId,
+        filterStep: 3,
+      };
+      const assistantId = `a_combo_${now}`;
+      const assistantMsg: ThreadMessage = {
+        id: assistantId,
+        role: 'assistant' as const,
+        content: '',
+        createdAt: now,
+        comboId,
+        filterStep: 3,
+      };
+      setMessages((prev) => [...prev, userMsg, assistantMsg]);
+      setChatError(null);
+      setSending(true);
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      const doStream = async (accessToken: string | null) => {
+        const apiBase = (process.env.NEXT_PUBLIC_API_URL || '').trim();
+        const streamUrl = `${apiBase ? apiBase.replace(/\/+$/, '') : ''}/api/v1/simple-chat/message/stream`;
+        const effectiveThreadId =
+          activeThreadId && backendSyncedThreadId && activeThreadId === backendSyncedThreadId
+            ? activeThreadId
+            : undefined;
+        const res = await fetch(streamUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          },
+          body: JSON.stringify({
+            activation_code: activationCode,
+            message: text,
+            phase: BACKEND_PHASE[phase],
+            thread_id: effectiveThreadId,
+            activation_session_id: getActivationSessionId(session),
+            locale: locale === 'en' ? 'en' : 'zh',
+            rumination_filter_step: 3,
+            combo_id: comboId,
+          }),
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          let detail = '';
+          try { const p = await res.json(); detail = p?.detail || p?.message || ''; } catch {}
+          throw new Error(detail || `请求失败（${res.status}）`);
+        }
+        if (!res.body) throw new Error('流式接口返回为空');
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const payload = JSON.parse(line.slice(6));
+              if (payload.error) {
+                setChatError(String(payload.error));
+                reader.cancel();
+                break;
+              }
+              if (payload.think_start) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId ? { ...m, thinkStreaming: true, thinkChunkContent: '' } : m
+                  )
+                );
+              }
+              if (payload.think_chunk) {
+                const chunk = typeof payload.think_chunk === 'string' ? payload.think_chunk : '';
+                if (chunk) {
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantId ? { ...m, thinkChunkContent: chunk } : m
+                    )
+                  );
+                }
+              }
+              if (payload.think_end != null) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? { ...m, thinkStreaming: false, thinkChunkContent: undefined }
+                      : m
+                  )
+                );
+              }
+              if (payload.chunk) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId ? { ...m, content: (m.content || '') + payload.chunk } : m
+                  )
+                );
+              }
+              if (payload.hyp_candidates && Array.isArray(payload.hyp_candidates)) {
+                const cands = payload.hyp_candidates as string[];
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId ? { ...m, hypCandidates: cands } : m
+                  )
+                );
+              }
+              if (payload.rumination_progress && phase === 'rumination') {
+                setRuminationProgressState((prev) => (prev ? { ...prev, ...(payload.rumination_progress as RuminationProgress) } : payload.rumination_progress as RuminationProgress));
+              }
+              if (payload.done && payload.response != null) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? {
+                          ...m,
+                          content: payload.response,
+                          thinkStreaming: false,
+                          thinkChunkContent: undefined,
+                        }
+                      : m
+                  )
+                );
+                break;
+              }
+            } catch {}
+          }
+        }
+      };
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      doStream(token)
+        .catch(async (err: any) => {
+          if (err?.name === 'AbortError') return;
+          if (err?.message?.includes('401')) {
+            try {
+              const refreshed = await authApi.refresh();
+              const nextToken = refreshed?.data?.token || null;
+              if (nextToken) {
+                apiClient.setToken(nextToken);
+                setTokens(nextToken);
+                await doStream(nextToken);
+                return;
+              }
+            } catch {}
+          }
+          setChatError(err?.message || '发送失败，请重试');
+        })
+        .finally(() => {
+          setSending(false);
+          // Clean up empty assistant messages
+          setMessages((prev) =>
+            prev.filter(
+              (m) => !(m.id === assistantId && !(m.content || '').trim())
+            )
+          );
+          abortControllerRef.current = null;
+        });
+    },
+    [activationCode, sending, phase, activeThreadId, backendSyncedThreadId, session, locale],
+  );
+
+  /** Matrix submit all: calls API to transition from matrix → 3b discussion */
+  const handleMatrixSubmitAll = useCallback(async () => {
+    if (!activationCode || !activeThreadId) return;
+    try {
+      const res = await ruminationApi.submitComboMatrix(activationCode, activeThreadId);
+      if (res.data?.progress) {
+        setRuminationProgressState((prev) => (prev ? { ...prev, ...res.data!.progress! } : res.data!.progress!));
+      }
+      if (res.data?.next_table_widget) {
+        setRuminationTablePayload(res.data.next_table_widget as ThreadMessage['tablePayload']);
+      }
+    } catch (e) {
+      console.error('Failed to submit combo matrix:', e);
+    }
+  }, [activationCode, activeThreadId]);
+
   /** 子步 3：用户点选表格行时，可作为未绑定行号的假设 chip 填入目标 */
   const step3SelectedRowForHypFill = useMemo(() => {
     if (phase !== 'rumination' || ruminationViewStep !== 3) return null;
@@ -3557,6 +3779,28 @@ export default function ChatPhasePage() {
               )}
             </>
           )}
+          {/* 3b discussion: back-to-matrix banner */}
+          {phase === 'rumination' && ruminationViewStep === 3 && ruminationProgressState?.filter_sub_step === 'discussion' && (
+            <div className="shrink-0 border-y border-neutral-200 bg-neutral-50 px-4 py-2 sm:px-8">
+              <button
+                type="button"
+                disabled={sending || ruminationTableNavLoading}
+                onClick={() => {
+                  if (activationCode) {
+                    void ruminationApi.save(activationCode, { filter_sub_step: 'matrix' } as any).then((res) => {
+                      if (res.data?.progress) {
+                        setRuminationProgressState((prev) => (prev ? { ...prev, ...res.data!.progress! } : res.data!.progress!));
+                      }
+                    });
+                  }
+                }}
+                className="flex items-center gap-1.5 text-sm text-neutral-600 hover:text-teal-600 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ArrowLeft size={14} />
+                返回组合填写
+              </button>
+            </div>
+          )}
           <div
             ref={phase === 'rumination' ? ruminationWorkbenchRef : undefined}
             className={`flex min-h-0 min-w-0 flex-1 ${
@@ -3584,7 +3828,18 @@ export default function ChatPhasePage() {
                   ruminationWorkbenchStacked ? 'w-full flex-none' : 'w-full flex-1 sm:w-auto'
                 }`}
               >
-                {ruminationTablePayload ? (
+                {isStep3MatrixMode ? (
+                  <Step3MatrixLeftPanel
+                    progress={ruminationProgressState!}
+                    matrix={ruminationProgressState?.combo_matrix || []}
+                    activationCode={activationCode!}
+                    allMessages={messages}
+                    selectedComboId={matrixModeSelectedComboId}
+                    onSelectComboId={setMatrixModeSelectedComboId}
+                    onSubmitAll={handleMatrixSubmitAll}
+                    onProgressUpdate={(p) => setRuminationProgressState((prev) => (prev ? { ...prev, ...p } : p))}
+                  />
+                ) : ruminationTablePayload ? (
                   <RuminationTableWidget
                     className="min-h-0 flex-1"
                     uiVariant="glass"
@@ -3716,13 +3971,26 @@ export default function ChatPhasePage() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <h2 className="text-lg font-semibold text-bd-fg">
-                          {t('explore.chat.ruminationUi.chatTitle')}
+                          {isStep3MatrixMode && matrixModeSelectedComboId
+                            ? (() => {
+                                const combo = ruminationProgressState?.combo_matrix?.find(
+                                  (m) => m.combo_id === matrixModeSelectedComboId,
+                                );
+                                return combo
+                                  ? `${combo.passion_name} × ${combo.strength_name}`
+                                  : t('explore.chat.ruminationUi.chatTitle');
+                              })()
+                            : t('explore.chat.ruminationUi.chatTitle')}
                         </h2>
                         <p className="mt-0.5 text-xs text-neutral-500">
-                          {ruminationNegExploringPinned &&
-                          (ruminationProgressState?.rumination_neg_state?.progress_header_zh || '').trim()
-                            ? ruminationProgressState?.rumination_neg_state?.progress_header_zh
-                            : t('explore.chat.ruminationUi.chatSubtitle')}
+                          {isStep3MatrixMode
+                            ? matrixModeSelectedComboId
+                              ? '与 AI 探讨这个组合的假设方向'
+                              : '请从左侧选择一个组合开始探索'
+                            : ruminationNegExploringPinned &&
+                                (ruminationProgressState?.rumination_neg_state?.progress_header_zh || '').trim()
+                              ? ruminationProgressState?.rumination_neg_state?.progress_header_zh
+                              : t('explore.chat.ruminationUi.chatSubtitle')}
                         </p>
                       </div>
                       {ruminationNegExploringPinned && (
@@ -4047,7 +4315,16 @@ export default function ChatPhasePage() {
             <div
               className={`flow-input-area${phase === 'rumination' && ruminationRowContext ? ' rumination-input-focused-context' : ''}`}
             >
-              <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="w-full">
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                if (isStep3MatrixMode && matrixModeSelectedComboId) {
+                  if (!input.trim() || sending) return;
+                  handleComboSendMessage(matrixModeSelectedComboId, input.trim());
+                  setInput('');
+                } else {
+                  handleSend();
+                }
+              }} className="w-full">
                 {pendingConclusionChoiceBlocksChat && (
                   <p
                     className="mb-1.5 w-full shrink-0 rounded-lg border border-amber-200/90 bg-amber-50/90 px-2 py-1.5 text-left text-xs leading-snug text-amber-950"
@@ -4090,6 +4367,12 @@ export default function ChatPhasePage() {
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
+                        if (isStep3MatrixMode && matrixModeSelectedComboId) {
+                          if (!input.trim() || sending) return;
+                          handleComboSendMessage(matrixModeSelectedComboId, input.trim());
+                          setInput('');
+                          return;
+                        }
                         if (
                           !sending &&
                           !isReadOnly &&
@@ -4100,24 +4383,29 @@ export default function ChatPhasePage() {
                       }
                     }}
                     placeholder={
-                      streamTailInputPlaceholder ??
-                      (phaseInteractionLocked
-                        ? t('explore.chat.placeholderPhaseLocked')
-                        : isReadOnly
-                          ? t('explore.chat.placeholderReadOnly')
-                          : hasCollapsedConclusion
-                            ? t('explore.chat.placeholderRefine')
-                            : phase === 'rumination' && ruminationRowContext
-                              ? t('explore.chat.ruminationUi.placeholderWithRow', {
-                                  label: ruminationRowContext.label,
-                                })
-                              : t('explore.chat.inputPlaceholderCareering'))
+                      isStep3MatrixMode
+                        ? matrixModeSelectedComboId
+                          ? '输入你的想法...'
+                          : '请先从左侧选择一个组合'
+                        : streamTailInputPlaceholder ??
+                          (phaseInteractionLocked
+                            ? t('explore.chat.placeholderPhaseLocked')
+                            : isReadOnly
+                              ? t('explore.chat.placeholderReadOnly')
+                              : hasCollapsedConclusion
+                                ? t('explore.chat.placeholderRefine')
+                                : phase === 'rumination' && ruminationRowContext
+                                  ? t('explore.chat.ruminationUi.placeholderWithRow', {
+                                      label: ruminationRowContext.label,
+                                    })
+                                  : t('explore.chat.inputPlaceholderCareering'))
                     }
                     rows={1}
                     disabled={
                       sending ||
                       isReadOnly ||
-                      (phase === 'rumination' && ruminationTableNavLoading)
+                      (phase === 'rumination' && ruminationTableNavLoading) ||
+                      (isStep3MatrixMode && !matrixModeSelectedComboId)
                     }
                     className="flow-input-field"
                   />
@@ -4130,10 +4418,19 @@ export default function ChatPhasePage() {
                       onClick={
                         sending
                           ? handleStopStream
-                          : () => handleSend()
+                          : () => {
+                              if (isStep3MatrixMode && matrixModeSelectedComboId) {
+                                if (!input.trim()) return;
+                                handleComboSendMessage(matrixModeSelectedComboId, input.trim());
+                                setInput('');
+                              } else {
+                                handleSend();
+                              }
+                            }
                       }
                       disabled={
                         (isReadOnly ||
+                          (isStep3MatrixMode && !matrixModeSelectedComboId) ||
                           (!sending &&
                             (!input.trim() ||
                               (phase === 'rumination' && ruminationTableNavLoading)))) as boolean

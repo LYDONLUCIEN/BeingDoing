@@ -93,6 +93,19 @@ from app.utils.rumination_row_context import (
     format_step3_next_row_preview,
     summarize_prev_combo_row,
 )
+from app.utils.rumination_combo_matrix import (
+    build_combo_matrix,
+    get_combo_by_id,
+    get_passion_strength_names,
+    get_next_combo_by_order,
+    count_completed_combos,
+    classify_combo_conclusions,
+)
+from app.utils.rumination_combo_context import (
+    slice_messages_for_combo,
+    build_combo_chat_system_addon,
+    build_combo_first_message,
+)
 from app.utils.rumination_step3_flow import (
     row_hyp,
     row_fields_line,
@@ -1261,6 +1274,10 @@ class SimpleChatStreamRequest(BaseModel):
     step3_table_action: Optional[str] = None  # "select_none" | "fill_hypothesis" | "regenerate_hyp"
     step3_action_row: Optional[int] = None  # 操作行索引（0-based）
     step3_action_hyp_text: Optional[str] = None  # 填假设时的假设文本
+    # --- v3: 组合矩阵模式 ---
+    combo_id: Optional[str] = None  # 组合 ID（如 "02"=热爱1×优势3），filter_step=3 matrix 模式必传
+    combo_conclusion_action: Optional[str] = None  # "confirm" | "skip"：更新 combo 结论状态
+    combo_conclusion_text: Optional[str] = None  # 结论文本（confirm 时使用）
 
 
 class SurveySaveRequest(BaseModel):
@@ -1630,12 +1647,15 @@ def _table_widget_payload(
     *,
     progress: Optional[Dict[str, Any]] = None,
     values_source: str = "",
+    sub_step: Optional[str] = None,
 ) -> Optional[dict]:
     """构建 table_widget；子步 3 注入 filter_row_cursor 以做行脱敏。"""
     progress = progress or {}
     kwargs: Dict[str, Any] = {}
     if step == 3:
         kwargs["hypothesis_row_cursor"] = int(progress.get("filter_row_cursor") or 0)
+    if sub_step:
+        kwargs["sub_step"] = sub_step
     return build_table_widget_payload(
         step, rows, values_list, values_source=values_source, **kwargs
     )
@@ -2788,6 +2808,229 @@ async def rumination_table_submit(
         ) from None
 
 
+# ── v3: 组合矩阵模式 ────────────────────────────────────────
+
+
+class ComboConclusionSaveRequest(BaseModel):
+    activation_code: str
+    combo_id: str
+    action: str  # "confirm" | "skip"
+    text: Optional[str] = None
+
+
+@router.post("/rumination-combo-conclusion", response_model=SimpleChatResponse)
+async def rumination_save_combo_conclusion(
+    request: ComboConclusionSaveRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """保存单个组合的结论状态（确认/跳过）。"""
+    try:
+        manager = get_activation_manager_for_code(request.activation_code)
+        rec, report, _, _, _, _ = _resolve_report_context(
+            manager=manager,
+            activation_code=request.activation_code,
+            current_user=current_user,
+            phase="rumination",
+        )
+        storage_root = str(get_effective_simple_root(rec))
+        reports_root = str(Path(storage_root) / "reports")
+        rid = report["report_id"]
+
+        progress = load_rumination_progress(Path(reports_root), rid)
+        conclusions = dict(progress.get("combo_conclusions") or {})
+
+        action = (request.action or "").strip().lower()
+        if action not in ("confirm", "skip"):
+            raise HTTPException(status_code=400, detail="action 须为 confirm 或 skip")
+
+        text = (request.text or "").strip() if request.text else ""
+        if action == "confirm":
+            if len(text) < 5:
+                raise HTTPException(status_code=400, detail="确认内容至少需要 5 个字")
+            conclusions[request.combo_id] = {"text": text, "state": "confirmed"}
+        else:
+            conclusions[request.combo_id] = {"text": text, "state": "skipped"}
+
+        progress = merge_rumination_progress_fields(
+            Path(reports_root), rid, {"combo_conclusions": conclusions}
+        )
+
+        return SimpleChatResponse(code=200, message="success", data={"progress": progress})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("rumination-combo-conclusion failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"保存失败: {e}") from e
+
+
+class ComboMatrixSubmitRequest(BaseModel):
+    activation_code: str
+    thread_id: Optional[str] = None
+
+
+@router.post("/rumination-combo-matrix-submit", response_model=SimpleChatResponse)
+async def rumination_combo_matrix_submit(
+    request: ComboMatrixSubmitRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """提交组合矩阵，将已确认的组合转为 3b 深度讨论表格。"""
+    try:
+        manager = get_activation_manager_for_code(request.activation_code)
+        rec, report, _, _, _, _ = _resolve_report_context(
+            manager=manager,
+            activation_code=request.activation_code,
+            current_user=current_user,
+            phase="rumination",
+        )
+        storage_root = str(get_effective_simple_root(rec))
+        reports_root = str(Path(storage_root) / "reports")
+        rid = report["report_id"]
+
+        progress = load_rumination_progress(Path(reports_root), rid)
+        conclusions = progress.get("combo_conclusions") or {}
+        matrix = progress.get("combo_matrix")
+
+        if not matrix:
+            raise HTTPException(status_code=400, detail="组合矩阵尚未初始化")
+
+        # 将空组合标记为 skipped（用户已在弹窗中确认）
+        for item in matrix:
+            cid = item["combo_id"]
+            if cid not in conclusions:
+                conclusions[cid] = {"text": "", "state": "skipped"}
+
+        # 构建 3b 表格（只含 confirmed 且有文字的组合）
+        table_rows = []
+        for item in matrix:
+            cid = item["combo_id"]
+            entry = conclusions.get(cid) or {}
+            if entry.get("state") == "confirmed" and str(entry.get("text") or "").strip():
+                table_rows.append({
+                    "id": cid,
+                    "热爱": str(item.get("passion_name") or ""),
+                    "优势": str(item.get("strength_name") or ""),
+                    "用户确认的假设": str(entry["text"]).strip(),
+                })
+
+        if not table_rows:
+            raise HTTPException(
+                status_code=400,
+                detail="没有任何已确认的假设，请至少为一个组合填写并确认假设。",
+            )
+
+        # 保存快照（不清除 submitted — 3b 深度讨论的提交会在后面设置）
+        snapshots = dict(progress.get("filter_step_snapshots") or {})
+        snap3 = dict(snapshots.get("3") or {})
+        # 不设置 snap3["submitted"]，让 neg gate 在 3b table submit 时正常触发
+        # 仅将 matrix 模式的确认结果保存到快照的 initial 字段，供回看
+        snap3["initial"] = deepcopy(table_rows)
+
+        # 更新进度：进入 3b
+        progress = merge_rumination_progress_fields(
+            Path(reports_root),
+            rid,
+            {
+                "combo_conclusions": conclusions,
+                "filter_sub_step": "discussion",
+                "filter_table": table_rows,
+                "filter_step_snapshots": {**snapshots, "3": snap3},
+            },
+        )
+
+        # 构建 3b 表格 widget
+        table_widget = _build_table_widget_payload(
+            step=3,
+            rows=table_rows,
+            columns=[
+                {"key": "id", "label": "id"},
+                {"key": "热爱", "label": "热爱"},
+                {"key": "优势", "label": "优势"},
+                {"key": "用户确认的假设", "label": "假设"},
+            ],
+            editable_cols=["用户确认的假设"],
+            guide_text="以下是您已确认的假设方向，选中某一行可在右侧提问。",
+        )
+
+        return SimpleChatResponse(
+            code=200,
+            message="success",
+            data={
+                "progress": progress,
+                "next_action": "rumination_step3b_entry",
+                "next_table_widget": table_widget,
+                "confirmed_count": len(table_rows),
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("rumination-combo-matrix-submit failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"提交失败: {e}") from e
+
+
+@router.get("/rumination-combo-matrix", response_model=SimpleChatResponse)
+async def rumination_get_combo_matrix(
+    activation_code: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """获取或初始化组合矩阵。"""
+    try:
+        manager = get_activation_manager_for_code(activation_code)
+        rec, report, _, _, _, _ = _resolve_report_context(
+            manager=manager,
+            activation_code=activation_code,
+            current_user=current_user,
+            phase="rumination",
+        )
+        storage_root = str(get_effective_simple_root(rec))
+        reports_root = str(Path(storage_root) / "reports")
+        rid = report["report_id"]
+
+        progress = load_rumination_progress(Path(reports_root), rid)
+
+        # 如果矩阵已存在，直接返回
+        if progress.get("combo_matrix"):
+            return SimpleChatResponse(
+                code=200,
+                message="success",
+                data={
+                    "progress": progress,
+                    "combo_matrix": progress["combo_matrix"],
+                },
+            )
+
+        # 从 step2 表格构建矩阵
+        _, strengths_list, interests_list, _, _ = extract_dimension_lists_for_rumination_table(
+            reports_root, rid, rec.record_dict if hasattr(rec, "record_dict") else None
+        )
+        # interests_list 即热爱（rumination 中 interests = 热爱）
+        passions = interests_list[:3]
+        strengths = strengths_list[:5]
+        matrix = build_combo_matrix(passions, strengths)
+
+        progress = merge_rumination_progress_fields(
+            Path(reports_root),
+            rid,
+            {
+                "combo_matrix": matrix,
+                "filter_sub_step": "matrix",
+                "combo_conclusions": {},
+            },
+        )
+
+        return SimpleChatResponse(
+            code=200,
+            message="success",
+            data={
+                "progress": progress,
+                "combo_matrix": matrix,
+            },
+        )
+    except Exception as e:
+        logger.exception("rumination-combo-matrix init failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"获取组合矩阵失败: {e}") from e
+
+
 @router.post("/rumination-neg-resolve", response_model=SimpleChatResponse)
 async def rumination_neg_resolve(
     request: RuminationNegResolveRequest,
@@ -3095,6 +3338,7 @@ async def rumination_get_table(
     # step3 特殊处理：逐行实时编辑模式，filter_table 才是最新的
     if step == 3:
         ft_live = progress.get("filter_table")
+        sub_step_3 = progress.get("filter_sub_step")
         if isinstance(ft_live, list) and ft_live:
             rows = deepcopy(ft_live)
             # 自愈：从 initial 快照补全被前端 redact 清空的原始字段（热爱/优势/匹配性）
@@ -3102,7 +3346,7 @@ async def rumination_get_table(
             if isinstance(initial_rows, list) and initial_rows:
                 rows = _merge_step3_filter_table(rows, initial_rows)
             prog = _persist(rows, snapshots)
-            payload = _table_widget_payload(step, rows, values_list, progress=prog, values_source=values_source)
+            payload = _table_widget_payload(step, rows, values_list, progress=prog, values_source=values_source, sub_step=sub_step_3)
             return _rumination_get_table_response(prog, payload)
 
     ent_any = snapshots.get(sk) or {}
@@ -4506,6 +4750,28 @@ async def simple_chat_stream(
                 m for m in history_messages
                 if int(m.get("filter_step") or 0) == rumination_filter_step_val
             ]
+            # v3: 组合矩阵模式 — 进一步按 combo_id 隔离
+            combo_id_for_context = None
+            if rumination_filter_step_val == 3 and request.combo_id:
+                sub_step = None
+                try:
+                    rp_cs = load_rumination_progress(Path(reports_root), str(report.get("report_id")))
+                    sub_step = rp_cs.get("filter_sub_step")
+                except Exception:
+                    pass
+                if sub_step == "matrix":
+                    step_messages = slice_messages_for_combo(step_messages, request.combo_id)
+                    combo_id_for_context = request.combo_id
+                    # 组合对话 system prompt 追加
+                    try:
+                        combo_matrix = rp_cs.get("combo_matrix") or []
+                        p_name, s_name = get_passion_strength_names(combo_matrix, request.combo_id)
+                        if p_name or s_name:
+                            combo_addon = build_combo_chat_system_addon(p_name, s_name)
+                            # 注入到 rumination_step_addon（ra_s）中
+                            ra_s = f"{ra_s}\n\n{combo_addon}" if ra_s else combo_addon
+                    except Exception:
+                        pass
             trimmed = step_messages[-30:]
 
             # 加载之前子步的 anchor 并拼接
@@ -4641,6 +4907,13 @@ async def simple_chat_stream(
                 row_lbl = (request.rumination_row_label or "").strip()
                 if row_lbl:
                     user_msg_kw["rumination_row_label"] = row_lbl
+            # v3: 组合矩阵模式 — 给消息打 combo_id 标签
+            if (
+                phase_step == "rumination"
+                and rumination_filter_step_val == 3
+                and request.combo_id
+            ):
+                user_msg_kw["combo_id"] = request.combo_id
             # 先保存用户消息
             await conv_manager.append_message(
                 session_id=session_id,
@@ -5244,6 +5517,13 @@ async def simple_chat_stream(
             }
             if full_think:
                 msg_payload["think_content"] = full_think
+            # v3: 组合矩阵模式 — 给助手回复也打 combo_id 标签
+            if (
+                phase_step == "rumination"
+                and rumination_filter_step_val == 3
+                and request.combo_id
+            ):
+                msg_payload["combo_id"] = request.combo_id
             await conv_manager.append_message(
                 session_id=session_id,
                 category=category,

@@ -360,3 +360,32 @@ html[data-rumination-mesh-page='true']:not([data-color-scheme='dark'])
   pointer-events: auto;
   cursor: default;
 }
+
+/* ── 矩阵模式左面板：组合卡片 ── */
+.rumination-combo-card {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(4px);
+  transition: all 0.2s ease;
+}
+.rumination-combo-card:hover {
+  background: rgba(255, 255, 255, 0.8);
+}
+.rumination-combo-card--selected {
+  background: rgba(204, 251, 241, 0.4);
+  border-color: rgba(94, 234, 212, 0.6);
+  box-shadow: 0 2px 8px rgba(94, 234, 212, 0.15);
+}
+
+/* ── 矩阵模式进度条 ── */
+.rumination-matrix-progress-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+.rumination-matrix-progress-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #5eead4, #14b8a6);
+  transition: width 0.3s ease;
+}

@@ -39,6 +39,16 @@ def _cols_step345() -> List[Dict[str, Any]]:
     ]
 
 
+def _cols_step3b() -> List[Dict[str, Any]]:
+    """3b 深度讨论表格：热爱/优势/用户确认的假设（无匹配性列，已由 step2 过滤）。"""
+    return [
+        {"key": "id", "label": "id"},
+        {"key": "热爱", "label": "热爱"},
+        {"key": "优势", "label": "优势"},
+        {"key": "用户确认的假设", "label": "假设"},
+    ]
+
+
 def _cols_step6(values_keywords: List[str], values_source: str = "") -> List[Dict[str, Any]]:
     """Step 4 列定义：包含「工作目的」下拉。
 
@@ -127,11 +137,13 @@ EDITABLE_COLS: Dict[int, List[str]] = {
 }
 
 
-def columns_for_step(step: int, values_keywords: List[str], values_source: str = "") -> List[Dict[str, Any]]:
+def columns_for_step(step: int, values_keywords: List[str], values_source: str = "", *, sub_step: Optional[str] = None) -> List[Dict[str, Any]]:
     if step == 1:
         return _cols_step1()
     if step == 2:
         return _cols_step2()
+    if step == 3 and sub_step == "discussion":
+        return _cols_step3b()
     if step == 3:
         return _cols_step345()
     if step == 4:
@@ -193,6 +205,7 @@ def build_table_widget_payload(
     total_rows: int = 0,
     values_source: str = "",
     hypothesis_row_cursor: Optional[int] = None,
+    sub_step: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """构建 table_widget 的 card_payload；无行时返回 None。
 
@@ -205,13 +218,16 @@ def build_table_widget_payload(
     display_rows: List[dict] = list(rows)
     total = len(rows)
     eff_cursor = row_cursor
-    if step == 3:
+    if step == 3 and sub_step != "discussion":
         if hypothesis_row_cursor is not None:
             eff_cursor = int(hypothesis_row_cursor)
         eff_cursor = max(0, min(eff_cursor, total))
         display_rows = redact_step3_rows_for_widget(display_rows, eff_cursor)
-    cols = columns_for_step(step, values_keywords, values_source=values_source)
+    cols = columns_for_step(step, values_keywords, values_source=values_source, sub_step=sub_step)
     guide = GUIDE_TEXT.get(step, "")
+    # 3b 深度讨论使用专用引导语
+    if step == 3 and sub_step == "discussion":
+        guide = "以下是您已确认的假设方向，可以在右侧进一步进行深度讨论。选中某一行提问即可。"
     # step 4 降级提示：无价值观关键词来源时，引导用户自填
     if step == 4 and values_source == "none":
         degradation_hint = (

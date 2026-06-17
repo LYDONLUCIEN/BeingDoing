@@ -52,6 +52,22 @@ export interface RuminationProgress {
   rumination_neg_state?: RuminationNegState | null;
   /** 每子步「深入聊聊」闸门首次触发标记集合（已触发的子步号列表） */
   neg_gate_triggered_steps?: number[];
+  /** v3: filter_step=3 子阶段：null=旧版 | "matrix"=组合假设填写 | "discussion"=深度讨论(3b) */
+  filter_sub_step?: string | null;
+  /** v3: {combo_id: {text, state}} */
+  combo_conclusions?: Record<string, { text: string; state: 'empty' | 'confirmed' | 'skipped' }>;
+  /** v3: 组合矩阵列表 */
+  combo_matrix?: ComboItem[] | null;
+  /** v3: 用户勾选不再提示完成弹窗 */
+  combo_completion_modal_dismissed?: boolean;
+}
+
+export interface ComboItem {
+  combo_id: string;
+  passion_idx: number;
+  strength_idx: number;
+  passion_name: string;
+  strength_name: string;
 }
 
 export interface RuminationTablePayload {
@@ -126,6 +142,7 @@ export interface RuminationSubmitData {
     | 'rumination_neg_confirm'
     | 'rumination_neg_deep_started'
     | 'rumination_neg_deep_ended'
+    | 'rumination_step3b_entry'
     | string;
   next_table_widget?: RuminationTablePayload;
   full_table_preview?: Record<string, unknown>[];
@@ -255,4 +272,51 @@ export const ruminationApi = {
         filter_step: filterStep,
       },
     }),
+
+  /** v3: 获取或初始化组合矩阵 */
+  getComboMatrix: async (
+    activationCode: string,
+  ): Promise<
+    ApiResponse<{ progress: RuminationProgress; combo_matrix?: ComboItem[] | null }>
+  > => {
+    const res = await apiClient.get('/simple-chat/rumination-combo-matrix', {
+      params: { activation_code: activationCode },
+    });
+    return res;
+  },
+
+  /** v3: 保存单个组合的结论状态（确认/跳过） */
+  saveComboConclusion: async (
+    activationCode: string,
+    comboId: string,
+    action: 'confirm' | 'skip',
+    text?: string,
+  ): Promise<ApiResponse<{ progress: RuminationProgress }>> => {
+    const res = await apiClient.post('/simple-chat/rumination-combo-conclusion', {
+      activation_code: activationCode,
+      combo_id: comboId,
+      action,
+      text,
+    });
+    return res;
+  },
+
+  /** v3: 提交组合矩阵，进入 3b 深度讨论 */
+  submitComboMatrix: async (
+    activationCode: string,
+    threadId?: string,
+  ): Promise<
+    ApiResponse<{
+      progress: RuminationProgress;
+      next_action?: string;
+      next_table_widget?: RuminationTablePayload;
+      confirmed_count?: number;
+    }>
+  > => {
+    const res = await apiClient.post('/simple-chat/rumination-combo-matrix-submit', {
+      activation_code: activationCode,
+      thread_id: threadId,
+    });
+    return res;
+  },
 };
