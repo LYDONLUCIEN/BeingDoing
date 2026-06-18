@@ -1,0 +1,41 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - navigation [ref=e3]:
+      - generic [ref=e4]:
+        - link "寻路" [ref=e6] [cursor=pointer]:
+          - /url: /
+        - generic [ref=e7]:
+          - link "首页" [ref=e8] [cursor=pointer]:
+            - /url: /
+          - link "开始探索" [ref=e9] [cursor=pointer]:
+            - /url: /explore/intro
+          - link "社区" [ref=e10] [cursor=pointer]:
+            - /url: /community
+        - generic [ref=e11]:
+          - combobox [ref=e12] [cursor=pointer]:
+            - option "中文" [selected]
+            - option "EN"
+          - button "登录 / 注册" [ref=e13] [cursor=pointer]
+    - main [ref=e14]:
+      - generic [ref=e18]:
+        - generic [ref=e19]:
+          - heading "05 沉淀" [level=1] [ref=e20]
+          - paragraph [ref=e21]: 综合四维探索结果，通过系统化筛选确定三个最终职业发展方向。 回顾、匹配、假设生成、价值观与热爱过滤，最终选出你最想做的事。
+          - button "完成并继续" [disabled] [ref=e22]:
+            - img [ref=e23]
+            - generic [ref=e26]: 完成并继续
+        - generic [ref=e28]:
+          - complementary [ref=e29]:
+            - paragraph [ref=e31]: 筛选表格将显示在此处；进入筛选步骤后自动加载。
+          - generic [ref=e33]:
+            - generic [ref=e36]:
+              - heading "对话" [level=2] [ref=e37]
+              - paragraph [ref=e38]: AI 协助你完成表格筛选与决策
+            - generic [ref=e40]:
+              - button "滚动到底部":
+                - img
+            - generic [ref=e52]:
+              - textbox "沉下心来，感受对话的节奏…" [ref=e53]
+              - button [disabled] [ref=e55] [cursor=pointer]:
+                - img [ref=e56]
+  - alert [ref=e58]

@@ -1507,12 +1507,15 @@ class RuminationProgressSaveRequest(BaseModel):
     main_section: Optional[str] = None
     review_sub_index: Optional[int] = None
     filter_step: Optional[int] = None
+    filter_sub_step: Optional[str] = None
     filter_table: Optional[List[Dict[str, Any]]] = None
     filter_row_cursor: Optional[int] = None
     hypothesis_round: Optional[int] = None
     filter_early_terminated: Optional[bool] = None
     filter_terminate_reason: Optional[str] = None
     step3_trigger: Optional[str] = None
+    combo_conclusions: Optional[Dict[str, Any]] = None
+    combo_completion_modal_dismissed: Optional[bool] = None
 
 
 class RuminationTableSubmitRequest(BaseModel):
@@ -1631,6 +1634,20 @@ def save_rumination_progress_endpoint(
         filter_early_terminated=request.filter_early_terminated,
         filter_terminate_reason=request.filter_terminate_reason,
     )
+    # combo 相关字段需要单独处理（save_rumination_progress 不支持这些字段）
+    extra_updates: Dict[str, Any] = {}
+    if request.filter_sub_step is not None:
+        extra_updates["filter_sub_step"] = request.filter_sub_step
+    if request.combo_conclusions is not None:
+        extra_updates["combo_conclusions"] = request.combo_conclusions
+    if request.combo_completion_modal_dismissed is not None:
+        extra_updates["combo_completion_modal_dismissed"] = request.combo_completion_modal_dismissed
+    if extra_updates:
+        progress = merge_rumination_progress_fields(
+            reports_root,
+            report_id,
+            extra_updates,
+        )
     # step3 表格触发不再产生 side effect（操作消息通过 /message/stream 发给 AI）
     return SimpleChatResponse(code=200, message="success", data={"progress": progress, "step3_side_effect": None})
 
@@ -1653,7 +1670,11 @@ def _table_widget_payload(
     progress = progress or {}
     kwargs: Dict[str, Any] = {}
     if step == 3:
-        kwargs["hypothesis_row_cursor"] = int(progress.get("filter_row_cursor") or 0)
+        if sub_step == "discussion":
+            # 3b 阶段全部解锁
+            kwargs["hypothesis_row_cursor"] = len(rows)
+        else:
+            kwargs["hypothesis_row_cursor"] = int(progress.get("filter_row_cursor") or 0)
     if sub_step:
         kwargs["sub_step"] = sub_step
     return build_table_widget_payload(
@@ -2868,6 +2889,206 @@ class ComboMatrixSubmitRequest(BaseModel):
     thread_id: Optional[str] = None
 
 
+class RuminationComboGuideRequest(BaseModel):
+    activation_code: str
+    combo_id: str
+    thread_id: Optional[str] = None
+
+
+async def _generate_and_store_combo_guide(
+    activation_code: str,
+    combo_id: str,
+    thread_id: Optional[str],
+    current_user: dict,
+) -> Optional[dict]:
+    """Generate a combo guide via LLM and store as message. Returns guide_message on success."""
+    try:
+        manager = get_activation_manager_for_code(activation_code)
+        rec, report, _, logical_session_id, category, conv_manager = _resolve_report_context(
+            manager=manager,
+            activation_code=activation_code,
+            current_user=current_user,
+            phase="rumination",
+            thread_id=thread_id,
+        )
+        if not logical_session_id:
+            logger.warning("combo guide: no session for %s/%s", activation_code, combo_id)
+            return None
+
+        storage_root = str(get_effective_simple_root(rec))
+        reports_root = str(Path(storage_root) / "reports")
+        rid = report["report_id"]
+        session_id_for_storage = rid
+
+        # Re-check: may have been generated while waiting in queue
+        history_messages: List[dict] = await conv_manager.get_messages(
+            session_id=session_id_for_storage,
+            category=category,
+        )
+        combo_messages = slice_messages_for_combo(history_messages, combo_id)
+        if combo_messages:
+            return None
+
+        progress = load_rumination_progress(Path(reports_root), rid)
+        matrix = progress.get("combo_matrix") or []
+        combo = get_combo_by_id(matrix, combo_id)
+        if not combo:
+            return None
+
+        passion_name = str(combo.get("passion_name") or "")
+        strength_name = str(combo.get("strength_name") or "")
+
+        from app.domain.rumination_prompt_strings import STEP_3_OPENING_SYSTEM_ZH
+        from app.core.llmapi.base import LLMMessage as _LLMMsg
+
+        combo_user_context = (
+            f"当前组合：热爱「{passion_name}」× 优势「{strength_name}」。\n"
+            f"请直接针对这个组合向用户提问，引导用户构想具体的职业方向假设。\n"
+            f"如果这是用户探索的第一个组合，先简要解释整体流程："
+            f"针对每个热爱×优势组合，我们探索可能的职业方向，生成两个假设"
+            f"（自由职业/创业方向 + 公司职业方向），用户可以确认、跳过或自己填写。\n"
+            f"如果不是第一个组合，直接针对当前组合提问即可。"
+        )
+
+        llm_messages = [
+            _LLMMsg(role="system", content=STEP_3_OPENING_SYSTEM_ZH),
+            _LLMMsg(role="user", content=combo_user_context),
+        ]
+
+        vip_level = getattr(rec, "vip_level", 1) or 1
+        llm = _get_dialogue_llm_provider(vip_level=vip_level)
+        guide_text = ""
+        try:
+            sem = _get_llm_semaphore()
+            if sem:
+                async with sem:
+                    resp = await llm.chat(llm_messages, temperature=0.65, max_tokens=600)
+                    guide_text = getattr(resp, "content", resp) if resp else ""
+            else:
+                resp = await llm.chat(llm_messages, temperature=0.65, max_tokens=600)
+                guide_text = getattr(resp, "content", resp) if resp else ""
+        except Exception as e:
+            logger.warning("combo guide LLM failed, falling back to template: %s", e)
+            conclusions = progress.get("combo_conclusions") or {}
+            completed_count = count_completed_combos(conclusions)
+            guide_text = build_combo_guide_text(passion_name, strength_name, completed_count)
+
+        guide_text = str(guide_text).strip() or build_combo_guide_text(passion_name, strength_name, 0)
+
+        from datetime import datetime, timezone
+        guide_message = {
+            "role": "assistant",
+            "content": guide_text,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "type": "combo_guide",
+            "filter_step": 3,
+            "combo_id": combo_id,
+        }
+        guide_message.update(
+            IDCodec.build_message_ids(
+                thread_id=logical_session_id,
+                activation_session_id=rec.session_id,
+            )
+        )
+        guide_message.setdefault("step_id", "rumination")
+        guide_message.setdefault("agent_id", "coach")
+        guide_message.setdefault("event", "assistant_reply")
+
+        await conv_manager.append_message(
+            session_id=session_id_for_storage,
+            category=category,
+            message=guide_message,
+        )
+        logger.info("combo guide generated: %s/%s", activation_code, combo_id)
+        return guide_message
+    except Exception as e:
+        logger.exception("combo guide generation failed: %s/%s", activation_code, combo_id)
+        return None
+
+
+@router.post("/rumination-combo-guide", response_model=SimpleChatResponse)
+async def rumination_ensure_combo_guide(
+    request: RuminationComboGuideRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """确保进入某个组合时右侧已出现引导语。
+    - 已有消息 → 立即返回 created=false
+    - 正在排队或生成 → 返回 status=queued
+    - 尚未排队 → 入队后立即返回 status=queued，后台 fire-and-forget 生成
+    """
+    try:
+        user_id = (current_user or {}).get("user_id") or (current_user or {}).get("sub")
+        if not user_id:
+            logger.warning("combo-guide: no user_id in current_user=%s", current_user)
+            raise HTTPException(status_code=400, detail="请先登录")
+
+        # Fast path: check existing messages (synchronous)
+        manager = get_activation_manager_for_code(request.activation_code)
+        rec, report, _, logical_session_id, category, conv_manager = _resolve_report_context(
+            manager=manager,
+            activation_code=request.activation_code,
+            current_user=current_user,
+            phase="rumination",
+            thread_id=request.thread_id,
+        )
+        if not logical_session_id:
+            logger.warning("combo-guide: no logical_session_id for code=%s thread=%s", request.activation_code, request.thread_id)
+            raise HTTPException(status_code=400, detail="无法确定会话 ID")
+
+        storage_root = str(get_effective_simple_root(rec))
+        rid = report["report_id"]
+        session_id_for_storage = rid
+
+        history_messages: List[dict] = await conv_manager.get_messages(
+            session_id=session_id_for_storage,
+            category=category,
+        )
+        combo_messages = slice_messages_for_combo(history_messages, request.combo_id)
+
+        if combo_messages:
+            return SimpleChatResponse(
+                code=200,
+                message="success",
+                data={"created": False, "message": None},
+            )
+
+        # Not cached → enqueue
+        from app.utils.combo_guide_queue import get_combo_guide_queue
+        queue = get_combo_guide_queue()
+
+        if await queue.is_in_flight(user_id, request.combo_id):
+            return SimpleChatResponse(
+                code=200,
+                message="success",
+                data={"created": False, "status": "queued", "combo_id": request.combo_id},
+            )
+
+        async def _run():
+            await queue.enqueue(
+                user_id=user_id,
+                combo_id=request.combo_id,
+                generate_fn=lambda: _generate_and_store_combo_guide(
+                    activation_code=request.activation_code,
+                    combo_id=request.combo_id,
+                    thread_id=request.thread_id,
+                    current_user=current_user,
+                ),
+            )
+
+        asyncio.create_task(_run())
+
+        return SimpleChatResponse(
+            code=200,
+            message="success",
+            data={"created": False, "status": "queued", "combo_id": request.combo_id},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("rumination-combo-guide failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"创建组合引导语失败: {e}") from e
+
+
 @router.post("/rumination-combo-matrix-submit", response_model=SimpleChatResponse)
 async def rumination_combo_matrix_submit(
     request: ComboMatrixSubmitRequest,
@@ -2937,7 +3158,7 @@ async def rumination_combo_matrix_submit(
             },
         )
 
-        # 构建 3b 表格 widget
+        # 构建 3b 表格 widget（全部解锁，不逐行限制）
         table_widget = _build_table_widget_payload(
             step=3,
             rows=table_rows,
@@ -2949,6 +3170,7 @@ async def rumination_combo_matrix_submit(
             ],
             editable_cols=["用户确认的假设"],
             guide_text="以下是您已确认的假设方向，选中某一行可在右侧提问。",
+            sub_step="discussion",
         )
 
         return SimpleChatResponse(

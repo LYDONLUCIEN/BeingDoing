@@ -1,0 +1,55 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - navigation [ref=e3]:
+      - generic [ref=e4]:
+        - link "寻路" [ref=e6] [cursor=pointer]:
+          - /url: /
+        - generic [ref=e7]:
+          - link "首页" [ref=e8] [cursor=pointer]:
+            - /url: /
+          - link "开始探索" [ref=e9] [cursor=pointer]:
+            - /url: /explore/intro
+          - link "社区" [ref=e10] [cursor=pointer]:
+            - /url: /community
+        - generic [ref=e11]:
+          - combobox [ref=e12] [cursor=pointer]:
+            - option "中文" [selected]
+            - option "EN"
+          - button "TE" [ref=e14] [cursor=pointer]
+    - main [ref=e15]:
+      - generic [ref=e19]:
+        - generic [ref=e20]:
+          - heading "05 沉淀" [level=1] [ref=e21]
+          - paragraph [ref=e22]: 综合四维探索结果，通过系统化筛选确定三个最终职业发展方向。 回顾、匹配、假设生成、价值观与热爱过滤，最终选出你最想做的事。
+          - button "完成并继续" [disabled] [ref=e23]:
+            - img [ref=e24]
+            - generic [ref=e27]: 完成并继续
+        - generic "加载进度…" [ref=e29]
+        - generic [ref=e32]:
+          - complementary [ref=e33]:
+            - paragraph [ref=e35]: 筛选表格将显示在此处；进入筛选步骤后自动加载。
+          - generic [ref=e37]:
+            - generic [ref=e40]:
+              - heading "对话" [level=2] [ref=e41]
+              - paragraph [ref=e42]: AI 协助你完成表格筛选与决策
+            - generic [ref=e44]:
+              - generic [ref=e67]:
+                - generic [ref=e68]: 20:09
+                - generic [ref=e71]:
+                  - paragraph [ref=e72]: 我们到最后一轮了，这真的很关键——走到这里，说明前面的探索已经帮你理清了不少思路。
+                  - paragraph [ref=e73]: 今天我们要做的，就是一起把焦点收拢，最终锁定三个值得你去尝试的方向。我会陪着你一步步梳理、比较，直到选出那几个真正让你有感觉、也适合你的选项。
+                  - paragraph [ref=e74]: 当你觉得可以了，告诉我，我们就开始。
+                - generic [ref=e75]:
+                  - button "复制" [ref=e76] [cursor=pointer]:
+                    - img [ref=e77]
+                  - button "点赞" [ref=e80] [cursor=pointer]:
+                    - img [ref=e81]
+                  - button "保存为检查点" [ref=e83] [cursor=pointer]:
+                    - img [ref=e84]
+              - button "滚动到底部":
+                - img
+            - generic [ref=e59]:
+              - textbox "沉下心来，感受对话的节奏…" [ref=e60]
+              - button [disabled] [ref=e62] [cursor=pointer]:
+                - img [ref=e63]
+  - alert [ref=e65]

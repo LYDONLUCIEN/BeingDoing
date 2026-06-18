@@ -1,0 +1,154 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - navigation [ref=e3]:
+      - generic [ref=e4]:
+        - link "寻路" [ref=e6] [cursor=pointer]:
+          - /url: /
+        - generic [ref=e7]:
+          - link "首页" [ref=e8] [cursor=pointer]:
+            - /url: /
+          - link "开始探索" [ref=e9] [cursor=pointer]:
+            - /url: /explore/intro
+          - link "社区" [ref=e10] [cursor=pointer]:
+            - /url: /community
+        - generic [ref=e11]:
+          - combobox [ref=e12] [cursor=pointer]:
+            - option "中文" [selected]
+            - option "EN"
+          - button "真开" [ref=e14] [cursor=pointer]
+    - main [ref=e15]:
+      - generic [ref=e19]:
+        - generic [ref=e20]:
+          - heading "05 沉淀" [level=1] [ref=e21]
+          - paragraph [ref=e22]: 综合四维探索结果，通过系统化筛选确定三个最终职业发展方向。 回顾、匹配、假设生成、价值观与热爱过滤，最终选出你最想做的事。
+          - button "完成并继续" [ref=e23] [cursor=pointer]:
+            - img [ref=e24]
+            - generic [ref=e27]: 完成并继续
+        - generic [ref=e60]:
+          - button "上一阶段" [ref=e61] [cursor=pointer]:
+            - img [ref=e62]
+            - generic [ref=e64]: 上一阶段
+          - generic [ref=e65]:
+            - generic [ref=e66]:
+              - generic [ref=e67]: 进度
+              - generic [ref=e68]: 38%
+            - group "筛选进度共 7 步，点击某一段可跳转到对应子步" [ref=e69]:
+              - generic [ref=e70]:
+                - button "跳转到筛选第 1 步" [ref=e71] [cursor=pointer]
+                - button "跳转到筛选第 2 步" [ref=e72] [cursor=pointer]
+                - button "跳转到筛选第 3 步" [ref=e73] [cursor=pointer]
+                - button "跳转到筛选第 4 步" [disabled] [ref=e74]
+                - button "跳转到筛选第 5 步" [disabled] [ref=e75]
+                - button "跳转到筛选第 6 步" [disabled] [ref=e76]
+                - button "跳转到筛选第 7 步" [disabled] [ref=e77]
+            - paragraph [ref=e78]: 筛选 筛选 3/7
+          - button "下一阶段" [disabled] [ref=e79]:
+            - generic [ref=e80]: 下一阶段
+            - img [ref=e81]
+        - generic [ref=e29]:
+          - complementary [ref=e30]:
+            - generic [ref=e83]:
+              - generic [ref=e84]:
+                - generic [ref=e87]: 0/15
+                - button "全部提交" [ref=e88] [cursor=pointer]
+              - generic [ref=e92]:
+                - heading "你的方向" [level=2] [ref=e93]
+                - paragraph [ref=e94]: 自由组合热爱与优势，推断可能的方向。
+              - generic [ref=e95]:
+                - generic [ref=e96]:
+                  - generic [ref=e97]:
+                    - generic [ref=e98]: 热爱
+                    - generic [ref=e99]:
+                      - button "♥ 感官创作 ✓" [ref=e100] [cursor=pointer]:
+                        - generic [ref=e101]: ♥
+                        - generic [ref=e102]: 感官创作
+                        - generic [ref=e103]: ✓
+                      - button "♥ 自我探索" [active] [ref=e104] [cursor=pointer]:
+                        - generic [ref=e105]: ♥
+                        - generic [ref=e106]: 自我探索
+                      - button "♥ 万物融通" [ref=e107] [cursor=pointer]:
+                        - generic [ref=e108]: ♥
+                        - generic [ref=e109]: 万物融通
+                  - generic [ref=e110]:
+                    - generic [ref=e111]: 优势
+                    - generic [ref=e112]:
+                      - button "✦ 审美判断" [ref=e113] [cursor=pointer]:
+                        - generic [ref=e114]: ✦
+                        - generic [ref=e115]: 审美判断
+                      - button "✦ 信息搜索" [ref=e116] [cursor=pointer]:
+                        - generic [ref=e117]: ✦
+                        - generic [ref=e118]: 信息搜索
+                      - button "✦ 根源性思考" [ref=e119] [cursor=pointer]:
+                        - generic [ref=e120]: ✦
+                        - generic [ref=e121]: 根源性思考
+                      - button "✦ 建立关联" [ref=e122] [cursor=pointer]:
+                        - generic [ref=e123]: ✦
+                        - generic [ref=e124]: 建立关联
+                      - button "✦ 自驱探索" [ref=e125] [cursor=pointer]:
+                        - generic [ref=e126]: ✦
+                        - generic [ref=e127]: 自驱探索
+                - generic [ref=e128]:
+                  - generic [ref=e129]:
+                    - generic [ref=e130]: ♥
+                    - generic [ref=e131]: 已选择：自我探索
+                  - generic [ref=e132]:
+                    - generic [ref=e133]: ✦
+                    - generic [ref=e134]: 已选择：审美判断
+              - generic [ref=e178]:
+                - generic [ref=e179]:
+                  - generic [ref=e180]: ✦
+                  - generic [ref=e181]:
+                    - generic [ref=e182]:
+                      - paragraph [ref=e183]: 假设结果
+                      - button "⌄" [ref=e184] [cursor=pointer]
+                    - heading "探索这个组合的方向..." [level=3] [ref=e185]
+                    - textbox "请输入你对这个组合的假设，描述一个具体可落地的方向..." [ref=e186]
+                - generic [ref=e188]:
+                  - button "跳过" [ref=e189] [cursor=pointer]
+                  - button "确认这个结论" [disabled] [ref=e190]
+          - generic [ref=e34]:
+            - generic [ref=e37]:
+              - heading "自我探索 × 审美判断" [level=2] [ref=e191]
+              - paragraph [ref=e39]: 与 AI 探讨这个组合的假设方向
+            - generic [ref=e41]:
+              - generic [ref=e193]:
+                - generic [ref=e194]: 13:43
+                - generic [ref=e197]:
+                  - paragraph [ref=e198]: 好的，我们先来明确一下接下来的探索方式。
+                  - paragraph [ref=e199]: 你面前的表格是逐行解锁的，一次只聚焦一个「热爱 × 优势」组合。针对每一个组合，我都可以帮你在对话中构想出两种具体、有画面感的未来发展方向假设：
+                  - list [ref=e200]:
+                    - listitem [ref=e201]:
+                      - strong [ref=e202]: 一种是你作为独立个体、自由职业者或小型创业者可以经营的事业
+                      - text: ——强调自主、灵活，围绕你独有的品味与觉察去创造价值。
+                    - listitem [ref=e203]:
+                      - strong [ref=e204]: 另一种是进入一家公司，作为员工来发展的职业路径
+                      - text: ——把这项热爱和优势嵌入某个团队或组织，让它成为你日常工作的一部分。
+                  - paragraph [ref=e205]: 在右侧的对话里，我们可以把假设聊到足够具体、你心中有数。聊完后，你可以在左侧表格的“假设”列选择：
+                  - list [ref=e206]:
+                    - listitem [ref=e207]:
+                      - strong [ref=e208]: 「填写假设」
+                      - text: ：把我们聊出的那个最让你心动、也最贴合你的方向填进去；
+                    - listitem [ref=e209]:
+                      - strong [ref=e210]: 「无」
+                      - text: ：如果你觉得这个组合不适合你，或者暂时不想深入，也可以直接跳过；
+                    - listitem [ref=e211]: 或者，完全按你自己的想法填入一个想要的假设。
+                  - paragraph [ref=e212]: 无论哪一种，填完之后都需要在右侧对话里文字确认一下，确认后才会进入下一个组合；选「无」也同样需要文字确认跳过。如果你对表格中某一行有疑问，随时点击该行，然后在对话框里提问就好。
+                  - paragraph [ref=e213]: 全部行处理完毕之后，点击「确认」按钮，就可以进入下一步。
+                  - separator [ref=e214]
+                  - paragraph [ref=e215]:
+                    - text: 现在我们来看第一行：
+                    - strong [ref=e216]: 热爱「自我探索」× 优势「审美判断」
+                    - text: 。
+                  - paragraph [ref=e217]: 你能想象自己在这个方向上具体做什么吗？——比如，有没有某件事，刚好需要你既深入理解人的内心世界，又擅长用美、用品味来呈现或判断？我们可以先往自由职业/小事业方向想一想，也可以先往公司内的角色去构思。如果觉得这个组合目前和你不太有共鸣，也完全可以直接告诉我“跳过”，我们再一起在左侧选“无”确认。
+                - generic [ref=e218]:
+                  - button "复制" [ref=e219] [cursor=pointer]:
+                    - img [ref=e220]
+                  - button "点赞" [ref=e223] [cursor=pointer]:
+                    - img [ref=e224]
+              - button "滚动到底部":
+                - img
+            - generic [ref=e53]:
+              - textbox "输入你的想法..." [ref=e177]: 测试输入
+              - button [ref=e56] [cursor=pointer]:
+                - img [ref=e57]
+  - alert [ref=e59]

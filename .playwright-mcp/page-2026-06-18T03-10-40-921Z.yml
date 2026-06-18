@@ -1,0 +1,121 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - navigation [ref=e3]:
+      - generic [ref=e4]:
+        - link "寻路" [ref=e6] [cursor=pointer]:
+          - /url: /
+        - generic [ref=e7]:
+          - link "首页" [ref=e8] [cursor=pointer]:
+            - /url: /
+          - link "开始探索" [ref=e9] [cursor=pointer]:
+            - /url: /explore/intro
+          - link "社区" [ref=e10] [cursor=pointer]:
+            - /url: /community
+        - generic [ref=e11]:
+          - combobox [ref=e12] [cursor=pointer]:
+            - option "中文" [selected]
+            - option "EN"
+          - button "真开" [ref=e96] [cursor=pointer]
+    - main [ref=e15]:
+      - generic [ref=e102]:
+        - generic [ref=e103]:
+          - heading "05 沉淀" [level=1] [ref=e104]
+          - paragraph [ref=e105]: 综合四维探索结果，通过系统化筛选确定三个最终职业发展方向。 回顾、匹配、假设生成、价值观与热爱过滤，最终选出你最想做的事。
+          - button "完成并继续" [ref=e106] [cursor=pointer]:
+            - img [ref=e107]
+            - generic [ref=e110]: 完成并继续
+        - generic [ref=e112]:
+          - button "上一阶段" [ref=e113] [cursor=pointer]:
+            - img [ref=e114]
+            - generic [ref=e116]: 上一阶段
+          - generic [ref=e117]:
+            - generic [ref=e118]:
+              - generic [ref=e119]: 进度
+              - generic [ref=e120]: 38%
+            - group "筛选进度共 7 步，点击某一段可跳转到对应子步" [ref=e121]:
+              - generic [ref=e122]:
+                - button "跳转到筛选第 1 步" [ref=e123] [cursor=pointer]
+                - button "跳转到筛选第 2 步" [ref=e124] [cursor=pointer]
+                - button "跳转到筛选第 3 步" [ref=e125] [cursor=pointer]
+                - button "跳转到筛选第 4 步" [disabled] [ref=e126]
+                - button "跳转到筛选第 5 步" [disabled] [ref=e127]
+                - button "跳转到筛选第 6 步" [disabled] [ref=e128]
+                - button "跳转到筛选第 7 步" [disabled] [ref=e129]
+            - paragraph [ref=e130]: 筛选 筛选 3/7
+          - button "下一阶段" [disabled] [ref=e131]:
+            - generic [ref=e132]: 下一阶段
+            - img [ref=e133]
+        - generic [ref=e135]:
+          - complementary [ref=e136]:
+            - generic [ref=e137]:
+              - generic [ref=e138]:
+                - generic [ref=e141]: 0/15
+                - button "全部提交" [ref=e142] [cursor=pointer]
+              - generic [ref=e146]:
+                - heading "你的方向" [level=2] [ref=e147]
+                - paragraph [ref=e148]: 自由组合热爱与优势，推断可能的方向。
+              - generic [ref=e149]:
+                - generic [ref=e150]:
+                  - generic [ref=e151]:
+                    - generic [ref=e152]: 热爱
+                    - generic [ref=e153]:
+                      - button "♥ 感官创作 ✓" [ref=e154] [cursor=pointer]:
+                        - generic [ref=e155]: ♥
+                        - generic [ref=e156]: 感官创作
+                        - generic [ref=e157]: ✓
+                      - button "♥ 自我探索" [ref=e158] [cursor=pointer]:
+                        - generic [ref=e159]: ♥
+                        - generic [ref=e160]: 自我探索
+                      - button "♥ 万物融通" [ref=e161] [cursor=pointer]:
+                        - generic [ref=e162]: ♥
+                        - generic [ref=e163]: 万物融通
+                  - generic [ref=e164]:
+                    - generic [ref=e165]: 优势
+                    - generic [ref=e166]:
+                      - button "✦ 审美判断" [ref=e167] [cursor=pointer]:
+                        - generic [ref=e168]: ✦
+                        - generic [ref=e169]: 审美判断
+                      - button "✦ 信息搜索" [ref=e170] [cursor=pointer]:
+                        - generic [ref=e171]: ✦
+                        - generic [ref=e172]: 信息搜索
+                      - button "✦ 根源性思考" [ref=e173] [cursor=pointer]:
+                        - generic [ref=e174]: ✦
+                        - generic [ref=e175]: 根源性思考
+                      - button "✦ 建立关联" [ref=e176] [cursor=pointer]:
+                        - generic [ref=e177]: ✦
+                        - generic [ref=e178]: 建立关联
+                      - button "✦ 自驱探索" [ref=e179] [cursor=pointer]:
+                        - generic [ref=e180]: ✦
+                        - generic [ref=e181]: 自驱探索
+                - generic [ref=e182]:
+                  - generic [ref=e183]:
+                    - generic [ref=e184]: ♥
+                    - generic [ref=e185]: 已选择：感官创作
+                  - generic [ref=e186]:
+                    - generic [ref=e187]: ✦
+                    - generic [ref=e188]: 已选择：审美判断
+              - generic [ref=e189]:
+                - generic [ref=e190]:
+                  - generic [ref=e191]: ✦
+                  - generic [ref=e192]:
+                    - generic [ref=e193]:
+                      - paragraph [ref=e194]: 假设结果
+                      - button "⌄" [ref=e195] [cursor=pointer]
+                    - heading "我想当一个心理疗愈师" [level=3] [ref=e196]
+                    - paragraph [ref=e197]: 我想当一个心理疗愈师
+                - generic [ref=e199]:
+                  - button "跳过" [ref=e200] [cursor=pointer]
+                  - button "确认这个结论" [ref=e201] [cursor=pointer]
+          - generic [ref=e203]:
+            - generic [ref=e206]:
+              - heading "感官创作 × 审美判断" [level=2] [ref=e207]
+              - paragraph [ref=e208]: 与 AI 探讨这个组合的假设方向
+            - generic [ref=e210]:
+              - paragraph [ref=e213]: 可从左侧筛选表开始；需要时在下方补充说明即可。
+              - button "滚动到底部":
+                - img
+            - generic [ref=e218]:
+              - textbox "输入你的想法..." [disabled] [ref=e219]
+              - button [disabled] [ref=e221] [cursor=pointer]:
+                - img [ref=e222]
+  - alert [ref=e59]

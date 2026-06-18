@@ -90,6 +90,7 @@ export interface RuminationProgressSaveParams {
   main_section?: RuminationMainSection;
   review_sub_index?: number;
   filter_step?: number;
+  filter_sub_step?: string;
   filter_table?: Record<string, unknown>[] | null;
   filter_row_cursor?: number;
   hypothesis_round?: number;
@@ -97,6 +98,8 @@ export interface RuminationProgressSaveParams {
   filter_terminate_reason?: string | null;
   /** 子步 3 表格显式触发：none=选「无」；hypothesis_commit=填假设失焦/确认 */
   step3_trigger?: 'none' | 'hypothesis_commit';
+  combo_conclusions?: Record<string, unknown>;
+  combo_completion_modal_dismissed?: boolean;
 }
 
 export type RuminationStep3SideEffect =
@@ -299,6 +302,53 @@ export const ruminationApi = {
       text,
     });
     return res;
+  },
+
+  /** v3: 确保单个组合已存在固定引导语；不存在则入队异步生成 */
+  ensureComboGuide: async (
+    activationCode: string,
+    comboId: string,
+    threadId?: string,
+  ): Promise<
+    ApiResponse<{
+      created: boolean;
+      status?: 'queued' | null;
+      combo_id?: string;
+      message?: Record<string, unknown> | null;
+    }>
+  > => {
+    const res = await apiClient.post('/simple-chat/rumination-combo-guide', {
+      activation_code: activationCode,
+      combo_id: comboId,
+      thread_id: threadId,
+    });
+    return res;
+  },
+
+  /** Poll /history until a combo guide appears for the given comboId */
+  pollComboGuide: async (
+    activationCode: string,
+    comboId: string,
+    threadId?: string,
+    maxPolls: number = 20,
+    intervalMs: number = 2000,
+  ): Promise<Record<string, unknown> | null> => {
+    for (let i = 0; i < maxPolls; i++) {
+      try {
+        const h = await apiClient.get('/simple-chat/history', {
+          params: { activation_code: activationCode, phase: 'rumination', thread_id: threadId },
+        });
+        const messages: any[] = (h as any).data?.messages ?? [];
+        const guide = messages.find(
+          (m) => m.combo_id === comboId && m.role === 'assistant' && m.type === 'combo_guide',
+        );
+        if (guide) return guide;
+      } catch {
+        // ignore, retry
+      }
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    return null;
   },
 
   /** v3: 提交组合矩阵，进入 3b 深度讨论 */

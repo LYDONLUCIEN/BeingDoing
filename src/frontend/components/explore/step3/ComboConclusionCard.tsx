@@ -59,7 +59,7 @@ export default function ComboConclusionCard({
   }, [localText, onSkip]);
 
   const handleExpand = useCallback(() => {
-    setIsExpanded(prev => !prev);
+    setIsExpanded((prev) => !prev);
   }, []);
 
   // Sync local text when conclusion changes externally (e.g. initial load)
@@ -69,16 +69,16 @@ export default function ComboConclusionCard({
 
   return (
     <div
-      className={`rounded-xl border-2 p-4 transition-all ${
+      className={`flex flex-col rounded-xl border-2 p-4 transition-all flex-1 min-h-0 ${
         state === 'skipped'
           ? 'border-gray-300 bg-gray-50'
           : state === 'confirmed' && !isExpanded
-          ? 'border-teal-300 bg-teal-50'
-          : 'border-gray-200 bg-white'
+            ? 'border-teal-300 bg-teal-50'
+            : 'border-gray-200 bg-white'
       }`}
     >
       {/* Header */}
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-2 shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-gray-500">
             {combo.passion_name} × {combo.strength_name}
@@ -105,31 +105,33 @@ export default function ComboConclusionCard({
         )}
       </div>
 
-      {/* Textarea */}
+      {/* Textarea — flex-1 fills remaining space */}
       {(state === 'empty' || state === 'confirmed' || (state === 'skipped' && localText)) && (
         <textarea
           value={localText}
           onChange={handleTextChange}
           disabled={state === 'confirmed' && !isExpanded}
           placeholder="请输入你对这个组合的假设，描述一个具体可落地的方向..."
-          className={`w-full min-h-[80px] text-sm resize-none rounded-lg border p-3 transition-all ${
-            state === 'skipped'
+          className={`w-full flex-1 min-h-[40px] text-sm resize-none rounded-lg border p-3 transition-all ${
+            state === 'skipped' && localText.trim()
               ? 'bg-gray-100 text-gray-400 border-gray-200 line-through'
-              : state === 'confirmed' && !isExpanded
-              ? 'bg-teal-50 text-teal-800 border-teal-200'
-              : 'bg-white text-gray-800 border-gray-200 focus:border-teal-400 focus:ring-1 focus:ring-teal-200'
+              : state === 'skipped'
+                ? 'bg-gray-100 text-gray-400 border-gray-200'
+                : state === 'confirmed' && !isExpanded
+                  ? 'bg-teal-50 text-teal-800 border-teal-200'
+                  : 'bg-white text-gray-800 border-gray-200 focus:border-teal-400 focus:ring-1 focus:ring-teal-200'
           }`}
         />
       )}
       {state === 'skipped' && !localText && (
-        <div className="text-sm text-gray-400 italic py-4 text-center">
+        <div className="flex-1 flex items-center justify-center text-sm text-gray-400 italic">
           此组合已跳过
         </div>
       )}
 
       {/* Action buttons — only show when editable */}
       {(state === 'empty' || isExpanded) && (
-        <div className="flex items-center gap-2 mt-3">
+        <div className="flex items-center gap-2 mt-2 shrink-0">
           <button
             onClick={handleConfirm}
             disabled={!canConfirm}
@@ -149,12 +151,7 @@ export default function ComboConclusionCard({
             <SkipForward size={14} />
             跳过
           </button>
-        </div>
-      )}
-
-      {/* Character count */}
-      {(state === 'empty' || isExpanded) && (
-        <div className="text-right mt-1">
+          <div className="flex-1" />
           <span className={`text-xs ${canConfirm ? 'text-teal-500' : 'text-gray-400'}`}>
             {textLen}/5 字
           </span>

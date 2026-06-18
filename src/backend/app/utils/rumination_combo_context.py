@@ -15,8 +15,13 @@ def slice_messages_for_combo(
 
 # ── 固定模板引导语 ──────────────────────────────────────────────
 
+COMBO_GUIDE_FIRST_TEMPLATE_ZH = (
+    "让我们探索第1个组合「{passion} × {strength}」，"
+    "你觉得它们结合后可以做什么？"
+)
+
 COMBO_GUIDE_TEMPLATE_ZH = (
-    "让我们探索第{n}个组合「{passion} × {strength}」，"
+    "让我们探索「{passion} × {strength}」，"
     "你觉得它们结合后可以做什么？"
 )
 
@@ -26,9 +31,13 @@ def build_combo_guide_text(
     strength: str,
     completed_count: int,
 ) -> str:
-    """生成固定模板引导语。"""
+    """生成固定模板引导语。第一个组合（completed_count==0）带序号，后续不带。"""
+    if completed_count == 0:
+        return COMBO_GUIDE_FIRST_TEMPLATE_ZH.format(
+            passion=passion,
+            strength=strength,
+        )
     return COMBO_GUIDE_TEMPLATE_ZH.format(
-        n=completed_count + 1,
         passion=passion,
         strength=strength,
     )
@@ -59,6 +68,7 @@ def build_combo_first_message(
     passion: str,
     strength: str,
     completed_count: int,
+    combo_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """为组合生成首条 assistant 消息（引导语）。"""
     from datetime import datetime, timezone
@@ -67,4 +77,6 @@ def build_combo_first_message(
         "content": build_combo_guide_text(passion, strength, completed_count),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "type": "combo_guide",
+        "filter_step": 3,
+        "combo_id": combo_id,
     }

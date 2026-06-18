@@ -1,0 +1,139 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - navigation [ref=e3]:
+      - generic [ref=e4]:
+        - link "寻路" [ref=e6] [cursor=pointer]:
+          - /url: /
+        - generic [ref=e7]:
+          - link "首页" [ref=e8] [cursor=pointer]:
+            - /url: /
+          - link "开始探索" [ref=e9] [cursor=pointer]:
+            - /url: /explore/intro
+          - link "社区" [ref=e10] [cursor=pointer]:
+            - /url: /community
+        - generic [ref=e11]:
+          - combobox [ref=e12] [cursor=pointer]:
+            - option "中文" [selected]
+            - option "EN"
+          - button "真开" [ref=e14] [cursor=pointer]
+    - main [ref=e15]:
+      - generic [ref=e18]:
+        - generic [ref=e19]:
+          - heading "寻路" [level=1] [ref=e20]
+          - paragraph [ref=e21]: 所有热爱,都值得成为事业。
+          - button "开始探索 →" [ref=e23] [cursor=pointer]:
+            - text: 开始探索
+            - generic [ref=e24]: →
+        - generic [ref=e25]:
+          - generic [ref=e26]:
+            - generic [ref=e27]:
+              - paragraph [ref=e28]: 第一步
+              - heading "明确你的价值观" [level=3] [ref=e29]
+              - paragraph [ref=e30]: 找出对你最重要的核心价值观。了解过去工作不满的根源，建立评估未来选择的正确标准。
+            - generic [ref=e31]:
+              - paragraph [ref=e32]: 第二步
+              - heading "发现你的优势" [level=3] [ref=e33]
+              - paragraph [ref=e34]: 揭示你独特的天赋和自然擅长的事情。看到让你有价值的独特优势。
+            - generic [ref=e35]:
+              - paragraph [ref=e36]: 第三步
+              - heading "找到你的热爱" [level=3] [ref=e37]
+              - paragraph [ref=e38]: 探索能给你带来活力的活动和话题。找到能够维持长期动力的热爱所在。
+            - generic [ref=e39]:
+              - paragraph [ref=e40]: 第四步
+              - heading "定义你的使命" [level=3] [ref=e41]
+              - paragraph [ref=e42]: 将未来的工作与更大的使命联系起来。明确你期望的工作能创造的社会价值或影响。
+          - generic [ref=e44]:
+            - heading "获取「四维共鸣」专属报告" [level=2] [ref=e45]
+            - paragraph [ref=e46]:
+              - text: 基于你的价值观、优势、热爱与使命，
+              - text: 为你深度推演高度匹配的职业方向。
+            - button "你的方向 →" [ref=e47] [cursor=pointer]:
+              - text: 你的方向
+              - generic [ref=e48]: →
+        - generic [ref=e49]:
+          - generic [ref=e50]:
+            - generic [ref=e51]:
+              - img [ref=e52]
+              - generic [ref=e54]: 即将推出
+            - heading "下一版本" [level=2] [ref=e55]
+            - paragraph [ref=e56]: 激动人心的新功能，助力你的职业之旅
+          - generic [ref=e57]:
+            - generic [ref=e58]:
+              - heading "职业双轨" [level=3] [ref=e59]
+              - paragraph [ref=e60]: 职业不是人生的全部，但可以是人生最重要的表达。我们正在构建一套工具，帮你同时规划职业成就路径与人生意义路径。
+            - generic [ref=e61]:
+              - heading "光谱共振" [level=3] [ref=e62]
+              - paragraph [ref=e63]: 匹配与你四个维度相似或互补的伙伴，在共振中看见彼此、共创可能。
+            - generic [ref=e64]:
+              - heading "静室之我" [level=3] [ref=e65]
+              - paragraph [ref=e66]: 属于你自己的读书与思考空间。可随时记录、可空闲沉淀，亦可匿名分享给有缘人。
+        - generic [ref=e67]:
+          - generic [ref=e68]:
+            - heading "用户评价" [level=2] [ref=e69]
+            - paragraph [ref=e70]: 加入数千名找到方向的用户
+          - generic [ref=e71]:
+            - generic [ref=e72]:
+              - generic [ref=e74]:
+                - generic [ref=e75]:
+                  - generic [ref=e76]:
+                    - generic [ref=e77]: 小
+                    - generic [ref=e78]:
+                      - generic [ref=e79]: 小林
+                      - generic [ref=e80]: 产品经理
+                  - generic "5 星" [ref=e81]:
+                    - img [ref=e82]
+                    - img [ref=e84]
+                    - img [ref=e86]
+                    - img [ref=e88]
+                    - img [ref=e90]
+                - paragraph [ref=e92]: 我第一次意识到，我一直在做别人期待的事，而不是我认为重要的事。这个过程让我看清了自己。
+              - generic [ref=e94]:
+                - generic [ref=e95]:
+                  - generic [ref=e96]:
+                    - generic [ref=e97]: M
+                    - generic [ref=e98]:
+                      - generic [ref=e99]: Maggie
+                      - generic [ref=e100]: 市场运营
+                  - generic "5 星" [ref=e101]:
+                    - img [ref=e102]
+                    - img [ref=e104]
+                    - img [ref=e106]
+                    - img [ref=e108]
+                    - img [ref=e110]
+                - paragraph [ref=e112]: 原来沟通协调这件事对我来说真的是优势，不是习惯。这个区分让我第一次觉得自己有竞争力。
+              - generic [ref=e114]:
+                - generic [ref=e115]:
+                  - generic [ref=e116]:
+                    - generic [ref=e117]: 阿
+                    - generic [ref=e118]:
+                      - generic [ref=e119]: 阿文
+                      - generic [ref=e120]: 应届生
+                  - generic "5 星" [ref=e121]:
+                    - img [ref=e122]
+                    - img [ref=e124]
+                    - img [ref=e126]
+                    - img [ref=e128]
+                    - img [ref=e130]
+                - paragraph [ref=e132]: 帮助别人成长这件事，让我忘我。我以为那只是爱好，没想到可以成为职业核心。
+            - button "下一页" [ref=e133] [cursor=pointer]:
+              - img [ref=e134]
+          - generic [ref=e136]:
+            - button "第1页" [ref=e137] [cursor=pointer]
+            - button "第2页" [ref=e138] [cursor=pointer]
+            - button "第3页" [ref=e139] [cursor=pointer]
+        - generic [ref=e141]:
+          - generic [ref=e142]:
+            - generic [ref=e143]:
+              - link "关于我们" [ref=e144] [cursor=pointer]:
+                - /url: /about
+              - link "联系我们" [ref=e145] [cursor=pointer]:
+                - /url: /contact
+              - link "隐私政策" [ref=e146] [cursor=pointer]:
+                - /url: /privacy
+              - link "服务条款" [ref=e147] [cursor=pointer]:
+                - /url: /terms
+            - generic [ref=e148]:
+              - generic [ref=e149]: QR
+              - generic [ref=e150]: 二维码
+          - paragraph [ref=e151]: © 2026 寻路. 保留所有权利。
+  - alert [ref=e152]

@@ -1,0 +1,24 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - heading "完善个人信息" [level=1] [ref=e4]
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - heading "基本信息" [level=2] [ref=e7]
+        - generic [ref=e8]:
+          - generic [ref=e9]:
+            - generic [ref=e10]: 性别
+            - combobox "性别" [ref=e11]:
+              - option "请选择" [selected]
+              - option "男"
+              - option "女"
+              - option "其他"
+          - generic [ref=e12]:
+            - generic [ref=e13]: 年龄
+            - spinbutton "年龄" [ref=e14]
+      - generic [ref=e16]:
+        - heading "工作履历" [level=2] [ref=e17]
+        - button "添加工作经历" [ref=e18] [cursor=pointer]
+      - generic [ref=e19]:
+        - button "跳过" [ref=e20] [cursor=pointer]
+        - button "保存并继续" [ref=e21] [cursor=pointer]
+  - alert [ref=e22]

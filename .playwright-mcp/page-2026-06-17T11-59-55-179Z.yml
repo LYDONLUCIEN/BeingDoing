@@ -1,0 +1,50 @@
+- generic [ref=e1]:
+  - alert [ref=e22]
+  - generic [ref=e23]:
+    - navigation [ref=e24]:
+      - generic [ref=e25]:
+        - link "寻路" [ref=e27] [cursor=pointer]:
+          - /url: /
+        - generic [ref=e28]:
+          - link "首页" [ref=e29] [cursor=pointer]:
+            - /url: /
+          - link "开始探索" [ref=e30] [cursor=pointer]:
+            - /url: /explore/intro
+          - link "社区" [ref=e31] [cursor=pointer]:
+            - /url: /community
+        - generic [ref=e32]:
+          - combobox [ref=e33] [cursor=pointer]:
+            - option "中文" [selected]
+            - option "EN"
+          - button "登录 / 注册" [ref=e34] [cursor=pointer]
+    - main [ref=e35]:
+      - button "点击任意处加速" [active] [ref=e37]:
+        - generic [ref=e38]:
+          - button "← 返回首页" [ref=e39] [cursor=pointer]
+          - generic [ref=e40]:
+            - generic [ref=e41]:
+              - paragraph [ref=e43]: 请寻找一个安静的空间和不被打扰的时间段，
+              - paragraph [ref=e45]: 在「导师」的指引下，写下你内心浮现的答案。
+            - paragraph [ref=e49]: 你将完成的探索
+            - generic [ref=e50]:
+              - generic [ref=e52]:
+                - generic [ref=e53]: "01"
+                - generic [ref=e54]: 价值观
+                - generic [ref=e56]: Values
+              - generic [ref=e58]:
+                - generic [ref=e59]: "02"
+                - generic [ref=e60]: 优势
+                - generic [ref=e62]: Strengths
+              - generic [ref=e64]:
+                - generic [ref=e65]: "03"
+                - generic [ref=e66]: 热爱
+                - generic [ref=e68]: Interests
+              - generic [ref=e70]:
+                - generic [ref=e71]: "04"
+                - generic [ref=e72]: 使命
+                - generic [ref=e74]: Purpose
+            - paragraph [ref=e80]: 不必追求完美， 只需捕捉当下最真实的流动。
+            - button "开启探索" [ref=e85] [cursor=pointer]:
+              - text: 开启探索
+              - img [ref=e86]
+        - generic: 点击任意处加速

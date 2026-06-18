@@ -42,10 +42,10 @@ elif [ "$COMMAND" = "start-run" ]; then
   TARGET="prod"; COMMAND="start"
 fi
 
-# 确定环境文件（dev / prod / test / 空）
+# 确定环境文件（dev / prod / test / 空）：仅在 start 命令时解析
 ENV_FILE=""
 ENV_LABEL=""
-if [ -n "$TARGET" ]; then
+if [ "$COMMAND" = "start" ] && [ -n "$TARGET" ]; then
   case "$TARGET" in
     dev|prod|test)
       ENV_FILE="$REPO_ROOT/.env.$TARGET"

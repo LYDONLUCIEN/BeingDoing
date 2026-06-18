@@ -83,7 +83,7 @@
 ### B-04 假设生成服务适配
 
 - [ ] `generate_hypothesis_pair_for_row` 接口保持不变（按 passion + strength 生成）
-- [ ] 新增：首次进入组合时的固定模板引导语生成
+- [x] 新增：首次进入组合时的固定模板引导语生成（`build_combo_first_message` + `POST /rumination-combo-guide`）
 - [ ] combo 内对话可反复修改、重新生成（复用现有逻辑）
 
 | 涉及文件 | `rumination_hypothesis_service.py`, `rumination_prompt_strings.py` |
@@ -165,10 +165,10 @@
 
 ### F-04 Combo 对话状态管理
 
-- [ ] Zustand store 扩展：当前 combo_id、combo_states 映射
-- [ ] 消息列表按 combo_id 过滤显示
-- [ ] 切换 combo 时清空右侧消息显示，加载目标 combo 的消息
-- [ ] 未开始聊的组合只显示引导语（无对话记录）
+- [ ] Zustand store 扩展：当前 combo_id、combo_states 映射（当前用页面 local state，可后续迁移）
+- [x] 消息列表按 combo_id 过滤显示
+- [x] 切换 combo 时清空右侧消息显示，加载目标 combo 的消息
+- [x] 未开始聊的组合只显示引导语（无对话记录；首次选中时自动创建 `combo_guide` 消息）
 
 | 涉及文件 | 扩展现有 store 或新建 combo store |
 |----------|-------------------------------------|

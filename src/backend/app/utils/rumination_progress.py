@@ -304,6 +304,9 @@ def save_rumination_progress(
         current["review_sub_index"] = max(0, min(3, review_sub_index))
     if filter_step is not None:
         current["filter_step"] = max(0, min(MAX_FILTER_STEP, filter_step))
+        # 进入 step3 时，如果 sub_step 是 discussion（旧残留），重置为 matrix
+        if filter_step == 3 and current.get("filter_sub_step") == "discussion":
+            current["filter_sub_step"] = "matrix"
     if filter_table is not None:
         current["filter_table"] = filter_table
     if filter_row_cursor is not None:
