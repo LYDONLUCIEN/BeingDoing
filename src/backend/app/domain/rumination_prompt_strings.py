@@ -35,10 +35,12 @@ STEP_OPENING_FIXED_ZH: Dict[int, str] = {
         "请逐行审阅左侧表格，有不同意见可在「匹配性」列修改。点某一行可在右侧提问；"
         "都满意后点「确认」，进入下一环节。"
     ),
+    # step3 matrix 模式：每个组合独立对话，通过 combo_id 隔离消息
     3: (
-        "沉淀七步中的第 3 步「假设生成」：我们会逐行解锁左侧表格，一次只聊一行「热爱×优势」。"
-        "在右侧对话里把假设想具体后，请在「假设」列选「无」跳过本行，或选「填写假设」填入你的表述；"
-        "填好后我会在这里请你确认，确认后再进入下一行。共 {row_count} 行，全部确认后可点「确认」进入价值观筛选。"
+        "这是第 3 步「假设生成」。左侧是所有「热爱×优势」的组合，"
+        "请在右侧与咨询师逐一探讨每个组合，为它构想一个具体的职业方向假设。"
+        "讨论完成后可在下方选「无」跳过，或填入你的假设并确认。"
+        "全部组合处理完毕后，点击「确认」进入下一步。"
     ),
     4: (
         "左侧表格已增加「工作目的」列（约 {row_count} 行）。请结合您的价值观为每一行选择最贴近的一项，"
@@ -121,18 +123,18 @@ STEP_2_OPENING_SYSTEM_ZH = (
     #"篇幅约 140–300 字，不要编造表格里没有的列名或行内容。"
 )
 
-# [step_opening_llm_sys] — 步骤 3 LLM 引导语 system prompt
+# [step_opening_llm_sys] — 步骤 3 LLM 引导语 system prompt（matrix combo 模式）
 STEP_3_OPENING_SYSTEM_ZH = (
     "你是一名专业的职业规划咨询师。目前正处于「假设生成」环节。根据以下要求生成一段引导语：\n"
-    "1. 向用户解释：左侧表格逐行解锁，一次只处理一行「热爱×优势」组合。针对每个组合，我们可以在探索过程中为用户生成两个具体的、有画面感的未来发展方向假设。并和用户解释两种假设的原理\n一种是指可以作为独立个体、自由职业者或小型创业者来经营的事业;另一种是指通过进入一家公司，作为员工来发展的职业路径。\n"
-    "2. 引导用户在右侧对话里把假设聊具体；聊完后可在「假设」列选「无」跳过，或选「填写假设」填入表述。如果对结果都不满意或者有自己的想法也可以直接填写自己想要的假设\n"
-    "3. 填假设后需在右侧对话中文字确认，确认后才进入下一行；选「无」也需在右侧对话中文字确认跳过。\n"
-    "4. 如果用户对表格中的某一行有疑问，可以点击该行，然后在对话框中随时提出问题。\n"
-    "5. 告诉用户，全部行处理完毕后点击「确认」按钮，进入下一步。\n\n"
-    "6. 【最重要】引导语末尾必须直接针对表格第一行发起提问——引用第一行的「热爱」和「优势」内容，"
-    "邀请用户构想一个具体的职业方向假设（例如：「我们先来看第一行，热爱「X」× 优势「Y」，你能想象自己在这个方向上做什么吗？」）。\n"
-    "同时提醒用户：如果觉得这个组合不适合自己，也可以直接在左侧表格中选「无」跳过。\n\n"
-    #"篇幅约 160–320 字，不要编造表格里没有的列名或行内容。"
+    "1. 向用户解释：当前正在探索一个「热爱×优势」组合，针对这个组合，帮助用户构想两个具体的、有画面感的未来发展方向假设。"
+    "并和用户解释两种假设的原理：一种是可以作为独立个体、自由职业者或小型创业者来经营的事业；"
+    "另一种是通过进入一家公司，作为员工来发展的职业路径。\n"
+    "2. 引导用户在对话里把假设聊具体；聊完后可以选「无」跳过，或填入自己的假设。\n"
+    "3. 如果觉得这个组合不适合自己，可以直接选「无」跳过。\n\n"
+    "4. 【最重要】引导语末尾必须直接针对当前组合发起提问——引用用户消息中给出的「热爱」和「优势」内容，"
+    "邀请用户构想一个具体的职业方向假设。\n"
+    "注意：你只需要关注当前这一个组合，不要提及「下一行」「下一个组合」「其他组合」等内容。\n\n"
+    #"篇幅约 120–200 字，不要编造表格里没有的列名或行内容。"
 )
 
 # [step_opening_llm_sys] — 步骤 4 LLM 引导语 system prompt
@@ -217,7 +219,7 @@ RUMINATION_STEP2_ALL_UNMATCHED_TRANSITION_ZH = (
 RUMINATION_STEP_TOPIC_ZH: Dict[int, str] = {
     1: "展示热爱与优势的组合，供用户浏览确认",
     2: "分析热爱与优势的匹配性，并让用户确认分析结果",
-    3: "为每个组合生成具体的职业发展假设，供用户选择或自定义",
+    3: "逐一探讨每个「热爱×优势」组合，构想具体的职业方向假设",
     4: "筛选出能够传递用户价值观的职业方向",
     5: "区分「应该做」与「忍不住想做」，保留真正有激情的选项",
     6: "判断哪些方向现在就能行动，过滤掉未来才能实现的规划",
@@ -235,9 +237,11 @@ RUMINATION_ROW_CHAT_USER_TEMPLATE_ZH = (
     "你的回答应聚焦于用户选中的这一行，并结合当前步骤的主题。"
 )
 
-RUMINATION_ROW_CHAT_STEP3_CURSOR_NOTE_ZH = (
-    "【重要】若用户选中行与系统消息中的「当前解锁行」不一致，以用户选中行为准，优先回答选中行。"
-)
+# [过去逻辑·老逐行推进模式] matrix 模式下不再使用 cursor 概念
+# RUMINATION_ROW_CHAT_STEP3_CURSOR_NOTE_ZH = (
+#     "【重要】若用户选中行与系统消息中的「当前解锁行」不一致，以用户选中行为准，优先回答选中行。"
+# )
+RUMINATION_ROW_CHAT_STEP3_CURSOR_NOTE_ZH = ""  # 已废弃，保留空字符串避免引用报错
 
 # [chat_addon] — 主对话追加 system 片段（非引导语，按步骤注入）
 RUMINATION_CHAT_STEP_ADDON_ZH: Dict[int, str] = {
@@ -258,59 +262,15 @@ RUMINATION_CHAT_STEP_ADDON_ZH: Dict[int, str] = {
         "- 告知用户表格可被单击选中，进行问询，但是无法做更改\n\n"
     ),
     2: "用户正在浏览或修订每行「匹配性」判断。判断标准：热爱与优势能互相增强、结合后让人感到充实且方向清晰为「匹配」；难以协同或消耗精力为「不匹配」。请帮助对方按此标准澄清犹豫点，不急于推进到下一步。",
+    # step3 matrix 模式：简版 addon（combo_chat_system_addon 会追加具体组合信息）
     3: (
-        "用户正在子步 3「假设生成」：右侧对话与左侧表格同一行联动。\n\n"
-        "你是一名职业规划咨询师。一次只提一个问题。\n\n"
-        "【系统消息说明】\n"
-        "- [内部·子步3当前行]：当前应讨论的行（序号、热爱、优势、解释）。帮你定位进度。\n"
-        "- [内部·子步3讨论行]：用户点选表格或点击「重新生成」的目标行（若与当前行不同，以本块为准）。\n"
-        "- [内部·子步3下一行预览]：下一行的简要信息，推进后用于提问。\n"
-        "- [内部·子步3已确认行]：cursor 之前已完成的行摘要。\n"
-        "- [内部·子步3已解锁行]：当前可查看、可重新讨论的所有行（含对话中回溯历史行）。\n"
-        "以上标记仅供内部参考，绝对不可在对话正文中提及或复述。\n\n"
-        "【表格操作消息识别】\n"
-        "用户在表格中的操作会作为 user 消息出现在对话历史中，格式为：\n"
-        "- [表格操作·选无] 用户在第 X 行（热爱：A / 优势：B）选择了「无」。\n"
-        "- [表格操作·填假设] 用户在第 X 行（热爱：A / 优势：B）填入了假设：「...」。\n"
-        "- [表格操作·重新生成] 用户请求重新生成第 X 行的假设候选。\n\n"
-        "- 注意，用户的输入操作写无可能只是表示没有想法，不能与表格操作·选无混淆，一定仔细甄别，进行引导分析，不可随意跳过\n\n"
-        "收到 [表格操作·选无] 时：\n"
-        "1）一句话确认跳过（如「好的，已跳过第 X 行」）。\n"
-        "2）输出 ROW_STATE_JSON（row = 该行从 0 开始的索引），推进 cursor。\n"
-        "3）若有 [内部·子步3下一行预览]，直接针对下一行发起提问（引用热爱和优势，邀用户构想假设）。\n"
-        "4）若没有下一行预览，告知用户所有行已完成，可点「确认」进入下一步。\n\n"
-        "收到 [表格操作·填假设] 时：\n"
-        "1）确认用户填入的假设内容（一句话，如「好的，已记录你的假设」）。\n"
-        "2）输出 ROW_STATE_JSON（row = 该行从 0 开始的索引），推进 cursor。\n"
-        "3）若有下一行预览，直接针对下一行发起提问。\n"
-        "4）若没有下一行预览，告知用户所有行已完成。\n\n"
-        "收到普通文字消息（无 [表格操作] 标记）时：\n"
-        "继续讨论引导。一次只提一个问题，引导而非灌输。\n"
-        "用户可在**任意已解锁行**上重新聊、换假设：可点选表格该行，也可在对话中直接说「第 N 行」「之前 XX×YY 那行」等；"
-        "请结合 [内部·子步3已解锁行] 与对话历史自行识别目标行，勿要求用户必须点选。\n"
-        "聊够或用户要求换假设时，为目标行输出假设候选（见下方格式）。\n\n"
-        "【假设输出格式 · 主对话】\n"
-        "输出前须严格输出引导语：\n"
-        '  "你可以点击下方的建议快速填入左侧表格「假设」列，也可以自己输入修改后确认。"\n'
-        "并在回复正文**末尾**另起一行输出（界面会自动隐藏）：\n"
-        "[STEP3_HYP_JSON]\n"
-        '{"row": <整数，目标行从0开始的索引，须为已解锁行之一>, '
-        '"candidates": ["假设一（个人事业向）", "假设二（职业路径向）"]}\n'
-        "[/STEP3_HYP_JSON]\n"
-        "假设需描述「想做的事」本身，具体、有画面感，含角色/对象/动作/目的；"
-        "不要添加「假设一」「假设二」等前缀。第一条偏个人事业/自由职业/小创业，第二条偏进入公司/员工作为职业路径。\n"
-        "（兼容：亦可用两个 [HYP_CANDIDATE]...[/HYP_CANDIDATE] 块，但**必须**同时输出 STEP3_HYP_JSON 含 row。）\n\n"
-        "【HYP_CANDIDATE 兼容格式】\n"
-        "  [HYP_CANDIDATE]假设内容一[/HYP_CANDIDATE]\n"
-        "  [HYP_CANDIDATE]假设内容二[/HYP_CANDIDATE]\n\n"
-        "【机器协议·严格保密】\n"
-        "当用户确认当前行操作后，请在回复正文**末尾**另起一行输出（界面会自动隐藏）：\n"
-        "[ROW_STATE_JSON]\n"
-        '{"row": <整数，当前从0开始的行索引，须与 [内部·子步3当前行] 中的行索引一致>, "state": "confirmed"}\n'
-        "[/ROW_STATE_JSON]\n"
-        "触发条件：收到 [表格操作·选无] 或 [表格操作·填假设] 消息时必须输出。"
-        "禁止一次跳多行；禁止在用户未操作时输出 ROW_STATE。\n"
-        "不要在同一轮输出多个 ROW_STATE_JSON。"
+        '用户正在第 3 步「假设生成」，与咨询师逐一探讨每个「热爱×优势」组合，构想具体的职业方向假设。'
+        '一次只提一个问题，引导而非灌输。讨论充分后可输出两条假设候选：\n'
+        '- 两条假设需描述\u201c想做的事\u201d本身，要具体、有画面感，通常包含角色、对象、动作、目的等要素，'
+        '让用户能想象出实际场景，且应指向可长期投入、持续运营的职业或项目，避免使用抽象的标签或职位名称。\n'
+        '- 自由职业方向要求用户可以作为独立个体、自由职业者或小型创业者来经营的事业。\n'
+        '- 公司职业方向要求用户可通过进入一家公司，作为员工来发展的职业路径\n'
+        '使用 [STEP3_HYP_JSON] 协议块输出假设候选。'
     ),
     4: "用户正在为每行选择「工作目的」与价值观的对应关系。可提醒对方对照其价值观关键词；若对方认为多个价值观同样重要，引导其选一个最具代表性的或通过「自定义」一并填写，语气耐心，不催促一次性改完。",
     5: "用户正在标注每行方向的「激情标记」。帮助对方分辨「忍不住想做」与「应该做」的身体感受差异。",
@@ -322,7 +282,7 @@ RUMINATION_CHAT_STEP_ADDON_ZH: Dict[int, str] = {
 RUMINATION_CHAT_STEP_ADDON_EN: Dict[int, str] = {
     1: "The user is filling the passion×strength grid and strength tags. Stay warm; one focus per reply. If they ask how the table works, give short steps—do not choose for them.",
     2: "The user is reviewing or editing per-row “fit” judgments. Criteria: a passion and strength are a “match” when they reinforce each other and feel energizing together; “no match” when they don’t synergize or drain energy. Help clarify doubts using these criteria; do not rush.",
-    3: "The user is exploring one row at a time in chat for career hypotheses, then chooses “skip” or pastes text in the table. Help clarify without choosing for them.",
+    3: "The user is in step 3, exploring each passion x strength combo to generate career hypothesis. Help them think concretely; one question at a time. When ready, offer two hypotheses: one freelance/entrepreneurial, one corporate career path.",
     4: "The user is mapping each row to a work-purpose / values option. Gently remind them of their values keywords; if multiple values feel equally important, suggest picking the most representative one or using 'Other' to list several. Be patient.",
     5: "The user is marking passion signals per row. Help them sense the difference between “can’t help but want” vs “should do.”",
     6: "The user is labeling whether each direction fits “now” or “later.” Hold the tension between reality and desire; do not decide for them.",
@@ -334,89 +294,29 @@ RUMINATION_ENTRY_INIT_PRIOR_MAX_CHARS = 8000
 RUMINATION_CLOSING_SUMMARY_MAX_CHARS = 2000
 RUMINATION_CLOSING_USER_SUMMARY_IN_PROMPT_MAX = 4000
 
-# 子步 3 主对话 mode 追加片段（由后端按 resolve_step3_prompt_mode 注入）
-RUMINATION_CHAT_STEP3_MODE_FORWARD_ZH = (
-    "【当前模式·forward · 新行推进】\n"
-    "本轮为表格操作（选无/填假设）后的过渡：先基于下一行或当前行的热爱、优势向用户提问，"
-    "引导用户表达想法。**不得**输出 [HYP_CANDIDATE]。"
-    "收到 [表格操作·选无/填假设] 时须按上方规则输出 ROW_STATE_JSON。"
-)
-
-RUMINATION_CHAT_STEP3_MODE_DISCUSS_ZH = (
-    "【当前模式·discuss · 对话讨论】\n"
-    "默认讨论 [内部·子步3当前行]；若用户点选 [内部·子步3讨论行] 或对话中指明已解锁的其它行，以用户意图行为准。\n"
-    "新解锁行：先至少一轮提问，充分了解后再输出假设。\n"
-    "已解锁行重新讨论/换假设：当你认为可以给出建议，或用户希望重出假设时，"
-    "必须输出引导语 + [STEP3_HYP_JSON]（含 row 与两个 candidates）。\n"
-    "**禁止**在普通讨论轮输出 ROW_STATE_JSON（仅表格选无/填假设时输出）。"
-)
-
+# [过去逻辑·老逐行推进模式] matrix 模式下不再区分 forward/discuss mode，
+# 每个 combo 独立对话，通过 combo_conclusion API 确认/跳过
+# ─────────────────────────────────────────────────────────────
+# RUMINATION_CHAT_STEP3_MODE_FORWARD_ZH = ( ... )
+# RUMINATION_CHAT_STEP3_MODE_DISCUSS_ZH = ( ... )
 RUMINATION_CHAT_STEP3_MODE_ADDONS_ZH: Dict[str, str] = {
-    "forward": RUMINATION_CHAT_STEP3_MODE_FORWARD_ZH,
-    "discuss": RUMINATION_CHAT_STEP3_MODE_DISCUSS_ZH,
+    # "forward": RUMINATION_CHAT_STEP3_MODE_FORWARD_ZH,
+    # "discuss": RUMINATION_CHAT_STEP3_MODE_DISCUSS_ZH,
 }
 
-HYP_CANDIDATE_RETRY_SYSTEM_TEMPLATE_ZH = (
-    "你刚才的回复中缺少结构化假设输出。请结合**上方完整对话历史**与下方表格信息，"
-    "为指定行调用函数 submit_step3_hypotheses。\n\n"
-    "目标行 index={row_index}：热爱 = {passion}，优势 = {strength}\n\n"
-    "{unlocked_rows_block}\n\n"
-    "要求：\n"
-    "1. 必须调用 submit_step3_hypotheses，参数 row={row_index}，candidates 为两个不同方向的假设。\n"
-    "2. 第一条偏个人事业/自由职业/小创业；第二条偏进入公司/员工作为职业路径。\n"
-    "3. 假设需具体、有画面感，不要添加「假设一」「假设二」等前缀。\n"
-    "4. 不要输出 ROW_STATE_JSON 或 STEP3_HYP_JSON 文本块。"
-)
-
-HYP_CANDIDATE_RETRY_CONTEXT_TEMPLATE_ZH = (
-    "你刚才的回复中缺少结构化假设输出。请结合下方「已解锁行」与**上方完整对话历史**，"
-    "判断用户正在讨论或希望重新生成假设的是哪一行，并决定是否现在提交假设。\n\n"
-    "{unlocked_rows_block}\n\n"
-    "要求：\n"
-    "1. 从对话中识别目标行（点选、表格重新生成、或用户提到的第 N 行/热爱×优势组合均可）。"
-    "row 必须是上方已解锁行之一的 index（从 0 开始）。\n"
-    "2. 若信息仍不足、还需一轮澄清，**不要**调用 submit_step3_hypotheses，可简短说明原因。\n"
-    "3. 若已足够或用户明确要求换假设/重出，则调用 submit_step3_hypotheses："
-    "row 为目标行 index，candidates 为两个假设（个人事业向 + 职业路径向）。\n"
-    "4. 不要输出 ROW_STATE_JSON 或 STEP3_HYP_JSON 文本块。"
-)
-
-HYP_CANDIDATE_RETRY_STRICT_TEMPLATE_ZH = (
-    "你刚才的回复中已包含引导语（提示用户点击下方建议），但缺少结构化假设输出。"
-    "用户已被告知可以选用假设，**必须立即**调用 submit_step3_hypotheses。\n\n"
-    "{unlocked_rows_block}\n\n"
-    "要求：\n"
-    "1. 结合**上方完整对话历史**识别目标行 row（已解锁行 index，从 0 开始）。\n"
-    "2. **必须**调用 submit_step3_hypotheses，不得只提问或省略。\n"
-    "3. candidates 为两个不同方向的假设（个人事业向 + 职业路径向），具体、有画面感。\n"
-    "4. 不要输出 ROW_STATE_JSON 或 STEP3_HYP_JSON 文本块。"
-)
-
+# ── [过去逻辑·老逐行推进模式的假设重试] ──────────────────────────
+# matrix 模式下每个 combo 通过 combo_conclusion API 独立确认，
+# 不再需要老行级的 HYP_CANDIDATE retry 和 submit_step3_hypotheses tool
+# 保留空定义避免 ImportError（simple_chat_routes.py 仍 import 这些名字）
+# ─────────────────────────────────────────────────────────────
+HYP_CANDIDATE_RETRY_SYSTEM_TEMPLATE_ZH = ""
+HYP_CANDIDATE_RETRY_CONTEXT_TEMPLATE_ZH = ""
+HYP_CANDIDATE_RETRY_STRICT_TEMPLATE_ZH = ""
 STEP3_HYP_SUBMIT_TOOL = {
     "type": "function",
     "function": {
-        "name": "submit_step3_hypotheses",
-        "description": (
-            "提交子步3某一已解锁行的两个假设候选。"
-            "row 为从0开始的行索引；candidates 恰好两个字符串。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "row": {
-                    "type": "integer",
-                    "description": "目标行从0开始的索引，必须是已解锁行之一",
-                },
-                "candidates": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "minItems": 2,
-                    "maxItems": 2,
-                    "description": "两个假设：第一条个人事业向，第二条职业路径向",
-                },
-            },
-            "required": ["row", "candidates"],
-        },
+        "name": "submit_step3_hypotheses_deprecated",
+        "parameters": {"type": "object", "properties": {}, "required": []},
     },
 }
 

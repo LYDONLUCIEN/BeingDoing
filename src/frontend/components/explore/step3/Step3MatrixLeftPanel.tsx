@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { Check, SkipForward, ChevronDown } from 'lucide-react';
+import { Check, SkipForward, ChevronDown, Ban } from 'lucide-react';
 import ComboMatrixFlowDiagram from './ComboMatrixSelector';
 import type { ComboItem, RuminationProgress } from '@/lib/api/rumination';
 import type { ThreadMessage } from '@/lib/explore/threads';
@@ -15,6 +15,9 @@ interface Step3MatrixLeftPanelProps {
   onSelectComboId: (comboId: string | null) => void;
   onSubmitAll: () => void;
   onProgressUpdate: (progress: RuminationProgress) => void;
+  /** 外部注入的 chip 文本（如右侧聊天区 chip 点击），自动填入结论卡片 */
+  externalChipText: string | null;
+  onExternalChipConsumed: () => void;
 }
 
 /** Modal: submit all confirmation */
@@ -137,10 +140,13 @@ function ConclusionResultCard({
   conclusion,
   pendingChipText,
   onPendingChipConsumed,
+  onTextChange,
   onConfirm,
   onSkip,
   latestHypCandidates,
   onChipClick,
+  forceExpand,
+  onForceExpandConsumed,
 }: {
   combo: ComboItem;
   conclusion: { text: string; state: 'empty' | 'confirmed' | 'skipped' };
@@ -151,6 +157,8 @@ function ConclusionResultCard({
   onSkip: (text: string) => void;
   latestHypCandidates: string[] | null;
   onChipClick: (chip: string) => void;
+  forceExpand?: boolean;
+  onForceExpandConsumed?: () => void;
 }) {
   const [localText, setLocalText] = useState(conclusion.text);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -158,6 +166,14 @@ function ConclusionResultCard({
   const state = conclusion.state;
   const textLen = localText.length;
   const canConfirm = textLen >= 5;
+
+  // forceExpand: 外部 chip 注入时自动展开
+  useEffect(() => {
+    if (forceExpand) {
+      setIsExpanded(true);
+      onForceExpandConsumed?.();
+    }
+  }, [forceExpand, onForceExpandConsumed]);
 
   // Auto-fill chip text
   useEffect(() => {
@@ -182,19 +198,27 @@ function ConclusionResultCard({
     onSkip(localText);
   };
 
+  const isSkippedCollapsed = state === 'skipped' && !isExpanded;
+
   return (
     <div
       className={`
-        relative flex flex-col overflow-hidden rounded-[20px] backdrop-blur-[16px]
+        relative flex flex-col rounded-[20px] backdrop-blur-[16px]
         transition-all duration-[0.22s] ease
         ${isExpanded ? 'px-5 pt-5 pb-4' : 'px-4 py-3.5'}
       `}
       style={{
-        border: '1px solid rgba(255,255,255,0.44)',
-        boxShadow: '0 12px 24px rgba(155,135,234,0.10)',
-        background:
-          'radial-gradient(circle at 10% 15%, rgba(255,255,255,0.32), transparent 20%), ' +
-          'linear-gradient(135deg, rgba(208,188,255,0.34) 0%, rgba(184,160,255,0.26) 30%, rgba(244,222,255,0.24) 65%, rgba(255,214,232,0.22) 100%)',
+        border: isSkippedCollapsed
+          ? '1px solid rgba(200,200,200,0.35)'
+          : '1px solid rgba(255,255,255,0.44)',
+        boxShadow: isSkippedCollapsed
+          ? '0 8px 16px rgba(150,150,150,0.08)'
+          : '0 12px 24px rgba(155,135,234,0.10)',
+        background: isSkippedCollapsed
+          ? 'linear-gradient(135deg, rgba(220,220,220,0.26) 0%, rgba(230,230,230,0.18) 50%, rgba(225,225,225,0.14) 100%)'
+          : 'radial-gradient(circle at 10% 15%, rgba(255,255,255,0.32), transparent 20%), ' +
+            'linear-gradient(135deg, rgba(208,188,255,0.34) 0%, rgba(184,160,255,0.26) 30%, rgba(244,222,255,0.24) 65%, rgba(255,214,232,0.22) 100%)',
+        opacity: isSkippedCollapsed ? 0.6 : 1,
       }}
     >
       {/* Main row: icon + copy */}
@@ -202,8 +226,12 @@ function ConclusionResultCard({
         <div
           className="flex h-[60px] w-[60px] flex-shrink-0 items-center justify-center rounded-full text-white text-[20px]"
           style={{
-            background: 'linear-gradient(135deg, #77dbff 0%, #c09cff 54%, #ffb9c7 100%)',
-            boxShadow: '0 12px 24px rgba(147,172,255,0.20)',
+            background: isSkippedCollapsed
+              ? 'linear-gradient(135deg, #c0c0c0 0%, #d0d0d0 54%, #e0e0e0 100%)'
+              : 'linear-gradient(135deg, #77dbff 0%, #c09cff 54%, #ffb9c7 100%)',
+            boxShadow: isSkippedCollapsed
+              ? '0 8px 16px rgba(180,180,180,0.15)'
+              : '0 12px 24px rgba(147,172,255,0.20)',
           }}
         >
           ✦
@@ -226,22 +254,7 @@ function ConclusionResultCard({
             </button>
           </div>
 
-          {/* Title */}
-          {state === 'confirmed' && localText ? (
-            <h3 className="m-0 mb-1.5 text-[18px] font-[800] text-[#111827] truncate">
-              {localText.length > 24 ? localText.slice(0, 24) + '...' : localText}
-            </h3>
-          ) : state === 'skipped' && localText ? (
-            <h3 className="m-0 mb-1.5 text-[18px] font-[800] text-[#9ca3af] line-through truncate">
-              {localText.length > 24 ? localText.slice(0, 24) + '...' : localText}
-            </h3>
-          ) : (
-            <h3 className="m-0 mb-1.5 text-[18px] font-[800] text-[#111827]">
-              探索这个组合的方向...
-            </h3>
-          )}
-
-          {/* Description — read-only in collapsed, editable in expanded */}
+          {/* Body — read-only in collapsed, editable in expanded */}
           {state === 'confirmed' && !isExpanded ? (
             <p className="m-0 text-[14px] text-[#4b5563] leading-[1.8]">{localText}</p>
           ) : state === 'skipped' && !isExpanded && localText ? (
@@ -255,7 +268,7 @@ function ConclusionResultCard({
                 w-full resize-none rounded-[14px] text-[14px] text-[#4b5563] leading-[1.8]
                 outline-none transition-all duration-[0.18s] ease
                 placeholder:text-[#b0b8c4]
-                ${state === 'skipped' ? 'text-[#9ca3af] line-through' : ''}
+                ${state === 'skipped' && !isExpanded ? 'text-[#9ca3af] line-through' : ''}
                 ${isExpanded
                   ? 'min-h-[104px] p-2.5 bg-white/32 border border-white/42 shadow-[inset_0_1px_0_rgba(255,255,255,0.42)] focus:bg-white/48 focus:border-[rgba(180,153,255,0.52)] focus:shadow-[0_0_0_3px_rgba(180,153,255,0.12),inset_0_1px_0_rgba(255,255,255,0.48)]'
                   : 'min-h-[48px] border-0 p-0 bg-transparent'}
@@ -342,16 +355,35 @@ export default function Step3MatrixLeftPanel({
   onSelectComboId,
   onSubmitAll,
   onProgressUpdate,
+  externalChipText,
+  onExternalChipConsumed,
 }: Step3MatrixLeftPanelProps) {
   const [conclusions, setConclusions] = useState(progress.combo_conclusions || {});
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [completedCount, setCompletedCount] = useState(0);
   const [pendingChipText, setPendingChipText] = useState<string | null>(null);
+  const [forceExpand, setForceExpand] = useState(false);
+  const [pendingNextComboId, setPendingNextComboId] = useState<string | null>(null);
+
+  // 外部 chip 文本注入（右侧聊天区 chip 点击）
+  useEffect(() => {
+    if (externalChipText) {
+      setForceExpand(true);
+      setPendingChipText(externalChipText);
+      onExternalChipConsumed();
+    }
+  }, [externalChipText, onExternalChipConsumed]);
 
   const currentCombo = useMemo(
     () => (selectedComboId ? matrix.find((m) => m.combo_id === selectedComboId) : null),
     [matrix, selectedComboId],
+  );
+
+  // 仅含可操作的组合（排除不匹配），用于进度计算
+  const matchableCombos = useMemo(
+    () => matrix.filter((m) => !m.is_non_matching),
+    [matrix],
   );
 
   const comboMessages = useMemo(
@@ -369,6 +401,23 @@ export default function Step3MatrixLeftPanel({
     return null;
   }, [comboMessages]);
 
+  // 保存结论后的通用后处理：记录下一个 combo，显示弹窗或直接切换
+  const afterSave = useCallback(
+    (comboId: string, resProgress: any) => {
+      setConclusions(resProgress.combo_conclusions || {});
+      onProgressUpdate(resProgress);
+      setCompletedCount((prev) => prev + 1);
+      const nextIndex = matchableCombos.findIndex((m) => m.combo_id === comboId) + 1;
+      if (nextIndex < matchableCombos.length) {
+        setPendingNextComboId(matchableCombos[nextIndex].combo_id);
+      }
+      if (!progress.combo_completion_modal_dismissed) {
+        setShowCompletionModal(true);
+      }
+    },
+    [progress.combo_completion_modal_dismissed, onProgressUpdate, matchableCombos],
+  );
+
   const handleConfirm = useCallback(
     async (text: string) => {
       if (!currentCombo) return;
@@ -381,22 +430,13 @@ export default function Step3MatrixLeftPanel({
           text,
         );
         if (res.data?.progress) {
-          setConclusions(res.data.progress.combo_conclusions || {});
-          onProgressUpdate(res.data.progress);
-          setCompletedCount((prev) => prev + 1);
-          if (!progress.combo_completion_modal_dismissed) {
-            setShowCompletionModal(true);
-          }
-          const nextIndex = matrix.findIndex((m) => m.combo_id === currentCombo.combo_id) + 1;
-          if (nextIndex < matrix.length) {
-            onSelectComboId(matrix[nextIndex].combo_id);
-          }
+          afterSave(currentCombo.combo_id, res.data.progress);
         }
       } catch (e) {
         console.error('Failed to save conclusion:', e);
       }
     },
-    [currentCombo, activationCode, matrix, progress, onProgressUpdate, onSelectComboId],
+    [currentCombo, activationCode, afterSave],
   );
 
   const handleSkip = useCallback(
@@ -411,22 +451,13 @@ export default function Step3MatrixLeftPanel({
           text,
         );
         if (res.data?.progress) {
-          setConclusions(res.data.progress.combo_conclusions || {});
-          onProgressUpdate(res.data.progress);
-          setCompletedCount((prev) => prev + 1);
-          if (!progress.combo_completion_modal_dismissed) {
-            setShowCompletionModal(true);
-          }
-          const nextIndex = matrix.findIndex((m) => m.combo_id === currentCombo.combo_id) + 1;
-          if (nextIndex < matrix.length) {
-            onSelectComboId(matrix[nextIndex].combo_id);
-          }
+          afterSave(currentCombo.combo_id, res.data.progress);
         }
       } catch (e) {
         console.error('Failed to skip:', e);
       }
     },
-    [currentCombo, activationCode, matrix, progress, onProgressUpdate, onSelectComboId],
+    [currentCombo, activationCode, afterSave],
   );
 
   const handleDismissChange = useCallback(
@@ -450,17 +481,38 @@ export default function Step3MatrixLeftPanel({
     setPendingChipText(chipText);
   }, []);
 
+  const handleDisabledStrengthClick = useCallback(() => {
+    // 简单内联提示：用 state 驱动 toast
+    setDisabledToast(true);
+  }, []);
+
+  const [disabledToast, setDisabledToast] = useState(false);
+  useEffect(() => {
+    if (disabledToast) {
+      const t = setTimeout(() => setDisabledToast(false), 2000);
+      return () => clearTimeout(t);
+    }
+  }, [disabledToast]);
+
+  // 弹窗已被永久关闭（不再提示）时，直接切换到下一个 combo
+  useEffect(() => {
+    if (pendingNextComboId && progress.combo_completion_modal_dismissed && !showCompletionModal) {
+      onSelectComboId(pendingNextComboId);
+      setPendingNextComboId(null);
+    }
+  }, [pendingNextComboId, progress.combo_completion_modal_dismissed, showCompletionModal, onSelectComboId]);
+
   const { empty: emptyCombos, text_skipped: textSkipped, confirmed: confirmedCombos } =
     useMemo(() => {
       const result = { empty: 0, text_skipped: 0, confirmed: 0 };
-      for (const item of matrix) {
+      for (const item of matchableCombos) {
         const c = conclusions[item.combo_id];
         if (c?.state === 'confirmed') result.confirmed++;
         else if (c?.state === 'skipped' && c.text) result.text_skipped++;
         else result.empty++;
       }
       return result;
-    }, [matrix, conclusions]);
+    }, [matchableCombos, conclusions]);
 
   const handleSubmitAll = useCallback(() => {
     setShowSubmitModal(true);
@@ -471,10 +523,22 @@ export default function Step3MatrixLeftPanel({
     onSubmitAll();
   }, [onSubmitAll]);
 
-  const progressPct = matrix.length > 0 ? Math.round((completedCount / matrix.length) * 100) : 0;
+  const progressPct = matchableCombos.length > 0 ? Math.round((completedCount / matchableCombos.length) * 100) : 0;
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
+    <div className="flex h-full min-h-0 flex-col gap-2 relative">
+      {/* Toast: 不匹配提示 */}
+      {disabledToast && (
+        <div
+          className="absolute top-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5
+            rounded-full px-3.5 py-2 text-[13px] font-[700] text-[#6b7280]
+            border border-white/40 bg-white/80 shadow-[0_8px_20px_rgba(33,48,79,0.10)]
+            backdrop-blur-[12px] animate-in fade-in duration-200"
+        >
+          <Ban size={14} className="text-[#b0b8c4]" />
+          该组合已标记为不匹配
+        </div>
+      )}
       {/* Top bar: progress + submit */}
       <div className="flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
@@ -490,7 +554,7 @@ export default function Step3MatrixLeftPanel({
             />
           </div>
           <span className="text-[13px] font-[700] text-[#6b7280]">
-            {completedCount}/{matrix.length}
+            {completedCount}/{matchableCombos.length}
           </span>
         </div>
         <button
@@ -535,6 +599,7 @@ export default function Step3MatrixLeftPanel({
           conclusions={conclusions}
           selectedComboId={selectedComboId}
           onSelectCombo={onSelectComboId}
+          onDisabledStrengthClick={handleDisabledStrengthClick}
         />
       </div>
 
@@ -554,6 +619,8 @@ export default function Step3MatrixLeftPanel({
             onSkip={handleSkip}
             latestHypCandidates={latestHypCandidates}
             onChipClick={handleChipClick}
+            forceExpand={forceExpand}
+            onForceExpandConsumed={() => setForceExpand(false)}
           />
         </div>
       ) : (
@@ -574,9 +641,21 @@ export default function Step3MatrixLeftPanel({
       <CompletionModal
         open={showCompletionModal}
         comboIndex={completedCount}
-        totalCombos={matrix.length}
-        onConfirm={() => setShowCompletionModal(false)}
-        onCancel={() => setShowCompletionModal(false)}
+        totalCombos={matchableCombos.length}
+        onConfirm={() => {
+          setShowCompletionModal(false);
+          if (pendingNextComboId) {
+            onSelectComboId(pendingNextComboId);
+            setPendingNextComboId(null);
+          }
+        }}
+        onCancel={() => {
+          setShowCompletionModal(false);
+          if (pendingNextComboId) {
+            onSelectComboId(pendingNextComboId);
+            setPendingNextComboId(null);
+          }
+        }}
         onDismissChange={handleDismissChange}
         dismissed={!!progress.combo_completion_modal_dismissed}
       />

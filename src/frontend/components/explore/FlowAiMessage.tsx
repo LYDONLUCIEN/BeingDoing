@@ -72,6 +72,8 @@ interface FlowAiMessageProps {
   selectedRowFallback?: number | null;
   /** 子步 3：点击假设候选回调 */
   onHypCandidateClick?: (text: string, meta: { hypTargetRow?: number; hypRowUnresolved?: boolean }) => void;
+  /** step3 matrix 模式：chips 始终可点击 */
+  comboMatrixMode?: boolean;
 }
 
 /**
@@ -106,6 +108,7 @@ export default function FlowAiMessage({
   hypRowUnresolved,
   selectedRowFallback,
   onHypCandidateClick,
+  comboMatrixMode,
 }: FlowAiMessageProps) {
   const { t } = useLocale();
   const [liked, setLiked] = useState(false);
@@ -230,6 +233,7 @@ export default function FlowAiMessage({
               hypRowUnresolved={hypRowUnresolved}
               selectedRowFallback={selectedRowFallback}
               onHypCandidateClick={onHypCandidateClick}
+              comboMatrixMode={comboMatrixMode}
             />
           )}
         </div>

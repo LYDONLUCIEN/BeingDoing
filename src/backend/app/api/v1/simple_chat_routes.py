@@ -396,78 +396,89 @@ def _system_prompt_dimension_extras(
             step3_mode=step3_prompt_mode if int(rumination_filter_step) == 3 else None,
         )
         if int(rumination_filter_step) == 3:
+            # [matrix guard] matrix 模式下跳过老逐行推进的 filter_table 行上下文注入
+            # （已确认行摘要、讨论行、下一行预览、已解锁行等），这些是老流程的概念，
+            # matrix 模式通过 combo_id 隔离消息，不需要行级上下文。
+            _is_matrix = False
             try:
-                prog_ex = load_rumination_progress(Path(reports_root), str(rid))
-                ft_ex = prog_ex.get("filter_table")
-                cur_ex = int(prog_ex.get("filter_row_cursor") or 0)
-                if isinstance(ft_ex, list) and ft_ex:
-                    # 已确认行摘要（cursor 之前的行）
-                    confirmed_block = format_step3_confirmed_rows_block(ft_ex, cur_ex)
-                    rumination_step_addon = f"{rumination_step_addon}\n\n{confirmed_block}".strip()
-                    # 点选行与 cursor 不一致：注入讨论行上下文
-                    discuss_idx = rumination_row_index
-                    if (
-                        discuss_idx is not None
-                        and 0 <= discuss_idx < len(ft_ex)
-                        and discuss_idx != cur_ex
-                    ):
-                        row_disc = ft_ex[discuss_idx]
-                        if isinstance(row_disc, dict):
-                            prev_s = ""
-                            if discuss_idx > 0:
-                                pr = ft_ex[discuss_idx - 1]
-                                if isinstance(pr, dict):
-                                    prev_s = summarize_prev_combo_row(pr)
-                            disc_block = format_step3_row_context_block(
-                                str(rid),
-                                reports_root,
-                                row_disc,
-                                combo_index_1based=discuss_idx + 1,
-                                total_combos=len(ft_ex),
-                                prev_combo_summary=prev_s,
-                            )
-                            disc_block = disc_block.replace(
-                                "[内部·子步3当前行]",
-                                "[内部·子步3讨论行]",
-                                1,
-                            )
-                            rumination_step_addon = f"{rumination_step_addon}\n\n{disc_block}".strip()
-                    # 当前行上下文（正常推进模式）
-                    if 0 <= cur_ex < len(ft_ex):
-                        row_ex = ft_ex[cur_ex]
-                        if isinstance(row_ex, dict):
-                            prev_s = ""
-                            if cur_ex > 0:
-                                pr = ft_ex[cur_ex - 1]
-                                if isinstance(pr, dict):
-                                    prev_s = summarize_prev_combo_row(pr)
-                            block = format_step3_row_context_block(
-                                str(rid),
-                                reports_root,
-                                row_ex,
-                                combo_index_1based=cur_ex + 1,
-                                total_combos=len(ft_ex),
-                                prev_combo_summary=prev_s,
-                            )
-                            rumination_step_addon = f"{rumination_step_addon}\n\n{block}".strip()
-                        # 下一行预览：让 AI 确认当前行后可直接过渡提问
-                        next_idx = cur_ex + 1
-                        if next_idx < len(ft_ex):
-                            next_row = ft_ex[next_idx]
-                            if isinstance(next_row, dict):
-                                preview = format_step3_next_row_preview(
-                                    next_row, next_idx + 1, len(ft_ex)
-                                )
-                                rumination_step_addon = f"{rumination_step_addon}\n\n{preview}".strip()
-                    elif cur_ex >= len(ft_ex):
-                        # 回溯模式：cursor 到末尾，注入全表摘要供 AI 定位用户指定的行
-                        full_block = format_step3_confirmed_rows_block(ft_ex, len(ft_ex))
-                        rumination_step_addon = f"{rumination_step_addon}\n\n{full_block}".strip()
-                    unlocked_block = format_step3_unlocked_rows_block(ft_ex, cur_ex)
-                    if unlocked_block:
-                        rumination_step_addon = f"{rumination_step_addon}\n\n{unlocked_block}".strip()
+                _prog_check = load_rumination_progress(Path(reports_root), str(rid))
+                if (_prog_check.get("filter_sub_step") or "").strip() == "matrix":
+                    _is_matrix = True
             except Exception:
                 pass
+            if not _is_matrix:
+                try:
+                    prog_ex = load_rumination_progress(Path(reports_root), str(rid))
+                    ft_ex = prog_ex.get("filter_table")
+                    cur_ex = int(prog_ex.get("filter_row_cursor") or 0)
+                    if isinstance(ft_ex, list) and ft_ex:
+                        # 已确认行摘要（cursor 之前的行）
+                        confirmed_block = format_step3_confirmed_rows_block(ft_ex, cur_ex)
+                        rumination_step_addon = f"{rumination_step_addon}\n\n{confirmed_block}".strip()
+                        # 点选行与 cursor 不一致：注入讨论行上下文
+                        discuss_idx = rumination_row_index
+                        if (
+                            discuss_idx is not None
+                            and 0 <= discuss_idx < len(ft_ex)
+                            and discuss_idx != cur_ex
+                        ):
+                            row_disc = ft_ex[discuss_idx]
+                            if isinstance(row_disc, dict):
+                                prev_s = ""
+                                if discuss_idx > 0:
+                                    pr = ft_ex[discuss_idx - 1]
+                                    if isinstance(pr, dict):
+                                        prev_s = summarize_prev_combo_row(pr)
+                                disc_block = format_step3_row_context_block(
+                                    str(rid),
+                                    reports_root,
+                                    row_disc,
+                                    combo_index_1based=discuss_idx + 1,
+                                    total_combos=len(ft_ex),
+                                    prev_combo_summary=prev_s,
+                                )
+                                disc_block = disc_block.replace(
+                                    "[内部·子步3当前行]",
+                                    "[内部·子步3讨论行]",
+                                    1,
+                                )
+                                rumination_step_addon = f"{rumination_step_addon}\n\n{disc_block}".strip()
+                        # 当前行上下文（正常推进模式）
+                        if 0 <= cur_ex < len(ft_ex):
+                            row_ex = ft_ex[cur_ex]
+                            if isinstance(row_ex, dict):
+                                prev_s = ""
+                                if cur_ex > 0:
+                                    pr = ft_ex[cur_ex - 1]
+                                    if isinstance(pr, dict):
+                                        prev_s = summarize_prev_combo_row(pr)
+                                block = format_step3_row_context_block(
+                                    str(rid),
+                                    reports_root,
+                                    row_ex,
+                                    combo_index_1based=cur_ex + 1,
+                                    total_combos=len(ft_ex),
+                                    prev_combo_summary=prev_s,
+                                )
+                                rumination_step_addon = f"{rumination_step_addon}\n\n{block}".strip()
+                            # 下一行预览：让 AI 确认当前行后可直接过渡提问
+                            next_idx = cur_ex + 1
+                            if next_idx < len(ft_ex):
+                                next_row = ft_ex[next_idx]
+                                if isinstance(next_row, dict):
+                                    preview = format_step3_next_row_preview(
+                                        next_row, next_idx + 1, len(ft_ex)
+                                    )
+                                    rumination_step_addon = f"{rumination_step_addon}\n\n{preview}".strip()
+                        elif cur_ex >= len(ft_ex):
+                            # 回溯模式：cursor 到末尾，注入全表摘要供 AI 定位用户指定的行
+                            full_block = format_step3_confirmed_rows_block(ft_ex, len(ft_ex))
+                            rumination_step_addon = f"{rumination_step_addon}\n\n{full_block}".strip()
+                        unlocked_block = format_step3_unlocked_rows_block(ft_ex, cur_ex)
+                        if unlocked_block:
+                            rumination_step_addon = f"{rumination_step_addon}\n\n{unlocked_block}".strip()
+                except Exception:
+                    pass
     return values_info, rumination_step_addon
 
 
@@ -2058,6 +2069,57 @@ def _rumination_clear_snapshots_from_step(snapshots: Dict[str, Any], start: int)
         snapshots.pop(str(d), None)
 
 
+def _resolve_non_matching_pairs(progress: Dict[str, Any]) -> set:
+    """从 progress 中解析 step2 不匹配的 (热爱, 优势) 组合集合。
+
+    数据源优先级：
+    1. snapshots["2"]["submitted"]（新版本保存的用户提交数据）
+    2. snapshots["2"]["initial"] vs snapshots["3"]["initial"] 差集（旧版本回退）
+    """
+    snapshots = progress.get("filter_step_snapshots") or {}
+    step2_snap = snapshots.get("2") or {}
+
+    # 优先级 1：submitted
+    submitted = step2_snap.get("submitted")
+    if isinstance(submitted, list) and submitted:
+        pairs: set = set()
+        for row in submitted:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("匹配性") or "").strip() == "不匹配":
+                p = str(row.get("热爱") or "").strip()
+                s = str(row.get("优势") or "").strip()
+                if p and s:
+                    pairs.add((p, s))
+        return pairs
+
+    # 优先级 2：step2 initial 与 step3 initial 的差集
+    # step2 initial = 全部行（含不匹配），step3 initial = 匹配行
+    step2_initial = step2_snap.get("initial")
+    step3_initial = (snapshots.get("3") or {}).get("initial")
+    if isinstance(step2_initial, list) and isinstance(step3_initial, list):
+        # step3 initial 的行集（用 热爱+优势 做 key）
+        step3_keys = set()
+        for row in step3_initial:
+            if isinstance(row, dict):
+                p = str(row.get("热爱") or "").strip()
+                s = str(row.get("优势") or "").strip()
+                if p and s:
+                    step3_keys.add((p, s))
+        # step2 initial 中不在 step3 的行 = 被删除的（不匹配）
+        pairs: set = set()
+        for row in step2_initial:
+            if not isinstance(row, dict):
+                continue
+            p = str(row.get("热爱") or "").strip()
+            s = str(row.get("优势") or "").strip()
+            if p and s and (p, s) not in step3_keys:
+                pairs.add((p, s))
+        return pairs
+
+    return set()
+
+
 def _rumination_step7_rows_for_widget(rows: List[dict]) -> List[dict]:
     """终步表格增加 __pick 字段供前端多选。"""
     out: List[dict] = []
@@ -2481,6 +2543,8 @@ async def rumination_table_submit(
                 s3 = snapshots.setdefault("3", {})
                 if s3.get("initial") is None:
                     s3["initial"] = deepcopy(step3_rows)
+                # 保存 step2 提交的表格（含 匹配性 信息），供 step3 矩阵标记不匹配组合
+                snapshots.setdefault("2", {})["submitted"] = deepcopy(table_data)
                 progress = save_rumination_progress(
                     reports_root,
                     report_id,
@@ -2944,10 +3008,9 @@ async def _generate_and_store_combo_guide(
         combo_user_context = (
             f"当前组合：热爱「{passion_name}」× 优势「{strength_name}」。\n"
             f"请直接针对这个组合向用户提问，引导用户构想具体的职业方向假设。\n"
-            f"如果这是用户探索的第一个组合，先简要解释整体流程："
-            f"针对每个热爱×优势组合，我们探索可能的职业方向，生成两个假设"
+            f"只需关注当前这一个组合，不要提及「其他组合」「下一个」等内容。\n"
+            f"引导用户探索这个组合可能的职业方向，生成两个假设"
             f"（自由职业/创业方向 + 公司职业方向），用户可以确认、跳过或自己填写。\n"
-            f"如果不是第一个组合，直接针对当前组合提问即可。"
         )
 
         llm_messages = [
@@ -3114,11 +3177,15 @@ async def rumination_combo_matrix_submit(
         if not matrix:
             raise HTTPException(status_code=400, detail="组合矩阵尚未初始化")
 
-        # 将空组合标记为 skipped（用户已在弹窗中确认）
+        # 将空组合标记为 skipped（用户已在弹窗中确认），不匹配组合自动 skipped
         for item in matrix:
             cid = item["combo_id"]
             if cid not in conclusions:
                 conclusions[cid] = {"text": "", "state": "skipped"}
+            elif item.get("is_non_matching"):
+                # 确保不匹配组合的 state 不为 confirmed
+                if conclusions[cid].get("state") != "confirmed":
+                    conclusions[cid] = {"text": "", "state": "skipped"}
 
         # 构建 3b 表格（只含 confirmed 且有文字的组合）
         table_rows = []
@@ -3210,8 +3277,23 @@ async def rumination_get_combo_matrix(
 
         progress = load_rumination_progress(Path(reports_root), rid)
 
-        # 如果矩阵已存在，直接返回
+        # 如果矩阵已存在，检查是否需要补全 is_non_matching 标记
         if progress.get("combo_matrix"):
+            matrix = progress["combo_matrix"]
+            needs_patch = any(item.get("is_non_matching") is None for item in matrix)
+            if needs_patch:
+                # 尝试从 step2 snapshot 提取不匹配组合
+                non_matching_pairs = _resolve_non_matching_pairs(progress)
+                for item in matrix:
+                    if item.get("is_non_matching") is None:
+                        p_s = str(item.get("passion_name") or "").strip()
+                        s_s = str(item.get("strength_name") or "").strip()
+                        item["is_non_matching"] = (p_s, s_s) in non_matching_pairs
+                # 持久化补全后的矩阵
+                merge_rumination_progress_fields(
+                    Path(reports_root), rid, {"combo_matrix": matrix},
+                )
+                progress = load_rumination_progress(Path(reports_root), rid)
             return SimpleChatResponse(
                 code=200,
                 message="success",
@@ -3228,7 +3310,11 @@ async def rumination_get_combo_matrix(
         # interests_list 即热爱（rumination 中 interests = 热爱）
         passions = interests_list[:3]
         strengths = strengths_list[:5]
-        matrix = build_combo_matrix(passions, strengths)
+
+        # 从 step2 snapshot 提取不匹配组合，用于矩阵置灰标记
+        non_matching_pairs = _resolve_non_matching_pairs(progress)
+
+        matrix = build_combo_matrix(passions, strengths, non_matching_pairs=non_matching_pairs)
 
         progress = merge_rumination_progress_fields(
             Path(reports_root),

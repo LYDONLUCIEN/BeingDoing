@@ -413,6 +413,8 @@ export default function ChatPhasePage() {
 
   /** Matrix mode: which combo is currently selected for chat filtering */
   const [matrixModeSelectedComboId, setMatrixModeSelectedComboId] = useState<string | null>(null);
+  /** step3 matrix: 右侧 chip 点击后注入到左侧结论卡片的文本 */
+  const [matrixPendingChipText, setMatrixPendingChipText] = useState<string | null>(null);
   /** v3: 防止同一组合引导语并发重复创建 */
   const comboGuideFetchingRef = useRef<Set<string>>(new Set());
 
@@ -3563,6 +3565,11 @@ export default function ChatPhasePage() {
       text: string,
       meta?: { hypTargetRow?: number; hypRowUnresolved?: boolean }
     ) => {
+      // matrix 模式：chip 文本注入到左侧结论卡片
+      if (isStep3MatrixMode) {
+        setMatrixPendingChipText(text);
+        return;
+      }
       const targetRow =
         meta?.hypTargetRow ??
         (meta?.hypRowUnresolved ? step3SelectedRowForHypFill : null);
@@ -3576,7 +3583,7 @@ export default function ChatPhasePage() {
       setStep3ExternalHypFill({ rowIndex: targetRow, text });
       setTimeout(() => setStep3ExternalHypFill(null), 100);
     },
-    [step3SelectedRowForHypFill]
+    [step3SelectedRowForHypFill, isStep3MatrixMode]
   );
 
   const handleRuminationLiveRowsChange = useCallback(
@@ -3972,6 +3979,8 @@ export default function ChatPhasePage() {
                     onSelectComboId={setMatrixModeSelectedComboId}
                     onSubmitAll={handleMatrixSubmitAll}
                     onProgressUpdate={(p) => setRuminationProgressState((prev) => (prev ? { ...prev, ...p } : p))}
+                    externalChipText={matrixPendingChipText}
+                    onExternalChipConsumed={() => setMatrixPendingChipText(null)}
                   />
                 ) : ruminationTablePayload ? (
                   <RuminationTableWidget
@@ -4389,6 +4398,7 @@ export default function ChatPhasePage() {
                           hypRowUnresolved={m.hypRowUnresolved}
                           selectedRowFallback={step3SelectedRowForHypFill}
                           onHypCandidateClick={handleHypCandidateClick}
+                          comboMatrixMode={isStep3MatrixMode}
                         />
                       )}
                     </div>

@@ -23,6 +23,8 @@ interface MessageContentProps {
     text: string,
     meta: { hypTargetRow?: number; hypRowUnresolved?: boolean }
   ) => void;
+  /** step3 matrix 模式：chips 始终可点击，无需选择表格行 */
+  comboMatrixMode?: boolean;
 }
 
 const HYP_ROW_UNRESOLVED_HINT =
@@ -30,6 +32,18 @@ const HYP_ROW_UNRESOLVED_HINT =
 
 const hypRowSelectedHint = (rowIndex: number) =>
   `已选中左侧第 ${rowIndex + 1} 行，可点击下方假设填入。`;
+
+/**
+ * 清除后端隐藏协议块标签，防止泄露到 UI。
+ */
+function stripHiddenBlocks(text: string): string {
+  return text
+    .replace(/\[STEP3_HYP_JSON\][\s\S]*?\[\/STEP3_HYP_JSON\]/g, '')
+    .replace(/\[HYP_CANDIDATE\][\s\S]*?\[\/HYP_CANDIDATE\]/g, '')
+    .replace(/\[ROW_STATE_JSON\][\s\S]*?\[\/ROW_STATE_JSON\]/g, '')
+    .replace(/\[STATE_JSON\][\s\S]*?\[\/STATE_JSON\]/g, '')
+    .trim();
+}
 
 export default function MessageContent({
   content,
@@ -41,37 +55,42 @@ export default function MessageContent({
   hypRowUnresolved,
   selectedRowFallback,
   onHypCandidateClick,
+  comboMatrixMode,
 }: MessageContentProps) {
-  if (!content?.trim() && !hypCandidates?.length) {
+  const safeContent = stripHiddenBlocks(content || '');
+  if (!safeContent && !hypCandidates?.length) {
     return null;
   }
 
   const effectiveTargetRow =
     hypTargetRow ??
     (hypRowUnresolved && selectedRowFallback != null ? selectedRowFallback : undefined);
-  const chipsDisabled = hypCandidates?.length ? effectiveTargetRow == null : false;
+  const chipsDisabled = comboMatrixMode
+    ? false
+    : hypCandidates?.length ? effectiveTargetRow == null : false;
   const chipMeta = {
     hypTargetRow: effectiveTargetRow,
     hypRowUnresolved: hypRowUnresolved && effectiveTargetRow == null,
   };
-  const rowHint =
-    hypRowUnresolved && effectiveTargetRow == null
-      ? HYP_ROW_UNRESOLVED_HINT
-      : hypRowUnresolved && effectiveTargetRow != null
-        ? hypRowSelectedHint(effectiveTargetRow)
-        : null;
+  const rowHint = comboMatrixMode
+    ? null
+    : hypRowUnresolved && effectiveTargetRow == null
+        ? HYP_ROW_UNRESOLVED_HINT
+        : hypRowUnresolved && effectiveTargetRow != null
+          ? hypRowSelectedHint(effectiveTargetRow)
+          : null;
 
   return (
     <div className={`message-content text-sm leading-relaxed ${className}`.trim()}>
-      {content?.trim() ? (
+      {safeContent ? (
         markdown ? (
           <MarkdownPreview
-            source={preprocessMarkdown(content)}
+            source={preprocessMarkdown(safeContent)}
             wrapperElement={{ 'data-color-mode': colorMode }}
             style={{ backgroundColor: 'transparent' }}
           />
         ) : (
-          <p className="whitespace-pre-wrap text-sm leading-relaxed">{content}</p>
+          <p className="whitespace-pre-wrap text-sm leading-relaxed">{safeContent}</p>
         )
       ) : null}
       {hypCandidates && hypCandidates.length > 0 && onHypCandidateClick && (

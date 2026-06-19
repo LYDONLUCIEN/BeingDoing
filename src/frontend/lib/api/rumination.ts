@@ -68,6 +68,8 @@ export interface ComboItem {
   strength_idx: number;
   passion_name: string;
   strength_name: string;
+  /** step2 标记为不匹配的组合 */
+  is_non_matching?: boolean;
 }
 
 export interface RuminationTablePayload {

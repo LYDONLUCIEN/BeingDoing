@@ -9,6 +9,8 @@ interface ComboMatrixSelectorProps {
   conclusions: Record<string, { text: string; state: string }> | undefined;
   selectedComboId: string | null;
   onSelectCombo: (comboId: string) => void;
+  /** 点击置灰优势按钮时的回调 */
+  onDisabledStrengthClick?: () => void;
 }
 
 /**
@@ -22,6 +24,7 @@ export default function ComboMatrixFlowDiagram({
   conclusions,
   selectedComboId,
   onSelectCombo,
+  onDisabledStrengthClick,
 }: ComboMatrixSelectorProps) {
   // Unique passions and strengths (preserving order)
   const passions = useMemo(() => {
@@ -48,6 +51,18 @@ export default function ComboMatrixFlowDiagram({
   const [selPassionName, setSelPassionName] = useState<string | null>(null);
   const [selStrengthName, setSelStrengthName] = useState<string | null>(null);
 
+  // 当前选中的热爱下，哪些优势是 step2 不匹配的（需置灰）
+  const isStrengthDisabled = useMemo(() => {
+    const map = new Map<string, boolean>();
+    if (!selPassionName) return map;
+    for (const m of matrix) {
+      if (m.passion_name === selPassionName && m.is_non_matching) {
+        map.set(m.strength_name, true);
+      }
+    }
+    return map;
+  }, [matrix, selPassionName]);
+
   // Sync from parent selectedComboId → derive passion/strength names
   useEffect(() => {
     if (selectedComboId) {
@@ -62,6 +77,11 @@ export default function ComboMatrixFlowDiagram({
   // When both selected, fire onSelectCombo
   useEffect(() => {
     if (selPassionName && selStrengthName) {
+      // 如果当前优势在选中热爱下是不匹配的，清除选择
+      if (isStrengthDisabled.get(selStrengthName)) {
+        setSelStrengthName(null);
+        return;
+      }
       const combo = matrix.find(
         (m) => m.passion_name === selPassionName && m.strength_name === selStrengthName,
       );
@@ -69,13 +89,14 @@ export default function ComboMatrixFlowDiagram({
         onSelectCombo(combo.combo_id);
       }
     }
-  }, [selPassionName, selStrengthName, matrix, onSelectCombo, selectedComboId]);
+  }, [selPassionName, selStrengthName, matrix, onSelectCombo, selectedComboId, isStrengthDisabled]);
 
-  // For each passion, check if ALL combos under it are confirmed/skipped
+  // For each passion, check if ALL combos under it are confirmed/skipped (excluding non-matching)
   const passionDone = useMemo(() => {
     const map = new Map<string, boolean>();
     for (const p of passions) {
-      const combos = matrix.filter((m) => m.passion_name === p);
+      const combos = matrix.filter((m) => m.passion_name === p && !m.is_non_matching);
+      if (combos.length === 0) { map.set(p, true); continue; }
       map.set(
         p,
         combos.every(
@@ -88,11 +109,12 @@ export default function ComboMatrixFlowDiagram({
     return map;
   }, [passions, matrix, conclusions]);
 
-  // For each strength, same check
+  // For each strength, same check (excluding non-matching combos)
   const strengthDone = useMemo(() => {
     const map = new Map<string, boolean>();
     for (const s of strengths) {
-      const combos = matrix.filter((m) => m.strength_name === s);
+      const combos = matrix.filter((m) => m.strength_name === s && !m.is_non_matching);
+      if (combos.length === 0) { map.set(s, true); continue; }
       map.set(
         s,
         combos.every(
@@ -174,21 +196,31 @@ export default function ComboMatrixFlowDiagram({
             {strengths.map((sName) => {
               const isActive = sName === selStrengthName;
               const isDone = strengthDone.get(sName);
+              const isDisabled = isStrengthDisabled.get(sName) ?? false;
               return (
                 <button
                   key={sName}
-                  onClick={() => setSelStrengthName(sName)}
+                  disabled={isDisabled}
+                  onClick={() => {
+                    if (isDisabled) {
+                      onDisabledStrengthClick?.();
+                      return;
+                    }
+                    setSelStrengthName(sName);
+                  }}
                   className={`
                     flex w-full items-center gap-2 min-h-[38px] rounded-[12px] px-3
-                    font-[700] text-[14px] cursor-pointer
+                    font-[700] text-[14px]
                     transition-all duration-[0.18s] ease
                     backdrop-blur-[12px]
-                    ${isActive
-                      ? 'text-white border border-white/58 shadow-[0_8px_16px_rgba(101,208,150,0.22),inset_0_1px_0_rgba(255,255,255,0.4)]'
-                      : 'text-[#5d6c80] border border-white/46 bg-white/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_4px_12px_rgba(33,48,79,0.04)] hover:-translate-y-[1px] hover:bg-white/62'}
+                    ${isDisabled
+                      ? 'text-[#b0b8c4] border border-white/20 bg-white/20 cursor-not-allowed opacity-40'
+                      : isActive
+                        ? 'text-white border border-white/58 shadow-[0_8px_16px_rgba(101,208,150,0.22),inset_0_1px_0_rgba(255,255,255,0.4)] cursor-pointer'
+                        : 'text-[#5d6c80] border border-white/46 bg-white/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_4px_12px_rgba(33,48,79,0.04)] hover:-translate-y-[1px] hover:bg-white/62 cursor-pointer'}
                   `}
                   style={
-                    isActive
+                    !isDisabled && isActive
                       ? {
                           background:
                             'linear-gradient(135deg, #57deb0 0%, #72ddb8 56%, #79cfa5 100%)',
