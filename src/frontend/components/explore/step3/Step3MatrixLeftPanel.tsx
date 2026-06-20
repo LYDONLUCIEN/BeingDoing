@@ -361,10 +361,17 @@ export default function Step3MatrixLeftPanel({
   const [conclusions, setConclusions] = useState(progress.combo_conclusions || {});
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [passionAllDisabled, setPassionAllDisabled] = useState(false);
   const [completedCount, setCompletedCount] = useState(0);
   const [pendingChipText, setPendingChipText] = useState<string | null>(null);
   const [forceExpand, setForceExpand] = useState(false);
   const [pendingNextComboId, setPendingNextComboId] = useState<string | null>(null);
+
+  // 当外部 progress.combo_conclusions 变化（如重新进入 step3 被后端清空）时同步到本地 state
+  useEffect(() => {
+    setConclusions(progress.combo_conclusions || {});
+    setCompletedCount(0);
+  }, [progress.combo_conclusions, progress.combo_matrix]);
 
   // 外部 chip 文本注入（右侧聊天区 chip 点击）
   useEffect(() => {
@@ -380,11 +387,14 @@ export default function Step3MatrixLeftPanel({
     [matrix, selectedComboId],
   );
 
-  // 仅含可操作的组合（排除不匹配），用于进度计算
+  // 仅含可操作的组合（排除不匹配），用于"下一个 combo"导航（afterSave）
   const matchableCombos = useMemo(
     () => matrix.filter((m) => !m.is_non_matching),
     [matrix],
   );
+
+  // matchable 总数（进度分母）：优先读后端 meta，老数据回退到前端 filter 长度
+  const totalMatchable = progress.combo_matrix_meta?.total_matchable ?? matchableCombos.length;
 
   const comboMessages = useMemo(
     () => allMessages.filter((m) => m.comboId === selectedComboId),
@@ -523,7 +533,7 @@ export default function Step3MatrixLeftPanel({
     onSubmitAll();
   }, [onSubmitAll]);
 
-  const progressPct = matchableCombos.length > 0 ? Math.round((completedCount / matchableCombos.length) * 100) : 0;
+  const progressPct = totalMatchable > 0 ? Math.round((completedCount / totalMatchable) * 100) : 0;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 relative">
@@ -554,7 +564,7 @@ export default function Step3MatrixLeftPanel({
             />
           </div>
           <span className="text-[13px] font-[700] text-[#6b7280]">
-            {completedCount}/{matchableCombos.length}
+            {completedCount}/{totalMatchable}
           </span>
         </div>
         <button
@@ -596,10 +606,12 @@ export default function Step3MatrixLeftPanel({
       >
         <ComboMatrixFlowDiagram
           matrix={matrix}
+          meta={progress.combo_matrix_meta}
           conclusions={conclusions}
           selectedComboId={selectedComboId}
           onSelectCombo={onSelectComboId}
           onDisabledStrengthClick={handleDisabledStrengthClick}
+          onPassionAllDisabledChange={setPassionAllDisabled}
         />
       </div>
 
@@ -623,6 +635,10 @@ export default function Step3MatrixLeftPanel({
             onForceExpandConsumed={() => setForceExpand(false)}
           />
         </div>
+      ) : passionAllDisabled ? (
+        <div className="flex flex-1 items-center justify-center rounded-[20px] border border-dashed border-white/44 bg-white/20 px-6 text-center text-[14px] font-[700] text-[#9ca3af]">
+          该热爱暂无组合可探讨，可切换其他热爱
+        </div>
       ) : (
         <div className="flex flex-1 items-center justify-center rounded-[20px] border border-dashed border-white/44 bg-white/20 text-[14px] font-[700] text-[#9ca3af]">
           请在上方选择热爱与优势
@@ -641,7 +657,7 @@ export default function Step3MatrixLeftPanel({
       <CompletionModal
         open={showCompletionModal}
         comboIndex={completedCount}
-        totalCombos={matchableCombos.length}
+        totalCombos={totalMatchable}
         onConfirm={() => {
           setShowCompletionModal(false);
           if (pendingNextComboId) {

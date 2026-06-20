@@ -57,6 +57,8 @@ export interface ThreadMessage {
   tableAction?: 'select_none' | 'fill_hypothesis';
   /** v3: 组合矩阵模式 — 所属组合 ID（如 "02" = 热爱1×优势3） */
   comboId?: string;
+  /** v3: 组合矩阵模式引导语生成中的临时占位（固定文案，不轮换） */
+  comboGuidePlaceholder?: boolean;
 }
 
 /** 使命阶段结构化「经历 → 价值观」行（与后端 payload 一致） */

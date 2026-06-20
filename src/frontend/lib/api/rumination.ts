@@ -58,6 +58,13 @@ export interface RuminationProgress {
   combo_conclusions?: Record<string, { text: string; state: 'empty' | 'confirmed' | 'skipped' }>;
   /** v3: 组合矩阵列表 */
   combo_matrix?: ComboItem[] | null;
+  /**
+   * v3: 组合矩阵聚合元数据（每热爱/优势的 matchable_count、all_disabled、
+   * default_strength_idx、整个矩阵的 default_combo_id/total_matchable）。
+   * step2 跑完时定死，由 rumination-combo-matrix endpoint 写入；
+   * 前端全程可选链兜底（老数据可能为 null/undefined）。
+   */
+  combo_matrix_meta?: ComboMatrixMeta | null;
   /** v3: 用户勾选不再提示完成弹窗 */
   combo_completion_modal_dismissed?: boolean;
 }
@@ -70,6 +77,36 @@ export interface ComboItem {
   strength_name: string;
   /** step2 标记为不匹配的组合 */
   is_non_matching?: boolean;
+}
+
+/** 矩阵里单个热爱的聚合统计（step2 跑完定死） */
+export interface ComboMatrixMetaPassion {
+  idx: number;
+  name: string;
+  /** 该热爱下 matchable（非不匹配）的优势数；0 即 all_disabled */
+  matchable_count: number;
+  /** == (matchable_count === 0) */
+  all_disabled: boolean;
+  /** 该热爱下第一个 matchable 的 strength_idx；全置灰时为 null */
+  default_strength_idx: number | null;
+}
+
+/** 矩阵里单个优势的聚合统计 */
+export interface ComboMatrixMetaStrength {
+  idx: number;
+  name: string;
+  /** 该优势列下 matchable 的组合数 */
+  matchable_count: number;
+}
+
+/** 矩阵聚合元数据，跟 combo_matrix 同源派生 */
+export interface ComboMatrixMeta {
+  /** 整个矩阵的 matchable 总数 */
+  total_matchable: number;
+  /** 第一个 matchable 的 combo_id；全矩阵都不匹配时为 null */
+  default_combo_id: string | null;
+  passions: ComboMatrixMetaPassion[];
+  strengths: ComboMatrixMetaStrength[];
 }
 
 export interface RuminationTablePayload {

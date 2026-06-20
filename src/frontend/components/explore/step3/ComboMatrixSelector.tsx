@@ -1,16 +1,20 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { Check, SkipForward } from 'lucide-react';
-import type { ComboItem } from '@/lib/api/rumination';
+import type { ComboItem, ComboMatrixMeta } from '@/lib/api/rumination';
 
 interface ComboMatrixSelectorProps {
   matrix: ComboItem[];
+  /** step2 跑完定死的聚合 meta；老数据可能为 null/undefined，全程可选链兜底 */
+  meta?: ComboMatrixMeta | null;
   conclusions: Record<string, { text: string; state: string }> | undefined;
   selectedComboId: string | null;
   onSelectCombo: (comboId: string) => void;
   /** 点击置灰优势按钮时的回调 */
   onDisabledStrengthClick?: () => void;
+  /** 当前选中热爱是否"全置灰"发生变化时通知父组件（用于显示占位文案） */
+  onPassionAllDisabledChange?: (allDisabled: boolean) => void;
 }
 
 /**
@@ -21,10 +25,12 @@ interface ComboMatrixSelectorProps {
  */
 export default function ComboMatrixFlowDiagram({
   matrix,
+  meta,
   conclusions,
   selectedComboId,
   onSelectCombo,
   onDisabledStrengthClick,
+  onPassionAllDisabledChange,
 }: ComboMatrixSelectorProps) {
   // Unique passions and strengths (preserving order)
   const passions = useMemo(() => {
@@ -51,17 +57,62 @@ export default function ComboMatrixFlowDiagram({
   const [selPassionName, setSelPassionName] = useState<string | null>(null);
   const [selStrengthName, setSelStrengthName] = useState<string | null>(null);
 
-  // 当前选中的热爱下，哪些优势是 step2 不匹配的（需置灰）
+  // 当前选中热爱是否全置灰（从 meta 读，step2 定死）
+  const selPassionMeta = useMemo(() => {
+    if (!selPassionName || !meta) return null;
+    return meta.passions.find((p) => p.name === selPassionName) ?? null;
+  }, [selPassionName, meta]);
+  const selPassionAllDisabled = !!selPassionMeta?.all_disabled;
+
+  // 通知父组件"全置灰"状态变化（用于显示占位文案）
+  useEffect(() => {
+    onPassionAllDisabledChange?.(selPassionAllDisabled);
+  }, [selPassionAllDisabled, onPassionAllDisabledChange]);
+
+  // 当前选中热爱下，哪些优势是 step2 不匹配的（需置灰）—— 优先用 meta.strengths.matchable_count，
+  // meta 缺失时回退到从 matrix 派生（老数据兼容）
   const isStrengthDisabled = useMemo(() => {
     const map = new Map<string, boolean>();
     if (!selPassionName) return map;
+    // 老数据无 meta → 回退：直接从 matrix filter
+    if (!meta) {
+      for (const m of matrix) {
+        if (m.passion_name === selPassionName && m.is_non_matching) {
+          map.set(m.strength_name, true);
+        }
+      }
+      return map;
+    }
+    // 有 meta：基于 passions[i].default_strength_idx 与 matchable_count 不可直接得到 per-strength，
+    // 仍需从 matrix 取（meta 只给 per-passion / per-strength 的 count，不给 cell）。
+    // 这里维持从 matrix 派生 per-cell 置灰——它本就是 step2 结论的直读，不算业务派生。
     for (const m of matrix) {
       if (m.passion_name === selPassionName && m.is_non_matching) {
         map.set(m.strength_name, true);
       }
     }
     return map;
-  }, [matrix, selPassionName]);
+  }, [matrix, selPassionName, meta]);
+
+  // Helper: 根据热爱名读 meta 里的 default_strength_idx，转成 strength_name
+  const getDefaultStrengthNameForPassion = useCallback(
+    (passionName: string): string | null => {
+      if (!meta) {
+        // 老数据回退：遍历 matrix 找该热爱下第一个非 is_non_matching 的 strength
+        for (const m of matrix) {
+          if (m.passion_name === passionName && !m.is_non_matching) {
+            return m.strength_name;
+          }
+        }
+        return null;
+      }
+      const pm = meta.passions.find((p) => p.name === passionName);
+      if (!pm || pm.all_disabled || pm.default_strength_idx == null) return null;
+      const sm = meta.strengths.find((s) => s.idx === pm.default_strength_idx);
+      return sm?.name ?? null;
+    },
+    [meta, matrix],
+  );
 
   // Sync from parent selectedComboId → derive passion/strength names
   useEffect(() => {
@@ -73,6 +124,23 @@ export default function ComboMatrixFlowDiagram({
       }
     }
   }, [selectedComboId, matrix]);
+
+  // 初始进入：若没有任何选中且有默认 combo，自动选第一个热爱 + 第一个默认优势
+  useEffect(() => {
+    if (selPassionName || selStrengthName || selectedComboId) return;
+    const defaultComboId = meta?.default_combo_id;
+    if (!defaultComboId) return;
+    const combo = matrix.find((m) => m.combo_id === defaultComboId);
+    if (combo) {
+      setSelPassionName(combo.passion_name);
+      setSelStrengthName(combo.strength_name);
+      if (combo.combo_id !== selectedComboId) {
+        onSelectCombo(combo.combo_id);
+      }
+    }
+    // 仅在 matrix/meta 首次就绪时触发一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meta?.default_combo_id, matrix]);
 
   // When both selected, fire onSelectCombo
   useEffect(() => {
@@ -90,6 +158,13 @@ export default function ComboMatrixFlowDiagram({
       }
     }
   }, [selPassionName, selStrengthName, matrix, onSelectCombo, selectedComboId, isStrengthDisabled]);
+
+  // 点击热爱：set 热爱 + 同时 set 该热爱的默认优势（全置灰时 set null）
+  const handlePassionClick = (passionName: string) => {
+    setSelPassionName(passionName);
+    const defaultStrength = getDefaultStrengthNameForPassion(passionName);
+    setSelStrengthName(defaultStrength);
+  };
 
   // For each passion, check if ALL combos under it are confirmed/skipped (excluding non-matching)
   const passionDone = useMemo(() => {
@@ -143,10 +218,12 @@ export default function ComboMatrixFlowDiagram({
             {passions.map((pName) => {
               const isActive = pName === selPassionName;
               const isDone = passionDone.get(pName);
+              const pm = meta?.passions.find((p) => p.name === pName);
+              const passionAllDisabled = !!pm?.all_disabled;
               return (
                 <button
                   key={pName}
-                  onClick={() => setSelPassionName(pName)}
+                  onClick={() => handlePassionClick(pName)}
                   className={`
                     flex w-full items-center gap-3 min-h-[52px] rounded-[16px] px-4
                     font-[700] text-[16px] cursor-pointer
@@ -154,7 +231,9 @@ export default function ComboMatrixFlowDiagram({
                     backdrop-blur-[12px]
                     ${isActive
                       ? 'text-white border border-white/58 shadow-[0_12px_24px_rgba(255,137,95,0.26),inset_0_1px_0_rgba(255,255,255,0.4)]'
-                      : 'text-[#5d6c80] border border-white/46 bg-white/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_6px_16px_rgba(33,48,79,0.04)] hover:-translate-y-[1px] hover:bg-white/62'}
+                      : passionAllDisabled
+                        ? 'text-[#9aa3b0] border border-white/30 bg-white/30 opacity-60'
+                        : 'text-[#5d6c80] border border-white/46 bg-white/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_6px_16px_rgba(33,48,79,0.04)] hover:-translate-y-[1px] hover:bg-white/62'}
                   `}
                   style={
                     isActive
@@ -164,6 +243,7 @@ export default function ComboMatrixFlowDiagram({
                         }
                       : undefined
                   }
+                  title={passionAllDisabled ? '该热爱下所有优势均不匹配' : undefined}
                 >
                   <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-white/36 text-[14px]">
                     ♥
@@ -316,7 +396,7 @@ export default function ComboMatrixFlowDiagram({
             <span className="flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-full bg-gray-200/40 text-[12px]">
               ✦
             </span>
-            <span>请选择优势</span>
+            <span>{selPassionAllDisabled ? '该热爱无匹配优势' : '请选择优势'}</span>
           </div>
         )}
       </div>

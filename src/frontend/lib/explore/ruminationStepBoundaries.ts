@@ -181,7 +181,14 @@ export function cutMessagesForRuminationStepRefill(
     delete newB[String(s)];
   }
   if (lo >= hi) {
-    return { messages, boundaries: newB };
+    // boundary 值异常（>= 消息总数）时，回退到按 filterStep 标签裁剪，
+    // 确保 viewStep 及之后的消息被清除。
+    const cut = messages.filter((m) => {
+      if (m.type === 'table_widget') return false;
+      if (m.filterStep == null) return true; // 无标签消息保留（如 entry greeting）
+      return m.filterStep < viewStep;
+    });
+    return { messages: cut, boundaries: newB };
   }
   return { messages: messages.slice(0, lo), boundaries: newB };
 }

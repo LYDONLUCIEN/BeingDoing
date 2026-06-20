@@ -191,6 +191,8 @@ export const zh = {
       thinkInProgress4: '整理思路中，请稍候…',
       thinkInProgress5: '正在组织回答，马上为您呈现…',
       thinkInProgress6: '思考中，即将完成…',
+      /** matrix 组合引导语生成占位（固定单一文案，不轮换） */
+      thinkComboMatrixPlaceholder: '正在处理中其他组合信息，请稍后…',
       thinkProcess: '思考过程',
       networkError: '网络连接失败，若后端正在重启请稍后刷新页面',
       initTimeout: '准备时间较长，请刷新页面后重试',
@@ -269,6 +271,8 @@ export const zh = {
         /** 历史值映射：旧「暂未选定」映射到新「无」 */
         hypothesisPendingLegacy: '暂未选定',
         placeholderWithRow: '针对「{label}」补充说明…',
+        /** step3 3b discussion 模式：未选行时输入框提示 */
+        placeholderDiscussionSelectRow: '从左侧选择感兴趣的行，继续讨论…',
         tableEarlyTerminated: '当前筛选无剩余行，请回到回顾或前序阶段补充后再试。',
         followShowFullTable: '筛选表格已更新为最终结果，请结合列表做最终选择。',
         followConfirmTable: '我已确认表格，请继续。',

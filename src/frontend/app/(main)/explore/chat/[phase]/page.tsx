@@ -411,6 +411,16 @@ export default function ChatPhasePage() {
     [phase, ruminationViewStep, ruminationProgressState],
   );
 
+  /** 3b discussion mode: 全部组合已提交，表格含已确认假设，用户点行讨论。未选行时锁定输入框。 */
+  const isStep3DiscussionMode = useMemo(
+    () =>
+      phase === 'rumination' &&
+      ruminationViewStep === 3 &&
+      ruminationProgressState?.filter_sub_step === 'discussion',
+    [phase, ruminationViewStep, ruminationProgressState],
+  );
+  const discussionNeedsRow = isStep3DiscussionMode && !ruminationRowContext;
+
   /** Matrix mode: which combo is currently selected for chat filtering */
   const [matrixModeSelectedComboId, setMatrixModeSelectedComboId] = useState<string | null>(null);
   /** step3 matrix: 右侧 chip 点击后注入到左侧结论卡片的文本 */
@@ -509,6 +519,10 @@ export default function ChatPhasePage() {
         // v3: 组合矩阵模式 — 后端 combo_id 映射为前端 comboId
         if (typeof m.combo_id === 'string' && m.combo_id.trim()) {
           base.comboId = m.combo_id.trim();
+        }
+        // v3: combo guide 的假设候选 chips — 后端 hyp_candidates 映射为前端 hypCandidates
+        if (Array.isArray(m.hyp_candidates) && m.hyp_candidates.length > 0) {
+          base.hypCandidates = m.hyp_candidates as string[];
         }
         return base;
       }),
@@ -1006,33 +1020,27 @@ export default function ChatPhasePage() {
       return;
     }
     if (!activationCode) return;
-    // 如果 combo_matrix 还没有，先从后端初始化
-    const matrix = ruminationProgressState?.combo_matrix;
-    if (!matrix || matrix.length === 0) {
-      let cancelled = false;
-      (async () => {
-        try {
-          const res = await ruminationApi.getComboMatrix(activationCode);
-          if (cancelled) return;
-          if (res.data?.progress) {
-            setRuminationProgressState((prev) => (prev ? { ...prev, ...res.data!.progress! } : res.data!.progress!));
-          }
-          if (res.data?.combo_matrix) {
-            const comboMatrix = res.data.combo_matrix as ComboItem[];
-            if (comboMatrix.length > 0) {
-              setMatrixModeSelectedComboId(comboMatrix[0].combo_id || '00');
-            }
-          }
-        } catch (err) {
-          console.error('Failed to init combo matrix:', err);
+    // 每次进入 matrix 模式都从后端拉取最新 combo_matrix，
+    // 确保 step2 新标记的不匹配组合（is_non_matching）能及时反映到 UI。
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await ruminationApi.getComboMatrix(activationCode);
+        if (cancelled) return;
+        if (res.data?.progress) {
+          setRuminationProgressState((prev) => (prev ? { ...prev, ...res.data!.progress! } : res.data!.progress!));
         }
-      })();
-      return () => { cancelled = true; };
-    }
-    // 已有 matrix，自动选中第一个
-    if (!matrixModeSelectedComboId) {
-      setMatrixModeSelectedComboId(matrix[0].combo_id || '00');
-    }
+        if (res.data?.combo_matrix) {
+          const comboMatrix = res.data.combo_matrix as ComboItem[];
+          if (comboMatrix.length > 0) {
+            setMatrixModeSelectedComboId((prev) => prev || comboMatrix[0].combo_id || '00');
+          }
+        }
+      } catch (err) {
+        console.error('Failed to init combo matrix:', err);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [isStep3MatrixMode]);
 
   /** v4: 进入某个组合时，自动确保右侧已出现固定引导语（支持后端异步队列） */
@@ -1052,6 +1060,21 @@ export default function ChatPhasePage() {
     const threadId = backendSyncedThreadId ?? undefined;
     const run = async () => {
       comboGuideFetchingRef.current.add(comboId);
+      // 显示"正在生成中"提示
+      const placeholderId = `combo_guide_placeholder_${Date.now()}`;
+      setRuminationGuideBusy(true);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: placeholderId,
+          role: 'assistant' as const,
+          content: '',
+          createdAt: Date.now(),
+          comboId,
+          filterStep: 3,
+          comboGuidePlaceholder: true,
+        },
+      ]);
       try {
         const res = await ruminationApi.ensureComboGuide(
           activationCode,
@@ -1066,8 +1089,10 @@ export default function ChatPhasePage() {
           const mapped = mapHistoryToThreadMessages([guide], {})[0];
           if (mapped) {
             setMessages((prev) => {
-              if (prev.some((m) => m.id === mapped.id)) return prev;
-              return [...prev, mapped];
+              // 移除 placeholder，加入真实消息
+              const withoutPlaceholder = prev.filter((m) => m.id !== placeholderId);
+              if (withoutPlaceholder.some((m) => m.id === mapped.id)) return withoutPlaceholder;
+              return [...withoutPlaceholder, mapped];
             });
           }
           return;
@@ -1083,8 +1108,9 @@ export default function ChatPhasePage() {
             const mapped = mapHistoryToThreadMessages([polledGuide], {})[0];
             if (mapped) {
               setMessages((prev) => {
-                if (prev.some((m) => m.id === mapped.id)) return prev;
-                return [...prev, mapped];
+                const withoutPlaceholder = prev.filter((m) => m.id !== placeholderId);
+                if (withoutPlaceholder.some((m) => m.id === mapped.id)) return withoutPlaceholder;
+                return [...withoutPlaceholder, mapped];
               });
             }
           }
@@ -1092,6 +1118,9 @@ export default function ChatPhasePage() {
       } catch (err) {
         console.error('ensureComboGuide failed:', err);
       } finally {
+        setRuminationGuideBusy(false);
+        // 如果真实消息没来，移除 placeholder
+        setMessages((prev) => prev.filter((m) => m.id !== placeholderId));
         comboGuideFetchingRef.current.delete(comboId);
       }
     };
@@ -1644,6 +1673,8 @@ export default function ChatPhasePage() {
       return next;
     });
     if (phase === 'rumination' && ruminationTableNavLoading) return;
+    // step3 3b discussion 模式：未选行时不允许发送（输入框已 disabled，此处为防御性 guard）
+    if (isStep3DiscussionMode && !ruminationRowContext) return;
     // 用户回复开场白"准备好了"时：不调 AI 流式接口，直接加载表格 + step1 opening
     if (ruminationAwaitingReady) {
       const now2 = Date.now();
@@ -4363,14 +4394,18 @@ export default function ChatPhasePage() {
                           }
                           thinkStreaming={m.thinkStreaming}
                           thinkChunkContent={m.thinkChunkContent}
-                          thinkPlaceholders={[
-                            t('explore.chat.thinkInProgress1'),
-                            t('explore.chat.thinkInProgress2'),
-                            t('explore.chat.thinkInProgress3'),
-                            t('explore.chat.thinkInProgress4'),
-                            t('explore.chat.thinkInProgress5'),
-                            t('explore.chat.thinkInProgress6'),
-                          ]}
+                          thinkPlaceholders={
+                            m.comboGuidePlaceholder
+                              ? [t('explore.chat.thinkComboMatrixPlaceholder')]
+                              : [
+                                  t('explore.chat.thinkInProgress1'),
+                                  t('explore.chat.thinkInProgress2'),
+                                  t('explore.chat.thinkInProgress3'),
+                                  t('explore.chat.thinkInProgress4'),
+                                  t('explore.chat.thinkInProgress5'),
+                                  t('explore.chat.thinkInProgress6'),
+                                ]
+                          }
                           timestamp={m.createdAt}
                           toolbarCopyTitle={t('explore.chat.messageToolbar.copy')}
                           toolbarLikeTitle={t('explore.chat.messageToolbar.like')}
@@ -4531,7 +4566,9 @@ export default function ChatPhasePage() {
                         ? matrixModeSelectedComboId
                           ? '输入你的想法...'
                           : '请先从左侧选择一个组合'
-                        : streamTailInputPlaceholder ??
+                        : discussionNeedsRow
+                          ? t('explore.chat.ruminationUi.placeholderDiscussionSelectRow')
+                          : streamTailInputPlaceholder ??
                           (phaseInteractionLocked
                             ? t('explore.chat.placeholderPhaseLocked')
                             : isReadOnly
@@ -4549,7 +4586,8 @@ export default function ChatPhasePage() {
                       sending ||
                       isReadOnly ||
                       (phase === 'rumination' && ruminationTableNavLoading) ||
-                      (isStep3MatrixMode && !matrixModeSelectedComboId)
+                      (isStep3MatrixMode && !matrixModeSelectedComboId) ||
+                      discussionNeedsRow
                     }
                     className="flow-input-field"
                   />
@@ -4575,6 +4613,7 @@ export default function ChatPhasePage() {
                       disabled={
                         (isReadOnly ||
                           (isStep3MatrixMode && !matrixModeSelectedComboId) ||
+                          discussionNeedsRow ||
                           (!sending &&
                             (!input.trim() ||
                               (phase === 'rumination' && ruminationTableNavLoading)))) as boolean

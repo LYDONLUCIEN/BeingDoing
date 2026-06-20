@@ -95,6 +95,7 @@ from app.utils.rumination_row_context import (
 )
 from app.utils.rumination_combo_matrix import (
     build_combo_matrix,
+    build_combo_matrix_meta,
     get_combo_by_id,
     get_passion_strength_names,
     get_next_combo_by_order,
@@ -105,6 +106,7 @@ from app.utils.rumination_combo_context import (
     slice_messages_for_combo,
     build_combo_chat_system_addon,
     build_combo_first_message,
+    build_combo_guide_text,
 )
 from app.utils.rumination_step3_flow import (
     row_hyp,
@@ -2555,6 +2557,19 @@ async def rumination_table_submit(
                     filter_early_terminated=False,
                     filter_terminate_reason=None,
                 )
+                # 清除旧的组合矩阵数据（用户重新走 step2→3 时避免预填旧结论）
+                # 直接设 filter_sub_step='matrix'：前端 isStep3MatrixMode 依赖该字段为 'matrix'
+                # 才会调 init combo matrix，若设 None 会与前端形成死锁，导致 matrix 面板永不渲染。
+                progress = merge_rumination_progress_fields(
+                    reports_root,
+                    report_id,
+                    {
+                        "combo_matrix": None,
+                        "combo_conclusions": {},
+                        "combo_completion_modal_dismissed": False,
+                        "filter_sub_step": "matrix",
+                    },
+                )
                 next_table = _table_widget_payload(3, step3_rows, values_list, progress=progress)
                 # step2 全不匹配但用户仍推进：在 step3 表格 guideText 前加过渡引导语
                 _all_unmatched = len(collect_step2_mismatches(table_data)) == len(table_data) if table_data else False
@@ -3013,8 +3028,11 @@ async def _generate_and_store_combo_guide(
             f"（自由职业/创业方向 + 公司职业方向），用户可以确认、跳过或自己填写。\n"
         )
 
+        # 拼接组合对话 addon：要求 LLM 用 [STEP3_HYP_JSON] 协议块输出假设候选，
+        # 这样 guide 消息就能带 hyp_candidates，前端结论卡可渲染 chips。
+        combo_addon = build_combo_chat_system_addon(passion_name, strength_name)
         llm_messages = [
-            _LLMMsg(role="system", content=STEP_3_OPENING_SYSTEM_ZH),
+            _LLMMsg(role="system", content=f"{STEP_3_OPENING_SYSTEM_ZH}\n\n{combo_addon}"),
             _LLMMsg(role="user", content=combo_user_context),
         ]
 
@@ -3038,10 +3056,18 @@ async def _generate_and_store_combo_guide(
 
         guide_text = str(guide_text).strip() or build_combo_guide_text(passion_name, strength_name, 0)
 
+        # 解析 [STEP3_HYP_JSON] 协议块：分离可见引导文本与假设候选
+        visible_text, raw_candidates, _row = _extract_step3_hyp_output(guide_text)
+        hyp_candidates = sanitize_hyp_candidates(raw_candidates)
+        # 兜底：LLM 未按协议输出时，visible_text 为原文（含/不含残留标记），保持原文展示
+        if visible_text.strip():
+            guide_text = visible_text
+
         from datetime import datetime, timezone
         guide_message = {
             "role": "assistant",
             "content": guide_text,
+            "hyp_candidates": hyp_candidates,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "type": "combo_guide",
             "filter_step": 3,
@@ -3277,33 +3303,8 @@ async def rumination_get_combo_matrix(
 
         progress = load_rumination_progress(Path(reports_root), rid)
 
-        # 如果矩阵已存在，检查是否需要补全 is_non_matching 标记
-        if progress.get("combo_matrix"):
-            matrix = progress["combo_matrix"]
-            needs_patch = any(item.get("is_non_matching") is None for item in matrix)
-            if needs_patch:
-                # 尝试从 step2 snapshot 提取不匹配组合
-                non_matching_pairs = _resolve_non_matching_pairs(progress)
-                for item in matrix:
-                    if item.get("is_non_matching") is None:
-                        p_s = str(item.get("passion_name") or "").strip()
-                        s_s = str(item.get("strength_name") or "").strip()
-                        item["is_non_matching"] = (p_s, s_s) in non_matching_pairs
-                # 持久化补全后的矩阵
-                merge_rumination_progress_fields(
-                    Path(reports_root), rid, {"combo_matrix": matrix},
-                )
-                progress = load_rumination_progress(Path(reports_root), rid)
-            return SimpleChatResponse(
-                code=200,
-                message="success",
-                data={
-                    "progress": progress,
-                    "combo_matrix": progress["combo_matrix"],
-                },
-            )
-
-        # 从 step2 表格构建矩阵
+        # matrix 始终由 step2 过滤结果派生：step2 是用户可逆操作，不匹配标记会变，
+        # 因此每次都重新构建，而非缓存复用后打补丁。
         _, strengths_list, interests_list, _, _ = extract_dimension_lists_for_rumination_table(
             reports_root, rid, rec.record_dict if hasattr(rec, "record_dict") else None
         )
@@ -3316,14 +3317,32 @@ async def rumination_get_combo_matrix(
 
         matrix = build_combo_matrix(passions, strengths, non_matching_pairs=non_matching_pairs)
 
+        # 清理 combo_conclusions 中不匹配组合的脏记录（理论上不该存在，置灰后不可填）
+        combo_conclusions = progress.get("combo_conclusions") or {}
+        non_matching_ids = {
+            item["combo_id"] for item in matrix if item.get("is_non_matching")
+        }
+        cleaned_conclusions = {
+            cid: v for cid, v in combo_conclusions.items() if cid not in non_matching_ids
+        }
+        # 聚合 meta：跟 matrix 同源派生（同一份 non_matching_pairs + passions/strengths），
+        # 一起并入 progress_fields 原子写入，保证 matrix/meta 永远一致，无竞态无死循环。
+        meta = build_combo_matrix_meta(matrix)
+        progress_fields: Dict[str, Any] = {
+            "combo_matrix": matrix,
+            "combo_matrix_meta": meta,
+        }
+        if not progress.get("filter_sub_step"):
+            progress_fields["filter_sub_step"] = "matrix"
+        # 清理脏数据：不匹配组合的结论（置灰后不可填，理论不存在）。
+        # 同时覆盖首次初始化场景：原 progress 无 combo_matrix 时 conclusions 若有残留一并清掉。
+        if len(cleaned_conclusions) != len(combo_conclusions) or not progress.get("combo_matrix"):
+            progress_fields["combo_conclusions"] = cleaned_conclusions
+
         progress = merge_rumination_progress_fields(
             Path(reports_root),
             rid,
-            {
-                "combo_matrix": matrix,
-                "filter_sub_step": "matrix",
-                "combo_conclusions": {},
-            },
+            progress_fields,
         )
 
         return SimpleChatResponse(
@@ -3332,6 +3351,7 @@ async def rumination_get_combo_matrix(
             data={
                 "progress": progress,
                 "combo_matrix": matrix,
+                "combo_matrix_meta": meta,
             },
         )
     except Exception as e:
@@ -3586,10 +3606,25 @@ async def rumination_get_table(
             filter_terminate_reason=None,
             filter_step_snapshots=snapshots,
         )
+        merge_fields: Dict[str, Any] = {
+            "pending_table_submit": None,
+            "rumination_neg_state": None,
+        }
+        # 从 step ≤ 3 重新填写时，step3 的组合矩阵数据全部作废：
+        # matrix 会由 step2 重新派生，conclusions 必须清空避免预填旧跳过/确认记录。
+        if step <= 3:
+            merge_fields.update(
+                {
+                    "combo_matrix": None,
+                    "combo_conclusions": {},
+                    "combo_completion_modal_dismissed": False,
+                    "filter_sub_step": None,
+                }
+            )
         merge_rumination_progress_fields(
             reports_root,
             report_id,
-            {"pending_table_submit": None, "rumination_neg_state": None},
+            merge_fields,
         )
         clear_neg_gate_triggered_from_step(reports_root, report_id, step)
         try:
@@ -4987,6 +5022,7 @@ async def simple_chat_stream(
         )
         step3_prompt_mode: Optional[str] = None
         step3_explicit_row_index: Optional[int] = None
+        step3_sub_step: Optional[str] = None
         if phase_step == "rumination" and rumination_filter_step_val == 3:
             try:
                 rid_s3 = report.get("report_id")
@@ -4994,6 +5030,7 @@ async def simple_chat_stream(
                     rp_s3 = load_rumination_progress(Path(reports_root), str(rid_s3))
                     ft_s3 = rp_s3.get("filter_table")
                     cur_s3 = int(rp_s3.get("filter_row_cursor") or 0)
+                    step3_sub_step = (rp_s3.get("filter_sub_step") or "").strip() or None
                     step3_prompt_mode = resolve_step3_prompt_mode(
                         step3_table_action=request.step3_table_action,
                     )
@@ -5013,6 +5050,26 @@ async def simple_chat_stream(
             rumination_row_index=request.rumination_row_index,
             step3_prompt_mode=step3_prompt_mode,
         )
+        # step3 模式分流：matrix 模式用 combo addon「替换」通用 [3] addon（避免重复堆叠）；
+        # discussion 模式保留 [3]（已含协议块+切换组合能力）。两者互斥。
+        if (
+            phase_step == "rumination"
+            and rumination_filter_step_val == 3
+            and step3_sub_step == "matrix"
+            and request.combo_id
+        ):
+            try:
+                rid_m = report.get("report_id")
+                if rid_m:
+                    rp_m = load_rumination_progress(Path(reports_root), str(rid_m))
+                    combo_matrix_m = rp_m.get("combo_matrix") or []
+                    p_name_m, s_name_m = get_passion_strength_names(
+                        combo_matrix_m, request.combo_id
+                    )
+                    if p_name_m or s_name_m:
+                        ra_s = build_combo_chat_system_addon(p_name_m, s_name_m)
+            except Exception:
+                pass
         rumination_neg_inj = ""
         if phase_step == "rumination":
             try:
@@ -5058,28 +5115,11 @@ async def simple_chat_stream(
                 m for m in history_messages
                 if int(m.get("filter_step") or 0) == rumination_filter_step_val
             ]
-            # v3: 组合矩阵模式 — 进一步按 combo_id 隔离
+            # v3: 组合矩阵模式 — 进一步按 combo_id 隔离（addon 已在前置分流中决定）
             combo_id_for_context = None
-            if rumination_filter_step_val == 3 and request.combo_id:
-                sub_step = None
-                try:
-                    rp_cs = load_rumination_progress(Path(reports_root), str(report.get("report_id")))
-                    sub_step = rp_cs.get("filter_sub_step")
-                except Exception:
-                    pass
-                if sub_step == "matrix":
-                    step_messages = slice_messages_for_combo(step_messages, request.combo_id)
-                    combo_id_for_context = request.combo_id
-                    # 组合对话 system prompt 追加
-                    try:
-                        combo_matrix = rp_cs.get("combo_matrix") or []
-                        p_name, s_name = get_passion_strength_names(combo_matrix, request.combo_id)
-                        if p_name or s_name:
-                            combo_addon = build_combo_chat_system_addon(p_name, s_name)
-                            # 注入到 rumination_step_addon（ra_s）中
-                            ra_s = f"{ra_s}\n\n{combo_addon}" if ra_s else combo_addon
-                    except Exception:
-                        pass
+            if rumination_filter_step_val == 3 and request.combo_id and step3_sub_step == "matrix":
+                step_messages = slice_messages_for_combo(step_messages, request.combo_id)
+                combo_id_for_context = request.combo_id
             trimmed = step_messages[-30:]
 
             # 加载之前子步的 anchor 并拼接

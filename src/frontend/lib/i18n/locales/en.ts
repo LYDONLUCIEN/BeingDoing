@@ -196,6 +196,8 @@ export const en = {
       thinkInProgress4: 'Organizing my thoughts, one moment…',
       thinkInProgress5: 'Putting together the answer, coming right up…',
       thinkInProgress6: 'Thinking it through, almost done…',
+      /** matrix combo guide placeholder — single fixed copy, no rotation */
+      thinkComboMatrixPlaceholder: 'Processing the other combinations, please wait…',
       thinkProcess: 'Thinking process',
       networkError: 'Network error. If the server is restarting, refresh in a moment.',
       initTimeout: 'This is taking a while. Please refresh the page.',
@@ -272,6 +274,8 @@ export const en = {
         hypothesisOtherLegacy: 'Other',
         hypothesisPendingLegacy: 'Undecided for now',
         placeholderWithRow: 'Add a note for “{label}”…',
+        /** step3 3b discussion mode: placeholder when no row selected */
+        placeholderDiscussionSelectRow: 'Select a row on the left to continue the discussion…',
         tableEarlyTerminated: 'No rows left in this filter. Go back to review or earlier steps.',
         followShowFullTable: 'The table is updated to the final view—please review the list.',
         followConfirmTable: 'I have confirmed the table—please continue.',

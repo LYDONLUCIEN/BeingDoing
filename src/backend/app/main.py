@@ -22,7 +22,11 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 # 第三方库太吵，只保留 WARNING
-for noisy in ("httpcore", "httpx", "urllib3", "asyncio", "watchfiles", "multipart"):
+for noisy in (
+    "httpcore", "httpx", "urllib3", "asyncio", "watchfiles", "multipart", "filelock",
+    "aiosqlite", "sqlalchemy.engine", "sqlalchemy.pool", "sqlalchemy.dialects",
+    "openai", "httpx._client",
+):
     logging.getLogger(noisy).setLevel(logging.WARNING)
 
 app = FastAPI(
