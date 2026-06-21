@@ -17,6 +17,11 @@ from app.utils.rumination_ops import is_rumination_step3_row_hypothesis_complete
 HYP_FIELD = "用户确认的假设"
 
 STEP3_GUIDE_PHRASE = "你可以点击下方的建议快速填入左侧表格"
+# matrix 模式专用引导句（结论卡而非表格）。AI 输出 chips 时配合说出此句，
+# 后端 guide_phrase_present_in_reply 检测到此句 + 无 chips → 触发 fallback retry。
+STEP3_GUIDE_PHRASE_MATRIX = "你可以点击下方的建议快速填入左侧结论卡"
+# 所有引导句集合（用于检测与过滤）
+_STEP3_GUIDE_PHRASES = (STEP3_GUIDE_PHRASE, STEP3_GUIDE_PHRASE_MATRIX)
 
 
 def sanitize_hyp_candidates(candidates: List[str]) -> List[str]:
@@ -26,7 +31,7 @@ def sanitize_hyp_candidates(candidates: List[str]) -> List[str]:
         t = str(c or "").strip()
         if not t:
             continue
-        if STEP3_GUIDE_PHRASE in t:
+        if any(p in t for p in _STEP3_GUIDE_PHRASES):
             continue
         if len(t) < 6:
             continue
@@ -35,9 +40,12 @@ def sanitize_hyp_candidates(candidates: List[str]) -> List[str]:
 
 
 def guide_phrase_present_in_reply(*texts: str) -> bool:
-    """在原始或清洗后的回复中检测引导语（清洗可能移除含引导语的协议块）。"""
+    """在原始或清洗后的回复中检测引导语（清洗可能移除含引导语的协议块）。
+    同时识别 discussion（左侧表格）与 matrix（左侧结论卡）两套引导句。"""
     for text in texts:
-        if text and STEP3_GUIDE_PHRASE in text:
+        if not text:
+            continue
+        if any(p in text for p in _STEP3_GUIDE_PHRASES):
             return True
     return False
 

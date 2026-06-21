@@ -91,11 +91,19 @@ function CompletionModal({
   open: boolean;
   comboIndex: number;
   totalCombos: number;
-  onConfirm: () => void;
-  onCancel: () => void;
+  onConfirm: (dismissed: boolean) => void;
+  onCancel: (dismissed: boolean) => void;
   onDismissChange: (dismissed: boolean) => void;
   dismissed: boolean;
 }) {
+  // 本地临时勾选状态，仅在用户点确认/取消时才提交到后端
+  const [localDismissed, setLocalDismissed] = useState(dismissed);
+
+  // 弹窗每次打开时，重置本地状态为后端当前值
+  useEffect(() => {
+    if (open) setLocalDismissed(dismissed);
+  }, [open, dismissed]);
+
   if (!open || dismissed) return null;
 
   return (
@@ -108,21 +116,21 @@ function CompletionModal({
         <label className="flex items-center gap-2 text-sm text-gray-500 mb-4 cursor-pointer select-none">
           <input
             type="checkbox"
-            checked={dismissed}
-            onChange={(e) => onDismissChange(e.target.checked)}
+            checked={localDismissed}
+            onChange={(e) => setLocalDismissed(e.target.checked)}
             className="rounded border-gray-300"
           />
           不再提示
         </label>
         <div className="flex gap-3 justify-end">
           <button
-            onClick={onCancel}
+            onClick={() => onCancel(localDismissed)}
             className="h-11 rounded-full border border-gray-300 bg-white/56 px-5 text-[15px] font-[800] text-gray-600 shadow-[0_8px_24px_rgba(33,48,79,0.06)] transition-transform hover:-translate-y-[1px]"
           >
             取消
           </button>
           <button
-            onClick={onConfirm}
+            onClick={() => onConfirm(localDismissed)}
             className="h-11 rounded-full border-0 px-5 text-[15px] font-[800] text-white shadow-[0_12px_24px_rgba(103,210,238,0.24)] transition-transform hover:-translate-y-[1px]"
             style={{ background: 'linear-gradient(135deg, #67dfda, #70c9ff)' }}
           >
@@ -172,8 +180,12 @@ function ConclusionResultCard({
   }, [forceExpand, onForceExpandConsumed]);
 
   // Auto-fill chip text
+  // skipped 状态也允许 chip 注入：用户对已跳过的组合改主意时，可点 chip 快速填回。
   useEffect(() => {
-    if (pendingChipText && (state === 'empty' || (state === 'confirmed' && isExpanded))) {
+    if (
+      pendingChipText &&
+      (state === 'empty' || state === 'skipped' || (state === 'confirmed' && isExpanded))
+    ) {
       setLocalText(pendingChipText);
       onPendingChipConsumed();
     }
@@ -502,38 +514,12 @@ export default function Step3MatrixLeftPanel({
           该组合已标记为不匹配
         </div>
       )}
-      {/* Top bar: progress + submit */}
-      <div className="flex items-center justify-between shrink-0">
+      {/* Header row: icon + title (left), progress (center), submit (right) — all on one line */}
+      <div className="flex items-center justify-between gap-4 shrink-0 px-1">
+        {/* Left: icon + title + subtitle */}
         <div className="flex items-center gap-2">
-          {/* Progress bar */}
-          <div className="h-3.5 w-28 rounded-full overflow-hidden bg-white/56 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]">
-            <div
-              className="h-full rounded-full"
-              style={{
-                width: `${progressPct}%`,
-                background: 'linear-gradient(90deg, #8f73ff 0%, #9a75ff 45%, #f59ac0 100%)',
-                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.4)',
-              }}
-            />
-          </div>
-          <span className="text-[13px] font-[700] text-[#6b7280]">
-            {doneCount}/{totalMatchable}
-          </span>
-        </div>
-        <button
-          onClick={handleSubmitAll}
-          className="h-9 rounded-full border-0 px-4 text-[14px] font-[800] text-white shadow-[0_10px_20px_rgba(17,24,39,0.18)] transition-transform hover:-translate-y-[1px]"
-          style={{ background: 'rgba(17,24,39,0.92)' }}
-        >
-          全部提交
-        </button>
-      </div>
-
-      {/* Panel head: icon + title + subtitle matching reference HTML */}
-      <div className="flex items-start justify-between gap-4 shrink-0 px-1">
-        <div className="flex items-start gap-2">
           <div
-            className="h-5 w-5 flex-shrink-0 rounded-[6px] mt-0.5"
+            className="h-5 w-5 flex-shrink-0 rounded-[6px] mt-0.5 self-start"
             style={{
               background:
                 'conic-gradient(from 160deg, #ffb76d, #f2df6d, #7be6c8, #69bdf6, #b697ff, #ffb76d)',
@@ -547,6 +533,30 @@ export default function Step3MatrixLeftPanel({
             </p>
           </div>
         </div>
+        {/* Center: progress bar + count — flex-1 with inner centering */}
+        <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
+          <div className="h-3.5 w-28 rounded-full overflow-hidden bg-white/56 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]">
+            <div
+              className="h-full rounded-full"
+              style={{
+                width: `${progressPct}%`,
+                background: 'linear-gradient(90deg, #8f73ff 0%, #9a75ff 45%, #f59ac0 100%)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.4)',
+              }}
+            />
+          </div>
+          <span className="text-[13px] font-[700] text-[#6b7280] shrink-0">
+            {doneCount}/{totalMatchable}
+          </span>
+        </div>
+        {/* Right: submit all */}
+        <button
+          onClick={handleSubmitAll}
+          className="h-9 rounded-full border-0 px-4 text-[14px] font-[800] text-white shadow-[0_10px_20px_rgba(17,24,39,0.18)] transition-transform hover:-translate-y-[1px] shrink-0"
+          style={{ background: 'rgba(17,24,39,0.92)' }}
+        >
+          全部提交
+        </button>
       </div>
 
       {/* Selection box: glass card with button grid + summary */}
@@ -609,8 +619,19 @@ export default function Step3MatrixLeftPanel({
         open={showCompletionModal}
         comboIndex={doneCount}
         totalCombos={totalMatchable}
-        onConfirm={() => setShowCompletionModal(false)}
-        onCancel={() => setShowCompletionModal(false)}
+        onConfirm={(localDismissed) => {
+          setShowCompletionModal(false);
+          // 仅当本地勾选结果与后端当前值不一致时才提交
+          if (localDismissed !== !!progress.combo_completion_modal_dismissed) {
+            handleDismissChange(localDismissed);
+          }
+        }}
+        onCancel={(localDismissed) => {
+          setShowCompletionModal(false);
+          if (localDismissed !== !!progress.combo_completion_modal_dismissed) {
+            handleDismissChange(localDismissed);
+          }
+        }}
         onDismissChange={handleDismissChange}
         dismissed={!!progress.combo_completion_modal_dismissed}
       />

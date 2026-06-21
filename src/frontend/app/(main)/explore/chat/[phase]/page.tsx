@@ -299,6 +299,8 @@ export default function ChatPhasePage() {
   const [conclusionLoading, setConclusionLoading] = useState(false);
   /** 后端已推送 llm_stream_end：主模型流式输出结束，尚在同一条 SSE 内做落盘/埋点等 */
   const [postLlmTailActive, setPostLlmTailActive] = useState(false);
+  /** step3 主回复缺 chips，后端正在 retry 生成假设候选（matrix/discussion 通用） */
+  const [hypRetryActive, setHypRetryActive] = useState(false);
   /** 已收到 conclusion_loading、结论卡尚未推送（与消息区 spinner 一致） */
   const [waitingForConclusionCardUi, setWaitingForConclusionCardUi] = useState(false);
   const [adminDebugBypass, setAdminDebugBypass] = useState(false);
@@ -3116,6 +3118,9 @@ export default function ChatPhasePage() {
               if (payload.llm_stream_end) {
                 setPostLlmTailActive(true);
               }
+              if (payload.hyp_retry_started) {
+                setHypRetryActive(true);
+              }
               if (payload.rumination_progress && phase === 'rumination') {
                 const rp = payload.rumination_progress as RuminationProgress;
                 setRuminationProgressState((prev) => (prev ? { ...prev, ...rp } : rp));
@@ -3173,6 +3178,7 @@ export default function ChatPhasePage() {
       } finally {
         setSending(false);
         setPostLlmTailActive(false);
+        setHypRetryActive(false);
         setStep3RegeneratingRowIndex(null);
         setMessages((prev) => {
           if (!assistantHasVisibleOutput) {
@@ -4380,6 +4386,14 @@ export default function ChatPhasePage() {
                     <div className="rounded-xl border border-[var(--flow-border)] bg-[var(--flow-card-bg)] p-4 flex items-center gap-3 text-[var(--flow-text-muted)] text-sm animate-pulse">
                       <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                       <span>{t('explore.chat.conclusionLoading')}</span>
+                    </div>
+                  </div>
+                )}
+                {hypRetryActive && (
+                  <div className="flow-msg-conclusion-wrap my-3">
+                    <div className="rounded-xl border border-[var(--flow-border)] bg-[var(--flow-card-bg)] p-4 flex items-center gap-3 text-[var(--flow-text-muted)] text-sm animate-pulse">
+                      <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      <span>{t('explore.chat.hypRetryLoading')}</span>
                     </div>
                   </div>
                 )}

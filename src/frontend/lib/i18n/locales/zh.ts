@@ -164,6 +164,7 @@ export const zh = {
       inputPlaceholderCareering: '沉下心来，感受对话的节奏…',
       preparingFirstQuestion: '正在准备第一个问题…',
       conclusionLoading: '正在生成结论卡，请稍后…',
+      hypRetryLoading: '正在生成假设选项，请稍后…',
       requestConclusionDraft: '确认稿',
       requestConclusionDraftTitle: '根据当前对话生成待确认结论卡片',
       requestConclusionDraftFail: '暂时无法生成确认稿，请多聊几句后重试',

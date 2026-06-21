@@ -168,6 +168,7 @@ export const en = {
       inputPlaceholderCareering: 'Settle in and share your thoughts…',
       preparingFirstQuestion: 'Preparing first question…',
       conclusionLoading: 'Generating conclusion card, please wait…',
+      hypRetryLoading: 'Generating hypothesis options, please wait…',
       requestConclusionDraft: 'Draft card',
       requestConclusionDraftTitle: 'Generate a pending conclusion card from this chat',
       requestConclusionDraftFail: 'Could not generate a draft yet. Chat a bit more and try again.',

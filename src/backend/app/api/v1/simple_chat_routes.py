@@ -3017,22 +3017,18 @@ async def _generate_and_store_combo_guide(
         passion_name = str(combo.get("passion_name") or "")
         strength_name = str(combo.get("strength_name") or "")
 
-        from app.domain.rumination_prompt_strings import STEP_3_OPENING_SYSTEM_ZH
+        from app.domain.rumination_prompt_strings import STEP_3_COMBO_OPENING_SYSTEM_ZH
         from app.core.llmapi.base import LLMMessage as _LLMMsg
 
+        # 开场引导语专用 user prompt：只传组合信息 + 生成开场 + 第一问的要求。
+        # 不再要求 LLM 在开场就生成假设候选（hyp_candidates 由后续自由对话产出）。
         combo_user_context = (
             f"当前组合：热爱「{passion_name}」× 优势「{strength_name}」。\n"
-            f"请直接针对这个组合向用户提问，引导用户构想具体的职业方向假设。\n"
-            f"只需关注当前这一个组合，不要提及「其他组合」「下一个」等内容。\n"
-            f"引导用户探索这个组合可能的职业方向，生成两个假设"
-            f"（自由职业/创业方向 + 公司职业方向），用户可以确认、跳过或自己填写。\n"
+            f"请针对这个组合生成开场白 + 第一个探索问题。\n"
         )
 
-        # 拼接组合对话 addon：要求 LLM 用 [STEP3_HYP_JSON] 协议块输出假设候选，
-        # 这样 guide 消息就能带 hyp_candidates，前端结论卡可渲染 chips。
-        combo_addon = build_combo_chat_system_addon(passion_name, strength_name)
         llm_messages = [
-            _LLMMsg(role="system", content=f"{STEP_3_OPENING_SYSTEM_ZH}\n\n{combo_addon}"),
+            _LLMMsg(role="system", content=STEP_3_COMBO_OPENING_SYSTEM_ZH),
             _LLMMsg(role="user", content=combo_user_context),
         ]
 
@@ -4741,11 +4737,141 @@ async def _hyp_candidate_fallback_retry(
     """兜底追问：主回复未含结构化假设时，用 function calling 补充。
 
     retry_messages = llm_messages（含完整用户/助手对话）+ system 指令 + 已解锁行表格块。
+    - matrix 模式（combo_id + filter_sub_step=matrix）→ 直接 JSON 模式，从 combo_matrix 注入 combo 上下文
     - 有明确点选/表格操作行 → 行级 retry
     - strict=True（主回复含引导语）→ 必须 function call
     - 否则 → 上下文 retry（AI 判定是否提交）
     """
     prog = load_rumination_progress(reports_root, report_id)
+
+    # ── matrix 模式专用分支：跳过 row/function call，直接 JSON 模式 ──
+    sub_step = (prog.get("filter_sub_step") or "").strip()
+    combo_id_req = getattr(request, "combo_id", None)
+    if (
+        combo_id_req
+        and sub_step == "matrix"
+        and phase_step == "rumination"
+    ):
+        combo_matrix = prog.get("combo_matrix") or []
+        p_name, s_name = get_passion_strength_names(combo_matrix, combo_id_req)
+        matrix_retry_system = (
+            "【兜底生成假设候选 · 组合模式】\n"
+            f"当前组合：热爱「{p_name or '（未填）'}」× 优势「{s_name or '（未填）'}」。\n"
+            "上面是与用户关于这个组合的对话。请基于对话内容，为这个组合生成两个职业方向假设候选：\n"
+            "- 一条自由职业/创业方向（用户可作为独立个体或小型创业者经营的事业）\n"
+            "- 一条公司职业方向（用户进入公司作为员工发展的路径）\n"
+            "两条假设要具体、有画面感，包含角色、对象、动作、目的等要素，避免抽象标签。\n"
+            "**仅**输出一个 JSON 对象（不要 markdown、不要解释），格式：\n"
+            '{"candidates": ["个人事业向假设", "职业路径向假设"]}\n'
+            "candidates 必须恰好两个字符串。"
+        )
+        matrix_messages = list(llm_messages) + [
+            LLMMessage(role="system", content=matrix_retry_system),
+        ]
+
+        async def _matrix_call(*, use_json_mode: bool) -> Any:
+            kwargs: dict = {"temperature": 0.2, "max_tokens": 800}
+            if use_json_mode:
+                kwargs["response_format"] = {"type": "json_object"}
+            try:
+                return await asyncio.wait_for(
+                    llm.chat(matrix_messages, **kwargs),
+                    timeout=15.0,
+                )
+            except TypeError:
+                # provider 不支持 response_format 关键字 → 降级纯文本
+                if use_json_mode:
+                    logger.warning(
+                        "[step3] matrix retry: response_format unsupported, fallback to plain"
+                    )
+                    return await asyncio.wait_for(
+                        llm.chat(matrix_messages, temperature=0.2, max_tokens=800),
+                        timeout=15.0,
+                    )
+                raise
+
+        resp_m: Any = None
+        try:
+            resp_m = await _matrix_call(use_json_mode=True)
+        except Exception as e:
+            logger.warning("[step3] matrix fallback retry call#1 failed: %s", e)
+
+        raw_m = (getattr(resp_m, "content", "") or "").strip() if resp_m else ""
+        logger.info(
+            "[step3] matrix fallback retry raw#1 len=%d tail=%r",
+            len(raw_m),
+            raw_m[-200:],
+        )
+
+        # 空返回 → 重试一次（不复用 JSON mode，避免某些 provider 在 JSON mode 下偶发空）
+        if not raw_m:
+            logger.warning("[step3] matrix retry empty content, retrying plain mode")
+            try:
+                resp_m = await _matrix_call(use_json_mode=False)
+                raw_m = (getattr(resp_m, "content", "") or "").strip() if resp_m else ""
+                logger.info(
+                    "[step3] matrix fallback retry raw#2 len=%d tail=%r",
+                    len(raw_m),
+                    raw_m[-200:],
+                )
+            except Exception as e:
+                logger.warning("[step3] matrix fallback retry call#2 failed: %s", e)
+
+        if not raw_m:
+            logger.info("[step3] matrix fallback retry: still empty after 2 attempts")
+            return [], None
+        try:
+            obj_m = json.loads(raw_m)
+        except (json.JSONDecodeError, TypeError):
+            obj_m = _extract_json_object(raw_m)
+        cands_m: list[str] = []
+        if isinstance(obj_m, dict):
+            raw_cands_m = obj_m.get("candidates")
+            if isinstance(raw_cands_m, list):
+                cands_m = sanitize_hyp_candidates([str(c) for c in raw_cands_m])
+        if len(cands_m) >= 2:
+            # 审计落盘
+            try:
+                await conv_manager.append_message(
+                    session_id=session_id,
+                    category=category,
+                    message={
+                        "role": "system",
+                        "content": matrix_retry_system,
+                        **IDCodec.build_message_ids(
+                            thread_id=logical_session_id,
+                            activation_session_id=activation_session_id,
+                        ),
+                        "step_id": phase_step,
+                        "filter_step": 3,
+                        "event": "hyp_candidate_retry_system",
+                        "hyp_candidate_retry_kind": "matrix_json",
+                    },
+                )
+                await conv_manager.append_message(
+                    session_id=session_id,
+                    category=category,
+                    message={
+                        "role": "assistant",
+                        "content": json.dumps({"candidates": cands_m}, ensure_ascii=False),
+                        **IDCodec.build_message_ids(
+                            thread_id=logical_session_id,
+                            activation_session_id=activation_session_id,
+                        ),
+                        "step_id": phase_step,
+                        "filter_step": 3,
+                        "event": "hyp_candidate_retry_reply",
+                        "token_usage": stream_usage,
+                        "combo_id": combo_id_req,
+                    },
+                )
+            except Exception as e:
+                logger.warning("[step3] matrix fallback retry save failed: %s", e)
+            return cands_m[:2], None
+        logger.info("[step3] matrix fallback retry: still no valid hypotheses")
+        return [], None
+
+    ft = prog.get("filter_table") if isinstance(prog.get("filter_table"), list) else []
     ft = prog.get("filter_table") if isinstance(prog.get("filter_table"), list) else []
     cur = int(prog.get("filter_row_cursor") or 0)
     row_idx = resolve_step3_explicit_row_index(
@@ -5809,6 +5935,8 @@ async def simple_chat_stream(
                         retry_kind,
                         step3_explicit_row_index,
                     )
+                    # 通知前端：兜底 retry 进行中（matrix 模式输入框显示"正在生成假设选项…"）
+                    yield f"data: {json.dumps({'hyp_retry_started': True}, ensure_ascii=False)}\n\n"
                     try:
                         retry_candidates, retry_row = await _hyp_candidate_fallback_retry(
                             reports_root=Path(reports_root),
@@ -5893,6 +6021,13 @@ async def simple_chat_stream(
                 and request.combo_id
             ):
                 msg_payload["combo_id"] = request.combo_id
+            # step3 假设候选 chips 持久化到消息：刷新加载 history 时仍能渲染
+            if (
+                phase_step == "rumination"
+                and rumination_filter_step_val == 3
+                and hyp_candidates
+            ):
+                msg_payload["hyp_candidates"] = hyp_candidates
             await conv_manager.append_message(
                 session_id=session_id,
                 category=category,
