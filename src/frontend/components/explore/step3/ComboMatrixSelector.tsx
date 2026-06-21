@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { Check, SkipForward } from 'lucide-react';
 import type { ComboItem, ComboMatrixMeta } from '@/lib/api/rumination';
 
@@ -56,6 +56,11 @@ export default function ComboMatrixFlowDiagram({
   // Internal state: which passion / strength is selected
   const [selPassionName, setSelPassionName] = useState<string | null>(null);
   const [selStrengthName, setSelStrengthName] = useState<string | null>(null);
+
+  // 防回环标记：父→子同步（effect1）设置 passion/strength 时置 true，
+  // 阻止 effect2 反向 fire onSelectCombo 回父级（父级已知该 id）。
+  // 仅用户主动点击时才允许 effect2 通知父级。
+  const syncingFromParent = useRef(false);
 
   // 当前选中热爱是否全置灰（从 meta 读，step2 定死）
   const selPassionMeta = useMemo(() => {
@@ -119,6 +124,7 @@ export default function ComboMatrixFlowDiagram({
     if (selectedComboId) {
       const combo = matrix.find((m) => m.combo_id === selectedComboId);
       if (combo) {
+        syncingFromParent.current = true;
         setSelPassionName(combo.passion_name);
         setSelStrengthName(combo.strength_name);
       }
@@ -145,6 +151,11 @@ export default function ComboMatrixFlowDiagram({
   // When both selected, fire onSelectCombo
   useEffect(() => {
     if (selPassionName && selStrengthName) {
+      // 父→子同步引起的变更：不反向通知父级（防回环）
+      if (syncingFromParent.current) {
+        syncingFromParent.current = false;
+        return;
+      }
       // 如果当前优势在选中热爱下是不匹配的，清除选择
       if (isStrengthDisabled.get(selStrengthName)) {
         setSelStrengthName(null);

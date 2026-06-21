@@ -143,8 +143,6 @@ function ConclusionResultCard({
   onTextChange,
   onConfirm,
   onSkip,
-  latestHypCandidates,
-  onChipClick,
   forceExpand,
   onForceExpandConsumed,
 }: {
@@ -155,8 +153,6 @@ function ConclusionResultCard({
   onTextChange: (text: string) => void;
   onConfirm: (text: string) => void;
   onSkip: (text: string) => void;
-  latestHypCandidates: string[] | null;
-  onChipClick: (chip: string) => void;
   forceExpand?: boolean;
   onForceExpandConsumed?: () => void;
 }) {
@@ -287,23 +283,6 @@ function ConclusionResultCard({
         `}
       >
         <div className="overflow-hidden flex flex-col gap-3 pt-0.5">
-          {/* Hyp chips */}
-          {latestHypCandidates && latestHypCandidates.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              <span className="mr-auto text-[13px] font-[700] text-[#8b7cb8]">AI 假设</span>
-              {latestHypCandidates.slice(0, 3).map((chip, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => onChipClick(chip)}
-                  className="h-[32px] rounded-full border border-white/48 bg-white/42 px-3 text-[13px] font-[700] text-[#6d5cc9] cursor-pointer transition-transform hover:-translate-y-[1px] truncate max-w-[140px]"
-                  title={chip}
-                >
-                  {chip}
-                </button>
-              ))}
-            </div>
-          )}
-
           {/* Action buttons */}
           <div className="flex items-center justify-end gap-3">
             <span className="mr-auto text-[13px] font-[700] text-[#8b7cb8]">
@@ -331,15 +310,6 @@ function ConclusionResultCard({
               确认这个结论
             </button>
           </div>
-
-          {/* Character count */}
-          {(state === 'empty' || isExpanded) && (
-            <div className="text-right">
-              <span className={`text-[12px] ${canConfirm ? 'text-[#b499ff]' : 'text-[#9ca3af]'}`}>
-                {textLen}/5 字
-              </span>
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -350,7 +320,6 @@ export default function Step3MatrixLeftPanel({
   progress,
   matrix,
   activationCode,
-  allMessages,
   selectedComboId,
   onSelectComboId,
   onSubmitAll,
@@ -362,15 +331,12 @@ export default function Step3MatrixLeftPanel({
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [passionAllDisabled, setPassionAllDisabled] = useState(false);
-  const [completedCount, setCompletedCount] = useState(0);
   const [pendingChipText, setPendingChipText] = useState<string | null>(null);
   const [forceExpand, setForceExpand] = useState(false);
-  const [pendingNextComboId, setPendingNextComboId] = useState<string | null>(null);
 
   // 当外部 progress.combo_conclusions 变化（如重新进入 step3 被后端清空）时同步到本地 state
   useEffect(() => {
     setConclusions(progress.combo_conclusions || {});
-    setCompletedCount(0);
   }, [progress.combo_conclusions, progress.combo_matrix]);
 
   // 外部 chip 文本注入（右侧聊天区 chip 点击）
@@ -396,36 +362,35 @@ export default function Step3MatrixLeftPanel({
   // matchable 总数（进度分母）：优先读后端 meta，老数据回退到前端 filter 长度
   const totalMatchable = progress.combo_matrix_meta?.total_matchable ?? matchableCombos.length;
 
-  const comboMessages = useMemo(
-    () => allMessages.filter((m) => m.comboId === selectedComboId),
-    [allMessages, selectedComboId],
+  // 已完成组合数（confirmed + skipped），与矩阵 ✓ 标记同口径；派生值，无累加器时序问题
+  const doneCount = useMemo(
+    () =>
+      matchableCombos.filter(
+        (c) =>
+          conclusions[c.combo_id]?.state === 'confirmed' ||
+          conclusions[c.combo_id]?.state === 'skipped',
+      ).length,
+    [matchableCombos, conclusions],
   );
 
-  const latestHypCandidates = useMemo(() => {
-    for (let i = comboMessages.length - 1; i >= 0; i--) {
-      const m = comboMessages[i];
-      if (m.role === 'assistant' && m.hypCandidates && m.hypCandidates.length > 0) {
-        return m.hypCandidates;
-      }
-    }
-    return null;
-  }, [comboMessages]);
-
-  // 保存结论后的通用后处理：记录下一个 combo，显示弹窗或直接切换
+  // 保存结论后的通用后处理：立即切下一个 combo，弹窗仅作提示
   const afterSave = useCallback(
     (comboId: string, resProgress: any) => {
       setConclusions(resProgress.combo_conclusions || {});
       onProgressUpdate(resProgress);
-      setCompletedCount((prev) => prev + 1);
-      const nextIndex = matchableCombos.findIndex((m) => m.combo_id === comboId) + 1;
-      if (nextIndex < matchableCombos.length) {
-        setPendingNextComboId(matchableCombos[nextIndex].combo_id);
+      // 立即切换到下一个 matchable combo（不依赖弹窗/pendingNextComboId）
+      const curIdx = matchableCombos.findIndex((m) => m.combo_id === comboId);
+      const nextIdx = curIdx + 1;
+      if (nextIdx < matchableCombos.length) {
+        onSelectComboId(matchableCombos[nextIdx].combo_id);
       }
+      // nextIdx 越界（当前是最后一个）→ 留在当前 combo，不切
+      // 弹窗仅作提示，独立弹出
       if (!progress.combo_completion_modal_dismissed) {
         setShowCompletionModal(true);
       }
     },
-    [progress.combo_completion_modal_dismissed, onProgressUpdate, matchableCombos],
+    [progress.combo_completion_modal_dismissed, onProgressUpdate, matchableCombos, onSelectComboId],
   );
 
   const handleConfirm = useCallback(
@@ -487,10 +452,6 @@ export default function Step3MatrixLeftPanel({
     [activationCode, onProgressUpdate],
   );
 
-  const handleChipClick = useCallback((chipText: string) => {
-    setPendingChipText(chipText);
-  }, []);
-
   const handleDisabledStrengthClick = useCallback(() => {
     // 简单内联提示：用 state 驱动 toast
     setDisabledToast(true);
@@ -503,14 +464,6 @@ export default function Step3MatrixLeftPanel({
       return () => clearTimeout(t);
     }
   }, [disabledToast]);
-
-  // 弹窗已被永久关闭（不再提示）时，直接切换到下一个 combo
-  useEffect(() => {
-    if (pendingNextComboId && progress.combo_completion_modal_dismissed && !showCompletionModal) {
-      onSelectComboId(pendingNextComboId);
-      setPendingNextComboId(null);
-    }
-  }, [pendingNextComboId, progress.combo_completion_modal_dismissed, showCompletionModal, onSelectComboId]);
 
   const { empty: emptyCombos, text_skipped: textSkipped, confirmed: confirmedCombos } =
     useMemo(() => {
@@ -533,7 +486,7 @@ export default function Step3MatrixLeftPanel({
     onSubmitAll();
   }, [onSubmitAll]);
 
-  const progressPct = totalMatchable > 0 ? Math.round((completedCount / totalMatchable) * 100) : 0;
+  const progressPct = totalMatchable > 0 ? Math.round((doneCount / totalMatchable) * 100) : 0;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 relative">
@@ -564,7 +517,7 @@ export default function Step3MatrixLeftPanel({
             />
           </div>
           <span className="text-[13px] font-[700] text-[#6b7280]">
-            {completedCount}/{totalMatchable}
+            {doneCount}/{totalMatchable}
           </span>
         </div>
         <button
@@ -629,8 +582,6 @@ export default function Step3MatrixLeftPanel({
             onTextChange={() => {}}
             onConfirm={handleConfirm}
             onSkip={handleSkip}
-            latestHypCandidates={latestHypCandidates}
-            onChipClick={handleChipClick}
             forceExpand={forceExpand}
             onForceExpandConsumed={() => setForceExpand(false)}
           />
@@ -656,22 +607,10 @@ export default function Step3MatrixLeftPanel({
       />
       <CompletionModal
         open={showCompletionModal}
-        comboIndex={completedCount}
+        comboIndex={doneCount}
         totalCombos={totalMatchable}
-        onConfirm={() => {
-          setShowCompletionModal(false);
-          if (pendingNextComboId) {
-            onSelectComboId(pendingNextComboId);
-            setPendingNextComboId(null);
-          }
-        }}
-        onCancel={() => {
-          setShowCompletionModal(false);
-          if (pendingNextComboId) {
-            onSelectComboId(pendingNextComboId);
-            setPendingNextComboId(null);
-          }
-        }}
+        onConfirm={() => setShowCompletionModal(false)}
+        onCancel={() => setShowCompletionModal(false)}
         onDismissChange={handleDismissChange}
         dismissed={!!progress.combo_completion_modal_dismissed}
       />
