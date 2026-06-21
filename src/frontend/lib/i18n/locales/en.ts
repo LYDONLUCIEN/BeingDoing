@@ -196,8 +196,10 @@ export const en = {
       thinkInProgress4: 'Organizing my thoughts, one moment…',
       thinkInProgress5: 'Putting together the answer, coming right up…',
       thinkInProgress6: 'Thinking it through, almost done…',
-      /** matrix combo guide placeholder — single fixed copy, no rotation */
-      thinkComboMatrixPlaceholder: 'Processing the other combinations, please wait…',
+      /** matrix combo guide placeholder — multi-copy rotation, all expressing "processing current combo" */
+      thinkComboMatrixPlaceholder: 'Processing this combination, please wait…',
+      thinkComboMatrixPlaceholder2: 'Analyzing this combination, almost there…',
+      thinkComboMatrixPlaceholder3: 'Composing the combination, please wait…',
       thinkProcess: 'Thinking process',
       networkError: 'Network error. If the server is restarting, refresh in a moment.',
       initTimeout: 'This is taking a while. Please refresh the page.',

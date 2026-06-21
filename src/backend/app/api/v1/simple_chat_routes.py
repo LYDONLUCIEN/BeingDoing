@@ -3038,16 +3038,37 @@ async def _generate_and_store_combo_guide(
 
         vip_level = getattr(rec, "vip_level", 1) or 1
         llm = _get_dialogue_llm_provider(vip_level=vip_level)
-        guide_text = ""
-        try:
+
+        async def _call_llm_once() -> str:
+            """单次调用 LLM；返回 content 字符串（可能为空）。"""
             sem = _get_llm_semaphore()
             if sem:
                 async with sem:
                     resp = await llm.chat(llm_messages, temperature=0.65, max_tokens=600)
-                    guide_text = getattr(resp, "content", resp) if resp else ""
             else:
                 resp = await llm.chat(llm_messages, temperature=0.65, max_tokens=600)
-                guide_text = getattr(resp, "content", resp) if resp else ""
+            content = getattr(resp, "content", resp) if resp else ""
+            # 记录原始返回便于排查"短文案/空返回"类问题
+            logger.info(
+                "combo guide LLM raw resp: %s/%s len=%d preview=%r",
+                activation_code,
+                combo_id,
+                len(str(content or "")),
+                str(content or "")[:200],
+            )
+            return str(content or "")
+
+        guide_text = ""
+        try:
+            guide_text = await _call_llm_once()
+            # LLM 返回空（限流/解析失败/思考模型 content 进了 reasoning 等）→ 重试一次
+            if not guide_text.strip():
+                logger.warning(
+                    "combo guide LLM returned empty, retrying: %s/%s",
+                    activation_code,
+                    combo_id,
+                )
+                guide_text = await _call_llm_once()
         except Exception as e:
             logger.warning("combo guide LLM failed, falling back to template: %s", e)
             conclusions = progress.get("combo_conclusions") or {}

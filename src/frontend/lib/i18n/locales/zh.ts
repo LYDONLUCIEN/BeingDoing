@@ -191,8 +191,10 @@ export const zh = {
       thinkInProgress4: '整理思路中，请稍候…',
       thinkInProgress5: '正在组织回答，马上为您呈现…',
       thinkInProgress6: '思考中，即将完成…',
-      /** matrix 组合引导语生成占位（固定单一文案，不轮换） */
-      thinkComboMatrixPlaceholder: '正在处理组合信息，请稍后…',
+      /** matrix 组合引导语生成占位（fetching 阶段多文案轮换，均表达"正在处理当前组合"） */
+      thinkComboMatrixPlaceholder: '正在处理组合信息，请稍候…',
+      thinkComboMatrixPlaceholder2: '正在分析这个组合，马上就好…',
+      thinkComboMatrixPlaceholder3: '组合推演中，请稍候…',
       thinkProcess: '思考过程',
       networkError: '网络连接失败，若后端正在重启请稍后刷新页面',
       initTimeout: '准备时间较长，请刷新页面后重试',
