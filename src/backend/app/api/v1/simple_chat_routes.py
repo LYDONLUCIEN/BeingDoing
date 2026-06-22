@@ -153,10 +153,6 @@ from app.domain.prompts import get_simple_chat_system_prompt, get_step_copy
 from app.domain.rumination_prompt_strings import (
     RUMINATION_CLOSING_SUMMARY_MAX_CHARS,
     RUMINATION_STEP2_ALL_UNMATCHED_TRANSITION_ZH,
-    HYP_CANDIDATE_RETRY_SYSTEM_TEMPLATE_ZH,
-    HYP_CANDIDATE_RETRY_CONTEXT_TEMPLATE_ZH,
-    HYP_CANDIDATE_RETRY_STRICT_TEMPLATE_ZH,
-    STEP3_HYP_SUBMIT_TOOL,
 )
 from app.domain.rumination_step_guidance import (
     build_opening_context,
@@ -4832,7 +4828,7 @@ async def _hyp_candidate_fallback_retry(
             LLMMessage(role="system", content=matrix_retry_system),
         ]
         # 历史里有大量干扰（早期短回复/用户闲聊），retry 容易被带偏。
-        # 策略：只保留首条 system + 最近 3 条对话 + retry system，让 LLM 聚焦当前任务。
+        # 策略：只保留首条 system + 最近 2 轮对话 + retry system，让 LLM 聚焦当前任务。
         trimmed: list = []
         for m in llm_messages:
             role = getattr(m, "role", None) or (m.get("role") if isinstance(m, dict) else None)
@@ -4842,7 +4838,7 @@ async def _hyp_candidate_fallback_retry(
                 continue
             if role in ("user", "assistant"):
                 trimmed.append(m if not isinstance(m, dict) else LLMMessage(role=role, content=content))
-        matrix_messages = trimmed[-6:] + [
+        matrix_messages = trimmed[-5:] + [
             LLMMessage(role="system", content=matrix_retry_system),
         ]
 
@@ -4978,198 +4974,14 @@ async def _hyp_candidate_fallback_retry(
         logger.info("[step3] matrix fallback retry: still no valid hypotheses")
         return [], None
 
-    ft = prog.get("filter_table") if isinstance(prog.get("filter_table"), list) else []
-    ft = prog.get("filter_table") if isinstance(prog.get("filter_table"), list) else []
-    cur = int(prog.get("filter_row_cursor") or 0)
-    row_idx = resolve_step3_explicit_row_index(
-        filter_table=ft,
-        rumination_row_index=explicit_row_index if explicit_row_index is not None else request.rumination_row_index,
-        step3_action_row=request.step3_action_row,
+    # 非 combo 分支（matrix 无 combo_id，或 discussion 无 explicit_row_index）：
+    # 用户未选中合法行 → 无法确定目标组合 → 不再 retry（空模板分支已废弃）。
+    # 前端必须要求用户先选中一行再发消息，否则视为错误状态。
+    logger.info(
+        "[step3] fallback retry skipped: not combo retry (sub_step=%s combo_id=%s explicit_row=%s)",
+        sub_step, combo_id_req, explicit_row_index,
     )
-    unlocked_block = format_step3_unlocked_rows_block(ft, cur)
-    if not unlocked_block:
-        unlocked_block = "（暂无已解锁行。）"
-
-    retry_event = "hyp_candidate_retry_context"
-    if strict:
-        retry_system = HYP_CANDIDATE_RETRY_STRICT_TEMPLATE_ZH.format(
-            unlocked_rows_block=unlocked_block,
-        )
-        retry_event = "hyp_candidate_retry_strict"
-    elif row_idx is not None:
-        passion, strength = get_step3_row_passion_strength(ft, row_idx)
-        retry_system = HYP_CANDIDATE_RETRY_SYSTEM_TEMPLATE_ZH.format(
-            row_index=row_idx,
-            passion=passion or "（未填）",
-            strength=strength or "（未填）",
-            unlocked_rows_block=unlocked_block,
-        )
-        retry_event = "hyp_candidate_retry_row"
-    else:
-        retry_system = HYP_CANDIDATE_RETRY_CONTEXT_TEMPLATE_ZH.format(
-            unlocked_rows_block=unlocked_block,
-        )
-
-    retry_messages = list(llm_messages) + [
-        LLMMessage(role="system", content=retry_system),
-    ]
-
-    async def _call_with_tools(*, force_tool: bool) -> Any:
-        chat_kwargs: dict = {
-            "tools": [STEP3_HYP_SUBMIT_TOOL],
-            "temperature": 0.2,
-            "max_tokens": 800,
-        }
-        if force_tool:
-            chat_kwargs["tool_choice"] = {
-                "type": "function",
-                "function": {"name": "submit_step3_hypotheses"},
-            }
-        else:
-            chat_kwargs["tool_choice"] = "auto"
-        return await asyncio.wait_for(
-            llm.chat(retry_messages, **chat_kwargs),
-            timeout=15.0,
-        )
-
-    async def _call_json_fallback() -> tuple[list[str], Optional[int]]:
-        json_addon = (
-            "\n\n【JSON 兜底】你刚才未成功提交假设。请结合上方对话与已解锁行，"
-            "**仅**输出一个 JSON 对象（不要 markdown、不要解释），格式：\n"
-            '{"row": <0-based行index>, "candidates": ["个人事业向假设", "职业路径向假设"]}\n'
-            "row 必须是已解锁行 index；candidates 恰好两个字符串。"
-        )
-        json_messages = retry_messages + [LLMMessage(role="system", content=json_addon)]
-        try:
-            resp_j = await asyncio.wait_for(
-                llm.chat(
-                    json_messages,
-                    temperature=0.2,
-                    max_tokens=800,
-                    response_format={"type": "json_object"},
-                ),
-                timeout=15.0,
-            )
-        except Exception as e:
-            logger.warning("[step3] fallback retry JSON mode failed: %s", e)
-            return [], None
-        raw_j = (resp_j.content or "").strip()
-        logger.info("[step3] fallback retry JSON raw tail: %s", raw_j[-300:])
-        try:
-            obj = json.loads(raw_j)
-        except (json.JSONDecodeError, TypeError):
-            obj = _extract_json_object(raw_j)
-        if not isinstance(obj, dict):
-            return [], None
-        raw_cands = obj.get("candidates")
-        cands: list[str] = []
-        if isinstance(raw_cands, list):
-            cands = sanitize_hyp_candidates([str(c) for c in raw_cands])
-        row_j: Optional[int] = None
-        if obj.get("row") is not None:
-            try:
-                row_j = int(obj["row"])
-            except (TypeError, ValueError):
-                row_j = None
-        if len(cands) >= 2:
-            return cands[:2], row_j
-        return [], row_j
-
-    resp = None
-    force_tool = strict or row_idx is not None
-    try:
-        resp = await _call_with_tools(force_tool=force_tool)
-    except Exception as e:
-        logger.warning(
-            "[step3] fallback retry function call failed (force=%s): %s",
-            force_tool,
-            e,
-        )
-        if force_tool:
-            try:
-                resp = await _call_with_tools(force_tool=False)
-            except Exception as e2:
-                logger.warning("[step3] fallback retry function call auto failed: %s", e2)
-
-    candidates: list[str] = []
-    ai_row: Optional[int] = None
-    cleaned = ""
-    if resp is not None:
-        candidates, ai_row = parse_step3_hyp_tool_call(getattr(resp, "tool_calls", None))
-        candidates = sanitize_hyp_candidates(candidates)
-        if not candidates:
-            raw = (resp.content or "").strip()
-            logger.info("[step3] fallback retry: no tool call, content tail: %s", raw[-300:])
-            cleaned, legacy_cands, legacy_row = _extract_step3_hyp_output(raw)
-            candidates = sanitize_hyp_candidates(legacy_cands)
-            ai_row = legacy_row if legacy_row is not None else ai_row
-        else:
-            cleaned = (resp.content or "").strip()
-            logger.info(
-                "[step3] fallback retry tool call: row=%s candidates=%s",
-                ai_row,
-                len(candidates),
-            )
-
-    if len(candidates) < 2 and (strict or force_tool):
-        logger.info("[step3] fallback retry: invoking JSON mode fallback (strict=%s)", strict)
-        json_cands, json_row = await _call_json_fallback()
-        if len(json_cands) >= 2:
-            candidates = json_cands
-            ai_row = json_row if json_row is not None else ai_row
-            retry_event = f"{retry_event}_json"
-
-    if len(candidates) < 2:
-        logger.info("[step3] fallback retry: still no valid hypotheses after all attempts")
-        return [], None
-
-    resolved_row, _unresolved = resolve_step3_hyp_delivery(
-        candidates=candidates,
-        cursor=cur,
-        filter_table=ft,
-        explicit_row_index=row_idx,
-        ai_declared_row=ai_row,
-    )
-
-    try:
-        await conv_manager.append_message(
-            session_id=session_id,
-            category=category,
-            message={
-                "role": "system",
-                "content": retry_system,
-                **IDCodec.build_message_ids(
-                    thread_id=logical_session_id,
-                    activation_session_id=activation_session_id,
-                ),
-                "step_id": phase_step,
-                "filter_step": int(request.rumination_filter_step) if phase_step == "rumination" and request.rumination_filter_step else None,
-                "event": "hyp_candidate_retry_system",
-                "hyp_candidate_retry_kind": retry_event,
-            },
-        )
-        audit_content = cleaned or f"[function_call submit_step3_hypotheses row={resolved_row}]"
-        await conv_manager.append_message(
-            session_id=session_id,
-            category=category,
-            message={
-                "role": "assistant",
-                "content": audit_content,
-                **IDCodec.build_message_ids(
-                    thread_id=logical_session_id,
-                    activation_session_id=activation_session_id,
-                ),
-                "step_id": phase_step,
-                "filter_step": int(request.rumination_filter_step) if phase_step == "rumination" and request.rumination_filter_step else None,
-                "event": "hyp_candidate_retry_reply",
-                "token_usage": stream_usage,
-                "hyp_target_row": resolved_row,
-            },
-        )
-    except Exception as e:
-        logger.warning("[step3] fallback retry save failed: %s", e)
-
-    return candidates, resolved_row
+    return [], None
 
 
 @router.post("/message/stream")

@@ -388,6 +388,19 @@ export default function RuminationTableWidget({
     setSelectedRowIdx(null);
   }, [disabled, payload.subStep]);
 
+  // neg gate（深度讨论）启动后：只有 activeItemIds 里的行可被选中讨论。
+  // 若用户之前的选中行已被模糊化（不在 activeItemIds 中），立即清空选中，
+  // 防止右侧输入框继续指向已锁定的行。
+  useEffect(() => {
+    if (!activeItemIds || activeItemIds.size === 0) return; // 非 neg gate 模式不管
+    if (selectedRowIdx == null) return;
+    const row = rows[selectedRowIdx];
+    const rowId = String(row?.id ?? '');
+    if (!rowId || !activeItemIds.has(rowId)) {
+      setSelectedRowIdx(null);
+    }
+  }, [activeItemIds, selectedRowIdx, rows]);
+
   useEffect(() => {
     if (!onRowContextChange) return;
     if (selectedRowIdx == null || selectedRowIdx < 0) {
