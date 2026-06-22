@@ -218,11 +218,13 @@ def build_table_widget_payload(
     display_rows: List[dict] = list(rows)
     total = len(rows)
     eff_cursor = row_cursor
-    if step == 3 and sub_step != "discussion":
+    if step == 3:
         if hypothesis_row_cursor is not None:
             eff_cursor = int(hypothesis_row_cursor)
         eff_cursor = max(0, min(eff_cursor, total))
-        display_rows = redact_step3_rows_for_widget(display_rows, eff_cursor)
+        # discussion 模式所有行解锁，不做 redact；但 rowCursor 仍需透传给前端
+        if sub_step != "discussion":
+            display_rows = redact_step3_rows_for_widget(display_rows, eff_cursor)
     cols = columns_for_step(step, values_keywords, values_source=values_source, sub_step=sub_step)
     guide = GUIDE_TEXT.get(step, "")
     # 3b 深度讨论使用专用引导语

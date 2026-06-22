@@ -469,7 +469,12 @@ export default function ChatPhasePage() {
 
   const mapHistoryToThreadMessages = useCallback(
     (history: any[], meta: any): ThreadMessage[] =>
-      history.map((m, i) => {
+      history.flatMap((m, i) => {
+        // 跳过内部协议消息（system 角色：兜底重试/协议注入），不展示给用户
+        if (m.role === 'system') return [];
+        // 跳过 step3 表格操作消息（用户点选「无」/「填假设」/「重新生成」时后端
+        // 生成给 LLM 看的协议化 user 消息，不应展示给用户）。
+        if (m.event === 'step3_table_action' || m.internal === true) return [];
         const id = `h_${i}_${m.id ?? i}`;
         const createdAt = m.created_at ? new Date(m.created_at).getTime() : undefined;
         if (m.role === 'conclusion_card') {
@@ -1005,7 +1010,8 @@ export default function ChatPhasePage() {
   );
 
   const isReadOnly =
-    (isSelectedCompleted && !isStep3MatrixMode) || // 用户已确认完成，锁定（matrix 模式除外，需 AI 交互）
+    // step3（matrix 或 discussion）需要与 AI 交互，即使 thread 历史被标 completed 也不锁。
+    (isSelectedCompleted && !(isStep3MatrixMode || isStep3DiscussionMode)) ||
     (stepLocked && !adminDebugBypass) || // 阶段已锁定，普通用户只读
     (!isBackendSynced && !!activeThreadId) || // 切到其它 thread 时暂不输入（未同步）
     pendingConclusionChoiceBlocksChat ||
@@ -3513,6 +3519,8 @@ export default function ChatPhasePage() {
     if (phase !== 'rumination' || ruminationViewStep !== 3) return null;
     const rowIdx = ruminationRowContext?.rowIndex;
     if (rowIdx == null || rowIdx < 0) return null;
+    // discussion 模式全表解锁，任何选中行都合法；matrix 模式仍按 cursor 校验。
+    if (isStep3DiscussionMode) return rowIdx;
     const cursor =
       (typeof ruminationProgressState?.filter_row_cursor === 'number'
         ? ruminationProgressState.filter_row_cursor
@@ -3525,6 +3533,7 @@ export default function ChatPhasePage() {
     ruminationRowContext?.rowIndex,
     ruminationProgressState?.filter_row_cursor,
     ruminationTablePayload?.rowCursor,
+    isStep3DiscussionMode,
   ]);
 
   /** 子步 3：点击 AI 生成的假设候选 chip → 填入消息绑定的目标行 */
@@ -4374,7 +4383,7 @@ export default function ChatPhasePage() {
                           hypRowUnresolved={m.hypRowUnresolved}
                           selectedRowFallback={step3SelectedRowForHypFill}
                           onHypCandidateClick={handleHypCandidateClick}
-                          comboMatrixMode={isStep3MatrixMode}
+                          comboMatrixMode={isStep3MatrixMode || isStep3DiscussionMode}
                         />
                       )}
                     </div>

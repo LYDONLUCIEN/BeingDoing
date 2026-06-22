@@ -25,7 +25,12 @@ _STEP3_GUIDE_PHRASES = (STEP3_GUIDE_PHRASE, STEP3_GUIDE_PHRASE_MATRIX)
 
 
 def sanitize_hyp_candidates(candidates: List[str]) -> List[str]:
-    """过滤误解析为候选的内容（如引导语本身、过短占位）。"""
+    """过滤误解析为候选的内容（如引导语本身、过短占位）。
+
+    字数门槛 20：与 prompt「至少 25 字」要求对齐（留少量弹性），
+    低于 20 字的多为「设计师」「XX创作者」类纯标签，无画面感，应被滤除
+    以触发兜底 retry 重新生成达标假设。
+    """
     out: list[str] = []
     for c in candidates or []:
         t = str(c or "").strip()
@@ -33,7 +38,7 @@ def sanitize_hyp_candidates(candidates: List[str]) -> List[str]:
             continue
         if any(p in t for p in _STEP3_GUIDE_PHRASES):
             continue
-        if len(t) < 6:
+        if len(t) < 20:
             continue
         out.append(t)
     return out

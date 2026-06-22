@@ -37,6 +37,8 @@ export interface RuminationTablePayload {
   singleRowMode?: boolean;
   rowCursor?: number;
   totalRows?: number;
+  /** step3 子步标识：matrix / discussion。discussion 模式下不自动清行选中 */
+  subStep?: string;
   rowSelectionMode?: 'multi';
   rowSelectionMin?: number;
   rowSelectionMax?: number;
@@ -228,6 +230,8 @@ export default function RuminationTableWidget({
   } | null>(null);
   const hypothesisPreviewCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tableScrollContainerRef = useRef<HTMLDivElement | null>(null);
+  /** 暂存每行「上一个填写过的假设」：选「无」时保存，再选回「填写假设」时恢复，避免丢失 */
+  const lastFilledHypRef = useRef<Map<number, string>>(new Map());
 
   const cancelHypothesisPreviewClose = useCallback(() => {
     if (hypothesisPreviewCloseTimer.current) {
@@ -320,7 +324,8 @@ export default function RuminationTableWidget({
     }
   }, [rowsPayloadSig]);
 
-  // 仅随子步、游标、行数变化重置选中；默认不选中任何行（单行模式仍跟 rowCursor）
+  // 仅随子步、游标、行数变化重置选中；默认不选中任何行（单行模式仍跟 rowCursor）。
+  // discussion 子步：用户选了一行后，发消息触发 rows 刷新不应清掉选中——除非行被删光。
   useEffect(() => {
     const n = (payload.rows ?? []).length;
     if (n <= 0) {
@@ -332,6 +337,11 @@ export default function RuminationTableWidget({
       setSelectedRowIdx(Math.min(Math.max(0, c), n - 1));
       return;
     }
+    if (payload.subStep === 'discussion') {
+      // discussion 模式下保持用户选择；仅当当前选中越界时回退到首行
+      setSelectedRowIdx((prev) => (prev == null || prev >= n ? 0 : prev));
+      return;
+    }
     setSelectedRowIdx(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 故意不依赖 payload.rows 全文
   }, [
@@ -340,6 +350,7 @@ export default function RuminationTableWidget({
     payload.totalRows,
     payload.rows?.length,
     payload.singleRowMode,
+    payload.subStep,
   ]);
 
   useEffect(() => {
@@ -365,13 +376,17 @@ export default function RuminationTableWidget({
 
   useEffect(() => {
     if (!confirmDisabledAfterCommit) return;
+    // discussion 模式：发消息/提交过程中 disabled 翻转不应清掉用户选中的讨论行
+    if (payload.subStep === 'discussion') return;
     setSelectedRowIdx(null);
-  }, [confirmDisabledAfterCommit]);
+  }, [confirmDisabledAfterCommit, payload.subStep]);
 
   useEffect(() => {
     if (!disabled) return;
+    // discussion 模式：sending → disabled 翻转不应清掉用户选中的讨论行
+    if (payload.subStep === 'discussion') return;
     setSelectedRowIdx(null);
-  }, [disabled]);
+  }, [disabled, payload.subStep]);
 
   useEffect(() => {
     if (!onRowContextChange) return;
@@ -690,6 +705,10 @@ export default function RuminationTableWidget({
         return;
       }
       if (v === STEP3_OPT_NONE && pendingOk) {
+        // 选「无」前，若当前已有填写的假设文本，暂存起来，便于用户后续切回「填写假设」时恢复。
+        if (isFill && fillText.trim()) {
+          lastFilledHypRef.current.set(rowIdx, fillText);
+        }
         setRows((prev) => {
           const next = [...prev];
           if (rowIdx >= 0 && rowIdx < next.length) {
@@ -701,7 +720,14 @@ export default function RuminationTableWidget({
         return;
       }
       if (v === STEP3_OPT_FILL) {
-        handleCellChange(rowIdx, HYP_CONFIRM_KEY, STEP3_OPT_FILL);
+        // 切回「填写假设」：优先恢复此前暂存的假设文本，没有才用标记占位。
+        const restored = lastFilledHypRef.current.get(rowIdx);
+        if (restored && restored.trim()) {
+          lastFilledHypRef.current.delete(rowIdx);
+          handleCellChange(rowIdx, HYP_CONFIRM_KEY, restored);
+        } else {
+          handleCellChange(rowIdx, HYP_CONFIRM_KEY, STEP3_OPT_FILL);
+        }
         return;
       }
     };

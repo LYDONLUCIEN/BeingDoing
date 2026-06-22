@@ -3280,8 +3280,10 @@ async def rumination_combo_matrix_submit(
             ],
             editable_cols=["用户确认的假设"],
             guide_text="以下是您已确认的假设方向，选中某一行可在右侧提问。",
-            sub_step="discussion",
         )
+        # 3b discussion 阶段所有行解锁：rowCursor = 行数，前端按 rowIdx <= rowCursor 判定可点。
+        table_widget["rowCursor"] = len(table_rows)
+        table_widget["subStep"] = "discussion"
 
         return SimpleChatResponse(
             code=200,
@@ -4744,25 +4746,43 @@ async def _hyp_candidate_fallback_retry(
     """
     prog = load_rumination_progress(reports_root, report_id)
 
-    # ── matrix 模式专用分支：跳过 row/function call，直接 JSON 模式 ──
+    # ── matrix / discussion 模式专用分支：直接 JSON 模式 ──
+    # discussion 模式下 combo_id 通常未传，但只要 step3 都能从 filter_table
+    # 里按 explicit_row_index 取热爱/优势作为组合上下文，走同样的严格 prompt。
     sub_step = (prog.get("filter_sub_step") or "").strip()
     combo_id_req = getattr(request, "combo_id", None)
-    if (
-        combo_id_req
-        and sub_step == "matrix"
-        and phase_step == "rumination"
-    ):
-        combo_matrix = prog.get("combo_matrix") or []
-        p_name, s_name = get_passion_strength_names(combo_matrix, combo_id_req)
+    is_step3_combo_retry = (
+        phase_step == "rumination"
+        and (
+            (combo_id_req and sub_step == "matrix")
+            or (sub_step == "discussion" and explicit_row_index is not None)
+        )
+    )
+    if is_step3_combo_retry:
+        p_name: str = ""
+        s_name: str = ""
+        if combo_id_req and sub_step == "matrix":
+            combo_matrix = prog.get("combo_matrix") or []
+            p_name, s_name = get_passion_strength_names(combo_matrix, combo_id_req)
+        else:
+            # discussion: 从 filter_table 的指定行取热爱/优势
+            ft_d = prog.get("filter_table") or []
+            p_name, s_name = get_step3_row_passion_strength(ft_d, explicit_row_index)
         matrix_retry_system = (
-            "【兜底生成假设候选 · 组合模式】\n"
+            "【兜底重新生成假设候选 · 组合模式】\n"
             f"当前组合：热爱「{p_name or '（未填）'}」× 优势「{s_name or '（未填）'}」。\n"
-            "上面是与用户关于这个组合的对话。请基于对话内容，为这个组合生成两个职业方向假设候选：\n"
-            "- 一条自由职业/创业方向（用户可作为独立个体或小型创业者经营的事业）\n"
-            "- 一条公司职业方向（用户进入公司作为员工发展的路径）\n"
-            "两条假设要具体、有画面感，包含角色、对象、动作、目的等要素，避免抽象标签。\n"
-            "**仅**输出一个 JSON 对象（不要 markdown、不要解释），格式：\n"
-            '{"candidates": ["个人事业向假设", "职业路径向假设"]}\n'
+            "**重要：忽略上方对话中已经出现过的任何假设（无论你或用户说过）。现在必须重新生成两条全新、独立的假设候选。**\n"
+            "不要回复\"就是刚才给你的那两个\"或类似话术——本次任务要求你基于组合本身的特质，重新构想。\n\n"
+            "生成要求：\n"
+            "- 一条自由职业/创业方向（用户可作为独立个体、自由职业者或小型创业者来经营的事业）\n"
+            "- 一条公司职业方向（用户进入公司作为员工来发展的职业路径）\n"
+            "- 每条假设至少 25 字，必须让用户能想象出具体场景：角色 + 服务对象 + 在做什么 + 想达成什么\n"
+            "- 避免抽象的标签或职位名称（如\"设计师\"\"创业\"\"老师\"），要写成一个有画面感的具体事业描述\n\n"
+            "好的示例（自由职业向）：「开设一家面向都市独居年轻人的小而美的手工陶艺工作室，定期开课教学并提供定制作品」\n"
+            "好的示例（公司职业向）：「加入一家注重美学表达的设计工作室，担任品牌视觉设计师，为生活方式类客户打造完整视觉系统」\n"
+            "坏的示例（禁止输出）：「陶艺老师」「设计师」「创业」「自由职业」「就是刚才给你的那两个」\n\n"
+            "**仅**输出一个 JSON 对象（不要 markdown 代码块、不要解释文字），格式严格如下：\n"
+            '{"candidates": ["个人事业向假设（≥25字具体描述）", "职业路径向假设（≥25字具体描述）"]}\n'
             "candidates 必须恰好两个字符串。"
         )
         matrix_messages = list(llm_messages) + [
@@ -5353,7 +5373,9 @@ async def simple_chat_stream(
                     "step_id": phase_step,
                     "filter_step": 3,
                     "agent_id": None,
-                    "event": "user_message",
+                    "event": "step3_table_action",
+                    # 标记为内部协议消息：前端 history 加载时跳过，不展示给用户。
+                    "internal": True,
                 },
             )
         elif user_content:
@@ -5403,12 +5425,15 @@ async def simple_chat_stream(
                 if row_lbl:
                     user_msg_kw["rumination_row_label"] = row_lbl
             # v3: 组合矩阵模式 — 给消息打 combo_id 标签
+            # matrix 阶段所有消息都应可识别：前端传了 combo_id 用之；未传（opening/早期
+            # 版本/通用引导）用保留值 _matrix_general 兜底，避免 discussion 模式切片时
+            # 把 matrix 阶段遗留消息当成 3b 内容显示。
             if (
                 phase_step == "rumination"
                 and rumination_filter_step_val == 3
-                and request.combo_id
+                and step3_sub_step == "matrix"
             ):
-                user_msg_kw["combo_id"] = request.combo_id
+                user_msg_kw["combo_id"] = request.combo_id or "_matrix_general"
             # 先保存用户消息
             await conv_manager.append_message(
                 session_id=session_id,
@@ -6015,12 +6040,13 @@ async def simple_chat_stream(
             if full_think:
                 msg_payload["think_content"] = full_think
             # v3: 组合矩阵模式 — 给助手回复也打 combo_id 标签
+            # 与用户消息同样规则：未传 combo_id 时用 _matrix_general 兜底。
             if (
                 phase_step == "rumination"
                 and rumination_filter_step_val == 3
-                and request.combo_id
+                and step3_sub_step == "matrix"
             ):
-                msg_payload["combo_id"] = request.combo_id
+                msg_payload["combo_id"] = request.combo_id or "_matrix_general"
             # step3 假设候选 chips 持久化到消息：刷新加载 history 时仍能渲染
             if (
                 phase_step == "rumination"

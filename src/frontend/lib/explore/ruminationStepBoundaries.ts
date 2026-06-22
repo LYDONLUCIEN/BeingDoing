@@ -74,7 +74,12 @@ export function sliceMessagesForRuminationStep(
   const hasFilterStepTags = messages.some((m) => m.filterStep != null && m.filterStep !== undefined);
   if (hasFilterStepTags) {
     return messages.filter(
-      (m) => m.filterStep === viewStep && m.type !== 'table_widget',
+      (m) =>
+        m.filterStep === viewStep &&
+        m.type !== 'table_widget' &&
+        // step3 区分 matrix / discussion：matrix 阶段的 combo 消息带 comboId，
+        // 不应在 discussion 模式下显示（matrix 模式由 displayMessages 走 comboId 单独过滤）。
+        !(viewStep === 3 && m.comboId),
     );
   }
 
