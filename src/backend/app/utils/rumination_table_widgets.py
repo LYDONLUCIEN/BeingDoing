@@ -260,6 +260,9 @@ def build_table_widget_payload(
         "rowCursor": row_cursor,
         "totalRows": eff_total if eff_total else total,
     }
+    # step3 子步标识透传：前端依赖 subStep='discussion' 维持行选中、chips 可点等交互。
+    if sub_step:
+        payload["subStep"] = sub_step
     # step 4 附带价值观来源标签，供前端展示与降级处理
     if step == 4:
         payload["valuesSource"] = values_source

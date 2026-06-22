@@ -382,6 +382,7 @@ def _system_prompt_dimension_extras(
     *,
     rumination_row_index: Optional[int] = None,
     step3_prompt_mode: Optional[str] = None,
+    combo_id: Optional[str] = None,
 ) -> Tuple[str, str]:
     """purpose 的 values_info + rumination 子步注入段。"""
     rid = (report or {}).get("report_id") if report else None
@@ -398,9 +399,10 @@ def _system_prompt_dimension_extras(
             step3_mode=step3_prompt_mode if int(rumination_filter_step) == 3 else None,
         )
         if int(rumination_filter_step) == 3:
-            # [matrix guard] matrix 模式下跳过老逐行推进的 filter_table 行上下文注入
-            # （已确认行摘要、讨论行、下一行预览、已解锁行等），这些是老流程的概念，
-            # matrix 模式通过 combo_id 隔离消息，不需要行级上下文。
+            # matrix / discussion 模式分别注入行级上下文。
+            # - matrix：消息按 combo_id 隔离，这里注入当前 combo 的热爱/优势 + 已确认假设，
+            #   让模型知道用户当前面对的组合与选择。
+            # - discussion：沿用老的 filter_table 行上下文注入（已确认行、讨论行、当前行等）。
             _is_matrix = False
             try:
                 _prog_check = load_rumination_progress(Path(reports_root), str(rid))
@@ -408,7 +410,30 @@ def _system_prompt_dimension_extras(
                     _is_matrix = True
             except Exception:
                 pass
-            if not _is_matrix:
+            if _is_matrix:
+                # matrix 模式：注入当前 combo 的热爱/优势 + 已确认假设（精简版）
+                try:
+                    _prog_m = load_rumination_progress(Path(reports_root), str(rid))
+                    _matrix_m = _prog_m.get("combo_matrix") or []
+                    _p_m, _s_m = get_passion_strength_names(_matrix_m, combo_id)
+                    _conclusions_m = _prog_m.get("combo_conclusions") or {}
+                    _entry_m = _conclusions_m.get(combo_id or "") or {}
+                    _hyp_m = ""
+                    if isinstance(_entry_m, dict) and str(_entry_m.get("state") or "").strip() == "confirmed":
+                        _hyp_m = str(_entry_m.get("text") or "").strip()
+                    _matrix_ctx_lines = [
+                        "[内部·子步3当前组合（matrix）]",
+                        f"当前组合：热爱「{_p_m or '（未填）'}」× 优势「{_s_m or '（未填）'}」",
+                    ]
+                    if _hyp_m:
+                        _matrix_ctx_lines.append(f"用户已确认的假设：「{_hyp_m}」")
+                    else:
+                        _matrix_ctx_lines.append("用户当前组合暂未确认假设。")
+                    _matrix_ctx_block = "\n".join(_matrix_ctx_lines)
+                    rumination_step_addon = f"{rumination_step_addon}\n\n{_matrix_ctx_block}".strip()
+                except Exception:
+                    pass
+            else:
                 try:
                     prog_ex = load_rumination_progress(Path(reports_root), str(rid))
                     ft_ex = prog_ex.get("filter_table")
@@ -4761,16 +4786,34 @@ async def _hyp_candidate_fallback_retry(
     if is_step3_combo_retry:
         p_name: str = ""
         s_name: str = ""
+        current_hypothesis: str = ""
         if combo_id_req and sub_step == "matrix":
             combo_matrix = prog.get("combo_matrix") or []
             p_name, s_name = get_passion_strength_names(combo_matrix, combo_id_req)
+            # matrix: 从 combo_conclusions 取当前 combo 已确认的假设作为参考
+            conclusions_map = prog.get("combo_conclusions") or {}
+            entry = conclusions_map.get(combo_id_req) or {}
+            if isinstance(entry, dict) and str(entry.get("state") or "").strip() == "confirmed":
+                current_hypothesis = str(entry.get("text") or "").strip()
         else:
-            # discussion: 从 filter_table 的指定行取热爱/优势
+            # discussion: 从 filter_table 的指定行取热爱/优势 + 已确认假设
             ft_d = prog.get("filter_table") or []
             p_name, s_name = get_step3_row_passion_strength(ft_d, explicit_row_index)
+            if isinstance(explicit_row_index, int) and 0 <= explicit_row_index < len(ft_d):
+                row_d = ft_d[explicit_row_index]
+                if isinstance(row_d, dict):
+                    current_hypothesis = str(row_d.get("用户确认的假设") or "").strip()
+        hyp_ref_line = ""
+        if current_hypothesis:
+            hyp_ref_line = (
+                f"用户当前这一组合已确认的假设是：「{current_hypothesis}」。\n"
+                "这是用户当下的选择，作为参考。请结合上方对话判断用户对假设的诉求（想换方向 / 想更多选项 / 想细化等），"
+                "生成符合用户诉求的新假设。不要机械重复上面的文本。\n\n"
+            )
         matrix_retry_system = (
             "【兜底重新生成假设候选 · 组合模式】\n"
             f"当前组合：热爱「{p_name or '（未填）'}」× 优势「{s_name or '（未填）'}」。\n"
+            f"{hyp_ref_line}"
             "**重要：忽略上方对话中已经出现过的任何假设（无论你或用户说过）。现在必须重新生成两条全新、独立的假设候选。**\n"
             "不要回复\"就是刚才给你的那两个\"或类似话术——本次任务要求你基于组合本身的特质，重新构想。\n\n"
             "生成要求：\n"
@@ -4788,15 +4831,29 @@ async def _hyp_candidate_fallback_retry(
         matrix_messages = list(llm_messages) + [
             LLMMessage(role="system", content=matrix_retry_system),
         ]
+        # 历史里有大量干扰（早期短回复/用户闲聊），retry 容易被带偏。
+        # 策略：只保留首条 system + 最近 3 条对话 + retry system，让 LLM 聚焦当前任务。
+        trimmed: list = []
+        for m in llm_messages:
+            role = getattr(m, "role", None) or (m.get("role") if isinstance(m, dict) else None)
+            content = getattr(m, "content", None) or (m.get("content") if isinstance(m, dict) else "")
+            if role == "system" and not trimmed:
+                trimmed.append(m if not isinstance(m, dict) else LLMMessage(role="system", content=content))
+                continue
+            if role in ("user", "assistant"):
+                trimmed.append(m if not isinstance(m, dict) else LLMMessage(role=role, content=content))
+        matrix_messages = trimmed[-6:] + [
+            LLMMessage(role="system", content=matrix_retry_system),
+        ]
 
         async def _matrix_call(*, use_json_mode: bool) -> Any:
-            kwargs: dict = {"temperature": 0.2, "max_tokens": 800}
+            kwargs: dict = {"temperature": 0.1, "max_tokens": 1500}
             if use_json_mode:
                 kwargs["response_format"] = {"type": "json_object"}
             try:
                 return await asyncio.wait_for(
                     llm.chat(matrix_messages, **kwargs),
-                    timeout=15.0,
+                    timeout=25.0,
                 )
             except TypeError:
                 # provider 不支持 response_format 关键字 → 降级纯文本
@@ -4805,8 +4862,8 @@ async def _hyp_candidate_fallback_retry(
                         "[step3] matrix retry: response_format unsupported, fallback to plain"
                     )
                     return await asyncio.wait_for(
-                        llm.chat(matrix_messages, temperature=0.2, max_tokens=800),
-                        timeout=15.0,
+                        llm.chat(matrix_messages, temperature=0.1, max_tokens=1500),
+                        timeout=25.0,
                     )
                 raise
 
@@ -4838,7 +4895,31 @@ async def _hyp_candidate_fallback_retry(
                 logger.warning("[step3] matrix fallback retry call#2 failed: %s", e)
 
         if not raw_m:
-            logger.info("[step3] matrix fallback retry: still empty after 2 attempts")
+            # 第 3 次兜底：JSON/空返回都失败时，用 [STEP3_HYP_JSON] 协议块格式再试一次
+            # （LLM 对标记协议的遵循度通常比纯 JSON 更高）。
+            protocol_addon = (
+                "\n\n如果 JSON 输出失败，请改用以下协议块格式输出（界面会自动隐藏）：\n"
+                "[STEP3_HYP_JSON]\n"
+                '{"candidates": ["个人事业向假设（≥25字具体描述）", "职业路径向假设（≥25字具体描述）"]}\n'
+                "[/STEP3_HYP_JSON]\n"
+                "必须恰好两个字符串，每个至少 25 字。"
+            )
+            proto_messages = matrix_messages + [LLMMessage(role="system", content=protocol_addon)]
+            try:
+                resp_proto = await asyncio.wait_for(
+                    llm.chat(proto_messages, temperature=0.1, max_tokens=1500),
+                    timeout=25.0,
+                )
+                raw_m = (getattr(resp_proto, "content", "") or "").strip() if resp_proto else ""
+                logger.info(
+                    "[step3] matrix fallback retry raw#3 (protocol) len=%d tail=%r",
+                    len(raw_m),
+                    raw_m[-200:],
+                )
+            except Exception as e:
+                logger.warning("[step3] matrix fallback retry call#3 (protocol) failed: %s", e)
+        if not raw_m:
+            logger.info("[step3] matrix fallback retry: still empty after 3 attempts")
             return [], None
         try:
             obj_m = json.loads(raw_m)
@@ -4849,6 +4930,12 @@ async def _hyp_candidate_fallback_retry(
             raw_cands_m = obj_m.get("candidates")
             if isinstance(raw_cands_m, list):
                 cands_m = sanitize_hyp_candidates([str(c) for c in raw_cands_m])
+        # JSON 解析失败或 candidates 为空 → 尝试 [STEP3_HYP_JSON] 协议块
+        if len(cands_m) < 2 and "[STEP3_HYP_JSON]" in raw_m:
+            _, proto_cands, _ = _extract_step3_hyp_output(raw_m)
+            proto_cands_clean = sanitize_hyp_candidates(proto_cands)
+            if len(proto_cands_clean) > len(cands_m):
+                cands_m = proto_cands_clean
         if len(cands_m) >= 2:
             # 审计落盘
             try:
@@ -5216,6 +5303,7 @@ async def simple_chat_stream(
             stream_loc,
             rumination_row_index=request.rumination_row_index,
             step3_prompt_mode=step3_prompt_mode,
+            combo_id=request.combo_id,
         )
         # step3 模式分流：matrix 模式用 combo addon「替换」通用 [3] addon（避免重复堆叠）；
         # discussion 模式保留 [3]（已含协议块+切换组合能力）。两者互斥。

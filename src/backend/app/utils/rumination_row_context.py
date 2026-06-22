@@ -92,6 +92,8 @@ def format_step3_row_context_block(
     pe = _note_for_label(int_b, passion) or "（结论卡中暂无该关键词的单独说明。）"
     se = _note_for_label(str_b, strength) or "（结论卡中暂无该关键词的单独说明。）"
     prev = (prev_combo_summary or "").strip() or "（无，当前为首个组合。）"
+    hypothesis = str(row.get("用户确认的假设") or "").strip()
+    hyp_line = f"用户当前假设：{hypothesis}\n" if hypothesis else ""
     return (
         "[内部·子步3当前行]\n"
         f"第 {combo_index_1based} 行（共 {total_combos} 行）\n"
@@ -99,6 +101,7 @@ def format_step3_row_context_block(
         f"热爱：{passion or '（未填）'} / 优势：{strength or '（未填）'}\n"
         f"热爱（解释/用户理解）：{pe}\n"
         f"优势（解释/用户理解）：{se}\n"
+        f"{hyp_line}"
     )
 
 
