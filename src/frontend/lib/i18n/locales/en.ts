@@ -109,6 +109,11 @@ export const en = {
       header: 'Basic Info',
       hint: 'This helps us tailor the conversation. All questions are optional — you can skip and start exploring.',
       submitLabel: 'Submit & Start Exploring',
+      privacyTitle: 'Before we begin, a quick note',
+      privacyBody:
+        'Our promise:\n\n· Your information is used only to improve the results Xunlu gives you — to make the direction fit your real situation. It will never be used for marketing or sold to any third party.\n· Everything stays visible only to you. You can edit or delete it anytime.\n\nThis background info is optional — fill it in now, add more later, or skip it entirely. But the more complete it is, the more targeted our feedback can be.\n\nWhatever you choose, it will not affect your ability to use Xunlu.',
+      privacyContinue: 'Got it, start filling in',
+      privacyDontRemind: "Don't remind me again",
     },
     phaseComplete: {
       title: 'Nice work! 🌿',

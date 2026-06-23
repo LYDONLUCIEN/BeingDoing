@@ -6,9 +6,11 @@ import { motion } from 'framer-motion';
 import SurveyFormBd from '@/components/survey/SurveyFormBd';
 import { surveyApi } from '@/lib/api/survey';
 import { getApiErrorMessage } from '@/lib/api/client';
-import { loadSession, saveSession, getLastActivationCode, setUserSurveyCompleted } from '@/lib/explore/session';
+import { loadSession, saveSession, getLastActivationCode, setUserSurveyCompleted, getUserPrivacyAck, setUserPrivacyAck } from '@/lib/explore/session';
 import type { SurveyData } from '@/lib/survey/schema';
 import { useAuthStore } from '@/stores/authStore';
+import { useLocale } from '@/hooks/useLocale';
+import PhaseCompleteWarmModal from '@/components/explore/PhaseCompleteWarmModal';
 
 export default function SurveyPage() {
   const router = useRouter();
@@ -18,6 +20,8 @@ export default function SurveyPage() {
   const [initialData, setInitialData] = useState<SurveyData>({});
   const [preloadDone, setPreloadDone] = useState(false);
   const { user } = useAuthStore();
+  const { t } = useLocale();
+  const [privacyOpen, setPrivacyOpen] = useState(false);
 
   useEffect(() => {
     const code = getLastActivationCode();
@@ -43,6 +47,20 @@ export default function SurveyPage() {
       }
     }).finally(() => setPreloadDone(true));
   }, [router]);
+
+  // 隐私声明弹窗：等激活码与预加载完成后，若用户未勾选"不再提醒"则弹出
+  useEffect(() => {
+    if (activationCode && preloadDone) {
+      if (!getUserPrivacyAck(user?.user_id)) {
+        setPrivacyOpen(true);
+      }
+    }
+  }, [activationCode, preloadDone, user?.user_id]);
+
+  const handlePrivacyContinue = (dontRemind?: boolean) => {
+    if (dontRemind) setUserPrivacyAck(user?.user_id ?? '', true);
+    setPrivacyOpen(false);
+  };
 
   const handleSubmit = async (data: SurveyData) => {
     if (!activationCode) return;
@@ -99,6 +117,14 @@ export default function SurveyPage() {
   return (
     <div className="min-h-screen bg-bd-gradient text-bd-fg">
       <div className="max-w-2xl mx-auto px-4 pt-24 pb-20">
+        <PhaseCompleteWarmModal
+          open={privacyOpen}
+          title={t('survey.privacyTitle') || '在开始之前，想先跟你说明'}
+          body={t('survey.privacyBody') || '我们承诺：\n\n· 你的信息仅用于优化寻路给你的探索结果，让方向更贴合你的真实情况——不会用于商业营销，不会出售给任何第三方。\n· 所有内容仅你可见，你可以随时修改或删除。\n\n这份背景信息是选填的——你可以现在填、稍后再补，也可以直接跳过。但提供得越完整，我们越能给你更有针对性的反馈。\n\n无论如何选择，都不会影响你使用寻路。'}
+          continueLabel={t('survey.privacyContinue') || '我知道了，开始填写'}
+          dontRemindLabel={t('survey.privacyDontRemind') || '不再提醒'}
+          onContinue={handlePrivacyContinue}
+        />
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}

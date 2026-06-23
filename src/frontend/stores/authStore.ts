@@ -50,11 +50,11 @@ export const useAuthStore = create<AuthState>()(
       logout: () => {
         if (typeof window !== 'undefined') {
           localStorage.removeItem('token');
-          // 多账号切换：清除所有用户的问卷完成状态
+          // 多账号切换：清除所有用户的问卷完成状态 + 隐私声明知晓状态
           const keysToRemove: string[] = [];
           for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
-            if (key?.startsWith('explore_user_survey_')) {
+            if (key?.startsWith('explore_user_survey_') || key?.startsWith('explore_user_privacy_ack_')) {
               keysToRemove.push(key);
             }
             // 清除所有会话缓存（线程、session、rumination 步骤边界等）

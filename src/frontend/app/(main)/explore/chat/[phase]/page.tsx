@@ -606,7 +606,14 @@ export default function ChatPhasePage() {
   }, [phase, initLoading]);
 
   useEffect(() => {
-    if (phase === 'rumination') setRuminationRowContext(null);
+    if (phase === 'rumination') {
+      // discussion 子步：发消息会刷新 table rows（引用变化），但表格组件刻意保留
+      // 选中行高亮；此处若同步清空 rowContext，会导致「蓝框还在但输入框被禁用」
+      // 的不一致。只有 step 真正切换时才清空。
+      if (ruminationProgressState?.filter_sub_step === 'discussion') return;
+      setRuminationRowContext(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, ruminationTablePayload?.step, ruminationTablePayload?.rows]);
 
   // Auth & redirect — 强制等待 exploreResume 对齐后再做路由准入判断

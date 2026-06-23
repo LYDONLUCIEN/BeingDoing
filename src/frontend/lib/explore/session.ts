@@ -233,3 +233,23 @@ export function clearAllUserSurveyStatus(): void {
   }
   keysToRemove.forEach((k) => localStorage.removeItem(k));
 }
+
+// ──────────────────────────────────────────────
+// 用户维度隐私声明知晓状态（survey 页"不再提醒"勾选用）
+// 按用户 ID 隔离，仅 localStorage，不写后端
+// ──────────────────────────────────────────────
+
+const USER_PRIVACY_ACK_PREFIX = 'explore_user_privacy_ack_';
+
+/** 标记用户已知晓隐私声明（勾选"不再提醒"时 ack=true；取消勾选时 ack=false 删 key） */
+export function setUserPrivacyAck(userId: string, ack: boolean): void {
+  if (typeof window === 'undefined' || !userId) return; // userId 为空不写，避免污染
+  if (ack) localStorage.setItem(`${USER_PRIVACY_ACK_PREFIX}${userId}`, '1');
+  else localStorage.removeItem(`${USER_PRIVACY_ACK_PREFIX}${userId}`);
+}
+
+/** 读取用户是否已勾选"不再提醒"。userId 为空时返回 false（每次都弹） */
+export function getUserPrivacyAck(userId?: string): boolean {
+  if (typeof window === 'undefined' || !userId) return false;
+  return localStorage.getItem(`${USER_PRIVACY_ACK_PREFIX}${userId}`) === '1';
+}
