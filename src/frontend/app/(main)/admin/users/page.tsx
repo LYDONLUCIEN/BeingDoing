@@ -10,6 +10,7 @@ import {
   type AdminUserItem,
   type AdminUserDetail,
 } from '@/lib/api/admin';
+import SurveyFormBd from '@/components/survey/SurveyFormBd';
 
 type ActiveFilter = 'all' | 'active' | 'inactive';
 type ProfileFilter = 'all' | 'completed' | 'incomplete';
@@ -31,6 +32,7 @@ export default function AdminUsersPage() {
   // Detail drawer
   const [drawerUser, setDrawerUser] = useState<AdminUserDetail | null>(null);
   const [drawerLoading, setDrawerLoading] = useState(false);
+  const [surveyExpanded, setSurveyExpanded] = useState(false);
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -61,6 +63,7 @@ export default function AdminUsersPage() {
   const openDrawer = async (userId: string) => {
     setDrawerLoading(true);
     setDrawerUser(null);
+    setSurveyExpanded(false);
     try {
       const detail = await fetchAdminUserDetail(userId);
       setDrawerUser(detail);
@@ -489,6 +492,40 @@ export default function AdminUsersPage() {
                     >
                       {drawerUser.is_active ? '禁用该用户' : '启用该用户'}
                     </button>
+                  </section>
+
+                  {/* Survey details (collapsible) */}
+                  <section>
+                    <button
+                      type="button"
+                      onClick={() => setSurveyExpanded(!surveyExpanded)}
+                      className="flex items-center justify-between w-full text-left"
+                    >
+                      <h3 className="text-sm font-medium" style={{ color: 'var(--bd-fg-muted)' }}>
+                        调研问卷详情
+                      </h3>
+                      <span className="text-xs" style={{ color: 'var(--bd-fg-muted)' }}>
+                        {surveyExpanded ? '收起 ▲' : '展开 ▼'}
+                      </span>
+                    </button>
+                    {surveyExpanded && (
+                      <div
+                        className="mt-3 rounded-lg border p-4"
+                        style={{
+                          borderColor: 'var(--bd-border)',
+                          background: 'var(--bd-overlay-md, rgba(0,0,0,0.02))',
+                        }}
+                      >
+                        {drawerUser.profile.survey_data &&
+                        Object.keys(drawerUser.profile.survey_data).length > 0 ? (
+                          <SurveyFormBd readOnly initialData={drawerUser.profile.survey_data} />
+                        ) : (
+                          <p className="text-sm" style={{ color: 'var(--bd-fg-muted)' }}>
+                            该用户尚未填写调研问卷
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </section>
 
                   {/* Activations */}

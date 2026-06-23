@@ -2096,6 +2096,10 @@ async def admin_get_user_detail(
                 }
             )
 
+    # 读取新版 survey 问卷（data/user/{user_id}/basic_info.json）
+    from app.utils.survey_storage import load_basic_info_by_user
+    survey_data = load_basic_info_by_user(user_id) or {}
+
     return {
         "code": 200,
         "message": "success",
@@ -2112,6 +2116,7 @@ async def admin_get_user_detail(
                 "gender": profile.gender if profile else None,
                 "age": profile.age if profile else None,
                 "profile_completed": profile.profile_completed if profile else False,
+                "survey_data": survey_data,
             },
             "activations": bound_activations,
             "work_histories": wh_list,

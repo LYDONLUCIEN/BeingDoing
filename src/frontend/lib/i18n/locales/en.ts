@@ -284,6 +284,7 @@ export const en = {
         followConfirmTable: 'I have confirmed the table—please continue.',
         openingGuideError: 'Could not load step guidance. Please try again.',
         tableSubmitError: 'Submit failed. Please try again.',
+        step7NeedFinalSelect: 'Please select at least 1 row as your final choice before submitting.',
         negGateRegionLabel: 'Follow-up before confirming the table',
         negExploringRegionLabel: 'Deep discussion in progress',
         negGateDefaultCopy:
@@ -329,6 +330,7 @@ export const en = {
         loading: 'Loading progress…',
         filterStepSegmentsGroup: 'Filter progress: 7 steps — tap a segment to jump',
         jumpToFilterStep: 'Go to filter step {step}',
+        filterStepSkippedHint: 'Results converged — skipped this step for you',
         filterDetail: 'Filter {step}/7',
         rowDetail: ' · Row {current}/{total}',
         sections: {

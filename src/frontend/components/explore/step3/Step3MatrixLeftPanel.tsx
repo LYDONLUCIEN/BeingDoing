@@ -142,6 +142,38 @@ function CompletionModal({
   );
 }
 
+/** 首次进入 matrix 的操作说明弹窗（仅展示一次，由 progress.matrix_intro_dismissed 控制） */
+function MatrixIntroModal({ open, onGotIt }: { open: boolean; onGotIt: () => void }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-2xl p-6 max-w-md mx-4 shadow-xl">
+        <h3 className="text-base font-semibold text-gray-800 mb-2">第 3 步：假设生成</h3>
+        <p className="text-sm text-gray-600 mb-3">
+          接下来，我们会逐一探索每个「热爱 × 优势」的组合，为它构想一个有画面感、可以长期投入的职业方向。
+        </p>
+        <p className="text-sm text-gray-600 mb-1">你可以这样使用：</p>
+        <ul className="text-sm text-gray-600 mb-4 list-disc pl-5 space-y-1">
+          <li><span className="font-semibold">聊满意后</span>：在左侧结论卡中填入你确定的假设</li>
+          <li><span className="font-semibold">不适合的组合</span>：直接选「跳过」即可</li>
+          <li><span className="font-semibold">点击填入</span>：我会为你提供两个参考选项，点击后会填入左侧卡片</li>
+          <li><span className="font-semibold">随时提问</span>：对参考选项不满意，或者有任何疑问，都可以在右侧直接和咨询师聊</li>
+        </ul>
+        <p className="text-sm text-gray-600 mb-4">准备好了，就开始第一个组合吧。</p>
+        <div className="flex gap-3 justify-end">
+          <button
+            onClick={onGotIt}
+            className="h-11 rounded-full border-0 px-5 text-[15px] font-[800] text-white shadow-[0_12px_24px_rgba(103,210,238,0.24)] transition-transform hover:-translate-y-[1px]"
+            style={{ background: 'linear-gradient(135deg, #67dfda, #70c9ff)' }}
+          >
+            知道了
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Inline conclusion result card matching the reference HTML .result-card */
 function ConclusionResultCard({
   combo,
@@ -342,6 +374,28 @@ export default function Step3MatrixLeftPanel({
   const [conclusions, setConclusions] = useState(progress.combo_conclusions || {});
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
+  // 首次进入 matrix 的操作说明弹窗：仅当 progress.matrix_intro_dismissed 为 false 时弹出一次
+  const [showIntroModal, setShowIntroModal] = useState(false);
+
+  // 进入 matrix 时若未看过 intro 弹窗，自动弹出
+  useEffect(() => {
+    if (!progress.matrix_intro_dismissed) {
+      setShowIntroModal(true);
+    }
+  }, [progress.matrix_intro_dismissed]);
+
+  const handleIntroGotIt = useCallback(async () => {
+    setShowIntroModal(false);
+    const { ruminationApi } = await import('@/lib/api/rumination');
+    try {
+      const res = await ruminationApi.save(activationCode, { matrix_intro_dismissed: true });
+      if (res.data?.progress) {
+        onProgressUpdate(res.data.progress);
+      }
+    } catch (e) {
+      console.error('Failed to mark matrix intro dismissed:', e);
+    }
+  }, [activationCode, onProgressUpdate]);
   const [passionAllDisabled, setPassionAllDisabled] = useState(false);
   const [pendingChipText, setPendingChipText] = useState<string | null>(null);
   const [forceExpand, setForceExpand] = useState(false);
@@ -607,6 +661,7 @@ export default function Step3MatrixLeftPanel({
       )}
 
       {/* Modals */}
+      <MatrixIntroModal open={showIntroModal} onGotIt={handleIntroGotIt} />
       <SubmitAllModal
         open={showSubmitModal}
         emptyCount={emptyCombos}

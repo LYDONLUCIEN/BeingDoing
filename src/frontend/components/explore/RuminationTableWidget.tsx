@@ -42,6 +42,11 @@ export interface RuminationTablePayload {
   rowSelectionMode?: 'multi';
   rowSelectionMin?: number;
   rowSelectionMax?: number;
+  /** step7 终步专用：启用左侧绿色最终勾选列（__final 多选 1-3） */
+  finalSelectionMode?: boolean;
+  /** 最终勾选数量上下限（仅 finalSelectionMode 生效时用） */
+  finalSelectionMin?: number;
+  finalSelectionMax?: number;
   /** 价值观关键词来源标签（step 4 专用：confirmed_card / report_anchor / prior_text / none） */
   valuesSource?: string;
 }
@@ -427,6 +432,10 @@ export default function RuminationTableWidget({
   const rowSelectionMulti = payload.rowSelectionMode === 'multi';
   const selMin = payload.rowSelectionMin ?? 1;
   const selMax = payload.rowSelectionMax ?? 3;
+  /** step7 终步：启用左侧绿色最终勾选列 */
+  const finalSelectionMode = payload.finalSelectionMode === true;
+  const finalMin = payload.finalSelectionMin ?? 1;
+  const finalMax = payload.finalSelectionMax ?? 3;
 
   /** 需要从展示中隐藏的列 key（与后端 P-06 对齐：移除匹配原因列） */
   const HIDDEN_COL_KEYS = useMemo(() => new Set(['匹配原因']), []);
@@ -435,6 +444,7 @@ export default function RuminationTableWidget({
     const cols = payload.columns ?? [];
     return cols.filter((c) => {
       if (c.key === '__pick') return false; // __pick 是行选择内部状态，不作为展示列
+      if (c.key === '__final') return false; // __final 是终步勾选内部状态，不作为展示列
       if (HIDDEN_COL_KEYS.has(c.key)) return false;
       return true;
     });
@@ -461,6 +471,28 @@ export default function RuminationTableWidget({
       setSelectedRowIdx(rowIdx);
     },
     [rowPickDisabled, payload.rowSelectionMax]
+  );
+
+  /** step7 终步：左侧 checkbox 切换 __final（绿色多选 1-3，独立于 __pick 蓝色讨论焦点） */
+  const handleFinalToggle = useCallback(
+    (rowIdx: number) => {
+      if (rowPickDisabled) return;
+      setRows((prev) => {
+        const row = prev[rowIdx];
+        if (!row) return prev;
+        const isOn = row.__final === true;
+        const currently = prev.filter((r) => r.__final === true).length;
+        if (!isOn && currently >= finalMax) {
+          setValidationCycle((c) => c + 1);
+          setValidationFlashKey(`${rowIdx}:__final`);
+          return prev;
+        }
+        const next = [...prev];
+        next[rowIdx] = { ...row, __final: !isOn };
+        return next;
+      });
+    },
+    [rowPickDisabled, finalMax]
   );
 
   /** 数据列超过该宽度时由单元格内换行，避免整表被单格撑得过宽 */
@@ -578,6 +610,12 @@ export default function RuminationTableWidget({
         return { rowIdx: 0, colKey: '__pick' };
       }
     }
+    if (finalSelectionMode) {
+      const n = rows.filter((r) => r.__final === true).length;
+      if (n < finalMin || n > finalMax) {
+        return { rowIdx: 0, colKey: '__final' };
+      }
+    }
     return null;
   }, [
     rows,
@@ -589,6 +627,9 @@ export default function RuminationTableWidget({
     rowSelectionMulti,
     selMin,
     selMax,
+    finalSelectionMode,
+    finalMin,
+    finalMax,
   ]);
 
   const handleConfirm = useCallback(() => {
@@ -1085,6 +1126,19 @@ export default function RuminationTableWidget({
         {/* glass 模式：表头使用高不透明背景 + 独立 z-index 层，防止内容穿透 */}
         <thead className={isGlass ? 'sticky top-0 z-20' : ''}>
           <tr className={isGlass ? 'bg-white/90 backdrop-blur-md' : 'bg-neutral-50'}>
+            {finalSelectionMode && (
+              <th
+                key="__final-head"
+                style={{ minWidth: 56, maxWidth: 56, width: 56 }}
+                className={
+                  isGlass
+                    ? 'px-2 py-3 text-center font-medium text-neutral-500 whitespace-nowrap border-b border-neutral-300/70 text-[0.6rem] uppercase tracking-[0.04em] align-top'
+                    : 'px-2 py-2 text-center font-medium text-neutral-500 whitespace-nowrap border-b border-neutral-200 text-xs'
+                }
+              >
+                {/* 终步勾选列表头：留空避免与 "确认" 按钮语义冲突 */}
+              </th>
+            )}
             {displayColumns.map((col) => (
               <th
                 key={col.key}
@@ -1141,19 +1195,90 @@ export default function RuminationTableWidget({
               className={
                 isGlass
                   ? `border-b border-neutral-200/80 transition-colors last:border-b-0 outline-none focus-visible:ring-2 focus-visible:ring-[rgba(145,194,255,0.65)] focus-visible:ring-inset ${
-                      rowSelectionMulti && row.__pick === true
-                        ? 'bg-[rgba(145,194,255,0.38)] text-neutral-900 shadow-[inset_3px_0_0_0_#91C2FF]'
-                        : !rowSelectionMulti && selectedRowIdx === rowIdx
+                      // 绿色最终勾选优先于蓝色讨论焦点
+                      row.__final === true
+                        ? 'bg-[rgba(167,243,208,0.55)] text-neutral-900 shadow-[inset_3px_0_0_0_#34D399]'
+                        : rowSelectionMulti && row.__pick === true
                           ? 'bg-[rgba(145,194,255,0.38)] text-neutral-900 shadow-[inset_3px_0_0_0_#91C2FF]'
-                          : rowPickDisabled
-                            ? ''
-                            : 'hover:bg-white/30'
+                          : !rowSelectionMulti && selectedRowIdx === rowIdx
+                            ? 'bg-[rgba(145,194,255,0.38)] text-neutral-900 shadow-[inset_3px_0_0_0_#91C2FF]'
+                            : rowPickDisabled
+                              ? ''
+                              : 'hover:bg-white/30'
                     } ${isGlass && !rowPickDisabled ? 'cursor-pointer' : isGlass ? 'cursor-default' : ''} ${
                       rowDimmed ? 'rumination-row-dimmed' : ''
                     }`
                   : `border-b border-neutral-100 hover:bg-neutral-50/50 ${rowDimmed ? 'rumination-row-dimmed' : ''}`
               }
             >
+              {finalSelectionMode && (() => {
+                const finalOn = row.__final === true;
+                const finalFlash =
+                  validationFlashKey === `${rowIdx}:__final`;
+                return (
+                  <td
+                    key="__final-cell"
+                    style={{ minWidth: 56, maxWidth: 56, width: 56, overflow: 'hidden' }}
+                    className={
+                      isGlass
+                        ? 'px-2 py-3 align-middle text-center'
+                        : 'px-2 py-2 align-middle text-center'
+                    }
+                  >
+                    <div
+                      key={finalFlash ? `${rowIdx}:__final-v${validationCycle}` : `${rowIdx}:__final`}
+                      className={`flex items-center justify-center ${finalFlash ? 'rumination-validation-cell-flash' : ''}`}
+                      onAnimationEnd={(e) => {
+                        if (e.target !== e.currentTarget) return;
+                        const name = (e.animationName || '').split(',')[0]?.trim();
+                        if (name !== 'rumination-cell-flash') return;
+                        setValidationFlashKey((k) =>
+                          k === `${rowIdx}:__final` ? null : k
+                        );
+                      }}
+                    >
+                      <button
+                        type="button"
+                        aria-label={finalOn ? '取消最终选择' : '选为最终答案'}
+                        aria-pressed={finalOn}
+                        disabled={rowPickDisabled}
+                        onMouseDown={(e) => isGlass && e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (rowPickDisabled) return;
+                          handleFinalToggle(rowIdx);
+                        }}
+                        className={`group/final inline-flex h-6 w-6 items-center justify-center rounded-md border transition-all duration-300 ${
+                          finalOn
+                            ? 'border-emerald-500 bg-emerald-500 text-white shadow-sm'
+                            : rowPickDisabled
+                              ? 'border-neutral-200 bg-white/40 text-neutral-300 opacity-50 cursor-not-allowed'
+                              : 'border-neutral-300 bg-white/70 text-neutral-400 hover:border-emerald-400 hover:bg-emerald-50/70 hover:text-emerald-500 cursor-pointer'
+                        }`}
+                        style={{
+                          transitionTimingFunction: finalOn
+                            ? 'cubic-bezier(0.34, 1.56, 0.64, 1)'
+                            : 'cubic-bezier(0.4, 0, 0.2, 1)',
+                          transform: finalOn ? 'scale(1)' : 'scale(1)',
+                        }}
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className={`h-3.5 w-3.5 ${finalOn ? 'rumination-final-check-pop' : ''}`}
+                          aria-hidden
+                        >
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  </td>
+                );
+              })()}
               {displayColumns.map((col) => {
                 const isEditable = editableSet.has(col.key);
                 const val = row[col.key];

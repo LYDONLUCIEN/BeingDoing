@@ -15,17 +15,31 @@ import {
 
 const inputCls =
   'w-full rounded-xl border border-bd-border bg-bd-overlay px-3 py-2.5 text-sm text-bd-fg placeholder:text-bd-subtle focus:border-bd-ui-accent focus:ring-2 focus:ring-bd-ui-accent/20 outline-none transition-colors';
+const inputReadOnlyCls =
+  'w-full rounded-xl border border-bd-border/50 bg-bd-overlay/40 px-3 py-2.5 text-sm text-bd-fg cursor-default outline-none';
 const labelCls = 'block text-sm font-medium text-bd-muted mb-1.5';
 const optionCls = 'text-sm text-bd-fg';
 
+// 只读模式下数组字段的 chip 样式
+const chipCls =
+  'inline-block rounded-full text-xs px-2.5 py-0.5 mr-1.5 mb-1.5';
+const chipStyle = {
+  background: 'rgba(59,130,246,0.12)',
+  color: '#2563eb',
+  border: '1px solid rgba(59,130,246,0.2)',
+};
+
 interface SurveyFormBdProps {
   initialData?: Partial<SurveyData>;
-  onSubmit: (data: SurveyData) => void | Promise<void>;
+  /** 编辑模式下提交回调;readOnly=true 时可不传 */
+  onSubmit?: (data: SurveyData) => void | Promise<void>;
   onSkip?: () => void;
   loading?: boolean;
   saving?: boolean;
   submitLabel?: string;
   showSkip?: boolean;
+  /** 只读模式:字段以纯展示形态呈现,空值字段不渲染,数组字段以 chip 排列 */
+  readOnly?: boolean;
 }
 
 export default function SurveyFormBd({
@@ -36,6 +50,7 @@ export default function SurveyFormBd({
   saving = false,
   submitLabel = '保存',
   showSkip = false,
+  readOnly = false,
 }: SurveyFormBdProps) {
   const [formData, setFormData] = useState<SurveyData>({
     nickname: initialData.nickname ?? '',
@@ -94,12 +109,144 @@ export default function SurveyFormBd({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (readOnly || !onSubmit) return;
     await onSubmit(formData);
   };
 
   const hasOther = formData.core_needs?.includes('其他') ?? false;
   const disabled = loading || saving;
 
+  // ─── 只读模式辅助函数 ─────────────────────────────────────────
+  const hasText = (v?: string) => !!v && v.trim() !== '';
+  const hasArray = (v?: string[]) => !!v && v.length > 0;
+  const hasAnyEducation = hasText(formData.education_school) || hasText(formData.education_degree) || hasText(formData.education_major);
+  const hasAnyCareer = hasText(formData.industry) || hasText(formData.position) || hasText(formData.work_years_total);
+
+  // 渲染字符串字段:有值才返回 input readOnly
+  const renderReadOnlyText = (label: string, value?: string) => {
+    if (!hasText(value)) return null;
+    return (
+      <div>
+        <label className={labelCls}>{label}</label>
+        <input readOnly value={value as string} className={inputReadOnlyCls} />
+      </div>
+    );
+  };
+
+  // 渲染 chip 字段:数组用标签排列
+  const renderReadOnlyChips = (label: string, values?: string[]) => {
+    if (!hasArray(values)) return null;
+    return (
+      <div>
+        <label className={labelCls}>{label}</label>
+        <div className="flex flex-wrap items-center">
+          {(values as string[]).map((v) => (
+            <span key={v} className={chipCls} style={chipStyle}>
+              {v}
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // ─── 只读模式布局 ─────────────────────────────────────────────
+  if (readOnly) {
+    const hasNickname = hasText(formData.nickname);
+    const hasGender = hasText(formData.gender);
+    const hasAge = hasText(formData.age);
+    const hasCity = hasText(formData.city);
+    const hasFamily = hasArray(formData.family_status);
+    const hasFamilyAffects = hasText(formData.family_affects_career);
+    const hasCareerStatus = hasText(formData.career_status);
+    const hasWorkHistory = hasText(formData.work_history);
+    const hasSalary = hasText(formData.salary_level);
+    const hasCoreNeeds = hasArray(formData.core_needs) || hasText(formData.core_needs_other);
+    const hasPastConsultation = hasText(formData.past_consultation);
+
+    const hasBasic = hasNickname || hasGender || hasAge || hasCity;
+    const hasEducationBlock = hasAnyEducation;
+    const hasFamilyBlock = hasFamily || hasFamilyAffects;
+    const hasCareerBlock = hasCareerStatus || hasAnyCareer || hasWorkHistory || hasSalary;
+    const hasNeedsBlock = hasCoreNeeds || hasPastConsultation;
+
+    const nothingToShow =
+      !hasBasic && !hasEducationBlock && !hasFamilyBlock && !hasCareerBlock && !hasNeedsBlock;
+
+    if (nothingToShow) {
+      return (
+        <p className="text-sm" style={{ color: 'var(--bd-fg-muted)' }}>
+          该用户尚未填写调研问卷
+        </p>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        {/* 基本信息 */}
+        {hasBasic && (
+          <section className="space-y-4">
+            <h3 className="text-sm font-semibold text-bd-fg">基本信息</h3>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {renderReadOnlyText('昵称', formData.nickname)}
+              {renderReadOnlyText('性别', formData.gender)}
+              {renderReadOnlyText('年龄', formData.age)}
+              {renderReadOnlyText('长期生活的城市', formData.city)}
+            </div>
+          </section>
+        )}
+
+        {/* 教育背景 */}
+        {hasEducationBlock && (
+          <section className="space-y-4">
+            <h3 className="text-sm font-semibold text-bd-fg">教育背景</h3>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {renderReadOnlyText('院校', formData.education_school)}
+              {renderReadOnlyText('学历', formData.education_degree)}
+              {renderReadOnlyText('专业', formData.education_major)}
+            </div>
+          </section>
+        )}
+
+        {/* 家庭情况 */}
+        {hasFamilyBlock && (
+          <section className="space-y-4">
+            <h3 className="text-sm font-semibold text-bd-fg">家庭情况</h3>
+            {renderReadOnlyChips('家庭生活状态', formData.family_status)}
+            {renderReadOnlyText('家庭是否影响职业选择', formData.family_affects_career)}
+          </section>
+        )}
+
+        {/* 职业信息 */}
+        {hasCareerBlock && (
+          <section className="space-y-4">
+            <h3 className="text-sm font-semibold text-bd-fg">职业信息</h3>
+            {renderReadOnlyText('职业状态', formData.career_status)}
+            <div className="grid gap-3 sm:grid-cols-3">
+              {renderReadOnlyText('行业', formData.industry)}
+              {renderReadOnlyText('岗位', formData.position)}
+              {renderReadOnlyText('工作年限', formData.work_years_total)}
+            </div>
+            {renderReadOnlyText('工作经历', formData.work_history)}
+            {renderReadOnlyChips('企业类型', formData.company_types)}
+            {renderReadOnlyText('薪资水平', formData.salary_level)}
+          </section>
+        )}
+
+        {/* 核心诉求 */}
+        {hasNeedsBlock && (
+          <section className="space-y-4">
+            <h3 className="text-sm font-semibold text-bd-fg">核心诉求</h3>
+            {renderReadOnlyChips('核心诉求/困扰/目标', formData.core_needs)}
+            {renderReadOnlyText('核心诉求（其他补充）', formData.core_needs_other)}
+            {renderReadOnlyText('过往咨询经历', formData.past_consultation)}
+          </section>
+        )}
+      </div>
+    );
+  }
+
+  // ─── 编辑模式(原样) ───────────────────────────────────────────
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div>

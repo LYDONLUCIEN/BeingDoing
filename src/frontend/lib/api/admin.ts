@@ -1034,6 +1034,7 @@ export interface AdminUserDetail {
     gender?: string | null;
     age?: number | null;
     profile_completed: boolean;
+    survey_data?: Record<string, any>;
   };
   activations: AdminUserActivation[];
   work_histories: Array<{

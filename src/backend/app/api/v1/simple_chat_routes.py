@@ -1550,6 +1550,7 @@ class RuminationProgressSaveRequest(BaseModel):
     step3_trigger: Optional[str] = None
     combo_conclusions: Optional[Dict[str, Any]] = None
     combo_completion_modal_dismissed: Optional[bool] = None
+    matrix_intro_dismissed: Optional[bool] = None
 
 
 class RuminationTableSubmitRequest(BaseModel):
@@ -1676,6 +1677,8 @@ def save_rumination_progress_endpoint(
         extra_updates["combo_conclusions"] = request.combo_conclusions
     if request.combo_completion_modal_dismissed is not None:
         extra_updates["combo_completion_modal_dismissed"] = request.combo_completion_modal_dismissed
+    if request.matrix_intro_dismissed is not None:
+        extra_updates["matrix_intro_dismissed"] = request.matrix_intro_dismissed
     if extra_updates:
         progress = merge_rumination_progress_fields(
             reports_root,
@@ -2144,13 +2147,13 @@ def _resolve_non_matching_pairs(progress: Dict[str, Any]) -> set:
 
 
 def _rumination_step7_rows_for_widget(rows: List[dict]) -> List[dict]:
-    """终步表格增加 __pick 字段供前端多选。"""
+    """终步表格增加 __final 字段供前端绿色最终勾选（多选 1-3）。"""
     out: List[dict] = []
     for r in rows:
         if not isinstance(r, dict):
             continue
         x = dict(r)
-        x.setdefault("__pick", False)
+        x.setdefault("__final", False)
         out.append(x)
     return out
 
@@ -2167,7 +2170,12 @@ def _rumination_parse_selected_row_ids(
     for r in table_data:
         if not isinstance(r, dict):
             continue
-        if r.get("__pick") is True or r.get("_rumination_selected") is True:
+        # 优先认 __final（step7 终步绿色勾选）；向后兼容 __pick / _rumination_selected
+        if (
+            r.get("__final") is True
+            or r.get("__pick") is True
+            or r.get("_rumination_selected") is True
+        ):
             rid = str(r.get("id", "")).strip()
             if rid:
                 out.append(rid)
@@ -2180,7 +2188,7 @@ def _rumination_parse_selected_row_ids(
     return uniq
 
 
-def _rumination_strip_meta_keys(rows: List[dict]) -> List[dict]:
+def _rumination_strip_meta_keys(rows: List[dict], *, keep_final: bool = False) -> List[dict]:
     out: List[dict] = []
     for r in rows:
         if not isinstance(r, dict):
@@ -2188,6 +2196,8 @@ def _rumination_strip_meta_keys(rows: List[dict]) -> List[dict]:
         x = dict(r)
         x.pop("__pick", None)
         x.pop("_rumination_selected", None)
+        if not keep_final:
+            x.pop("__final", None)
         out.append(x)
     return out
 
@@ -2588,6 +2598,7 @@ async def rumination_table_submit(
                         "combo_matrix": None,
                         "combo_conclusions": {},
                         "combo_completion_modal_dismissed": False,
+                        "matrix_intro_dismissed": False,
                         "filter_sub_step": "matrix",
                     },
                 )
@@ -2834,7 +2845,7 @@ async def rumination_table_submit(
             if not (1 <= len(sel_ids) <= 3):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="请在左侧点选 1–3 行方向后再点确认",
+                    detail="请在左侧勾选 1–3 行作为最终选择后再点确认",
                 )
             id_set = set(sel_ids)
             by_id: Dict[str, dict] = {}
@@ -2843,7 +2854,8 @@ async def rumination_table_submit(
                     continue
                 rid = str(r.get("id", "")).strip()
                 if rid in id_set:
-                    clean = _rumination_strip_meta_keys([dict(r)])[0]
+                    # 保留 __final 用于审计 snapshot；运行时其它 meta key 清除
+                    clean = _rumination_strip_meta_keys([dict(r)], keep_final=True)[0]
                     by_id[rid] = clean
             ordered = [by_id[i] for i in sel_ids if i in by_id]
             if len(ordered) != len(sel_ids):
@@ -2851,14 +2863,20 @@ async def rumination_table_submit(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="所选行与当前表格不一致，请刷新后重试",
                 )
-            wdone = [{**dict(r), "__pick": True} for r in ordered]
+            # 终步定稿：每行带 __final=True，供回看渲染绿色态与审计
+            wdone = [{**dict(r), "__final": True} for r in ordered]
             # 在覆盖 progress 之前读取：短链直达终步时曾为 True，用于结语分支
             rumination_finalize_via_short_path = bool(progress.get("filter_early_terminated"))
             closing_summary_for_epilogue = "；".join(
                 str(r.get("用户确认的假设") or "").strip() for r in ordered
             )[:RUMINATION_CLOSING_SUMMARY_MAX_CHARS]
+            finalized_at = datetime.now(timezone.utc).isoformat()
+            finalized_count = len(ordered)
             s7 = snapshots.setdefault("7", {})
-            s7["submitted"] = deepcopy(_rumination_strip_meta_keys(wdone))
+            # submitted 保留 __final 以支持审计回看；strip 默认 keep_final=False 仅用于其它场景
+            s7["submitted"] = deepcopy(_rumination_strip_meta_keys(wdone, keep_final=True))
+            s7["finalized_at"] = finalized_at
+            s7["finalized_count"] = finalized_count
             snapshots["7"] = s7
             progress = save_rumination_progress(
                 reports_root,
@@ -3557,6 +3575,7 @@ async def rumination_get_table(
     activation_code: str,
     step: Optional[int] = 1,
     reset_initial: bool = False,
+    thread_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
 ):
     """获取 rumination 筛选流程指定步的表格；支持快照恢复与 reset_initial 回到该步初始表。"""
@@ -3658,6 +3677,7 @@ async def rumination_get_table(
                     "combo_matrix": None,
                     "combo_conclusions": {},
                     "combo_completion_modal_dismissed": False,
+                    "matrix_intro_dismissed": False,
                     "filter_sub_step": None,
                 }
             )
@@ -3668,11 +3688,19 @@ async def rumination_get_table(
         )
         clear_neg_gate_triggered_from_step(reports_root, report_id, step)
         try:
-            rum_step = report.get("steps", {}).get("rumination") or {}
-            rum_tid = (rum_step.get("selected_session_id") or "").strip()
-            if rum_tid:
+            # 用与其它端点一致的 thread_id 解析逻辑：优先显式 thread_id → selected_session_id → session_ids
+            # 不能直接取 selected_session_id：旧 report 可能未写入该字段（None），
+            # 且对话文件名按 thread_id 命名（rumination__{thread_id}），两者不一定相同。
+            logical_tid = _resolve_default_logical_thread_id(
+                registry,
+                report,
+                "rumination",
+                thread_id,
+                rec.session_id,
+            )
+            if logical_tid:
                 conv_mgr = ConversationFileManager(base_dir=str(root / "reports"))
-                rum_cat = f"rumination__{rum_tid}"
+                rum_cat = _storage_category("rumination", logical_tid)
                 await conv_mgr.delete_messages_from_filter_step(report_id, rum_cat, step)
         except Exception as e:
             logger.warning("[rumination] reset_initial: failed to clear messages: %s", e)

@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-TARGET_TOTAL = 10
+TARGET_TOTAL = 5
 
 DEFAULT_PROGRESS: Dict[str, Any] = {
     "current_index": 0,
@@ -26,7 +26,7 @@ def normalize_progress(raw: Any) -> Dict[str, Any]:
     if not isinstance(raw, dict):
         return dict(DEFAULT_PROGRESS)
     out: Dict[str, Any] = {
-        "current_index": max(0, int(raw.get("current_index", 0))),
+        "current_index": min(max(0, int(raw.get("current_index", 0))), TARGET_TOTAL),
         "confirmed_rows": _normalize_rows(raw.get("confirmed_rows")),
         "completed": bool(raw.get("completed", False)),
     }
@@ -60,9 +60,12 @@ def _coerce_values(raw: Any) -> List[str]:
 def build_progress_injection(progress: Dict[str, Any]) -> str:
     """构建 [内部·使命进度] prompt 注入块。"""
     if progress.get("completed"):
-        return "[内部·使命进度] 已完成全部经历匹配（10/10）。"
+        return "[内部·使命进度] 已完成全部经历匹配（{0}/{0}）。".format(TARGET_TOTAL)
 
     idx = progress.get("current_index", 0)
+    if idx >= TARGET_TOTAL:
+        return "[内部·使命进度] 已完成全部经历匹配（{0}/{0}）。".format(TARGET_TOTAL)
+
     confirmed = progress.get("confirmed_rows") or []
     done = len(confirmed)
     lines = [
@@ -93,7 +96,7 @@ def apply_progress_update(
     out = dict(progress)
     new_idx = new_progress.get("current_index")
     if isinstance(new_idx, (int, float)):
-        out["current_index"] = max(0, int(new_idx))
+        out["current_index"] = min(max(0, int(new_idx)), TARGET_TOTAL)
 
     new_rows = new_progress.get("confirmed_rows")
     if isinstance(new_rows, list):

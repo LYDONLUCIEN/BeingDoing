@@ -281,6 +281,7 @@ export const zh = {
         followConfirmTable: '我已确认表格，请继续。',
         openingGuideError: '子步引导加载失败，请稍后重试',
         tableSubmitError: '提交失败，请重试',
+        step7NeedFinalSelect: '请勾选至少 1 行作为最终选择后再提交',
         negGateRegionLabel: '表格确认前的跟进说明',
         negExploringRegionLabel: '深入讨论进行中',
         negGateDefaultCopy: '请先选择：进入下一步，或与 AI 深入讨论后再继续。',
@@ -325,6 +326,7 @@ export const zh = {
         loading: '加载进度…',
         filterStepSegmentsGroup: '筛选进度共 7 步，点击某一段可跳转到对应子步',
         jumpToFilterStep: '跳转到筛选第 {step} 步',
+        filterStepSkippedHint: '筛选结果已收敛，我为您跳过此步',
         filterDetail: '筛选 {step}/7',
         rowDetail: '· 行 {current}/{total}',
         sections: {

@@ -1385,6 +1385,7 @@ export default function ChatPhasePage() {
         setChatError(null);
         const res = await ruminationApi.getTable(activationCode, step, {
           resetInitial: opts?.resetInitial,
+          threadId: activeThreadId ?? undefined,
         });
         if (res.code !== 200) {
           setChatError(res.message || t('explore.chat.ruminationTableLoadError'));
@@ -2212,12 +2213,17 @@ export default function ChatPhasePage() {
     setRuminationTableSubmitting(true);
     setChatError(null);
     try {
+      // 终步提交：提取 __final=true 行作为最终选择，显式传 selected_row_ids 便于后端审计
+      const finalRowIds = p.rows
+        .filter((r) => r.__final === true)
+        .map((r) => String(r.id ?? '').trim())
+        .filter(Boolean);
       const res = await ruminationApi.submitTable(
         activationCode,
         p.submitThreadId,
         RUMINATION_FILTER_STEP_MAX,
         p.rows,
-        { mode: 'full_step' }
+        { mode: 'full_step', selectedRowIds: finalRowIds }
       );
       if (res.code !== 200) {
         setChatError(res.message || t('explore.chat.ruminationUi.tableSubmitError'));
@@ -2765,6 +2771,12 @@ export default function ChatPhasePage() {
           ? rawStep
           : Math.min(RUMINATION_FILTER_STEP_MAX, Math.max(1, ruminationViewStep || 1));
       if (stepNum === RUMINATION_FILTER_STEP_MAX) {
+        // step7 终步：必须至少 1 行 __final=true 才能弹出确认提交弹窗
+        const finalCount = rows.filter((r) => r.__final === true).length;
+        if (finalCount < 1) {
+          setChatError(t('explore.chat.ruminationUi.step7NeedFinalSelect'));
+          return;
+        }
         pendingStep7SubmitRef.current = { rows, payload, submitThreadId };
         setChatError(null);
         setRuminationStep7FinalizeOpen(true);
@@ -3629,24 +3641,6 @@ export default function ChatPhasePage() {
     setChatError(null);
     void (async () => {
       const refillStep = ruminationViewStep;
-
-      // step3 refill：清空 combo 结论 + 回到 matrix 模式
-      if (refillStep === 3 && ruminationProgressState?.filter_sub_step === 'discussion') {
-        // 重置后端状态：清空结论、切回 matrix
-        const saveRes = await ruminationApi.save(activationCode, {
-          combo_conclusions: {},
-          filter_sub_step: 'matrix',
-        });
-        if (saveRes.data?.progress) {
-          setRuminationProgressState((prev) => (prev ? { ...prev, ...saveRes.data!.progress! } : saveRes.data!.progress!));
-        }
-        // 清除本地 combo 相关消息（保留非 combo 消息）
-        setMessages((prev) => prev.filter((m) => !m.comboId));
-        // 重置选中，让 useEffect 自动选中第一个
-        setMatrixModeSelectedComboId(null);
-        setRuminationProgressNonce((n) => n + 1);
-        return;
-      }
       const refillThreadId = activeThreadId;
       // step1 refill：复用首次进入逻辑（展示 entry greeting → 等用户回复 → 加载表格 + opening）
       if (refillStep === 1) {
@@ -3705,7 +3699,9 @@ export default function ChatPhasePage() {
         setRuminationProgressNonce((n) => n + 1);
         return;
       }
-      // 非 step1 的 refill：保持原有逻辑
+      // 非 step1 的 refill：resetInitial 清 submitted 快照 → 退出 reviewMode（banner 消失）
+      // step3（matrix / discussion）都会走这里：清空 combo_matrix、combo_conclusions、filter_sub_step，
+      // 按 step2 submitted 重新派生 matrix（保留 step2 不匹配项置灰），step3 所有消息按 boundary 整段删除。
       const ok = await loadRuminationTableStep(ruminationViewStep, { resetInitial: true });
       if (!ok) return;
       clearRuminationStepOpeningShownFromStep(activationCode, activeThreadId, ruminationViewStep);
@@ -3717,6 +3713,10 @@ export default function ChatPhasePage() {
       setMessages(cut.messages);
       setRuminationStepBoundaries(cut.boundaries);
       saveRuminationStepBoundaries(activationCode, activeThreadId, cut.boundaries);
+      // step3 重置后清空 combo 选中态，让 useEffect 重新派生 matrix 并选中第一个
+      if (refillStep === 3) {
+        setMatrixModeSelectedComboId(null);
+      }
       if (refillThreadId) {
         void playRuminationStepOpeningAfterSubmit(refillStep, refillThreadId);
       }

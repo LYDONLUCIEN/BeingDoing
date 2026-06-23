@@ -318,7 +318,7 @@ def _validate_keywords_by_goal(
     goal = get_conclusion_card_goal(phase)
     validation = goal.get("validation") or {}
     min_k = int(validation.get("min_keywords", 1))
-    max_k = int(validation.get("max_keywords", 10))
+    max_k = int(validation.get("max_keywords", 5))
     strict = bool(validation.get("strict_match_user_confirmed_keywords", False))
 
     normalized = _normalize_keyword_list(keywords, limit=max(max_k, 1))

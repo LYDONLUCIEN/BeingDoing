@@ -44,6 +44,8 @@ DEFAULT_PROGRESS: Dict[str, Any] = {
     "combo_matrix": None,
     # 用户勾选"不再提示"后为 True
     "combo_completion_modal_dismissed": False,
+    # 用户看完首次进入 matrix 的操作说明弹窗后为 True；step≤3 重填时重置
+    "matrix_intro_dismissed": False,
 }
 
 

@@ -294,6 +294,27 @@ html[data-rumination-mesh-page='true']:not([data-color-scheme='dark'])
   border-radius: 0.375rem;
 }
 
+/* step7 终步勾选：勾选瞬间的 ✓ 弹动 */
+@keyframes rumination-final-check-pop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  55% {
+    transform: scale(1.18);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.rumination-final-check-pop {
+  animation: rumination-final-check-pop 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  transform-origin: center;
+}
+
 @keyframes rumination-neg-cta-pulse {
   0%,
   100% {
@@ -345,6 +366,21 @@ html[data-rumination-mesh-page='true']:not([data-color-scheme='dark'])
 /* 筛选进度条：9 段可点，去掉移动端点击高亮块以保持质感 */
 .rumination-beautiful-root .rumination-filter-seg {
   -webkit-tap-highlight-color: transparent;
+}
+
+/* 筛选进度条：被短链跳过的子步段——浅紫斜纹 + 虚线描边（与已完成紫红渐变同色系） */
+.rumination-beautiful-root .rumination-filter-seg-skipped {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(124, 131, 253, 0.28) 0 6px,
+    rgba(124, 131, 253, 0.10) 6px 12px
+  );
+  outline: 1px dashed rgba(124, 131, 253, 0.65);
+  outline-offset: -2px;
+  opacity: 0.85;
+}
+.rumination-beautiful-root .rumination-filter-seg-skipped:disabled {
+  opacity: 0.85;
 }
 
 /* ── 深度讨论：非讨论行模糊化 ── */

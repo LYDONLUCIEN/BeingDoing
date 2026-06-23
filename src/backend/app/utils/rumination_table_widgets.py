@@ -104,7 +104,7 @@ def _cols_step8() -> List[Dict[str, Any]]:
 
 
 def _cols_step7_final() -> List[Dict[str, Any]]:
-    """终步子表：多选 1–3 行（行内 __pick + rowSelectionMode，前端整行点选，不单独展示选择列）。"""
+    """终步子表：左侧绿色 __final 勾选列多选 1-3；蓝色 __pick 单选讨论焦点由整行点击切换。"""
     return [
         {"key": "id", "label": "id"},
         {"key": "用户确认的假设", "label": "方向假设"},
@@ -267,9 +267,10 @@ def build_table_widget_payload(
     if step == 4:
         payload["valuesSource"] = values_source
     if step == 7:
-        payload["rowSelectionMode"] = "multi"
-        payload["rowSelectionMin"] = 1
-        payload["rowSelectionMax"] = 3
+        # 终步：左侧绿色最终勾选列（__final 多选 1-3）；蓝色 __pick 单选讨论焦点由前端整行点击切换
+        payload["finalSelectionMode"] = True
+        payload["finalSelectionMin"] = 1
+        payload["finalSelectionMax"] = 3
     return payload
 
 

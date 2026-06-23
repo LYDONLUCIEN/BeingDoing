@@ -59,6 +59,8 @@ from app.domain.rumination_prompt_strings import (
     STEP_1_OPENING_SYSTEM_ZH,
     STEP_2_OPENING_SYSTEM_ZH,
     STEP_3_OPENING_SYSTEM_ZH,
+    STEP_3_DISCUSSION_OPENING_SYSTEM_ZH,
+    STEP_3_DISCUSSION_OPENING_USER_ZH,
     STEP_4_OPENING_SYSTEM_ZH,
     STEP_4_OPENING_USER_TEMPLATE_ZH,
     STEP_5_OPENING_SYSTEM_ZH,
@@ -87,6 +89,7 @@ class RuminationOpeningContext:
     values_source: str
     table_json: str
     rows: List[Any]
+    sub_step: str = ""
 
 
 def build_opening_context(
@@ -136,6 +139,7 @@ def build_opening_context(
         values_source=values_source or "none",
         table_json=table_json,
         rows=rows,
+        sub_step=str(progress.get("filter_sub_step") or "").strip(),
     )
 
 
@@ -190,6 +194,17 @@ def _opening_user_standard(ctx: RuminationOpeningContext) -> str:
 def build_opening_llm_messages(filter_step: int, ctx: RuminationOpeningContext) -> List[LLMMessage]:
     """按子步组装 LLM 消息（opening_mode=llm）。"""
     step = max(1, min(7, int(filter_step)))
+    # step3 discussion（全表讨论）模式：用专用 system prompt，引导用户点行提问，
+    # 不针对具体组合开场。表格仍传入（让 LLM 知道行数），但 system 约束不要引用具体组合名。
+    if step == 3 and ctx.sub_step == "discussion":
+        user = STEP_3_DISCUSSION_OPENING_USER_ZH.format(
+            row_count=ctx.row_count,
+            table_json=ctx.table_json,
+        )
+        return [
+            LLMMessage(role="system", content=STEP_3_DISCUSSION_OPENING_SYSTEM_ZH),
+            LLMMessage(role="user", content=user),
+        ]
     builders = {
         1: (STEP_1_OPENING_SYSTEM_ZH, _opening_user_standard(ctx)),
         2: (STEP_2_OPENING_SYSTEM_ZH, _opening_user_standard(ctx)),

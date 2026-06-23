@@ -96,6 +96,24 @@ async def _stop_background_tasks():
     _recycle_cleanup_task = None
 
 
+async def _run_profile_backfill_task():
+    """启动时后台异步回填老用户 profile_completed,首次完成后写标记文件。"""
+    try:
+        from app.utils.profile_backfill import run_profile_backfill_if_needed
+        await run_profile_backfill_if_needed()
+    except Exception as e:
+        logging.getLogger(__name__).warning("profile backfill failed: %s", e)
+
+
+@app.on_event("startup")
+async def _run_profile_backfill():
+    """fire-and-forget 触发回填任务,不阻塞启动。"""
+    try:
+        asyncio.create_task(_run_profile_backfill_task())
+    except Exception as e:
+        logging.getLogger(__name__).warning("profile backfill schedule failed: %s", e)
+
+
 @app.get("/")
 async def root():
     """根路径"""

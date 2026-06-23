@@ -65,7 +65,7 @@ CONCLUSION_RULES: Dict[str, str] = {
     "purpose": (
         _COMMON_NO_NEXT_PHASE
         + "- 使命陈述必须来自用户确认的表达\n"
-        + "- 必须是用户为他人提供价值的10个行为或者经历。经历写入 experience_value_rows（每行 values 为数组）；keywords 为使命核心词，优先使用第一轮价值观阶段 5 词子集，允许少量新概括词\n"
+        + "- 必须是用户为他人提供价值的5个行为或者经历。经历写入 experience_value_rows（每行 values 为数组）；keywords 为使命核心词，优先使用第一轮价值观阶段 5 词子集，允许少量新概括词\n"
         + _NAMING_SINGLE_CONCEPT
         + "\n"
     ),
@@ -120,14 +120,14 @@ CONCLUSION_CARD_GOALS: Dict[str, dict] = {
     },
     "purpose": {
         "name": "使命结论卡",
-        "objective": "沉淀用户使命表达与价值整合的10条经历线索",
+        "objective": "沉淀用户使命表达与价值整合的5条经历线索",
         "must_capture": [
             "purpose_statement",
             "supporting_evidence_optional",
         ],
         "validation": {
             "min_keywords": 1,
-            "max_keywords": 10,
+            "max_keywords": 5,
             "strict_match_user_confirmed_keywords": False,
         },
     },

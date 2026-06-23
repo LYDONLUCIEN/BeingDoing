@@ -363,16 +363,16 @@ export default function RuminationSectionProgress({
                         key={step}
                         type="button"
                         disabled={disabled}
-                        title={skipped ? '已跳过' : t('explore.chat.ruminationProgress.jumpToFilterStep', {
+                        title={skipped ? t('explore.chat.ruminationProgress.filterStepSkippedHint') : t('explore.chat.ruminationProgress.jumpToFilterStep', {
                           step: String(step),
                         })}
-                        aria-label={skipped ? `步骤 ${step} 已跳过` : t('explore.chat.ruminationProgress.jumpToFilterStep', {
+                        aria-label={skipped ? t('explore.chat.ruminationProgress.filterStepSkippedHint') : t('explore.chat.ruminationProgress.jumpToFilterStep', {
                           step: String(step),
                         })}
                         aria-current={current ? 'step' : undefined}
                         className={`rumination-filter-seg relative min-w-0 flex-1 border-l border-white/45 first:border-l-0 first:rounded-l-[10px] last:rounded-r-[10px] transition-[background-color,box-shadow,transform] duration-200 ease-out ${
                           skipped
-                            ? 'bg-neutral-300/40 cursor-not-allowed opacity-60'
+                            ? 'rumination-filter-seg-skipped cursor-not-allowed'
                             : current
                               ? 'bg-white/[0.22] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.55)]'
                               : ''

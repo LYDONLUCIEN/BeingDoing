@@ -67,6 +67,8 @@ export interface RuminationProgress {
   combo_matrix_meta?: ComboMatrixMeta | null;
   /** v3: 用户勾选不再提示完成弹窗 */
   combo_completion_modal_dismissed?: boolean;
+  /** 用户看过首次进入 matrix 的操作说明弹窗后为 true；step≤3 重填时重置 */
+  matrix_intro_dismissed?: boolean;
 }
 
 export interface ComboItem {
@@ -121,6 +123,10 @@ export interface RuminationTablePayload {
   rowSelectionMode?: 'multi';
   rowSelectionMin?: number;
   rowSelectionMax?: number;
+  /** step7 终步专用：启用左侧绿色最终勾选列（__final 多选 1-3） */
+  finalSelectionMode?: boolean;
+  finalSelectionMin?: number;
+  finalSelectionMax?: number;
   /** 价值观关键词来源标签（step 4 专用：confirmed_card / report_anchor / prior_text / none） */
   valuesSource?: string;
 }
@@ -139,6 +145,7 @@ export interface RuminationProgressSaveParams {
   step3_trigger?: 'none' | 'hypothesis_commit';
   combo_conclusions?: Record<string, unknown>;
   combo_completion_modal_dismissed?: boolean;
+  matrix_intro_dismissed?: boolean;
 }
 
 export type RuminationStep3SideEffect =
@@ -239,6 +246,7 @@ export const ruminationApi = {
       singleRowMode?: boolean;
       preferSingleRow?: boolean;
       resetInitial?: boolean;
+      threadId?: string;
     }
   ): Promise<
     ApiResponse<{
@@ -255,6 +263,7 @@ export const ruminationApi = {
     if (opts?.singleRowMode) params.single_row_mode = true;
     if (opts?.preferSingleRow) params.prefer_single_row = true;
     if (opts?.resetInitial) params.reset_initial = true;
+    if (opts?.threadId) params.thread_id = opts.threadId;
     const res = await apiClient.get('/simple-chat/rumination-get-table', { params });
     return res;
   },
