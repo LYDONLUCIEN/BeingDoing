@@ -2616,9 +2616,12 @@ async def rumination_table_submit(
         elif step == 3 and table_data:
             # 单轮假设 → 价值观入口；须完成逐行对话（cursor）且每行显式「无」或自填
             progress3 = load_rumination_progress(reports_root, report_id)
+            sub3 = str(progress3.get("filter_sub_step") or "").strip()
             cur3 = int(progress3.get("filter_row_cursor") or 0)
             n3 = len(table_data)
-            if cur3 < n3:
+            # discussion（3b 深度讨论）模式全行解锁，所有行已可编辑，
+            # 不再依赖 cursor 做逐行完成校验；否则旧 cursor 值会误判"未完成全部行"。
+            if sub3 != "discussion" and cur3 < n3:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="请先在右侧对话中完成本步骤全部行的确认，再提交表格。",
@@ -2919,10 +2922,18 @@ async def rumination_table_submit(
             except Exception as e:
                 logger.warning("rumination closing epilogue skipped: %s", e)
 
+        # step3 推进到后续子步后，清掉 discussion 子步标记，
+        # 否则前端 isStep3DiscussionMode 会因 filter_sub_step 残留而误停在 step3 画面。
+        cleanup_fields: Dict[str, Any] = {
+            "pending_table_submit": None,
+            "rumination_neg_state": None,
+        }
+        if step == 3 and next_step_val > 3:
+            cleanup_fields["filter_sub_step"] = None
         merge_rumination_progress_fields(
             reports_root,
             report_id,
-            {"pending_table_submit": None, "rumination_neg_state": None},
+            cleanup_fields,
         )
         progress = load_rumination_progress(reports_root, report_id)
         snaps = progress.get("filter_step_snapshots") or {}
@@ -3302,6 +3313,9 @@ async def rumination_combo_matrix_submit(
             {
                 "combo_conclusions": conclusions,
                 "filter_sub_step": "discussion",
+                # discussion 模式全行解锁：cursor 对齐行数，保持数据自洽，
+                # 避免后续 step3 提交时旧 cursor 触发"未完成全部行"误判。
+                "filter_row_cursor": len(table_rows),
                 "filter_table": table_rows,
                 "filter_step_snapshots": {**snapshots, "3": snap3},
             },
@@ -3493,13 +3507,13 @@ async def rumination_neg_resolve(
             if not isinstance(neg, dict) or neg.get("status") != "exploring":
                 raise HTTPException(status_code=400, detail="当前不在深入讨论状态")
             gate_step = int(neg.get("step") or progress.get("filter_step") or 0)
-            # 结束讨论后保留 pending 表格数据到 filter_table，防止数据丢失
+            # discussion 模式下用户改动已通过前端 debounce save 持续写入 filter_table，
+            # 它就是最新值。此处绝不能用 pending.table_data 覆盖 filter_table ——
+            # pending 是 neg_gate 触发那一刻的旧快照，会冲掉用户在深度讨论期间的修改。
             update_fields: Dict[str, Any] = {
                 "pending_table_submit": None,
                 "rumination_neg_state": None,
             }
-            if isinstance(pending, dict) and isinstance(pending.get("table_data"), list):
-                update_fields["filter_table"] = pending["table_data"]
             if gate_step >= 1:
                 update_fields["filter_step"] = gate_step
             merge_rumination_progress_fields(
@@ -3507,6 +3521,10 @@ async def rumination_neg_resolve(
                 report_id,
                 update_fields,
             )
+            # 与 dismiss / continue(zero) 保持一致：清除本子步 neg_gate 触发标记，
+            # 否则用户结束讨论后再次确认表格时不会重新检测跟进项。
+            if gate_step >= 1:
+                clear_neg_gate_triggered_step(reports_root, report_id, gate_step)
             progress2 = load_rumination_progress(reports_root, report_id)
             snaps2 = progress2.get("filter_step_snapshots") or {}
             return SimpleChatResponse(
@@ -3671,6 +3689,8 @@ async def rumination_get_table(
         }
         # 从 step ≤ 3 重新填写时，step3 的组合矩阵数据全部作废：
         # matrix 会由 step2 重新派生，conclusions 必须清空避免预填旧跳过/确认记录。
+        # step3 reset 后必须把 filter_sub_step 设回 "matrix"，让前端 isStep3MatrixMode 立即为 true、
+        # 自动触发 combo_matrix 初始化 effect；否则会停留在 discussion 的普通表格组件（只解锁第一行）。
         if step <= 3:
             merge_fields.update(
                 {
@@ -3678,7 +3698,7 @@ async def rumination_get_table(
                     "combo_conclusions": {},
                     "combo_completion_modal_dismissed": False,
                     "matrix_intro_dismissed": False,
-                    "filter_sub_step": None,
+                    "filter_sub_step": "matrix" if step == 3 else None,
                 }
             )
         merge_rumination_progress_fields(

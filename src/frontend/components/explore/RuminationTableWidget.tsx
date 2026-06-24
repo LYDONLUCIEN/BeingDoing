@@ -74,6 +74,8 @@ interface RuminationTableWidgetProps {
   onConfirmSoftBlocked?: () => void;
   /** 递增 tick 触发强调动画 */
   confirmSoftBlockedPulseTick?: number;
+  /** 提交失败错误信息：在确认按钮上方内联展示，避免用户看不到远处的全局错误条 */
+  confirmError?: string | null;
   selectPlaceholder?: string;
   inputPlaceholder?: string;
   /** 提交表格时遮罩文案（仅 embeddedSubmitOverlay 为 true 时使用） */
@@ -146,6 +148,7 @@ export default function RuminationTableWidget({
   confirmSoftBlocked = false,
   onConfirmSoftBlocked,
   confirmSoftBlockedPulseTick = 0,
+  confirmError = null,
   selectPlaceholder = '请选择',
   inputPlaceholder = '填写',
   loadingLabel = '…',
@@ -680,6 +683,12 @@ export default function RuminationTableWidget({
       : (reviewReadOnly && !(tableRefillMode && onRefill))
         ? null
         : (
+          <div className="flex flex-col gap-1.5">
+            {confirmError && (
+              <div className="rumination-table-confirm-error self-end rounded-md bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600">
+                {confirmError}
+              </div>
+            )}
           <div className="flex items-center gap-3">
             {tableRefillMode && onRefill && (
               <button type="button" onClick={() => onRefill?.()} disabled={disabled} className={refillBtnCls}>
@@ -704,7 +713,8 @@ export default function RuminationTableWidget({
             {confirmLabel}
           </button>
         )}
-      </div>
+          </div>
+          </div>
     );
 
   const selectArrowSvg =

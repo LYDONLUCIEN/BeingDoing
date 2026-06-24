@@ -368,6 +368,9 @@ export default function ChatPhasePage() {
   /** 子步 3：最近一次生成 hyp_candidates 的目标行（重新生成 / 点选行） */
   const step3HypTargetRowRef = useRef<number | null>(null);
   const ruminationStep3SaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** flush 函数 ref：供定义顺序在前的 callback（如 handleRuminationNegDeepEnd）调用，
+   *  避免在 deep_end 前漏存 debounce 窗口内的表格改动。 */
+  const flushRuminationStep3TableRef = useRef<(() => Promise<void>) | null>(null);
   const { user, setTokens } = useAuthStore();
   const userChatAvatarInitials = (user?.username || user?.email || 'U').slice(0, 2).toUpperCase();
 
@@ -2791,6 +2794,7 @@ export default function ChatPhasePage() {
       }
       setRuminationTableSubmitting(true);
       try {
+        setChatError(null);
         /** 必须始终传完整 table_data：后端 RuminationTableSubmitRequest 未实现 single_row/patch，
          * 若 single 行模式传 null，服务端不会进入任一步的递进分支，表现为「确认后卡住不前进」。 */
         const res = await ruminationApi.submitTable(
@@ -2917,6 +2921,9 @@ export default function ChatPhasePage() {
     if (!submitThreadId.trim()) return;
     setRuminationTableSubmitting(true);
     try {
+      // 先 flush 当前表格行到服务端，避免 debounce 窗口内的改动在 deep_end 后丢失。
+      // 通过 ref 调用，规避 flush 定义在后的声明顺序问题。
+      await flushRuminationStep3TableRef.current?.();
       const res = await ruminationApi.negResolve(activationCode, submitThreadId, 'deep_end');
       if (res.code !== 200 || !res.data) {
         setChatError(res.message || t('explore.chat.ruminationUi.tableSubmitError'));
@@ -3031,6 +3038,10 @@ export default function ChatPhasePage() {
       /* 无声失败：主流程仍继续；解锁失败时用户可重试 */
     }
   }, [activationCode]);
+  // 同步到 ref，供声明顺序在前的 callback（deep_end）在调 API 前 flush。
+  useEffect(() => {
+    flushRuminationStep3TableRef.current = flushRuminationStep3TableToServer;
+  }, [flushRuminationStep3TableToServer]);
 
   /** 子步 3 选「无」后 1s 冷却，防止连点跳过所有行 */
   const [step3Cooldown, setStep3Cooldown] = useState(false);
@@ -4013,6 +4024,7 @@ export default function ChatPhasePage() {
                     confirmSoftBlocked={ruminationNegTableSubmitBlocked}
                     confirmSoftBlockedPulseTick={ruminationNegConfirmPulseTick}
                     onConfirmSoftBlocked={handleRuminationNegBlockedConfirmAttempt}
+                    confirmError={!ruminationNegTableSubmitBlocked ? chatError : null}
                     onConfirm={(rows) =>
                       handleTableConfirm('rumination_left_panel', ruminationTablePayload, rows)
                     }
