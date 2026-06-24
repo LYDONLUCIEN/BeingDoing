@@ -195,23 +195,23 @@ export default function ComboMatrixFlowDiagram({
     return map;
   }, [passions, matrix, conclusions]);
 
-  // For each strength, same check (excluding non-matching combos)
+  // 优势打勾：仅在「当前选中热爱」语境下判断该优势的 combo 是否已完成。
+  // 切换热爱后，同一优势的打勾状态会随之变化（每个热爱 × 优势 是独立 combo）。
   const strengthDone = useMemo(() => {
     const map = new Map<string, boolean>();
     for (const s of strengths) {
-      const combos = matrix.filter((m) => m.strength_name === s && !m.is_non_matching);
-      if (combos.length === 0) { map.set(s, true); continue; }
-      map.set(
-        s,
-        combos.every(
-          (c) =>
-            conclusions?.[c.combo_id]?.state === 'confirmed' ||
-            conclusions?.[c.combo_id]?.state === 'skipped',
-        ),
+      // 未选热爱时，任何优势都不打勾（无语境）
+      if (!selPassionName) { map.set(s, false); continue; }
+      const combo = matrix.find(
+        (m) => m.passion_name === selPassionName && m.strength_name === s && !m.is_non_matching,
       );
+      // 该优势在当前热爱下不匹配（置灰）→ 视作无需处理，不打勾
+      if (!combo) { map.set(s, false); continue; }
+      const st = conclusions?.[combo.combo_id]?.state;
+      map.set(s, st === 'confirmed' || st === 'skipped');
     }
     return map;
-  }, [strengths, matrix, conclusions]);
+  }, [strengths, matrix, conclusions, selPassionName]);
 
   return (
     <>
