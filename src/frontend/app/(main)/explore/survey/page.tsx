@@ -119,10 +119,10 @@ export default function SurveyPage() {
       <div className="max-w-2xl mx-auto px-4 pt-24 pb-20">
         <PhaseCompleteWarmModal
           open={privacyOpen}
-          title={t('survey.privacyTitle') || '在开始之前，想先跟你说明'}
-          body={t('survey.privacyBody') || '我们承诺：\n\n· 你的信息仅用于优化寻路给你的探索结果，让方向更贴合你的真实情况——不会用于商业营销，不会出售给任何第三方。\n· 所有内容仅你可见，你可以随时修改或删除。\n\n这份背景信息是选填的——你可以现在填、稍后再补，也可以直接跳过。但提供得越完整，我们越能给你更有针对性的反馈。\n\n无论如何选择，都不会影响你使用寻路。'}
-          continueLabel={t('survey.privacyContinue') || '我知道了，开始填写'}
-          dontRemindLabel={t('survey.privacyDontRemind') || '不再提醒'}
+          title={t('explore.survey.privacyTitle')}
+          body={t('explore.survey.privacyBody')}
+          continueLabel={t('explore.survey.privacyContinue')}
+          dontRemindLabel={t('explore.survey.privacyDontRemind')}
           onContinue={handlePrivacyContinue}
         />
         <motion.div
