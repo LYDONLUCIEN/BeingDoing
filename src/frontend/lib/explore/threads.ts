@@ -61,6 +61,15 @@ export interface ThreadMessage {
   comboId?: string;
   /** v3: 组合矩阵模式引导语生成中的临时占位（固定文案，不轮换） */
   comboGuidePlaceholder?: boolean;
+  /** 子步开场引导语（rumination step opening）标记。
+   *  discussion 模式下用于特判显示——opening 是 assistant 消息但产生在 user 之前，
+   *  需独立于「首条 user 分界」过滤逻辑。仅前端运行时标记，不持久化。 */
+  isStepOpening?: boolean;
+  /** step3 子步标记（matrix/discussion），由后端 rumination_sub_step 字段映射。
+   *  discussion 模式下 displayMessages 靠此字段精确识别"discussion 阶段消息"，
+   *  与 comboId 正交（comboId 标识组合，ruminationSubStep 标识子步阶段）。
+   *  老消息无此字段（视为未标记，discussion 视图不显示）。 */
+  ruminationSubStep?: 'matrix' | 'discussion';
 }
 
 /** 使命阶段结构化「经历 → 价值观」行（与后端 payload 一致） */

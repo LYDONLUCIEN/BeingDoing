@@ -82,6 +82,7 @@ import {
   saveRuminationStepBoundaries,
   ensureDefaultStepOne,
   cutMessagesForRuminationStepRefill,
+  inferRuminationStepBoundaryStart,
   sliceMessagesForRuminationStep,
   isRuminationReviewMode,
 } from '@/lib/explore/ruminationStepBoundaries';
@@ -178,7 +179,7 @@ function RuminationTableSubmitPortal({
   const [dots, setDots] = useState('');
   const STEP3_MESSAGES = [
     '正在分析你的假设…',
-    'AI 正在逐条检查假设是否足够具体…',
+    '请稍等 正在逐条检查假设是否足够具体…',
     '马上就好，请稍候…',
     '还在分析中，你的假设比较多…',
   ];
@@ -447,7 +448,7 @@ export default function ChatPhasePage() {
       (ruminationProgressState?.main_section === 'filter' && fs > 0) ||
       /** 管理员：筛选表已结束后仍可回看/改表，聊天区继续按子步切片 */
       (adminDebugBypass && ruminationProgressState?.main_section === 'final_choice');
-    return sliceMessagesForRuminationStep(
+    const sliced = sliceMessagesForRuminationStep(
       messages,
       ruminationViewStep,
       ruminationStepBoundaries,
@@ -456,6 +457,15 @@ export default function ChatPhasePage() {
         activeFilterStep: inFilterSection ? fs : null,
       }
     );
+    // step3 discussion 模式：只显示 discussion 阶段的消息。
+    // 后端给每条 step3 消息打 rumination_sub_step 标记（matrix/discussion），
+    // 前端映射为 ruminationSubStep 字段。discussion 模式下严格只显示该字段 === 'discussion' 的消息，
+    // matrix 阶段消息（含漏标 combo_id 的脏数据、matrix 子步 isStepOpening）一律隐藏。
+    // 老消息（无 ruminationSubStep 字段）在 discussion 模式下不显示。
+    if (isStep3DiscussionMode) {
+      return sliced.filter((m) => m.ruminationSubStep === 'discussion');
+    }
+    return sliced;
   }, [
     phase,
     messages,
@@ -465,6 +475,7 @@ export default function ChatPhasePage() {
     ruminationProgressState?.filter_step,
     adminDebugBypass,
     isStep3MatrixMode,
+    isStep3DiscussionMode,
     matrixModeSelectedComboId,
   ]);
 
@@ -528,6 +539,12 @@ export default function ChatPhasePage() {
         // v3: 组合矩阵模式 — 后端 combo_id 映射为前端 comboId
         if (typeof m.combo_id === 'string' && m.combo_id.trim()) {
           base.comboId = m.combo_id.trim();
+        }
+        // step3 子步标记：后端 rumination_sub_step 映射为前端 ruminationSubStep
+        // discussion 模式下 displayMessages 靠此字段精确识别 discussion 阶段消息
+        const subStep = typeof m.rumination_sub_step === 'string' ? m.rumination_sub_step.trim() : '';
+        if (subStep === 'matrix' || subStep === 'discussion') {
+          base.ruminationSubStep = subStep;
         }
         // v3: combo guide 的假设候选 chips — 后端 hyp_candidates 映射为前端 hypCandidates
         if (Array.isArray(m.hyp_candidates) && m.hyp_candidates.length > 0) {
@@ -1414,7 +1431,13 @@ export default function ChatPhasePage() {
           setRuminationViewStep(w.step ?? step);
           setRuminationStepBoundaries((b) => {
             if (b[stepKey] !== undefined) return b;
-            const nb = { ...b, [stepKey]: lenAtApply };
+            const stepNum = w.step ?? step;
+            const start = inferRuminationStepBoundaryStart(
+              messagesRef.current,
+              stepNum,
+              lenAtApply,
+            );
+            const nb = { ...b, [stepKey]: start };
             if (activationCode && activeThreadId) {
               saveRuminationStepBoundaries(activationCode, activeThreadId, nb);
             }
@@ -1489,7 +1512,13 @@ export default function ChatPhasePage() {
         if (w.step != null) setRuminationViewStep(w.step);
         setRuminationStepBoundaries((b) => {
           if (b[stepKey] !== undefined) return b;
-          const nb = { ...b, [stepKey]: lenAtApply };
+          const stepNum = w.step ?? defaultStep;
+          const start = inferRuminationStepBoundaryStart(
+            messagesRef.current,
+            stepNum,
+            lenAtApply,
+          );
+          const nb = { ...b, [stepKey]: start };
           const tid = activeThreadIdRef.current;
           if (activationCode && tid) {
             saveRuminationStepBoundaries(activationCode, tid, nb);
@@ -1681,6 +1710,8 @@ export default function ChatPhasePage() {
       createdAt: now,
       ...(rowSnap ? { ruminationRowLabel: rowSnap.label } : {}),
       ...(phase === 'rumination' && ruminationFilterForApi ? { filterStep: ruminationFilterForApi } : {}),
+      // step3：实时消息打 ruminationSubStep 标记，供 discussion 模式过滤识别。
+      ...(isStep3DiscussionMode ? { ruminationSubStep: 'discussion' as const } : {}),
     };
     const assistantId = `a_${now}`;
     const assistantMsg: ThreadMessage = {
@@ -1689,6 +1720,7 @@ export default function ChatPhasePage() {
       content: '',
       createdAt: now,
       ...(phase === 'rumination' && ruminationFilterForApi ? { filterStep: ruminationFilterForApi } : {}),
+      ...(isStep3DiscussionMode ? { ruminationSubStep: 'discussion' as const } : {}),
     };
     const toAdd = skipAddUser
       ? [assistantMsg]
@@ -2513,10 +2545,18 @@ export default function ChatPhasePage() {
 
   /** 表格确认成功后：拉取子步引导配置，固定文案前端模拟流式，LLM 走专用流式接口 */
   const playRuminationStepOpeningAfterSubmit = useCallback(
-    async (newStep: number, threadId: string) => {
+    async (
+      newStep: number,
+      threadId: string,
+      openingSubStep?: 'matrix' | 'discussion',
+    ) => {
       if (!activationCode || phase !== 'rumination') return;
       const tid = threadId.trim();
-      if (tid && hasRuminationStepOpeningBeenShown(activationCode, tid, newStep)) {
+      const subStepForFlag = newStep === 3 ? openingSubStep ?? null : null;
+      if (
+        tid &&
+        hasRuminationStepOpeningBeenShown(activationCode, tid, newStep, subStepForFlag ?? undefined)
+      ) {
         return;
       }
       ruminationGuideAbortRef.current?.abort();
@@ -2542,7 +2582,15 @@ export default function ChatPhasePage() {
       setRuminationGuideBusy(true);
       setMessages((prev) => [
         ...prev,
-        { id: assistantId, role: 'assistant', content: '', createdAt: now, filterStep: newStep },
+        {
+          id: assistantId,
+          role: 'assistant',
+          content: '',
+          createdAt: now,
+          filterStep: newStep,
+          isStepOpening: true,
+          ...(newStep === 3 && openingSubStep ? { ruminationSubStep: openingSubStep } : {}),
+        },
       ]);
 
       try {
@@ -2625,7 +2673,12 @@ export default function ChatPhasePage() {
         setRuminationGuideBusy(false);
         ruminationGuideAbortRef.current = null;
         if (assistantHasVisibleOutput && tid) {
-          markRuminationStepOpeningShown(activationCode, tid, newStep);
+          markRuminationStepOpeningShown(
+            activationCode,
+            tid,
+            newStep,
+            subStepForFlag ?? undefined,
+          );
         }
         if (!assistantHasVisibleOutput) {
           setMessages((prev) => prev.filter((m) => m.id !== assistantId));
@@ -2642,6 +2695,36 @@ export default function ChatPhasePage() {
     },
     [activationCode, phase, setChatError, setMessages, t]
   );
+
+  /**
+   * step3 discussion 阶段：右侧空白时自动生成开场引导语。
+   * 覆盖两条路径：① 从 matrix「全部提交」进入 discussion；② 刷新页面恢复到 discussion。
+   * matrix 阶段的 combo 引导消息已被 displayMessages 过滤隐藏（!m.comboId），
+   * 所以 discussion 模式下 displayMessages.length === 0 即代表"需要生成开场"。
+   * playRuminationStepOpeningAfterSubmit 内部 markShown 机制防止重复生成；
+   * 生成失败/中断时 markShown 不会执行，下次进入会自动重试。
+   */
+  useEffect(() => {
+    if (!isStep3DiscussionMode) return;
+    if (ruminationGuideBusy) return;
+    if (!activationCode) return;
+    if (!backendSyncedThreadId) return; // history 还没加载完，等下次触发
+    if (displayMessages.length > 0) return; // 已有 discussion 消息（用户聊过或 history 回填）
+    if (hasRuminationStepOpeningBeenShown(activationCode, backendSyncedThreadId, 3, 'discussion')) {
+      return;
+    }
+    const tid = backendSyncedThreadId;
+    queueMicrotask(() => {
+      void playRuminationStepOpeningAfterSubmit(3, tid, 'discussion');
+    });
+  }, [
+    isStep3DiscussionMode,
+    ruminationGuideBusy,
+    activationCode,
+    backendSyncedThreadId,
+    displayMessages.length,
+    playRuminationStepOpeningAfterSubmit,
+  ]);
 
   /** 与 rumination-table-submit / rumination-neg-resolve 成功响应对齐的共用收尾 */
   const ingestRuminationSubmitData = useCallback(
@@ -2675,7 +2758,13 @@ export default function ChatPhasePage() {
         setRuminationViewStep(newStep);
         setMessages(filtered);
         queueMicrotask(() => {
-          void playRuminationStepOpeningAfterSubmit(newStep, submitThreadId);
+          const step3SubStep =
+            newStep === 3 && data.progress?.filter_sub_step === 'discussion'
+              ? ('discussion' as const)
+              : newStep === 3
+                ? ('matrix' as const)
+                : undefined;
+          void playRuminationStepOpeningAfterSubmit(newStep, submitThreadId, step3SubStep);
         });
       } else if (data.progress?.filter_step != null && data.progress.filter_step >= 1) {
         setRuminationViewStep(
@@ -3536,13 +3625,29 @@ export default function ChatPhasePage() {
       if (res.data?.next_table_widget) {
         setRuminationTablePayload(res.data.next_table_widget as ThreadMessage['tablePayload']);
       }
-      // 切到 3b 后清除 combo 选择状态
+      // 切到 3b 后清除 combo 选择状态，并移除 matrix 阶段聊天（combo 引导 / matrix opening）
       setMatrixModeSelectedComboId(null);
-      setMessages((prev) => prev.filter((m) => !m.comboId));
+      setMessages((prev) =>
+        prev.filter(
+          (m) =>
+            !m.comboId &&
+            !(
+              m.isStepOpening &&
+              (m.ruminationSubStep === 'matrix' ||
+                (m.filterStep === 3 && m.ruminationSubStep !== 'discussion'))
+            ),
+        ),
+      );
+      const tid = backendSyncedThreadId;
+      if (tid) {
+        queueMicrotask(() => {
+          void playRuminationStepOpeningAfterSubmit(3, tid, 'discussion');
+        });
+      }
     } catch (e) {
       console.error('Failed to submit combo matrix:', e);
     }
-  }, [activationCode, backendSyncedThreadId]);
+  }, [activationCode, backendSyncedThreadId, playRuminationStepOpeningAfterSubmit]);
 
   /** 子步 3：用户点选表格行时，可作为未绑定行号的假设 chip 填入目标 */
   const step3SelectedRowForHypFill = useMemo(() => {
@@ -3736,7 +3841,11 @@ export default function ChatPhasePage() {
         setMatrixModeSelectedComboId(null);
       }
       if (refillThreadId) {
-        void playRuminationStepOpeningAfterSubmit(refillStep, refillThreadId);
+        void playRuminationStepOpeningAfterSubmit(
+          refillStep,
+          refillThreadId,
+          refillStep === 3 ? 'matrix' : undefined,
+        );
       }
       setRuminationProgressNonce((n) => n + 1);
     })();

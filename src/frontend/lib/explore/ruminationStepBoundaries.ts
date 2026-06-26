@@ -159,41 +159,69 @@ export function isRuminationReviewMode(
 /**
  * 「重新填写」从当前筛选子步起直到对话末尾整段删除（与后端从本步起清空后续快照一致）。
  * 保留本子步起点边界 b[viewStep]，删除 viewStep+1.. 的边界键。
- * 若 b[viewStep] 不存在，向前回退到最近的已有 boundary；若仍无则截断到 0。
- * 仅允许从当前活跃步（非回看模式）执行。
+ * 有 filterStep 标签时优先按标签裁剪（与 displayMessages 同源），避免 boundary 漂移导致旧引导语残留。
  */
+
+/** 推断子步在 messages 中的起点下标；有 filterStep 标签时以首条同子步消息为准 */
+export function inferRuminationStepBoundaryStart(
+  messages: ThreadMessage[],
+  viewStep: number,
+  fallback: number,
+): number {
+  const taggedIdx = messages.findIndex((m) => m.filterStep === viewStep);
+  return taggedIdx >= 0 ? taggedIdx : fallback;
+}
+
 export function cutMessagesForRuminationStepRefill(
   messages: ThreadMessage[],
   viewStep: number,
   boundaries: Record<string, number>
 ): { messages: ThreadMessage[]; boundaries: Record<string, number> } {
   const b = ensureDefaultStepOne({ ...boundaries });
-  const sk = String(viewStep);
-  let lo = b[sk];
-  if (lo === undefined) {
-    // 向前回退到最近的已有 boundary
-    for (let s = viewStep - 1; s >= 1; s--) {
-      if (b[String(s)] !== undefined) {
-        lo = b[String(s)];
-        break;
-      }
-    }
-    if (lo === undefined) lo = 0;
-  }
-  const hi = messages.length;
   const newB: Record<string, number> = { ...b };
   for (let s = viewStep + 1; s <= 12; s++) {
     delete newB[String(s)];
   }
-  if (lo >= hi) {
-    // boundary 值异常（>= 消息总数）时，回退到按 filterStep 标签裁剪，
-    // 确保 viewStep 及之后的消息被清除。
-    const cut = messages.filter((m) => {
+
+  /** 与 displayMessages 一致：有 filterStep 标签时按标签裁剪，避免 boundary 漂移导致旧引导语残留 */
+  const hasFilterStepTags = messages.some(
+    (m) => m.filterStep != null && m.filterStep !== undefined,
+  );
+
+  let cut: ThreadMessage[];
+
+  if (hasFilterStepTags) {
+    cut = messages.filter((m) => {
       if (m.type === 'table_widget') return false;
-      if (m.filterStep == null) return true; // 无标签消息保留（如 entry greeting）
+      if (m.filterStep == null) return true;
       return m.filterStep < viewStep;
     });
-    return { messages: cut, boundaries: newB };
+  } else {
+    const sk = String(viewStep);
+    let lo = b[sk];
+    if (lo === undefined) {
+      for (let s = viewStep - 1; s >= 1; s--) {
+        if (b[String(s)] !== undefined) {
+          lo = b[String(s)];
+          break;
+        }
+      }
+      if (lo === undefined) lo = 0;
+    }
+    const hi = messages.length;
+    if (lo >= hi) {
+      cut = messages.filter((m) => {
+        if (m.type === 'table_widget') return false;
+        if (m.filterStep == null) return true;
+        return m.filterStep < viewStep;
+      });
+    } else {
+      cut = messages.slice(0, lo).filter((m) => m.type !== 'table_widget');
+    }
   }
-  return { messages: messages.slice(0, lo), boundaries: newB };
+
+  // 重填后重置本子步起点，避免旧 boundary（如被误记为 messages.length）影响后续切片
+  newB[String(viewStep)] = cut.length;
+
+  return { messages: cut, boundaries: newB };
 }

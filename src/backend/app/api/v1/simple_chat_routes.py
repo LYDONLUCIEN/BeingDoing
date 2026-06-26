@@ -2022,22 +2022,33 @@ async def rumination_step_opening_stream(
         stream_usage = _normalize_token_usage(getattr(llm, "_last_stream_usage", None))
         if text:
             try:
+                # step3 opening：读当前 progress.filter_sub_step，给消息打 rumination_sub_step 标记
+                # （matrix/discussion），供前端按子步精确过滤。
+                _opening_sub_step = ""
+                try:
+                    _rp_os = load_rumination_progress(Path(reports_root), str(report.get("report_id") or ""))
+                    _opening_sub_step = (_rp_os.get("filter_sub_step") or "").strip()
+                except Exception:
+                    pass
+                _opening_msg: Dict[str, Any] = {
+                    "role": "assistant",
+                    "content": text,
+                    **IDCodec.build_message_ids(
+                        thread_id=logical_session_id,
+                        activation_session_id=rec.session_id,
+                    ),
+                    "step_id": phase_step,
+                    "filter_step": step,
+                    "agent_id": "coach",
+                    "event": "assistant_reply",
+                    "token_usage": stream_usage,
+                }
+                if step == 3 and _opening_sub_step:
+                    _opening_msg["rumination_sub_step"] = _opening_sub_step
                 await conv_manager.append_message(
                     session_id=session_id,
                     category=category,
-                    message={
-                        "role": "assistant",
-                        "content": text,
-                        **IDCodec.build_message_ids(
-                            thread_id=logical_session_id,
-                            activation_session_id=rec.session_id,
-                        ),
-                        "step_id": phase_step,
-                        "filter_step": step,
-                        "agent_id": "coach",
-                        "event": "assistant_reply",
-                        "token_usage": stream_usage,
-                    },
+                    message=_opening_msg,
                 )
             except Exception as e:
                 logger.warning("rumination opening append_message failed: %s", e)
@@ -5376,12 +5387,24 @@ async def simple_chat_stream(
             # matrix 阶段所有消息都应可识别：前端传了 combo_id 用之；未传（opening/早期
             # 版本/通用引导）用保留值 _matrix_general 兜底，避免 discussion 模式切片时
             # 把 matrix 阶段遗留消息当成 3b 内容显示。
+            # 条件用 step3_sub_step != "discussion"（而非 == "matrix"）：
+            # discussion 严格不打 combo_id（跨组合公共讨论空间）；
+            # 其余情况（matrix / 过渡态 / sub_step 为空）都打 combo_id，
+            # 与下方助手回复打 combo_id 的条件保持一致。
             if (
                 phase_step == "rumination"
                 and rumination_filter_step_val == 3
-                and step3_sub_step == "matrix"
+                and step3_sub_step != "discussion"
             ):
                 user_msg_kw["combo_id"] = request.combo_id or "_matrix_general"
+            # step3：打 rumination_sub_step 标记（matrix/discussion），供前端按子步精确过滤。
+            # 与 combo_id 正交：combo_id 标识组合，rumination_sub_step 标识子步阶段。
+            if (
+                phase_step == "rumination"
+                and rumination_filter_step_val == 3
+                and step3_sub_step
+            ):
+                user_msg_kw["rumination_sub_step"] = step3_sub_step
             # 先保存用户消息
             await conv_manager.append_message(
                 session_id=session_id,
@@ -5989,12 +6012,23 @@ async def simple_chat_stream(
                 msg_payload["think_content"] = full_think
             # v3: 组合矩阵模式 — 给助手回复也打 combo_id 标签
             # 与用户消息同样规则：未传 combo_id 时用 _matrix_general 兜底。
+            # 条件用 step3_sub_step != "discussion"（而非 == "matrix"）：
+            # discussion 严格不打 combo_id（discussion 是跨组合公共讨论空间）；
+            # 其余情况（matrix / 过渡态 / sub_step 为空）都打 combo_id，
+            # 避免漏标导致前端 discussion 视图无法靠 comboId 区分 matrix 残留。
             if (
                 phase_step == "rumination"
                 and rumination_filter_step_val == 3
-                and step3_sub_step == "matrix"
+                and step3_sub_step != "discussion"
             ):
                 msg_payload["combo_id"] = request.combo_id or "_matrix_general"
+            # step3：打 rumination_sub_step 标记（matrix/discussion），供前端按子步精确过滤。
+            if (
+                phase_step == "rumination"
+                and rumination_filter_step_val == 3
+                and step3_sub_step
+            ):
+                msg_payload["rumination_sub_step"] = step3_sub_step
             # step3 假设候选 chips 持久化到消息：刷新加载 history 时仍能渲染
             if (
                 phase_step == "rumination"
