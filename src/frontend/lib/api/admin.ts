@@ -282,6 +282,40 @@ export async function syncReportsFromActivations() {
   return res.data ?? { created: 0, scanned: 0 };
 }
 
+/**
+ * 批量导出报告对话记录（zip）。
+ * 后端返回 application/zip blob，前端触发浏览器下载。
+ * 单次最多 50 个 report。
+ */
+export async function exportReportsBatch(
+  reportIds: string[],
+  format: 'md' | 'txt',
+): Promise<void> {
+  const res = await apiClient.post(
+    '/admin/reports/export/batch',
+    {
+      report_ids: reportIds,
+      format,
+    },
+    {
+      responseType: 'blob',
+    },
+  );
+  // 触发浏览器下载
+  const blob = res.data as Blob;
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  // 从 Content-Disposition 取文件名，兜底生成
+  const disposition = (res.headers?.['content-disposition'] as string) || '';
+  const match = /filename="?([^"]+)"?/.exec(disposition);
+  link.download = match?.[1] || 'reports_batch_export.zip';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+}
+
 export async function fetchAdminChatRecords(params?: {
   page?: number;
   page_size?: number;
@@ -1093,5 +1127,130 @@ export async function adminVerifyUserEmail(
 ): Promise<{ user_id: string; email_verified: boolean }> {
   const res = await apiClient.post(`/admin/users/${encodeURIComponent(userId)}/verify-email`);
   return (res.data?.data ?? {}) as { user_id: string; email_verified: boolean };
+}
+
+// ─── Notification Email (通知邮件群发) ─────────────────────────
+
+export interface NotificationUserFilter {
+  is_active?: boolean | null;
+  profile_completed?: boolean | null;
+  created_after?: string;
+}
+
+export interface NotificationRecipientStatus {
+  email: string;
+  user_id?: string | null;
+  status: 'pending' | 'sent' | 'failed';
+  error_msg?: string | null;
+}
+
+export interface NotificationTaskStatus {
+  task_id: string;
+  subject: string;
+  body: string;
+  filter: NotificationUserFilter;
+  total: number;
+  sent: number;
+  failed: number;
+  status: 'pending' | 'running' | 'completed' | 'interrupted' | 'failed';
+  created_at?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  recipients: NotificationRecipientStatus[];
+}
+
+export interface NotificationTaskListItem {
+  task_id: string;
+  subject: string;
+  total: number;
+  sent: number;
+  failed: number;
+  status: 'pending' | 'running' | 'completed' | 'interrupted' | 'failed';
+  created_at?: string | null;
+  finished_at?: string | null;
+}
+
+/**
+ * 创建通知邮件群发任务（后台异步发送，立即返回 task_id）。
+ */
+export async function sendNotificationEmail(payload: {
+  subject: string;
+  body: string;
+  user_filter?: NotificationUserFilter;
+}): Promise<{ task_id: string }> {
+  const res = await apiClient.post('/admin/notifications/email', payload);
+  return (res.data ?? {}) as { task_id: string };
+}
+
+/**
+ * 查询单个群发任务的进度详情（含收件人明细）。
+ */
+export async function getNotificationStatus(taskId: string): Promise<NotificationTaskStatus> {
+  const res = await apiClient.get(`/admin/notifications/email/${encodeURIComponent(taskId)}`);
+  return (res.data ?? {}) as NotificationTaskStatus;
+}
+
+/**
+ * 分页查询历史任务列表。
+ */
+export async function listNotificationTasks(params?: {
+  page?: number;
+  page_size?: number;
+}): Promise<{ items: NotificationTaskListItem[]; total: number; page: number; page_size: number }> {
+  const res = await apiClient.get('/admin/notifications/email', { params });
+  return (res.data ?? { items: [], total: 0, page: 1, page_size: 20 }) as {
+    items: NotificationTaskListItem[];
+    total: number;
+    page: number;
+    page_size: number;
+  };
+}
+
+// ─── 每轮平均时间统计（T3） ─────────────────────────────────────
+
+export interface ConversationPhaseStat {
+  phase_id: string;
+  phase_name: string;
+  session_id?: string;
+  turns: number;
+  avg_seconds: number;
+  total_seconds: number;
+  avg_minutes: number;
+  total_minutes: number;
+  skipped_no_ts: number;
+  skipped_long_turns: number;
+  total_turns_seen: number;
+  message_count: number;
+}
+
+export interface ConversationStatsResult {
+  total_turns: number;
+  total_seconds: number;
+  avg_seconds: number;
+  total_minutes: number;
+  avg_minutes: number;
+  skipped_no_ts: number;
+  skipped_long_turns: number;
+  per_phase: ConversationPhaseStat[];
+  report_count?: number;
+  reminder_text: string;
+}
+
+/**
+ * 获取用户所有对话的每轮平均时长统计。
+ */
+export async function getUserConversationStats(userId: string): Promise<ConversationStatsResult> {
+  const res = await apiClient.get(`/admin/users/${encodeURIComponent(userId)}/conversation-stats`);
+  return (res.data ?? {}) as ConversationStatsResult;
+}
+
+/**
+ * 获取单个 report 的每轮平均时长统计。
+ */
+export async function getReportConversationStats(reportId: string): Promise<ConversationStatsResult> {
+  const res = await apiClient.get(
+    `/admin/reports/${encodeURIComponent(reportId)}/conversation-stats`,
+  );
+  return (res.data ?? {}) as ConversationStatsResult;
 }
 

@@ -7,10 +7,13 @@ import {
   fetchAdminUserDetail,
   patchAdminUserStatus,
   adminVerifyUserEmail,
+  getUserConversationStats,
   type AdminUserItem,
   type AdminUserDetail,
+  type ConversationStatsResult,
 } from '@/lib/api/admin';
 import SurveyFormBd from '@/components/survey/SurveyFormBd';
+import { toDate } from '@/lib/utils/formatTime';
 
 type ActiveFilter = 'all' | 'active' | 'inactive';
 type ProfileFilter = 'all' | 'completed' | 'incomplete';
@@ -33,6 +36,11 @@ export default function AdminUsersPage() {
   const [drawerUser, setDrawerUser] = useState<AdminUserDetail | null>(null);
   const [drawerLoading, setDrawerLoading] = useState(false);
   const [surveyExpanded, setSurveyExpanded] = useState(false);
+
+  // Conversation stats modal
+  const [statsResult, setStatsResult] = useState<ConversationStatsResult | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsUserId, setStatsUserId] = useState<string | null>(null);
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -119,12 +127,36 @@ export default function AdminUsersPage() {
     setPage(1);
   };
 
+  const openStats = async (userId: string) => {
+    setStatsUserId(userId);
+    setStatsLoading(true);
+    setStatsResult(null);
+    try {
+      const res = await getUserConversationStats(userId);
+      setStatsResult(res);
+    } catch (e: any) {
+      setStatsResult(null);
+      alert(e?.message || '加载统计失败');
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  const closeStats = () => {
+    setStatsUserId(null);
+    setStatsResult(null);
+  };
+
   const totalPages = Math.ceil(total / pageSize);
 
   const fmtDate = (iso: string | null | undefined) => {
     if (!iso) return '-';
     try {
-      return new Date(iso).toLocaleString('zh-CN', {
+      // 委托 toDate，确保 tz-aware 字符串按浏览器本地时区显示
+      // （历史 naive 数据在 toDate 内部会补 'Z' 视作 UTC）
+      const d = toDate(iso);
+      if (!d) return iso;
+      return d.toLocaleString('zh-CN', {
         month: '2-digit',
         day: '2-digit',
         hour: '2-digit',
@@ -373,6 +405,19 @@ export default function AdminUsersPage() {
                         验证邮箱
                       </button>
                     )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openStats(u.user_id);
+                      }}
+                      className="px-2 py-1 rounded-lg text-xs border hover:opacity-80 transition-opacity"
+                      style={{
+                        borderColor: 'var(--bd-border)',
+                        color: '#7c3aed',
+                      }}
+                    >
+                      统计
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -418,6 +463,110 @@ export default function AdminUsersPage() {
           >
             下一页
           </button>
+        </div>
+      )}
+
+      {/* Conversation stats modal */}
+      {(statsUserId !== null || statsLoading) && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+          onClick={closeStats}
+        >
+          <div
+            className="relative w-full max-w-lg rounded-2xl border bg-bd-bg shadow-2xl p-6 space-y-4"
+            style={{ borderColor: 'var(--bd-border)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold" style={{ color: 'var(--bd-fg)' }}>
+                对话统计
+              </h2>
+              <button
+                onClick={closeStats}
+                className="text-bd-muted hover:text-bd-fg text-xl leading-none"
+              >
+                &times;
+              </button>
+            </div>
+
+            {statsLoading ? (
+              <div className="text-sm py-8 text-center" style={{ color: 'var(--bd-fg-muted)' }}>
+                加载中...
+              </div>
+            ) : statsResult ? (
+              <>
+                <div
+                  className="rounded-lg border p-4 space-y-2"
+                  style={{
+                    borderColor: 'var(--bd-border)',
+                    background: 'var(--bd-overlay-md, rgba(0,0,0,0.02))',
+                  }}
+                >
+                  <div className="flex items-baseline gap-4">
+                    <div>
+                      <span className="text-xs" style={{ color: 'var(--bd-fg-muted)' }}>总轮数</span>
+                      <div className="text-2xl font-semibold" style={{ color: 'var(--bd-fg)' }}>
+                        {statsResult.total_turns}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-xs" style={{ color: 'var(--bd-fg-muted)' }}>平均每轮</span>
+                      <div className="text-2xl font-semibold" style={{ color: 'var(--bd-fg)' }}>
+                        {statsResult.avg_minutes.toFixed(1)}
+                        <span className="text-sm ml-1">分钟</span>
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-xs" style={{ color: 'var(--bd-fg-muted)' }}>总时长</span>
+                      <div className="text-2xl font-semibold" style={{ color: 'var(--bd-fg)' }}>
+                        {statsResult.total_minutes.toFixed(0)}
+                        <span className="text-sm ml-1">分钟</span>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-sm" style={{ color: 'var(--bd-fg)' }}>
+                    {statsResult.reminder_text}
+                  </p>
+                  {(statsResult.skipped_no_ts > 0 || statsResult.skipped_long_turns > 0) && (
+                    <p className="text-xs" style={{ color: 'var(--bd-fg-muted)' }}>
+                      {statsResult.skipped_no_ts > 0 && `跳过缺时间戳 ${statsResult.skipped_no_ts} 轮；`}
+                      {statsResult.skipped_long_turns > 0 &&
+                        `跳过异常时长(>2h) ${statsResult.skipped_long_turns} 轮`}
+                    </p>
+                  )}
+                </div>
+
+                {statsResult.per_phase.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium mb-2" style={{ color: 'var(--bd-fg-muted)' }}>
+                      各阶段明细
+                    </h3>
+                    <div className="space-y-1">
+                      {statsResult.per_phase.map((ph) => (
+                        <div
+                          key={ph.phase_id}
+                          className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
+                          style={{
+                            borderColor: 'var(--bd-border)',
+                            background: 'var(--bd-overlay-md, rgba(0,0,0,0.02))',
+                          }}
+                        >
+                          <span style={{ color: 'var(--bd-fg)' }}>{ph.phase_name}</span>
+                          <span className="text-xs" style={{ color: 'var(--bd-fg-muted)' }}>
+                            {ph.turns}轮 / 均{ph.avg_minutes.toFixed(1)}分 / 总{ph.total_minutes.toFixed(0)}分
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-sm py-8 text-center" style={{ color: 'var(--bd-fg-muted)' }}>
+                暂无统计数据
+              </div>
+            )}
+          </div>
         </div>
       )}
 

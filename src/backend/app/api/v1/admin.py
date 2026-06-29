@@ -17,7 +17,7 @@ from app.utils.simple_activation_manager import (
 )
 import json
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import select
 from app.models.database import AsyncSessionLocal
 from app.models.analytics import AnalyticsReport
@@ -193,7 +193,7 @@ async def _rows_from_analytics_reports(default_status: str) -> List[Dict[str, An
                 {
                     "activation_code": activation_code,
                     "session_id": session_id,
-                    "created_at": created_at.isoformat() + "Z" if created_at else None,
+                    "created_at": created_at.isoformat() if created_at else None,
                     "mode": "combined",
                     "status": default_status,
                     "source": "analytics_reports",
@@ -589,7 +589,7 @@ async def list_activation_recycle_bin(current_user: Optional[dict] = Depends(get
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     manager = SimpleActivationManager()
     recycle = manager.list_recycle_bin()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     items = []
     for rec in recycle.values():
         try:
@@ -2011,8 +2011,8 @@ async def admin_list_users(
                     "username": u.username,
                     "is_active": u.is_active,
                     "email_verified": getattr(u, "email_verified", True),
-                    "created_at": u.created_at.isoformat() + "Z" if u.created_at else None,
-                    "last_login_at": u.last_login_at.isoformat() + "Z" if u.last_login_at else None,
+                    "created_at": u.created_at.isoformat() if u.created_at else None,
+                    "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
                     "profile_completed": profile.profile_completed if profile else False,
                     "activation_count": len(activations),
                 }
@@ -2109,9 +2109,9 @@ async def admin_get_user_detail(
             "phone": user.phone,
             "username": user.username,
             "is_active": user.is_active,
-            "created_at": user.created_at.isoformat() + "Z" if user.created_at else None,
-            "updated_at": user.updated_at.isoformat() + "Z" if user.updated_at else None,
-            "last_login_at": user.last_login_at.isoformat() + "Z" if user.last_login_at else None,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "updated_at": user.updated_at.isoformat() if user.updated_at else None,
+            "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
             "profile": {
                 "gender": profile.gender if profile else None,
                 "age": profile.age if profile else None,
@@ -2176,3 +2176,139 @@ async def admin_verify_user_email(
         "message": "success",
         "data": {"user_id": user.id, "email_verified": True},
     }
+
+
+# ─── 批量导出报告（T1） ────────────────────────────────────────
+
+
+class BatchExportRequest(BaseModel):
+    """批量导出请求"""
+
+    report_ids: List[str] = Field(..., description="报告 ID 列表")
+    format: str = Field("md", description="导出格式：md 或 txt")
+
+
+@router.post("/reports/export/batch")
+async def export_reports_batch(
+    request: BatchExportRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """
+    批量导出报告对话记录（zip）。
+    - 仅 super_admin 可调用
+    - 单次最多 50 个 report，超出返回 400
+    - 每个 report 一个文件（md/txt），文件内按 5 phase 分章节
+    - 不存在的 report_id 跳过，不影响其他 report
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+
+    # 格式校验
+    fmt = (request.format or "md").strip().lower()
+    if fmt not in ("md", "txt"):
+        raise HTTPException(status_code=400, detail="format 仅支持 md 或 txt")
+
+    # 数量上限校验
+    report_ids = request.report_ids or []
+    if len(report_ids) > 50:
+        raise HTTPException(
+            status_code=400,
+            detail="单次最多导出 50 个，请分批操作",
+        )
+    if not report_ids:
+        raise HTTPException(status_code=400, detail="report_ids 不能为空")
+
+    # 去重，保持顺序
+    seen = set()
+    unique_ids: List[str] = []
+    for rid in report_ids:
+        rid = (rid or "").strip()
+        if rid and rid not in seen:
+            seen.add(rid)
+            unique_ids.append(rid)
+
+    # 收集每个 report 的文件内容
+    from app.services.batch_export_service import BatchExportService
+
+    batch_service = BatchExportService()
+    files: List[dict] = []  # [{"filename": str, "content": str}, ...]
+    skipped: List[str] = []
+    for rid in unique_ids:
+        result = await batch_service.collect_report_export(report_id=rid, fmt=fmt)
+        if result is None:
+            skipped.append(rid)
+            continue
+        filename, content = result
+        files.append({"filename": filename, "content": content})
+
+    if not files:
+        raise HTTPException(
+            status_code=404,
+            detail=f"所有 report_id 均不存在或无数据，跳过: {skipped}",
+        )
+
+    # 打包 zip（内存流）
+    import io
+    import zipfile
+
+    from fastapi.responses import StreamingResponse
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for f in files:
+            zf.writestr(f["filename"], f["content"])
+    buf.seek(0)
+
+    zip_filename = f"reports_batch_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.zip"
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'},
+    )
+
+
+# ─── 每轮平均时间统计（T3） ─────────────────────────────────────
+
+
+@router.get("/users/{user_id}/conversation-stats")
+async def get_user_conversation_stats(
+    user_id: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """
+    获取用户所有 report 对话的每轮平均时长统计（仅 super_admin）。
+
+    Returns:
+        统计数据：total_turns / avg_minutes / total_minutes /
+        per_phase / reminder_text
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+
+    from app.services.conversation_stats_service import ConversationStatsService
+
+    svc = ConversationStatsService()
+    stats = await svc.compute_by_user(user_id)
+    return {"code": 200, "message": "success", "data": stats}
+
+
+@router.get("/reports/{report_id}/conversation-stats")
+async def get_report_conversation_stats(
+    report_id: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """
+    获取单个 report 的每轮平均时长统计（仅 super_admin）。
+
+    Returns:
+        统计数据：total_turns / avg_minutes / total_minutes /
+        per_phase / reminder_text
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+
+    from app.services.conversation_stats_service import ConversationStatsService
+
+    svc = ConversationStatsService()
+    stats = await svc.compute_by_report(report_id)
+    return {"code": 200, "message": "success", "data": stats}
