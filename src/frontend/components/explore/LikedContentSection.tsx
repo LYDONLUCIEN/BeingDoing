@@ -5,6 +5,7 @@ import { Heart, ExternalLink, AlertCircle, ChevronDown, ChevronUp } from 'lucide
 import { motion, AnimatePresence } from 'framer-motion';
 import { getLikes, getLikedMessageTrace, type LikedRecord } from '@/lib/api/analytics';
 import { useLocale } from '@/hooks/useLocale';
+import { formatDate } from '@/lib/utils/formatTime';
 
 interface LikedContentSectionProps {
   /** 激活码（用于筛选该用户的点赞） */
@@ -132,7 +133,7 @@ export default function LikedContentSection({ activationCode }: LikedContentSect
                       )}
                       {record.created_at && (
                         <span className="text-[10px] text-bd-ghost">
-                          {new Date(record.created_at).toLocaleDateString('zh-CN')}
+                          {formatDate(record.created_at, 'zh-CN')}
                         </span>
                       )}
                     </div>

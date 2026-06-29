@@ -7,6 +7,7 @@ ConversationStatsService 及离线解析器单元测试（T3）。
 3. 跨 phase 异常长时长(>2h) -> 过滤或标注
 4. 离线脚本解析 T1 导出格式 -> 输出正确统计
 """
+
 from __future__ import annotations
 
 import json
@@ -17,15 +18,14 @@ from typing import Dict, List
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from app.services.conversation_stats_service import (
     PHASE_LABEL_CN,
-    compute_turn_stats_from_messages,
     ConversationStatsService,
+    compute_turn_stats_from_messages,
 )
 
-
 # ── 辅助函数 ────────────────────────────────────────────────────
+
 
 def _ts(minutes: int, base_minute: int = 0) -> str:
     """生成 ISO 时间戳（从 2026-01-01T00:00:00 起加 minutes 分钟）。"""
@@ -42,7 +42,13 @@ def _make_user_turn(
     """构造一轮对话（user 消息 + 可选 assistant 消息）。"""
     msgs = [{"role": "user", "content": f"用户消息{user_idx}", "created_at": user_ts}]
     if assistant_ts:
-        msgs.append({"role": "assistant", "content": f"回复{user_idx}", "created_at": assistant_ts})
+        msgs.append(
+            {
+                "role": "assistant",
+                "content": f"回复{user_idx}",
+                "created_at": assistant_ts,
+            }
+        )
     return msgs
 
 
@@ -87,6 +93,7 @@ def _make_record(
 
 # ── 公共函数测试 ────────────────────────────────────────────────
 
+
 def test_12_turns_102_minutes_avg_8_5() -> None:
     """12 轮、总 102 分钟 -> avg 8.5 分钟。"""
     # 构造 12 轮 user 消息，间隔总计 102 分钟
@@ -107,16 +114,30 @@ def test_12_turns_102_minutes_avg_8_5() -> None:
         # user 消息
         user_min = i * 8 if i < 11 else 11 * 8  # 0, 8, 16, ..., 80, 88
         user_dt = base + timedelta(minutes=user_min)
-        messages.append({"role": "user", "content": f"问{i}", "created_at": user_dt.isoformat()})
+        messages.append(
+            {"role": "user", "content": f"问{i}", "created_at": user_dt.isoformat()}
+        )
 
         if i < 11:
             # assistant 回复，在第 i+1 轮之前
             asst_dt = base + timedelta(minutes=user_min + 7)
-            messages.append({"role": "assistant", "content": f"答{i}", "created_at": asst_dt.isoformat()})
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": f"答{i}",
+                    "created_at": asst_dt.isoformat(),
+                }
+            )
         else:
             # 最后一轮的 assistant（收尾），14 分钟后
             asst_dt = base + timedelta(minutes=user_min + 14)
-            messages.append({"role": "assistant", "content": f"答{i}", "created_at": asst_dt.isoformat()})
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": f"答{i}",
+                    "created_at": asst_dt.isoformat(),
+                }
+            )
 
     stats = compute_turn_stats_from_messages(messages)
 
@@ -188,6 +209,7 @@ def test_no_user_messages() -> None:
 
 # ── Service 层测试（mock ExportService） ────────────────────────
 
+
 @pytest.fixture
 def stats_service(tmp_path: Path) -> ConversationStatsService:
     """构造一个用 tmp 目录的 ConversationStatsService。"""
@@ -207,22 +229,42 @@ def _mock_collect_export_data_12_turns(user_id: str, session_id: str) -> dict:
     for i in range(12):
         user_min = i * 8 if i < 11 else 11 * 8
         user_dt = base + timedelta(minutes=user_min)
-        messages.append({"role": "user", "content": f"问{i}", "created_at": user_dt.isoformat()})
+        messages.append(
+            {"role": "user", "content": f"问{i}", "created_at": user_dt.isoformat()}
+        )
         if i < 11:
             asst_dt = base + timedelta(minutes=user_min + 7)
-            messages.append({"role": "assistant", "content": f"答{i}", "created_at": asst_dt.isoformat()})
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": f"答{i}",
+                    "created_at": asst_dt.isoformat(),
+                }
+            )
         else:
             asst_dt = base + timedelta(minutes=user_min + 14)
-            messages.append({"role": "assistant", "content": f"答{i}", "created_at": asst_dt.isoformat()})
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": f"答{i}",
+                    "created_at": asst_dt.isoformat(),
+                }
+            )
 
     return {
-        "session": {"session_id": session_id, "status": "completed", "created_at": "2026-01-01T00:00:00"},
+        "session": {
+            "session_id": session_id,
+            "status": "completed",
+            "created_at": "2026-01-01T00:00:00",
+        },
         "conversation_history": {f"cat__{session_id}": messages},
     }
 
 
 @pytest.mark.asyncio
-async def test_compute_by_report_12_turns(stats_service: ConversationStatsService) -> None:
+async def test_compute_by_report_12_turns(
+    stats_service: ConversationStatsService,
+) -> None:
     """report 统计：12 轮、总 102 分钟 -> avg 8.5 分钟。"""
     root = stats_service.registry.simple_base_dir
     rid = "rpt-12turns"
@@ -246,7 +288,9 @@ async def test_compute_by_report_12_turns(stats_service: ConversationStatsServic
 
 
 @pytest.mark.asyncio
-async def test_compute_by_report_not_exist(stats_service: ConversationStatsService) -> None:
+async def test_compute_by_report_not_exist(
+    stats_service: ConversationStatsService,
+) -> None:
     """report 不存在 -> 返回空统计。"""
     result = await stats_service.compute_by_report("nonexistent")
     assert result["total_turns"] == 0
@@ -258,7 +302,9 @@ async def test_compute_by_user(stats_service: ConversationStatsService) -> None:
     """user 统计：聚合该用户所有 report。"""
     root = stats_service.registry.simple_base_dir
     rid = "rpt-user1"
-    record = _make_record(rid, user_id="user-agg", selected_sessions={"values": "sess-v"})
+    record = _make_record(
+        rid, user_id="user-agg", selected_sessions={"values": "sess-v"}
+    )
     _write_record(root, rid, record)
 
     with patch.object(
@@ -273,6 +319,7 @@ async def test_compute_by_user(stats_service: ConversationStatsService) -> None:
 
 
 # ── 离线脚本解析测试 ────────────────────────────────────────────
+
 
 def test_parse_export_file_md_12_turns() -> None:
     """离线解析 T1 导出 md 文件 -> 12 轮、102 分钟。"""
@@ -320,7 +367,7 @@ def test_parse_export_file_md_12_turns() -> None:
     if str(scripts_dir) not in sys.path:
         sys.path.insert(0, str(scripts_dir))
 
-    from conversation_stats import parse_export_file, compute_report_stats_from_parsed
+    from conversation_stats import compute_report_stats_from_parsed, parse_export_file
 
     report_id, meta, phases = parse_export_file(content, "report_rpt-offline-12.md")
     assert report_id == "rpt-offline-12"

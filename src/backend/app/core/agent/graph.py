@@ -6,24 +6,29 @@ LangGraph 状态图：思考链（reasoning → action → observation）循环�
 - 基础模式：create_agent_graph + create_initial_state（load_full_context=False）
 - 完整上下文模式：create_initial_state(load_full_context=True) + save_context_after_agent
 """
-from typing import Optional, Any, Dict, List
-from datetime import datetime
-from langgraph.graph import StateGraph, END
-from app.core.agent.state import AgentState
-from app.core.agent.config import AgentRunConfig, DEFAULT_RUN_CONFIG
+
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+from langgraph.graph import END, StateGraph
+
+from app.core.agent.config import DEFAULT_RUN_CONFIG, AgentRunConfig
 from app.core.agent.nodes import (
     action_node,
-    observation_node,
     guide_node,
+    observation_node,
 )
+
 # v2.4: 切换到新的reasoning节点（支持逐题引导）
 from app.core.agent.nodes.reasoning_v2 import reasoning_node
 from app.core.agent.nodes.user_agent import user_agent_node
-from app.core.agent.tools import ToolRegistry, SearchTool, GuideTool, ExampleTool
+from app.core.agent.state import AgentState
+from app.core.agent.tools import ExampleTool, GuideTool, SearchTool, ToolRegistry
 
 
 def make_should_continue(max_iterations: int = 10):
     """供测试或外部构造条件边使用。"""
+
     def should_continue(state: AgentState) -> str:
         if state.get("error"):
             return "end"
@@ -39,6 +44,7 @@ def make_should_continue(max_iterations: int = 10):
         if step_round_count >= max_rounds_per_step:
             return "end"
         return "continue"
+
     return should_continue
 
 
@@ -76,7 +82,7 @@ def create_agent_graph(config: Optional[AgentRunConfig] = None):
             {
                 "continue": "reasoning",
                 "end": "user_agent",
-            }
+            },
         )
         graph.add_edge("user_agent", END)
     else:
@@ -86,7 +92,7 @@ def create_agent_graph(config: Optional[AgentRunConfig] = None):
             {
                 "continue": "reasoning",
                 "end": END,
-            }
+            },
         )
 
     return graph.compile()
@@ -165,10 +171,9 @@ async def create_initial_state(
                     loaded_messages.append(LLMMessage(role=role, content=content))
 
             for flow_msg in context_data.get("all_flow_messages", []):
-                loaded_messages.append(LLMMessage(
-                    role="system",
-                    content=f"[AI 思考] {flow_msg.get('content', '')}"
-                ))
+                loaded_messages.append(
+                    LLMMessage(role="system", content=f"[AI 思考] {flow_msg.get('content', '')}")
+                )
 
             if loaded_messages:
                 state["inner_messages"] = loaded_messages
@@ -213,7 +218,7 @@ async def save_context_after_agent(
             role="user",
             content=state.get("user_input", ""),
             message_type="user_input",
-            metadata={"current_step": state.get("current_step")}
+            metadata={"current_step": state.get("current_step")},
         )
 
     # 2. 保存 AI 的思考过程到 all_flow（来自 logs）
@@ -224,22 +229,21 @@ async def save_context_after_agent(
             role="system",
             content=log_entry.get("message", ""),
             message_type="ai_thinking",
-            metadata={
-                "done": log_entry.get("done", True),
-                "step": state.get("current_step")
-            }
+            metadata={"done": log_entry.get("done", True), "step": state.get("current_step")},
         )
 
     # 3. 保存 AI 的最终响应到 all_flow
     messages = state.get("messages", [])
-    final_response = state.get("final_response") or (getattr(messages[-1], "content", "") if messages else "")
+    final_response = state.get("final_response") or (
+        getattr(messages[-1], "content", "") if messages else ""
+    )
     if final_response:
         await conv_manager.append_all_flow_message(
             session_id=session_id,
             role="assistant",
             content=final_response,
             message_type="ai_response",
-            metadata={"current_step": state.get("current_step")}
+            metadata={"current_step": state.get("current_step")},
         )
 
     # 4. 保存 AI 总结的 note（结论性内容）
@@ -259,8 +263,8 @@ async def save_context_after_agent(
                 metadata={
                     "current_step": state.get("current_step"),
                     "total_summaries": len(summaries),
-                    "generated_at": datetime.utcnow().isoformat() + "Z"
-                }
+                    "generated_at": datetime.now(timezone.utc).isoformat(),
+                },
             )
 
     # 5. 保存 Answer Card 到 note.json
@@ -276,6 +280,6 @@ async def save_context_after_agent(
                 "ai_analysis": answer_card.get("ai_analysis"),
                 "key_insights": answer_card.get("key_insights"),
                 "current_step": state.get("current_step"),
-                "created_at": datetime.utcnow().isoformat() + "Z"
-            }
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            },
         )

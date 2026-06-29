@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -20,7 +20,7 @@ from app.utils.simple_activation_manager import get_simple_test_base_dir
 
 
 def _now_iso() -> str:
-    return datetime.utcnow().isoformat() + "Z"
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _lab_root() -> Path:
@@ -183,7 +183,9 @@ def set_current_version(profile_id: str, version_id: str) -> Dict[str, Any]:
     if not target:
         raise ValueError("profile 不存在")
     versions = target.get("versions")
-    if not isinstance(versions, list) or not any((v or {}).get("version_id") == vid for v in versions):
+    if not isinstance(versions, list) or not any(
+        (v or {}).get("version_id") == vid for v in versions
+    ):
         raise ValueError("version 不存在")
     target["current_version_id"] = vid
     target["updated_at"] = _now_iso()
@@ -279,7 +281,9 @@ def resolve_simple_chat_prompt_override(
     versions = profile.get("versions")
     if not current_vid or not isinstance(versions, list):
         return None
-    current = next((v for v in versions if isinstance(v, dict) and v.get("version_id") == current_vid), None)
+    current = next(
+        (v for v in versions if isinstance(v, dict) and v.get("version_id") == current_vid), None
+    )
     if not isinstance(current, dict):
         return None
     template = (current.get("simple_chat_system_prompt_template") or "").strip()
@@ -305,7 +309,9 @@ def export_current_profile_payload(profile_id: str) -> Dict[str, Any]:
     versions = profile.get("versions")
     if not current_vid or not isinstance(versions, list):
         raise ValueError("profile 尚未设置生效版本")
-    current = next((v for v in versions if isinstance(v, dict) and v.get("version_id") == current_vid), None)
+    current = next(
+        (v for v in versions if isinstance(v, dict) and v.get("version_id") == current_vid), None
+    )
     if not isinstance(current, dict):
         raise ValueError("生效版本不存在")
     template = (current.get("simple_chat_system_prompt_template") or "").strip()

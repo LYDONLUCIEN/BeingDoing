@@ -26,6 +26,7 @@ import {
   type AdminSavepointReplayLogItem,
 } from '@/lib/api/admin';
 import { loadSavepointAndNavigate } from '@/hooks/useAdminSavepoints';
+import { formatLocalDateTime } from '@/lib/utils/formatTime';
 import { FlaskConical, ExternalLink, Trash2, Copy, RefreshCw } from 'lucide-react';
 
 export default function AdminSandboxesPage() {
@@ -166,13 +167,9 @@ export default function AdminSandboxesPage() {
 
   const formatTime = (iso?: string | null) => {
     if (!iso) return '—';
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return iso;
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-      d.getDate(),
-    ).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(
-      d.getMinutes(),
-    ).padStart(2, '0')}`;
+    // 委托 formatLocalDateTime，确保 tz-aware 字符串按浏览器本地时区显示
+    const formatted = formatLocalDateTime(iso);
+    return formatted === '-' ? iso : formatted;
   };
 
   const copyText = async (text: string) => {

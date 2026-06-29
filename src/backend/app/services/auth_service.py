@@ -1,19 +1,22 @@
 """
 用户认证服务
 """
-from typing import Optional, Dict, Any, Tuple
-from datetime import datetime, timedelta
-import random
+
 import hashlib
+import random
 import uuid
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, Optional, Tuple
+
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy import select
+
+from app.config.settings import settings
 from app.core.database import UserDB
 from app.models.database import AsyncSessionLocal, engine
-from app.config.settings import settings
-from app.services.email_service import EmailService
 from app.models.refresh_token import RefreshToken
+from app.services.email_service import EmailService
 
 # 密码加密上下文
 # 说明：
@@ -51,7 +54,9 @@ def _hash_refresh_token(raw_token: str) -> str:
     return hashlib.sha256((raw_token or "").encode("utf-8")).hexdigest()
 
 
-def _create_token(data: Dict, expires_delta: Optional[timedelta] = None, token_type: str = "access") -> str:
+def _create_token(
+    data: Dict, expires_delta: Optional[timedelta] = None, token_type: str = "access"
+) -> str:
     """
     底层 JWT 编码：写入 exp 和 type，由上层业务方法调用。
 
@@ -65,9 +70,9 @@ def _create_token(data: Dict, expires_delta: Optional[timedelta] = None, token_t
     """
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
     to_encode.update({"exp": expire, "type": token_type})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
@@ -75,29 +80,29 @@ def _create_token(data: Dict, expires_delta: Optional[timedelta] = None, token_t
 
 class AuthService:
     """用户认证服务"""
-    
+
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
         """
         验证密码
-        
+
         Args:
             plain_password: 明文密码
             hashed_password: 加密后的密码
-        
+
         Returns:
             是否匹配
         """
         return pwd_context.verify(plain_password, hashed_password)
-    
+
     @staticmethod
     def get_password_hash(password: str) -> str:
         """
         加密密码（内部会按 bcrypt 72 字节限制截断，避免报错）
-        
+
         Args:
             password: 明文密码
-        
+
         Returns:
             加密后的密码
         """
@@ -113,8 +118,10 @@ class AuthService:
         _refresh_schema_ready = True
 
     @staticmethod
-    def _create_refresh_token(user_id: str, family_id: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
-        now = datetime.utcnow()
+    def _create_refresh_token(
+        user_id: str, family_id: Optional[str] = None
+    ) -> Tuple[str, Dict[str, Any]]:
+        now = datetime.now(timezone.utc)
         exp = now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
         jti = uuid.uuid4().hex
         family = family_id or uuid.uuid4().hex
@@ -136,8 +143,14 @@ class AuthService:
         payload: Dict[str, Any],
     ) -> None:
         await AuthService._ensure_refresh_schema()
-        exp_dt = datetime.utcfromtimestamp(int(payload["exp"])) if isinstance(payload.get("exp"), int) else (
-            payload.get("exp") if isinstance(payload.get("exp"), datetime) else datetime.utcnow()
+        exp_dt = (
+            datetime.fromtimestamp(int(payload["exp"]), tz=timezone.utc)
+            if isinstance(payload.get("exp"), int)
+            else (
+                payload.get("exp")
+                if isinstance(payload.get("exp"), datetime)
+                else datetime.now(timezone.utc)
+            )
         )
         async with AsyncSessionLocal() as db:
             rec = RefreshToken(
@@ -155,7 +168,9 @@ class AuthService:
         access_token = AuthService.create_access_token(
             {"sub": user.id, "email": user.email, "phone": user.phone}
         )
-        refresh_token, refresh_payload = AuthService._create_refresh_token(user.id, family_id=family_id)
+        refresh_token, refresh_payload = AuthService._create_refresh_token(
+            user.id, family_id=family_id
+        )
         await AuthService._persist_refresh_token(user.id, refresh_token, refresh_payload)
         return {
             "token": access_token,
@@ -191,7 +206,7 @@ class AuthService:
             raise ValueError("refresh_token 载荷无效")
 
         await AuthService._ensure_refresh_schema()
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         token_hash = _hash_refresh_token(token)
 
         async with AsyncSessionLocal() as db:
@@ -268,7 +283,7 @@ class AuthService:
                         token_hash=_hash_refresh_token(new_refresh_token),
                         jti=str(new_payload.get("jti") or ""),
                         family_id=rec.family_id,
-                        expires_at=datetime.utcfromtimestamp(int(new_payload["exp"])),
+                        expires_at=datetime.fromtimestamp(int(new_payload["exp"]), tz=timezone.utc),
                     )
                 )
                 await db.commit()
@@ -293,7 +308,7 @@ class AuthService:
         if not token:
             return
         await AuthService._ensure_refresh_schema()
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         async with AsyncSessionLocal() as db:
             res = await db.execute(
                 select(RefreshToken).where(RefreshToken.token_hash == _hash_refresh_token(token))
@@ -304,7 +319,7 @@ class AuthService:
                 rec.revoked_at = now
                 rec.revoked_reason = "logout"
                 await db.commit()
-    
+
     @staticmethod
     def create_access_token(data: Dict, expires_delta: Optional[timedelta] = None) -> str:
         """
@@ -334,15 +349,15 @@ class AuthService:
         if expires_delta is None:
             expires_delta = timedelta(hours=24)
         return _create_token(data, expires_delta=expires_delta, token_type="email_verify")
-    
+
     @staticmethod
     def verify_token(token: str, expected_type: str = "access") -> Optional[Dict]:
         """
         验证JWT Token
-        
+
         Args:
             token: JWT Token字符串
-        
+
         Returns:
             Token数据（如果有效），否则返回None
         """
@@ -359,17 +374,17 @@ class AuthService:
             return payload
         except JWTError:
             return None
-    
+
     # ===================== 找回密码相关 =====================
 
     @staticmethod
     async def request_password_reset(email: str) -> None:
         """
         申请重置密码：生成一次性验证码，并通过邮件发送（当前开发环境直接打印到日志）
-        
+
         Args:
             email: 用户邮箱
-        
+
         Raises:
             ValueError: 如果用户不存在或邮箱未绑定
         """
@@ -384,15 +399,19 @@ class AuthService:
                 raise ValueError("用户不存在或未绑定该邮箱")
             if not user.is_active:
                 raise ValueError("用户已被禁用")
-        
+
         # 60 秒冷却期：避免连续轰炸发送
         last = _password_reset_email_codes.get(email)
-        if last and last.get("sent_at") and (datetime.utcnow() - last["sent_at"]).total_seconds() < 60:
+        if (
+            last
+            and last.get("sent_at")
+            and (datetime.now(timezone.utc) - last["sent_at"]).total_seconds() < 60
+        ):
             raise ValueError("发送过于频繁，请 60 秒后再试")
 
         # 生成 6 位数字验证码（最新发送覆盖旧验证码）
         code = f"{random.randint(0, 999999):06d}"
-        expires_at = datetime.utcnow() + timedelta(minutes=5)
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
         # 通过 SMTP 发送邮件，发送成功后再写入本次验证码记录
         await EmailService.send_password_reset_code(
             to_email=email,
@@ -402,23 +421,19 @@ class AuthService:
         _password_reset_email_codes[email] = {
             "code": code,
             "expires_at": expires_at,
-            "sent_at": datetime.utcnow(),
+            "sent_at": datetime.now(timezone.utc),
         }
 
     @staticmethod
-    async def reset_password_with_code(
-        email: str,
-        code: str,
-        new_password: str
-    ) -> None:
+    async def reset_password_with_code(email: str, code: str, new_password: str) -> None:
         """
         通过邮箱验证码重置密码
-        
+
         Args:
             email: 用户邮箱
             code: 验证码
             new_password: 新密码
-        
+
         Raises:
             ValueError: 如果验证码错误/过期，或用户不存在
         """
@@ -427,20 +442,20 @@ class AuthService:
             raise ValueError("邮箱不能为空")
         if not new_password:
             raise ValueError("新密码不能为空")
-        
+
         record = _password_reset_email_codes.get(email)
         if not record:
             raise ValueError("请先申请验证码")
-        
+
         # 检查过期
-        if datetime.utcnow() > record["expires_at"]:
+        if datetime.now(timezone.utc) > record["expires_at"]:
             del _password_reset_email_codes[email]
             raise ValueError("验证码已过期，请重新获取")
-        
+
         # 检查验证码
         if record["code"] != code:
             raise ValueError("验证码错误")
-        
+
         # 验证通过，更新密码
         async with AsyncSessionLocal() as db:
             user_db = UserDB(db)
@@ -449,10 +464,10 @@ class AuthService:
                 raise ValueError("用户不存在")
             if not user.is_active:
                 raise ValueError("用户已被禁用")
-            
+
             password_hash = AuthService.get_password_hash(new_password)
             await user_db.update_user(user.id, password_hash=password_hash)
-        
+
         # 一次性验证码，成功后删除
         _password_reset_email_codes.pop(email, None)
 
@@ -460,10 +475,10 @@ class AuthService:
     async def request_password_reset_by_phone(phone: str) -> None:
         """
         申请重置密码：通过手机号生成一次性验证码（假短信，打印到日志）
-        
+
         Args:
             phone: 用户手机号
-        
+
         Raises:
             ValueError: 如果用户不存在或手机号未绑定
         """
@@ -478,29 +493,31 @@ class AuthService:
                 raise ValueError("用户不存在或未绑定该手机号")
             if not user.is_active:
                 raise ValueError("用户已被禁用")
-        
+
         # 60 秒冷却期
         last = _password_reset_phone_codes.get(phone)
-        if last and last.get("sent_at") and (datetime.utcnow() - last["sent_at"]).total_seconds() < 60:
+        if (
+            last
+            and last.get("sent_at")
+            and (datetime.now(timezone.utc) - last["sent_at"]).total_seconds() < 60
+        ):
             raise ValueError("发送过于频繁，请 60 秒后再试")
 
         # 最新发送覆盖旧验证码
         code = f"{random.randint(0, 999999):06d}"
-        expires_at = datetime.utcnow() + timedelta(minutes=5)
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
         _password_reset_phone_codes[phone] = {
             "code": code,
             "expires_at": expires_at,
-            "sent_at": datetime.utcnow(),
+            "sent_at": datetime.now(timezone.utc),
         }
         # 假短信通道：仅在控制台打印，便于开发调试
-        print(f"[DEV] SMS password reset code for {phone}: {code} (expires at {expires_at.isoformat()} UTC)")
+        print(
+            f"[DEV] SMS password reset code for {phone}: {code} (expires at {expires_at.isoformat()} UTC)"
+        )
 
     @staticmethod
-    async def reset_password_with_phone_code(
-        phone: str,
-        code: str,
-        new_password: str
-    ) -> None:
+    async def reset_password_with_phone_code(phone: str, code: str, new_password: str) -> None:
         """
         通过手机短信验证码重置密码（开发环境假实现）
         """
@@ -509,18 +526,18 @@ class AuthService:
             raise ValueError("手机号不能为空")
         if not new_password:
             raise ValueError("新密码不能为空")
-        
+
         record = _password_reset_phone_codes.get(phone)
         if not record:
             raise ValueError("请先申请验证码")
-        
-        if datetime.utcnow() > record["expires_at"]:
+
+        if datetime.now(timezone.utc) > record["expires_at"]:
             del _password_reset_phone_codes[phone]
             raise ValueError("验证码已过期，请重新获取")
-        
+
         if record["code"] != code:
             raise ValueError("验证码错误")
-        
+
         async with AsyncSessionLocal() as db:
             user_db = UserDB(db)
             user = await user_db.get_user_by_phone(phone)
@@ -528,10 +545,10 @@ class AuthService:
                 raise ValueError("用户不存在")
             if not user.is_active:
                 raise ValueError("用户已被禁用")
-            
+
             password_hash = AuthService.get_password_hash(new_password)
             await user_db.update_user(user.id, password_hash=password_hash)
-        
+
         _password_reset_phone_codes.pop(phone, None)
 
     # ===================== 邮箱验证相关 =====================
@@ -553,15 +570,15 @@ class AuthService:
 
         # 5 分钟冷却
         last_sent = _email_verify_cooldowns.get(email)
-        if last_sent and (datetime.utcnow() - last_sent).total_seconds() < 300:
-            remaining = 300 - (datetime.utcnow() - last_sent).total_seconds()
+        if last_sent and (datetime.now(timezone.utc) - last_sent).total_seconds() < 300:
+            remaining = 300 - (datetime.now(timezone.utc) - last_sent).total_seconds()
             raise ValueError(f"发送过于频繁，请 {int(remaining // 60)} 分钟后再试")
 
         token = AuthService.create_email_verify_token(
             data={"sub": user.id, "email": email},
         )
         await EmailService.send_email_verification(to_email=email, token=token)
-        _email_verify_cooldowns[email] = datetime.utcnow()
+        _email_verify_cooldowns[email] = datetime.now(timezone.utc)
 
     @staticmethod
     async def verify_email_token(token: str) -> Dict:
@@ -590,20 +607,20 @@ class AuthService:
         email: Optional[str] = None,
         phone: Optional[str] = None,
         username: Optional[str] = None,
-        password: str = ""
+        password: str = "",
     ) -> Dict:
         """
         用户注册
-        
+
         Args:
             email: 邮箱（可选）
             phone: 手机号（可选）
             username: 用户名（可选）
             password: 密码
-        
+
         Returns:
             注册结果（包含user_id和token）
-        
+
         Raises:
             ValueError: 如果邮箱或手机号已存在
         """
@@ -613,37 +630,34 @@ class AuthService:
 
         if not email and not phone:
             raise ValueError("邮箱或手机号至少提供一个")
-        
+
         if not password:
             raise ValueError("密码不能为空")
-        
+
         async with AsyncSessionLocal() as db:
             user_db = UserDB(db)
-            
+
             # 检查邮箱是否已存在
             if email:
                 existing_user = await user_db.get_user_by_email(email)
                 if existing_user:
                     raise ValueError("邮箱已被注册")
-            
+
             # 检查手机号是否已存在
             if phone:
                 existing_user = await user_db.get_user_by_phone(phone)
                 if existing_user:
                     raise ValueError("手机号已被注册")
-            
+
             # 创建用户
             password_hash = AuthService.get_password_hash(password)
             user = await user_db.create_user(
-                email=email,
-                phone=phone,
-                username=username,
-                password_hash=password_hash
+                email=email, phone=phone, username=username, password_hash=password_hash
             )
             # 新注册用户邮箱未验证
             if email:
                 await user_db.update_user(user.id, email_verified=False)
-            
+
             token_pair = await AuthService._issue_token_pair(user)
             return {
                 "user_id": user.id,
@@ -652,24 +666,22 @@ class AuthService:
                 "username": user.username,
                 **token_pair,
             }
-    
+
     @staticmethod
     async def login(
-        email: Optional[str] = None,
-        phone: Optional[str] = None,
-        password: str = ""
+        email: Optional[str] = None, phone: Optional[str] = None, password: str = ""
     ) -> Dict:
         """
         用户登录
-        
+
         Args:
             email: 邮箱（可选）
             phone: 手机号（可选）
             password: 密码
-        
+
         Returns:
             登录结果（包含user_id和token）
-        
+
         Raises:
             ValueError: 如果用户不存在或密码错误
         """
@@ -678,32 +690,32 @@ class AuthService:
 
         if not email and not phone:
             raise ValueError("邮箱或手机号至少提供一个")
-        
+
         if not password:
             raise ValueError("密码不能为空")
-        
+
         async with AsyncSessionLocal() as db:
             user_db = UserDB(db)
-            
+
             # 查找用户
             if email:
                 user = await user_db.get_user_by_email(email)
             else:
                 user = await user_db.get_user_by_phone(phone)
-            
+
             if not user:
                 raise ValueError("用户不存在")
-            
+
             if not user.is_active:
                 raise ValueError("用户已被禁用")
-            
+
             # 验证密码
             if not AuthService.verify_password(password, user.password_hash):
                 raise ValueError("密码错误")
-            
+
             # 更新最后登录时间
-            await user_db.update_user(user.id, last_login_at=datetime.utcnow())
-            
+            await user_db.update_user(user.id, last_login_at=datetime.now(timezone.utc))
+
             token_pair = await AuthService._issue_token_pair(user)
             return {
                 "user_id": user.id,
@@ -712,33 +724,33 @@ class AuthService:
                 "username": user.username,
                 **token_pair,
             }
-    
+
     @staticmethod
     async def get_current_user(token: str) -> Optional[Dict]:
         """
         从Token获取当前用户信息
-        
+
         Args:
             token: JWT Token
-        
+
         Returns:
             用户信息字典，如果Token无效则返回None
         """
         payload = AuthService.verify_token(token)
         if not payload:
             return None
-        
+
         user_id = payload.get("sub")
         if not user_id:
             return None
-        
+
         async with AsyncSessionLocal() as db:
             user_db = UserDB(db)
             user = await user_db.get_user_by_id(user_id)
-            
+
             if not user or not user.is_active:
                 return None
-            
+
             return {
                 "user_id": user.id,
                 "email": user.email,

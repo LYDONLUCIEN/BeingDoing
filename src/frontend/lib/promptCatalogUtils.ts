@@ -5,6 +5,7 @@ import type {
   PromptCatalogSection,
 } from '@/lib/api/admin';
 import type { PhaseKey } from '@/lib/explore/session';
+import { formatLocalDateTime } from '@/lib/utils/formatTime';
 
 export const CATEGORY_LABELS: Record<string, string> = {
   intro: '引导语',
@@ -154,7 +155,9 @@ export function downloadJson(filename: string, data: unknown): void {
 
 export function formatAdminTime(iso?: string | null): string {
   if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  // 委托 formatLocalDateTime，确保 tz-aware 字符串按浏览器本地时区显示
+  // （历史 naive 数据在 toDate 内部会补 'Z' 视作 UTC）
+  const formatted = formatLocalDateTime(iso);
+  // 若解析失败，toDate 返回占位符 '-'，这里回退到原值便于排查
+  return formatted === '-' ? iso : formatted;
 }

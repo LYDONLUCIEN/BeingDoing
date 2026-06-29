@@ -36,6 +36,7 @@ LOGS_DIR = DATA_DIR / "logs"
 
 # ========== 工具函数 ==========
 
+
 def load_jsonl(path: Path) -> List[Dict]:
     """读取 JSONL 文件"""
     entries = []
@@ -81,6 +82,7 @@ def save_json(path: Path, data: Dict):
 
 # ========== 1. Debug Log 同步 ==========
 
+
 def sync_debug_logs(dry_run: bool = False) -> Dict:
     """
     双向同步 debug logs:
@@ -89,7 +91,12 @@ def sync_debug_logs(dry_run: bool = False) -> Dict:
 
     合并策略：按 timestamp 去重，两边都写入合并后的完整记录
     """
-    stats = {"sessions_synced": 0, "entries_merged": 0, "new_entries_old_path": 0, "new_entries_new_path": 0}
+    stats = {
+        "sessions_synced": 0,
+        "entries_merged": 0,
+        "new_entries_old_path": 0,
+        "new_entries_new_path": 0,
+    }
 
     # 收集所有 session_id → {path_type: path}
     session_paths: Dict[str, Dict[str, Path]] = {}
@@ -178,6 +185,7 @@ def _extract_user_id(entries: List[Dict]) -> Optional[str]:
 
 # ========== 2. Answer Card 重建 ==========
 
+
 def _extract_ai_summaries_from_history(messages: List[Dict]) -> List[Dict]:
     """
     从对话历史中提取 AI 总结的 "核心发现" 块
@@ -193,19 +201,21 @@ def _extract_ai_summaries_from_history(messages: List[Dict]) -> List[Dict]:
         content = msg.get("content", "")
         if "**核心发现：**" in content or "**核心发现:**" in content:
             # 提取核心发现内容
-            match = re.search(r'\*\*核心发现[：:]\*\*(.*)', content, re.DOTALL)
+            match = re.search(r"\*\*核心发现[：:]\*\*(.*)", content, re.DOTALL)
             if match:
                 summary_text = match.group(1).strip()
                 # 往前找最近的题目内容（assistant 消息中包含 **题目**: 的那条）
                 question_content = _find_preceding_question(messages, i)
                 # 往前找用户的回答
                 user_answers = _collect_user_answers(messages, i)
-                summaries.append({
-                    "ai_summary": summary_text,
-                    "question_content": question_content,
-                    "user_answers": user_answers,
-                    "message_index": i,
-                })
+                summaries.append(
+                    {
+                        "ai_summary": summary_text,
+                        "question_content": question_content,
+                        "user_answers": user_answers,
+                        "message_index": i,
+                    }
+                )
     return summaries
 
 
@@ -218,11 +228,11 @@ def _find_preceding_question(messages: List[Dict], current_idx: int) -> str:
         content = msg.get("content", "")
         # 匹配 **题目**: xxx 或 ### N. xxx
         if "**题目**:" in content or "**题目**：" in content:
-            match = re.search(r'\*\*题目\*\*[：:]\s*(.*?)(?:\n|$)', content)
+            match = re.search(r"\*\*题目\*\*[：:]\s*(.*?)(?:\n|$)", content)
             if match:
                 return match.group(1).strip()
         # 匹配 ### N. 格式的题目
-        match = re.search(r'(###\s*\d+\.\s*.+?)(?:\n|$)', content)
+        match = re.search(r"(###\s*\d+\.\s*.+?)(?:\n|$)", content)
         if match:
             return match.group(1).strip()
     return ""
@@ -259,7 +269,12 @@ def sync_answer_cards(dry_run: bool = False) -> Dict:
     2. 对于已完成(completed)的题目，检查是否已有 answer_card
     3. 如果缺失，从对话历史中提取 AI 总结内容，生成 answer_card
     """
-    stats = {"sessions_scanned": 0, "cards_created": 0, "cards_existing": 0, "sessions_with_new_cards": 0}
+    stats = {
+        "sessions_scanned": 0,
+        "cards_created": 0,
+        "cards_existing": 0,
+        "sessions_with_new_cards": 0,
+    }
 
     if not QUESTION_PROGRESS_DIR.is_dir():
         print("  [跳过] question_progress 目录不存在")
@@ -355,15 +370,17 @@ def sync_answer_cards(dry_run: bool = False) -> Dict:
 
         if dry_run:
             for card in new_cards:
-                print(f"    [预览] session={session_id} q{card['question_id']}: {card['question_content'][:40]}...")
+                print(
+                    f"    [预览] session={session_id} q{card['question_id']}: {card['question_content'][:40]}..."
+                )
             continue
 
         # 写入 note 文件
         if not existing_note:
             existing_note = {
                 "session_id": session_id,
-                "created_at": datetime.now(timezone.utc).isoformat() + "Z",
-                "updated_at": datetime.now(timezone.utc).isoformat() + "Z",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
                 "notes": [],
             }
 
@@ -372,7 +389,7 @@ def sync_answer_cards(dry_run: bool = False) -> Dict:
                 "id": f"answer_card_{card['question_id']}",
                 "type": "answer_card",
                 "content": json.dumps(card, ensure_ascii=False),
-                "created_at": datetime.now(timezone.utc).isoformat() + "Z",
+                "created_at": datetime.now(timezone.utc).isoformat(),
                 "metadata": {
                     "question_id": card["question_id"],
                     "current_step": card["current_step"],
@@ -381,13 +398,14 @@ def sync_answer_cards(dry_run: bool = False) -> Dict:
             }
             existing_note["notes"].append(note_entry)
 
-        existing_note["updated_at"] = datetime.now(timezone.utc).isoformat() + "Z"
+        existing_note["updated_at"] = datetime.now(timezone.utc).isoformat()
         save_json(note_path, existing_note)
 
     return stats
 
 
 # ========== 3. 报告 ==========
+
 
 def generate_report() -> str:
     """生成当前数据状态统计报告"""
@@ -434,7 +452,9 @@ def generate_report() -> str:
                         if isinstance(step_data, dict):
                             questions = step_data.get("questions", [])
                             total_questions += len(questions)
-                            total_completed += sum(1 for q in questions if q.get("status") == "completed")
+                            total_completed += sum(
+                                1 for q in questions if q.get("status") == "completed"
+                            )
     lines.append(f"\nQuestion Progress 文件数: {qp_count}")
     lines.append(f"  总题目数: {total_questions}")
     lines.append(f"  已完成题目数: {total_completed}")
@@ -524,6 +544,7 @@ def generate_report() -> str:
 
 
 # ========== 主入口 ==========
+
 
 def main():
     parser = argparse.ArgumentParser(description="BeingDoing 数据同步工具")

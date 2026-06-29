@@ -27,9 +27,9 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from app.utils.simple_activation_manager import (
+    _looks_like_debug_activation_code,
     get_simple_base_dir,
     get_simple_test_base_dir,
-    _looks_like_debug_activation_code,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,22 +37,22 @@ logger = logging.getLogger(__name__)
 _AUDIT_FILENAME = "activation_audit.jsonl"
 
 # ---- 事件类型常量 ----
-EVENT_OWNER_CLAIMED = "owner_claimed"               # 首次绑定归属
-EVENT_OWNER_VERIFIED = "owner_verified"             # 归属校验通过
-EVENT_OWNER_DENIED = "owner_denied"                 # 归属校验拒绝（403）
-EVENT_CLAIM_BLOCKED = "claim_blocked"               # 绑定被阻止（已有归属者）
-EVENT_STATUS_CHANGED = "status_changed"             # 管理员批量状态变更
-EVENT_SOFT_DELETED = "soft_deleted"                 # 软删除到回收站
-EVENT_PERMANENT_DELETED = "permanent_deleted"       # 永久删除
-EVENT_RESTORED = "restored"                         # 从回收站恢复
-EVENT_BATCH_CREATED = "batch_created"               # 批量创建
-EVENT_SYNC_FROM_DB = "sync_from_db"                 # 从数据库同步
-EVENT_ACCESS = "activation_access"                  # 激活码访问（activate 端点）
-EVENT_EXTENDED = "extended_and_activated"           # 延期并自动激活
+EVENT_OWNER_CLAIMED = "owner_claimed"  # 首次绑定归属
+EVENT_OWNER_VERIFIED = "owner_verified"  # 归属校验通过
+EVENT_OWNER_DENIED = "owner_denied"  # 归属校验拒绝（403）
+EVENT_CLAIM_BLOCKED = "claim_blocked"  # 绑定被阻止（已有归属者）
+EVENT_STATUS_CHANGED = "status_changed"  # 管理员批量状态变更
+EVENT_SOFT_DELETED = "soft_deleted"  # 软删除到回收站
+EVENT_PERMANENT_DELETED = "permanent_deleted"  # 永久删除
+EVENT_RESTORED = "restored"  # 从回收站恢复
+EVENT_BATCH_CREATED = "batch_created"  # 批量创建
+EVENT_SYNC_FROM_DB = "sync_from_db"  # 从数据库同步
+EVENT_ACCESS = "activation_access"  # 激活码访问（activate 端点）
+EVENT_EXTENDED = "extended_and_activated"  # 延期并自动激活
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _audit_path_for_code(code: Optional[str]) -> Path:

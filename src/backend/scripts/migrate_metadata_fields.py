@@ -18,12 +18,13 @@ Metadata 字段迁移脚本：将旧结论状态字段迁移到新字段，然�
   # 指定扫描目录
   python scripts/migrate_metadata_fields.py --dirs data/simple/reports data/test/simple
 """
+
 import argparse
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
-from datetime import datetime
 
 # 确保项目根目录在 sys.path 中
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -99,7 +100,9 @@ def migrate_metadata(meta: dict) -> tuple[dict, list[str]]:
 
     # 5. 推断 conclusion_state（如果仍为空）
     if not new_meta.get("conclusion_state"):
-        if meta.get("thread_completed") and (new_meta.get("conclusion_final") or new_meta.get("dimension_conclusion")):
+        if meta.get("thread_completed") and (
+            new_meta.get("conclusion_final") or new_meta.get("dimension_conclusion")
+        ):
             new_meta["conclusion_state"] = "confirmed"
             changes.append("inferred conclusion_state='confirmed' from thread_completed")
         elif new_meta.get("conclusion_draft") or new_meta.get("pending_conclusion"):
@@ -111,7 +114,12 @@ def migrate_metadata(meta: dict) -> tuple[dict, list[str]]:
 
     # 6. 删除旧字段
     removed = []
-    for old_key in ["pending_status", "pending_conclusion", "dimension_conclusion", OLD_NESTED_FIELD]:
+    for old_key in [
+        "pending_status",
+        "pending_conclusion",
+        "dimension_conclusion",
+        OLD_NESTED_FIELD,
+    ]:
         if old_key in new_meta:
             del new_meta[old_key]
             removed.append(old_key)
@@ -138,7 +146,10 @@ def process_file(filepath: Path, dry_run: bool) -> dict:
         return result
 
     # 检查是否有旧字段
-    has_old = any(meta.get(k) for k in ["pending_status", "pending_conclusion", "dimension_conclusion", OLD_NESTED_FIELD])
+    has_old = any(
+        meta.get(k)
+        for k in ["pending_status", "pending_conclusion", "dimension_conclusion", OLD_NESTED_FIELD]
+    )
     if not has_old:
         return result
 
@@ -179,7 +190,9 @@ def scan_and_migrate(dirs: list[str], dry_run: bool) -> list[dict]:
 
 def main():
     parser = argparse.ArgumentParser(description="Migrate old metadata fields to new format")
-    parser.add_argument("--dry-run", action="store_true", help="Preview changes without modifying files")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Preview changes without modifying files"
+    )
     parser.add_argument(
         "--dirs",
         nargs="+",
@@ -200,7 +213,7 @@ def main():
     mode = "DRY RUN" if args.dry_run else "LIVE"
     print(f"\n{'='*60}")
     print(f"  Metadata Migration ({mode})")
-    print(f"  Timestamp: {datetime.utcnow().isoformat()}Z")
+    print(f"  Timestamp: {datetime.now(timezone.utc).isoformat()}")
     print(f"  Scanning: {', '.join(args.dirs)}")
     print(f"{'='*60}\n")
 
@@ -218,7 +231,9 @@ def main():
         print(f"  [ERROR] {r['path']}: {r.get('error', 'unknown')}")
 
     print(f"\n{'='*60}")
-    print(f"  Summary: {len(migrated)} files {'would be ' if args.dry_run else ''}migrated, {len(errors)} errors")
+    print(
+        f"  Summary: {len(migrated)} files {'would be ' if args.dry_run else ''}migrated, {len(errors)} errors"
+    )
     print(f"{'='*60}\n")
 
     if args.dry_run and migrated:

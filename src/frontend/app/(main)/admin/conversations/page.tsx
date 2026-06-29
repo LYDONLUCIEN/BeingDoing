@@ -13,6 +13,7 @@ import {
   saveAsMock,
   type AdminConversationItem,
 } from '@/lib/api/admin';
+import { formatLocalDateTime } from '@/lib/utils/formatTime';
 import { fetchAdminActivations } from '@/lib/api/admin';
 import MessageContent from '@/components/explore/MessageContent';
 import { loadSession, saveSession, setLastActivationCode, type PhaseKey } from '@/lib/explore/session';
@@ -236,7 +237,7 @@ export default function AdminConversationsPage() {
             >
               <div className="flex items-center justify-between mb-2">
                 <p className="text-[11px] font-medium uppercase tracking-wide">{title}</p>
-                <p className="text-[11px] text-bd-subtle">{msg?.created_at || ''}</p>
+                <p className="text-[11px] text-bd-subtle">{msg?.created_at ? formatLocalDateTime(msg.created_at) : ''}</p>
               </div>
               <MessageContent content={content} markdown className="text-[13px]" colorMode="light" />
             </div>

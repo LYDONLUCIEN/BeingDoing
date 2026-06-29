@@ -1,20 +1,22 @@
 """
 数据分析服务：埋点记录与 Admin 统计聚合
 """
+
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Tuple, Set
-from datetime import datetime
+from typing import Any, Dict, List, Optional, Set, Tuple
 
-from sqlalchemy import select, func, distinct, delete
+from sqlalchemy import delete, distinct, func, select
+
+from app.models.analytics import AnalyticsChatTurn, AnalyticsLike, AnalyticsReport
 from app.models.database import AsyncSessionLocal
-from app.models.analytics import AnalyticsChatTurn, AnalyticsReport, AnalyticsLike
-from app.models.user import User
 from app.models.session import Session
+from app.models.user import User
 from app.utils.data_paths import get_debug_logs_dir, get_logs_dir, get_project_data_dir
-from app.utils.simple_activation_manager import get_simple_base_dir
 from app.utils.report_registry import ReportRegistry
+from app.utils.simple_activation_manager import get_simple_base_dir
 
 logger = logging.getLogger(__name__)
 
@@ -189,17 +191,19 @@ class AnalyticsService:
 
                 records = []
                 for like in likes:
-                    records.append({
-                        "id": like.id,
-                        "message_id": like.message_id,
-                        "role": like.role,
-                        "content_preview": like.content_preview,
-                        "content_snapshot": like.content_snapshot,
-                        "dimension": like.dimension,
-                        "phase": like.phase,
-                        "thread_id": like.thread_id,
-                        "created_at": like.created_at.isoformat() if like.created_at else None,
-                    })
+                    records.append(
+                        {
+                            "id": like.id,
+                            "message_id": like.message_id,
+                            "role": like.role,
+                            "content_preview": like.content_preview,
+                            "content_snapshot": like.content_snapshot,
+                            "dimension": like.dimension,
+                            "phase": like.phase,
+                            "thread_id": like.thread_id,
+                            "created_at": like.created_at.isoformat() if like.created_at else None,
+                        }
+                    )
 
                 return {"records": records, "total": total, "limit": limit, "offset": offset}
         except Exception as e:
@@ -369,8 +373,7 @@ class AnalyticsService:
                         AnalyticsChatTurn.session_id,
                         AnalyticsChatTurn.dimension,
                         AnalyticsChatTurn.created_at,
-                    )
-                    .order_by(AnalyticsChatTurn.created_at.desc())
+                    ).order_by(AnalyticsChatTurn.created_at.desc())
                 )
                 session_last_dim: Dict[str, str] = {}
                 for row in all_turns.all():
@@ -386,26 +389,26 @@ class AnalyticsService:
                 # 点赞统计与记录列表
                 like_count = (await db.scalar(select(func.count(AnalyticsLike.id)))) or 0
                 like_result = await db.execute(
-                    select(AnalyticsLike)
-                    .order_by(AnalyticsLike.created_at.desc())
-                    .limit(200)
+                    select(AnalyticsLike).order_by(AnalyticsLike.created_at.desc()).limit(200)
                 )
                 likes = []
                 for like in like_result.scalars().all():
-                    likes.append({
-                        "id": like.id,
-                        "user_id": like.user_id,
-                        "session_id": like.session_id,
-                        "thread_id": like.thread_id,
-                        "message_id": like.message_id,
-                        "role": like.role,
-                        "log_index": like.log_index,
-                        "content_preview": like.content_preview,
-                        "dimension": like.dimension,
-                        "phase": like.phase,
-                        "activation_code": like.activation_code,
-                        "created_at": like.created_at.isoformat() if like.created_at else None,
-                    })
+                    likes.append(
+                        {
+                            "id": like.id,
+                            "user_id": like.user_id,
+                            "session_id": like.session_id,
+                            "thread_id": like.thread_id,
+                            "message_id": like.message_id,
+                            "role": like.role,
+                            "log_index": like.log_index,
+                            "content_preview": like.content_preview,
+                            "dimension": like.dimension,
+                            "phase": like.phase,
+                            "activation_code": like.activation_code,
+                            "created_at": like.created_at.isoformat() if like.created_at else None,
+                        }
+                    )
 
             return {
                 "user_count": user_count,
@@ -478,7 +481,7 @@ class AnalyticsService:
             activations_file = get_simple_base_dir() / "activations.json"
             if activations_file.is_file():
                 raw = json.loads(activations_file.read_text(encoding="utf-8") or "{}")
-                today = datetime.utcnow().date()
+                today = datetime.now(timezone.utc).date()
                 for rec in (raw or {}).values():
                     created = (rec or {}).get("created_at")
                     owner_uid = (rec or {}).get("owner_user_id")
@@ -522,8 +525,7 @@ class AnalyticsService:
             "rumination": "rumination",
         }
         run_token_by_step = {
-            step: {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
-            for step in step_order
+            step: {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0} for step in step_order
         }
 
         for sid, _idx, entry in entries:
@@ -550,8 +552,7 @@ class AnalyticsService:
         db_token_input_total = 0
         db_token_output_total = 0
         db_token_by_step = {
-            step: {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
-            for step in step_order
+            step: {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0} for step in step_order
         }
         try:
             async with AsyncSessionLocal() as db:
@@ -630,7 +631,7 @@ class AnalyticsService:
     async def sync_dashboard_overview_to_static() -> Dict[str, Any]:
         data = await AnalyticsService.get_dashboard_overview()
         payload = {
-            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "source": "data_sync",
             "overview": data,
         }
@@ -717,8 +718,15 @@ class AnalyticsService:
         ctx_keys = entry.get("context_keys") or []
         for k in ctx_keys:
             if "step" in k.lower() or k in (
-                "values_exploration", "strengths_exploration", "interests_exploration",
-                "combination", "refinement", "values", "strengths", "interests", "purpose",
+                "values_exploration",
+                "strengths_exploration",
+                "interests_exploration",
+                "combination",
+                "refinement",
+                "values",
+                "strengths",
+                "interests",
+                "purpose",
             ):
                 return k
         return None
@@ -753,7 +761,11 @@ class AnalyticsService:
         # 收集已有 (session_id, dimension, log_index)，log_index 可为负（simple 用 -1,-2... 表示轮次）
         async with AsyncSessionLocal() as db:
             result = await db.execute(
-                select(AnalyticsChatTurn.session_id, AnalyticsChatTurn.dimension, AnalyticsChatTurn.log_index)
+                select(
+                    AnalyticsChatTurn.session_id,
+                    AnalyticsChatTurn.dimension,
+                    AnalyticsChatTurn.log_index,
+                )
             )
             existing: Set[Tuple[str, str, int]] = set()
             for r in result.all():
@@ -795,7 +807,14 @@ class AnalyticsService:
                         dim = category.split("__")[0]
                     else:
                         dim = category
-                    if dim not in ("values", "strengths", "interests", "purpose", "combination", "refinement"):
+                    if dim not in (
+                        "values",
+                        "strengths",
+                        "interests",
+                        "purpose",
+                        "combination",
+                        "refinement",
+                    ):
                         continue
                     try:
                         data = json.loads(conv_file.read_text(encoding="utf-8"))
@@ -825,7 +844,12 @@ class AnalyticsService:
                         turn_idx += 1
 
         if not to_insert:
-            return {"synced": 0, "skipped": len(entries), "total_entries": len(entries), "from_simple": simple_synced}
+            return {
+                "synced": 0,
+                "skipped": len(entries),
+                "total_entries": len(entries),
+                "from_simple": simple_synced,
+            }
 
         async with AsyncSessionLocal() as db:
             for turn in to_insert:
@@ -841,9 +865,13 @@ class AnalyticsService:
         }
 
     @staticmethod
-    async def _get_session_metadata_map(session_ids: List[str]) -> Dict[str, Dict[str, Optional[str]]]:
+    async def _get_session_metadata_map(
+        session_ids: List[str],
+    ) -> Dict[str, Dict[str, Optional[str]]]:
         """为 session_ids 解析 user_id、username、activation_code"""
-        result: Dict[str, Dict[str, Optional[str]]] = {sid: {"user_id": None, "username": None, "activation_code": None} for sid in session_ids}
+        result: Dict[str, Dict[str, Optional[str]]] = {
+            sid: {"user_id": None, "username": None, "activation_code": None} for sid in session_ids
+        }
         if not session_ids:
             return result
 
@@ -851,6 +879,7 @@ class AnalyticsService:
         try:
             from app.models.session import Session
             from app.models.user import User
+
             async with AsyncSessionLocal() as db:
                 sess_result = await db.execute(
                     select(Session.id, Session.user_id).where(Session.id.in_(session_ids))
@@ -875,7 +904,11 @@ class AnalyticsService:
             if act_file.is_file():
                 raw = json.loads(act_file.read_text(encoding="utf-8"))
                 for code, rec in (raw or {}).items():
-                    sid = rec.get("session_id") if isinstance(rec, dict) else getattr(rec, "session_id", None)
+                    sid = (
+                        rec.get("session_id")
+                        if isinstance(rec, dict)
+                        else getattr(rec, "session_id", None)
+                    )
                     if sid and sid in result:
                         result[sid]["activation_code"] = code
         except Exception:
@@ -914,7 +947,11 @@ class AnalyticsService:
                     code = session_id.strip().upper()
                     for c, rec in (raw or {}).items():
                         if (c or "").upper() == code:
-                            sid = rec.get("session_id") if isinstance(rec, dict) else getattr(rec, "session_id", None)
+                            sid = (
+                                rec.get("session_id")
+                                if isinstance(rec, dict)
+                                else getattr(rec, "session_id", None)
+                            )
                             if sid:
                                 resolved_session_id = sid
                                 break
@@ -1005,6 +1042,10 @@ class AnalyticsService:
                 except (json.JSONDecodeError, OSError):
                     conversations[conv_file.stem] = []
             if conversations:
-                return {"source": "simple", "session_id": session_id, "conversations": conversations}
+                return {
+                    "source": "simple",
+                    "session_id": session_id,
+                    "conversations": conversations,
+                }
 
         return None

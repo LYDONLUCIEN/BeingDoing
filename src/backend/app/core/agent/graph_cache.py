@@ -8,16 +8,17 @@ Graph 缓存池 - 带过期机制的内存管理
 - 线程安全（使用 asyncio.Lock）
 - 统计监控（命中率、淘汰数等）
 """
+
 import asyncio
 import json
 import threading
-from datetime import datetime, timedelta
-from typing import Dict, Optional, Any
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 from app.config.settings import settings
-from app.core.agent.graph import create_agent_graph
 from app.core.agent.config import AgentRunConfig
+from app.core.agent.graph import create_agent_graph
 
 
 class CachedGraph:
@@ -26,12 +27,12 @@ class CachedGraph:
     def __init__(self, graph, config: AgentRunConfig):
         self.graph = graph
         self.config = config
-        self.created_at = datetime.utcnow()
-        self.last_used = datetime.utcnow()
+        self.created_at = datetime.now(timezone.utc)
+        self.last_used = datetime.now(timezone.utc)
 
     def mark_used(self):
         """标记为已使用（更新 last_used 时间）"""
-        self.last_used = datetime.utcnow()
+        self.last_used = datetime.now(timezone.utc)
 
     def to_dict(self):
         """序列化为字典（用于调试）"""
@@ -44,7 +45,7 @@ class CachedGraph:
     def is_expired(self, ttl_minutes: int) -> bool:
         """检查是否过期"""
         expiry = self.last_used + timedelta(minutes=ttl_minutes)
-        return datetime.utcnow() > expiry
+        return datetime.now(timezone.utc) > expiry
 
 
 class GraphCache:
@@ -104,7 +105,7 @@ class GraphCache:
             return None
 
         with self._lock:  # 确保线程安全
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
 
             # 检查缓存是否存在
             if session_id not in self._cache:
@@ -142,10 +143,7 @@ class GraphCache:
             # LRU 淘汰：如果超过最大大小，删除最旧的
             if len(self._cache) >= self.max_size:
                 # 找出最久未使用的 session
-                oldest_session = min(
-                    self._cache.items(),
-                    key=lambda x: x[1].last_used
-                )[0]
+                oldest_session = min(self._cache.items(), key=lambda x: x[1].last_used)[0]
                 del self._cache[oldest_session]
                 self._stats["evictions"] += 1
 
@@ -164,10 +162,9 @@ class GraphCache:
             清理的缓存数量
         """
         with self._lock:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             expired_sessions = [
-                sid for sid, cached in self._cache.items()
-                if cached.is_expired(self.ttl_minutes)
+                sid for sid, cached in self._cache.items() if cached.is_expired(self.ttl_minutes)
             ]
 
             for sid in expired_sessions:

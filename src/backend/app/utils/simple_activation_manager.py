@@ -19,13 +19,13 @@
 from __future__ import annotations
 
 import json
+import shutil
 import uuid
-from dataclasses import dataclass, asdict
-from datetime import datetime, timedelta
+from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Optional, List, Tuple
-import shutil
+from typing import Dict, List, Optional, Tuple
 
 
 class ActivationStatus(str, Enum):
@@ -48,7 +48,9 @@ def assert_activation_delete_caller_allowed(caller_role: str) -> None:
     if role in _ACTIVATION_DELETE_CALLER_ROLES:
         return
     if role == "end_user":
-        raise PermissionError("产品策略：终端用户不可删除已生成的探索报告及激活数据，请联系管理员。")
+        raise PermissionError(
+            "产品策略：终端用户不可删除已生成的探索报告及激活数据，请联系管理员。"
+        )
     raise PermissionError(f"不允许的激活数据删除调用角色: {caller_role!r}")
 
 
@@ -79,7 +81,9 @@ class ActivationRecord:
     sandbox_expires_at: Optional[str] = None
     # 通用工作区字段（兼容后续 admin 常驻工作区）
     workspace_kind: Optional[str] = None  # fork | resident
-    workspace_root: Optional[str] = None  # 相对 data/test/simple，如 admin_workspaces/{admin_user_id}
+    workspace_root: Optional[str] = (
+        None  # 相对 data/test/simple，如 admin_workspaces/{admin_user_id}
+    )
     # activation_code -> report_id 快速索引（权威仍以 reports/{report_id}/record.json 为准）
     report_id: Optional[str] = None
     report_index_updated_at: Optional[str] = None
@@ -136,7 +140,9 @@ def get_activation_manager_for_code(code: Optional[str]) -> "SimpleActivationMan
     return SimpleActivationManager(base_dir=str(get_simple_base_dir()))
 
 
-def get_activation_with_manager(code: str) -> Tuple["SimpleActivationManager", Optional["ActivationRecord"]]:
+def get_activation_with_manager(
+    code: str,
+) -> Tuple["SimpleActivationManager", Optional["ActivationRecord"]]:
     """
     兼容双根读取：
     - 若前缀看起来是 debug code，优先 test 后回退 prod
@@ -199,7 +205,7 @@ class SimpleActivationManager:
 
     @staticmethod
     def _now_iso() -> str:
-        return datetime.utcnow().isoformat() + "Z"
+        return datetime.now(timezone.utc).isoformat()
 
     def _load_all(self) -> Dict[str, ActivationRecord]:
         if not self._activations_file.exists():
@@ -298,7 +304,7 @@ class SimpleActivationManager:
                 break
 
         session_id = str(uuid.uuid4())
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         expires_at = now + timedelta(minutes=ttl_minutes)
 
         record = ActivationRecord(
@@ -306,9 +312,9 @@ class SimpleActivationManager:
             session_id=session_id,
             activation_session_id=session_id,
             mode=mode,
-            created_at=now.isoformat() + "Z",
-            expires_at=expires_at.isoformat() + "Z",
-            last_activity_at=now.isoformat() + "Z",
+            created_at=now.isoformat(),
+            expires_at=expires_at.isoformat(),
+            last_activity_at=now.isoformat(),
             status=ActivationStatus.ACTIVE,
             vip_level=1,
         )
@@ -316,7 +322,9 @@ class SimpleActivationManager:
         self._save_all(records)
         return record
 
-    def create_activation_batch(self, mode: str, ttl_minutes: int = 60, count: int = 1) -> List[ActivationRecord]:
+    def create_activation_batch(
+        self, mode: str, ttl_minutes: int = 60, count: int = 1
+    ) -> List[ActivationRecord]:
         count = max(1, min(int(count), 500))
         created: List[ActivationRecord] = []
         for _ in range(count):
@@ -343,7 +351,7 @@ class SimpleActivationManager:
             expires_dt = datetime.fromisoformat(rec.expires_at.replace("Z", ""))
         except ValueError:
             return rec
-        if rec.status == ActivationStatus.ACTIVE and datetime.utcnow() > expires_dt:
+        if rec.status == ActivationStatus.ACTIVE and datetime.now(timezone.utc) > expires_dt:
             rec.status = ActivationStatus.EXPIRED
             records[normalized] = rec
             self._save_all(records)
@@ -358,7 +366,7 @@ class SimpleActivationManager:
             return
         if rec.status != ActivationStatus.ACTIVE:
             return
-        now = datetime.utcnow().isoformat() + "Z"
+        now = datetime.now(timezone.utc).isoformat()
         rec.last_activity_at = now
         records[norm or code] = rec
         self._save_all(records)
@@ -373,7 +381,8 @@ class SimpleActivationManager:
             ActivationStatus.DELETED.value,
         }:
             raise ValueError("不支持的状态")
-        from app.utils.activation_audit import append_activation_audit, EVENT_STATUS_CHANGED
+        from app.utils.activation_audit import EVENT_STATUS_CHANGED, append_activation_audit
+
         records = self._load_all()
         changed = 0
         for raw in codes or []:
@@ -416,12 +425,12 @@ class SimpleActivationManager:
         if days <= 0:
             raise ValueError("extend_days 必须大于 0")
 
-        from app.utils.activation_audit import append_activation_audit, EVENT_EXTENDED
+        from app.utils.activation_audit import EVENT_EXTENDED, append_activation_audit
 
         records = self._load_all()
         changed = 0
         skipped = 0
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         for raw in codes or []:
             code = (raw or "").strip().upper()
@@ -444,7 +453,7 @@ class SimpleActivationManager:
 
             old_status = rec.status
             old_expires = rec.expires_at
-            rec.expires_at = new_expires_dt.isoformat() + "Z"
+            rec.expires_at = new_expires_dt.isoformat()
             rec.status = ActivationStatus.ACTIVE.value
             rec.deleted_at = None
             rec.purge_after = None
@@ -500,7 +509,7 @@ class SimpleActivationManager:
                     f"当前请求 email={email}"
                 )
 
-        now = datetime.utcnow().isoformat() + "Z"
+        now = datetime.now(timezone.utc).isoformat()
         old_owner_user_id = rec.owner_user_id
         old_owner_email = rec.owner_email
         rec.owner_user_id = uid
@@ -512,9 +521,10 @@ class SimpleActivationManager:
 
         # ---- 审计日志：归属变更 ----
         from app.utils.activation_audit import (
-            append_activation_audit,
             EVENT_OWNER_CLAIMED,
+            append_activation_audit,
         )
+
         append_activation_audit(
             EVENT_OWNER_CLAIMED,
             norm,
@@ -563,9 +573,9 @@ class SimpleActivationManager:
         assert_activation_delete_caller_allowed(caller_role)
         records = self._load_all()
         recycle = self._load_recycle_bin()
-        now = datetime.utcnow()
-        deleted_at = now.isoformat() + "Z"
-        purge_after = (now + timedelta(days=retention_days)).isoformat() + "Z"
+        now = datetime.now(timezone.utc)
+        deleted_at = now.isoformat()
+        purge_after = (now + timedelta(days=retention_days)).isoformat()
         changed = 0
 
         for raw in codes or []:
@@ -590,7 +600,8 @@ class SimpleActivationManager:
             )
             changed += 1
             # 审计日志：软删除
-            from app.utils.activation_audit import append_activation_audit, EVENT_SOFT_DELETED
+            from app.utils.activation_audit import EVENT_SOFT_DELETED, append_activation_audit
+
             append_activation_audit(
                 EVENT_SOFT_DELETED,
                 code,
@@ -614,7 +625,8 @@ class SimpleActivationManager:
 
     def restore_from_recycle_bin(self, codes: List[str], actor: Optional[dict] = None) -> int:
         """从垃圾桶恢复到 activations.json，记录审计日志。"""
-        from app.utils.activation_audit import append_activation_audit, EVENT_RESTORED
+        from app.utils.activation_audit import EVENT_RESTORED, append_activation_audit
+
         records = self._load_all()
         recycle = self._load_recycle_bin()
         changed = 0
@@ -700,7 +712,8 @@ class SimpleActivationManager:
             records.pop(code, None)
             deleted_count += 1
             # 审计日志：永久删除
-            from app.utils.activation_audit import append_activation_audit, EVENT_PERMANENT_DELETED
+            from app.utils.activation_audit import EVENT_PERMANENT_DELETED, append_activation_audit
+
             append_activation_audit(
                 EVENT_PERMANENT_DELETED,
                 code,
@@ -724,7 +737,7 @@ class SimpleActivationManager:
         - 同时删除 data/simple/{session_id} 对话目录
         """
         recycle = self._load_recycle_bin()
-        now = now or datetime.utcnow()
+        now = now or datetime.now(timezone.utc)
         to_delete_codes: List[str] = []
 
         for code, rec in recycle.items():
@@ -777,7 +790,7 @@ class SimpleActivationManager:
         records = self._load_all()
         changed = 0
         for row in rows or []:
-            code = ((row.get("activation_code") or "").strip().upper())
+            code = (row.get("activation_code") or "").strip().upper()
             session_id = (row.get("session_id") or "").strip()
             if not code or not session_id:
                 continue
@@ -799,4 +812,3 @@ class SimpleActivationManager:
         if changed:
             self._save_all(records)
         return changed
-

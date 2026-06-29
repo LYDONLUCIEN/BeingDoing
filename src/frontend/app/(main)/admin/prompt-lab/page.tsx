@@ -15,6 +15,7 @@ import {
   type PromptLabProfileDetail,
   type PromptLabProfileSummary,
 } from '@/lib/api/admin';
+import { formatLocalDateTime } from '@/lib/utils/formatTime';
 
 type TabKey = 'lab' | 'catalog';
 
@@ -359,7 +360,7 @@ export default function AdminPromptLabPage() {
                     return (
                       <div key={v.version_id} className="rounded-lg border border-bd-border p-2 text-xs">
                         <p className="text-bd-fg font-mono">{v.version_id}</p>
-                        <p className="text-bd-subtle mt-1">{v.created_at}</p>
+                        <p className="text-bd-subtle mt-1">{v.created_at ? formatLocalDateTime(v.created_at) : '—'}</p>
                         <div className="mt-2">
                           {isCurrent ? (
                             <span className="text-emerald-600">当前生效</span>
@@ -425,7 +426,7 @@ export default function AdminPromptLabPage() {
                     <tr key={`${b.activation_code}-${b.profile_id}`} className="border-b border-bd-border/50">
                       <td className="py-2 pr-2 font-mono">{b.activation_code}</td>
                       <td className="py-2 pr-2 font-mono">{b.profile_id}</td>
-                      <td className="py-2 pr-2">{b.updated_at || '—'}</td>
+                      <td className="py-2 pr-2">{b.updated_at ? formatLocalDateTime(b.updated_at) : '—'}</td>
                     </tr>
                   ))}
                 </tbody>

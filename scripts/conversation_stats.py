@@ -20,6 +20,7 @@
     - 输出每个 report 的轮数 / 平均时长 / 总时长 / per_phase 明细
     - 与在线版 ConversationStatsService 的切轮逻辑保持一致
 """
+
 from __future__ import annotations
 
 import os
@@ -37,9 +38,9 @@ if str(_BACKEND_DIR) not in sys.path:
 
 from app.services.conversation_stats_service import (  # noqa: E402
     PHASE_LABEL_CN,
-    compute_turn_stats_from_messages,
     _aggregate_phase_stats,
     _build_reminder_text,
+    compute_turn_stats_from_messages,
 )
 from app.utils.report_registry import STEP_IDS  # noqa: E402
 
@@ -76,7 +77,9 @@ def _detect_format(filename: str) -> str:
     return "txt"
 
 
-def parse_export_file(content: str, filename: str) -> Tuple[str, Dict[str, str], List[Dict]]:
+def parse_export_file(
+    content: str, filename: str
+) -> Tuple[str, Dict[str, str], List[Dict]]:
     """
     解析单个 T1 导出文件，提取 report_id、元信息、phase+消息。
 
@@ -203,19 +206,23 @@ def parse_export_file(content: str, filename: str) -> Tuple[str, Dict[str, str],
                         break
                     content_lines.append(lines[i])
                     i += 1
-                messages.append({
-                    "role": role_en,
-                    "created_at": timestamp if timestamp else None,
-                    "content": "\n".join(content_lines).strip(),
-                })
+                messages.append(
+                    {
+                        "role": role_en,
+                        "created_at": timestamp if timestamp else None,
+                        "content": "\n".join(content_lines).strip(),
+                    }
+                )
             else:
                 i += 1
 
-        phases.append({
-            "phase_id": phase_id,
-            "phase_name": phase_name,
-            "messages": messages,
-        })
+        phases.append(
+            {
+                "phase_id": phase_id,
+                "phase_name": phase_name,
+                "messages": messages,
+            }
+        )
 
     return report_id, meta, phases
 
@@ -244,19 +251,21 @@ def compute_report_stats_from_parsed(
         stats = compute_turn_stats_from_messages(messages)
         avg_minutes = stats["avg_seconds"] / 60.0
         total_minutes = stats["total_seconds"] / 60.0
-        per_phase.append({
-            "phase_id": phase_id,
-            "phase_name": phase_name,
-            "turns": stats["turns"],
-            "avg_seconds": stats["avg_seconds"],
-            "total_seconds": stats["total_seconds"],
-            "avg_minutes": round(avg_minutes, 1),
-            "total_minutes": round(total_minutes, 1),
-            "skipped_no_ts": stats["skipped_no_ts"],
-            "skipped_long_turns": stats["skipped_long_turns"],
-            "total_turns_seen": stats["total_turns_seen"],
-            "message_count": len(messages),
-        })
+        per_phase.append(
+            {
+                "phase_id": phase_id,
+                "phase_name": phase_name,
+                "turns": stats["turns"],
+                "avg_seconds": stats["avg_seconds"],
+                "total_seconds": stats["total_seconds"],
+                "avg_minutes": round(avg_minutes, 1),
+                "total_minutes": round(total_minutes, 1),
+                "skipped_no_ts": stats["skipped_no_ts"],
+                "skipped_long_turns": stats["skipped_long_turns"],
+                "total_turns_seen": stats["total_turns_seen"],
+                "message_count": len(messages),
+            }
+        )
 
     aggregated = _aggregate_phase_stats(per_phase)
     aggregated["per_phase"] = per_phase

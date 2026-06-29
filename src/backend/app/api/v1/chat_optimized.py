@@ -11,18 +11,30 @@
 
 4. 自动保存 note.json（结论性内容）
 """
+
 import asyncio
 import json
 import logging
 import os
 import traceback
-from datetime import datetime
-from fastapi import APIRouter, HTTPException, Depends
+from datetime import datetime, timezone
+from typing import Dict, Generator, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Optional, Dict, Generator
 
 from app.api.v1.auth import get_current_user
+
+# question_progress、debug_logs 持久化（与 chat 共用，统一使用项目根 data/）
+from app.api.v1.chat import (
+    _extract_step_progress_info,
+    _load_question_progress,
+    _save_debug_logs,
+    _save_question_progress,
+)
+from app.config.settings import settings
+
 # ===== 使用 graph 模块（已合并 graph_optimized）=====
 from app.core.agent.graph import (
     create_agent_graph,
@@ -30,20 +42,11 @@ from app.core.agent.graph import (
     save_context_after_agent,
 )
 from app.core.agent.graph_cache import get_graph_cache, get_or_create_graph
-from app.utils.enhanced_conversation_manager import (
-    EnhancedConversationFileManager,
-    ConversationCategoryType,
-)
-# question_progress、debug_logs 持久化（与 chat 共用，统一使用项目根 data/）
-from app.api.v1.chat import (
-    _load_question_progress,
-    _save_question_progress,
-    _extract_step_progress_info,
-    _save_debug_logs,
-)
-
 from app.services.session_service import SessionService
-from app.config.settings import settings
+from app.utils.enhanced_conversation_manager import (
+    ConversationCategoryType,
+    EnhancedConversationFileManager,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +56,10 @@ router = APIRouter(prefix="/chat-optimized", tags=["对话（优化版）"])
 
 # ========== 请求/响应模型 ==========
 
+
 class SendMessageRequestOptimized(BaseModel):
     """发送消息请求（优化版）"""
+
     session_id: str
     message: str
     current_step: str
@@ -67,6 +72,7 @@ class SendMessageRequestOptimized(BaseModel):
 
 class StandardResponse(BaseModel):
     """标准响应"""
+
     code: int = 200
     message: str = "success"
     data: dict
@@ -74,18 +80,14 @@ class StandardResponse(BaseModel):
 
 # ========== 辅助函数 ==========
 
+
 def _get_enhanced_manager() -> EnhancedConversationFileManager:
     """获取增强的对话管理器"""
-    return EnhancedConversationFileManager(
-        base_dir=settings.CONVERSATION_DIR
-    )
+    return EnhancedConversationFileManager(base_dir=settings.CONVERSATION_DIR)
 
 
 async def _save_note_conclusion(
-    session_id: str,
-    current_step: str,
-    context: dict,
-    manager: EnhancedConversationFileManager
+    session_id: str, current_step: str, context: dict, manager: EnhancedConversationFileManager
 ):
     """
     保存 AI 总结的结论性内容到 note.json
@@ -128,7 +130,9 @@ async def _save_note_conclusion(
         if contradictions:
             note_content_parts.append("\n### 需要关注的矛盾点\n")
             for c in contradictions:
-                note_content_parts.append(f"- {c.get('step', '')}: {c.get('keyword')} (冲突: {c.get('a')} vs {c.get('b')})")
+                note_content_parts.append(
+                    f"- {c.get('step', '')}: {c.get('keyword')} (冲突: {c.get('a')} vs {c.get('b')})"
+                )
 
     # 保存到 note.json
     if note_content_parts:
@@ -139,8 +143,8 @@ async def _save_note_conclusion(
             metadata={
                 "current_step": current_step,
                 "total_summaries": len(summaries),
-                "generated_at": datetime.utcnow().isoformat() + "Z"
-            }
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+            },
         )
 
 
@@ -157,6 +161,7 @@ async def send_message_stream_optimized(
     2. 加载完整上下文（all_flow + note）
     3. 自动保存结论性 note
     """
+
     async def event_stream():
         try:
             # 1. 发送 started 事件
@@ -171,19 +176,18 @@ async def send_message_stream_optimized(
                     session_id=request.session_id,
                     role="user",
                     content=request.message,
-                    metadata={"current_step": request.current_step}
+                    metadata={"current_step": request.current_step},
                 )
 
             # 3. 创建或获取缓存的 Graph（核心优化）
             from app.core.agent.config import AgentRunConfig
+
             config = AgentRunConfig(use_user_agent_node=True, max_iterations=10)
 
             if request.use_cache:
                 # 使用缓存优先
                 graph = get_or_create_graph(
-                    session_id=request.session_id,
-                    graph_factory=create_agent_graph,
-                    config=config
+                    session_id=request.session_id, graph_factory=create_agent_graph, config=config
                 )
             else:
                 # 每次创建新的
@@ -269,7 +273,9 @@ async def send_message_stream_optimized(
             # 10. 持久化 question_progress
             question_progress_data = final_state.get("question_progress", {})
             _save_question_progress(request.session_id, question_progress_data)
-            step_progress_info = _extract_step_progress_info(question_progress_data, request.current_step)
+            step_progress_info = _extract_step_progress_info(
+                question_progress_data, request.current_step
+            )
 
             # 11. 构造 answer_card
             answer_card = final_state.get("answer_card")
@@ -303,7 +309,7 @@ async def send_message_stream_optimized(
                 session_id=request.session_id,
                 role="assistant",
                 content=response,
-                metadata={"current_step": request.current_step}
+                metadata={"current_step": request.current_step},
             )
 
             # 14. 更新会话最后活动时间
@@ -366,8 +372,8 @@ async def get_cache_stats():
                 "full_context_enabled": settings.FULL_CONTEXT_ENABLED,
                 "context_compress_after_rounds": settings.CONTEXT_COMPRESS_AFTER_ROUNDS,
                 "context_keep_latest_messages": settings.CONTEXT_KEEP_LATEST_MESSAGES,
-            }
-        }
+            },
+        },
     )
 
 
@@ -377,14 +383,11 @@ async def clear_cache(session_id: Optional[str] = None):
     cache = get_graph_cache()
     if session_id:
         cache.remove(session_id)
-        return StandardResponse(
-            code=200,
-            message="Cleared",
-            data={"session_id": session_id}
-        )
+        return StandardResponse(code=200, message="Cleared", data={"session_id": session_id})
     else:
         # 清除所有缓存
         from app.core.agent.graph_cache import _graph_cache
+
         if _graph_cache:
             _graph_cache._cache.clear()
             _graph_cache._stats = {
@@ -393,27 +396,25 @@ async def clear_cache(session_id: Optional[str] = None):
                 "evictions": 0,
                 "expirations": 0,
             }
-        return StandardResponse(
-            code=200,
-            message="All caches cleared",
-            data={"cache_size": 0}
-        )
+        return StandardResponse(code=200, message="All caches cleared", data={"cache_size": 0})
 
 
 # ========== 向后兼容的导入 ==========
 
 # 保持原有函数可访问
-from app.utils.enhanced_conversation_manager import ConversationFileManager as OldConversationFileManager
+from app.utils.enhanced_conversation_manager import (
+    ConversationFileManager as OldConversationFileManager,
+)
 
 _old_manager = OldConversationFileManager()
 
 
 # ========== 新增：获取历史 Answer Cards API ==========
 
+
 @router.get("/answer-cards", response_model=StandardResponse)
 async def get_answer_cards(
-    session_id: str,
-    current_user: Optional[dict] = Depends(get_current_user)
+    session_id: str, current_user: Optional[dict] = Depends(get_current_user)
 ):
     """
     获取会话的所有历史 Answer Cards
@@ -427,23 +428,14 @@ async def get_answer_cards(
         return StandardResponse(
             code=200,
             message="success",
-            data={
-                "answer_cards": answer_cards,
-                "count": len(answer_cards)
-            }
+            data={"answer_cards": answer_cards, "count": len(answer_cards)},
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/notes", response_model=StandardResponse)
-async def get_notes(
-    session_id: str,
-    current_user: Optional[dict] = Depends(get_current_user)
-):
+async def get_notes(session_id: str, current_user: Optional[dict] = Depends(get_current_user)):
     """
     获取会话的所有笔记（包括 summary 和 answer_cards）
 
@@ -462,11 +454,9 @@ async def get_notes(
         for ac in answer_cards_raw:
             try:
                 content = json.loads(ac.get("content", "{}"))
-                answer_cards.append({
-                    **content,
-                    "created_at": ac.get("created_at"),
-                    "note_id": ac.get("id")
-                })
+                answer_cards.append(
+                    {**content, "created_at": ac.get("created_at"), "note_id": ac.get("id")}
+                )
             except json.JSONDecodeError:
                 continue
 
@@ -478,11 +468,8 @@ async def get_notes(
                 "summaries": summaries,
                 "answer_cards": answer_cards,
                 "summary_count": len(summaries),
-                "answer_card_count": len(answer_cards)
-            }
+                "answer_card_count": len(answer_cards),
+            },
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=500, detail=str(e))

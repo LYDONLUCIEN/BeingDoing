@@ -12,12 +12,14 @@
         ├── main_flow.json    # 用户可见的咨询对话（现有 main_flow）
         └── note.json        # AI 总结的结论性内容
 """
+
 import json
 import os
-from pathlib import Path
-from typing import List, Dict, Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 import aiofiles
 
 from app.utils.data_paths import get_conversation_dir
@@ -25,9 +27,10 @@ from app.utils.data_paths import get_conversation_dir
 
 class ConversationCategoryType(str, Enum):
     """对话分类类型"""
-    ALL_FLOW = "all_flow"      # 完整对话（原文 + AI 思考过程）
-    MAIN_FLOW = "main_flow"    # 用户可见的咨询对话
-    NOTE = "note"              # AI 总结的结论性内容
+
+    ALL_FLOW = "all_flow"  # 完整对话（原文 + AI 思考过程）
+    MAIN_FLOW = "main_flow"  # 用户可见的咨询对话
+    NOTE = "note"  # AI 总结的结论性内容
 
 
 class EnhancedConversationFileManager:
@@ -52,7 +55,7 @@ class EnhancedConversationFileManager:
         self,
         session_id: str,
         message: Dict,
-        category: ConversationCategoryType = ConversationCategoryType.ALL_FLOW
+        category: ConversationCategoryType = ConversationCategoryType.ALL_FLOW,
     ) -> Dict:
         """
         添加消息到指定流程
@@ -69,14 +72,14 @@ class EnhancedConversationFileManager:
 
         # 确保消息包含必要字段
         if "id" not in message:
-            message["id"] = f"msg_{datetime.utcnow().timestamp()}"
+            message["id"] = f"msg_{datetime.now(timezone.utc).timestamp()}"
         if "created_at" not in message:
-            message["created_at"] = datetime.utcnow().isoformat() + "Z"
+            message["created_at"] = datetime.now(timezone.utc).isoformat()
 
         try:
             # 读取现有文件
             if file_path.exists():
-                async with aiofiles.open(file_path, mode='r', encoding='utf-8') as f:
+                async with aiofiles.open(file_path, mode="r", encoding="utf-8") as f:
                     content = await f.read()
                 data = json.loads(content)
             else:
@@ -88,8 +91,8 @@ class EnhancedConversationFileManager:
                     "metadata": {
                         "created_at": message["created_at"],
                         "updated_at": message["created_at"],
-                        "total_messages": 0
-                    }
+                        "total_messages": 0,
+                    },
                 }
         except (FileNotFoundError, json.JSONDecodeError):
             # 文件不存在或损坏，创建新结构
@@ -100,8 +103,8 @@ class EnhancedConversationFileManager:
                 "metadata": {
                     "created_at": message["created_at"],
                     "updated_at": message["created_at"],
-                    "total_messages": 0
-                }
+                    "total_messages": 0,
+                },
             }
 
         # 添加消息
@@ -110,7 +113,7 @@ class EnhancedConversationFileManager:
         data["metadata"]["total_messages"] = len(data["messages"])
 
         # 保存文件
-        async with aiofiles.open(file_path, mode='w', encoding='utf-8') as f:
+        async with aiofiles.open(file_path, mode="w", encoding="utf-8") as f:
             await f.write(json.dumps(data, indent=2, ensure_ascii=False))
 
         return message
@@ -121,7 +124,7 @@ class EnhancedConversationFileManager:
         role: str,
         content: str,
         message_type: str,  # "user_input", "ai_thinking", "ai_response"
-        metadata: Optional[Dict] = None
+        metadata: Optional[Dict] = None,
     ) -> Dict:
         """
         添加完整流程消息（原文 + AI 思考）
@@ -140,24 +143,18 @@ class EnhancedConversationFileManager:
             "role": role,
             "content": content,
             "type": message_type,
-            "created_at": datetime.utcnow().isoformat() + "Z"
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
 
         if metadata:
             message["metadata"] = metadata
 
         return await self.append_to_flow(
-            session_id=session_id,
-            message=message,
-            category=ConversationCategoryType.ALL_FLOW
+            session_id=session_id, message=message, category=ConversationCategoryType.ALL_FLOW
         )
 
     async def append_main_flow_message(
-        self,
-        session_id: str,
-        role: str,
-        content: str,
-        metadata: Optional[Dict] = None
+        self, session_id: str, role: str, content: str, metadata: Optional[Dict] = None
     ) -> Dict:
         """
         添加主流程消息（用户可见的咨询对话）
@@ -167,16 +164,14 @@ class EnhancedConversationFileManager:
         message = {
             "role": role,
             "content": content,
-            "created_at": datetime.utcnow().isoformat() + "Z"
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
 
         if metadata:
             message["metadata"] = metadata
 
         return await self.append_to_flow(
-            session_id=session_id,
-            message=message,
-            category=ConversationCategoryType.MAIN_FLOW
+            session_id=session_id, message=message, category=ConversationCategoryType.MAIN_FLOW
         )
 
     async def save_note(
@@ -184,7 +179,7 @@ class EnhancedConversationFileManager:
         session_id: str,
         note_content: str,
         note_type: str = "summary",  # summary, conclusion, insight
-        metadata: Optional[Dict] = None
+        metadata: Optional[Dict] = None,
     ):
         """
         保存或追加到 note.json（AI 总结的结论性内容）
@@ -200,7 +195,7 @@ class EnhancedConversationFileManager:
         # 读取现有笔记
         existing_notes = []
         if file_path.exists():
-            async with aiofiles.open(file_path, mode='r', encoding='utf-8') as f:
+            async with aiofiles.open(file_path, mode="r", encoding="utf-8") as f:
                 content = await f.read()
                 data = json.loads(content)
                 existing_notes = data.get("notes", [])
@@ -208,9 +203,9 @@ class EnhancedConversationFileManager:
             # 创建新笔记文件
             data = {
                 "session_id": session_id,
-                "created_at": datetime.utcnow().isoformat() + "Z",
-                "updated_at": datetime.utcnow().isoformat() + "Z",
-                "notes": []
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "notes": [],
             }
 
         # 添加新笔记
@@ -218,7 +213,7 @@ class EnhancedConversationFileManager:
             "id": f"note_{len(existing_notes) + 1}",
             "type": note_type,
             "content": note_content,
-            "created_at": datetime.utcnow().isoformat() + "Z"
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
 
         if metadata:
@@ -226,21 +221,19 @@ class EnhancedConversationFileManager:
 
         existing_notes.append(note_entry)
         data["notes"] = existing_notes
-        data["updated_at"] = datetime.utcnow().isoformat() + "Z"
+        data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
         # 保存
-        async with aiofiles.open(file_path, mode='w', encoding='utf-8') as f:
+        async with aiofiles.open(file_path, mode="w", encoding="utf-8") as f:
             await f.write(json.dumps(data, indent=2, ensure_ascii=False))
 
     async def get_all_flow_messages(
-        self,
-        session_id: str,
-        limit: Optional[int] = None
+        self, session_id: str, limit: Optional[int] = None
     ) -> List[Dict]:
         """获取完整流程消息（原文 + AI 思考）"""
         file_path = self._get_file_path(session_id, ConversationCategoryType.ALL_FLOW)
         try:
-            async with aiofiles.open(file_path, mode='r', encoding='utf-8') as f:
+            async with aiofiles.open(file_path, mode="r", encoding="utf-8") as f:
                 content = await f.read()
                 data = json.loads(content)
                 messages = data.get("messages", [])
@@ -251,14 +244,12 @@ class EnhancedConversationFileManager:
             return []
 
     async def get_main_flow_messages(
-        self,
-        session_id: str,
-        limit: Optional[int] = None
+        self, session_id: str, limit: Optional[int] = None
     ) -> List[Dict]:
         """获取主流程消息（用户可见的咨询对话）"""
         file_path = self._get_file_path(session_id, ConversationCategoryType.MAIN_FLOW)
         try:
-            async with aiofiles.open(file_path, mode='r', encoding='utf-8') as f:
+            async with aiofiles.open(file_path, mode="r", encoding="utf-8") as f:
                 content = await f.read()
                 data = json.loads(content)
                 messages = data.get("messages", [])
@@ -268,14 +259,11 @@ class EnhancedConversationFileManager:
         except (FileNotFoundError, json.JSONDecodeError):
             return []
 
-    async def get_notes(
-        self,
-        session_id: str
-    ) -> List[Dict]:
+    async def get_notes(self, session_id: str) -> List[Dict]:
         """获取笔记内容"""
         file_path = self._get_file_path(session_id, ConversationCategoryType.NOTE)
         try:
-            async with aiofiles.open(file_path, mode='r', encoding='utf-8') as f:
+            async with aiofiles.open(file_path, mode="r", encoding="utf-8") as f:
                 content = await f.read()
                 data = json.loads(content)
                 return data.get("notes", [])
@@ -306,7 +294,7 @@ class EnhancedConversationFileManager:
         # 读取现有笔记
         existing_notes = []
         if file_path.exists():
-            async with aiofiles.open(file_path, mode='r', encoding='utf-8') as f:
+            async with aiofiles.open(file_path, mode="r", encoding="utf-8") as f:
                 content = await f.read()
                 data = json.loads(content)
                 existing_notes = data.get("notes", [])
@@ -314,9 +302,9 @@ class EnhancedConversationFileManager:
             # 创建新笔记文件
             data = {
                 "session_id": session_id,
-                "created_at": datetime.utcnow().isoformat() + "Z",
-                "updated_at": datetime.utcnow().isoformat() + "Z",
-                "notes": []
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "notes": [],
             }
 
         # 查找是否已存在该题目的 answer_card，存在则更新
@@ -325,26 +313,30 @@ class EnhancedConversationFileManager:
             "id": f"answer_card_{question_id}",
             "type": "answer_card",
             "content": json.dumps(answer_card, ensure_ascii=False),
-            "created_at": datetime.utcnow().isoformat() + "Z",
+            "created_at": datetime.now(timezone.utc).isoformat(),
             "metadata": {
                 "question_id": question_id,
                 "current_step": answer_card.get("current_step"),
-            }
+            },
         }
 
         # 移除旧的同一题目 answer_card（如果有）
-        existing_notes = [n for n in existing_notes if not (
-            n.get("type") == "answer_card" and
-            n.get("metadata", {}).get("question_id") == question_id
-        )]
+        existing_notes = [
+            n
+            for n in existing_notes
+            if not (
+                n.get("type") == "answer_card"
+                and n.get("metadata", {}).get("question_id") == question_id
+            )
+        ]
 
         # 添加新的 answer_card
         existing_notes.append(answer_card_note)
         data["notes"] = existing_notes
-        data["updated_at"] = datetime.utcnow().isoformat() + "Z"
+        data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
         # 保存
-        async with aiofiles.open(file_path, mode='w', encoding='utf-8') as f:
+        async with aiofiles.open(file_path, mode="w", encoding="utf-8") as f:
             await f.write(json.dumps(data, indent=2, ensure_ascii=False))
 
     async def get_answer_cards(
@@ -364,11 +356,9 @@ class EnhancedConversationFileManager:
             if note.get("type") == "answer_card":
                 try:
                     content = json.loads(note.get("content", "{}"))
-                    answer_cards.append({
-                        **content,
-                        "created_at": note.get("created_at"),
-                        "note_id": note.get("id")
-                    })
+                    answer_cards.append(
+                        {**content, "created_at": note.get("created_at"), "note_id": note.get("id")}
+                    )
                 except json.JSONDecodeError:
                     continue
 
@@ -381,7 +371,7 @@ class EnhancedConversationFileManager:
         session_id: str,
         max_rounds: int = 5,
         keep_latest: int = 3,
-        include_all_flow: bool = True
+        include_all_flow: bool = True,
     ) -> Dict[str, Any]:
         """
         获取压缩后的上下文（用于 LLM）
@@ -422,9 +412,9 @@ class EnhancedConversationFileManager:
                 cutoff_user_msg = user_messages[cutoff_index]
                 # 找到这条消息在原数组中的位置
                 cutoff_idx = main_messages.index(cutoff_user_msg)
-                context_messages = main_messages[cutoff_idx + 1:]
+                context_messages = main_messages[cutoff_idx + 1 :]
             else:
-                context_messages = main_messages[-keep_latest * 2:]  # 保留最近几轮
+                context_messages = main_messages[-keep_latest * 2 :]  # 保留最近几轮
 
         # 构建 LLM 消息列表
         llm_messages = []
@@ -432,10 +422,7 @@ class EnhancedConversationFileManager:
             role = msg.get("role", "user")
             content = msg.get("content", "")
             if role in ["user", "assistant"] and content:
-                llm_messages.append({
-                    "role": role,
-                    "content": content
-                })
+                llm_messages.append({"role": role, "content": content})
 
         # 可选：包含 all_flow（AI 思考过程）
         all_flow_messages = []
@@ -444,10 +431,9 @@ class EnhancedConversationFileManager:
             # 将 all_flow 转换为思考过程格式
             for msg in all_flow_raw:
                 if msg.get("type") == "ai_thinking":
-                    all_flow_messages.append({
-                        "role": "system",
-                        "content": f"[AI 思考过程] {msg.get('content', '')}"
-                    })
+                    all_flow_messages.append(
+                        {"role": "system", "content": f"[AI 思考过程] {msg.get('content', '')}"}
+                    )
 
         return {
             "session_id": session_id,
@@ -455,15 +441,15 @@ class EnhancedConversationFileManager:
             "was_compressed": was_compressed,
             "messages": llm_messages,
             "all_flow_messages": all_flow_messages if include_all_flow else [],
-            "context_summary": f"当前对话共 {round_count} 轮，" + (
-                f"已压缩，保留最近 {keep_latest} 轮" if was_compressed else "未压缩"
-            )
+            "context_summary": f"当前对话共 {round_count} 轮，"
+            + (f"已压缩，保留最近 {keep_latest} 轮" if was_compressed else "未压缩"),
         }
 
 
 # 保持向后兼容的旧接口
 class ConversationCategory(str, Enum):
     """旧的对话分类（保持兼容）"""
+
     MAIN_FLOW = "main_flow"
     GUIDANCE = "guidance"
     CLARIFICATION = "clarification"
@@ -487,25 +473,14 @@ class ConversationFileManager:
         session_dir = self._get_session_dir(session_id)
         return session_dir / f"{category}.json"
 
-    async def append_message(
-        self,
-        session_id: str,
-        category: str,
-        message: Dict
-    ) -> Dict:
+    async def append_message(self, session_id: str, category: str, message: Dict) -> Dict:
         """添加消息（向后兼容接口，路由到 main_flow）"""
         # 如果使用旧接口，默认写入 main_flow
         return await self._enhanced.append_to_flow(
-            session_id=session_id,
-            message=message,
-            category=ConversationCategoryType.MAIN_FLOW
+            session_id=session_id, message=message, category=ConversationCategoryType.MAIN_FLOW
         )
 
-    async def get_messages(
-        self,
-        session_id: str,
-        category: Optional[str] = None
-    ) -> List[Dict]:
+    async def get_messages(self, session_id: str, category: Optional[str] = None) -> List[Dict]:
         """获取消息（向后兼容接口）"""
         if category is None or category == "main_flow":
             return await self._enhanced.get_main_flow_messages(session_id)
@@ -513,10 +488,7 @@ class ConversationFileManager:
             # 其他类别暂不支持，返回空
             return []
 
-    async def get_all_conversations(
-        self,
-        session_id: str
-    ) -> Dict[str, List[Dict]]:
+    async def get_all_conversations(self, session_id: str) -> Dict[str, List[Dict]]:
         """获取所有分类的对话（向后兼容接口）"""
         result = {
             "main_flow": await self._enhanced.get_main_flow_messages(session_id),
@@ -527,7 +499,7 @@ class ConversationFileManager:
         # 读取笔记
         note_path = self._enhanced._get_file_path(session_id, ConversationCategoryType.NOTE)
         if note_path.exists():
-            async with aiofiles.open(note_path, mode='r', encoding='utf-8') as f:
+            async with aiofiles.open(note_path, mode="r", encoding="utf-8") as f:
                 content = await f.read()
                 data = json.loads(content)
                 result["note"] = data.get("notes", [])

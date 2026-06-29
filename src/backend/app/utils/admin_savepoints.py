@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from app.utils.report_registry import ReportRegistry, STEP_IDS
+from app.utils.report_registry import STEP_IDS, ReportRegistry
 from app.utils.simple_activation_manager import (
     ActivationRecord,
     SimpleActivationManager,
@@ -44,7 +44,7 @@ _BATCH_STATE_LOADED = False
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _project_root() -> Path:
@@ -177,7 +177,9 @@ def _ensure_unique_display_name(display_name: str, items: List[Dict[str, Any]]) 
             )
 
 
-def _find_report_for_activation(registry: ReportRegistry, code: str, rec: ActivationRecord) -> Optional[Dict[str, Any]]:
+def _find_report_for_activation(
+    registry: ReportRegistry, code: str, rec: ActivationRecord
+) -> Optional[Dict[str, Any]]:
     owner_key = (rec.owner_user_id or rec.owner_email or "").strip()
     report = registry.get_by_activation_user(code, owner_key) if owner_key else None
     if report:
@@ -346,7 +348,9 @@ def list_batch_job_history(limit: int = 50) -> List[Dict[str, Any]]:
     return out
 
 
-def cleanup_batch_job_history(*, keep_latest: int = 200, older_than_days: Optional[int] = None) -> Dict[str, Any]:
+def cleanup_batch_job_history(
+    *, keep_latest: int = 200, older_than_days: Optional[int] = None
+) -> Dict[str, Any]:
     _ensure_batch_jobs_loaded()
     if keep_latest < 1 or keep_latest > 5000:
         raise ValueError("keep_latest 必须在 1~5000")
@@ -466,7 +470,7 @@ def run_generated_scenario(
 
         log_dir = _project_root() / "test_agent" / "reports" / "job_logs"
         log_dir.mkdir(parents=True, exist_ok=True)
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         log_file = log_dir / f"{spid}_{ts}_{uuid.uuid4().hex[:6]}.log"
 
         status = "failed"
@@ -593,7 +597,11 @@ def run_generated_scenarios_batch(
         pool = items
         if only_failed:
             pool = [x for x in pool if (x.get("last_run_status") or "") == "failed"]
-        target_ids = [str(x.get("savepoint_id") or "").strip() for x in pool if str(x.get("savepoint_id") or "").strip()]
+        target_ids = [
+            str(x.get("savepoint_id") or "").strip()
+            for x in pool
+            if str(x.get("savepoint_id") or "").strip()
+        ]
 
     if not target_ids:
         return {
@@ -651,7 +659,11 @@ def _resolve_generated_target_ids(
     pool = items
     if only_failed:
         pool = [x for x in pool if (x.get("last_run_status") or "") == "failed"]
-    return [str(x.get("savepoint_id") or "").strip() for x in pool if str(x.get("savepoint_id") or "").strip()]
+    return [
+        str(x.get("savepoint_id") or "").strip()
+        for x in pool
+        if str(x.get("savepoint_id") or "").strip()
+    ]
 
 
 def start_generated_scenarios_batch_job(
@@ -693,7 +705,9 @@ def start_generated_scenarios_batch_job(
         "target_ids": target_ids,
     }
     with _BATCH_JOB_LOCK:
-        running = next((x for x in _BATCH_JOBS.values() if (x.get("status") or "") == "running"), None)
+        running = next(
+            (x for x in _BATCH_JOBS.values() if (x.get("status") or "") == "running"), None
+        )
         if running:
             raise ValueError(f"已有批量任务运行中: {running.get('job_id')}")
         _BATCH_JOBS[job_id] = job
@@ -840,7 +854,7 @@ def _build_replay_command(*, seed_report_dir: str, phase: str, thread_id: str, m
 
 def _build_playwright_command(*, scenario_file: str) -> str:
     return (
-        'python test_agent/l2/run_scenario.py '
+        "python test_agent/l2/run_scenario.py "
         f'--scenario "{scenario_file}" '
         "--engine playwright"
     )
@@ -969,7 +983,9 @@ def create_savepoint(
 
     content = str(target_msg.get("content") or "")
     auto_keywords = _extract_keywords(content)
-    final_keywords = [str(x).strip() for x in (expected_keywords or auto_keywords) if str(x).strip()]
+    final_keywords = [
+        str(x).strip() for x in (expected_keywords or auto_keywords) if str(x).strip()
+    ]
     final_hint = (expected_hint or content[:120]).strip()
 
     created_at = _now_iso()
@@ -1147,7 +1163,9 @@ def export_savepoint_assets(*, savepoint_id: str) -> Dict[str, Any]:
         / "simple_chat_cases"
         / "batch_savepoints_general.json"
     )
-    cases_obj = _load_json(cases_file, {"schema_version": 1, "description": "savepoints", "cases": []})
+    cases_obj = _load_json(
+        cases_file, {"schema_version": 1, "description": "savepoints", "cases": []}
+    )
     if not isinstance(cases_obj, dict):
         cases_obj = {"schema_version": 1, "description": "savepoints", "cases": []}
     cases = cases_obj.get("cases")
@@ -1192,7 +1210,7 @@ def export_savepoint_assets(*, savepoint_id: str) -> Dict[str, Any]:
         f"  base_url: http://127.0.0.1:3000\n"
         f"  backend_url: http://127.0.0.1:8000\n"
         f"  activation_code: \"{hit.get('source_activation_code')}\"\n"
-        f"  savepoint_id: \"{spid}\"\n"
+        f'  savepoint_id: "{spid}"\n'
         f"  phase: {meta.get('phase')}\n"
         f"  thread_id: {meta.get('thread_id')}\n"
         f"steps:\n"
@@ -1201,15 +1219,15 @@ def export_savepoint_assets(*, savepoint_id: str) -> Dict[str, Any]:
         f"  - action: wait_ms\n"
         f"    ms: 1200\n"
         f"  - action: chat_send\n"
-        f"    text: \"{expected_hint_escaped}\"\n"
+        f'    text: "{expected_hint_escaped}"\n'
         f"  - action: wait_for_ai\n"
         f"    delta: 1\n"
         f"  - action: screenshot\n"
         f"    name: after_chat_send.png\n"
         f"assertions:\n"
-        f"  expected_hint: \"{expected_hint_escaped}\"\n"
+        f'  expected_hint: "{expected_hint_escaped}"\n'
         f"  expected_keywords: {expected_keywords}\n"
-        f"  no_leak_tags: [\"[STATE_JSON]\", \"[ROW_STATE_JSON]\"]\n"
+        f'  no_leak_tags: ["[STATE_JSON]", "[ROW_STATE_JSON]"]\n'
         f"  metadata_checks:\n"
         f"    phase: {meta.get('phase')}\n"
         f"    thread_id: {meta.get('thread_id')}\n"
@@ -1236,9 +1254,7 @@ def export_savepoint_assets(*, savepoint_id: str) -> Dict[str, Any]:
     exported_at = _now_iso()
     generated_idx = _load_generated_index()
     generated_items = [x for x in generated_idx.get("items", []) if isinstance(x, dict)]
-    generated_items = [
-        x for x in generated_items if (x.get("savepoint_id") or "") != spid
-    ]
+    generated_items = [x for x in generated_items if (x.get("savepoint_id") or "") != spid]
     generated_items.append(
         {
             "savepoint_id": spid,
@@ -1323,4 +1339,3 @@ def load_savepoint(*, activation_code: str, savepoint_id: str) -> Dict[str, Any]
         "thread_id": meta.get("thread_id"),
         "report_id": report_id,
     }
-

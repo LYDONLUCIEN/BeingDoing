@@ -1,27 +1,30 @@
 """
 对话API
 """
+
 import asyncio
 import json
 import logging
 import os
 import re
 import traceback
-from fastapi import APIRouter, HTTPException, Depends, status, BackgroundTasks
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict, Generator, Optional
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from pathlib import Path
-from typing import Optional, Dict, Generator
+
 from app.api.v1.auth import get_current_user
-from app.core.agent.graph import create_agent_graph, create_initial_state
-from app.core.agent.config import AgentRunConfig
-from app.domain import DEFAULT_CURRENT_STEP
-from app.services.session_service import SessionService
-from app.services.analytics_service import AnalyticsService
-from app.utils.conversation_file_manager import ConversationFileManager, ConversationCategory
-from datetime import datetime
 from app.config.settings import settings
-from app.utils.data_paths import get_question_progress_dir, get_debug_logs_dir, get_logs_dir
+from app.core.agent.config import AgentRunConfig
+from app.core.agent.graph import create_agent_graph, create_initial_state
+from app.domain import DEFAULT_CURRENT_STEP
+from app.services.analytics_service import AnalyticsService
+from app.services.session_service import SessionService
+from app.utils.conversation_file_manager import ConversationCategory, ConversationFileManager
+from app.utils.data_paths import get_debug_logs_dir, get_logs_dir, get_question_progress_dir
 from app.utils.super_admin import is_super_admin_user
 
 logger = logging.getLogger(__name__)
@@ -66,11 +69,15 @@ def _extract_step_progress_info(question_progress_data: Dict, current_step: str)
     current_index = step_data.get("current_question_index", 0)
     questions = step_data.get("questions", [])
     return {
-        "current_question_id": questions[current_index]["question_id"] if current_index < len(questions) else None,
+        "current_question_id": (
+            questions[current_index]["question_id"] if current_index < len(questions) else None
+        ),
         "current_index": current_index,
         "total_questions": len(questions),
         "completed_count": sum(1 for q in questions if q.get("status") == "completed"),
-        "current_question_content": questions[current_index]["question_content"] if current_index < len(questions) else None,
+        "current_question_content": (
+            questions[current_index]["question_content"] if current_index < len(questions) else None
+        ),
         "is_intro_shown": step_data.get("is_intro_shown", False),
     }
 
@@ -80,6 +87,7 @@ def _extract_step_progress_info(question_progress_data: Dict, current_step: str)
 
 class SendMessageRequest(BaseModel):
     """发送消息请求（current_step 默认从 domain 读取）"""
+
     session_id: str
     message: str
     current_step: str = DEFAULT_CURRENT_STEP
@@ -90,24 +98,28 @@ class SendMessageRequest(BaseModel):
 
 class GuideRequest(BaseModel):
     """主动引导请求"""
+
     session_id: str
     current_step: str
 
 
 class GuidePreferenceRequest(BaseModel):
     """引导偏好请求"""
+
     session_id: str
     preference: str  # normal, quiet
 
 
 class ResummarizeRequest(BaseModel):
     """用户修改回答后触发重新梳理总结"""
+
     session_id: str
     current_step: Optional[str] = None
 
 
 class RecordInterruptRequest(BaseModel):
     """用户点击终止时记录打断与截至内容"""
+
     session_id: str
     partial_content: str
     current_step: Optional[str] = None
@@ -115,6 +127,7 @@ class RecordInterruptRequest(BaseModel):
 
 class StandardResponse(BaseModel):
     """标准响应"""
+
     code: int = 200
     message: str = "success"
     data: dict
@@ -124,7 +137,7 @@ class StandardResponse(BaseModel):
 async def send_message(
     request: SendMessageRequest,
     current_user: Optional[dict] = Depends(get_current_user),
-    background_tasks: BackgroundTasks = None
+    background_tasks: BackgroundTasks = None,
 ):
     """发送消息（思考链 + 用户侧输出：用户可见内容来自 user_agent 节点）"""
     try:
@@ -157,14 +170,16 @@ async def send_message(
             logger.exception("[chat] 智能体运行失败: %s", e)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"智能体运行失败: {str(e)}"
+                detail=f"智能体运行失败: {str(e)}",
             )
 
         # 用户可见回复：优先从 messages（user_agent 写入）取最后一条，否则 fallback 到 final_response
         messages = (final_state.get("messages") or []) if final_state else []
         if messages:
             last_msg = messages[-1]
-            response = getattr(last_msg, "content", None) or (last_msg.get("content") if isinstance(last_msg, dict) else None)
+            response = getattr(last_msg, "content", None) or (
+                last_msg.get("content") if isinstance(last_msg, dict) else None
+            )
         else:
             response = None
         if not response and final_state:
@@ -175,18 +190,15 @@ async def send_message(
         logs = final_state.get("logs") or [] if final_state else []
 
         if error:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=error
-            )
-        
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=error)
+
         # 保存对话记录（后台任务）
         conversation_manager = ConversationFileManager()
         category_map = {
             "main_flow": ConversationCategory.MAIN_FLOW,
             "guidance": ConversationCategory.GUIDANCE,
             "clarification": ConversationCategory.CLARIFICATION,
-            "other": ConversationCategory.OTHER
+            "other": ConversationCategory.OTHER,
         }
         category = category_map.get(request.category, ConversationCategory.MAIN_FLOW)
 
@@ -194,38 +206,40 @@ async def send_message(
         if request.message.strip():
             await conversation_manager.append_message(
                 session_id=request.session_id,
-                category=category.value if hasattr(category, 'value') else category,
+                category=category.value if hasattr(category, "value") else category,
                 message={
                     "role": "user",
                     "content": request.message,
                     "context": {"current_step": request.current_step},
-                    "created_at": datetime.utcnow().isoformat() + "Z"
-                }
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                },
             )
-        
+
         # 添加助手回复
         await conversation_manager.append_message(
             session_id=request.session_id,
-            category=category.value if hasattr(category, 'value') else category,
+            category=category.value if hasattr(category, "value") else category,
             message={
                 "role": "assistant",
                 "content": response,
                 "context": {"current_step": request.current_step},
-                "created_at": datetime.utcnow().isoformat() + "Z"
-            }
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            },
         )
-        
+
         # 更新会话最后活动时间
         await SessionService.update_session(
             request.session_id,
             current_step=request.current_step,
         )
-        
+
         # v2.4: 持久化 question_progress 并提取返回信息
         question_progress_data = final_state.get("question_progress", {}) if final_state else {}
         _save_question_progress(request.session_id, question_progress_data)
 
-        step_progress_info = _extract_step_progress_info(question_progress_data, request.current_step)
+        step_progress_info = _extract_step_progress_info(
+            question_progress_data, request.current_step
+        )
 
         # 埋点：记录对话轮次（用户字数、LLM token、维度）
         try:
@@ -265,16 +279,13 @@ async def send_message(
                 "question_progress": step_progress_info,  # v2.4: 新增
                 "answer_card": answer_card_info,  # v2.4: 新增
                 "suggestions": (final_state or {}).get("suggestions", []),
-            }
+            },
         )
-    
+
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 def _chunk_response_for_stream(text: str, chunk_size: int = 20) -> Generator[str, None, None]:
@@ -310,7 +321,7 @@ def _save_debug_logs(
     try:
         user_id = (final_state or {}).get("user_id") or None
         entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "user_id": user_id,
             "session_id": session_id,
             "user_input": user_input,
@@ -350,6 +361,7 @@ async def send_message_stream(
     current_user: Optional[dict] = Depends(get_current_user),
 ):
     """发送消息并流式返回助手回复（SSE）。先发 started，再跑智能体；reasoning 节点使用 chat_stream 边生成边推块，真流式输出。"""
+
     async def event_stream():
         try:
             yield f"data: {json.dumps({'started': True}, ensure_ascii=False)}\n\n"
@@ -364,7 +376,7 @@ async def send_message_stream(
                         "role": "user",
                         "content": request.message,
                         "context": {"current_step": request.current_step},
-                        "created_at": datetime.utcnow().isoformat() + "Z",
+                        "created_at": datetime.now(timezone.utc).isoformat(),
                     },
                 )
             user_id = current_user["user_id"] if current_user else None
@@ -427,7 +439,9 @@ async def send_message_stream(
             if not logs:
                 # 确保至少有一条基础日志，避免 debug-logs 返回完全空数组
                 logs = [{"message": "no internal logs captured", "done": True}]
-            log_index = _save_debug_logs(request.session_id, request.message, response, logs, final_state)
+            log_index = _save_debug_logs(
+                request.session_id, request.message, response, logs, final_state
+            )
 
             # 埋点：记录对话轮次
             try:
@@ -448,7 +462,9 @@ async def send_message_stream(
             # v2.4: 持久化 question_progress 并提取返回信息
             question_progress_data = (final_state or {}).get("question_progress", {})
             _save_question_progress(request.session_id, question_progress_data)
-            step_progress_info = _extract_step_progress_info(question_progress_data, request.current_step)
+            step_progress_info = _extract_step_progress_info(
+                question_progress_data, request.current_step
+            )
 
             # 构造 answer_card（只传 should_show=True 的）
             answer_card_info = None
@@ -473,7 +489,7 @@ async def send_message_stream(
                     "role": "assistant",
                     "content": response,
                     "context": {"current_step": request.current_step},
-                    "created_at": datetime.utcnow().isoformat() + "Z",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
                 },
             )
             await SessionService.update_session(
@@ -515,7 +531,7 @@ async def record_interrupt(
                     "current_step": request.current_step,
                     "interrupted": True,
                 },
-                "created_at": datetime.utcnow().isoformat() + "Z",
+                "created_at": datetime.now(timezone.utc).isoformat(),
             },
         )
         return StandardResponse(code=200, message="success", data={"recorded": True})
@@ -533,7 +549,9 @@ async def get_debug_logs(
 ):
     """获取某会话的智能体调试日志（仅超级管理员）。含思考链、工具调用、logs 等。"""
     if not _is_super_admin(current_user):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="仅超级管理员可查看调试日志")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="仅超级管理员可查看调试日志"
+        )
     try:
         entries = []
         # 搜索所有可能的日志路径（项目根 data/ 下）
@@ -584,66 +602,58 @@ async def get_conversation_history(
     session_id: str,
     category: Optional[str] = None,
     limit: Optional[int] = None,
-    current_user: Optional[dict] = Depends(get_current_user)
+    current_user: Optional[dict] = Depends(get_current_user),
 ):
     """获取对话历史"""
     try:
         conversation_manager = ConversationFileManager(base_dir=str(settings.CONVERSATION_DIR))
-        
+
         category_map = {
             "main_flow": "main_flow",
             "guidance": "guidance",
             "clarification": "clarification",
-            "other": "other"
+            "other": "other",
         }
-        
+
         conv_category = None
         if category:
             conv_category = category_map.get(category)
-        
+
         if conv_category:
             messages = await conversation_manager.get_messages(
-                session_id=session_id,
-                category=conv_category
+                session_id=session_id, category=conv_category
             )
         else:
             all_conversations = await conversation_manager.get_all_conversations(session_id)
             messages = []
             for cat_messages in all_conversations.values():
                 messages.extend(cat_messages)
-        
+
         # 限制数量
         if limit:
             messages = messages[-limit:]
-        
+
         return StandardResponse(
-            code=200,
-            message="success",
-            data={"messages": messages, "count": len(messages)}
+            code=200, message="success", data={"messages": messages, "count": len(messages)}
         )
-    
+
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 @router.post("/guide", response_model=StandardResponse)
 async def trigger_guide(
-    request: GuideRequest,
-    current_user: Optional[dict] = Depends(get_current_user)
+    request: GuideRequest, current_user: Optional[dict] = Depends(get_current_user)
 ):
     """触发主动引导"""
     try:
         from app.services.guide_service import GuideService
-        
+
         service = GuideService()
         guide_message = await service.generate_active_guide_message(
-            session_id=request.session_id,
-            current_step=request.current_step
+            session_id=request.session_id, current_step=request.current_step
         )
-        
+
         # 保存引导消息到对话记录
         conversation_manager = ConversationFileManager()
         await conversation_manager.append_message(
@@ -653,65 +663,49 @@ async def trigger_guide(
                 "role": "assistant",
                 "content": guide_message,
                 "context": {"current_step": request.current_step},
-                "created_at": datetime.utcnow().isoformat() + "Z"
-            }
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            },
         )
-        
-        return StandardResponse(
-            code=200,
-            message="success",
-            data={"message": guide_message}
-        )
-    
+
+        return StandardResponse(code=200, message="success", data={"message": guide_message})
+
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 @router.post("/guide-preference", response_model=StandardResponse)
 async def set_guide_preference(
-    request: GuidePreferenceRequest,
-    current_user: Optional[dict] = Depends(get_current_user)
+    request: GuidePreferenceRequest, current_user: Optional[dict] = Depends(get_current_user)
 ):
     """设置引导偏好"""
     try:
         from app.services.guide_service import GuideService
-        
+
         service = GuideService()
         result = await service.set_guide_preference(
-            session_id=request.session_id,
-            preference=request.preference
+            session_id=request.session_id, preference=request.preference
         )
-        
-        return StandardResponse(
-            code=200,
-            message="设置成功",
-            data=result
-        )
-    
+
+        return StandardResponse(code=200, message="设置成功", data=result)
+
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 @router.post("/resummarize", response_model=StandardResponse)
 async def resummarize_after_edit(
-    request: ResummarizeRequest,
-    current_user: Optional[dict] = Depends(get_current_user)
+    request: ResummarizeRequest, current_user: Optional[dict] = Depends(get_current_user)
 ):
     """用户修改回答后触发后台思考智能体重新梳理和总结（当前返回成功，后续可接入智能体重算 step_summary）"""
     # TODO: 接入 agent 根据该步骤最新回答重新生成 step_summary 并持久化
     return StandardResponse(
         code=200,
         message="success",
-        data={"triggered": True, "session_id": request.session_id, "current_step": request.current_step}
+        data={
+            "triggered": True,
+            "session_id": request.session_id,
+            "current_step": request.current_step,
+        },
     )

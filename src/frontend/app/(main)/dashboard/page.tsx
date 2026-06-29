@@ -9,6 +9,7 @@ import { clearThreadCache } from '@/lib/explore/threads';
 import { useLocale } from '@/hooks/useLocale';
 import { apiClient } from '@/lib/api/client';
 import { fetchExploreResumeFromJourneys } from '@/lib/explore/journeyResume';
+import { formatUTC } from '@/lib/utils/formatTime';
 import { useAuthStore } from '@/stores/authStore';
 import type { SurveyData } from '@/lib/survey/schema';
 
@@ -108,13 +109,9 @@ function buildNodes(resume?: JourneyItem['explore_resume']): NodeVisual[] {
 
 function formatJourneyDateTime(iso?: string): string {
   if (!iso?.trim()) return '—';
-  try {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return iso;
-    return d.toLocaleString('zh-CN', { dateStyle: 'medium', timeStyle: 'short' });
-  } catch {
-    return iso;
-  }
+  // 委托 formatUTC，确保 tz-aware 字符串按浏览器本地时区显示
+  const formatted = formatUTC(iso, 'zh-CN');
+  return formatted === '-' ? iso : formatted;
 }
 
 /** 右上角状态：探索已全部收口时显示「已完成」，避免仅因激活 TTL 显示「已过期」造成误解 */

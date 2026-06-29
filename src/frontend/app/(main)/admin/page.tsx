@@ -7,6 +7,7 @@ import {
   type AdminDashboardOverview,
   type AdminDashboardOverviewPayload,
 } from '@/lib/api/admin';
+import { formatUTC } from '@/lib/utils/formatTime';
 
 export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(false);
@@ -84,7 +85,7 @@ export default function AdminDashboardPage() {
             {syncing ? '同步中...' : '手动同步（从 /data 重算）'}
           </button>
           <span className="text-bd-subtle">
-            上次生成：{meta?.generated_at ? new Date(meta.generated_at).toLocaleString() : '—'}
+            上次生成：{meta?.generated_at ? formatUTC(meta.generated_at) : '—'}
           </span>
         </div>
       </header>

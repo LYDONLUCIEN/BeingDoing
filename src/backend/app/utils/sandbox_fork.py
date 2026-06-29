@@ -13,8 +13,8 @@ from __future__ import annotations
 import json
 import logging
 import random
-import string
 import shutil
+import string
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -37,7 +37,7 @@ AUDIT_LOG_FILENAME = "sandbox_fork_audit.jsonl"
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _sandbox_audit_path() -> Path:
@@ -52,7 +52,9 @@ def append_fork_audit(entry: Dict[str, Any]) -> None:
         f.write(line)
 
 
-def _generate_sandbox_code(manager: SimpleActivationManager, extra_records: Optional[Dict[str, Any]] = None) -> str:
+def _generate_sandbox_code(
+    manager: SimpleActivationManager, extra_records: Optional[Dict[str, Any]] = None
+) -> str:
     records = manager.list_activations()
     extra = extra_records or {}
     alphabet = string.ascii_uppercase + string.digits
@@ -190,7 +192,9 @@ def fork_activation_from_source(
 
     new_report_id = str(uuid.uuid4())
     new_session_id = str(uuid.uuid4())
-    new_code = _generate_sandbox_code(target_manager, extra_records=source_manager.list_activations())
+    new_code = _generate_sandbox_code(
+        target_manager, extra_records=source_manager.list_activations()
+    )
 
     dst_report_dir = sandbox_base / "reports" / new_report_id
     dst_report_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -222,7 +226,7 @@ def fork_activation_from_source(
 
     now = _now_iso()
     expires_dt = datetime.now(timezone.utc) + timedelta(days=SANDBOX_RETENTION_DAYS)
-    expires_iso = expires_dt.isoformat().replace("+00:00", "Z")
+    expires_iso = expires_dt.isoformat()
 
     record_data["report_id"] = new_report_id
     record_data["activation_code"] = new_code
@@ -301,7 +305,9 @@ def fork_activation_from_source(
     return new_rec, summary
 
 
-def delete_sandbox_by_code(activation_code: str, admin_user: Optional[Dict[str, Any]] = None) -> bool:
+def delete_sandbox_by_code(
+    activation_code: str, admin_user: Optional[Dict[str, Any]] = None
+) -> bool:
     """删除沙箱磁盘目录并从 activations.json 移除记录。"""
     manager = SimpleActivationManager(base_dir=str(get_simple_test_base_dir()))
     code = (activation_code or "").strip().upper()

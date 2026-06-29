@@ -1,8 +1,9 @@
 """
 Refresh Token 持久化模型
 """
-from datetime import datetime
+
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, Column, DateTime, String
 
@@ -23,6 +24,6 @@ class RefreshToken(Base):
     revoked_reason = Column(String(64), nullable=True)
     replaced_by_jti = Column(String(64), nullable=True)
 
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     last_used_at = Column(DateTime, nullable=True)
     expires_at = Column(DateTime, nullable=False, index=True)

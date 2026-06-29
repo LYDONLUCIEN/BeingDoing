@@ -11,7 +11,7 @@ import random
 import re
 import string
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
@@ -21,7 +21,6 @@ from app.utils.simple_activation_manager import (
     SimpleActivationManager,
     get_simple_test_base_dir,
 )
-
 
 RESIDENT_CODE_PREFIX = "ADM"
 RESIDENT_TTL_DAYS = 3650  # 10 年，近似长期有效
@@ -96,9 +95,9 @@ def ensure_admin_resident_workspace(admin_user: Dict[str, Any]) -> Tuple[Activat
     workspace_root = f"admin_workspaces/{_safe_workspace_owner(owner_key)}"
     _ensure_workspace_dir(workspace_root)
 
-    now = datetime.utcnow()
-    now_iso = now.isoformat() + "Z"
-    expires_iso = (now + timedelta(days=RESIDENT_TTL_DAYS)).isoformat() + "Z"
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    expires_iso = (now + timedelta(days=RESIDENT_TTL_DAYS)).isoformat()
     code = _generate_resident_code(manager)
 
     rec = ActivationRecord(

@@ -6,6 +6,7 @@ import {
   fetchAdminChatRecords,
   type AdminAnalyticsDashboard,
 } from '@/lib/api/admin';
+import { formatLocalDateTime } from '@/lib/utils/formatTime';
 
 export default function AdminAnalyticsPage() {
   const [dashboard, setDashboard] = useState<AdminAnalyticsDashboard | null>(null);
@@ -195,7 +196,7 @@ export default function AdminAnalyticsPage() {
                       <td className="px-2 py-2 whitespace-nowrap">{outTokens}</td>
                       <td className="px-2 py-2 whitespace-nowrap">{inTokens + outTokens}</td>
                       <td className="px-2 py-2 whitespace-nowrap">{r?.user_input_chars ?? 0}</td>
-                      <td className="px-2 py-2 whitespace-nowrap">{r?.created_at || ''}</td>
+                      <td className="px-2 py-2 whitespace-nowrap">{r?.created_at ? formatLocalDateTime(r.created_at) : ''}</td>
                     </tr>
                   );
                 })}

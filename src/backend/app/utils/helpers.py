@@ -1,9 +1,10 @@
 """
 辅助工具函数
 """
-from typing import Any, Dict
-from datetime import datetime
+
 import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict
 
 
 def generate_uuid() -> str:
@@ -13,7 +14,7 @@ def generate_uuid() -> str:
 
 def get_current_timestamp() -> datetime:
     """获取当前时间戳"""
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 
 def format_response(data: Any, message: str = "success", code: int = 200) -> Dict[str, Any]:
@@ -22,17 +23,13 @@ def format_response(data: Any, message: str = "success", code: int = 200) -> Dic
         "code": code,
         "message": message,
         "data": data,
-        "timestamp": get_current_timestamp().isoformat()
+        "timestamp": get_current_timestamp().isoformat(),
     }
 
 
 def format_error_response(message: str, code: int = 400, details: Any = None) -> Dict[str, Any]:
     """格式化错误响应"""
-    response = {
-        "code": code,
-        "message": message,
-        "timestamp": get_current_timestamp().isoformat()
-    }
+    response = {"code": code, "message": message, "timestamp": get_current_timestamp().isoformat()}
     if details:
         response["details"] = details
     return response
