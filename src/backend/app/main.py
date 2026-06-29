@@ -1,17 +1,35 @@
 """
 FastAPI应用主入口
 """
+
+import asyncio
 import logging
 import sys
-import asyncio
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.config.settings import settings
+
 from app.api.middleware import AudioModeMiddleware, ErrorHandlerMiddleware
-from app.api.v1 import auth, users, sessions, questions, answers, chat, search, formula, audio, export, debug, admin, analytics
+from app.api.v1 import admin_notifications  # 新增：通知邮件群发
 from app.api.v1 import chat_optimized  # 新增：优化的对话API
-from app.api.v1 import simple_auth, simple_chat  # 新增：简单模式激活与对话
+from app.api.v1 import (  # 新增：简单模式激活与对话
+    admin,
+    analytics,
+    answers,
+    audio,
+    auth,
+    chat,
+    debug,
+    export,
+    formula,
+    questions,
+    search,
+    sessions,
+    simple_auth,
+    simple_chat,
+    users,
+)
+from app.config.settings import settings
 from app.utils.simple_activation_manager import SimpleActivationManager
 
 # ========== 日志配置 ==========
@@ -23,9 +41,19 @@ logging.basicConfig(
 )
 # 第三方库太吵，只保留 WARNING
 for noisy in (
-    "httpcore", "httpx", "urllib3", "asyncio", "watchfiles", "multipart", "filelock",
-    "aiosqlite", "sqlalchemy.engine", "sqlalchemy.pool", "sqlalchemy.dialects",
-    "openai", "httpx._client",
+    "httpcore",
+    "httpx",
+    "urllib3",
+    "asyncio",
+    "watchfiles",
+    "multipart",
+    "filelock",
+    "aiosqlite",
+    "sqlalchemy.engine",
+    "sqlalchemy.pool",
+    "sqlalchemy.dialects",
+    "openai",
+    "httpx._client",
 ):
     logging.getLogger(noisy).setLevel(logging.WARNING)
 
@@ -71,7 +99,9 @@ async def _recycle_cleanup_loop():
             manager = SimpleActivationManager()
             purged = manager.purge_recycle_bin()
             if purged:
-                logging.getLogger(__name__).info("recycle bin auto-purge removed %d records", purged)
+                logging.getLogger(__name__).info(
+                    "recycle bin auto-purge removed %d records", purged
+                )
         except Exception as e:
             logging.getLogger(__name__).exception("recycle bin auto-purge failed: %s", e)
         await asyncio.sleep(12 * 60 * 60)
@@ -100,6 +130,7 @@ async def _run_profile_backfill_task():
     """启动时后台异步回填老用户 profile_completed,首次完成后写标记文件。"""
     try:
         from app.utils.profile_backfill import run_profile_backfill_if_needed
+
         await run_profile_backfill_if_needed()
     except Exception as e:
         logging.getLogger(__name__).warning("profile backfill failed: %s", e)
@@ -112,6 +143,27 @@ async def _run_profile_backfill():
         asyncio.create_task(_run_profile_backfill_task())
     except Exception as e:
         logging.getLogger(__name__).warning("profile backfill schedule failed: %s", e)
+
+
+async def _recover_notification_tasks_task():
+    """启动时扫描 status='running' 的通知邮件任务，标记为 interrupted。"""
+    try:
+        from app.services.notification_service import NotificationService
+
+        count = await NotificationService.recover_interrupted()
+        if count:
+            logging.getLogger(__name__).info("recovered %d interrupted notification tasks", count)
+    except Exception as e:
+        logging.getLogger(__name__).warning("notification recover failed: %s", e)
+
+
+@app.on_event("startup")
+async def _recover_notification_tasks():
+    """启动时恢复中断的通知邮件群发任务（fire-and-forget）。"""
+    try:
+        asyncio.create_task(_recover_notification_tasks_task())
+    except Exception as e:
+        logging.getLogger(__name__).warning("notification recover schedule failed: %s", e)
 
 
 @app.get("/")
@@ -129,9 +181,9 @@ async def health():
 @app.get("/api/v1/config/architecture")
 async def get_architecture_config():
     """获取架构配置"""
-    from app.config.architecture import get_arch_config, ARCHITECTURE_MODE
+    from app.config.architecture import ARCHITECTURE_MODE, get_arch_config
     from app.config.audio_config import AudioConfig
-    
+
     config = get_arch_config()
     return {
         "architecture_mode": ARCHITECTURE_MODE,
@@ -140,8 +192,8 @@ async def get_architecture_config():
             "gateway": config.get("use_gateway", False),
             "vector_db": config.get("use_vector_db", False),
             "redis": config.get("use_redis", False),
-            "celery": config.get("use_celery", False)
-        }
+            "celery": config.get("use_celery", False),
+        },
     }
 
 
@@ -152,7 +204,9 @@ app.include_router(sessions.router, prefix="/api/v1")
 app.include_router(questions.router, prefix="/api/v1")
 app.include_router(answers.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
-app.include_router(chat_optimized.router, prefix="/api/v1")  # 新增：优化的对话API路由（使用 /api/v1/chat-optimized 前缀）
+app.include_router(
+    chat_optimized.router, prefix="/api/v1"
+)  # 新增：优化的对话API路由（使用 /api/v1/chat-optimized 前缀）
 app.include_router(simple_auth.router, prefix="/api/v1")  # 简单模式认证（激活码）
 app.include_router(simple_chat.router, prefix="/api/v1")  # 简单模式对话
 app.include_router(debug.router, prefix="/api/v1")  # Debug 模式
@@ -162,3 +216,4 @@ app.include_router(audio.router, prefix="/api/v1")
 app.include_router(export.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(analytics.router, prefix="/api/v1")
+app.include_router(admin_notifications.router, prefix="/api/v1")  # 通知邮件群发

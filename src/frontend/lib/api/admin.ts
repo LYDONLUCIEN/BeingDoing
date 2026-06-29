@@ -307,7 +307,9 @@ export async function exportReportsBatch(
   const link = document.createElement('a');
   link.href = url;
   // 从 Content-Disposition 取文件名，兜底生成
-  const disposition = (res.headers?.['content-disposition'] as string) || '';
+  // 注：blob 响应需读完整 axios 响应头，ApiResponse 类型未暴露 headers，这里断言取值
+  const axiosRes = res as unknown as { headers?: Record<string, string> };
+  const disposition = axiosRes.headers?.['content-disposition'] || '';
   const match = /filename="?([^"]+)"?/.exec(disposition);
   link.download = match?.[1] || 'reports_batch_export.zip';
   document.body.appendChild(link);
