@@ -5,21 +5,23 @@
 同一用户多份时按 BASIC_INFO_MERGE_STRATEGY 合并：A=最新 B=并集 C=交集。
 默认 dry-run，--apply 才执行。
 """
+
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 from pathlib import Path
 from typing import Dict, List
 
-from app.utils.simple_activation_manager import get_simple_base_dir
+from app.utils.admin_config import get_basic_info_merge_strategy
 from app.utils.data_paths import get_user_data_dir
+from app.utils.simple_activation_manager import get_simple_base_dir
 from app.utils.survey_storage import (
     load_basic_info,
-    save_basic_info_by_user,
     merge_basic_info_sources,
+    save_basic_info_by_user,
 )
-from app.utils.admin_config import get_basic_info_merge_strategy
 
 
 def load_json(path: Path, default):
@@ -31,7 +33,7 @@ def load_json(path: Path, default):
         return default
 
 
-def migrate(dry_run: bool) -> dict:
+async def migrate(dry_run: bool) -> dict:
     base = get_simple_base_dir()
     activations = load_json(base / "activations.json", {}) or {}
     user_data_root = get_user_data_dir()
@@ -70,7 +72,7 @@ def migrate(dry_run: bool) -> dict:
         if not merged:
             continue
         if not dry_run:
-            save_basic_info_by_user(user_id, merged)
+            await save_basic_info_by_user(user_id, merged)
         stats["written"] += 1
     return {"dry_run": dry_run, "strategy": strategy, **stats}
 
@@ -79,7 +81,7 @@ def main():
     parser = argparse.ArgumentParser(description="迁移 basic_info 到用户级")
     parser.add_argument("--apply", action="store_true", help="执行迁移")
     args = parser.parse_args()
-    result = migrate(dry_run=not args.apply)
+    result = asyncio.run(migrate(dry_run=not args.apply))
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 

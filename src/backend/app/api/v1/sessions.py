@@ -1,18 +1,21 @@
 """
 会话管理API
 """
-from fastapi import APIRouter, HTTPException, Depends, status, Query
-from pydantic import BaseModel
+
 from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
+
 from app.api.v1.auth import get_current_user
-from app.services.session_service import SessionService
-from app.services.progress_service import ProgressService
-from app.domain import DEFAULT_CURRENT_STEP
 from app.config.settings import settings
+from app.domain import DEFAULT_CURRENT_STEP
+from app.services.progress_service import ProgressService
+from app.services.session_service import SessionService
 from app.utils.survey_storage import (
-    save_basic_info_by_user,
-    load_basic_info_by_user,
     load_basic_info,
+    load_basic_info_by_user,
+    save_basic_info_by_user,
 )
 
 router = APIRouter(prefix="/sessions", tags=["会话"])
@@ -22,18 +25,21 @@ CONVERSATION_DIR = settings.CONVERSATION_DIR
 
 class CreateSessionRequest(BaseModel):
     """创建会话请求（current_step 默认从 domain 读取）"""
+
     device_id: Optional[str] = None
     current_step: Optional[str] = DEFAULT_CURRENT_STEP
 
 
 class UpdateSessionRequest(BaseModel):
     """更新会话请求"""
+
     current_step: Optional[str] = None
     status: Optional[str] = None
 
 
 class StandardResponse(BaseModel):
     """标准响应"""
+
     code: int = 200
     message: str = "success"
     data: dict
@@ -41,6 +47,7 @@ class StandardResponse(BaseModel):
 
 class SurveySaveRequest(BaseModel):
     """调研问卷保存请求"""
+
     survey_data: dict
 
 
@@ -83,14 +90,13 @@ async def save_session_survey(
     user_id = (session.get("user_id") or (current_user or {}).get("user_id") or "").strip()
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="请先登录")
-    save_basic_info_by_user(user_id, request.survey_data or {})
+    await save_basic_info_by_user(user_id, request.survey_data or {})
     return StandardResponse(code=200, message="success", data={})
 
 
 @router.post("", response_model=StandardResponse)
 async def create_session(
-    request: CreateSessionRequest,
-    current_user: Optional[dict] = Depends(get_current_user)
+    request: CreateSessionRequest, current_user: Optional[dict] = Depends(get_current_user)
 ):
     """创建会话"""
     try:
@@ -107,16 +113,11 @@ async def create_session(
             data=session,
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 @router.get("", response_model=StandardResponse)
-async def list_sessions(
-    current_user: Optional[dict] = Depends(get_current_user)
-):
+async def list_sessions(current_user: Optional[dict] = Depends(get_current_user)):
     """获取当前用户的会话列表（按最近活动排序）"""
     try:
         if not current_user:
@@ -171,23 +172,14 @@ async def delete_session(
 
 
 @router.get("/{session_id}", response_model=StandardResponse)
-async def get_session(
-    session_id: str,
-    current_user: Optional[dict] = Depends(get_current_user)
-):
+async def get_session(session_id: str, current_user: Optional[dict] = Depends(get_current_user)):
     """获取会话信息"""
     try:
         session = await SessionService.get_session(session_id)
         if not session:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="会话不存在"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
         if current_user and session["user_id"] != current_user["user_id"]:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="无权访问此会话"
-            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权访问此会话")
         return StandardResponse(
             code=200,
             message="success",
@@ -196,10 +188,7 @@ async def get_session(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 @router.patch("/{session_id}/progress", response_model=StandardResponse)
@@ -208,21 +197,15 @@ async def update_progress(
     step: str = Query(...),
     completed_count: Optional[int] = Query(None),
     total_count: Optional[int] = Query(None),
-    current_user: Optional[dict] = Depends(get_current_user)
+    current_user: Optional[dict] = Depends(get_current_user),
 ):
     """更新会话进度"""
     try:
         session = await SessionService.get_session(session_id)
         if not session:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="会话不存在"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
         if current_user and session["user_id"] != current_user["user_id"]:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="无权访问此会话"
-            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权访问此会话")
         progress = await ProgressService.update_progress(
             session_id=session_id,
             step=step,
@@ -238,12 +221,9 @@ async def update_progress(
                 "completed_count": progress["completed_count"],
                 "total_count": progress["total_count"],
                 "percentage": progress.get("percentage", 0),
-            }
+            },
         )
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))

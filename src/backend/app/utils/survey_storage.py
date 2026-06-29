@@ -12,7 +12,7 @@ prior_context 以 report 维度存储：reports/{report_id}/prior_context_{phase
 
 import json
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.domain.conclusion_card_goals import cap_strengths_keywords_list
 from app.utils.data_paths import get_user_data_dir
@@ -62,44 +62,45 @@ def _basic_info_has_content(data: Dict[str, Any]) -> bool:
     return False
 
 
-def save_basic_info_by_user(user_id: str, data: Dict[str, Any]) -> None:
+async def save_basic_info_by_user(user_id: str, data: Dict[str, Any]) -> None:
     """
     按用户保存调研问卷（主入口，仅保留最新 1 份）。
-    同时同步更新数据库 user_profiles 表，确保 admin 面板能正确展示。
+    同步更新数据库 user_profiles 表，确保 admin 面板能正确展示。
+
+    数据一致性策略：**先 DB 后 JSON**。
+    - DB 是 admin / 列表查询的真实数据源，必须先成功；
+    - JSON 文件作为本地缓存（供 prompt 拼接 / load_basic_info_by_user 读取）；
+    - DB 失败时直接 raise，JSON 不写，让上层 API 返回错误、前端可重试；
+    - DB 成功后 JSON 写失败也 raise（保证两者最终一致，不出现「DB 有 JSON 无」的中间态）。
+
+    修复历史 bug：原实现用 loop.create_task 后台异步写库且 except: pass 吞掉异常，
+    导致 UserProfile 表可能不更新 → admin /admin/users 查不到老用户已填 profile。
 
     Args:
         user_id: 用户 ID
         data: 调研数据字典
+
+    Raises:
+        Exception: DB 或 JSON 写入失败时向上冒泡，调用方应感知并返回错误。
     """
+    from app.core.database.user_db import UserDB
+    from app.models.database import AsyncSessionLocal
+
+    gender = data.get("gender") if data else None
+    profile_completed = _basic_info_has_content(data) if data else False
+
+    # 1) 先写数据库（source of truth）
+    async with AsyncSessionLocal() as db:
+        user_db = UserDB(db)
+        await user_db.update_user_profile(
+            user_id=user_id,
+            gender=gender,
+            profile_completed=profile_completed,
+        )
+
+    # 2) DB 成功后再写 JSON 缓存（保持一致性；失败也 raise，避免不一致）
     path = _get_user_basic_info_path(user_id)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    # 同步更新数据库 user_profiles 表
-    try:
-        import asyncio
-        from app.models.database import AsyncSessionLocal
-        from app.core.database.user_db import UserDB
-
-        gender = data.get("gender") if data else None
-        profile_completed = _basic_info_has_content(data) if data else False
-
-        async def _sync():
-            async with AsyncSessionLocal() as db:
-                user_db = UserDB(db)
-                await user_db.update_user_profile(
-                    user_id=user_id,
-                    gender=gender,
-                    profile_completed=profile_completed,
-                )
-
-        # 尝试获取已有事件循环
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(_sync())
-        except RuntimeError:
-            asyncio.run(_sync())
-    except Exception:
-        pass  # 数据库写入失败不影响 JSON 文件保存
 
 
 def load_basic_info_by_user(user_id: str) -> Optional[Dict[str, Any]]:
@@ -119,9 +120,7 @@ def load_basic_info_by_user(user_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def merge_basic_info_sources(
-    sources: List[Dict[str, Any]], strategy: str = "A"
-) -> Dict[str, Any]:
+def merge_basic_info_sources(sources: List[Dict[str, Any]], strategy: str = "A") -> Dict[str, Any]:
     """
     合并多个 basic_info 源。用于迁移时同一用户多份问卷合并。
 
@@ -216,9 +215,7 @@ def _get_prior_context_path_for_report(report_id: str, phase: str, reports_root:
     return report_dir / _PRIOR_CONTEXT_FILENAME.format(phase=phase)
 
 
-def save_prior_context_for_report(
-    report_id: str, phase: str, text: str, reports_root: str
-) -> None:
+def save_prior_context_for_report(report_id: str, phase: str, text: str, reports_root: str) -> None:
     """
     按 report 保存上一轮咨询结果。
 
@@ -310,7 +307,9 @@ def _truncate_prior_unified(text: str) -> str:
     return text[: PRIOR_UNIFIED_MAX_CHARS - 36] + "\n\n[... 前置阶段结论已截断 ...]"
 
 
-def build_prior_context_from_dimension_store(report_id: str, current_phase: str, reports_root: str) -> str:
+def build_prior_context_from_dimension_store(
+    report_id: str, current_phase: str, reports_root: str
+) -> str:
     """从 dimension_conclusions.json 拼接当前阶段所需的全部前置维结论。"""
     needed = _prior_phases_before(current_phase)
     if not needed:
@@ -326,9 +325,7 @@ def build_prior_context_from_dimension_store(report_id: str, current_phase: str,
     return _truncate_prior_unified("\n\n".join(parts))
 
 
-def build_values_info_for_prompt(
-    report_id: str, reports_root: str, *, max_chars: int = 960
-) -> str:
+def build_values_info_for_prompt(report_id: str, reports_root: str, *, max_chars: int = 960) -> str:
     """
     purpose 阶段注入：关键词 + 与 keywords 对齐的 keyword_notes（含义），供模型理解；
     系统提示仍要求对用户口述时只列关键词。

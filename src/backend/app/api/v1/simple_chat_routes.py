@@ -7,140 +7,101 @@
 - 会话由「激活码」标识，对话历史保存在 data/simple 下
 """
 
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any, AsyncIterator, Callable, Dict, List, Literal, Optional, Sequence, Tuple
 import asyncio
 import json
 import logging
 import re
 import uuid
+from copy import deepcopy
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, AsyncIterator, Callable, Dict, List, Literal, Optional, Sequence, Tuple
 
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
+from jinja2 import Environment
 from pydantic import BaseModel, ConfigDict
-from app.core.llmapi import get_default_llm_provider, LLMMessage
-from app.core.llmapi.factory import create_llm_provider
-from app.api.v1.auth import get_current_user, _is_debug_admin
+
+from app.api.v1.auth import _is_debug_admin, get_current_user
+from app.api.v1.simple_chat.context_resolver import assert_step_editable as _assert_step_editable
+from app.api.v1.simple_chat.context_resolver import (
+    can_bypass_flow_limits as _can_bypass_flow_limits,
+)
+from app.api.v1.simple_chat.context_resolver import (
+    get_user_id_from_activation as _get_user_id_from_activation,
+)
+from app.api.v1.simple_chat.context_resolver import is_step_locked as _is_step_locked
+from app.api.v1.simple_chat.context_resolver import (
+    load_basic_info_from_activation as _load_basic_info_from_activation,
+)
+from app.api.v1.simple_chat.context_resolver import (
+    load_prior_context_from_activation as _load_prior_context_from_activation,
+)
+from app.api.v1.simple_chat.context_resolver import (
+    resolve_activation_for_user as _resolve_activation_for_user,
+)
+from app.api.v1.simple_chat.context_resolver import (
+    resolve_default_logical_thread_id as _resolve_default_logical_thread_id,
+)
+from app.api.v1.simple_chat.context_resolver import (
+    resolve_prompt_lab_override_for_request as _resolve_prompt_lab_override_for_request,
+)
+from app.api.v1.simple_chat.context_resolver import (
+    resolve_report_context as _resolve_report_context,
+)
+from app.api.v1.simple_chat.context_resolver import (
+    skip_expired_for_debug as _skip_expired_for_debug,
+)
+from app.api.v1.simple_chat.context_resolver import storage_category as _storage_category
+from app.api.v1.simple_chat.llm_providers import (
+    get_dialogue_llm_provider as _get_dialogue_llm_provider,
+)
+from app.api.v1.simple_chat.llm_providers import (
+    get_reasoning_llm_provider as _get_reasoning_llm_provider,
+)
+from app.api.v1.simple_chat.llm_providers import to_non_reasoning_model as _to_non_reasoning_model
+from app.api.v1.simple_chat.llm_providers import to_reasoning_model as _to_reasoning_model
+from app.api.v1.simple_chat.prompt_builder import (
+    build_fallback_opening_question as _build_fallback_opening_question,
+)
+from app.api.v1.simple_chat.prompt_builder import (
+    get_or_create_thread_question_bank as _get_or_create_thread_question_bank,
+)
+from app.api.v1.simple_chat.prompt_builder import (
+    get_random_questions_for_phase as _get_random_questions_for_phase,
+)
+
+# ── 从子模块导入已拆分的函数 ──────────────────────────────────────────
+from app.api.v1.simple_chat.stream_utils import (
+    build_stream_hidden_block_filter as _build_stream_hidden_block_filter,
+)
+from app.api.v1.simple_chat.stream_utils import extract_hyp_candidates as _extract_hyp_candidates
+from app.api.v1.simple_chat.stream_utils import extract_json_object as _extract_json_object
+from app.api.v1.simple_chat.stream_utils import (
+    extract_state_content_tokens as _extract_state_content_tokens,
+)
+from app.api.v1.simple_chat.stream_utils import (
+    extract_step3_hyp_output as _extract_step3_hyp_output,
+)
+from app.api.v1.simple_chat.stream_utils import (
+    looks_like_markdown_table as _looks_like_markdown_table,
+)
+from app.api.v1.simple_chat.stream_utils import normalize_token_usage as _normalize_token_usage
+from app.api.v1.simple_chat.stream_utils import (
+    split_visible_reply_and_row_state as _split_visible_reply_and_row_state,
+)
+from app.api.v1.simple_chat.stream_utils import (
+    split_visible_reply_and_state as _split_visible_reply_and_state,
+)
+from app.api.v1.simple_chat.stream_utils import (
+    strip_hidden_blocks_for_stream as _strip_hidden_blocks_for_stream,
+)
 from app.config.settings import settings
-from app.utils.simple_activation_manager import (
-    SimpleActivationManager,
-    ActivationStatus,
-    bind_session_id_for_ensure_report,
-    get_effective_simple_root,
-    get_activation_manager_for_code,
-    get_activation_with_manager,
-)
-from app.utils.activation_audit import (
-    append_activation_audit,
-    EVENT_OWNER_DENIED,
-    EVENT_OWNER_VERIFIED,
-)
-from app.utils.sandbox_fork import assert_sandbox_not_expired
-from app.utils.conversation_file_manager import ConversationFileManager
-from app.utils.id_codec import IDCodec
 from app.core.dimension_completion_checker import (
     check_dimension_complete,
 )
-from app.services.analytics_service import AnalyticsService
-from app.utils.report_registry import ReportRegistry, STEP_IDS, STEP_ORDER
-from copy import deepcopy
-
-from app.utils.purpose_progress import (
-    normalize_progress,
-    build_progress_injection,
-    apply_progress_update,
-    progress_to_experience_value_rows,
-)
-from app.utils.rumination_progress import (
-    MAX_FILTER_STEP,
-    clear_neg_gate_triggered_from_step,
-    clear_neg_gate_triggered_step,
-    is_neg_gate_triggered,
-    load_rumination_progress,
-    mark_neg_gate_triggered,
-    max_reached_filter_step,
-    merge_rumination_progress_fields,
-    save_rumination_progress,
-)
-from app.utils.rumination_neg_gate import (
-    build_zero_results_gate,
-    collect_step2_mismatches,
-    try_build_neg_gate_response,
-)
-from app.utils.rumination_table_widgets import build_table_widget_payload
-from app.utils.rumination_ops import (
-    gen_table,
-    filter_strength,
-    filter_match,
-    extract_dimension_lists_for_rumination_table,
-    structure_hypothesis_round1_table,
-    is_rumination_hypothesis_pending,
-    is_rumination_step3_row_hypothesis_complete,
-    value_filter,
-    passion_filter,
-    reality_filter,
-    similar_filter,
-    resolve_values_for_step4,
-    save_values_snapshot_to_snapshots,
-    load_values_snapshot_from_snapshots,
-    load_strength_markers,
-)
-from app.utils.rumination_row_context import (
-    build_rumination_row_chat_user_message,
-    format_step3_row_context_block,
-    format_step3_confirmed_rows_block,
-    format_step3_next_row_preview,
-    summarize_prev_combo_row,
-)
-from app.utils.rumination_combo_matrix import (
-    build_combo_matrix,
-    build_combo_matrix_meta,
-    get_combo_by_id,
-    get_passion_strength_names,
-    get_next_combo_by_order,
-    count_completed_combos,
-    classify_combo_conclusions,
-)
-from app.utils.rumination_combo_context import (
-    slice_messages_for_combo,
-    build_combo_chat_system_addon,
-    build_combo_first_message,
-    build_combo_guide_text,
-)
-from app.utils.rumination_step3_flow import (
-    row_hyp,
-    row_fields_line,
-    format_step3_unlocked_rows_block,
-    count_discuss_user_turns_since_last_forward,
-    get_step3_row_passion_strength,
-    resolve_step3_explicit_row_index,
-    resolve_step3_prompt_mode,
-    resolve_step3_hyp_delivery,
-    is_strict_hyp_candidate_retry,
-    parse_step3_hyp_tool_call,
-    sanitize_hyp_candidates,
-    guide_phrase_present_in_reply,
-    should_trigger_hyp_candidate_fallback,
-)
-from app.utils.context_refiner import (
-    refine_and_save_anchor,
-    refine_and_save_rumination_step_anchor,
-    format_anchor_for_prompt,
-    load_anchor_for_phase,
-    load_rumination_step_anchors,
-)
-from app.utils.survey_storage import (
-    save_basic_info_by_user,
-    load_basic_info_by_user,
-    load_basic_info,
-    format_basic_info_for_prompt,
-    save_prior_context_for_report,
-    load_prior_context_for_report,
-    load_prior_context,
-    merge_dimension_conclusion_record,
-    build_values_info_for_prompt,
-)
+from app.core.llmapi import LLMMessage, get_default_llm_provider
+from app.core.llmapi.factory import create_llm_provider
 from app.domain.conclusion_card_goals import cap_strengths_keywords_list, get_conclusion_card_goal
 from app.domain.conclusion_card_payload import (
     REJECTED_DRAFT_SUPERSESSION_LINE,
@@ -161,51 +122,123 @@ from app.domain.rumination_step_guidance import (
     get_rumination_chat_step_addon,
     render_fixed_opening_zh,
 )
+from app.services.analytics_service import AnalyticsService
 from app.services.rumination_finalize import append_post_table_finalize_message
 from app.services.rumination_init_greeting import synthesize_rumination_entry_greeting
-from app.utils.admin_policy import is_admin_debug_policy_enabled
+from app.utils.activation_audit import (
+    EVENT_OWNER_DENIED,
+    EVENT_OWNER_VERIFIED,
+    append_activation_audit,
+)
+from app.utils.admin_policy import is_admin_debug_policy_enabled, is_admin_sandbox_enabled
 from app.utils.admin_prompt_lab import resolve_simple_chat_prompt_override
-from app.utils.admin_policy import is_admin_sandbox_enabled
+from app.utils.context_refiner import (
+    format_anchor_for_prompt,
+    load_anchor_for_phase,
+    load_rumination_step_anchors,
+    refine_and_save_anchor,
+    refine_and_save_rumination_step_anchor,
+)
+from app.utils.conversation_file_manager import ConversationFileManager
+from app.utils.id_codec import IDCodec
+from app.utils.purpose_progress import (
+    apply_progress_update,
+    build_progress_injection,
+    normalize_progress,
+    progress_to_experience_value_rows,
+)
+from app.utils.report_registry import STEP_IDS, STEP_ORDER, ReportRegistry
+from app.utils.rumination_combo_context import (
+    build_combo_chat_system_addon,
+    build_combo_first_message,
+    build_combo_guide_text,
+    slice_messages_for_combo,
+)
+from app.utils.rumination_combo_matrix import (
+    build_combo_matrix,
+    build_combo_matrix_meta,
+    classify_combo_conclusions,
+    count_completed_combos,
+    get_combo_by_id,
+    get_next_combo_by_order,
+    get_passion_strength_names,
+)
+from app.utils.rumination_neg_gate import (
+    build_zero_results_gate,
+    collect_step2_mismatches,
+    try_build_neg_gate_response,
+)
+from app.utils.rumination_ops import (
+    extract_dimension_lists_for_rumination_table,
+    filter_match,
+    filter_strength,
+    gen_table,
+    is_rumination_hypothesis_pending,
+    is_rumination_step3_row_hypothesis_complete,
+    load_strength_markers,
+    load_values_snapshot_from_snapshots,
+    passion_filter,
+    reality_filter,
+    resolve_values_for_step4,
+    save_values_snapshot_to_snapshots,
+    similar_filter,
+    structure_hypothesis_round1_table,
+    value_filter,
+)
+from app.utils.rumination_progress import (
+    MAX_FILTER_STEP,
+    clear_neg_gate_triggered_from_step,
+    clear_neg_gate_triggered_step,
+    is_neg_gate_triggered,
+    load_rumination_progress,
+    mark_neg_gate_triggered,
+    max_reached_filter_step,
+    merge_rumination_progress_fields,
+    save_rumination_progress,
+)
+from app.utils.rumination_row_context import (
+    build_rumination_row_chat_user_message,
+    format_step3_confirmed_rows_block,
+    format_step3_next_row_preview,
+    format_step3_row_context_block,
+    summarize_prev_combo_row,
+)
+from app.utils.rumination_step3_flow import (
+    count_discuss_user_turns_since_last_forward,
+    format_step3_unlocked_rows_block,
+    get_step3_row_passion_strength,
+    guide_phrase_present_in_reply,
+    is_strict_hyp_candidate_retry,
+    parse_step3_hyp_tool_call,
+    resolve_step3_explicit_row_index,
+    resolve_step3_hyp_delivery,
+    resolve_step3_prompt_mode,
+    row_fields_line,
+    row_hyp,
+    sanitize_hyp_candidates,
+    should_trigger_hyp_candidate_fallback,
+)
+from app.utils.rumination_table_widgets import build_table_widget_payload
+from app.utils.sandbox_fork import assert_sandbox_not_expired
+from app.utils.simple_activation_manager import (
+    ActivationStatus,
+    SimpleActivationManager,
+    bind_session_id_for_ensure_report,
+    get_activation_manager_for_code,
+    get_activation_with_manager,
+    get_effective_simple_root,
+)
 from app.utils.super_admin import is_super_admin_user
-from jinja2 import Environment
-
-# ── 从子模块导入已拆分的函数 ──────────────────────────────────────────
-from app.api.v1.simple_chat.stream_utils import (
-    extract_json_object as _extract_json_object,
-    extract_state_content_tokens as _extract_state_content_tokens,
-    extract_hyp_candidates as _extract_hyp_candidates,
-    extract_step3_hyp_output as _extract_step3_hyp_output,
-    looks_like_markdown_table as _looks_like_markdown_table,
-    split_visible_reply_and_state as _split_visible_reply_and_state,
-    split_visible_reply_and_row_state as _split_visible_reply_and_row_state,
-    strip_hidden_blocks_for_stream as _strip_hidden_blocks_for_stream,
-    build_stream_hidden_block_filter as _build_stream_hidden_block_filter,
-    normalize_token_usage as _normalize_token_usage,
-)
-from app.api.v1.simple_chat.llm_providers import (
-    get_dialogue_llm_provider as _get_dialogue_llm_provider,
-    get_reasoning_llm_provider as _get_reasoning_llm_provider,
-    to_non_reasoning_model as _to_non_reasoning_model,
-    to_reasoning_model as _to_reasoning_model,
-)
-from app.api.v1.simple_chat.prompt_builder import (
-    build_fallback_opening_question as _build_fallback_opening_question,
-    get_or_create_thread_question_bank as _get_or_create_thread_question_bank,
-    get_random_questions_for_phase as _get_random_questions_for_phase,
-)
-from app.api.v1.simple_chat.context_resolver import (
-    storage_category as _storage_category,
-    resolve_report_context as _resolve_report_context,
-    resolve_activation_for_user as _resolve_activation_for_user,
-    resolve_default_logical_thread_id as _resolve_default_logical_thread_id,
-    skip_expired_for_debug as _skip_expired_for_debug,
-    can_bypass_flow_limits as _can_bypass_flow_limits,
-    resolve_prompt_lab_override_for_request as _resolve_prompt_lab_override_for_request,
-    get_user_id_from_activation as _get_user_id_from_activation,
-    load_basic_info_from_activation as _load_basic_info_from_activation,
-    load_prior_context_from_activation as _load_prior_context_from_activation,
-    is_step_locked as _is_step_locked,
-    assert_step_editable as _assert_step_editable,
+from app.utils.survey_storage import (
+    build_values_info_for_prompt,
+    format_basic_info_for_prompt,
+    load_basic_info,
+    load_basic_info_by_user,
+    load_prior_context,
+    load_prior_context_for_report,
+    merge_dimension_conclusion_record,
+    save_basic_info_by_user,
+    save_prior_context_for_report,
 )
 
 # 每阶段随机抽取的题目数量
@@ -415,7 +448,10 @@ def _system_prompt_dimension_extras(
                     _conclusions_m = _prog_m.get("combo_conclusions") or {}
                     _entry_m = _conclusions_m.get(combo_id or "") or {}
                     _hyp_m = ""
-                    if isinstance(_entry_m, dict) and str(_entry_m.get("state") or "").strip() == "confirmed":
+                    if (
+                        isinstance(_entry_m, dict)
+                        and str(_entry_m.get("state") or "").strip() == "confirmed"
+                    ):
                         _hyp_m = str(_entry_m.get("text") or "").strip()
                     _matrix_ctx_lines = [
                         "[内部·子步3当前组合（matrix）]",
@@ -426,7 +462,9 @@ def _system_prompt_dimension_extras(
                     else:
                         _matrix_ctx_lines.append("用户当前组合暂未确认假设。")
                     _matrix_ctx_block = "\n".join(_matrix_ctx_lines)
-                    rumination_step_addon = f"{rumination_step_addon}\n\n{_matrix_ctx_block}".strip()
+                    rumination_step_addon = (
+                        f"{rumination_step_addon}\n\n{_matrix_ctx_block}".strip()
+                    )
                 except Exception:
                     pass
             else:
@@ -437,7 +475,9 @@ def _system_prompt_dimension_extras(
                     if isinstance(ft_ex, list) and ft_ex:
                         # 已确认行摘要（cursor 之前的行）
                         confirmed_block = format_step3_confirmed_rows_block(ft_ex, cur_ex)
-                        rumination_step_addon = f"{rumination_step_addon}\n\n{confirmed_block}".strip()
+                        rumination_step_addon = (
+                            f"{rumination_step_addon}\n\n{confirmed_block}".strip()
+                        )
                         # 点选行与 cursor 不一致：注入讨论行上下文
                         discuss_idx = rumination_row_index
                         if (
@@ -465,7 +505,9 @@ def _system_prompt_dimension_extras(
                                     "[内部·子步3讨论行]",
                                     1,
                                 )
-                                rumination_step_addon = f"{rumination_step_addon}\n\n{disc_block}".strip()
+                                rumination_step_addon = (
+                                    f"{rumination_step_addon}\n\n{disc_block}".strip()
+                                )
                         # 当前行上下文（正常推进模式）
                         if 0 <= cur_ex < len(ft_ex):
                             row_ex = ft_ex[cur_ex]
@@ -483,7 +525,9 @@ def _system_prompt_dimension_extras(
                                     total_combos=len(ft_ex),
                                     prev_combo_summary=prev_s,
                                 )
-                                rumination_step_addon = f"{rumination_step_addon}\n\n{block}".strip()
+                                rumination_step_addon = (
+                                    f"{rumination_step_addon}\n\n{block}".strip()
+                                )
                             # 下一行预览：让 AI 确认当前行后可直接过渡提问
                             next_idx = cur_ex + 1
                             if next_idx < len(ft_ex):
@@ -492,14 +536,20 @@ def _system_prompt_dimension_extras(
                                     preview = format_step3_next_row_preview(
                                         next_row, next_idx + 1, len(ft_ex)
                                     )
-                                    rumination_step_addon = f"{rumination_step_addon}\n\n{preview}".strip()
+                                    rumination_step_addon = (
+                                        f"{rumination_step_addon}\n\n{preview}".strip()
+                                    )
                         elif cur_ex >= len(ft_ex):
                             # 回溯模式：cursor 到末尾，注入全表摘要供 AI 定位用户指定的行
                             full_block = format_step3_confirmed_rows_block(ft_ex, len(ft_ex))
-                            rumination_step_addon = f"{rumination_step_addon}\n\n{full_block}".strip()
+                            rumination_step_addon = (
+                                f"{rumination_step_addon}\n\n{full_block}".strip()
+                            )
                         unlocked_block = format_step3_unlocked_rows_block(ft_ex, cur_ex)
                         if unlocked_block:
-                            rumination_step_addon = f"{rumination_step_addon}\n\n{unlocked_block}".strip()
+                            rumination_step_addon = (
+                                f"{rumination_step_addon}\n\n{unlocked_block}".strip()
+                            )
                 except Exception:
                     pass
     return values_info, rumination_step_addon
@@ -587,7 +637,7 @@ async def _append_note_json(
     note_category = f"{category}__note/note"
 
     def _do(fp: Path) -> None:
-        now = datetime.utcnow().isoformat() + "Z"
+        now = datetime.now(timezone.utc).isoformat()
         try:
             with open(fp, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -938,7 +988,9 @@ def _resolve_report_context(
         session_id=bind_session_id_for_ensure_report(rec),
     )
     if not report:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="报告初始化失败")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="报告初始化失败"
+        )
 
     phase_step = _require_simple_chat_phase(phase)
     logical_session_id = _resolve_default_logical_thread_id(
@@ -986,7 +1038,9 @@ def _extract_state_content_tokens(text: str) -> Optional[Dict]:
     if not text:
         return None
     s = text.strip()
-    state_match = re.search(r"<STATE>\s*(confirmed|rejected|continue)\s*</STATE>", s, flags=re.IGNORECASE)
+    state_match = re.search(
+        r"<STATE>\s*(confirmed|rejected|continue)\s*</STATE>", s, flags=re.IGNORECASE
+    )
     content_match = re.search(r"<CONTENT>\s*(.*?)\s*</CONTENT>", s, flags=re.IGNORECASE | re.DOTALL)
     if not state_match:
         return None
@@ -1035,7 +1089,11 @@ async def _decide_pending_action_by_llm(
         model_name or "unknown",
         is_reasoner,
     )
-    summary = (pending_conclusion or {}).get("summary") or (pending_conclusion or {}).get("ai_summary") or ""
+    summary = (
+        (pending_conclusion or {}).get("summary")
+        or (pending_conclusion or {}).get("ai_summary")
+        or ""
+    )
     keywords = (pending_conclusion or {}).get("keywords") or []
     kw_text = "、".join([str(k).strip() for k in keywords if str(k).strip()][:10]) or "（无）"
     goal_line = _pending_judge_goal_blurb(phase)
@@ -1119,7 +1177,11 @@ async def _decide_pending_action_by_llm(
                 temperature=0.1,
             )
             dialog_text = (dialog_resp.content or "").strip()
-            dialog_obj = _extract_json_object(dialog_text) or _extract_state_content_tokens(dialog_text) or {}
+            dialog_obj = (
+                _extract_json_object(dialog_text)
+                or _extract_state_content_tokens(dialog_text)
+                or {}
+            )
             dialog_state = str(dialog_obj.get("state") or "").strip().lower()
             dialog_content = str(dialog_obj.get("content") or "").strip()
             if dialog_state in {"confirmed", "rejected", "continue"}:
@@ -1160,7 +1222,11 @@ async def _decide_pending_action_by_llm_streaming(
     llm = _get_reasoning_llm_provider(vip_level=vip_level)
     model_name = str(getattr(llm, "model", "") or "")
     is_reasoner = "reasoner" in model_name.lower()
-    summary = (pending_conclusion or {}).get("summary") or (pending_conclusion or {}).get("ai_summary") or ""
+    summary = (
+        (pending_conclusion or {}).get("summary")
+        or (pending_conclusion or {}).get("ai_summary")
+        or ""
+    )
     keywords = (pending_conclusion or {}).get("keywords") or []
     kw_text = "、".join([str(k).strip() for k in keywords if str(k).strip()][:10]) or "（无）"
     goal_line = _pending_judge_goal_blurb(phase)
@@ -1185,7 +1251,9 @@ async def _decide_pending_action_by_llm_streaming(
     if is_reasoner:
         try:
             out_parts: List[str] = []
-            async for item in llm.chat_stream([LLMMessage(role="user", content=token_prompt)], temperature=0.1):
+            async for item in llm.chat_stream(
+                [LLMMessage(role="user", content=token_prompt)], temperature=0.1
+            ):
                 if isinstance(item, dict):
                     t = str(item.get("_t") or "")
                     if t == "think_start":
@@ -1325,7 +1393,7 @@ class UserSurveySaveRequest(BaseModel):
 
 class PriorContextSaveRequest(BaseModel):
     activation_code: str
-    phase: str       # 目标阶段，如 "strengths" / "interests"
+    phase: str  # 目标阶段，如 "strengths" / "interests"
     context_text: str
 
 
@@ -1419,13 +1487,17 @@ def get_user_survey_status(
     """
     user_id = (current_user or {}).get("user_id") or (current_user or {}).get("email") or ""
     if not user_id:
-        return SimpleChatResponse(code=200, message="success", data={"completed": False, "survey_data": {}})
+        return SimpleChatResponse(
+            code=200, message="success", data={"completed": False, "survey_data": {}}
+        )
     data = load_basic_info_by_user(user_id)
     completed = bool(data) and any(
         v is not None and v != "" and (not isinstance(v, list) or len(v) > 0)
         for v in (data or {}).values()
     )
-    return SimpleChatResponse(code=200, message="success", data={"completed": completed, "survey_data": data or {}})
+    return SimpleChatResponse(
+        code=200, message="success", data={"completed": completed, "survey_data": data or {}}
+    )
 
 
 @router.post("/user-survey", response_model=SimpleChatResponse)
@@ -1440,7 +1512,7 @@ async def save_user_survey(
     user_id = (current_user or {}).get("user_id") or (current_user or {}).get("email") or ""
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="请先登录")
-    save_basic_info_by_user(user_id, request.survey_data or {})
+    await save_basic_info_by_user(user_id, request.survey_data or {})
     return SimpleChatResponse(code=200, message="success", data={})
 
 
@@ -1496,9 +1568,7 @@ async def save_prior_context_endpoint(
     user_id = (current_user or {}).get("user_id") or (current_user or {}).get("email") or ""
     root = get_effective_simple_root(rec)
     registry = ReportRegistry(base_dir=str(root))
-    report = registry.ensure_report(
-        rec.code, user_id or "", bind_session_id_for_ensure_report(rec)
-    )
+    report = registry.ensure_report(rec.code, user_id or "", bind_session_id_for_ensure_report(rec))
     if report and report.get("report_id"):
         save_prior_context_for_report(
             report["report_id"],
@@ -1525,7 +1595,7 @@ async def save_survey(
     user_id = (current_user or {}).get("user_id") or (current_user or {}).get("email") or ""
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="请先登录")
-    save_basic_info_by_user(user_id, request.survey_data or {})
+    await save_basic_info_by_user(user_id, request.survey_data or {})
     return SimpleChatResponse(code=200, message="success", data={})
 
 
@@ -1631,9 +1701,7 @@ def save_rumination_progress_endpoint(
     """保存 rumination 阶段进度"""
     manager = get_activation_manager_for_code(request.activation_code)
     rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
-    if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(
-        rec, current_user
-    ):
+    if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
         raise HTTPException(status_code=400, detail="激活码已过期")
     root = get_effective_simple_root(rec)
     registry = ReportRegistry(base_dir=str(root))
@@ -1649,11 +1717,7 @@ def save_rumination_progress_endpoint(
     # step3 逐行编辑：前端发来的 filter_table 中，未解锁行的业务字段已被 redact 清空。
     # 直接覆盖会丢失后端已有的热爱/优势等原始数据。需要智能合并。
     save_table = request.filter_table
-    if (
-        int(request.filter_step or 0) == 3
-        and isinstance(save_table, list)
-        and save_table
-    ):
+    if int(request.filter_step or 0) == 3 and isinstance(save_table, list) and save_table:
         existing = load_rumination_progress(reports_root, report_id).get("filter_table")
         if isinstance(existing, list) and existing:
             save_table = _merge_step3_filter_table(save_table, existing)
@@ -1686,7 +1750,9 @@ def save_rumination_progress_endpoint(
             extra_updates,
         )
     # step3 表格触发不再产生 side effect（操作消息通过 /message/stream 发给 AI）
-    return SimpleChatResponse(code=200, message="success", data={"progress": progress, "step3_side_effect": None})
+    return SimpleChatResponse(
+        code=200, message="success", data={"progress": progress, "step3_side_effect": None}
+    )
 
 
 def _rumination_snapshots_copy(progress: Dict[str, Any]) -> Dict[str, Any]:
@@ -1734,9 +1800,7 @@ def _try_rumination_step3_row_unlock(
     prog = load_rumination_progress(reports_root, report_id)
     cur = int(prog.get("filter_row_cursor") or 0)
     if idx != cur:
-        logger.info(
-            "[rumination] step3 unlock skipped: row index %s != cursor %s", idx, cur
-        )
+        logger.info("[rumination] step3 unlock skipped: row index %s != cursor %s", idx, cur)
         return None
     ft = prog.get("filter_table")
     if not isinstance(ft, list) or idx < 0 or idx >= len(ft):
@@ -1775,7 +1839,10 @@ def _try_rumination_step3_auto_unlock(
     hyp = str(row.get("用户确认的假设") or "").strip()
     if not is_rumination_step3_row_hypothesis_complete(hyp):
         return None
-    logger.info("[rumination] step3 auto-unlock (fallback): row %s hypothesis complete, advancing cursor", cur)
+    logger.info(
+        "[rumination] step3 auto-unlock (fallback): row %s hypothesis complete, advancing cursor",
+        cur,
+    )
     return save_rumination_progress(
         reports_root,
         report_id,
@@ -1851,9 +1918,7 @@ def _rumination_opening_load_bundle(
     """
     manager = get_activation_manager_for_code(activation_code)
     rec = _resolve_activation_for_user(manager, activation_code, current_user)
-    if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(
-        rec, current_user
-    ):
+    if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
         raise HTTPException(status_code=400, detail="激活码已过期")
     root = get_effective_simple_root(rec)
     registry = ReportRegistry(base_dir=str(root))
@@ -1902,7 +1967,9 @@ def rumination_step_opening(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
     step = max(1, min(MAX_FILTER_STEP, int(filter_step)))
-    ctx = build_opening_context(filter_step=step, progress=progress, values_list=values_list, values_source=values_source)
+    ctx = build_opening_context(
+        filter_step=step, progress=progress, values_list=values_list, values_source=values_source
+    )
     mode = get_opening_mode(step)
     if mode == "llm":
         return SimpleChatResponse(
@@ -1931,15 +1998,17 @@ async def rumination_step_opening_stream(
             detail="该子步使用固定引导语，请使用 GET /rumination-step-opening",
         )
     try:
-        rec, _reports_root, _report_id, progress, values_list, values_source = _rumination_opening_load_bundle(
-            request.activation_code, current_user
+        rec, _reports_root, _report_id, progress, values_list, values_source = (
+            _rumination_opening_load_bundle(request.activation_code, current_user)
         )
     except HTTPException:
         raise
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
-    ctx = build_opening_context(filter_step=step, progress=progress, values_list=values_list, values_source=values_source)
+    ctx = build_opening_context(
+        filter_step=step, progress=progress, values_list=values_list, values_source=values_source
+    )
     try:
         llm_messages = build_opening_llm_messages(step, ctx)
     except ValueError as e:
@@ -2026,7 +2095,9 @@ async def rumination_step_opening_stream(
                 # （matrix/discussion），供前端按子步精确过滤。
                 _opening_sub_step = ""
                 try:
-                    _rp_os = load_rumination_progress(Path(reports_root), str(report.get("report_id") or ""))
+                    _rp_os = load_rumination_progress(
+                        Path(reports_root), str(report.get("report_id") or "")
+                    )
                     _opening_sub_step = (_rp_os.get("filter_sub_step") or "").strip()
                 except Exception:
                     pass
@@ -2054,8 +2125,8 @@ async def rumination_step_opening_stream(
                 logger.warning("rumination opening append_message failed: %s", e)
 
         yield (
-            f"data: {{\"done\": true, \"response\": {json.dumps(text, ensure_ascii=False)}, "
-            f"\"token_usage\": {json.dumps(stream_usage, ensure_ascii=False)} }}\n\n"
+            f'data: {{"done": true, "response": {json.dumps(text, ensure_ascii=False)}, '
+            f'"token_usage": {json.dumps(stream_usage, ensure_ascii=False)} }}\n\n'
         )
 
     return StreamingResponse(
@@ -2423,15 +2494,19 @@ async def rumination_table_submit(
         )
         # 若快照尚不存在（首次进入 step 4 前景），使用全量解析结果
         if not values_list:
-            _v, strengths_list, interests_list, _purpose, _sources = extract_dimension_lists_for_rumination_table(
-                str(reports_root), report_id, record_obj
+            _v, strengths_list, interests_list, _purpose, _sources = (
+                extract_dimension_lists_for_rumination_table(
+                    str(reports_root), report_id, record_obj
+                )
             )
             values_list = _v
             values_source = _sources.get("values", "none")
         else:
             # 快照已有 values，仍需 strengths/interests 用于后续步骤
-            _, strengths_list, interests_list, _purpose, _sources = extract_dimension_lists_for_rumination_table(
-                str(reports_root), report_id, record_obj
+            _, strengths_list, interests_list, _purpose, _sources = (
+                extract_dimension_lists_for_rumination_table(
+                    str(reports_root), report_id, record_obj
+                )
             )
         values_hint = "、".join(values_list[:8]) if values_list else ""
         passions = interests_list if interests_list else ["热爱1", "热爱2"]
@@ -2615,11 +2690,16 @@ async def rumination_table_submit(
                 )
                 next_table = _table_widget_payload(3, step3_rows, values_list, progress=progress)
                 # step2 全不匹配但用户仍推进：在 step3 表格 guideText 前加过渡引导语
-                _all_unmatched = len(collect_step2_mismatches(table_data)) == len(table_data) if table_data else False
+                _all_unmatched = (
+                    len(collect_step2_mismatches(table_data)) == len(table_data)
+                    if table_data
+                    else False
+                )
                 if _all_unmatched and next_table:
                     existing_guide = (next_table.get("guideText") or "").strip()
                     next_table["guideText"] = (
-                        f"{RUMINATION_STEP2_ALL_UNMATCHED_TRANSITION_ZH}\n\n{existing_guide}" if existing_guide
+                        f"{RUMINATION_STEP2_ALL_UNMATCHED_TRANSITION_ZH}\n\n{existing_guide}"
+                        if existing_guide
                         else RUMINATION_STEP2_ALL_UNMATCHED_TRANSITION_ZH
                     )
                 next_step_val = 3
@@ -2644,7 +2724,7 @@ async def rumination_table_submit(
                 if not is_rumination_step3_row_hypothesis_complete(hyp):
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail='存在未完成行：请在「假设」列选择「无」或填写具体内容。',
+                        detail="存在未完成行：请在「假设」列选择「无」或填写具体内容。",
                     )
                 finalized.append(row)
             step4_rows = value_filter(finalized, values_list)
@@ -3078,8 +3158,8 @@ async def _generate_and_store_combo_guide(
         passion_name = str(combo.get("passion_name") or "")
         strength_name = str(combo.get("strength_name") or "")
 
-        from app.domain.rumination_prompt_strings import STEP_3_COMBO_OPENING_SYSTEM_ZH
         from app.core.llmapi.base import LLMMessage as _LLMMsg
+        from app.domain.rumination_prompt_strings import STEP_3_COMBO_OPENING_SYSTEM_ZH
 
         # 开场引导语专用 user prompt：只传组合信息 + 生成开场 + 第一问的要求。
         # 不再要求 LLM 在开场就生成假设候选（hyp_candidates 由后续自由对话产出）。
@@ -3132,7 +3212,9 @@ async def _generate_and_store_combo_guide(
             completed_count = count_completed_combos(conclusions)
             guide_text = build_combo_guide_text(passion_name, strength_name, completed_count)
 
-        guide_text = str(guide_text).strip() or build_combo_guide_text(passion_name, strength_name, 0)
+        guide_text = str(guide_text).strip() or build_combo_guide_text(
+            passion_name, strength_name, 0
+        )
 
         # 解析 [STEP3_HYP_JSON] 协议块：分离可见引导文本与假设候选
         visible_text, raw_candidates, _row = _extract_step3_hyp_output(guide_text)
@@ -3142,6 +3224,7 @@ async def _generate_and_store_combo_guide(
             guide_text = visible_text
 
         from datetime import datetime, timezone
+
         guide_message = {
             "role": "assistant",
             "content": guide_text,
@@ -3199,7 +3282,11 @@ async def rumination_ensure_combo_guide(
             thread_id=request.thread_id,
         )
         if not logical_session_id:
-            logger.warning("combo-guide: no logical_session_id for code=%s thread=%s", request.activation_code, request.thread_id)
+            logger.warning(
+                "combo-guide: no logical_session_id for code=%s thread=%s",
+                request.activation_code,
+                request.thread_id,
+            )
             raise HTTPException(status_code=400, detail="无法确定会话 ID")
 
         storage_root = str(get_effective_simple_root(rec))
@@ -3221,6 +3308,7 @@ async def rumination_ensure_combo_guide(
 
         # Not cached → enqueue
         from app.utils.combo_guide_queue import get_combo_guide_queue
+
         queue = get_combo_guide_queue()
 
         if await queue.is_in_flight(user_id, request.combo_id):
@@ -3297,12 +3385,14 @@ async def rumination_combo_matrix_submit(
             cid = item["combo_id"]
             entry = conclusions.get(cid) or {}
             if entry.get("state") == "confirmed" and str(entry.get("text") or "").strip():
-                table_rows.append({
-                    "id": cid,
-                    "热爱": str(item.get("passion_name") or ""),
-                    "优势": str(item.get("strength_name") or ""),
-                    "用户确认的假设": str(entry["text"]).strip(),
-                })
+                table_rows.append(
+                    {
+                        "id": cid,
+                        "热爱": str(item.get("passion_name") or ""),
+                        "优势": str(item.get("strength_name") or ""),
+                        "用户确认的假设": str(entry["text"]).strip(),
+                    }
+                )
 
         if not table_rows:
             raise HTTPException(
@@ -3402,9 +3492,7 @@ async def rumination_get_combo_matrix(
 
         # 清理 combo_conclusions 中不匹配组合的脏记录（理论上不该存在，置灰后不可填）
         combo_conclusions = progress.get("combo_conclusions") or {}
-        non_matching_ids = {
-            item["combo_id"] for item in matrix if item.get("is_non_matching")
-        }
+        non_matching_ids = {item["combo_id"] for item in matrix if item.get("is_non_matching")}
         cleaned_conclusions = {
             cid: v for cid, v in combo_conclusions.items() if cid not in non_matching_ids
         }
@@ -3451,7 +3539,9 @@ async def rumination_neg_resolve(
     try:
         manager = get_activation_manager_for_code(request.activation_code)
         rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
-        if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
+        if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(
+            rec, current_user
+        ):
             raise HTTPException(status_code=400, detail="激活码已过期")
         root = get_effective_simple_root(rec)
         registry = ReportRegistry(base_dir=str(root))
@@ -3495,7 +3585,8 @@ async def rumination_neg_resolve(
                 raise HTTPException(status_code=400, detail="没有待处理的表格提交，请先确认表格")
             if not isinstance(neg, dict) or neg.get("status") != "awaiting_choice":
                 raise HTTPException(
-                    status_code=400, detail="当前没有待处理的表格跟进项，请重新确认表格",
+                    status_code=400,
+                    detail="当前没有待处理的表格跟进项，请重新确认表格",
                 )
             neg2 = {**neg, "status": "exploring"}
             merge_rumination_progress_fields(
@@ -3580,7 +3671,9 @@ async def rumination_neg_resolve(
                     "table_data": fallback_table,
                 }
             if not isinstance(pending, dict) or pending.get("table_data") is None:
-                raise HTTPException(status_code=400, detail="没有待提交的表格数据，请重新在左侧确认表格")
+                raise HTTPException(
+                    status_code=400, detail="没有待提交的表格数据，请重新在左侧确认表格"
+                )
             sub = RuminationTableSubmitRequest(
                 activation_code=request.activation_code,
                 thread_id=request.thread_id,
@@ -3640,8 +3733,8 @@ async def rumination_get_table(
         str(reports_root), report_id, record_obj, snapshots
     )
     # 其余维度仍需全量解析（step 1 需 strengths/interests 生成行）
-    _v_full, strengths_list, interests_list, _purpose, _sources_full = extract_dimension_lists_for_rumination_table(
-        str(reports_root), report_id, record_obj
+    _v_full, strengths_list, interests_list, _purpose, _sources_full = (
+        extract_dimension_lists_for_rumination_table(str(reports_root), report_id, record_obj)
     )
     passions = interests_list if interests_list else ["热爱1", "热爱2"]
     strengths_list = strengths_list if strengths_list else ["优势1", "优势2"]
@@ -3738,7 +3831,9 @@ async def rumination_get_table(
         prog = load_rumination_progress(reports_root, report_id)
         if step == 7:
             rows = _rumination_step7_rows_for_widget(rows)
-        payload = _table_widget_payload(step, rows, values_list, progress=prog, values_source=values_source)
+        payload = _table_widget_payload(
+            step, rows, values_list, progress=prog, values_source=values_source
+        )
         return _rumination_get_table_response(prog, payload)
 
     ent_sub = snapshots.get(sk) or {}
@@ -3747,7 +3842,9 @@ async def rumination_get_table(
         if step == 7:
             rows = _rumination_step7_rows_for_widget(rows)
         prog = _persist(rows, snapshots)
-        payload = _table_widget_payload(step, rows, values_list, progress=prog, values_source=values_source)
+        payload = _table_widget_payload(
+            step, rows, values_list, progress=prog, values_source=values_source
+        )
         return _rumination_get_table_response(prog, payload)
 
     if step == 1:
@@ -3757,7 +3854,9 @@ async def rumination_get_table(
             ent["initial"] = deepcopy(rows)
             snapshots[sk] = ent
         prog = _persist(rows, snapshots)
-        payload = _table_widget_payload(step, rows, values_list, progress=prog, values_source=values_source)
+        payload = _table_widget_payload(
+            step, rows, values_list, progress=prog, values_source=values_source
+        )
         return _rumination_get_table_response(prog, payload)
 
     if step == 2:
@@ -3773,7 +3872,9 @@ async def rumination_get_table(
             ent["initial"] = deepcopy(rows)
             snapshots[sk] = ent
         prog = _persist(rows, snapshots)
-        payload = _table_widget_payload(step, rows, values_list, progress=prog, values_source=values_source)
+        payload = _table_widget_payload(
+            step, rows, values_list, progress=prog, values_source=values_source
+        )
         return _rumination_get_table_response(prog, payload)
 
     # ── step 3-7: 先查快照，无快照则从前一步 submitted 生成 ──
@@ -3788,7 +3889,14 @@ async def rumination_get_table(
             if isinstance(initial_rows, list) and initial_rows:
                 rows = _merge_step3_filter_table(rows, initial_rows)
             prog = _persist(rows, snapshots)
-            payload = _table_widget_payload(step, rows, values_list, progress=prog, values_source=values_source, sub_step=sub_step_3)
+            payload = _table_widget_payload(
+                step,
+                rows,
+                values_list,
+                progress=prog,
+                values_source=values_source,
+                sub_step=sub_step_3,
+            )
             return _rumination_get_table_response(prog, payload)
 
     ent_any = snapshots.get(sk) or {}
@@ -3799,7 +3907,9 @@ async def rumination_get_table(
             if step == 7:
                 rows = _rumination_step7_rows_for_widget(rows)
             prog = _persist(rows, snapshots)
-            payload = _table_widget_payload(step, rows, values_list, progress=prog, values_source=values_source)
+            payload = _table_widget_payload(
+                step, rows, values_list, progress=prog, values_source=values_source
+            )
             return _rumination_get_table_response(prog, payload)
 
     # ── neg_gate 进行中：使用 pending_table_submit 的数据作为表格（不重新生成）──
@@ -3818,11 +3928,15 @@ async def rumination_get_table(
         ent_any["initial"] = deepcopy(pending["table_data"])
         snapshots[sk] = ent_any
         save_rumination_progress(
-            reports_root, report_id,
-            filter_step=step, filter_step_snapshots=snapshots,
+            reports_root,
+            report_id,
+            filter_step=step,
+            filter_step_snapshots=snapshots,
         )
         prog = load_rumination_progress(reports_root, report_id)
-        payload = _table_widget_payload(step, rows, values_list, progress=prog, values_source=values_source)
+        payload = _table_widget_payload(
+            step, rows, values_list, progress=prog, values_source=values_source
+        )
         return _rumination_get_table_response(prog, payload)
 
     # 无快照但 filter_table 存在且 filter_step 指向目标步骤：直接使用（deep_end 后 / 覆盖恢复的兜底）
@@ -3835,11 +3949,15 @@ async def rumination_get_table(
         ent_any["initial"] = deepcopy(progress["filter_table"])
         snapshots[sk] = ent_any
         save_rumination_progress(
-            reports_root, report_id,
-            filter_step=step, filter_step_snapshots=snapshots,
+            reports_root,
+            report_id,
+            filter_step=step,
+            filter_step_snapshots=snapshots,
         )
         prog = load_rumination_progress(reports_root, report_id)
-        payload = _table_widget_payload(step, rows, values_list, progress=prog, values_source=values_source)
+        payload = _table_widget_payload(
+            step, rows, values_list, progress=prog, values_source=values_source
+        )
         return _rumination_get_table_response(prog, payload)
 
     # 无快照：从前一步 submitted 生成
@@ -3875,7 +3993,9 @@ async def rumination_get_table(
             )
         snapshots[sk] = ent
     prog = _persist(rows, snapshots)
-    payload = _table_widget_payload(step, rows, values_list, progress=prog, values_source=values_source)
+    payload = _table_widget_payload(
+        step, rows, values_list, progress=prog, values_source=values_source
+    )
     return _rumination_get_table_response(prog, payload)
 
 
@@ -3893,7 +4013,11 @@ def _build_system_prompt(
     purpose_progress_injection: str = "",
 ) -> str:
     """根据阶段构建 system prompt（通过模板渲染，避免超长硬编码）。"""
-    prior_block = f"\n\n以下是该来访者在上一轮咨询中的谈话结果，供你参考：\n{prior_context}" if prior_context.strip() else ""
+    prior_block = (
+        f"\n\n以下是该来访者在上一轮咨询中的谈话结果，供你参考：\n{prior_context}"
+        if prior_context.strip()
+        else ""
+    )
     context = {
         "phase": phase,
         "question_bank": question_bank,
@@ -4061,9 +4185,7 @@ async def simple_chat(
             phase_step=phase_step,
         )
     basic_info = _load_basic_info_from_activation(request.activation_code)
-    prior_context = _load_prior_context_from_activation(
-        request.activation_code, phase_step, report
-    )
+    prior_context = _load_prior_context_from_activation(request.activation_code, phase_step, report)
     override_cfg = _resolve_prompt_lab_override_for_request(rec, current_user)
     _root = get_effective_simple_root(rec)
     reports_root = str(Path(_root) / "reports")
@@ -4256,9 +4378,7 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
         vip_r = getattr(rec, "vip_level", 1) or 1
         llm_r = _get_dialogue_llm_provider(vip_level=vip_r)
         basic_info_r = _load_basic_info_from_activation(request.activation_code)
-        prior_r = _load_prior_context_from_activation(
-            request.activation_code, phase_step, report
-        )
+        prior_r = _load_prior_context_from_activation(request.activation_code, phase_step, report)
         reply_text, token_usage = await synthesize_rumination_entry_greeting(
             llm_r,
             basic_info=basic_info_r,
@@ -4304,15 +4424,11 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
         phase_step=phase_step,
     )
     basic_info = _load_basic_info_from_activation(request.activation_code)
-    prior_context = _load_prior_context_from_activation(
-        request.activation_code, phase_step, report
-    )
+    prior_context = _load_prior_context_from_activation(request.activation_code, phase_step, report)
     override_cfg = _resolve_prompt_lab_override_for_request(rec, current_user)
     _ir = get_effective_simple_root(rec)
     _reports_root = str(Path(_ir) / "reports")
-    vi_i, ra_i = _system_prompt_dimension_extras(
-        phase_step, report, _reports_root, None, init_loc
-    )
+    vi_i, ra_i = _system_prompt_dimension_extras(phase_step, report, _reports_root, None, init_loc)
     # 使命阶段：加载 purpose_progress 并构建注入块
     purpose_prog_injection_i = ""
     if phase_step == "purpose":
@@ -4337,7 +4453,10 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
     )
     llm_messages = [
         LLMMessage(role="system", content=system_prompt),
-        LLMMessage(role="user", content="我是来访者，你需要向我提问。以下是我的基本信息：暂无。请给出第一轮温柔而具体的引导问题，让我开始思考。"),
+        LLMMessage(
+            role="user",
+            content="我是来访者，你需要向我提问。以下是我的基本信息：暂无。请给出第一轮温柔而具体的引导问题，让我开始思考。",
+        ),
     ]
     token_usage = _normalize_token_usage(None)
     try:
@@ -4404,12 +4523,14 @@ async def reopen_thread(
     """用户选择「再聊聊」完善答案时，清除完成状态以便继续对话"""
     manager = get_activation_manager_for_code(request.activation_code)
     try:
-        rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
-            manager=manager,
-            activation_code=request.activation_code,
-            current_user=current_user,
-            phase=request.phase,
-            thread_id=request.thread_id,
+        rec, report, phase_step, logical_session_id, category, conv_manager = (
+            _resolve_report_context(
+                manager=manager,
+                activation_code=request.activation_code,
+                current_user=current_user,
+                phase=request.phase,
+                thread_id=request.thread_id,
+            )
         )
     except HTTPException:
         raise
@@ -4488,9 +4609,7 @@ async def reopen_thread(
         vip_r = getattr(rec, "vip_level", 1) or 1
         llm_r = _get_dialogue_llm_provider(vip_level=vip_r)
         basic_info_r = _load_basic_info_from_activation(request.activation_code)
-        prior_r = _load_prior_context_from_activation(
-            request.activation_code, phase_step, report
-        )
+        prior_r = _load_prior_context_from_activation(request.activation_code, phase_step, report)
         greeting_text, _ = await synthesize_rumination_entry_greeting(
             llm_r,
             basic_info=basic_info_r,
@@ -4588,19 +4707,27 @@ async def mark_thread_complete(
         keywords = dimension_conclusion.get("keywords") or []
         if isinstance(keywords, list):
             kw_for_prior = (
-                cap_strengths_keywords_list(keywords)
-                if phase_step == "strengths"
-                else keywords
+                cap_strengths_keywords_list(keywords) if phase_step == "strengths" else keywords
             )
             kw_text = "、".join(str(k) for k in kw_for_prior)
         else:
             kw_text = str(keywords)
         prior_text = f"{summary}\n关键词：{kw_text}".strip() if (summary or kw_text) else ""
         if prior_text:
-            phase_labels = {"values": "价值观", "strengths": "优势", "interests": "热爱", "purpose": "使命"}
+            phase_labels = {
+                "values": "价值观",
+                "strengths": "优势",
+                "interests": "热爱",
+                "purpose": "使命",
+            }
             label = phase_labels.get(phase_step, phase_step)
             prior_block = f"【{label} 阶段结果】\n{prior_text}"
-            next_phase = {"values": "strengths", "strengths": "interests", "interests": "purpose", "purpose": "rumination"}.get(phase_step)
+            next_phase = {
+                "values": "strengths",
+                "strengths": "interests",
+                "interests": "purpose",
+                "purpose": "rumination",
+            }.get(phase_step)
             if next_phase:
                 save_prior_context_for_report(
                     report["report_id"], next_phase, prior_block, str(root / "reports")
@@ -4676,21 +4803,27 @@ async def list_threads(
         first_msg = messages[0] if messages else {}
         msg_ts = first_msg.get("created_at") or created_at
         try:
-            ts_ms = int(datetime.fromisoformat(msg_ts.replace("Z", "+00:00")).timestamp() * 1000) if msg_ts else 0
+            ts_ms = (
+                int(datetime.fromisoformat(msg_ts.replace("Z", "+00:00")).timestamp() * 1000)
+                if msg_ts
+                else 0
+            )
         except (ValueError, TypeError):
             ts_ms = 0
         cmeta = _read_conclusion_meta(meta)
         completed = bool(cmeta.get("thread_completed"))
-        threads.append({
-            "id": tid,
-            "title": f"对话 {idx + 1}",
-            "status": "completed" if completed else "in-progress",
-            "messages": [],  # 列表不返回消息体，由 /history 按需加载
-            "createdAt": ts_ms or int(datetime.now(timezone.utc).timestamp() * 1000),
-            "dimensionConclusion": cmeta.get("final"),
-            "selected": tid == selected_id,
-            "step_locked": bool(step.get("locked", False)),
-        })
+        threads.append(
+            {
+                "id": tid,
+                "title": f"对话 {idx + 1}",
+                "status": "completed" if completed else "in-progress",
+                "messages": [],  # 列表不返回消息体，由 /history 按需加载
+                "createdAt": ts_ms or int(datetime.now(timezone.utc).timestamp() * 1000),
+                "dimensionConclusion": cmeta.get("final"),
+                "selected": tid == selected_id,
+                "step_locked": bool(step.get("locked", False)),
+            }
+        )
 
     return SimpleHistoryResponse(
         code=200,
@@ -4716,12 +4849,14 @@ async def simple_history(
     """
     try:
         manager = get_activation_manager_for_code(activation_code)
-        rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
-            manager=manager,
-            activation_code=activation_code,
-            current_user=current_user,
-            phase=phase,
-            thread_id=thread_id,
+        rec, report, phase_step, logical_session_id, category, conv_manager = (
+            _resolve_report_context(
+                manager=manager,
+                activation_code=activation_code,
+                current_user=current_user,
+                phase=phase,
+                thread_id=thread_id,
+            )
         )
         # 该阶段无任何已注册线程（用户已全部删除）→ 返回空历史，
         # 避免 fallback 到磁盘上的旧 act_sid 残留文件。
@@ -4791,7 +4926,10 @@ async def simple_history(
     except Exception as e:
         logger.exception(
             "simple_history error: activation=%s phase=%s thread_id=%s: %s",
-            activation_code, phase, thread_id, e,
+            activation_code,
+            phase,
+            thread_id,
+            e,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -4831,12 +4969,9 @@ async def _hyp_candidate_fallback_retry(
     # 里按 explicit_row_index 取热爱/优势作为组合上下文，走同样的严格 prompt。
     sub_step = (prog.get("filter_sub_step") or "").strip()
     combo_id_req = getattr(request, "combo_id", None)
-    is_step3_combo_retry = (
-        phase_step == "rumination"
-        and (
-            (combo_id_req and sub_step == "matrix")
-            or (sub_step == "discussion" and explicit_row_index is not None)
-        )
+    is_step3_combo_retry = phase_step == "rumination" and (
+        (combo_id_req and sub_step == "matrix")
+        or (sub_step == "discussion" and explicit_row_index is not None)
     )
     if is_step3_combo_retry:
         p_name: str = ""
@@ -4870,12 +5005,12 @@ async def _hyp_candidate_fallback_retry(
             f"当前组合：热爱「{p_name or '（未填）'}」× 优势「{s_name or '（未填）'}」。\n"
             f"{hyp_ref_line}"
             "**重要：忽略上方对话中已经出现过的任何假设（无论你或用户说过）。现在必须重新生成两条全新、独立的假设候选。**\n"
-            "不要回复\"就是刚才给你的那两个\"或类似话术——本次任务要求你基于组合本身的特质，重新构想。\n\n"
+            '不要回复"就是刚才给你的那两个"或类似话术——本次任务要求你基于组合本身的特质，重新构想。\n\n'
             "生成要求：\n"
             "- 一条自由职业/创业方向（用户可作为独立个体、自由职业者或小型创业者来经营的事业）\n"
             "- 一条公司职业方向（用户进入公司作为员工来发展的职业路径）\n"
             "- 每条假设至少 25 字，必须让用户能想象出具体场景：角色 + 服务对象 + 在做什么 + 想达成什么\n"
-            "- 避免抽象的标签或职位名称（如\"设计师\"\"创业\"\"老师\"），要写成一个有画面感的具体事业描述\n\n"
+            '- 避免抽象的标签或职位名称（如"设计师""创业""老师"），要写成一个有画面感的具体事业描述\n\n'
             "好的示例（自由职业向）：「开设一家面向都市独居年轻人的小而美的手工陶艺工作室，定期开课教学并提供定制作品」\n"
             "好的示例（公司职业向）：「加入一家注重美学表达的设计工作室，担任品牌视觉设计师，为生活方式类客户打造完整视觉系统」\n"
             "坏的示例（禁止输出）：「陶艺老师」「设计师」「创业」「自由职业」「就是刚才给你的那两个」\n\n"
@@ -4891,12 +5026,18 @@ async def _hyp_candidate_fallback_retry(
         trimmed: list = []
         for m in llm_messages:
             role = getattr(m, "role", None) or (m.get("role") if isinstance(m, dict) else None)
-            content = getattr(m, "content", None) or (m.get("content") if isinstance(m, dict) else "")
+            content = getattr(m, "content", None) or (
+                m.get("content") if isinstance(m, dict) else ""
+            )
             if role == "system" and not trimmed:
-                trimmed.append(m if not isinstance(m, dict) else LLMMessage(role="system", content=content))
+                trimmed.append(
+                    m if not isinstance(m, dict) else LLMMessage(role="system", content=content)
+                )
                 continue
             if role in ("user", "assistant"):
-                trimmed.append(m if not isinstance(m, dict) else LLMMessage(role=role, content=content))
+                trimmed.append(
+                    m if not isinstance(m, dict) else LLMMessage(role=role, content=content)
+                )
         matrix_messages = trimmed[-5:] + [
             LLMMessage(role="system", content=matrix_retry_system),
         ]
@@ -5038,7 +5179,9 @@ async def _hyp_candidate_fallback_retry(
     # 前端必须要求用户先选中一行再发消息，否则视为错误状态。
     logger.info(
         "[step3] fallback retry skipped: not combo retry (sub_step=%s combo_id=%s explicit_row=%s)",
-        sub_step, combo_id_req, explicit_row_index,
+        sub_step,
+        combo_id_req,
+        explicit_row_index,
     )
     return [], None
 
@@ -5121,7 +5264,12 @@ async def simple_chat_stream(
                 if prev_sess:
                     prev_cat = _storage_category(prev_phase, prev_sess)
                     _trigger_anchor_refiner(
-                        session_id, prev_phase, prev_cat, conv_manager, storage_root, vip_level=vip_level
+                        session_id,
+                        prev_phase,
+                        prev_cat,
+                        conv_manager,
+                        storage_root,
+                        vip_level=vip_level,
                     )
 
         if phase_step == "rumination":
@@ -5238,7 +5386,8 @@ async def simple_chat_stream(
         if rumination_filter_step_val > 0:
             # Rumination：只取当前子步的消息 + 之前子步的累积 anchor
             step_messages = [
-                m for m in history_messages
+                m
+                for m in history_messages
                 if int(m.get("filter_step") or 0) == rumination_filter_step_val
             ]
             # v3: 组合矩阵模式 — 进一步按 combo_id 隔离（addon 已在前置分流中决定）
@@ -5270,7 +5419,9 @@ async def simple_chat_stream(
             anchor = load_anchor_for_phase(session_id, phase_step, storage_root)
             anchor_text = format_anchor_for_prompt(anchor)
             if anchor_text:
-                llm_messages.append(LLMMessage(role="assistant", content=f"[此前对话要点]\n{anchor_text}"))
+                llm_messages.append(
+                    LLMMessage(role="assistant", content=f"[此前对话要点]\n{anchor_text}")
+                )
             trimmed = _trim_history_messages_for_llm(history_messages)
 
         for m in trimmed:
@@ -5370,9 +5521,11 @@ async def simple_chat_stream(
                     activation_session_id=rec.session_id,
                 ),
                 "step_id": phase_step,
-                "filter_step": int(request.rumination_filter_step)
-                if phase_step == "rumination" and request.rumination_filter_step
-                else None,
+                "filter_step": (
+                    int(request.rumination_filter_step)
+                    if phase_step == "rumination" and request.rumination_filter_step
+                    else None
+                ),
                 "agent_id": None,
                 "event": "user_message",
             }
@@ -5399,11 +5552,7 @@ async def simple_chat_stream(
                 user_msg_kw["combo_id"] = request.combo_id or "_matrix_general"
             # step3：打 rumination_sub_step 标记（matrix/discussion），供前端按子步精确过滤。
             # 与 combo_id 正交：combo_id 标识组合，rumination_sub_step 标识子步阶段。
-            if (
-                phase_step == "rumination"
-                and rumination_filter_step_val == 3
-                and step3_sub_step
-            ):
+            if phase_step == "rumination" and rumination_filter_step_val == 3 and step3_sub_step:
                 user_msg_kw["rumination_sub_step"] = step3_sub_step
             # 先保存用户消息
             await conv_manager.append_message(
@@ -5415,7 +5564,7 @@ async def simple_chat_stream(
         full_reply = ""
 
         # 发送 started 事件
-        yield f"data: {{\"started\": true}}\n\n"
+        yield f'data: {{"started": true}}\n\n'
 
         # 1) pending 草案处理：由推理模型输出 JSON state（confirmed/rejected/continue）
         conv_data = await conv_manager.get_conversation_data(session_id, category)
@@ -5471,12 +5620,14 @@ async def simple_chat_stream(
                 if pending_task.done() and pending_events_q.empty():
                     break
                 try:
-                    evt = await asyncio.wait_for(pending_events_q.get(), timeout=PENDING_HEARTBEAT_SECONDS)
+                    evt = await asyncio.wait_for(
+                        pending_events_q.get(), timeout=PENDING_HEARTBEAT_SECONDS
+                    )
                     yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
                 except asyncio.TimeoutError:
                     elapsed += PENDING_HEARTBEAT_SECONDS
                     yield (
-                        f"data: {{\"heartbeat\": \"pending_judge\", \"elapsed\": {int(elapsed)} }}\n\n"
+                        f'data: {{"heartbeat": "pending_judge", "elapsed": {int(elapsed)} }}\n\n'
                     )
                     if elapsed >= PENDING_JUDGE_TIMEOUT_SECONDS:
                         pending_timed_out = True
@@ -5542,9 +5693,7 @@ async def simple_chat_stream(
                             or (pending_conclusion or {}).get("ai_summary")
                             or ""
                         )[:400],
-                        "draft_keywords": [str(x) for x in _draft_kw_list if str(x).strip()][
-                            :12
-                        ],
+                        "draft_keywords": [str(x) for x in _draft_kw_list if str(x).strip()][:12],
                     },
                 )
             except Exception:
@@ -5559,7 +5708,9 @@ async def simple_chat_stream(
                         check_dimension_complete(
                             phase_step,
                             conv_history,
-                            prior_conclusion=pending_conclusion if isinstance(pending_conclusion, dict) else None,
+                            prior_conclusion=(
+                                pending_conclusion if isinstance(pending_conclusion, dict) else None
+                            ),
                             vip_level=vip_level,
                             llm_provider=reasoning_llm,
                             basic_info=basic_info,
@@ -5590,10 +5741,10 @@ async def simple_chat_stream(
                         ),
                     )
                     transition_msg = pending_msg or "收到你的确认，我将生成结论卡。"
-                    yield f"data: {{\"chunk\": {json.dumps(transition_msg, ensure_ascii=False)} }}\n\n"
+                    yield f'data: {{"chunk": {json.dumps(transition_msg, ensure_ascii=False)} }}\n\n'
                     full_reply = transition_msg
                     yield f"data: {json.dumps({'conclusion_loading': True}, ensure_ascii=False)}\n\n"
-                    yield f"data: {{\"dimension_conclusion\": {json.dumps(dimension_conclusion, ensure_ascii=False)} }}\n\n"
+                    yield f'data: {{"dimension_conclusion": {json.dumps(dimension_conclusion, ensure_ascii=False)} }}\n\n'
                     try:
                         await conv_manager.append_message(
                             session_id=session_id,
@@ -5669,7 +5820,7 @@ async def simple_chat_stream(
                         )
                     except Exception:
                         pass
-                    yield f"data: {{\"done\": true, \"response\": {json.dumps(full_reply, ensure_ascii=False)} }}\n\n"
+                    yield f'data: {{"done": true, "response": {json.dumps(full_reply, ensure_ascii=False)} }}\n\n'
                     return
 
             elif pending_state in {"rejected", "continue"}:
@@ -5728,7 +5879,10 @@ async def simple_chat_stream(
             and phase_step != "rumination"
         ):
             baseline = meta.get("conclusion_reject_baseline_user_count")
-            if isinstance(baseline, int) and user_count - baseline >= CONCLUSION_REJECT_NUDGE_USER_TURNS:
+            if (
+                isinstance(baseline, int)
+                and user_count - baseline >= CONCLUSION_REJECT_NUDGE_USER_TURNS
+            ):
                 should_try_retrigger = True
                 if llm_messages and llm_messages[0].role == "system":
                     llm_messages[0] = LLMMessage(
@@ -5777,7 +5931,9 @@ async def simple_chat_stream(
             stream_coro = llm.chat_stream(llm_messages, temperature=0.7)
 
             full_think = ""
-            rfs_stream = int(request.rumination_filter_step or 0) if phase_step == "rumination" else 0
+            rfs_stream = (
+                int(request.rumination_filter_step or 0) if phase_step == "rumination" else 0
+            )
             if phase_step == "rumination":
                 stream_markers: List[Tuple[str, str]] = (
                     [
@@ -5790,9 +5946,7 @@ async def simple_chat_stream(
                 )
             else:
                 stream_markers = [("[STATE_JSON]", "[/STATE_JSON]")]
-            stream_hidden_filter = _build_stream_hidden_block_filter(
-                block_markers=stream_markers
-            )
+            stream_hidden_filter = _build_stream_hidden_block_filter(block_markers=stream_markers)
 
             def _process_chunk(c):
                 nonlocal full_reply, full_think
@@ -5800,20 +5954,26 @@ async def simple_chat_stream(
                 if isinstance(c, dict):
                     t = c.get("_t")
                     if t == "think_start":
-                        out.append(f"data: {{\"think_start\": true}}\n\n")
+                        out.append(f'data: {{"think_start": true}}\n\n')
                     elif t == "think_chunk":
                         tc = c.get("content", "")
                         if tc:
-                            out.append(f"data: {{\"think_chunk\": {json.dumps(tc, ensure_ascii=False)} }}\n\n")
+                            out.append(
+                                f'data: {{"think_chunk": {json.dumps(tc, ensure_ascii=False)} }}\n\n'
+                            )
                     elif t == "think_end":
                         tc = c.get("content", "")
                         full_think = tc
-                        out.append(f"data: {{\"think_end\": {json.dumps(tc, ensure_ascii=False)} }}\n\n")
+                        out.append(
+                            f'data: {{"think_end": {json.dumps(tc, ensure_ascii=False)} }}\n\n'
+                        )
                 elif c:
                     full_reply += c
                     delta = stream_hidden_filter(full_reply)
                     if delta:
-                        out.append(f"data: {{\"chunk\": {json.dumps(delta, ensure_ascii=False)} }}\n\n")
+                        out.append(
+                            f'data: {{"chunk": {json.dumps(delta, ensure_ascii=False)} }}\n\n'
+                        )
                 return out
 
             if sem:
@@ -5827,11 +5987,14 @@ async def simple_chat_stream(
                         yield ev
         except Exception as e:
             err = str(e)
-            yield f"data: {{\"error\": {json.dumps(err, ensure_ascii=False)} }}\n\n"
+            yield f'data: {{"error": {json.dumps(err, ensure_ascii=False)} }}\n\n'
             return
         stream_usage = _normalize_token_usage(getattr(llm, "_last_stream_usage", None))
         # 诊断 DeepSeek Context Cache：首 token 慢时查看 hit/miss
-        if stream_usage and (stream_usage.get("prompt_cache_hit_tokens") or stream_usage.get("prompt_cache_miss_tokens")):
+        if stream_usage and (
+            stream_usage.get("prompt_cache_hit_tokens")
+            or stream_usage.get("prompt_cache_miss_tokens")
+        ):
             logger.info(
                 "[llm_stream] cache hit=%s miss=%s prompt=%s",
                 stream_usage.get("prompt_cache_hit_tokens", 0),
@@ -5875,11 +6038,13 @@ async def simple_chat_stream(
                 )
                 rid_sp = report.get("report_id")
                 prog_hyp = (
-                    load_rumination_progress(Path(reports_root), str(rid_sp))
-                    if rid_sp
-                    else {}
+                    load_rumination_progress(Path(reports_root), str(rid_sp)) if rid_sp else {}
                 )
-                ft_hyp = prog_hyp.get("filter_table") if isinstance(prog_hyp.get("filter_table"), list) else []
+                ft_hyp = (
+                    prog_hyp.get("filter_table")
+                    if isinstance(prog_hyp.get("filter_table"), list)
+                    else []
+                )
                 cur_hyp = int(prog_hyp.get("filter_row_cursor") or 0)
                 hyp_target_row, hyp_row_unresolved = resolve_step3_hyp_delivery(
                     candidates=hyp_candidates,
@@ -5917,10 +6082,7 @@ async def simple_chat_stream(
                         request.step3_table_action,
                         len(hyp_candidates),
                     )
-                if (
-                    _will_fallback
-                    and rid_sp
-                ):
+                if _will_fallback and rid_sp:
                     retry_kind = (
                         "strict"
                         if _strict_hyp_retry
@@ -5987,7 +6149,8 @@ async def simple_chat_stream(
                     cur_prog = normalize_progress(meta_pp.get("purpose_progress"))
                     updated_prog = apply_progress_update(cur_prog, draft_raw["purpose_progress"])
                     await conv_manager.update_metadata(
-                        session_id, category,
+                        session_id,
+                        category,
                         {"purpose_progress": updated_prog},
                     )
                 except Exception:
@@ -6003,7 +6166,11 @@ async def simple_chat_stream(
                     activation_session_id=rec.session_id,
                 ),
                 "step_id": phase_step,
-                "filter_step": int(request.rumination_filter_step) if phase_step == "rumination" and request.rumination_filter_step else None,
+                "filter_step": (
+                    int(request.rumination_filter_step)
+                    if phase_step == "rumination" and request.rumination_filter_step
+                    else None
+                ),
                 "agent_id": "coach",
                 "event": "assistant_reply",
                 "token_usage": stream_usage,
@@ -6023,18 +6190,10 @@ async def simple_chat_stream(
             ):
                 msg_payload["combo_id"] = request.combo_id or "_matrix_general"
             # step3：打 rumination_sub_step 标记（matrix/discussion），供前端按子步精确过滤。
-            if (
-                phase_step == "rumination"
-                and rumination_filter_step_val == 3
-                and step3_sub_step
-            ):
+            if phase_step == "rumination" and rumination_filter_step_val == 3 and step3_sub_step:
                 msg_payload["rumination_sub_step"] = step3_sub_step
             # step3 假设候选 chips 持久化到消息：刷新加载 history 时仍能渲染
-            if (
-                phase_step == "rumination"
-                and rumination_filter_step_val == 3
-                and hyp_candidates
-            ):
+            if phase_step == "rumination" and rumination_filter_step_val == 3 and hyp_candidates:
                 msg_payload["hyp_candidates"] = hyp_candidates
             await conv_manager.append_message(
                 session_id=session_id,
@@ -6053,7 +6212,11 @@ async def simple_chat_stream(
                             activation_session_id=rec.session_id,
                         ),
                         "step_id": phase_step,
-                        "filter_step": int(request.rumination_filter_step) if phase_step == "rumination" and request.rumination_filter_step else None,
+                        "filter_step": (
+                            int(request.rumination_filter_step)
+                            if phase_step == "rumination" and request.rumination_filter_step
+                            else None
+                        ),
                         "agent_id": "coach",
                         "event": "table_output",
                         "table_format": "markdown",
@@ -6074,11 +6237,7 @@ async def simple_chat_stream(
                 hyp_sse["hyp_target_row"] = hyp_target_row
             if hyp_row_unresolved:
                 hyp_sse["hyp_row_unresolved"] = True
-            yield (
-                "data: "
-                + json.dumps(hyp_sse, ensure_ascii=False)
-                + "\n\n"
-            )
+            yield ("data: " + json.dumps(hyp_sse, ensure_ascii=False) + "\n\n")
         pending_spawned_in_turn = False
         if state_obj and not cmeta.get("thread_completed"):
             state_name = str(state_obj.get("state") or "").strip().lower()
@@ -6089,7 +6248,9 @@ async def simple_chat_stream(
                 # 使命阶段：用 metadata 的 confirmed_rows 覆盖 LLM 的 experience_value_rows
                 if phase_step == "purpose":
                     try:
-                        conv_data_pr = await conv_manager.get_conversation_data(session_id, category)
+                        conv_data_pr = await conv_manager.get_conversation_data(
+                            session_id, category
+                        )
                         meta_pr = conv_data_pr.get("metadata") or {}
                         prog_pr = normalize_progress(meta_pr.get("purpose_progress"))
                         meta_rows = progress_to_experience_value_rows(prog_pr)
@@ -6256,8 +6417,8 @@ async def simple_chat_stream(
         # 子步 3 hyp_candidates 已在 full_reply 落盘块中发送，此处不再重复
 
         yield (
-            f"data: {{\"done\": true, \"response\": {json.dumps(full_reply, ensure_ascii=False)}, "
-            f"\"token_usage\": {json.dumps(stream_usage, ensure_ascii=False)} }}\n\n"
+            f'data: {{"done": true, "response": {json.dumps(full_reply, ensure_ascii=False)}, '
+            f'"token_usage": {json.dumps(stream_usage, ensure_ascii=False)} }}\n\n'
         )
 
     return StreamingResponse(
@@ -6312,7 +6473,9 @@ async def delete_thread(
         lock_file = file.with_suffix(file.suffix + ".lock")
         lock_file.unlink(missing_ok=True)
     except OSError as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"删除会话文件失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"删除会话文件失败: {e}"
+        )
 
     updated = registry.remove_session(report_id, phase_step, thread_id) or {}
     step_payload = ((updated.get("steps") or {}).get(phase_step)) or {}
@@ -6344,4 +6507,3 @@ async def delete_thread(
             "step_locked": bool(step_payload.get("locked", False)),
         },
     )
-
