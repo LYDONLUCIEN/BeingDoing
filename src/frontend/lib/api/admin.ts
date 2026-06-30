@@ -302,8 +302,8 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  // 异步回收 object URL，避免浏览器在下载完成前回收
-  setTimeout(() => window.URL.revokeObjectURL(url), 0);
+  // 延迟回收 object URL，给浏览器足够时间发起下载（慢网络下 0ms 可能过早 revoke）
+  setTimeout(() => window.URL.revokeObjectURL(url), 100);
 }
 
 /**
@@ -334,7 +334,10 @@ export async function exportReportsBatch(
 }
 
 /**
- * 下载单个 report 的 JSON（带认证 token）。
+ * 下载单个 report 的完整明细（zip，带认证 token）。
+ *
+ * zip 内含：raw/*.json（各 phase 完整对话源文件）、report_{id}.md（纯净对话）、
+ * stats.json（字数/用时/token 统计）。
  *
  * 不用 <a href> 直接跳转，因为浏览器跳转无法附加 Authorization header，
  * 后端会返回 401。改为用 axios 拉 blob 再触发下载。
@@ -349,7 +352,7 @@ export async function downloadReportJson(reportId: string): Promise<void> {
   const blob = res.data as Blob;
   const filename = pickFilenameFromHeaders(
     res.headers,
-    `report_${reportId}.json`,
+    `report_${reportId}.zip`,
   );
   triggerBlobDownload(blob, filename);
 }
@@ -1173,6 +1176,8 @@ export interface NotificationUserFilter {
   is_active?: boolean | null;
   profile_completed?: boolean | null;
   created_after?: string;
+  /** 手动勾选模式：显式指定收件人 user_id 列表，非空时忽略其他筛选 */
+  user_ids?: string[];
 }
 
 export interface NotificationRecipientStatus {

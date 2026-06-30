@@ -9,7 +9,7 @@ Admin 通知邮件群发 API
 全部 _is_super_admin 守卫。
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -29,13 +29,19 @@ def _is_super_admin(user: Optional[dict]) -> bool:
 class UserFilter(BaseModel):
     """收件人筛选条件
 
-    所有字段可选，不传 = 不限。全选 = 全部留空。
+    两种互斥模式：
+    - 手动勾选：传 user_ids（非空 list），按显式 user_id 列表收件，忽略其他筛选
+    - 条件筛选：user_ids 为空，按 is_active/profile_completed/created_after 组合过滤
+    全部留空 = 全部有 email 的用户。
     """
 
     is_active: Optional[bool] = Field(None, description="按用户是否活跃筛选（true 仅活跃用户）")
     profile_completed: Optional[bool] = Field(None, description="按 profile 是否完成筛选")
     created_after: Optional[str] = Field(
         None, description="注册时间下界，ISO 格式（如 2026-01-01）"
+    )
+    user_ids: Optional[List[str]] = Field(
+        None, description="手动勾选模式：显式指定收件人 user_id 列表，非空时忽略其他筛选"
     )
 
 

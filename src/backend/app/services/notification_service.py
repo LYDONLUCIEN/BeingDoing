@@ -111,21 +111,30 @@ class NotificationService:
         """按筛选条件查询收件人列表（user_id, email）。
 
         只返回 email 非空的用户。profile_completed 筛选需 join user_profiles。
+        支持两种互斥模式：
+        - user_filter.user_ids 非空：按显式 user_id 列表收件（手动勾选模式）
+        - 其他字段：按条件筛选（is_active/profile_completed/created_after）
         """
         base = select(User.id, User.email).where(User.email.isnot(None))
-        # UserProfile join 在需要时
-        if user_filter.get("profile_completed") is not None:
-            base = base.join(UserProfile, UserProfile.user_id == User.id).where(
-                UserProfile.profile_completed == user_filter["profile_completed"]
-            )
-        if user_filter.get("is_active") is not None:
-            base = base.where(User.is_active == user_filter["is_active"])
-        if user_filter.get("created_after"):
-            try:
-                dt_after = datetime.fromisoformat(str(user_filter["created_after"]))
-                base = base.where(User.created_at >= dt_after)
-            except ValueError:
-                logger.warning("invalid created_after filter: %s", user_filter["created_after"])
+
+        # 手动勾选模式：显式 user_id 列表优先，忽略其他筛选
+        user_ids = user_filter.get("user_ids")
+        if user_ids:
+            base = base.where(User.id.in_(list(user_ids)))
+        else:
+            # 条件筛选模式
+            if user_filter.get("profile_completed") is not None:
+                base = base.join(UserProfile, UserProfile.user_id == User.id).where(
+                    UserProfile.profile_completed == user_filter["profile_completed"]
+                )
+            if user_filter.get("is_active") is not None:
+                base = base.where(User.is_active == user_filter["is_active"])
+            if user_filter.get("created_after"):
+                try:
+                    dt_after = datetime.fromisoformat(str(user_filter["created_after"]))
+                    base = base.where(User.created_at >= dt_after)
+                except ValueError:
+                    logger.warning("invalid created_after filter: %s", user_filter["created_after"])
 
         async with AsyncSessionLocal() as db:
             result = await db.execute(base)

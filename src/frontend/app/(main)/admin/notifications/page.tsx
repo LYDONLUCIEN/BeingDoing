@@ -6,9 +6,11 @@ import {
   sendNotificationEmail,
   getNotificationStatus,
   listNotificationTasks,
+  fetchAdminUsers,
   type NotificationUserFilter,
   type NotificationTaskStatus,
   type NotificationTaskListItem,
+  type AdminUserItem,
 } from '@/lib/api/admin';
 import { formatUTC } from '@/lib/utils/formatTime';
 
@@ -20,10 +22,22 @@ const POLL_INTERVAL_MS = 2000;
 export default function AdminNotificationsPage() {
   const router = useRouter();
 
-  // 筛选条件
+  // 收件人选择模式：'filter' = 条件筛选，'manual' = 手动勾选
+  const [recipientMode, setRecipientMode] = useState<'filter' | 'manual'>('filter');
+
+  // 条件筛选
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>('all');
   const [profileFilter, setProfileFilter] = useState<ProfileFilter>('all');
   const [createdAfter, setCreatedAfter] = useState('');
+
+  // 手动勾选：用户列表（分页+搜索）
+  const [users, setUsers] = useState<AdminUserItem[]>([]);
+  const [usersTotal, setUsersTotal] = useState(0);
+  const [usersPage, setUsersPage] = useState(1);
+  const [usersPageSize] = useState(20);
+  const [userQuery, setUserQuery] = useState('');
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
+  const [usersLoading, setUsersLoading] = useState(false);
 
   // 邮件内容
   const [subject, setSubject] = useState('');
@@ -45,6 +59,11 @@ export default function AdminNotificationsPage() {
   const [info, setInfo] = useState<string | null>(null);
 
   const buildFilter = (): NotificationUserFilter => {
+    // 手动勾选模式：传 user_ids 列表
+    if (recipientMode === 'manual') {
+      return { user_ids: Array.from(selectedUserIds) };
+    }
+    // 条件筛选模式
     const f: NotificationUserFilter = {};
     if (activeFilter !== 'all') f.is_active = activeFilter === 'active';
     if (profileFilter !== 'all') f.profile_completed = profileFilter === 'completed';
@@ -52,9 +71,65 @@ export default function AdminNotificationsPage() {
     return f;
   };
 
+  // 加载用户列表（手动勾选用）
+  const loadUsers = useCallback(async (page: number, q: string) => {
+    setUsersLoading(true);
+    try {
+      const res = await fetchAdminUsers({
+        page,
+        page_size: usersPageSize,
+        q: q || undefined,
+      });
+      setUsers(res.items);
+      setUsersTotal(res.total);
+      setUsersPage(page);
+    } catch {
+      // 静默
+    } finally {
+      setUsersLoading(false);
+    }
+  }, [usersPageSize]);
+
+  // 切换到手动模式时首次加载
+  useEffect(() => {
+    if (recipientMode === 'manual' && users.length === 0) {
+      loadUsers(1, '');
+    }
+  }, [recipientMode, users.length, loadUsers]);
+
+  const toggleUser = (userId: string) => {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  };
+
+  const currentPageAllSelected =
+    users.length > 0 && users.every((u) => selectedUserIds.has(u.user_id));
+
+  const toggleSelectAllOnPage = () => {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      if (currentPageAllSelected) {
+        // 取消本页全选
+        users.forEach((u) => next.delete(u.user_id));
+      } else {
+        // 选中本页全部（与已有跨页选中合并）
+        users.forEach((u) => next.add(u.user_id));
+      }
+      return next;
+    });
+  };
+
   const handleSend = async () => {
     if (!subject.trim() || !body.trim()) {
       setError('主题和正文不能为空');
+      return;
+    }
+    if (recipientMode === 'manual' && selectedUserIds.size === 0) {
+      setError('请先勾选收件人，或切回条件筛选模式');
       return;
     }
     setError(null);
@@ -152,7 +227,36 @@ export default function AdminNotificationsPage() {
         <section className="rounded-lg bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-lg font-semibold text-gray-800">新建群发任务</h2>
 
-          {/* 收件人筛选 */}
+          {/* 收件人选择模式切换 */}
+          <div className="mb-4">
+            <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden text-sm">
+              <button
+                type="button"
+                onClick={() => setRecipientMode('filter')}
+                className={`px-4 py-2 ${
+                  recipientMode === 'filter'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                条件筛选
+              </button>
+              <button
+                type="button"
+                onClick={() => setRecipientMode('manual')}
+                className={`px-4 py-2 ${
+                  recipientMode === 'manual'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                手动勾选 {selectedUserIds.size > 0 && `(已选 ${selectedUserIds.size})`}
+              </button>
+            </div>
+          </div>
+
+          {/* 收件人筛选（条件筛选模式） */}
+          {recipientMode === 'filter' && (
           <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-3">
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">用户状态</label>
@@ -188,6 +292,128 @@ export default function AdminNotificationsPage() {
               />
             </div>
           </div>
+          )}
+
+          {/* 收件人手动勾选（manual 模式） */}
+          {recipientMode === 'manual' && (
+            <div className="mb-4">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  value={userQuery}
+                  onChange={(e) => setUserQuery(e.target.value)}
+                  placeholder="搜索 email / username / user_id"
+                  className="min-w-[260px] rounded border border-gray-300 px-3 py-1.5 text-sm"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') loadUsers(1, userQuery);
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => loadUsers(1, userQuery)}
+                  className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+                >
+                  搜索
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserQuery('');
+                    loadUsers(1, '');
+                  }}
+                  className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+                >
+                  重置
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleSelectAllOnPage}
+                  className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+                >
+                  {currentPageAllSelected ? '取消本页全选' : '本页全选'}
+                </button>
+                <span className="text-xs text-gray-500">
+                  已跨页选中 {selectedUserIds.size} 人 / 共 {usersTotal} 人匹配
+                </span>
+              </div>
+
+              {usersLoading ? (
+                <div className="py-4 text-center text-sm text-gray-400">加载中...</div>
+              ) : users.length === 0 ? (
+                <div className="py-4 text-center text-sm text-gray-400">
+                  暂无用户，尝试搜索或切回条件筛选
+                </div>
+              ) : (
+                <div className="max-h-72 overflow-auto rounded border border-gray-200">
+                  <table className="w-full text-left text-xs">
+                    <thead className="sticky top-0 bg-gray-50 text-gray-500">
+                      <tr>
+                        <th className="px-2 py-1.5 w-8">
+                          <input
+                            type="checkbox"
+                            checked={currentPageAllSelected}
+                            onChange={toggleSelectAllOnPage}
+                            aria-label="本页全选"
+                          />
+                        </th>
+                        <th className="px-2 py-1.5">email</th>
+                        <th className="px-2 py-1.5">username</th>
+                        <th className="px-2 py-1.5">user_id</th>
+                        <th className="px-2 py-1.5">状态</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.map((u) => (
+                        <tr key={u.user_id} className="border-t border-gray-100">
+                          <td className="px-2 py-1.5">
+                            <input
+                              type="checkbox"
+                              checked={selectedUserIds.has(u.user_id)}
+                              onChange={() => toggleUser(u.user_id)}
+                            />
+                          </td>
+                          <td className="px-2 py-1.5 break-all">{u.email || '-'}</td>
+                          <td className="px-2 py-1.5">{u.username || '-'}</td>
+                          <td className="px-2 py-1.5 font-mono text-[10px] text-gray-500">
+                            {u.user_id.slice(0, 8)}...
+                          </td>
+                          <td className="px-2 py-1.5">
+                            {u.is_active ? '活跃' : '禁用'}
+                            {u.profile_completed ? ' / 已填资料' : ''}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* 用户列表分页 */}
+              {usersTotal > usersPageSize && (
+                <div className="mt-2 flex items-center justify-center gap-4 text-xs text-gray-600">
+                  <button
+                    type="button"
+                    onClick={() => loadUsers(usersPage - 1, userQuery)}
+                    disabled={usersPage <= 1}
+                    className="rounded border px-2 py-1 disabled:opacity-50"
+                  >
+                    上一页
+                  </button>
+                  <span>
+                    第 {usersPage} 页 / 共 {Math.ceil(usersTotal / usersPageSize)} 页
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => loadUsers(usersPage + 1, userQuery)}
+                    disabled={usersPage * usersPageSize >= usersTotal}
+                    className="rounded border px-2 py-1 disabled:opacity-50"
+                  >
+                    下一页
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* 邮件内容 */}
           <div className="mb-4">
