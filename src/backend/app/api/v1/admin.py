@@ -847,15 +847,44 @@ async def download_report_json(
     report_id: str,
     current_user: Optional[dict] = Depends(get_current_user),
 ):
+    """
+    下载单个 report 的完整明细（zip）：
+    - raw/{step_id}__{session_id}.json  各 phase 完整对话源文件（含 anchor/结论/全文）
+    - report_{report_id}.md             纯净 Markdown（对话 + 结论，无时间戳等噪音）
+    - stats.json                        每 phase 字数 / 用时 / token 统计
+    导出范围：遍历各 step 的 session_ids（selected 优先，否则取最新一条），
+    rumination 走到中途也能导出。
+    """
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     registry = ReportRegistry()
     report = next((r for r in registry.list_reports() if r.get("report_id") == report_id), None)
     if not report:
         raise HTTPException(status_code=404, detail="报告不存在")
-    return JSONResponse(
-        content=report,
-        headers={"Content-Disposition": f'attachment; filename="report-{report_id}.json"'},
+
+    from app.services.batch_export_service import BatchExportService
+
+    batch_service = BatchExportService()
+    files = await batch_service.collect_report_export(report_id=report_id)
+    if not files:
+        raise HTTPException(status_code=404, detail="报告无可用数据")
+
+    import io
+    import zipfile
+
+    from fastapi.responses import StreamingResponse
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for inner_path, data in files:
+            zf.writestr(inner_path, data)
+    buf.seek(0)
+
+    zip_filename = f"report_{report_id}.zip"
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'},
     )
 
 
@@ -2231,17 +2260,17 @@ async def export_reports_batch(
     from app.services.batch_export_service import BatchExportService
 
     batch_service = BatchExportService()
-    files: List[dict] = []  # [{"filename": str, "content": str}, ...]
+    # 每个 report 的产物放在 zip 内独立子目录，避免跨 report 文件名冲突
+    entries: List[dict] = []  # [{"dir": report_dir, "files": [(path, bytes), ...]}, ...]
     skipped: List[str] = []
     for rid in unique_ids:
         result = await batch_service.collect_report_export(report_id=rid, fmt=fmt)
         if result is None:
             skipped.append(rid)
             continue
-        filename, content = result
-        files.append({"filename": filename, "content": content})
+        entries.append({"dir": rid, "files": result})
 
-    if not files:
+    if not entries:
         raise HTTPException(
             status_code=404,
             detail=f"所有 report_id 均不存在或无数据，跳过: {skipped}",
@@ -2255,8 +2284,13 @@ async def export_reports_batch(
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for f in files:
-            zf.writestr(f["filename"], f["content"])
+        for entry in entries:
+            rid = entry["dir"]
+            for inner_path, data in entry["files"]:
+                zf.writestr(f"{rid}/{inner_path}", data)
+        # 附跳过清单
+        if skipped:
+            zf.writestr("_skipped.txt", "\n".join(skipped))
     buf.seek(0)
 
     zip_filename = f"reports_batch_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.zip"

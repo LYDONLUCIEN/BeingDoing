@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from sqlalchemy import select
+
 from app.core.database import HistoryDB, UserDB
 from app.core.knowledge import KnowledgeLoader
 from app.domain.knowledge_config import get_knowledge_config
@@ -144,7 +146,7 @@ class ExportService:
                     if exploration_result
                     else {}
                 ),
-                "conversation_history": conversation_history_dict,
+                "conversation_history": conversation_history,
             }
 
             return export_data

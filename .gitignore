@@ -10,8 +10,12 @@ ENV/
 *.egg-info/
 dist/
 build/
-
-
+.claude/
+.cursor/
+.agents/
+.vscode/
+.bak_data/
+.playwright/
 
 # Node
 node_modules/

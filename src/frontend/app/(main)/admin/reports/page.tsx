@@ -129,7 +129,7 @@ export default function AdminReportsPage() {
     setStatsResult(null);
   };
 
-  // 下载单个 report 的 JSON（带认证 token，走 axios 拉取）
+  // 下载单个 report 的完整明细 zip（带认证 token，走 axios 拉取）
   const handleDownloadJson = async (reportId: string) => {
     setError(null);
     try {
@@ -266,7 +266,7 @@ export default function AdminReportsPage() {
                           onClick={() => handleDownloadJson(item.report_id)}
                           className="px-2 py-1 rounded border border-bd-border hover:bg-bd-overlay-md whitespace-nowrap"
                         >
-                          下载JSON
+                          下载完整数据
                         </button>
                       </div>
                     </td>
@@ -383,7 +383,7 @@ export default function AdminReportsPage() {
                     onClick={() => handleDownloadJson(detailReportId)}
                     className="px-2 py-1 text-xs rounded border border-bd-border hover:bg-bd-overlay-md whitespace-nowrap"
                   >
-                    下载JSON
+                    下载完整数据
                   </button>
                 )}
                 <button
