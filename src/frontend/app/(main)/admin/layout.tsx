@@ -14,6 +14,7 @@ import {
   FlaskConical,
   Wand2,
   Users,
+  Mail,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useLocale } from '@/hooks/useLocale';
@@ -26,6 +27,7 @@ const ADMIN_NAV_ITEMS = [
   { path: '/admin/conversations', icon: MessageSquare, label: '会话记录' },
   { path: '/admin/prompt-lab', icon: Wand2, label: 'Prompt Lab（sandbox）' },
   { path: '/admin/reports', icon: FileText, label: '报告概览' },
+  { path: '/admin/notifications', icon: Mail, label: '邮件群发' },
   { path: '/admin/analytics', icon: Activity, label: '埋点与 Token 统计' },
   { path: '/admin/logs', icon: TerminalSquare, label: '日志与调试' },
   { path: '/admin/system', icon: Settings, label: '系统设置' },

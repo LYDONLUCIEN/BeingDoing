@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import {
+  downloadReportJson,
   exportReportsBatch,
   fetchAdminReportDetail,
   fetchAdminReports,
@@ -128,6 +129,16 @@ export default function AdminReportsPage() {
     setStatsResult(null);
   };
 
+  // 下载单个 report 的 JSON（带认证 token，走 axios 拉取）
+  const handleDownloadJson = async (reportId: string) => {
+    setError(null);
+    try {
+      await downloadReportJson(reportId);
+    } catch (e: any) {
+      setError(e?.message || '下载失败');
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <header>
@@ -250,14 +261,13 @@ export default function AdminReportsPage() {
                         >
                           统计
                         </button>
-                        <a
-                          href={`/api/v1/admin/reports/${encodeURIComponent(item.report_id)}/download`}
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadJson(item.report_id)}
                           className="px-2 py-1 rounded border border-bd-border hover:bg-bd-overlay-md whitespace-nowrap"
-                          target="_blank"
-                          rel="noreferrer"
                         >
                           下载JSON
-                        </a>
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -368,14 +378,13 @@ export default function AdminReportsPage() {
               </h2>
               <div className="flex items-center gap-2">
                 {detailReportId && (
-                  <a
-                    href={`/api/v1/admin/reports/${encodeURIComponent(detailReportId)}/download`}
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadJson(detailReportId)}
                     className="px-2 py-1 text-xs rounded border border-bd-border hover:bg-bd-overlay-md whitespace-nowrap"
-                    target="_blank"
-                    rel="noreferrer"
                   >
                     下载JSON
-                  </a>
+                  </button>
                 )}
                 <button
                   type="button"

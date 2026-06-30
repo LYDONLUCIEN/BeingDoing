@@ -59,6 +59,15 @@ class ApiClient {
   private refreshClient: AxiosInstance;
   private refreshPromise: Promise<string | null> | null = null;
 
+  /**
+   * 暴露底层 axios 实例，用于需要原始响应的场景（如 blob/文件下载，
+   * 需要 Content-Disposition 头取文件名，post/get 包装方法会解包 response.data）。
+   * 调用方需自行处理 responseType、headers 读取与 Blob 下载。
+   */
+  get raw(): AxiosInstance {
+    return this.client;
+  }
+
   constructor() {
     this.client = axios.create({
       baseURL: API_BASE,

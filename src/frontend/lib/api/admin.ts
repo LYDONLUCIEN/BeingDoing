@@ -283,15 +283,42 @@ export async function syncReportsFromActivations() {
 }
 
 /**
+ * 从 axios 响应头 Content-Disposition 取文件名，兜底返回 fallback。
+ */
+function pickFilenameFromHeaders(headers: any, fallback: string): string {
+  const disposition: string = headers?.['content-disposition'] || '';
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
+  return match?.[1] || fallback;
+}
+
+/**
+ * 用 Blob 触发浏览器下载（内部工具）。
+ */
+function triggerBlobDownload(blob: Blob, filename: string): void {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  // 异步回收 object URL，避免浏览器在下载完成前回收
+  setTimeout(() => window.URL.revokeObjectURL(url), 0);
+}
+
+/**
  * 批量导出报告对话记录（zip）。
  * 后端返回 application/zip blob，前端触发浏览器下载。
  * 单次最多 50 个 report。
+ *
+ * 注：用底层 axios 实例请求，因为 apiClient.post 包装方法会解包 response.data，
+ * 而 blob 下载需要完整的 AxiosResponse（取 data: Blob 与 headers）。
  */
 export async function exportReportsBatch(
   reportIds: string[],
   format: 'md' | 'txt',
 ): Promise<void> {
-  const res = await apiClient.post(
+  const res = await apiClient.raw.post(
     '/admin/reports/export/batch',
     {
       report_ids: reportIds,
@@ -301,21 +328,30 @@ export async function exportReportsBatch(
       responseType: 'blob',
     },
   );
-  // 触发浏览器下载
   const blob = res.data as Blob;
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  // 从 Content-Disposition 取文件名，兜底生成
-  // 注：blob 响应需读完整 axios 响应头，ApiResponse 类型未暴露 headers，这里断言取值
-  const axiosRes = res as unknown as { headers?: Record<string, string> };
-  const disposition = axiosRes.headers?.['content-disposition'] || '';
-  const match = /filename="?([^"]+)"?/.exec(disposition);
-  link.download = match?.[1] || 'reports_batch_export.zip';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  window.URL.revokeObjectURL(url);
+  const filename = pickFilenameFromHeaders(res.headers, 'reports_batch_export.zip');
+  triggerBlobDownload(blob, filename);
+}
+
+/**
+ * 下载单个 report 的 JSON（带认证 token）。
+ *
+ * 不用 <a href> 直接跳转，因为浏览器跳转无法附加 Authorization header，
+ * 后端会返回 401。改为用 axios 拉 blob 再触发下载。
+ */
+export async function downloadReportJson(reportId: string): Promise<void> {
+  const res = await apiClient.raw.get(
+    `/admin/reports/${encodeURIComponent(reportId)}/download`,
+    {
+      responseType: 'blob',
+    },
+  );
+  const blob = res.data as Blob;
+  const filename = pickFilenameFromHeaders(
+    res.headers,
+    `report_${reportId}.json`,
+  );
+  triggerBlobDownload(blob, filename);
 }
 
 export async function fetchAdminChatRecords(params?: {
