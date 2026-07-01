@@ -140,6 +140,7 @@ from app.utils.context_refiner import (
     refine_and_save_rumination_step_anchor,
 )
 from app.utils.conversation_file_manager import ConversationFileManager
+from app.utils.helpers import parse_iso_to_utc
 from app.utils.id_codec import IDCodec
 from app.utils.purpose_progress import (
     apply_progress_update,
@@ -4804,7 +4805,7 @@ async def list_threads(
         msg_ts = first_msg.get("created_at") or created_at
         try:
             ts_ms = (
-                int(datetime.fromisoformat(msg_ts.replace("Z", "+00:00")).timestamp() * 1000)
+                int(parse_iso_to_utc(msg_ts).timestamp() * 1000)
                 if msg_ts
                 else 0
             )

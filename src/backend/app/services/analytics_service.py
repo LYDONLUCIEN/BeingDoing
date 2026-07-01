@@ -15,6 +15,7 @@ from app.models.database import AsyncSessionLocal
 from app.models.session import Session
 from app.models.user import User
 from app.utils.data_paths import get_debug_logs_dir, get_logs_dir, get_project_data_dir
+from app.utils.helpers import parse_iso_to_utc
 from app.utils.report_registry import ReportRegistry
 from app.utils.simple_activation_manager import get_simple_base_dir
 
@@ -493,7 +494,7 @@ class AnalyticsService:
                     if not created:
                         continue
                     try:
-                        dt = datetime.fromisoformat(created.replace("Z", ""))
+                        dt = parse_iso_to_utc(created)
                     except ValueError:
                         continue
                     if dt.date() == today:

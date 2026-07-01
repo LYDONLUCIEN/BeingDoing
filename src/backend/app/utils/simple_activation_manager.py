@@ -27,6 +27,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from app.utils.helpers import parse_iso_to_utc
+
 
 class ActivationStatus(str, Enum):
     ACTIVE = "active"
@@ -207,6 +209,17 @@ class SimpleActivationManager:
     def _now_iso() -> str:
         return datetime.now(timezone.utc).isoformat()
 
+    @staticmethod
+    def _parse_dt(value: str) -> datetime:
+        """
+        解析 ISO8601 字符串为 offset-aware UTC datetime。
+
+        实际逻辑委托给 :func:`app.utils.helpers.parse_iso_to_utc`，
+        兼容 ``Z`` 后缀 / 显式 offset / naive 历史字符串三类格式；
+        naive 统一按 UTC 解释，不回写磁盘。
+        """
+        return parse_iso_to_utc(value)
+
     def _load_all(self) -> Dict[str, ActivationRecord]:
         if not self._activations_file.exists():
             return {}
@@ -348,7 +361,7 @@ class SimpleActivationManager:
 
         # 自动标记状态为 expired（但不删除）
         try:
-            expires_dt = datetime.fromisoformat(rec.expires_at.replace("Z", ""))
+            expires_dt = self._parse_dt(rec.expires_at)
         except ValueError:
             return rec
         if rec.status == ActivationStatus.ACTIVE and datetime.now(timezone.utc) > expires_dt:
@@ -444,7 +457,7 @@ class SimpleActivationManager:
                 continue
 
             try:
-                old_expires_dt = datetime.fromisoformat(str(rec.expires_at or "").replace("Z", ""))
+                old_expires_dt = self._parse_dt(rec.expires_at)
             except ValueError:
                 old_expires_dt = now
 
@@ -742,7 +755,7 @@ class SimpleActivationManager:
 
         for code, rec in recycle.items():
             try:
-                purge_dt = datetime.fromisoformat(rec.purge_after.replace("Z", ""))
+                purge_dt = self._parse_dt(rec.purge_after)
             except ValueError:
                 continue
             if now >= purge_dt:

@@ -936,6 +936,20 @@ def _save_report_step_session(report_id: str, step_id: str, session_id: str, dat
     file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _build_rumination_extras(report_id: str, conversation: dict) -> dict:
+    """为 admin 会话详情追加 rumination 专用字段。
+
+    返回 {rumination_tables, conversation_by_step}：
+      - rumination_tables: prerequisites + steps[1-7] + combo（见 rumination_export.build_rumination_tables）
+      - conversation_by_step: 按 filter_step 切片的对话 {step_str: [msg]} 或 {_unified: [msg]}
+    """
+    from app.utils.rumination_export import build_rumination_tables, slice_conversation_by_step
+    tables = build_rumination_tables(report_id)
+    msgs = (conversation or {}).get("messages") or []
+    by_step = slice_conversation_by_step(msgs)
+    return {"rumination_tables": tables, "conversation_by_step": by_step}
+
+
 class ConversationCloneRequest(BaseModel):
     source_report_id: str
     source_phase: str
@@ -1252,22 +1266,25 @@ async def get_conversation_detail(
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     registry = ReportRegistry()
 
+    def _finalize_data(base: dict, norm_step: str, rid_for_rumination: Optional[str]) -> dict:
+        """对 rumination 会话追加 rumination_tables + conversation_by_step。"""
+        if norm_step == "rumination" and rid_for_rumination:
+            base.update(_build_rumination_extras(rid_for_rumination, base.get("conversation") or {}))
+        return base
+
     # 优先使用前端传入的 report_id + step_id 精确定位
     if report_id and step_id:
         normalized_step = ReportRegistry.normalize_step_id(step_id)
         conv = _load_report_step_session(report_id, normalized_step, session_id)
         if conv:
-            return {
-                "code": 200,
-                "message": "success",
-                "data": {
-                    "source": "report_dir",
-                    "report_id": report_id,
-                    "step_id": normalized_step,
-                    "session_id": session_id,
-                    "conversation": conv,
-                },
-            }
+            data = _finalize_data({
+                "source": "report_dir",
+                "report_id": report_id,
+                "step_id": normalized_step,
+                "session_id": session_id,
+                "conversation": conv,
+            }, normalized_step, report_id)
+            return {"code": 200, "message": "success", "data": data}
 
     # 兜底：仅按 session_id 在注册表中反查
     found = registry.find_report_step_by_session(session_id)
@@ -1275,17 +1292,14 @@ async def get_conversation_detail(
         report, resolved_step_id = found
         conv = _load_report_step_session(report["report_id"], resolved_step_id, session_id)
         if conv:
-            return {
-                "code": 200,
-                "message": "success",
-                "data": {
-                    "source": "report_dir",
-                    "report_id": report["report_id"],
-                    "step_id": resolved_step_id,
-                    "session_id": session_id,
-                    "conversation": conv,
-                },
-            }
+            data = _finalize_data({
+                "source": "report_dir",
+                "report_id": report["report_id"],
+                "step_id": resolved_step_id,
+                "session_id": session_id,
+                "conversation": conv,
+            }, resolved_step_id, report["report_id"])
+            return {"code": 200, "message": "success", "data": data}
 
     detail = await AnalyticsService.get_session_conversation_detail(session_id)
     if not detail:

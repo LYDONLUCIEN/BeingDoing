@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.utils.report_registry import ReportRegistry
+from app.utils.helpers import parse_iso_to_utc
 from app.utils.simple_activation_manager import (
     ActivationRecord,
     ActivationStatus,
@@ -142,9 +143,7 @@ def _sandbox_expired_ts(rec: ActivationRecord) -> bool:
     if not raw:
         return False
     try:
-        exp = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        if exp.tzinfo is None:
-            exp = exp.replace(tzinfo=timezone.utc)
+        exp = parse_iso_to_utc(raw)
         return datetime.now(timezone.utc) > exp
     except ValueError:
         return False

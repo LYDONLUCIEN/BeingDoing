@@ -16,6 +16,7 @@ import {
 import { formatLocalDateTime } from '@/lib/utils/formatTime';
 import { fetchAdminActivations } from '@/lib/api/admin';
 import MessageContent from '@/components/explore/MessageContent';
+import RuminationTablesView from '@/components/admin/RuminationTablesView';
 import { loadSession, saveSession, setLastActivationCode, type PhaseKey } from '@/lib/explore/session';
 
 export default function AdminConversationsPage() {
@@ -195,6 +196,18 @@ export default function AdminConversationsPage() {
     const payload = detail?.conversation ?? detail;
     const source = detail?.source || payload?.source;
     const messages = Array.isArray(payload?.messages) ? payload.messages : [];
+
+    // rumination：优先渲染表格区块（step 表格 + step 对话切片），再附原始对话
+    if (detail?.rumination_tables) {
+      return (
+        <div className="space-y-4">
+          <RuminationTablesView
+            tables={detail.rumination_tables}
+            conversationByStep={detail.conversation_by_step}
+          />
+        </div>
+      );
+    }
 
     if (source === 'runs' && Array.isArray(payload?.turns)) {
       return (

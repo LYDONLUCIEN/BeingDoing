@@ -25,6 +25,13 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 from app.utils.report_registry import STEP_IDS, ReportRegistry
+from app.utils.helpers import parse_iso_to_utc
+from app.utils.rumination_export import (
+    build_rumination_tables,
+    build_summary,
+    load_raw_rumination_progress,
+    slice_conversation_by_step,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +162,28 @@ class BatchExportService:
         # —— 产物 3：统计 JSON ——
         stats = self._build_stats(report_id=report_id, record=record, per_phase=per_phase_stats)
         files.append(("stats.json", json.dumps(stats, ensure_ascii=False, indent=2).encode("utf-8")))
+
+        # —— 产物 4：rumination 表格 JSON（结构化 step1~7 表格 + 前置 keywords） ——
+        rumination_tables = build_rumination_tables(report_id, registry=self.registry)
+        files.append((
+            "rumination_tables.json",
+            json.dumps(rumination_tables, ensure_ascii=False, indent=2).encode("utf-8"),
+        ))
+
+        # —— 产物 5：结论汇总 JSON（report 级 + 5 phase conclusion_final） ——
+        summary = build_summary(report_id, registry=self.registry)
+        files.append((
+            "summary.json",
+            json.dumps(summary, ensure_ascii=False, indent=2).encode("utf-8"),
+        ))
+
+        # —— 产物 6：rumination_progress.json 原样打包（完整溯源） ——
+        raw_progress = load_raw_rumination_progress(report_id, registry=self.registry)
+        if raw_progress is not None:
+            files.append((
+                "raw/rumination_progress.json",
+                json.dumps(raw_progress, ensure_ascii=False, indent=2).encode("utf-8"),
+            ))
 
         return files
 
@@ -342,7 +371,7 @@ class BatchExportService:
             for ts in timestamps:
                 if not isinstance(ts, str) or not ts:
                     continue
-                pts.append(datetime.fromisoformat(ts.replace("Z", "+00:00")))
+                pts.append(parse_iso_to_utc(ts))
             if len(pts) < 2:
                 return 0
             pts.sort()
@@ -420,6 +449,12 @@ class BatchExportService:
                 lines.append("")
                 continue
 
+            # rumination 走特殊渲染：前置结论 + 每个 step 的（表格 + 对话切片）
+            if step_id == "rumination":
+                self._render_rumination_md(lines, report_id, raw)
+                continue
+
+            # 其他 phase：结论 + 完整对话
             conclusion_text = self._extract_phase_conclusion(raw)
             if conclusion_text:
                 lines.append("### 结论")
@@ -429,31 +464,154 @@ class BatchExportService:
 
             lines.append("### 对话记录")
             lines.append("")
-            msgs = raw.get("messages") or []
-            dialogue_lines: List[str] = []
-            for m in msgs:
-                if not isinstance(m, dict):
-                    continue
-                role = m.get("role") or ""
-                if role not in MD_ROLES_KEEP:
-                    continue
-                content = m.get("content")
-                text = self._stringify(content)
-                if not text.strip():
-                    continue
-                if role == "conclusion_card":
-                    continue
-                speaker = ROLE_CN.get(role, role)
-                dialogue_lines.append(f"**{speaker}**：{text}")
-                dialogue_lines.append("")
-
-            if dialogue_lines:
-                lines.extend(dialogue_lines)
-            else:
-                lines.append("> （本阶段无对话记录）")
-                lines.append("")
+            self._render_dialogue_md(lines, raw.get("messages") or [])
 
         return "\n".join(lines).rstrip() + "\n"
+
+    def _render_dialogue_md(self, lines: List[str], msgs: list) -> None:
+        """把消息列表渲染为 md 对话段落（就地追加到 lines）。"""
+        dialogue_lines: List[str] = []
+        for m in msgs:
+            if not isinstance(m, dict):
+                continue
+            role = m.get("role") or ""
+            if role not in MD_ROLES_KEEP:
+                continue
+            content = m.get("content")
+            text = self._stringify(content)
+            if not text.strip():
+                continue
+            if role == "conclusion_card":
+                continue
+            speaker = ROLE_CN.get(role, role)
+            dialogue_lines.append(f"**{speaker}**：{text}")
+            dialogue_lines.append("")
+        if dialogue_lines:
+            lines.extend(dialogue_lines)
+        else:
+            lines.append("> （本阶段无对话记录）")
+            lines.append("")
+
+    # rumination step 状态标注（md 用）
+    _STEP_STATUS_MD = {
+        "submitted": "✅ 已提交",
+        "submitted_empty": "✅ 已提交（筛选后 0 行）",
+        "skipped": "⏭ 已跳过",
+        "not_reached": "— 未进行",
+    }
+
+    def _render_rumination_md(self, lines: List[str], report_id: str, raw: dict) -> None:
+        """渲染 rumination 章节：前置结论 + 每个 step（表格 + 对话切片）。
+
+        rumination 全局结论不在此处（留在 md 顶部「报告最终结论」）。
+        """
+        tables = build_rumination_tables(report_id, registry=self.registry)
+
+        # —— 前置结论（4 phase keywords） ——
+        prereq = tables.get("prerequisites") or {}
+        if any(prereq.values()):
+            lines.append("### 前置结论")
+            lines.append("")
+            phase_label = {
+                "values": "价值观",
+                "strengths": "优势",
+                "interests": "热爱",
+                "purpose": "使命",
+            }
+            for ph in ("values", "strengths", "interests", "purpose"):
+                kws = prereq.get(ph) or []
+                if kws:
+                    lines.append(f"- {phase_label.get(ph, ph)}：{('、'.join(kws))}")
+            lines.append("")
+
+        # —— step3 组合矩阵 / 讨论结论（若存在，放在 step3 之前作为元信息） ——
+        combo_matrix = tables.get("combo_matrix")
+        combo_conclusions = tables.get("combo_conclusions")
+
+        # —— 按 step 渲染（表格 + 对话切片） ——
+        steps_data = tables.get("steps") or {}
+        msgs = raw.get("messages") or []
+        sliced = slice_conversation_by_step(msgs)
+        unified = sliced.get("_unified")  # 老数据兜底
+
+        # step 中文标题（1~4 仅数字，按设计；5/6/7 也只数字）
+        for step_no in range(1, 8):
+            sk = str(step_no)
+            sd = steps_data.get(sk) or {}
+            status = sd.get("status") or "not_reached"
+            row_count = sd.get("row_count", 0)
+            status_cn = self._STEP_STATUS_MD.get(status, status)
+            title = f"### Step {step_no}（{row_count} 行，{status_cn}）"
+            lines.append(title)
+            lines.append("")
+
+            # 表格（submitted 有行才渲染）
+            rows = sd.get("rows") or []
+            cols = sd.get("columns") or []
+            if rows and cols:
+                self._render_table_md(lines, cols, rows)
+                lines.append("")
+
+            # step3 特殊：组合矩阵 + 讨论结论（仅 step3 且有数据时）
+            if step_no == 3 and combo_matrix:
+                lines.append("**组合矩阵：**")
+                lines.append("")
+                self._render_table_md(
+                    lines,
+                    ["combo_id", "passion_name", "strength_name"],
+                    combo_matrix,
+                )
+                lines.append("")
+            if step_no == 3 and combo_conclusions:
+                lines.append("**组合讨论结论：**")
+                lines.append("")
+                lines.append(self._stringify(combo_conclusions))
+                lines.append("")
+
+            # 对话切片
+            lines.append("#### 对话记录")
+            lines.append("")
+            step_msgs = sliced.get(sk) if not unified else None
+            if unified:
+                # 老数据：首个有内容的 step 放完整对话，其余不再重复
+                if step_no == 1:
+                    lines.append("> 该会话为旧格式，对话未按步骤细分，完整对话如下：")
+                    lines.append("")
+                    self._render_dialogue_md(lines, unified)
+                else:
+                    lines.append("> （完整对话见 Step 1）")
+                    lines.append("")
+            elif step_msgs:
+                self._render_dialogue_md(lines, step_msgs)
+            else:
+                lines.append("> （本步骤无对话记录）")
+                lines.append("")
+
+    def _render_table_md(self, lines: List[str], columns: List[str], rows: List[dict]) -> None:
+        """把行数据渲染成 markdown 表格（就地追加到 lines）。
+
+        长文本单元格内的换行替换为空格，避免破坏 md 表格格式。
+        """
+        if not columns or not rows:
+            return
+        header = "| " + " | ".join(self._md_cell(c) for c in columns) + " |"
+        sep = "| " + " | ".join("---" for _ in columns) + " |"
+        lines.append(header)
+        lines.append(sep)
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            cells = [self._md_cell(row.get(c)) for c in columns]
+            lines.append("| " + " | ".join(cells) + " |")
+
+    @staticmethod
+    def _md_cell(value) -> str:
+        """转义单元格值：换行→空格，| 转义，None→空串。"""
+        if value is None:
+            return ""
+        s = value if isinstance(value, str) else str(value)
+        s = s.replace("\r\n", " ").replace("\n", " ").replace("\r", " ").replace("|", "\\|")
+        return s.strip()
 
     def _extract_phase_conclusion(self, raw: dict) -> str:
         """从 phase 源文件中提取结论文本：优先 conclusion_final，回退最后一张 conclusion_card。"""

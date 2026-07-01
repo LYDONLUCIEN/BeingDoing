@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from app.utils.report_registry import STEP_IDS, ReportRegistry
+from app.utils.helpers import parse_iso_to_utc
 from app.utils.simple_activation_manager import (
     ActivationRecord,
     SimpleActivationManager,
@@ -391,7 +392,7 @@ def cleanup_batch_job_history(
         if older_than_days is not None:
             t_raw = str(e.get("finished_at") or e.get("created_at") or "")
             try:
-                dt = datetime.fromisoformat(t_raw.replace("Z", "+00:00"))
+                dt = parse_iso_to_utc(t_raw)
                 if now_ts - dt.timestamp() > older_than_days * 86400:
                     continue
             except Exception:
@@ -810,7 +811,7 @@ def get_generated_scenarios_batch_job(*, job_id: str) -> Dict[str, Any]:
                 continue
             finished = str(v.get("finished_at") or "")
             try:
-                dt = datetime.fromisoformat(finished.replace("Z", "+00:00"))
+                dt = parse_iso_to_utc(finished)
             except Exception:
                 continue
             if now_ts - dt.timestamp() > 24 * 3600:
