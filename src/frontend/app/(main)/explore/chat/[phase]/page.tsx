@@ -426,7 +426,13 @@ export default function ChatPhasePage() {
       ruminationProgressState?.filter_sub_step === 'discussion',
     [phase, ruminationViewStep, ruminationProgressState],
   );
-  const discussionNeedsRow = isStep3DiscussionMode && !ruminationRowContext;
+  // 沉淀阶段 step2/4/5/6/7 + step3 discussion：未选行时锁定输入框。
+  // step1（展示组合，整体确认）与 step3 matrix（锁 comboId）不在此列。
+  const discussionNeedsRow =
+    phase === 'rumination' &&
+    [2, 3, 4, 5, 6, 7].includes(ruminationViewStep) &&
+    !isStep3MatrixMode &&
+    !ruminationRowContext;
 
   /** Matrix mode: which combo is currently selected for chat filtering */
   const [matrixModeSelectedComboId, setMatrixModeSelectedComboId] = useState<string | null>(null);

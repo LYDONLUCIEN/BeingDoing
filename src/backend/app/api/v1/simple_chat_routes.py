@@ -199,6 +199,7 @@ from app.utils.rumination_progress import (
 )
 from app.utils.rumination_row_context import (
     build_rumination_row_chat_user_message,
+    format_selected_row_block,
     format_step3_confirmed_rows_block,
     format_step3_next_row_preview,
     format_step3_row_context_block,
@@ -553,6 +554,27 @@ def _system_prompt_dimension_extras(
                             )
                 except Exception:
                     pass
+        elif int(rumination_filter_step) in (2, 4, 5, 6, 7) and rumination_row_index is not None:
+            # 非步骤3但有表格的子步：仅注入用户当前选中行的关键字段。
+            # step3 有专用的多块上下文（当前行/讨论行/已确认行/下一行预览），不在此处理。
+            try:
+                prog_sel = load_rumination_progress(Path(reports_root), str(rid))
+                ft_sel = prog_sel.get("filter_table")
+                if isinstance(ft_sel, list):
+                    sel_idx = int(rumination_row_index)
+                    if 0 <= sel_idx < len(ft_sel):
+                        row_sel = ft_sel[sel_idx]
+                        if isinstance(row_sel, dict):
+                            sel_block = format_selected_row_block(
+                                row_sel,
+                                int(rumination_filter_step),
+                                sel_idx + 1,
+                            )
+                            rumination_step_addon = (
+                                f"{rumination_step_addon}\n\n{sel_block}".strip()
+                            )
+            except Exception:
+                pass
     return values_info, rumination_step_addon
 
 

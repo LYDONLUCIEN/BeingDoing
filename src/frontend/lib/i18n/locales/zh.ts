@@ -279,8 +279,8 @@ export const zh = {
         /** 历史值映射：旧「暂未选定」映射到新「无」 */
         hypothesisPendingLegacy: '暂未选定',
         placeholderWithRow: '针对「{label}」补充说明…',
-        /** step3 3b discussion 模式：未选行时输入框提示 */
-        placeholderDiscussionSelectRow: '从左侧选择感兴趣的行，继续讨论…',
+        /** 沉淀阶段未选行时输入框提示（step2/4/5/6/7 + step3 discussion） */
+        placeholderDiscussionSelectRow: '请先从左侧表格中选择感兴趣的行，再进行提问…',
         tableEarlyTerminated: '当前筛选无剩余行，请回到回顾或前序阶段补充后再试。',
         followShowFullTable: '筛选表格已更新为最终结果，请结合列表做最终选择。',
         followConfirmTable: '我已确认表格，请继续。',

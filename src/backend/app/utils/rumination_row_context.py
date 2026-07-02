@@ -117,6 +117,44 @@ def format_step3_next_row_preview(row: Dict[str, Any], next_index_1based: int, t
     )
 
 
+def format_selected_row_block(
+    row: Dict[str, Any],
+    step: int,
+    row_index_1based: int,
+) -> str:
+    """通用选中行上下文块：仅注入用户当前选中行的关键字段（system/addon 用）。
+
+    与 step3 专用的 format_step3_row_context_block 区别：
+    - 不查 dimension_conclusions（无结论卡解释）；
+    - 不含上一行/下一行/已确认行历史；
+    - 按 filter_step 裁剪该步相关字段。
+
+    Args:
+        row: filter_table 中选中行的原始 dict。
+        step: filter_step（2/4/5/6/7）。
+        row_index_1based: 1-based 行号。
+    """
+    p = str(row.get("热爱") or "").strip() or "（未填）"
+    s = str(row.get("优势") or "").strip() or "（未填）"
+    lines = [
+        "[内部·当前选中行]",
+        f"第 {row_index_1based} 行",
+        f"热爱：{p} / 优势：{s}",
+    ]
+    step_fields = {
+        2: ("匹配性", "匹配原因"),
+        4: ("工作目的",),
+        5: ("激情标记",),
+        6: ("现实标记",),
+        7: ("收束状态",),
+    }.get(int(step), ())
+    for field in step_fields:
+        val = str(row.get(field) or "").strip()
+        if val:
+            lines.append(f"{field}：{val}")
+    return "\n".join(lines)
+
+
 def summarize_prev_combo_row(prev_row: Dict[str, Any]) -> str:
     """上一行用于提示的短摘要。"""
     p = str(prev_row.get("热爱") or "").strip()

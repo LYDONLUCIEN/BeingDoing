@@ -282,8 +282,8 @@ export const en = {
         hypothesisOtherLegacy: 'Other',
         hypothesisPendingLegacy: 'Undecided for now',
         placeholderWithRow: 'Add a note for “{label}”…',
-        /** step3 3b discussion mode: placeholder when no row selected */
-        placeholderDiscussionSelectRow: 'Select a row on the left to continue the discussion…',
+        /** Rumination: placeholder when no row selected (step2/4/5/6/7 + step3 discussion) */
+        placeholderDiscussionSelectRow: 'Select a row on the left to ask a question…',
         tableEarlyTerminated: 'No rows left in this filter. Go back to review or earlier steps.',
         followShowFullTable: 'The table is updated to the final view—please review the list.',
         followConfirmTable: 'I have confirmed the table—please continue.',
