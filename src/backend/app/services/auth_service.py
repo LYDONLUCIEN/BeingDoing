@@ -551,6 +551,25 @@ class AuthService:
 
         _password_reset_phone_codes.pop(phone, None)
 
+    @staticmethod
+    async def admin_set_password(user_id: str, new_password: str) -> None:
+        """超级管理员为指定用户设置新密码（不校验旧密码、不走验证码）。"""
+        uid = (user_id or "").strip()
+        if not uid:
+            raise ValueError("用户 ID 不能为空")
+        if not new_password:
+            raise ValueError("新密码不能为空")
+        if len(new_password) < 6:
+            raise ValueError("密码至少 6 位")
+
+        async with AsyncSessionLocal() as db:
+            user_db = UserDB(db)
+            user = await user_db.get_user_by_id(uid)
+            if not user:
+                raise ValueError("用户不存在")
+            password_hash = AuthService.get_password_hash(new_password)
+            await user_db.update_user(user.id, password_hash=password_hash)
+
     # ===================== 邮箱验证相关 =====================
 
     @staticmethod

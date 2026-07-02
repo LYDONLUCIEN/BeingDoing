@@ -1170,6 +1170,17 @@ export async function adminVerifyUserEmail(
   return (res.data?.data ?? {}) as { user_id: string; email_verified: boolean };
 }
 
+/** 超级管理员重置指定用户密码 */
+export async function adminResetUserPassword(
+  userId: string,
+  newPassword: string,
+): Promise<{ user_id: string }> {
+  const res = await apiClient.post(`/admin/users/${encodeURIComponent(userId)}/reset-password`, {
+    new_password: newPassword,
+  });
+  return (res.data ?? {}) as { user_id: string };
+}
+
 // ─── Notification Email (通知邮件群发) ─────────────────────────
 
 export interface NotificationUserFilter {
@@ -1221,8 +1232,10 @@ export async function sendNotificationEmail(payload: {
   body: string;
   user_filter?: NotificationUserFilter;
 }): Promise<{ task_id: string }> {
+  // apiClient.post 已返回 response.data（ApiResponse 或后端原始 JSON），
+  // 后端此接口直接返回 {task_id}，无需再 .data 解包
   const res = await apiClient.post('/admin/notifications/email', payload);
-  return (res.data ?? {}) as { task_id: string };
+  return ((res as any) ?? {}) as { task_id: string };
 }
 
 /**
@@ -1230,7 +1243,7 @@ export async function sendNotificationEmail(payload: {
  */
 export async function getNotificationStatus(taskId: string): Promise<NotificationTaskStatus> {
   const res = await apiClient.get(`/admin/notifications/email/${encodeURIComponent(taskId)}`);
-  return (res.data ?? {}) as NotificationTaskStatus;
+  return ((res as any) ?? {}) as NotificationTaskStatus;
 }
 
 /**
@@ -1241,7 +1254,7 @@ export async function listNotificationTasks(params?: {
   page_size?: number;
 }): Promise<{ items: NotificationTaskListItem[]; total: number; page: number; page_size: number }> {
   const res = await apiClient.get('/admin/notifications/email', { params });
-  return (res.data ?? { items: [], total: 0, page: 1, page_size: 20 }) as {
+  return ((res as any) ?? { items: [], total: 0, page: 1, page_size: 20 }) as {
     items: NotificationTaskListItem[];
     total: number;
     page: number;

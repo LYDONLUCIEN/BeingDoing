@@ -74,6 +74,8 @@ app.add_middleware(
         "http://60.205.194.159:3000",
         "https://career.soulhappylab.com",
         "http://career.soulhappylab.com",
+        "https://xunlu.soulhappylab.com",
+        "http://xunlu.soulhappylab.com",
         "https://admin.soulhappylab.com",
         "http://admin.soulhappylab.com",
     ],

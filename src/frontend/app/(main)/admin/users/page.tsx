@@ -7,6 +7,7 @@ import {
   fetchAdminUserDetail,
   patchAdminUserStatus,
   adminVerifyUserEmail,
+  adminResetUserPassword,
   getUserConversationStats,
   type AdminUserItem,
   type AdminUserDetail,
@@ -110,6 +111,29 @@ export default function AdminUsersPage() {
       }
     } catch (e: any) {
       alert(e?.message || '操作失败');
+    }
+  };
+
+  const resetUserPassword = async (userId: string, label?: string) => {
+    const pwd = window.prompt(
+      `为${label ? ` ${label} ` : ' '}设置新密码（至少 6 位）：`,
+    );
+    if (!pwd) return;
+    if (pwd.length < 6) {
+      alert('密码至少 6 位');
+      return;
+    }
+    const pwd2 = window.prompt('请再次输入新密码：');
+    if (pwd !== pwd2) {
+      alert('两次输入的密码不一致');
+      return;
+    }
+    if (!confirm('确定重置该用户密码？重置后请通过安全渠道告知用户。')) return;
+    try {
+      await adminResetUserPassword(userId, pwd);
+      alert('密码已重置');
+    } catch (e: any) {
+      alert(e?.message || '重置密码失败');
     }
   };
 
@@ -418,6 +442,19 @@ export default function AdminUsersPage() {
                     >
                       统计
                     </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void resetUserPassword(u.user_id, u.email || u.username || u.user_id.slice(0, 8));
+                      }}
+                      className="px-2 py-1 rounded-lg text-xs border hover:opacity-80 transition-opacity"
+                      style={{
+                        borderColor: 'var(--bd-border)',
+                        color: '#b45309',
+                      }}
+                    >
+                      重置密码
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -630,7 +667,7 @@ export default function AdminUsersPage() {
                   </section>
 
                   {/* Actions */}
-                  <section>
+                  <section className="flex flex-wrap gap-2">
                     <button
                       onClick={() => toggleUserStatus(drawerUser.user_id, drawerUser.is_active)}
                       className="px-4 py-2 rounded-lg text-sm font-medium border hover:opacity-80 transition-opacity"
@@ -640,6 +677,21 @@ export default function AdminUsersPage() {
                       }}
                     >
                       {drawerUser.is_active ? '禁用该用户' : '启用该用户'}
+                    </button>
+                    <button
+                      onClick={() =>
+                        void resetUserPassword(
+                          drawerUser.user_id,
+                          drawerUser.email || drawerUser.username || drawerUser.user_id.slice(0, 8),
+                        )
+                      }
+                      className="px-4 py-2 rounded-lg text-sm font-medium border hover:opacity-80 transition-opacity"
+                      style={{
+                        borderColor: '#b45309',
+                        color: '#b45309',
+                      }}
+                    >
+                      重置密码
                     </button>
                   </section>
 

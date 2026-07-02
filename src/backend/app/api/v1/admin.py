@@ -1995,6 +1995,12 @@ class UserStatusPatchRequest(BaseModel):
     is_active: bool
 
 
+class AdminResetPasswordRequest(BaseModel):
+    """超级管理员重置用户密码"""
+
+    new_password: str = Field(..., min_length=6, description="新密码，至少 6 位")
+
+
 @router.get("/users")
 async def admin_list_users(
     page: int = Query(1, ge=1),
@@ -2218,6 +2224,33 @@ async def admin_verify_user_email(
         "code": 200,
         "message": "success",
         "data": {"user_id": user.id, "email_verified": True},
+    }
+
+
+@router.post("/users/{user_id}/reset-password")
+async def admin_reset_user_password(
+    user_id: str,
+    req: AdminResetPasswordRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """超级管理员为指定用户重置密码（适用于测试账号假邮箱等无法走邮件找回的场景）"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+
+    from app.services.auth_service import AuthService
+
+    try:
+        await AuthService.admin_set_password(user_id, req.new_password)
+    except ValueError as e:
+        msg = str(e)
+        if "不存在" in msg:
+            raise HTTPException(status_code=404, detail=msg) from e
+        raise HTTPException(status_code=400, detail=msg) from e
+
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {"user_id": user_id},
     }
 
 
