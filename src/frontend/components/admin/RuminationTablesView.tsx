@@ -39,6 +39,7 @@ interface Msg {
   message_id?: string;
   id?: string;
   created_at?: string;
+  combo_id?: string;
 }
 
 interface Props {
@@ -73,6 +74,10 @@ export default function RuminationTablesView({ tables, conversationByStep }: Pro
   const prereq = tables.prerequisites || {};
   const hasPrereq = Object.values(prereq).some((arr) => arr && arr.length > 0);
   const unified = conversationByStep?._unified;
+  // 只有当 conversation_by_step 仅含 _unified（无任何数字 step key）时，才算真正的「老数据兜底」。
+  // 此时 unified 是完整对话，挂在 step1 展示；否则按各 step 的切片显示。
+  const hasStepKeys = Object.keys(conversationByStep || {}).some((k) => k !== '_unified');
+  const isUnifiedOnly = !hasStepKeys && Array.isArray(unified) && unified.length > 0;
 
   return (
     <div className="space-y-4">
@@ -105,8 +110,8 @@ export default function RuminationTablesView({ tables, conversationByStep }: Pro
           step={steps[sk]}
           comboMatrix={Number(sk) === 3 ? tables.combo_matrix : null}
           comboConclusions={Number(sk) === 3 ? tables.combo_conclusions : null}
-          msgs={unified ? (Number(sk) === 1 ? unified : []) : (conversationByStep?.[sk] || [])}
-          isUnified={!!unified}
+          msgs={isUnifiedOnly ? (Number(sk) === 1 ? (unified || []) : []) : (conversationByStep?.[sk] || [])}
+          isUnified={isUnifiedOnly}
         />
       ))}
     </div>
@@ -242,6 +247,8 @@ function StepBlock({
                 </p>
                 <DialogueList msgs={msgs} />
               </>
+            ) : Number(stepKey) === 3 && comboMatrix && comboMatrix.length > 0 ? (
+              <ComboGroupedDialogue msgs={msgs} comboMatrix={comboMatrix} comboConclusions={comboConclusions} />
             ) : msgs.length > 0 ? (
               <DialogueList msgs={msgs} />
             ) : (
@@ -251,6 +258,83 @@ function StepBlock({
         </div>
       )}
     </section>
+  );
+}
+
+function ComboGroupedDialogue({
+  msgs,
+  comboMatrix,
+  comboConclusions,
+}: {
+  msgs: Msg[];
+  comboMatrix: any[] | null | undefined;
+  comboConclusions: Record<string, any> | null | undefined;
+}) {
+  // 按 combo_id 分组（无 combo_id 的归到 __general）
+  const groups: Record<string, Msg[]> = {};
+  const order: string[] = [];
+  for (const m of msgs) {
+    const cid = m?.combo_id || '__general';
+    if (!groups[cid]) {
+      groups[cid] = [];
+      order.push(cid);
+    }
+    groups[cid].push(m);
+  }
+
+  // combo_id -> 标题（热爱×优势）
+  const titleMap: Record<string, string> = {};
+  for (const cm of comboMatrix || []) {
+    if (cm?.combo_id) {
+      const tag = cm.is_non_matching ? '（标记为不匹配）' : '';
+      titleMap[cm.combo_id] = `组合 ${cm.combo_id}：${cm.passion_name || '?'} × ${cm.strength_name || '?'}${tag}`;
+    }
+  }
+
+  // 排序：按 combo_matrix 顺序；__general（step3 全表讨论）放到所有 combo 之后
+  const matrixOrder = (comboMatrix || []).map((cm) => cm?.combo_id).filter(Boolean);
+  order.sort((a, b) => {
+    if (a === '__general') return 1;
+    if (b === '__general') return -1;
+    const ia = matrixOrder.indexOf(a);
+    const ib = matrixOrder.indexOf(b);
+    if (ia >= 0 && ib >= 0) return ia - ib;
+    if (ia >= 0) return -1;
+    if (ib >= 0) return 1;
+    return a.localeCompare(b);
+  });
+
+  return (
+    <div className="space-y-3">
+      {order.map((cid) => {
+        const groupMsgs = groups[cid] || [];
+        if (groupMsgs.length === 0) return null;
+        const isGeneral = cid === '__general';
+        const title = isGeneral ? 'Step 3 全表讨论（discussion）' : (titleMap[cid] || `组合 ${cid}`);
+        const conc = !isGeneral && comboConclusions ? comboConclusions[cid] : null;
+        const concState = conc?.state;
+        const concText = conc?.text;
+        return (
+          <div key={cid} className="rounded-lg border border-bd-border bg-bd-overlay-md/50 p-2.5">
+            <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-bd-border">
+              <span className="text-[12px] font-medium" style={{ color: 'var(--bd-fg)' }}>{title}</span>
+              <span className="text-[10px] text-bd-subtle">{groupMsgs.length} 条</span>
+              {concState && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded ${concState === 'confirmed' ? 'bg-emerald-100 text-emerald-700' : concState === 'skipped' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
+                  {concState === 'confirmed' ? '已确认假设' : concState === 'skipped' ? '已跳过' : concState}
+                </span>
+              )}
+            </div>
+            {concText && (
+              <p className="text-[11px] mb-2 p-1.5 bg-bd-card rounded border border-bd-border" style={{ color: 'var(--bd-fg)' }}>
+                <span className="font-medium">确认的假设：</span>{concText}
+              </p>
+            )}
+            <DialogueList msgs={groupMsgs} />
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

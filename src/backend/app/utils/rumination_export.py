@@ -235,11 +235,14 @@ def slice_conversation_by_step(messages: List[dict]) -> Dict[str, List[dict]]:
         unified = [m for m in messages if isinstance(m, dict) and (m.get("role") in SLICE_ROLES_KEEP)]
         return {"_unified": unified} if unified else {}
 
-    # 前向填充：逐条确定归属 step
-    # 第一遍：为每条消息打 step 标签；无 filter_step 的先用「下一个有 step 的」填充
+    # 为每条消息打 step 标签。归属规则：
+    #   1. 有 filter_step 的 → 该 step
+    #   2. 无 filter_step 的 → 优先归到「之后第一个有 step 的」(它常是下一 step 的开场引导语)
+    #   3. 尾部无后续 step 的 → 归到「之前最后一个有 step 的」(它是该 step 的收尾/结束语)
     n = len(messages)
     labels: List[Optional[int]] = [None] * n
-    # 正向扫描记录已知的下一个 step
+
+    # 反向扫描：用「下一个有 step 的」前向填充
     next_step: Optional[int] = None
     for i in range(n - 1, -1, -1):
         m = messages[i]
@@ -251,6 +254,14 @@ def slice_conversation_by_step(messages: List[dict]) -> Dict[str, List[dict]]:
         if next_step is not None:
             labels[i] = next_step
 
+    # 正向扫描：用「上一个有 step 的」回填仍为 None 的尾部消息
+    prev_step: Optional[int] = None
+    for i in range(n):
+        if labels[i] is not None:
+            prev_step = labels[i]
+        elif prev_step is not None:
+            labels[i] = prev_step
+
     # 按标签分组
     grouped: Dict[str, List[dict]] = {}
     for i, m in enumerate(messages):
@@ -259,10 +270,9 @@ def slice_conversation_by_step(messages: List[dict]) -> Dict[str, List[dict]]:
         role = m.get("role")
         if role not in SLICE_ROLES_KEEP:
             continue
-        # conclusion_card 也保留（md 里有用）；但 admin 切片里 assistant/user 为主
         label = labels[i]
         if label is None:
-            # 开头几条没有后续 step 标注（极端情况），归到 _unified 兜底
+            # 极端：整段无任何 step 标注（理论上前面已走 _unified 分支，此处兜底）
             grouped.setdefault("_unified", []).append(m)
         else:
             grouped.setdefault(str(label), []).append(m)
