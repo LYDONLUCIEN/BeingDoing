@@ -117,7 +117,6 @@ export interface RuminationTablePayload {
   editableCols: string[];
   guideText?: string;
   step?: number;
-  singleRowMode?: boolean;
   rowCursor?: number;
   totalRows?: number;
   rowSelectionMode?: 'multi';
@@ -167,7 +166,6 @@ export interface RuminationTableSubmitOptions {
   mode?: RuminationSubmitMode;
   rowId?: string;
   patch?: Record<string, unknown>;
-  preferSingleRow?: boolean;
   /** 终步多选提交时传行 id（与 table_data 内 __pick 二选一） */
   selectedRowIds?: string[];
   /** 内部：闸门 resolve 后再次提交 */
@@ -243,8 +241,6 @@ export const ruminationApi = {
     activationCode: string,
     step?: number,
     opts?: {
-      singleRowMode?: boolean;
-      preferSingleRow?: boolean;
       resetInitial?: boolean;
       threadId?: string;
     }
@@ -260,8 +256,6 @@ export const ruminationApi = {
       activation_code: activationCode,
     };
     if (step !== undefined) params.step = step;
-    if (opts?.singleRowMode) params.single_row_mode = true;
-    if (opts?.preferSingleRow) params.prefer_single_row = true;
     if (opts?.resetInitial) params.reset_initial = true;
     if (opts?.threadId) params.thread_id = opts.threadId;
     const res = await apiClient.get('/simple-chat/rumination-get-table', { params });
@@ -285,7 +279,6 @@ export const ruminationApi = {
     };
     if (options?.rowId != null) body.row_id = options.rowId;
     if (options?.patch != null) body.patch = options.patch;
-    if (options?.preferSingleRow != null) body.prefer_single_row = options.preferSingleRow;
     if (options?.selectedRowIds?.length) body.selected_row_ids = options.selectedRowIds;
     if (options?.negForceCommit) body.neg_force_commit = true;
     const res = await apiClient.post('/simple-chat/rumination-table-submit', body, {

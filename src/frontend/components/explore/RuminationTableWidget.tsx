@@ -34,7 +34,6 @@ export interface RuminationTablePayload {
   guideText?: string;
   /** 可选：步骤标识 */
   step?: number;
-  singleRowMode?: boolean;
   rowCursor?: number;
   totalRows?: number;
   /** step3 子步标识：matrix / discussion。discussion 模式下不自动清行选中 */
@@ -194,6 +193,8 @@ export default function RuminationTableWidget({
   const rowPickDisabled = reviewReadOnly || disabled;
 
   const tableRowRefs = useRef<Map<number, HTMLTableRowElement | null>>(new Map());
+  /** 上一次渲染时的 filter_step，用于检测 step 切换并清空选中 */
+  const prevStepRef = useRef<number | null>(null);
   /** step3：tag 点击后需要聚焦的 textarea 行号（-1 表示无） */
   const textareaFocusRowRef = useRef<number>(-1);
   /** step3：per-row textarea ref，用于 tag 点击后自动聚焦 */
@@ -332,34 +333,28 @@ export default function RuminationTableWidget({
     }
   }, [rowsPayloadSig]);
 
-  // 仅随子步、游标、行数变化重置选中；默认不选中任何行（单行模式仍跟 rowCursor）。
-  // discussion 子步：用户选了一行后，发消息触发 rows 刷新不应清掉选中——除非行被删光。
+  // 选中状态保持规则（默认保持，仅以下情况清空）：
+  //   1. 行数为 0 → null
+  //   2. step 切换 → null（跨步行号会错位，必须清）
+  //   3. 曾选过且越界（行数减少）→ 回退首行（保持有选中，优于清空）
+  // 首次进入某 step（prevStepRef.current === null）→ null（强制用户主动点选）
+  // 发消息触发 rows 刷新、sending/disabled 翻转等一律不清。
   useEffect(() => {
     const n = (payload.rows ?? []).length;
     if (n <= 0) {
       setSelectedRowIdx(null);
       return;
     }
-    if (payload.singleRowMode) {
-      const c = payload.rowCursor ?? 0;
-      setSelectedRowIdx(Math.min(Math.max(0, c), n - 1));
+    const prevStep = prevStepRef.current;
+    prevStepRef.current = payload.step ?? null;
+    if (prevStep !== (payload.step ?? null)) {
+      // step 切换：清空选中
+      setSelectedRowIdx(null);
       return;
     }
-    if (payload.subStep === 'discussion') {
-      // discussion 模式下保持用户选择；仅当当前选中越界时回退到首行
-      setSelectedRowIdx((prev) => (prev == null || prev >= n ? 0 : prev));
-      return;
-    }
-    setSelectedRowIdx(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 故意不依赖 payload.rows 全文
-  }, [
-    payload.step,
-    payload.rowCursor,
-    payload.totalRows,
-    payload.rows?.length,
-    payload.singleRowMode,
-    payload.subStep,
-  ]);
+    // 同一 step 内，选中越界才回退首行；prev=null（首次进入）保持 null
+    setSelectedRowIdx((prev) => (prev != null && prev >= n ? 0 : prev));
+  }, [payload.step, payload.rows?.length]);
 
   useEffect(() => {
     if ((payload.step ?? 0) !== 3 || !onLiveRowsChange) return;
@@ -381,20 +376,6 @@ export default function RuminationTableWidget({
     },
     [cellDisabled]
   );
-
-  useEffect(() => {
-    if (!confirmDisabledAfterCommit) return;
-    // discussion 模式：发消息/提交过程中 disabled 翻转不应清掉用户选中的讨论行
-    if (payload.subStep === 'discussion') return;
-    setSelectedRowIdx(null);
-  }, [confirmDisabledAfterCommit, payload.subStep]);
-
-  useEffect(() => {
-    if (!disabled) return;
-    // discussion 模式：sending → disabled 翻转不应清掉用户选中的讨论行
-    if (payload.subStep === 'discussion') return;
-    setSelectedRowIdx(null);
-  }, [disabled, payload.subStep]);
 
   // neg gate（深度讨论）启动后：只有 activeItemIds 里的行可被选中讨论。
   // 若用户之前的选中行已被模糊化（不在 activeItemIds 中），立即清空选中，

@@ -200,7 +200,6 @@ def build_table_widget_payload(
     rows: List[dict],
     values_keywords: List[str],
     *,
-    single_row_mode: bool = False,
     row_cursor: int = 0,
     total_rows: int = 0,
     values_source: str = "",
@@ -240,8 +239,6 @@ def build_table_widget_payload(
     if step == 3:
         eff_total = total
         row_cursor = eff_cursor
-    if single_row_mode and eff_total > 0:
-        guide = f"第 {min(row_cursor + 1, eff_total)}/{eff_total} 行。{guide}"
     if step == 3 and eff_total > 0:
         if row_cursor >= eff_total:
             line_prog = f"已完成全部 {eff_total} 行的对话，请检查表格后点击「确认」进入下一步。"
@@ -256,7 +253,6 @@ def build_table_widget_payload(
         "editableCols": EDITABLE_COLS.get(step, []),
         "guideText": guide,
         "step": step,
-        "singleRowMode": single_row_mode,
         "rowCursor": row_cursor,
         "totalRows": eff_total if eff_total else total,
     }
@@ -272,19 +268,3 @@ def build_table_widget_payload(
         payload["finalSelectionMin"] = 1
         payload["finalSelectionMax"] = 3
     return payload
-
-
-def slice_rows_for_display(
-    table: List[Dict[str, Any]],
-    cursor: int,
-    *,
-    single_row_mode: bool,
-) -> tuple[List[Dict[str, Any]], int, int]:
-    """返回 (展示用 rows, cursor, total)。单行模式只返回一行。"""
-    n = len(table)
-    if n == 0:
-        return [], 0, 0
-    c = max(0, min(cursor, n - 1))
-    if single_row_mode:
-        return [dict(table[c])], c, n
-    return [dict(r) for r in table], c, n

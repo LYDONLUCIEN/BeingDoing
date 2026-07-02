@@ -631,16 +631,14 @@ export default function ChatPhasePage() {
     };
   }, [phase, initLoading]);
 
+  // phase 变化时清空 rowContext（跨阶段，如 values → rumination）。
+  // step 切换的清空由 widget 内部 prevStepRef 检测并回调 onRowContextChange(null) 完成。
   useEffect(() => {
-    if (phase === 'rumination') {
-      // discussion 子步：发消息会刷新 table rows（引用变化），但表格组件刻意保留
-      // 选中行高亮；此处若同步清空 rowContext，会导致「蓝框还在但输入框被禁用」
-      // 的不一致。只有 step 真正切换时才清空。
-      if (ruminationProgressState?.filter_sub_step === 'discussion') return;
+    if (phase !== 'rumination') {
       setRuminationRowContext(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, ruminationTablePayload?.step, ruminationTablePayload?.rows]);
+  }, [phase]);
 
   // Auth & redirect — 强制等待 exploreResume 对齐后再做路由准入判断
   // 清缓存后 localStorage 为默认值，必须以后端 resume 为准，避免闪到 values 再跳转

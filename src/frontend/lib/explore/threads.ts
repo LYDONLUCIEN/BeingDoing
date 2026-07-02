@@ -12,8 +12,6 @@ export interface RuminationTablePayload {
   editableCols: string[];
   guideText?: string;
   step?: number;
-  /** 后端单行确认模式 */
-  singleRowMode?: boolean;
   rowCursor?: number;
   totalRows?: number;
   /** step3 子步标识：matrix / discussion。discussion 模式下不自动清行选中 */
