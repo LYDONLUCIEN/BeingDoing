@@ -186,6 +186,20 @@ export default function RuminationTableWidget({
   const [validationFlashKey, setValidationFlashKey] = useState<string | null>(null);
   const [validationCycle, setValidationCycle] = useState(0);
   const [hypOtherDraftByKey, setHypOtherDraftByKey] = useState<Record<string, string>>({});
+  /**
+   * 「自定义」输入框展开记录（per-row × per-col）。
+   * 一旦用户选过「自定义」并展开过 textarea，即使后来把文字删空，
+   * 也保持 textarea 挂载，避免删空即卸载导致的失焦。
+   * key 形如 `${rowIdx}:${colKey}`。
+   */
+  const [otherExpandedKeys, setOtherExpandedKeys] = useState<Set<string>>(new Set());
+  /**
+   * step3 假设列「填写态」展开记录（per-row）。
+   * 一旦用户选过「填写假设」展开过 textarea，即使后来把文字删空，
+   * 也保持 textarea 挂载 + select 停在「填写假设」，避免删空即卸载导致的失焦。
+   * 用户选「无」时从集合移除该行，textarea 自然卸载。
+   */
+  const [hypFillExpandedRows, setHypFillExpandedRows] = useState<Set<number>>(new Set());
   const cellWrapRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
   /** 已确认本步 / 回看模式：锁定格内编辑 */
   const cellDisabled = disabled || confirmDisabledAfterCommit || reviewReadOnly || step3Cooldown;
@@ -736,10 +750,20 @@ export default function RuminationTableWidget({
       (strVal === hypothesisPendingLabel || strVal === '待定' || strVal === '暂未选定');
     const isFillMarker = strVal === STEP3_OPT_FILL;
     const isFill = Boolean(strVal && !isNone && !isFillMarker);
+    /**
+     * 展开态判定：用户曾选过「填写假设」(记录在 hypFillExpandedRows)，
+     * 或当前 strVal 已是填写标记/真实文本，都视为「填写态」。
+     * 这样用户在 textarea 内把文字删空 (strVal='') 时，
+     * isFill/isFillMarker 都为 false，但 hypFillExpandedRows 仍记录该行，
+     * selectControlValue 保持 STEP3_OPT_FILL，textarea 保持挂载，焦点不丢。
+     */
+    const fillExpanded = hypFillExpandedRows.has(rowIdx);
+    const inFillMode = fillExpanded || isFillMarker || isFill;
     let selectControlValue = '';
     if (isNone) selectControlValue = STEP3_OPT_NONE;
-    else if (isFillMarker || isFill) selectControlValue = STEP3_OPT_FILL;
+    else if (inFillMode) selectControlValue = STEP3_OPT_FILL;
 
+    // textarea 显示文本：删空后 strVal='' → fillText=''，textarea 仍挂载（由 inFillMode 决定）
     const fillText = isFill ? strVal : '';
     const fieldDisabled = (overrideCellDisabled ?? cellDisabled) || rowLocked;
 
@@ -750,6 +774,13 @@ export default function RuminationTableWidget({
         return;
       }
       if (v === STEP3_OPT_NONE && pendingOk) {
+        // 选「无」：移除填写展开记录，textarea 自然卸载
+        setHypFillExpandedRows((prev) => {
+          if (!prev.has(rowIdx)) return prev;
+          const next = new Set(prev);
+          next.delete(rowIdx);
+          return next;
+        });
         // 选「无」前，若当前已有填写的假设文本，暂存起来，便于用户后续切回「填写假设」时恢复。
         if (isFill && fillText.trim()) {
           lastFilledHypRef.current.set(rowIdx, fillText);
@@ -765,6 +796,13 @@ export default function RuminationTableWidget({
         return;
       }
       if (v === STEP3_OPT_FILL) {
+        // 进入「填写假设」：记录展开，保证后续删空也不卸载 textarea
+        setHypFillExpandedRows((prev) => {
+          if (prev.has(rowIdx)) return prev;
+          const next = new Set(prev);
+          next.add(rowIdx);
+          return next;
+        });
         // 切回「填写假设」：优先恢复此前暂存的假设文本，没有才用标记占位。
         const restored = lastFilledHypRef.current.get(rowIdx);
         if (restored && restored.trim()) {
@@ -862,7 +900,7 @@ export default function RuminationTableWidget({
           {pendingOk ? <option value={STEP3_OPT_NONE}>{hypothesisPendingLabel}</option> : null}
           <option value={STEP3_OPT_FILL}>{step3FillLabel}</option>
         </select>
-        {selectControlValue === STEP3_OPT_FILL ? (
+        {inFillMode ? (
           isGlass ? (
             <div className="relative min-w-0 flex-1">
               <textarea
@@ -1075,6 +1113,16 @@ export default function RuminationTableWidget({
 
     const cd = overrideCellDisabled ?? cellDisabled;
 
+    /**
+     * 展开判定：只要用户曾经选过「自定义」(记录在 otherExpandedKeys)，
+     * 或当前 selectVal 仍指向 OTHER_SELECT_VALUE，就保持 textarea 挂载。
+     * 这样用户在 textarea 内把文字删空时，strVal='' → selectVal='' 也不会卸载组件，
+     * 焦点不丢。用户主动切回其它选项时，从 otherExpandedKeys 移除该 key。
+     */
+    const otherCellKey = `${rowIdx}:${col.key}`;
+    const otherExpanded = otherExpandedKeys.has(otherCellKey) || selectVal === OTHER_SELECT_VALUE;
+    const showOtherTextarea = otherExpanded;
+
     return (
       <div className="space-y-2" onMouseDown={stopRow} onClick={stopRow}>
         <select
@@ -1082,8 +1130,25 @@ export default function RuminationTableWidget({
           disabled={cd}
           onChange={(e) => {
             const v = e.target.value;
-            if (v === OTHER_SELECT_VALUE) handleCellChange(rowIdx, col.key, OTHER_SELECT_VALUE);
-            else handleCellChange(rowIdx, col.key, v);
+            if (v === OTHER_SELECT_VALUE) {
+              // 进入自定义输入态：记录展开
+              setOtherExpandedKeys((prev) => {
+                if (prev.has(otherCellKey)) return prev;
+                const next = new Set(prev);
+                next.add(otherCellKey);
+                return next;
+              });
+              handleCellChange(rowIdx, col.key, OTHER_SELECT_VALUE);
+            } else {
+              // 切回普通选项：清掉展开记录，textarea 自然卸载
+              setOtherExpandedKeys((prev) => {
+                if (!prev.has(otherCellKey)) return prev;
+                const next = new Set(prev);
+                next.delete(otherCellKey);
+                return next;
+              });
+              handleCellChange(rowIdx, col.key, v);
+            }
           }}
           className={selectShellClass}
           style={selectArrowStyle}
@@ -1098,7 +1163,7 @@ export default function RuminationTableWidget({
             ))}
           <option value={OTHER_SELECT_VALUE}>{otherLabel}</option>
         </select>
-        {selectVal === OTHER_SELECT_VALUE && (
+        {showOtherTextarea && (
           <textarea
             value={otherTextareaDisplay}
             disabled={cd}
