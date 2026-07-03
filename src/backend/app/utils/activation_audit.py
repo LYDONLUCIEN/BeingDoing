@@ -49,6 +49,7 @@ EVENT_BATCH_CREATED = "batch_created"  # 批量创建
 EVENT_SYNC_FROM_DB = "sync_from_db"  # 从数据库同步
 EVENT_ACCESS = "activation_access"  # 激活码访问（activate 端点）
 EVENT_EXTENDED = "extended_and_activated"  # 延期并自动激活
+EVENT_OWNER_TRANSFERRED = "owner_transferred"  # 管理员迁移归属
 
 
 def _now_iso() -> str:

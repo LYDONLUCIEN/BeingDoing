@@ -155,33 +155,37 @@ class TestStep2Mismatch:
             assert item["热爱"] == f"热爱{i + 1}"
 
     def test_injection_contains_step_system(self):
-        """注入文本包含步骤 2 专属 system 片段关键词。"""
+        """注入文本包含步骤 2 专属 system 片段关键词 + 选行模式引导。"""
         items = [{"id": "1", "热爱": "写作", "优势": "沟通", "label": "热爱「写作」 Vs 优势「沟通」"}]
         inj = build_injection_zh(step=2, kind="mismatch", items=items, llm_failed=False)
         assert "步骤二" in inj
         assert "匹配性" in inj
-        assert "逐条" in inj
-        assert "热爱「写作」" in inj
+        # 新模式：不再注入全表条目列表，改为选行模式引导
+        assert "选择另一行" in inj or "选行" in inj
+        # 条目内容不再出现在 injection 里（选中行内容由 system prompt addon 注入）
+        assert "热爱「写作」" not in inj
 
     def test_injection_single_item(self):
-        """1 条不匹配 → 注入文本包含该条目，且包含逐条约束。"""
+        """选行模式下注入文本包含步骤 system 的禁止行为约束，但不含条目内容。"""
         items = [{"id": "1", "热爱": "AI", "优势": "编程", "label": "热爱「AI」 Vs 优势「编程」"}]
         inj = build_injection_zh(step=2, kind="mismatch", items=items, llm_failed=False)
-        assert "1." in inj
+        # step2 system 片段仍保留禁止行为
         assert "不得一次总结多条" in inj
         assert "不得跳过" in inj
+        # 不再注入条目内容（选中行由 system prompt addon 提供）
+        assert "热爱「AI」" not in inj
 
     def test_injection_multiple_items(self):
-        """多条不匹配 → 注入文本包含编号列表。"""
+        """多条不匹配 → 注入文本不含任何条目内容（选行模式不注入全表）。"""
         items = [
             {"id": "1", "热爱": "A", "优势": "B", "label": "热爱「A」 Vs 优势「B」"},
             {"id": "2", "热爱": "C", "优势": "D", "label": "热爱「C」 Vs 优势「D」"},
             {"id": "3", "热爱": "E", "优势": "F", "label": "热爱「E」 Vs 优势「F」"},
         ]
         inj = build_injection_zh(step=2, kind="mismatch", items=items, llm_failed=False)
-        assert "1." in inj
-        assert "2." in inj
-        assert "3." in inj
+        assert "热爱「A」" not in inj
+        assert "热爱「C」" not in inj
+        assert "热爱「E」" not in inj
 
 
 # ===========================================================================

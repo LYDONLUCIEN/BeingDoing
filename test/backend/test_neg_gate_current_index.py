@@ -1,4 +1,4 @@
-"""neg gate 简化架构测试：一次性注入所有条目，LLM 自行逐条讨论。"""
+"""neg gate 简化架构测试：选行模式下注入步骤 system + 风格约束 + 选行引导。"""
 
 from app.utils.rumination_neg_gate import (
     build_injection_zh,
@@ -15,7 +15,7 @@ from app.utils.rumination_neg_gate import (
 
 class TestNegGateSimpleInjection:
     def test_injection_includes_all_items(self):
-        """一次性注入所有待讨论条目，而非逐条。"""
+        """选行模式：不再注入全表条目列表，只注入步骤 system + 选行引导。"""
         rows = []
         for i in range(3):
             rows.append(
@@ -28,11 +28,12 @@ class TestNegGateSimpleInjection:
             )
         items = collect_step2_mismatches(rows)
         inj = build_injection_zh(2, "mismatch", items, False)
-        # 应包含所有 3 条
-        assert "热1" in inj
-        assert "热2" in inj
-        assert "热3" in inj
-        assert "共 3 条" in inj
+        # 条目内容不再注入（选中行由 system prompt addon 提供）
+        assert "热1" not in inj
+        assert "热2" not in inj
+        assert "热3" not in inj
+        # 但应有选行模式引导
+        assert "选择另一行" in inj or "选行" in inj
 
     def test_injection_no_protocol_markers(self):
         """不再包含 [NEG_ITEM_DONE] 协议标记。"""
@@ -45,13 +46,14 @@ class TestNegGateSimpleInjection:
         assert "机器协议" not in inj
 
     def test_injection_guides_natural_transition(self):
-        """注入文案应引导 LLM 自然过渡而非协议标记。"""
+        """注入文案应引导用户回表格选行（而非 LLM 自动跳下一条）。"""
         rows = [
             {"id": "1", "热爱": "感官创作", "优势": "建立关联", "匹配性": "不匹配"},
         ]
         items = collect_step2_mismatches(rows)
         inj = build_injection_zh(2, "mismatch", items, False)
-        assert "逐条讨论" in inj or "逐条" in inj
+        # 选行模式引导：告诉用户可选择另一行或结束讨论
+        assert "选择另一行" in inj or "选行" in inj
         assert "结束讨论" in inj
 
     def test_injection_style_guard_one_question(self):
@@ -71,7 +73,7 @@ class TestNegGateSimpleInjection:
 
 class TestNegGateRefreshState:
     def test_refresh_rebuilds_injection(self):
-        """refresh_neg_state_injection 正常重建 injection。"""
+        """refresh_neg_state_injection 正常重建 injection（选行模式不含条目内容）。"""
         neg = {
             "status": "exploring",
             "step": 2,
@@ -86,8 +88,9 @@ class TestNegGateRefreshState:
         }
         refreshed = refresh_neg_state_injection(neg)
         assert refreshed["injection_zh"]
-        assert "热1" in refreshed["injection_zh"]
-        assert "热2" in refreshed["injection_zh"]
+        # 选行模式：注入文本不含条目内容，但含步骤 system + 选行引导
+        assert "热1" not in refreshed["injection_zh"]
+        assert "匹配性" in refreshed["injection_zh"]
 
 
 class TestUserAdvanceIntent:

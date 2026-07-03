@@ -14,6 +14,7 @@ from app.utils.simple_activation_manager import (
     get_simple_base_dir,
     get_activation_with_manager,
     get_effective_simple_root,
+    _looks_like_debug_activation_code,
 )
 import json
 from pathlib import Path
@@ -82,6 +83,11 @@ class ActivationBatchActionRequest(BaseModel):
 
 class ActivationBatchStatusRequest(ActivationBatchActionRequest):
     status: str
+
+
+class ActivationOwnerTransferRequest(BaseModel):
+    activation_code: str
+    target_user_id: str
 
 
 class ActivationBatchExtendRequest(ActivationBatchActionRequest):
@@ -651,6 +657,86 @@ async def permanent_delete_from_recycle_bin(
     return {"code": 200, "message": "success", "data": {"deleted": deleted}}
 
 
+@router.post("/activations/transfer-owner")
+async def admin_transfer_activation_owner(
+    request: ActivationOwnerTransferRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """
+    迁移激活码归属(仅 super_admin)。
+
+    原子操作:
+      1. 改 activations.json 的 owner_user_id / owner_email
+      2. 改 canonical report 的 record.json 的 user_id
+      3. 写审计日志 owner_transferred
+
+    旧 owner 名下可能存在的孤儿 report 目录(历史污染)不在本次处理范围,
+    请用 scripts/audit_orphan_reports.py 单独清理。
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+
+    code = (request.activation_code or "").strip().upper()
+    target_uid = (request.target_user_id or "").strip()
+    if not code or not target_uid:
+        raise HTTPException(status_code=400, detail="activation_code 与 target_user_id 均不能为空")
+
+    # 1. 校验激活码存在 + 取旧 owner 信息
+    manager, rec = get_activation_with_manager(code)
+    if not rec:
+        raise HTTPException(status_code=404, detail="激活码不存在")
+    old_owner_user_id = getattr(rec, "owner_user_id", None)
+    old_owner_email = getattr(rec, "owner_email", None)
+
+    # 2. 校验目标用户存在,并取 email
+    from app.core.database import UserDB
+    from app.models.database import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        user_db = UserDB(db)
+        target_user = await user_db.get_user_by_id(target_uid)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="目标用户不存在")
+    target_email = getattr(target_user, "email", None) or None
+
+    if old_owner_user_id == target_uid:
+        return {
+            "code": 200,
+            "message": "success",
+            "data": {
+                "activation_code": code,
+                "old_owner_user_id": old_owner_user_id,
+                "old_owner_email": old_owner_email,
+                "new_owner_user_id": target_uid,
+                "new_owner_email": target_email,
+                "skipped": "owner 已是目标用户,幂等无操作",
+            },
+        }
+
+    # 3. 执行迁移
+    try:
+        manager.transfer_owner(
+            code=code,
+            new_user_id=target_uid,
+            new_email=target_email,
+            actor=current_user,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "activation_code": code,
+            "old_owner_user_id": old_owner_user_id,
+            "old_owner_email": old_owner_email,
+            "new_owner_user_id": target_uid,
+            "new_owner_email": target_email,
+            "report_id": getattr(rec, "report_id", None),
+        },
+    }
+
+
 @router.post("/activations/sync-from-db")
 async def sync_activations_from_db(
     request: Optional[ActivationSyncRequest] = None,
@@ -1077,6 +1163,12 @@ async def clone_conversation(
     if not rec:
         raise HTTPException(status_code=404, detail="目标激活码不存在")
 
+    if not _looks_like_debug_activation_code(rec.code):
+        raise HTTPException(
+            status_code=400,
+            detail="该操作仅限沙箱激活码(SBX/ADM 等前缀)。请先 fork 一个沙箱激活码再操作,避免污染真实激活码。",
+        )
+
     user_id = (current_user or {}).get("user_id") or f"unknown:{rec.code}"
     target_report = registry.ensure_report(
         activation_code=rec.code,
@@ -1134,6 +1226,12 @@ async def jump_to_rumination(
     rec = manager.get_activation(request.activation_code.strip().upper())
     if not rec:
         raise HTTPException(status_code=404, detail="激活码不存在")
+
+    if not _looks_like_debug_activation_code(rec.code):
+        raise HTTPException(
+            status_code=400,
+            detail="该操作仅限沙箱激活码(SBX/ADM 等前缀)。请先 fork 一个沙箱激活码再操作,避免污染真实激活码。",
+        )
 
     user_id = (current_user or {}).get("user_id") or f"unknown:{rec.code}"
     report = registry.ensure_report(

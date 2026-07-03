@@ -500,6 +500,48 @@ class ReportRegistry:
             self._set_activation_report_index(code, rid)
         return record
 
+    def change_report_user_id(
+        self,
+        report_id: str,
+        new_user_id: str,
+        *,
+        activation_code: str,
+    ) -> Optional[dict]:
+        """
+        修改指定 report 的 user_id(仅迁移激活码归属时调用)。
+
+        - 加 pair lock (activation_code, new_user_id) 防并发
+        - 改 record.json 的 user_id
+        - 更新 activations.json 的 report_id 索引指向此 report
+        - 不动孤儿目录(由清理脚本处理)
+
+        返回更新后的 record;若 report 不存在返回 None。
+        """
+        code = (activation_code or "").strip().upper()
+        uid = (new_user_id or "").strip()
+        rid = (report_id or "").strip()
+        if not code or not uid or not rid:
+            raise ValueError("report_id / activation_code / new_user_id 不能为空")
+
+        lock = _pair_file_lock(self._pair_lock_path(code, uid))
+        with lock:
+            record = self._load_record(rid)
+            if not record:
+                return None
+            old_uid = (record.get("user_id") or "").strip()
+            if old_uid == uid:
+                # 幂等
+                return record
+            record["user_id"] = uid
+            record["updated_at"] = self._now_iso()
+            self._save_record(record)
+            self._set_activation_report_index(code, rid)
+            logger.info(
+                "report user_id 已迁移: report_id=%s activation_code=%s old_user_id=%s new_user_id=%s",
+                rid, code, old_uid, uid,
+            )
+            return record
+
     def bind_session(self, report_id: str, step_id: str, session_id: str) -> Optional[dict]:
         sid = self.normalize_step_id(step_id)
         sess = (session_id or "").strip()

@@ -294,13 +294,11 @@ def build_injection_zh(
 ) -> str:
     """注入主对话 system 末尾的补充段（探索中）。
 
-    一次性注入所有待讨论条目，由 LLM 自行逐条讨论、自然过渡。
+    新模式：用户在表格手动选行，LLM 只讨论选中行。不再注入全表条目列表
+    （选中行内容已由 system prompt 的 rumination_step_addon 注入）。
+    本段只保留：步骤专属 system 片段 + 回复风格约束 + 选行模式流程引导。
     """
     step_system = get_deep_chat_step_system(step, llm_failed=llm_failed)
-
-    total = len(items)
-    pos_hint = f"待讨论条目（共 {total} 条，按序逐条进行）：\n"
-    lines = _item_lines(kind, items, limit=12)
 
     style_guard = (
         "回复风格要求：\n"
@@ -310,20 +308,19 @@ def build_injection_zh(
         "- 每轮回复最多出现一个问号（? 或 ？）；\n"
         "- 引用条目时优先使用字段名（热爱/优势/假设），不要整段复读；\n"
         "- 当前讨论某一条时，仅聚焦该条；不得同时讨论多条；\n"
-        "- 除非用户明确要求跳过了，否则不要急于过渡到下一条——当你觉得这个条目还有值得追问的角度时，继续深入。；\n"
-        "- 聊完一条后用简短过渡句引出下一条（如「好的，那我们来看下一条」），然后继续提问。"
+        "- 除非用户明确要求跳过了，否则不要急于结束当前条目——当你觉得还有值得追问的角度时，继续深入。"
     )
 
     closing = (
-        "注意：请逐条讨论以上所有条目。全部讨论完成后，用温和的语气告诉用户："
-        "「我们聊得很充分了，现在可以点击右上角「结束讨论」回到左侧表格，你可以继续调整讨论结果，也可以修改其他行的内容。」"
-        "不要在未讨论完所有条目时引导用户「结束讨论」。不要推进到结论卡。"
+        "注意：当前是「用户在表格选行、你讨论选中行」的模式。"
+        "当一条讨论充分后，用温和的语气告诉用户："
+        "「我们已经完成这一条的探索，你可以在左侧表格选择另一行继续讨论，或者点击右上角「结束讨论」。」"
+        "不要自行替用户决定下一条讨论哪个；不要推进到结论卡。"
     )
 
     if step_system:
         return (
             f"\n{step_system}\n\n"
-            f"{pos_hint}{lines}\n\n"
             f"{style_guard}\n\n"
             f"提醒：{closing}"
         )
@@ -331,7 +328,6 @@ def build_injection_zh(
     logger.warning("rumination neg gate: step %d not in DEEP_CHAT_STEP_SYSTEM_MAP, using fallback", step)
     return (
         f"\n【沉淀·待跟进标记项】\n"
-        f"{pos_hint}{lines}\n"
         f"{style_guard}\n\n"
         f"{closing}"
     )

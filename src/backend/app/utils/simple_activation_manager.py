@@ -25,9 +25,13 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
+import logging
 from typing import Dict, List, Optional, Tuple
 
 from app.utils.helpers import parse_iso_to_utc
+
+
+logger = logging.getLogger(__name__)
 
 
 class ActivationStatus(str, Enum):
@@ -549,6 +553,119 @@ class SimpleActivationManager:
                 "new_owner_user_id": uid,
                 "new_owner_email": email,
                 "is_new_claim": not bool(old_owner_user_id or old_owner_email),
+            },
+        )
+
+        return rec
+
+    def transfer_owner(
+        self,
+        code: str,
+        new_user_id: str,
+        new_email: Optional[str],
+        *,
+        actor: Optional[dict] = None,
+    ) -> "ActivationRecord":
+        """
+        管理员迁移激活码归属(原子操作)。
+
+        与 claim_owner 的区别:claim_owner 禁止转移已有 owner;transfer_owner 专门用于
+        已有 owner 的激活码迁移,且同时改 activations.json 和 canonical report 的 record.json。
+
+        步骤:
+            1. 校验激活码存在 + 目标 user_id 非空
+            2. 幂等:owner 已是目标用户则直接返回
+            3. 原子改 activations.json 的 owner_user_id/owner_email
+            4. 同步改 canonical report 的 record.json.user_id(委托 ReportRegistry)
+            5. 写审计日志 EVENT_OWNER_TRANSFERRED
+
+        Parameters
+        ----------
+        code : str
+            激活码(自动 trim/upper)。
+        new_user_id : str
+            新归属者 user_id。
+        new_email : Optional[str]
+            新归属者 email。
+        actor : Optional[dict]
+            操作者(管理员),用于审计。{"user_id":..., "email":...}
+
+        Returns
+        -------
+        ActivationRecord
+            迁移后的激活码记录。
+        """
+        norm = (code or "").strip().upper()
+        uid = (new_user_id or "").strip()
+        if not norm:
+            raise ValueError("激活码不能为空")
+        if not uid:
+            raise ValueError("new_user_id 不能为空")
+
+        records = self._load_all()
+        rec = records.get(norm) or records.get(code)
+        if not rec:
+            raise ValueError("激活码不存在")
+
+        old_owner_user_id = rec.owner_user_id
+        old_owner_email = rec.owner_email
+
+        # 幂等:已是目标 owner
+        if old_owner_user_id == uid and (new_email is None or old_owner_email == new_email):
+            return rec
+
+        now = datetime.now(timezone.utc).isoformat()
+        rec.owner_user_id = uid
+        if new_email is not None:
+            rec.owner_email = new_email
+        rec.claimed_at = rec.claimed_at or now
+        rec.last_activity_at = now
+        records[norm or code] = rec
+        self._save_all(records)
+
+        # 同步 canonical report 的 user_id(失败不阻断归属变更,仅记日志)
+        report_id = getattr(rec, "report_id", None)
+        if report_id:
+            try:
+                from app.utils.report_registry import ReportRegistry
+                registry = ReportRegistry(base_dir=str(self.base_dir))
+                changed = registry.change_report_user_id(
+                    report_id=report_id,
+                    new_user_id=uid,
+                    activation_code=norm,
+                )
+                if changed is None:
+                    logger.warning(
+                        "迁移归属:canonical report 不存在,仅改了 activations.json。"
+                        "code=%s report_id=%s",
+                        norm, report_id,
+                    )
+            except Exception as e:
+                logger.error(
+                    "迁移归属:改 record.json user_id 失败(activations.json 已更新)。"
+                    "code=%s report_id=%s error=%s",
+                    norm, report_id, e,
+                )
+
+        # 审计日志
+        from app.utils.activation_audit import (
+            EVENT_OWNER_TRANSFERRED,
+            append_activation_audit,
+        )
+
+        actor_uid = (actor or {}).get("user_id") if actor else None
+        actor_email = (actor or {}).get("email") if actor else None
+        append_activation_audit(
+            EVENT_OWNER_TRANSFERRED,
+            norm,
+            actor_user_id=actor_uid,
+            actor_email=actor_email,
+            detail={
+                "old_owner_user_id": old_owner_user_id,
+                "old_owner_email": old_owner_email,
+                "new_owner_user_id": uid,
+                "new_owner_email": new_email,
+                "report_id": report_id,
             },
         )
 

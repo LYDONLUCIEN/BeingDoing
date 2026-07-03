@@ -2492,9 +2492,14 @@ async def rumination_table_submit(
         # ── 后台异步生成当前子步的 anchor 摘要（供后续子步使用）──
         try:
             rum_cat = category  # rumination__{thread_id}
+            anchor_conv_mgr = ConversationFileManager(base_dir=str(root / "reports"))
             asyncio.create_task(
                 refine_and_save_rumination_step_anchor(
-                    report_id, step, rum_cat, vip_level=getattr(rec, "vip_level", 1) or 1
+                    report_id,
+                    step,
+                    rum_cat,
+                    anchor_conv_mgr,
+                    vip_level=getattr(rec, "vip_level", 1) or 1,
                 )
             )
         except Exception as e:
@@ -3375,7 +3380,7 @@ async def rumination_combo_matrix_submit(
     """提交组合矩阵，将已确认的组合转为 3b 深度讨论表格。"""
     try:
         manager = get_activation_manager_for_code(request.activation_code)
-        rec, report, _, _, _, _ = _resolve_report_context(
+        rec, report, _, _, _, category = _resolve_report_context(
             manager=manager,
             activation_code=request.activation_code,
             current_user=current_user,
@@ -3444,6 +3449,23 @@ async def rumination_combo_matrix_submit(
                 "filter_step_snapshots": {**snapshots, "3": snap3},
             },
         )
+
+        # ── 后台异步生成 step3 matrix 阶段的 anchor 摘要（供 step4+ 使用）──
+        # 进入 3b discussion 时触发，沉淀 matrix 阶段讨论出的假设要点。
+        # discussion 结束提交时（rumination-table-submit step=3）会再次更新此 anchor。
+        try:
+            anchor_conv_mgr = ConversationFileManager(base_dir=reports_root)
+            asyncio.create_task(
+                refine_and_save_rumination_step_anchor(
+                    rid,
+                    3,
+                    category,
+                    anchor_conv_mgr,
+                    vip_level=getattr(rec, "vip_level", 1) or 1,
+                )
+            )
+        except Exception as e:
+            logger.warning("combo_matrix_submit: matrix anchor task spawn failed: %s", e)
 
         # 构建 3b 表格 widget（全部解锁，不逐行限制）
         table_widget = _build_table_widget_payload(
@@ -4865,10 +4887,19 @@ async def simple_history(
     activation_code: str,
     phase: str,
     thread_id: Optional[str] = None,
+    limit: Optional[int] = None,
+    offset: int = 0,
+    rumination_filter_step: Optional[int] = None,
     current_user: dict = Depends(get_current_user),
 ):
     """
-    获取某个激活码 + 阶段下的全部历史消息
+    获取某个激活码 + 阶段下的历史消息。
+
+    可选参数：
+    - limit：最多返回消息条数（不传=全量，兼容现有前端）
+    - offset：跳过前 N 条（默认 0，配合 limit 实现向上懒加载）
+    - rumination_filter_step：rumination 阶段按 filter_step 过滤（1-7），
+      只返回该子步的消息。不传=不过滤（兼容现有前端 slice 逻辑）。
     """
     try:
         manager = get_activation_manager_for_code(activation_code)
@@ -4917,6 +4948,32 @@ async def simple_history(
         record = registry.get_report_by_id(report["report_id"]) or {}
         step_payload = ((record.get("steps") or {}).get(phase_step)) or {}
 
+        # rumination 阶段按 filter_step 过滤（减少网络传输，切换子步时只拉本子步消息）
+        if (
+            phase_step == "rumination"
+            and rumination_filter_step is not None
+            and rumination_filter_step > 0
+        ):
+            history_messages = [
+                m
+                for m in history_messages
+                if int(m.get("filter_step") or 0) == rumination_filter_step
+            ]
+
+        # 分页：默认全量返回（兼容现有前端）；传了 limit 才截取。
+        # offset 从最新消息末尾往前算（offset=0=最新 limit 条；offset=50=再往前 50 条）。
+        total_count = len(history_messages)
+        if limit is not None and limit > 0:
+            # offset 从末尾往前：最新的是 [-offset-limit : -offset]（offset=0 取最后 limit 条）
+            if offset > 0:
+                page_messages = history_messages[-(offset + limit) : -offset] if offset < total_count else []
+                if offset >= total_count:
+                    page_messages = []
+            else:
+                start_idx = max(0, total_count - limit)
+                page_messages = history_messages[start_idx:]
+            history_messages = page_messages
+
         return SimpleHistoryResponse(
             code=200,
             message="success",
@@ -4938,6 +4995,9 @@ async def simple_history(
                         else None
                     ),
                     "step_locked": bool(step_payload.get("locked", False)),
+                    # 分页信息：本步（过滤后）总条数 + 是否还有更早消息
+                    "total_count": total_count,
+                    "has_more": (offset + len(history_messages)) < total_count if limit else False,
                 },
                 "activation": IDCodec.build_activation_client_view(rec, logical_session_id),
                 "report_id": report["report_id"],
@@ -5418,6 +5478,15 @@ async def simple_chat_stream(
             if rumination_filter_step_val == 3 and request.combo_id and step3_sub_step == "matrix":
                 step_messages = slice_messages_for_combo(step_messages, request.combo_id)
                 combo_id_for_context = request.combo_id
+            elif rumination_filter_step_val == 3 and step3_sub_step == "discussion":
+                # step3 discussion：只取 discussion 子步消息，避免 matrix 阶段消息混入。
+                # 只保留明确标记为 discussion 的消息（打标功能上线后的新消息），
+                # 无 rumination_sub_step 字段的旧消息视为 matrix 阶段遗留，排除。
+                step_messages = [
+                    m
+                    for m in step_messages
+                    if (m.get("rumination_sub_step") or "").strip() == "discussion"
+                ]
             trimmed = step_messages[-30:]
 
             # 加载之前子步的 anchor 并拼接

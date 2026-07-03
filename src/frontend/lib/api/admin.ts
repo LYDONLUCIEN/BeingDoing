@@ -100,6 +100,24 @@ export async function syncActivationsFromDb() {
   return res.data ?? { synced: 0, rows_scanned: 0 };
 }
 
+export interface ActivationOwnerTransferResult {
+  activation_code: string;
+  old_owner_user_id: string | null;
+  old_owner_email: string | null;
+  new_owner_user_id: string;
+  new_owner_email: string | null;
+  report_id?: string | null;
+  skipped?: string;
+}
+
+export async function transferActivationOwner(payload: {
+  activation_code: string;
+  target_user_id: string;
+}): Promise<{ code: number; message: string; data: ActivationOwnerTransferResult }> {
+  const res = await apiClient.post('/admin/activations/transfer-owner', payload);
+  return res.data ?? { code: 500, message: 'error', data: {} as ActivationOwnerTransferResult };
+}
+
 export type ActivationSyncSource =
   | 'analytics_reports'
   | 'reports_registry'
@@ -1259,6 +1277,90 @@ export async function listNotificationTasks(params?: {
     total: number;
     page: number;
     page_size: number;
+  };
+}
+
+// ─── Email Bounce Blacklist (退信黑名单) ──────────────────────
+
+export interface BounceItem {
+  email: string;
+  bounce_type: 'hard' | 'soft';
+  status: 'blocked' | 'unblocked';
+  bounce_count: number;
+  last_bounce_at?: string | null;
+  reason?: string | null;
+  source: 'auto' | 'manual';
+  notes?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface BounceListResult {
+  items: BounceItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface BounceStats {
+  blocked_total: number;
+  unblocked_total: number;
+  added_today: number;
+  by_source: Record<string, number>;
+}
+
+export interface BounceScanResult {
+  scanned: number;
+  candidates: number;
+  parsed: number;
+  added: number;
+  unparsed: number;
+  last_uid: number | null;
+  error: string | null;
+}
+
+/** 分页查询黑名单（支持 email 模糊搜 + status/source 过滤） */
+export async function listBounces(params?: {
+  page?: number;
+  page_size?: number;
+  q?: string;
+  status?: 'blocked' | 'unblocked';
+  source?: 'auto' | 'manual';
+}): Promise<BounceListResult> {
+  const res = await apiClient.get('/admin/bounces', { params });
+  return ((res as any) ?? { items: [], total: 0, page: 1, page_size: 20 }) as BounceListResult;
+}
+
+/** 手动添加邮箱到黑名单（重复添加会被合并） */
+export async function addBounce(payload: {
+  email: string;
+  reason?: string;
+  notes?: string;
+}): Promise<{ email: string; action: 'created' | 'updated'; item: BounceItem }> {
+  const res = await apiClient.post('/admin/bounces', payload);
+  return (res as any) ?? { email: '', action: 'created', item: {} as BounceItem };
+}
+
+/** 解封邮箱（status=unblocked，记录保留） */
+export async function unblockBounce(email: string): Promise<{ email: string; status: 'unblocked' }> {
+  const res = await apiClient.delete(`/admin/bounces/${encodeURIComponent(email)}`);
+  return (res as any) ?? { email, status: 'unblocked' };
+}
+
+/** 手动触发一次 IMAP 扫描（同步等待结果，可能 5-30 秒） */
+export async function triggerBounceScan(): Promise<BounceScanResult> {
+  const res = await apiClient.post('/admin/bounces/scan', {});
+  return (res as any) ?? {
+    scanned: 0, candidates: 0, parsed: 0, added: 0, unparsed: 0,
+    last_uid: null, error: 'no response',
+  };
+}
+
+/** 黑名单统计 */
+export async function getBounceStats(): Promise<BounceStats> {
+  const res = await apiClient.get('/admin/bounces/stats');
+  return (res as any) ?? {
+    blocked_total: 0, unblocked_total: 0, added_today: 0, by_source: {},
   };
 }
 

@@ -5,11 +5,13 @@ FastAPI应用主入口
 import asyncio
 import logging
 import sys
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.middleware import AudioModeMiddleware, ErrorHandlerMiddleware
+from app.api.v1 import admin_bounces  # 新增：退信黑名单管理
 from app.api.v1 import admin_notifications  # 新增：通知邮件群发
 from app.api.v1 import chat_optimized  # 新增：优化的对话API
 from app.api.v1 import (  # 新增：简单模式激活与对话
@@ -168,6 +170,96 @@ async def _recover_notification_tasks():
         logging.getLogger(__name__).warning("notification recover schedule failed: %s", e)
 
 
+async def _log_alembic_revision_task():
+    """启动时打印当前 DB alembic revision，便于排查代码/DB 是否对齐。
+
+    不阻断启动，失败只警告。
+    """
+    try:
+        from sqlalchemy import create_engine as _ce, text as _text
+        from app.models.database import database_url
+
+        sync_url = str(database_url).replace("+aiosqlite", "").replace("+asyncpg", "")
+        eng = _ce(sync_url)
+        try:
+            with eng.connect() as conn:
+                # alembic_version 表可能不存在（首次部署），容错
+                try:
+                    row = conn.execute(
+                        _text("SELECT version_num FROM alembic_version LIMIT 1")
+                    ).fetchone()
+                    rev = row[0] if row else "(empty)"
+                except Exception as inner:
+                    rev = f"(cannot read alembic_version: {type(inner).__name__})"
+            logging.getLogger(__name__).info("DB alembic revision: %s", rev)
+        finally:
+            eng.dispose()
+    except Exception as e:
+        logging.getLogger(__name__).warning("cannot log alembic revision: %s", e)
+
+
+@app.on_event("startup")
+async def _log_alembic_revision():
+    """启动时打印 alembic revision（fire-and-forget）。"""
+    try:
+        asyncio.create_task(_log_alembic_revision_task())
+    except Exception as e:
+        logging.getLogger(__name__).warning("alembic revision log schedule failed: %s", e)
+
+
+# ─── 退信扫描定时任务（APScheduler） ───────────────────────
+_bounce_scheduler: Any = None
+
+
+def _start_bounce_scheduler() -> None:
+    """启动 APScheduler，按 BOUNCE_SCAN_CRON 定时跑退信扫描
+
+    - coalesce=True：错过多次只补跑一次
+    - max_instances=1：不允许并发
+    - misfire_grace_time=3600：服务重启后 1h 内还能补跑
+    """
+    global _bounce_scheduler
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from apscheduler.triggers.cron import CronTrigger
+        from app.services.bounce_scanner import BounceScanner
+
+        sched = AsyncIOScheduler(timezone="Asia/Shanghai")
+        sched.add_job(
+            lambda: asyncio.create_task(BounceScanner.scan_once()),
+            CronTrigger.from_crontab(settings.BOUNCE_SCAN_CRON),
+            id="bounce_scan",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=3600,
+        )
+        sched.start()
+        _bounce_scheduler = sched
+        logging.getLogger(__name__).info(
+            "bounce scheduler started, cron='%s'", settings.BOUNCE_SCAN_CRON
+        )
+    except Exception as e:
+        # APScheduler 不可用不能阻断启动，只警告
+        logging.getLogger(__name__).warning("start bounce scheduler failed: %s", e)
+
+
+@app.on_event("startup")
+async def _start_bounce_scan_scheduler():
+    _start_bounce_scheduler()
+
+
+@app.on_event("shutdown")
+async def _stop_bounce_scan_scheduler():
+    global _bounce_scheduler
+    if _bounce_scheduler:
+        try:
+            _bounce_scheduler.shutdown(wait=False)
+        except Exception:
+            pass
+        _bounce_scheduler = None
+
+
 @app.get("/")
 async def root():
     """根路径"""
@@ -219,3 +311,4 @@ app.include_router(export.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(analytics.router, prefix="/api/v1")
 app.include_router(admin_notifications.router, prefix="/api/v1")  # 通知邮件群发
+app.include_router(admin_bounces.router, prefix="/api/v1")  # 退信黑名单

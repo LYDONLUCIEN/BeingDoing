@@ -9,11 +9,14 @@ import {
   batchUpdateActivationStatus,
   fetchActivationRecycleBin,
   fetchAdminActivations,
+  fetchAdminUsers,
   restoreActivationsFromRecycle,
   permanentDeleteFromRecycleBin,
   syncActivations,
+  transferActivationOwner,
   type AdminActivationItem,
   type AdminActivationRecycleItem,
+  type AdminUserItem,
 } from '@/lib/api/admin';
 import { formatLocalDateTime } from '@/lib/utils/formatTime';
 
@@ -43,6 +46,16 @@ export default function AdminActivationsPage() {
   ]);
   const [syncDryRun, setSyncDryRun] = useState(false);
 
+  // 迁移归属弹窗状态
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferCode, setTransferCode] = useState<string | null>(null);
+  const [transferOldEmail, setTransferOldEmail] = useState<string | null>(null);
+  const [userQuery, setUserQuery] = useState('');
+  const [userResults, setUserResults] = useState<AdminUserItem[]>([]);
+  const [userSearching, setUserSearching] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<AdminUserItem | null>(null);
+  const [transferring, setTransferring] = useState(false);
+
   const loadActiveList = async () => {
     const res = await fetchAdminActivations({
       status: status === 'all' ? undefined : status,
@@ -55,6 +68,68 @@ export default function AdminActivationsPage() {
   const loadRecycleList = async () => {
     const res = await fetchActivationRecycleBin();
     setRecycleItems(res);
+  };
+
+  const openTransfer = (item: AdminActivationItem) => {
+    setTransferCode(item.activation_code);
+    setTransferOldEmail(item.owner_email || item.owner_user_id || '未绑定');
+    setUserQuery('');
+    setUserResults([]);
+    setSelectedUser(null);
+    setTransferOpen(true);
+  };
+
+  const closeTransfer = () => {
+    setTransferOpen(false);
+    setTransferCode(null);
+    setSelectedUser(null);
+    setUserQuery('');
+    setUserResults([]);
+  };
+
+  const searchUsers = async (q: string) => {
+    setUserQuery(q);
+    if (!q.trim()) {
+      setUserResults([]);
+      return;
+    }
+    setUserSearching(true);
+    try {
+      const res = await fetchAdminUsers({ q: q.trim(), page_size: 20 });
+      setUserResults(res.items || []);
+    } catch {
+      setUserResults([]);
+    } finally {
+      setUserSearching(false);
+    }
+  };
+
+  const handleTransfer = async () => {
+    if (!transferCode || !selectedUser) return;
+    const confirmMsg = `确认将激活码 ${transferCode} 的归属\n从 ${transferOldEmail}\n迁移到 ${selectedUser.email || selectedUser.user_id}?\n\n此操作会同时修改 activations.json 和 report 的 user_id,并记录审计日志。`;
+    if (!window.confirm(confirmMsg)) return;
+    setTransferring(true);
+    setError(null);
+    try {
+      const res = await transferActivationOwner({
+        activation_code: transferCode,
+        target_user_id: selectedUser.user_id,
+      });
+      const d = res?.data;
+      if (d?.skipped) {
+        setNotice(`提示:${d.skipped}`);
+      } else {
+        setNotice(
+          `迁移成功:${transferCode} 已从 ${d?.old_owner_email || d?.old_owner_user_id || '未绑定'} 迁移到 ${d?.new_owner_email || d?.new_owner_user_id}`
+        );
+      }
+      closeTransfer();
+      await loadActiveList();
+    } catch (e: any) {
+      setError(e?.message || '迁移失败');
+    } finally {
+      setTransferring(false);
+    }
   };
 
   useEffect(() => {
@@ -569,6 +644,7 @@ export default function AdminActivationsPage() {
                       <th className="px-2 py-2 text-left font-medium">过期时间</th>
                       <th className="px-2 py-2 text-left font-medium">最后活跃</th>
                       <th className="px-2 py-2 text-left font-medium">归属用户</th>
+                      <th className="px-2 py-2 text-left font-medium">操作</th>
                     </>
                   ) : (
                     <>
@@ -633,6 +709,15 @@ export default function AdminActivationsPage() {
                         <td className="px-2 py-2 text-[11px] text-bd-muted whitespace-nowrap">
                           {(item as AdminActivationItem).owner_email || (item as AdminActivationItem).owner_user_id || '未绑定'}
                         </td>
+                        <td className="px-2 py-2 text-[11px] whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => openTransfer(item as AdminActivationItem)}
+                            className="px-2 py-1 rounded-md border border-bd-border text-bd-muted hover:text-bd-fg hover:bg-bd-overlay-md text-[11px]"
+                          >
+                            迁移归属
+                          </button>
+                        </td>
                       </>
                     ) : (
                       <>
@@ -657,6 +742,85 @@ export default function AdminActivationsPage() {
           </div>
         )}
       </section>
+
+      {/* 迁移归属弹窗 */}
+      {transferOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-bd-card border border-bd-border shadow-xl p-6">
+            <h3 className="text-base font-semibold mb-1">迁移激活码归属</h3>
+            <p className="text-xs text-bd-subtle mb-4">
+              激活码 <span className="font-mono">{transferCode}</span> 当前归属:
+              <span className="ml-1">{transferOldEmail}</span>
+            </p>
+
+            <label className="block text-xs text-bd-subtle mb-1">搜索目标用户(邮箱 / 用户名)</label>
+            <input
+              type="text"
+              value={userQuery}
+              onChange={(e) => searchUsers(e.target.value)}
+              placeholder="输入邮箱或用户名搜索"
+              className="w-full rounded-xl border border-bd-border bg-bd-overlay px-3 py-2 text-sm outline-none focus:border-neutral-400 focus:ring-1 focus:ring-neutral-300 mb-2"
+              autoFocus
+            />
+
+            {userSearching && (
+              <p className="text-xs text-bd-subtle">搜索中...</p>
+            )}
+
+            {!userSearching && userQuery.trim() && userResults.length === 0 && (
+              <p className="text-xs text-bd-subtle">未找到匹配用户</p>
+            )}
+
+            {userResults.length > 0 && (
+              <div className="max-h-48 overflow-y-auto rounded-lg border border-bd-border divide-y divide-bd-border mb-4">
+                {userResults.map((u) => (
+                  <button
+                    key={u.user_id}
+                    type="button"
+                    onClick={() => setSelectedUser(u)}
+                    className={`w-full text-left px-3 py-2 text-xs hover:bg-bd-overlay-md ${
+                      selectedUser?.user_id === u.user_id ? 'bg-bd-overlay-md' : ''
+                    }`}
+                  >
+                    <div className="font-medium">{u.email || '(无邮箱)'}</div>
+                    <div className="text-bd-subtle">
+                      {u.username || '—'} · {u.user_id.slice(0, 8)}...
+                      {!u.is_active && <span className="ml-2 text-red-500">已禁用</span>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {selectedUser && (
+              <div className="rounded-lg bg-bd-overlay-md p-3 mb-4 text-xs">
+                <div className="text-bd-subtle mb-1">已选目标:</div>
+                <div className="font-medium">{selectedUser.email || selectedUser.user_id}</div>
+                <div className="text-bd-subtle">{selectedUser.username || '—'}</div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 text-xs">
+              <button
+                type="button"
+                onClick={closeTransfer}
+                className="px-3 py-1.5 rounded-md border border-bd-border text-bd-muted hover:text-bd-fg hover:bg-bd-overlay-md"
+                disabled={transferring}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleTransfer}
+                disabled={!selectedUser || transferring}
+                className="px-3 py-1.5 rounded-md bg-bd-ui-accent text-bd-ui-accent-fg disabled:opacity-50"
+              >
+                {transferring ? '迁移中...' : '确认迁移'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

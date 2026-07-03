@@ -19,6 +19,8 @@ from app.models import (
     Question, Answer,
     UserSelection, GuidePreference, ExplorationResult,
     AnalyticsChatTurn, AnalyticsReport, AnalyticsLike,
+    NotificationTask, NotificationRecipient,
+    EmailBounce,
 )
 
 # 导入配置与数据库URL

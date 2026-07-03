@@ -8,6 +8,8 @@ from app.models.answer import Question, Answer
 from app.models.selection import UserSelection, GuidePreference, ExplorationResult
 from app.models.analytics import AnalyticsChatTurn, AnalyticsReport, AnalyticsLike
 from app.models.refresh_token import RefreshToken
+from app.models.notification import NotificationTask, NotificationRecipient
+from app.models.email_bounce import EmailBounce
 
 __all__ = [
     "Base",
@@ -29,4 +31,7 @@ __all__ = [
     "AnalyticsReport",
     "AnalyticsLike",
     "RefreshToken",
+    "NotificationTask",
+    "NotificationRecipient",
+    "EmailBounce",
 ]

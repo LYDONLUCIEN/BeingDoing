@@ -93,6 +93,17 @@ class Settings(BaseSettings):
     SMTP_USE_TLS: bool = False
     SMTP_TIMEOUT_SECONDS: int = 20
 
+    # 退信扫描（IMAP）配置——用于群发邮件后识别不可达邮箱
+    # 默认复用 SMTP 账号；163 邮箱需在后台单独开启 IMAP 服务并生成授权码
+    BOUNCE_IMAP_HOST: Optional[str] = None       # 例：imap.163.com
+    BOUNCE_IMAP_PORT: int = 993
+    BOUNCE_IMAP_USER: Optional[str] = None       # 不填则回退 SMTP_USER
+    BOUNCE_IMAP_PASS: Optional[str] = None       # 不填则回退 SMTP_PASS
+    # 定时扫描 cron（本地时间，5 字段）
+    BOUNCE_SCAN_CRON: str = "0 3 * * *"          # 默认每日 03:00
+    BOUNCE_SCAN_LOOKBACK_HOURS: int = 48          # 每次扫描回看窗口，watermark 丢失时兜底
+    BOUNCE_SCAN_SOFT_THRESHOLD: int = 3           # soft 累计次数阈值，达到升级为 blocked
+
     # 前端地址（用于邮箱验证链接）
     FRONTEND_URL: str = "http://localhost:3000"
     

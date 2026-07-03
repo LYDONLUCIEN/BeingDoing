@@ -7,20 +7,30 @@ import {
   getNotificationStatus,
   listNotificationTasks,
   fetchAdminUsers,
+  listBounces,
+  addBounce,
+  unblockBounce,
+  triggerBounceScan,
+  getBounceStats,
   type NotificationUserFilter,
   type NotificationTaskStatus,
   type NotificationTaskListItem,
   type AdminUserItem,
+  type BounceItem,
+  type BounceStats as BounceStatsT,
+  type BounceScanResult,
 } from '@/lib/api/admin';
 import { formatUTC } from '@/lib/utils/formatTime';
 
 type ActiveFilter = 'all' | 'active' | 'inactive';
 type ProfileFilter = 'all' | 'completed' | 'incomplete';
+type PageTab = 'tasks' | 'bounces';
 
 const POLL_INTERVAL_MS = 2000;
 
 export default function AdminNotificationsPage() {
   const router = useRouter();
+  const [tab, setTab] = useState<PageTab>('tasks');
 
   // 收件人选择模式：'filter' = 条件筛选，'manual' = 手动勾选
   const [recipientMode, setRecipientMode] = useState<'filter' | 'manual'>('filter');
@@ -223,6 +233,34 @@ export default function AdminNotificationsPage() {
           </button>
         </header>
 
+        {/* Tab 切换：群发任务 / 退信黑名单 */}
+        <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden text-sm">
+          <button
+            type="button"
+            onClick={() => setTab('tasks')}
+            className={`px-4 py-2 ${
+              tab === 'tasks'
+                ? 'bg-indigo-600 text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            群发任务
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('bounces')}
+            className={`px-4 py-2 ${
+              tab === 'bounces'
+                ? 'bg-indigo-600 text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            退信黑名单
+          </button>
+        </div>
+
+        {tab === 'tasks' && (
+          <>
         {/* 创建任务区 */}
         <section className="rounded-lg bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-lg font-semibold text-gray-800">新建群发任务</h2>
@@ -580,6 +618,10 @@ export default function AdminNotificationsPage() {
             </div>
           )}
         </section>
+          </>
+        )}
+
+        {tab === 'bounces' && <BounceManager />}
       </div>
     </div>
   );
@@ -598,5 +640,344 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${cls}`}>
       {status}
     </span>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 退信黑名单管理组件
+// ═══════════════════════════════════════════════════════════════════
+
+function BounceManager() {
+  const [items, setItems] = useState<BounceItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(20);
+  const [q, setQ] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'blocked' | 'unblocked' | ''>('');
+  const [stats, setStats] = useState<BounceStatsT | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+
+  // 添加表单
+  const [newEmail, setNewEmail] = useState('');
+  const [newReason, setNewReason] = useState('');
+  const [adding, setAdding] = useState(false);
+
+  // 扫描中
+  const [scanning, setScanning] = useState(false);
+
+  const loadList = useCallback(async (p: number, query: string, sf: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await listBounces({
+        page: p,
+        page_size: pageSize,
+        q: query || undefined,
+        status: (sf as 'blocked' | 'unblocked') || undefined,
+      });
+      setItems(res.items);
+      setTotal(res.total);
+      setPage(p);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : '加载失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [pageSize]);
+
+  const loadStats = useCallback(async () => {
+    try {
+      const s = await getBounceStats();
+      setStats(s);
+    } catch {
+      // 静默
+    }
+  }, []);
+
+  useEffect(() => {
+    loadList(1, '', '');
+    loadStats();
+  }, [loadList, loadStats]);
+
+  const handleAdd = async () => {
+    const em = newEmail.trim().toLowerCase();
+    if (!em) {
+      setError('请输入邮箱地址');
+      return;
+    }
+    // 简单邮箱格式校验
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
+      setError('邮箱格式不正确');
+      return;
+    }
+    setError(null);
+    setInfo(null);
+    setAdding(true);
+    try {
+      const res = await addBounce({ email: em, reason: newReason || undefined });
+      setInfo(`已${res.action === 'created' ? '添加' : '更新'}：${em}`);
+      setNewEmail('');
+      setNewReason('');
+      await loadList(page, q, statusFilter);
+      await loadStats();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : '添加失败');
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleUnblock = async (email: string) => {
+    if (!confirm(`确认解封 ${email}？\n解封后下次扫描若再退信，hard 会重新拉黑。`)) return;
+    setError(null);
+    try {
+      await unblockBounce(email);
+      setInfo(`已解封：${email}`);
+      await loadList(page, q, statusFilter);
+      await loadStats();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : '解封失败');
+    }
+  };
+
+  const handleScan = async () => {
+    setError(null);
+    setInfo(null);
+    setScanning(true);
+    try {
+      const result: BounceScanResult = await triggerBounceScan();
+      if (result.error) {
+        setError(`扫描失败：${result.error}`);
+      } else {
+        setInfo(
+          `扫描完成：检查 ${result.scanned} 封 / 候选 ${result.candidates} 封 / ` +
+          `解析 ${result.parsed} 个 / 新增 ${result.added} 条 / 无法解析 ${result.unparsed} 封`
+        );
+        await loadList(page, q, statusFilter);
+        await loadStats();
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : '触发扫描失败');
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  return (
+    <>
+      {/* 统计卡片 */}
+      {stats && (
+        <section className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <StatCard label="已拉黑" value={stats.blocked_total} color="text-red-600" />
+          <StatCard label="已解封" value={stats.unblocked_total} color="text-gray-600" />
+          <StatCard label="今日新增" value={stats.added_today} color="text-indigo-600" />
+          <StatCard
+            label="自动 / 手动"
+            value={`${stats.by_source.auto ?? 0} / ${stats.by_source.manual ?? 0}`}
+            color="text-gray-700"
+          />
+        </section>
+      )}
+
+      {/* 操作区：手动添加 + 触发扫描 */}
+      <section className="rounded-lg bg-white p-6 shadow-sm">
+        <h2 className="mb-4 text-lg font-semibold text-gray-800">手动管理</h2>
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <input
+            type="email"
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+            placeholder="要拉黑的邮箱地址"
+            className="min-w-[260px] flex-1 rounded border border-gray-300 px-3 py-1.5 text-sm"
+          />
+          <input
+            type="text"
+            value={newReason}
+            onChange={(e) => setNewReason(e.target.value)}
+            placeholder="拉黑原因（可选）"
+            className="min-w-[200px] flex-1 rounded border border-gray-300 px-3 py-1.5 text-sm"
+          />
+          <button
+            onClick={handleAdd}
+            disabled={adding}
+            className="rounded bg-red-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+          >
+            {adding ? '添加中...' : '加入黑名单'}
+          </button>
+          <button
+            onClick={handleScan}
+            disabled={scanning}
+            className="rounded bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {scanning ? '扫描中（可能 5-30 秒）...' : '立即扫描退信'}
+          </button>
+        </div>
+
+        {error && <div className="mb-3 rounded bg-red-50 p-2 text-sm text-red-700">{error}</div>}
+        {info && <div className="mb-3 rounded bg-green-50 p-2 text-sm text-green-700">{info}</div>}
+      </section>
+
+      {/* 黑名单列表 */}
+      <section className="rounded-lg bg-white p-6 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold text-gray-800">黑名单列表</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') loadList(1, q, statusFilter);
+              }}
+              placeholder="搜索邮箱"
+              className="rounded border border-gray-300 px-3 py-1 text-sm"
+            />
+            <button
+              onClick={() => loadList(1, q, statusFilter)}
+              className="rounded border border-gray-300 px-3 py-1 text-sm text-gray-600 hover:bg-gray-50"
+            >
+              搜索
+            </button>
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value as 'blocked' | 'unblocked' | '');
+                loadList(1, q, e.target.value as 'blocked' | 'unblocked' | '');
+              }}
+              className="rounded border border-gray-300 px-2 py-1 text-sm"
+            >
+              <option value="">全部状态</option>
+              <option value="blocked">已拉黑</option>
+              <option value="unblocked">已解封</option>
+            </select>
+            <button
+              onClick={() => {
+                setQ('');
+                setStatusFilter('');
+                loadList(1, '', '');
+              }}
+              className="rounded border border-gray-300 px-3 py-1 text-sm text-gray-600 hover:bg-gray-50"
+            >
+              重置
+            </button>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="py-6 text-center text-sm text-gray-400">加载中...</div>
+        ) : items.length === 0 ? (
+          <div className="py-6 text-center text-sm text-gray-400">暂无记录</div>
+        ) : (
+          <div className="overflow-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="text-gray-500">
+                <tr>
+                  <th className="py-2">邮箱</th>
+                  <th className="py-2">类型</th>
+                  <th className="py-2">来源</th>
+                  <th className="py-2">次数</th>
+                  <th className="py-2">最近退信</th>
+                  <th className="py-2">状态</th>
+                  <th className="py-2">原因 / 备注</th>
+                  <th className="py-2">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((b) => (
+                  <tr key={b.email} className="border-t border-gray-100">
+                    <td className="py-2 break-all">{b.email}</td>
+                    <td className="py-2">
+                      <span
+                        className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${
+                          b.bounce_type === 'hard'
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-yellow-100 text-yellow-700'
+                        }`}
+                      >
+                        {b.bounce_type}
+                      </span>
+                    </td>
+                    <td className="py-2 text-xs">
+                      {b.source === 'manual' ? '手动' : '自动'}
+                    </td>
+                    <td className="py-2">{b.bounce_count}</td>
+                    <td className="py-2 text-xs text-gray-500">
+                      {b.last_bounce_at ? formatUTC(b.last_bounce_at) : '-'}
+                    </td>
+                    <td className="py-2">
+                      <span
+                        className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${
+                          b.status === 'blocked'
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-gray-100 text-gray-600'
+                        }`}
+                      >
+                        {b.status === 'blocked' ? '拉黑' : '解封'}
+                      </span>
+                    </td>
+                    <td className="py-2 text-xs text-gray-600 max-w-xs">
+                      <div className="truncate" title={b.reason ?? ''}>
+                        {b.reason || '-'}
+                      </div>
+                      {b.notes && (
+                        <div className="truncate text-gray-400" title={b.notes}>
+                          📝 {b.notes}
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-2">
+                      {b.status === 'blocked' ? (
+                        <button
+                          onClick={() => handleUnblock(b.email)}
+                          className="text-xs text-indigo-600 hover:underline"
+                        >
+                          解封
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-400">-</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* 分页 */}
+        {total > pageSize && (
+          <div className="mt-4 flex items-center justify-center gap-4 text-sm">
+            <button
+              onClick={() => loadList(page - 1, q, statusFilter)}
+              disabled={page <= 1}
+              className="rounded border px-3 py-1 disabled:opacity-50"
+            >
+              上一页
+            </button>
+            <span>
+              第 {page} 页 / 共 {Math.ceil(total / pageSize)} 页（总 {total} 条）
+            </span>
+            <button
+              onClick={() => loadList(page + 1, q, statusFilter)}
+              disabled={page * pageSize >= total}
+              className="rounded border px-3 py-1 disabled:opacity-50"
+            >
+              下一页
+            </button>
+          </div>
+        )}
+      </section>
+    </>
+  );
+}
+
+function StatCard({ label, value, color }: { label: string; value: number | string; color: string }) {
+  return (
+    <div className="rounded-lg bg-white p-4 shadow-sm">
+      <div className="text-xs text-gray-500">{label}</div>
+      <div className={`mt-1 text-2xl font-bold ${color}`}>{value}</div>
+    </div>
   );
 }

@@ -25,6 +25,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import selectinload
 
 from app.models.database import AsyncSessionLocal
+from app.models.email_bounce import EmailBounce
 from app.models.notification import NotificationRecipient, NotificationTask
 from app.models.user import User, UserProfile
 from app.services.email_service import EmailService
@@ -114,7 +115,15 @@ class NotificationService:
         支持两种互斥模式：
         - user_filter.user_ids 非空：按显式 user_id 列表收件（手动勾选模式）
         - 其他字段：按条件筛选（is_active/profile_completed/created_after）
+
+        两种模式都会过滤 email_bounces 表里 status='blocked' 的邮箱。
+        若 admin 需给黑名单邮箱发信，须先在 /admin/bounces 解封。
         """
+        # 黑名单子查询：status='blocked' 的邮箱
+        blocked_subq = (
+            select(EmailBounce.email).where(EmailBounce.status == "blocked")
+        ).subquery()
+
         base = select(User.id, User.email).where(User.email.isnot(None))
 
         # 手动勾选模式：显式 user_id 列表优先，忽略其他筛选
@@ -135,6 +144,9 @@ class NotificationService:
                     base = base.where(User.created_at >= dt_after)
                 except ValueError:
                     logger.warning("invalid created_after filter: %s", user_filter["created_after"])
+
+        # 应用黑名单过滤（两种模式都过滤）
+        base = base.where(func.lower(User.email).not_in(select(blocked_subq.c.email)))
 
         async with AsyncSessionLocal() as db:
             result = await db.execute(base)
