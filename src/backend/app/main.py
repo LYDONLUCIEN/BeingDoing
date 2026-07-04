@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.middleware import AudioModeMiddleware, ErrorHandlerMiddleware
 from app.api.v1 import admin_bounces  # 新增：退信黑名单管理
 from app.api.v1 import admin_notifications  # 新增：通知邮件群发
+from app.api.v1 import site_notices  # 新增：站内公告（banner / 维护通知）
 from app.api.v1 import chat_optimized  # 新增：优化的对话API
 from app.api.v1 import (  # 新增：简单模式激活与对话
     admin,
@@ -312,3 +313,4 @@ app.include_router(admin.router, prefix="/api/v1")
 app.include_router(analytics.router, prefix="/api/v1")
 app.include_router(admin_notifications.router, prefix="/api/v1")  # 通知邮件群发
 app.include_router(admin_bounces.router, prefix="/api/v1")  # 退信黑名单
+app.include_router(site_notices.router, prefix="/api/v1")  # 站内公告（公开 + admin）

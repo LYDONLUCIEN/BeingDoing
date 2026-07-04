@@ -10,6 +10,7 @@ from app.models.analytics import AnalyticsChatTurn, AnalyticsReport, AnalyticsLi
 from app.models.refresh_token import RefreshToken
 from app.models.notification import NotificationTask, NotificationRecipient
 from app.models.email_bounce import EmailBounce
+from app.models.site_notice import SiteNotice
 
 __all__ = [
     "Base",
@@ -34,4 +35,5 @@ __all__ = [
     "NotificationTask",
     "NotificationRecipient",
     "EmailBounce",
+    "SiteNotice",
 ]
