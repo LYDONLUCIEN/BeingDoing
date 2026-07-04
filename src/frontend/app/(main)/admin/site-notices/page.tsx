@@ -9,6 +9,8 @@ import {
   adminUpdateSiteNotice,
   adminDeleteSiteNotice,
   adminToggleSiteNotice,
+  getMaintenanceStatus,
+  setMaintenanceMode,
   type SiteNoticeItem,
   type SiteNoticePayload,
   type SiteNoticeChannel,
@@ -46,6 +48,11 @@ export default function AdminSiteNoticesPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 维护模式
+  const [maintOn, setMaintOn] = useState<boolean | null>(null);
+  const [maintLoading, setMaintLoading] = useState(false);
+  const [maintReason, setMaintReason] = useState('例行升级');
+  const [maintEnd, setMaintEnd] = useState('');
   // 表单弹层
   const [editing, setEditing] = useState<SiteNoticeItem | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -67,7 +74,41 @@ export default function AdminSiteNoticesPage() {
   useEffect(() => {
     if (!isAuthenticated || !user?.is_super_admin) return;
     loadList();
+    // 加载维护模式状态
+    getMaintenanceStatus()
+      .then((s) => setMaintOn(s.is_on))
+      .catch(() => setMaintOn(null));
   }, [loadList, isAuthenticated, user]);
+
+  const onMaintToggle = async () => {
+    console.log('[maint-toggle] clicked, current state=', maintOn);
+    if (maintOn === null) return;
+    setMaintLoading(true);
+    setError(null);
+    try {
+      const action = maintOn ? 'off' : 'on';
+      const payload: { action: 'on' | 'off'; end_at?: string; reason?: string } = { action };
+      if (action === 'on') {
+        payload.reason = maintReason || '例行升级';
+        if (maintEnd) payload.end_at = maintEnd;
+      }
+      await setMaintenanceMode(payload);
+      // 重新查状态
+      const s = await getMaintenanceStatus();
+      setMaintOn(s.is_on);
+      if (s.is_on) {
+        alert(
+          '✅ 已进入维护模式\n\n用户访问站点会看到维护页。\n本浏览器已自动设置绕过 cookie，可走 HTTPS 正常验证。\n\n验证用户视角：用无痕窗口访问站点。'
+        );
+      } else {
+        alert('✅ 已退出维护模式\n\n用户恢复访问。');
+      }
+    } catch (e: any) {
+      setError(getApiErrorMessage(e, '维护模式切换失败'));
+    } finally {
+      setMaintLoading(false);
+    }
+  };
 
   const openCreate = () => {
     setEditing(null);
@@ -134,6 +175,85 @@ export default function AdminSiteNoticesPage() {
       </div>
 
       {error && <div className="p-3 bg-red-50 text-red-700 text-sm rounded">{error}</div>}
+
+      {/* 维护模式卡片 */}
+      <div
+        style={{
+          padding: 16,
+          borderRadius: 8,
+          border: '1px solid',
+          borderColor: maintOn ? '#fca5a5' : '#e5e7eb',
+          background: maintOn ? '#fef2f2' : '#f9fafb',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>维护模式</div>
+          <span
+            style={{
+              padding: '2px 10px',
+              borderRadius: 12,
+              fontSize: 12,
+              background: maintOn ? '#dc2626' : '#10b981',
+              color: '#fff',
+            }}
+          >
+            {maintOn === null ? '查询中…' : maintOn ? '维护中' : '正常运行'}
+          </span>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {!maintOn && (
+              <>
+                <input
+                  type="text"
+                  placeholder="原因（如：数据库升级）"
+                  value={maintReason}
+                  onChange={(e) => setMaintReason(e.target.value)}
+                  style={{
+                    padding: '6px 10px',
+                    fontSize: 13,
+                    border: '1px solid #ccc',
+                    borderRadius: 4,
+                    width: 180,
+                  }}
+                />
+                <input
+                  type="text"
+                  placeholder="恢复时间（如：04:00）"
+                  value={maintEnd}
+                  onChange={(e) => setMaintEnd(e.target.value)}
+                  style={{
+                    padding: '6px 10px',
+                    fontSize: 13,
+                    border: '1px solid #ccc',
+                    borderRadius: 4,
+                    width: 140,
+                  }}
+                />
+              </>
+            )}
+            <button
+              onClick={onMaintToggle}
+              disabled={maintLoading || maintOn === null}
+              style={{
+                padding: '6px 16px',
+                fontSize: 13,
+                fontWeight: 500,
+                border: 'none',
+                borderRadius: 6,
+                cursor: maintLoading ? 'not-allowed' : 'pointer',
+                opacity: maintLoading ? 0.5 : 1,
+                backgroundColor: maintOn ? '#10b981' : '#dc2626',
+                color: '#fff',
+              }}
+            >
+              {maintLoading ? '切换中…' : maintOn ? '退出维护模式' : '进入维护模式'}
+            </button>
+          </div>
+        </div>
+        <p style={{ fontSize: 12, color: '#6b7280', marginTop: 8 }}>
+          进入维护模式后，用户访问站点会看到静态维护页（nginx 拦截）。
+          你的浏览器会自动设置绕过 cookie，可走 HTTPS 正常验证。
+        </p>
+      </div>
 
       {/* 列表 */}
       <div className="bg-bd-surface rounded-lg border border-bd-border overflow-hidden">

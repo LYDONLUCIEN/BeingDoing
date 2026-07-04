@@ -17,6 +17,10 @@
 #   ./start.sh restart backend   仅重启 backend
 #   ./start.sh restart frontend  仅重启 frontend
 #   ./start.sh attach       重新附加到已有 session（查看日志）
+#   ./start.sh maintenance on [--end "..." --reason "..."]  进入维护模式
+#   ./start.sh maintenance off                              退出维护模式
+#   ./start.sh maintenance status                           查看维护状态
+#   ./start.sh start prod --maintenance                     启动前先切维护页
 #
 # 依赖：tmux（已预装）
 # ============================================================
@@ -29,6 +33,14 @@ REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 # ── 解析命令与环境参数 ───────────────────────────────────
 COMMAND="${1:-start}"
 TARGET="${2:-}"
+# 任意参数里包含 --maintenance → 启动前先切维护页
+MAINTENANCE_FIRST=false
+for _arg in "$@"; do
+  case "$_arg" in
+    --maintenance) MAINTENANCE_FIRST=true ;;
+    --hot) ;;
+  esac
+done
 # 第三个参数：--hot 表示前端使用热更新模式 (npm run dev)
 HOT_MODE=false
 if [ "${3:-}" = "--hot" ]; then
@@ -161,6 +173,12 @@ kill_window() {
 }
 
 cmd_start() {
+  # --maintenance：启动服务前先切到维护页（用户立即看到维护页，安全折腾后端）
+  if [ "$MAINTENANCE_FIRST" = "true" ] && [ -n "$TARGET" ]; then
+    info "[--maintenance] 先进入维护模式 (env=$TARGET)"
+    "$REPO_ROOT/scripts/maintenance.sh" on --env "$TARGET" || warn "维护模式开启失败，继续启动服务"
+  fi
+
   if session_exists; then
     warn "tmux session '$SESSION' 已存在。如需重启请用: ./start.sh restart"
     if [ -t 1 ] && [ -t 0 ] && [ "${BD_SKIP_TMUX_ATTACH:-0}" != "1" ]; then
@@ -282,6 +300,18 @@ case "$COMMAND" in
     ;;
   attach)
     cmd_attach ;;
+  maintenance)
+    # ./start.sh maintenance on|off|status [extra args]
+    # 透传给 scripts/maintenance.sh，并把 --env 自动推断
+    shift_arg="$TARGET"
+    if [ -z "$shift_arg" ]; then
+      echo "用法: ./start.sh maintenance [on|off|status] ..."
+      exit 1
+    fi
+    # 推断 env：看 .env 的 FRONTEND_MODE 或默认 dev
+    DEFAULT_ENV="${FRONTEND_MODE:-dev}"
+    [ "$DEFAULT_ENV" = "production" ] && DEFAULT_ENV="prod"
+    exec "$REPO_ROOT/scripts/maintenance.sh" "$shift_arg" --env "$DEFAULT_ENV" "${@:3}" ;;
   *)
     echo "用法: ./start.sh [start [dev|prod|test] [--hot]] | start-dev | start-run | stop | restart [backend|frontend|all] | attach"
     exit 1 ;;

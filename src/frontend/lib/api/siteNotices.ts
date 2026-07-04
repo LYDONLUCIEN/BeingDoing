@@ -106,3 +106,28 @@ export async function adminToggleSiteNotice(id: string): Promise<SiteNoticeItem>
   const res = await apiClient.post<SiteNoticeItem>(`/admin/site-notices/${id}/toggle`);
   return res.data as SiteNoticeItem;
 }
+
+// ── 维护模式 ──────────────────────────────────────────
+export interface MaintenanceStatus {
+  is_on: boolean;
+  flag_path: string;
+  meta?: { raw?: string };
+}
+
+export async function getMaintenanceStatus(): Promise<MaintenanceStatus> {
+  const res = await apiClient.get<MaintenanceStatus>('/admin/maintenance/status');
+  return res.data as MaintenanceStatus;
+}
+
+export async function setMaintenanceMode(payload: {
+  action: 'on' | 'off';
+  end_at?: string;
+  reason?: string;
+  env?: string;
+}): Promise<{ ok: boolean; stdout?: string }> {
+  const res = await apiClient.post<{ ok: boolean; stdout?: string }>(
+    '/admin/maintenance',
+    { env: 'prod', ...payload }
+  );
+  return res.data as { ok: boolean; stdout?: string };
+}
