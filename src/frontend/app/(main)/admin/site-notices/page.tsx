@@ -48,8 +48,8 @@ export default function AdminSiteNoticesPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 维护模式
-  const [maintOn, setMaintOn] = useState<boolean | null>(null);
+  // 维护模式（false = 不在维护；null 仅在初次加载时短暂存在，但按钮仍可点）
+  const [maintOn, setMaintOn] = useState<boolean>(false);
   const [maintLoading, setMaintLoading] = useState(false);
   const [maintReason, setMaintReason] = useState('例行升级');
   const [maintEnd, setMaintEnd] = useState('');
@@ -74,29 +74,28 @@ export default function AdminSiteNoticesPage() {
   useEffect(() => {
     if (!isAuthenticated || !user?.is_super_admin) return;
     loadList();
-    // 加载维护模式状态
+    // 加载维护模式状态（失败不阻塞按钮，默认显示「正常运行」）
     getMaintenanceStatus()
-      .then((s) => setMaintOn(s.is_on))
-      .catch(() => setMaintOn(null));
+      .then((s) => setMaintOn(!!s.is_on))
+      .catch((e) => console.warn('[maint] status fetch failed:', e));
   }, [loadList, isAuthenticated, user]);
 
   const onMaintToggle = async () => {
     console.log('[maint-toggle] clicked, current state=', maintOn);
-    if (maintOn === null) return;
     setMaintLoading(true);
     setError(null);
     try {
-      const action = maintOn ? 'off' : 'on';
+      const action: 'on' | 'off' = maintOn ? 'off' : 'on';
       const payload: { action: 'on' | 'off'; end_at?: string; reason?: string } = { action };
       if (action === 'on') {
         payload.reason = maintReason || '例行升级';
         if (maintEnd) payload.end_at = maintEnd;
       }
-      await setMaintenanceMode(payload);
-      // 重新查状态
-      const s = await getMaintenanceStatus();
-      setMaintOn(s.is_on);
-      if (s.is_on) {
+      const res = await setMaintenanceMode(payload);
+      console.log('[maint-toggle] response:', res);
+      // 切换成功 → 直接更新本地状态（不依赖后续 status 查询）
+      setMaintOn(action === 'on');
+      if (action === 'on') {
         alert(
           '✅ 已进入维护模式\n\n用户访问站点会看到维护页。\n本浏览器已自动设置绕过 cookie，可走 HTTPS 正常验证。\n\n验证用户视角：用无痕窗口访问站点。'
         );
@@ -104,6 +103,7 @@ export default function AdminSiteNoticesPage() {
         alert('✅ 已退出维护模式\n\n用户恢复访问。');
       }
     } catch (e: any) {
+      console.error('[maint-toggle] failed:', e);
       setError(getApiErrorMessage(e, '维护模式切换失败'));
     } finally {
       setMaintLoading(false);
@@ -197,7 +197,7 @@ export default function AdminSiteNoticesPage() {
               color: '#fff',
             }}
           >
-            {maintOn === null ? '查询中…' : maintOn ? '维护中' : '正常运行'}
+            {maintOn ? '维护中' : '正常运行'}
           </span>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             {!maintOn && (
@@ -232,7 +232,7 @@ export default function AdminSiteNoticesPage() {
             )}
             <button
               onClick={onMaintToggle}
-              disabled={maintLoading || maintOn === null}
+              disabled={maintLoading}
               style={{
                 padding: '6px 16px',
                 fontSize: 13,
