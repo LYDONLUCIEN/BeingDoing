@@ -197,22 +197,25 @@ function StepBlock({
             <div>
               <p className="text-[12px] font-medium mb-1" style={{ color: 'var(--bd-fg)' }}>
                 组合矩阵
+                <span className="ml-1.5 text-[10px] text-bd-subtle font-normal">
+                  （热爱×优势 的全组合；id 列为矩阵内部编码，非表行号）
+                </span>
               </p>
               <div className="overflow-x-auto">
                 <table className="text-[12px] border-collapse" style={{ color: 'var(--bd-fg)' }}>
                   <thead>
                     <tr>
-                      <th className="border border-bd-border px-2 py-1 bg-bd-overlay-md">combo_id</th>
                       <th className="border border-bd-border px-2 py-1 bg-bd-overlay-md">热爱</th>
                       <th className="border border-bd-border px-2 py-1 bg-bd-overlay-md">优势</th>
+                      <th className="border border-bd-border px-2 py-1 bg-bd-overlay-md">矩阵编码</th>
                     </tr>
                   </thead>
                   <tbody>
                     {comboMatrix.map((m, i) => (
                       <tr key={m?.combo_id || i}>
-                        <td className="border border-bd-border px-2 py-1">{m?.combo_id || ''}</td>
                         <td className="border border-bd-border px-2 py-1">{m?.passion_name || ''}</td>
                         <td className="border border-bd-border px-2 py-1">{m?.strength_name || ''}</td>
+                        <td className="border border-bd-border px-2 py-1 font-mono text-bd-subtle">{m?.combo_id || ''}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -226,6 +229,9 @@ function StepBlock({
             <div>
               <p className="text-[12px] font-medium mb-1" style={{ color: 'var(--bd-fg)' }}>
                 组合讨论结论
+                <span className="ml-1.5 text-[10px] text-bd-subtle font-normal">
+                  （key 为矩阵编码，形如 00/12/24；可在上方「组合矩阵」对照热爱×优势）
+                </span>
               </p>
               <pre className="text-[11px] whitespace-pre-wrap bg-bd-overlay-md rounded-lg p-2 border border-bd-border">
                 {JSON.stringify(comboConclusions, null, 2)}
@@ -282,12 +288,16 @@ function ComboGroupedDialogue({
     groups[cid].push(m);
   }
 
-  // combo_id -> 标题（热爱×优势）
+  // combo_id -> 主标题（热爱 × 优势）。
+  // 注意：combo_id 形如 "00".."24" 是「热爱索引+优势索引」的两位编码（不是行号 1..15），
+  // 对用户不直观，所以主标题只显示热爱×优势；combo_id 仅作小字技术性后缀展示，便于调试。
   const titleMap: Record<string, string> = {};
+  const cidSuffixMap: Record<string, string> = {};
   for (const cm of comboMatrix || []) {
     if (cm?.combo_id) {
       const tag = cm.is_non_matching ? '（标记为不匹配）' : '';
-      titleMap[cm.combo_id] = `组合 ${cm.combo_id}：${cm.passion_name || '?'} × ${cm.strength_name || '?'}${tag}`;
+      titleMap[cm.combo_id] = `${cm.passion_name || '?'} × ${cm.strength_name || '?'}${tag}`;
+      cidSuffixMap[cm.combo_id] = cm.combo_id;
     }
   }
 
@@ -310,7 +320,10 @@ function ComboGroupedDialogue({
         const groupMsgs = groups[cid] || [];
         if (groupMsgs.length === 0) return null;
         const isGeneral = cid === '__general';
-        const title = isGeneral ? 'Step 3 全表讨论（discussion）' : (titleMap[cid] || `组合 ${cid}`);
+        const title = isGeneral
+          ? 'Step 3 全表讨论（discussion）'
+          : (titleMap[cid] || `（矩阵编码 ${cid}，对照上方「组合矩阵」查看热爱×优势）`);
+        const cidSuffix = !isGeneral ? (cidSuffixMap[cid] || cid) : '';
         const conc = !isGeneral && comboConclusions ? comboConclusions[cid] : null;
         const concState = conc?.state;
         const concText = conc?.text;
@@ -318,6 +331,14 @@ function ComboGroupedDialogue({
           <div key={cid} className="rounded-lg border border-bd-border bg-bd-overlay-md/50 p-2.5">
             <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-bd-border">
               <span className="text-[12px] font-medium" style={{ color: 'var(--bd-fg)' }}>{title}</span>
+              {!isGeneral && (
+                <span
+                  className="text-[10px] text-bd-subtle font-mono opacity-60"
+                  title={`combo_id（热爱索引${cidSuffix[0] ?? '?'} × 优势索引${cidSuffix[1] ?? '?'}，非行号）`}
+                >
+                  #{cidSuffix}
+                </span>
+              )}
               <span className="text-[10px] text-bd-subtle">{groupMsgs.length} 条</span>
               {concState && (
                 <span className={`text-[10px] px-1.5 py-0.5 rounded ${concState === 'confirmed' ? 'bg-emerald-100 text-emerald-700' : concState === 'skipped' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>

@@ -159,6 +159,7 @@ from app.utils.rumination_combo_matrix import (
     build_combo_matrix,
     build_combo_matrix_meta,
     classify_combo_conclusions,
+    combo_id_to_row_id,
     count_completed_combos,
     get_combo_by_id,
     get_next_combo_by_order,
@@ -3408,6 +3409,9 @@ async def rumination_combo_matrix_submit(
                     conclusions[cid] = {"text": "", "state": "skipped"}
 
         # 构建 3b 表格（只含 confirmed 且有文字的组合）
+        # 关键：表行的 id 必须翻译回 gen_table 行号体系（1 + pi*5 + si），与
+        # snapshot[1]/[2] 同源；不能直接用 combo_id（"pi"+"si" 双位编码，如 "20"/"23"），
+        # 否则会让后续 snapshot/filter_table/neg_gate/前端的行 id 与原表错位。
         table_rows = []
         for item in matrix:
             cid = item["combo_id"]
@@ -3415,7 +3419,7 @@ async def rumination_combo_matrix_submit(
             if entry.get("state") == "confirmed" and str(entry.get("text") or "").strip():
                 table_rows.append(
                     {
-                        "id": cid,
+                        "id": combo_id_to_row_id(item),
                         "热爱": str(item.get("passion_name") or ""),
                         "优势": str(item.get("strength_name") or ""),
                         "用户确认的假设": str(entry["text"]).strip(),

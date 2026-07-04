@@ -50,6 +50,34 @@ def get_combo_by_id(
     return None
 
 
+def combo_id_to_row_id(item: Dict[str, Any], strengths_count: int = 5) -> str:
+    """把 combo_id 反推为 gen_table 体系的行 id（字符串）。
+
+    combo_id 形如 "pi+si"（两位字符串，热爱优先遍历，外层 passion、内层 strength），
+    与 gen_table 的行号体系同源：行号 = 1 + pi * strengths_count + si。
+
+    strengths_count 默认 5（gen_table 用 strengths[:5]）。combo 矩阵同样取
+    strengths[:5]，故默认值与 gen_table / matrix 两侧均一致。
+
+    若 item 缺失 passion_idx/strength_idx（理论上不会发生），回退按 combo_id 字符串
+    解析，仍失败则返回 combo_id 原值（绝不抛异常，避免阻塞流程）。
+    """
+    cid = str(item.get("combo_id") or "")
+    pi = item.get("passion_idx")
+    si = item.get("strength_idx")
+    try:
+        if pi is None or si is None:
+            # combo_id 长度 >= 2 时取首字符为 pi、次字符为 si
+            if len(cid) >= 2:
+                pi, si = int(cid[0]), int(cid[1])
+            else:
+                return cid
+        n = strengths_count if strengths_count > 0 else 5
+        return str(1 + int(pi) * n + int(si))
+    except (TypeError, ValueError):
+        return cid
+
+
 def get_passion_strength_names(
     matrix: List[Dict[str, Any]], combo_id: str
 ) -> Tuple[str, str]:
