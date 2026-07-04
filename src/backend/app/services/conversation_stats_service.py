@@ -73,6 +73,9 @@ def _parse_timestamp(ts: Optional[str]) -> Optional[datetime]:
 
 def compute_turn_stats_from_messages(
     messages: List[Dict[str, Any]],
+    *,
+    max_seconds: float = ABNORMAL_TURN_THRESHOLD_SECONDS,
+    min_seconds: float = 0.0,
 ) -> Dict[str, Any]:
     """
     从消息列表计算每轮时长统计（核心公共函数，在线/离线共用）。
@@ -80,6 +83,9 @@ def compute_turn_stats_from_messages(
     Args:
         messages: 消息列表，每条含 role / created_at(或 timestamp) / content。
                   消息顺序应按时间先后排列。
+        max_seconds: 单轮时长上限（秒），超过视为异常并跳过。
+                     默认 ABNORMAL_TURN_THRESHOLD_SECONDS（2 小时），向后兼容。
+        min_seconds: 单轮时长下限（秒），低于此值视为误触/秒回并跳过。默认 0 不过滤。
 
     Returns:
         统计字典：
@@ -87,7 +93,7 @@ def compute_turn_stats_from_messages(
         - total_seconds: 计入的总时长（秒）
         - avg_seconds: 平均每轮时长（秒）
         - skipped_no_ts: 因缺时间戳跳过的轮数
-        - skipped_long_turns: 因时长异常(>2h)跳过的轮数
+        - skipped_long_turns: 因时长异常(>max_seconds 或 <min_seconds 或负)跳过的轮数
         - total_turns_seen: 实际识别到的 user 消息总数（含跳过的）
     """
     # 按 created_at 或 timestamp 字段取时间戳
@@ -150,10 +156,20 @@ def compute_turn_stats_from_messages(
             duration = (end_dt - start_dt).total_seconds()
 
         # 异常时长过滤
-        if duration > ABNORMAL_TURN_THRESHOLD_SECONDS:
+        if duration > max_seconds:
             skipped_long_turns += 1
             logger.warning(
-                "单轮时长异常(>2h)，跳过: idx=%s duration=%.0f秒", idx, duration
+                "单轮时长超上限(>%.0f秒)，跳过: idx=%s duration=%.0f秒",
+                max_seconds, idx, duration,
+            )
+            continue
+
+        # 下限过滤（误触/秒回）
+        if min_seconds > 0 and duration < min_seconds:
+            skipped_long_turns += 1
+            logger.warning(
+                "单轮时长低于下限(<%.0f秒)，跳过: idx=%s duration=%.0f秒",
+                min_seconds, idx, duration,
             )
             continue
 

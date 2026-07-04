@@ -2477,9 +2477,14 @@ async def rumination_table_submit(
                 )
 
         if table_data is not None:
+            now_iso = datetime.now(timezone.utc).isoformat()
             if ent.get("initial") is None:
                 ent["initial"] = deepcopy(table_data)
+                # 首次进入该 step 的时刻（initial 快照写入时刻）
+                ent["initial_at"] = now_iso
             ent["submitted"] = deepcopy(table_data)
+            # 本次提交时刻（每次确认表格都会刷新，统计时取最后一次）
+            ent["submitted_at"] = now_iso
             snapshots[sk] = ent
 
         progress = save_rumination_progress(
@@ -3901,6 +3906,7 @@ async def rumination_get_table(
         ent = snapshots.setdefault(sk, {})
         if ent.get("initial") is None:
             ent["initial"] = deepcopy(rows)
+            ent["initial_at"] = datetime.now(timezone.utc).isoformat()
             snapshots[sk] = ent
         prog = _persist(rows, snapshots)
         payload = _table_widget_payload(
@@ -3919,6 +3925,7 @@ async def rumination_get_table(
         ent = snapshots.setdefault(sk, {})
         if ent.get("initial") is None:
             ent["initial"] = deepcopy(rows)
+            ent["initial_at"] = datetime.now(timezone.utc).isoformat()
             snapshots[sk] = ent
         prog = _persist(rows, snapshots)
         payload = _table_widget_payload(
@@ -4035,6 +4042,7 @@ async def rumination_get_table(
     ent = snapshots.setdefault(sk, {})
     if ent.get("initial") is None:
         ent["initial"] = deepcopy(_rumination_strip_meta_keys(rows) if step == 7 else rows)
+        ent["initial_at"] = datetime.now(timezone.utc).isoformat()
         # step 4 首次生成时快照价值观关键词 + source
         if step == 4:
             snapshots = save_values_snapshot_to_snapshots(

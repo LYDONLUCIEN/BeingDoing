@@ -1,34 +1,59 @@
 #!/usr/bin/env python3
 """
-离线对话每轮平均时长统计脚本（T3 离线版）。
+离线对话每轮平均时长统计脚本（T3 离线版，raw JSON 数据源）。
 
-解析 T1 BatchExportService 导出的 md/txt 文件（按冻结格式规范），
-输出每个 report 的每轮平均时长统计。
+支持两种数据源：
+  1. 目录扫描（默认）：直接扫 data/simple/reports/{report_id}/ 下的
+     record.json + {step}__{session}.json，locked 状态从 record.json 原生读取。
+  2. zip 文件：解析 BatchExportService 导出的 zip 中的 raw/{step}__{session}.json，
+     locked 状态从导出时写入的 report_step_locked 字段读取（需要新版导出）。
+
+【为什么需要 raw JSON 而不是 md】
+BatchExportService 导出的 md 是「纯净版」，故意不含时间戳（**用户**：text 格式），
+无法用于时长统计。raw JSON 里的 messages[].created_at 是完整 ISO 时间戳，是唯一可用的数据源。
 
 用法:
-    python scripts/conversation_stats.py <export_zip_or_dir>
+    # 不传参数：默认扫 data/simple/reports
+    python scripts/conversation_stats.py [选项]
 
-参数:
-    export_zip_or_dir: T1 导出的 zip 文件路径，或解压后的目录路径。
+    # 扫指定目录
+    python scripts/conversation_stats.py /path/to/reports [选项]
+
+    # 读 zip 导出包
+    python scripts/conversation_stats.py export.zip [选项]
 
 示例:
-    python scripts/conversation_stats.py reports_batch_export_20260101_120000.zip
-    python scripts/conversation_stats.py /path/to/extracted_reports/
+    # 排除 admin 测试用户（可多次）
+    python scripts/conversation_stats.py --exclude-user admin --exclude-user test01
 
-说明:
-    - 自动识别 md/txt 格式
-    - 输出每个 report 的轮数 / 平均时长 / 总时长 / per_phase 明细
-    - 与在线版 ConversationStatsService 的切轮逻辑保持一致
+    # 按正则排除用户
+    python scripts/conversation_stats.py --exclude-user-regex '^(admin|test.*)'
+
+    # 只统计 5 个 phase 全部 locked（走完全程）的报告
+    python scripts/conversation_stats.py --min-phases-locked 5
+
+    # 调整时长阈值（默认上限 120 分钟，下限 0 秒）
+    python scripts/conversation_stats.py --max-minutes 30 --min-seconds 10
+
+    # 调试：包含未 locked 的 phase + 列出被过滤的明细
+    python scripts/conversation_stats.py --include-unlocked --show-skipped
+
+过滤口径（默认）：
+    - 只统计 locked=true 的 phase（用户提交确认过的）
+    - 无时间戳的报告整体放弃
+    - 单轮时长 > 120 分钟视为异常跳过
 """
 
 from __future__ import annotations
 
-import os
+import argparse
+import json
 import re
 import sys
 import zipfile
+from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # 把 src/backend 加入 path 以复用 service 层的公共函数
 _THIS_DIR = Path(__file__).resolve().parent
@@ -44,217 +69,395 @@ from app.services.conversation_stats_service import (  # noqa: E402
 )
 from app.utils.report_registry import STEP_IDS  # noqa: E402
 
-# ── 正则：解析 T1 冻结格式 ─────────────────────────────────────
 
-# 文件头标题行
-_RE_TITLE_MD = re.compile(r"^# 寻录探索报告 - (.+)$")
-_RE_TITLE_TXT = re.compile(r"^寻录探索报告 - (.+)$")
+# ── 文件名/字段解析 ──────────────────────────────────────────────
 
-# 元信息行
-_RE_META = re.compile(r"^([^:]+): (.*)$")
-
-# Phase 章节标题（md: ## 1. 价值观（values） / txt: 1. 价值观（values））
-_RE_PHASE_MD = re.compile(r"^## (\d+)\. (.+)（(\w+)）\s*$")
-_RE_PHASE_TXT = re.compile(r"^(\d+)\. (.+)（(\w+)）\s*$")
-
-# 消息行（md: **[角色]** 时间戳 / txt: [角色] 时间戳）
-_RE_MSG_MD = re.compile(r"^\*\*\[(.+?)\]\*\*\s*(.*)$")
-_RE_MSG_TXT = re.compile(r"^\[(.+?)\]\s*(.*)$")
-
-# 角色中文 -> 英文映射（与 batch_export 反向）
-_ROLE_CN_TO_EN = {
-    "用户": "user",
-    "助手": "assistant",
-    "系统": "system",
-    "工具": "tool",
-}
+# raw 文件名格式：raw/{step_id}__{session_id}.json
+_RE_RAW_NAME = re.compile(r"^raw/([^_]+(?:_[^_]+)*?)__(.+)\.json$")
+# 兜底：从 category 字段反解（category = '{step_id}__{session_id}'）
+_RE_CATEGORY = re.compile(r"^(.+?)__(.+)$")
 
 
-def _detect_format(filename: str) -> str:
-    """根据扩展名检测格式（md 或 txt）。"""
-    if filename.endswith(".md"):
-        return "md"
-    return "txt"
+def _parse_step_from_filename(filename: str) -> Optional[str]:
+    """从 raw/{step}__{session}.json 路径反解 step_id。"""
+    m = _RE_RAW_NAME.match(filename.replace("\\", "/"))
+    if m:
+        candidate = m.group(1)
+        if candidate in STEP_IDS:
+            return candidate
+    return None
 
 
-def parse_export_file(
-    content: str, filename: str
-) -> Tuple[str, Dict[str, str], List[Dict]]:
+def _parse_step_from_category(category: str) -> Optional[str]:
+    """从 category 字段反解 step_id。"""
+    if not category:
+        return None
+    m = _RE_CATEGORY.match(category)
+    if m:
+        candidate = m.group(1)
+        if candidate in STEP_IDS:
+            return candidate
+    # 直接匹配
+    if category in STEP_IDS:
+        return category
+    return None
+
+
+def parse_raw_session(data: Dict[str, Any], filename: str) -> Optional[Dict[str, Any]]:
     """
-    解析单个 T1 导出文件，提取 report_id、元信息、phase+消息。
+    解析单个 raw/{step}__{session}.json，返回结构化数据。
 
     Args:
-        content: 文件文本内容
-        filename: 文件名（用于检测格式）
+        data: json.loads 后的字典
+        filename: zip 内路径（用于兜底反解 step_id）
 
     Returns:
-        (report_id, meta_dict, phases)
-        其中 phases = [{"phase_id": str, "phase_name": str, "messages": [...]}, ...]
+        结构化字典；无法识别 step_id 返回 None。
     """
-    fmt = _detect_format(filename)
-    lines = content.split("\n")
+    category = data.get("category") or ""
+    step_id = (
+        _parse_step_from_category(category)
+        or _parse_step_from_filename(filename)
+    )
+    if step_id is None:
+        return None
 
-    report_id = ""
-    meta: Dict[str, str] = {}
-    phases: List[Dict] = []
+    report_id = data.get("report_id") or ""
+    if not report_id:
+        # filename 兜底：raw/{step}__{session}.json 里没 report_id 就只能跳过
+        return None
 
-    i = 0
-    # 1. 解析文件头标题
-    while i < len(lines):
-        line = lines[i].strip()
-        if not line:
-            i += 1
-            continue
-        m = _RE_TITLE_MD.match(line) if fmt == "md" else _RE_TITLE_TXT.match(line)
-        if m:
-            report_id = m.group(1).strip()
-            i += 1
-            break
-        # 如果不是标题行，继续扫
-        i += 1
+    return {
+        "report_id": report_id,
+        "step_id": step_id,
+        "session_id": data.get("session_id") or "",
+        "user_id": data.get("report_user_id") or "",
+        "activation_code": data.get("report_activation_code") or "",
+        "locked": bool(data.get("report_step_locked")),
+        "is_selected": bool(data.get("report_step_is_selected")),
+        "messages": data.get("messages") or [],
+    }
 
-    # 2. 跳过 = 分隔线，解析元信息块
-    while i < len(lines):
-        line = lines[i].strip()
-        if not line:
-            i += 1
-            continue
-        if set(line) == {"="}:
-            # = 分隔线，继续
-            i += 1
-            continue
-        if set(line) == {"-"}:
-            # - 分隔线，元信息块结束
-            i += 1
-            break
-        m = _RE_META.match(line)
-        if m:
-            key = m.group(1).strip()
-            val = m.group(2).strip()
-            meta[key] = val
-        i += 1
 
-    # 3. 解析 phase 章节
-    while i < len(lines):
-        line = lines[i].strip() if i < len(lines) else ""
-        if not line:
-            i += 1
-            continue
+# ── zip 读取 + 按 report 聚合 ────────────────────────────────────
 
-        # 检测 phase 标题
-        phase_match = None
-        if fmt == "md":
-            phase_match = _RE_PHASE_MD.match(line)
-        else:
-            phase_match = _RE_PHASE_TXT.match(line)
 
-        if not phase_match:
-            i += 1
-            continue
+def _iter_raw_files_from_zip(zip_path: str) -> List[Tuple[str, Dict[str, Any]]]:
+    """
+    从 zip 中读取所有 raw/*.json 文件（排除 rumination_progress.json）。
 
-        # seq = phase_match.group(1)
-        phase_name = phase_match.group(2)
-        phase_id = phase_match.group(3)
-        i += 1
+    Args:
+        zip_path: zip 文件路径
 
-        # txt 格式标题后跟 - 分隔线
-        if fmt == "txt" and i < len(lines) and set(lines[i].strip()) == {"-"}:
-            i += 1
-
-        # 跳过空行 + 会话信息块（  - 字段: 值）
-        while i < len(lines):
-            l = lines[i]
-            if l.strip().startswith("  - "):
-                i += 1
+    Returns:
+        [(filename, parsed_dict), ...] 列表
+    """
+    files: List[Tuple[str, Dict[str, Any]]] = []
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        for name in zf.namelist():
+            if name.startswith("__MACOSX"):
                 continue
-            if l.strip() == "":
-                i += 1
+            if not name.startswith("raw/") or not name.endswith(".json"):
                 continue
-            break
-
-        # 解析消息块
-        messages: List[Dict] = []
-        msg_re = _RE_MSG_MD if fmt == "md" else _RE_MSG_TXT
-        while i < len(lines):
-            l = lines[i]
-            stripped = l.strip()
-            if not stripped:
-                i += 1
+            if name.endswith("rumination_progress.json"):
                 continue
-            # 检测是否是新的 phase 标题或文件尾
-            if fmt == "md" and _RE_PHASE_MD.match(stripped):
-                break
-            if fmt == "txt" and _RE_PHASE_TXT.match(stripped):
-                break
+            try:
+                content = zf.read(name).decode("utf-8")
+                data = json.loads(content)
+            except (UnicodeDecodeError, json.JSONDecodeError) as e:
+                print(f"[警告] 解析失败 {name}: {e}", file=sys.stderr)
+                continue
+            if not isinstance(data, dict):
+                continue
+            parsed = parse_raw_session(data, name)
+            if parsed is None:
+                print(f"[跳过] 无法识别 step_id: {name}", file=sys.stderr)
+                continue
+            files.append((name, parsed))
+    return files
 
-            m = msg_re.match(stripped)
-            if m:
-                role_cn = m.group(1).strip()
-                timestamp = m.group(2).strip()
-                role_en = _ROLE_CN_TO_EN.get(role_cn, role_cn.lower())
-                # 下行是正文
-                i += 1
-                content_lines: List[str] = []
-                while i < len(lines) and lines[i].strip():
-                    # 检查是否到了下一条消息（避免吃掉下一条）
-                    next_stripped = lines[i].strip()
-                    if msg_re.match(next_stripped):
-                        break
-                    if fmt == "md" and _RE_PHASE_MD.match(next_stripped):
-                        break
-                    if fmt == "txt" and _RE_PHASE_TXT.match(next_stripped):
-                        break
-                    content_lines.append(lines[i])
-                    i += 1
-                messages.append(
-                    {
-                        "role": role_en,
-                        "created_at": timestamp if timestamp else None,
-                        "content": "\n".join(content_lines).strip(),
-                    }
+
+# ── 目录扫描 ────────────────────────────────────────────────────
+
+# 默认扫描目录（项目内 data/simple/reports）
+_DEFAULT_REPORTS_DIR = _THIS_DIR.parent / "data" / "simple" / "reports"
+
+
+def _load_record_safely(record_path: Path) -> Optional[dict]:
+    """安全读取 record.json，损坏时返回 None 并打印警告。"""
+    try:
+        data = json.loads(record_path.read_text(encoding="utf-8") or "{}")
+    except (OSError, json.JSONDecodeError) as e:
+        print(
+            f"[警告] record.json 解析失败，跳过该 report: {record_path.parent.name}: {e}",
+            file=sys.stderr,
+        )
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data
+
+
+def _load_step_session_safely(sess_path: Path) -> Optional[dict]:
+    """安全读取 {step}__{session}.json，损坏时返回 None。"""
+    try:
+        data = json.loads(sess_path.read_text(encoding="utf-8") or "{}")
+    except (OSError, json.JSONDecodeError) as e:
+        print(
+            f"[警告] step session 文件解析失败，跳过: {sess_path.name}: {e}",
+            file=sys.stderr,
+        )
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data
+
+
+def _load_from_dir(
+    dir_path: str,
+    *,
+    _only_selected: bool = True,
+) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    扫描 report 目录，直接读 record.json + {step}__{session}.json。
+
+    与 _iter_raw_files_from_zip + _group_by_report 返回结构一致：
+        {report_id: [step_data, ...]}
+
+    数据来源说明（vs zip 模式）：
+    - locked 状态：从 record.json 的 steps[sid].locked 原生读取（更可靠）
+    - user_id / activation_code：从 record.json 原生读取
+    - messages：从 {step}__{session}.json 的 messages[] 读取
+
+    Args:
+        dir_path: reports 目录路径（其下应是 {report_id}/ 子目录）
+        _only_selected: 内部保留参数，当前仅支持 True（只读 selected_session_id
+                       对应的文件）；False 预留给未来扩展（读所有会话）。
+
+    Returns:
+        {report_id: [step_data, ...]}
+    """
+    base = Path(dir_path)
+    if not base.is_dir():
+        print(f"错误：目录不存在: {dir_path}", file=sys.stderr)
+        return {}
+
+    reports: Dict[str, List[Dict[str, Any]]] = {}
+    skipped_records = 0
+
+    for d in sorted(base.iterdir()):
+        if not d.is_dir() or d.name.startswith("."):
+            continue
+        record_path = d / "record.json"
+        if not record_path.is_file():
+            continue
+
+        record = _load_record_safely(record_path)
+        if record is None:
+            skipped_records += 1
+            continue
+
+        report_id = record.get("report_id") or d.name
+        user_id = record.get("user_id") or ""
+        activation_code = record.get("activation_code") or ""
+        steps_meta = record.get("steps") or {}
+
+        step_list: List[Dict[str, Any]] = []
+        for step_id in STEP_IDS:
+            step_meta = steps_meta.get(step_id) or {}
+            selected_sess = step_meta.get("selected_session_id")
+            if not selected_sess:
+                # 无 selected session -> 该 phase 未完成，跳过
+                continue
+
+            sess_path = d / f"{step_id}__{selected_sess}.json"
+            if not sess_path.is_file():
+                print(
+                    f"[警告] step session 文件缺失: {sess_path.name} (report={report_id})",
+                    file=sys.stderr,
                 )
-            else:
-                i += 1
+                continue
 
-        phases.append(
-            {
-                "phase_id": phase_id,
-                "phase_name": phase_name,
-                "messages": messages,
+            sess_data = _load_step_session_safely(sess_path)
+            if sess_data is None:
+                continue
+
+            step_entry: Dict[str, Any] = {
+                "report_id": report_id,
+                "step_id": step_id,
+                "session_id": selected_sess,
+                "user_id": user_id,
+                "activation_code": activation_code,
+                "locked": bool(step_meta.get("locked")),
+                "is_selected": True,
+                "messages": sess_data.get("messages") or [],
             }
+
+            # rumination: 额外读 rumination_progress.json 的 step 快照（含时间戳）
+            if step_id == "rumination":
+                prog_path = d / "rumination_progress.json"
+                if prog_path.is_file():
+                    prog = _load_step_session_safely(prog_path)
+                    if prog and isinstance(prog.get("filter_step_snapshots"), dict):
+                        step_entry["step_snapshots"] = prog["filter_step_snapshots"]
+
+            step_list.append(step_entry)
+
+        if step_list:
+            reports[report_id] = step_list
+
+    if skipped_records > 0:
+        print(
+            f"[警告] 共 {skipped_records} 份 report 的 record.json 损坏，已跳过",
+            file=sys.stderr,
         )
 
-    return report_id, meta, phases
+    return reports
 
 
-def compute_report_stats_from_parsed(
+def _group_by_report(
+    raw_files: List[Tuple[str, Dict[str, Any]]],
+) -> Dict[str, List[Dict[str, Any]]]:
+    """按 report_id 聚合 step 文件。返回 {report_id: [step_data, ...]}。"""
+    reports: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for _, parsed in raw_files:
+        reports[parsed["report_id"]].append(parsed)
+    return reports
+
+
+# ── 过滤与统计 ───────────────────────────────────────────────────
+
+
+def _report_user_id(steps: List[Dict[str, Any]]) -> str:
+    """从 step 列表里取 user_id（各 step 应一致，取第一个非空）。"""
+    for s in steps:
+        uid = s.get("user_id") or ""
+        if uid:
+            return uid
+    return ""
+
+
+def _has_any_timestamp(steps: List[Dict[str, Any]]) -> bool:
+    """检查报告是否至少有一条消息带时间戳。"""
+    for s in steps:
+        for m in s.get("messages") or []:
+            if m.get("created_at") or m.get("timestamp"):
+                return True
+    return False
+
+
+def _filter_report_level(
+    _report_id: str,
+    steps: List[Dict[str, Any]],
+    args: argparse.Namespace,
+) -> Tuple[bool, str]:
+    """
+    报告级过滤。返回 (是否通过, 被过滤原因)。
+
+    过滤条件：
+    - 无任何时间戳 → 放弃（用户要求）
+    - user_id 命中 --exclude-user 或 --exclude-user-regex → 排除
+    - locked phase 数 < --min-phases-locked → 排除
+    """
+    # 无时间戳
+    if not _has_any_timestamp(steps):
+        return False, "无时间戳，放弃"
+
+    uid = _report_user_id(steps)
+
+    # 精确排除
+    if args.exclude_user and uid in args.exclude_user:
+        return False, f"用户 {uid} 命中 --exclude-user"
+
+    # 正则排除
+    if args.exclude_user_regex:
+        if re.search(args.exclude_user_regex, uid):
+            return False, f"用户 {uid} 命中 --exclude-user-regex"
+
+    # 最少 locked phase 数
+    if args.min_phases_locked > 0:
+        locked_count = sum(1 for s in steps if s.get("locked"))
+        if locked_count < args.min_phases_locked:
+            return False, f"locked phase 数 {locked_count} < {args.min_phases_locked}"
+
+    return True, ""
+
+
+def _filter_phase_level(
+    step: Dict[str, Any],
+    args: argparse.Namespace,
+) -> Tuple[bool, str]:
+    """
+    Phase 级过滤。返回 (是否通过, 被过滤原因)。
+
+    默认（--require-locked）：只统计 locked=true 的 phase。
+    --include-unlocked 时放开此限制。
+    """
+    if args.include_unlocked:
+        return True, ""
+    # rumination 是终点阶段，流程上不 lock，只要有 selected session 就统计
+    if step.get("step_id") == "rumination":
+        if step.get("is_selected") or step.get("session_id"):
+            return True, ""
+        return False, "rumination 未 selected"
+    if not step.get("locked"):
+        return False, "未 locked"
+    return True, ""
+
+
+def _compute_report_stats(
     report_id: str,
-    meta: Dict[str, str],
-    phases: List[Dict],
-) -> Dict:
+    steps: List[Dict[str, Any]],
+    args: argparse.Namespace,
+) -> Dict[str, Any]:
     """
-    对解析后的单个 report 数据计算统计（复用 service 层公共函数）。
-
-    Args:
-        report_id: 报告 ID
-        meta: 元信息字典
-        phases: phase 列表
-
-    Returns:
-        统计结果字典（结构与 ConversationStatsService 一致）
+    对单份 report 计算统计。返回结构：
+    {
+        "report_id": str,
+        "user_id": str,
+        "per_phase": [...],
+        "phase_filtered_out": [...],  # 被过滤掉的 phase（用于 --show-skipped）
+        "aggregated": {...},          # _aggregate_phase_stats 结果
+        "reminder_text": str,
+    }
     """
-    per_phase: List[Dict] = []
-    for phase in phases:
-        phase_id = phase.get("phase_id") or ""
-        phase_name = phase.get("phase_name") or PHASE_LABEL_CN.get(phase_id, phase_id)
-        messages = phase.get("messages") or []
-        stats = compute_turn_stats_from_messages(messages)
+    user_id = _report_user_id(steps)
+    max_seconds = args.max_minutes * 60.0
+    min_seconds = float(args.min_seconds)
+
+    per_phase: List[Dict[str, Any]] = []
+    phase_filtered_out: List[Dict[str, str]] = []
+
+    # 按 STEP_IDS 顺序排序
+    steps_sorted = sorted(
+        steps,
+        key=lambda s: STEP_IDS.index(s["step_id"]) if s["step_id"] in STEP_IDS else 99,
+    )
+
+    for step in steps_sorted:
+        phase_id = step["step_id"]
+        phase_name = PHASE_LABEL_CN.get(phase_id, phase_id)
+
+        passed, reason = _filter_phase_level(step, args)
+        if not passed:
+            phase_filtered_out.append(
+                {"phase_id": phase_id, "phase_name": phase_name, "reason": reason}
+            )
+            continue
+
+        messages = step.get("messages") or []
+        stats = compute_turn_stats_from_messages(
+            messages,
+            max_seconds=max_seconds,
+            min_seconds=min_seconds,
+        )
         avg_minutes = stats["avg_seconds"] / 60.0
         total_minutes = stats["total_seconds"] / 60.0
         per_phase.append(
             {
                 "phase_id": phase_id,
                 "phase_name": phase_name,
+                "locked": step.get("locked", False),
                 "turns": stats["turns"],
                 "avg_seconds": stats["avg_seconds"],
                 "total_seconds": stats["total_seconds"],
@@ -269,97 +472,511 @@ def compute_report_stats_from_parsed(
 
     aggregated = _aggregate_phase_stats(per_phase)
     aggregated["per_phase"] = per_phase
+    label = user_id or report_id[:8]
     aggregated["report_id"] = report_id
-    label = meta.get("用户名") or meta.get("用户ID") or report_id[:8]
+    aggregated["user_id"] = user_id
+    aggregated["phase_filtered_out"] = phase_filtered_out
     aggregated["reminder_text"] = _build_reminder_text(
         aggregated["total_turns"],
         aggregated["avg_minutes"],
         aggregated["total_minutes"],
-        label if label != "未提供" else report_id[:8],
+        label,
     )
+
+    # rumination: 收集子 step 时长（基于 step_snapshots 的 initial_at/submitted_at）
+    aggregated["rumination_step_durations"] = []
+    for step in steps_sorted:
+        if step["step_id"] == "rumination" and step.get("step_snapshots"):
+            aggregated["rumination_step_durations"] = _collect_rumination_step_durations(step)
+            break
+
     return aggregated
 
 
-def _iter_export_files(path: str) -> List[Tuple[str, str]]:
-    """
-    从 zip 或目录中遍历导出文件。
+# ── 输出格式化 ───────────────────────────────────────────────────
 
-    Args:
-        path: zip 文件或目录路径
+
+def _print_detail_report(
+    stats: Dict[str, Any],
+    args: argparse.Namespace,
+) -> None:
+    """打印单份报告的明细（仅 --show-detail 时输出）。"""
+    print(f"{'=' * 60}")
+    print(f"报告: {stats['report_id']}")
+    if stats.get("user_id"):
+        print(f"用户ID: {stats['user_id']}")
+    print(f"{'─' * 40}")
+    print(f"  总轮数: {stats['total_turns']}")
+    print(f"  平均每轮: {stats['avg_minutes']:.1f} 分钟")
+    print(f"  总时长: {stats['total_minutes']:.0f} 分钟")
+    if stats["skipped_no_ts"] > 0:
+        print(f"  跳过(缺时间戳): {stats['skipped_no_ts']} 轮")
+    if stats["skipped_long_turns"] > 0:
+        print(
+            f"  跳过(超阈值 >{args.max_minutes:.0f}分 / "
+            f"<{args.min_seconds:.0f}秒): {stats['skipped_long_turns']} 轮"
+        )
+
+    if stats["per_phase"]:
+        print(f"  {'─' * 36}")
+        print(f"  各阶段明细:")
+        for ph in stats["per_phase"]:
+            lock_mark = "✓" if ph.get("locked") else " "
+            print(
+                f"    [{lock_mark}] {ph['phase_name']}({ph['phase_id']}): "
+                f"{ph['turns']}轮 / 均{ph['avg_minutes']:.1f}分 / 总{ph['total_minutes']:.0f}分"
+            )
+
+    rum_steps = stats.get("rumination_step_durations") or []
+    if rum_steps:
+        print(f"  {'─' * 36}")
+        print(f"  rumination 子 step 时长:")
+        for s in rum_steps:
+            print(f"    step {s['step']}: {s['duration_minutes']:.1f} 分")
+
+    if args.show_skipped and stats.get("phase_filtered_out"):
+        print(f"  {'─' * 36}")
+        print(f"  [被过滤 phase]")
+        for pf in stats["phase_filtered_out"]:
+            print(f"    - {pf['phase_name']}({pf['phase_id']}): {pf['reason']}")
+
+    print()
+
+
+def _parse_iso(ts: Optional[str]) -> Optional[Any]:
+    """解析 ISO 时间戳为 datetime（容忍 Z 后缀）。失败返回 None。"""
+    if not ts or not isinstance(ts, str):
+        return None
+    raw = ts.strip()
+    if not raw:
+        return None
+    try:
+        normalized = raw.replace("Z", "+00:00") if raw.endswith("Z") else raw
+        from datetime import datetime, timezone
+        dt = datetime.fromisoformat(normalized)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (ValueError, TypeError):
+        return None
+
+
+def _collect_rumination_step_durations(
+    step_data: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """
+    从 rumination step 的 step_snapshots 计算每个子 step 的时长。
+
+    时长 = submitted_at - initial_at（首次进入 → 最后提交）。
+
+    旧数据兜底（initial_at 缺失时）：
+        用「上一个 step 的 submitted_at」作为本 step 的 initial_at。
+        适用于后端补 initial_at 字段之前产生的旧 report。
+        标记 fallback=True 以便区分数据来源。
+
+    无 submitted_at 的 step：无法算时长，跳过。
 
     Returns:
-        [(filename, content), ...] 列表
+        [{"step": "1", "duration_seconds": float, "initial_at": str,
+          "submitted_at": str, "fallback": bool}, ...]
     """
-    p = Path(path)
-    files: List[Tuple[str, str]] = []
+    snapshots = step_data.get("step_snapshots") or {}
+    # 先按 step 号排序遍历，便于「用上一个 submitted_at 兜底」
+    ordered_keys = sorted(
+        snapshots.keys(),
+        key=lambda x: (int(x) if str(x).isdigit() else 99),
+    )
 
-    if p.is_file() and p.suffix == ".zip":
-        with zipfile.ZipFile(p, "r") as zf:
-            for name in zf.namelist():
-                if name.endswith((".md", ".txt")) and not name.startswith("__MACOSX"):
-                    content = zf.read(name).decode("utf-8")
-                    files.append((os.path.basename(name), content))
-    elif p.is_dir():
-        for fp in sorted(p.iterdir()):
-            if fp.is_file() and fp.suffix in (".md", ".txt"):
-                content = fp.read_text(encoding="utf-8")
-                files.append((fp.name, content))
-    else:
-        print(f"错误：路径不存在或格式不支持: {path}", file=sys.stderr)
-        sys.exit(1)
+    results: List[Dict[str, Any]] = []
+    prev_submitted_at: Optional[str] = None  # 上一个 step 的 submitted_at，用于兜底
 
-    return files
+    for sk in ordered_keys:
+        ent = snapshots[sk]
+        if not isinstance(ent, dict):
+            continue
+        submitted_at = ent.get("submitted_at")
+        if not submitted_at:
+            # 没有 submitted_at 的 step 无法算时长，但它的 initial/submitted 都没，
+            # 也不能用作下一个 step 的兜底锚点 -> 跳过并保持 prev 不变
+            continue
+
+        initial_at = ent.get("initial_at")
+        fallback = False
+        if not initial_at:
+            # 兜底：用上一个 step 的 submitted_at
+            if prev_submitted_at:
+                initial_at = prev_submitted_at
+                fallback = True
+            else:
+                # 第一个 step 且无 initial_at -> 无法算时长，仅记录 submitted_at
+                # 供下一个 step 兜底用
+                prev_submitted_at = submitted_at
+                continue
+
+        dt_ini = _parse_iso(initial_at)
+        dt_sub = _parse_iso(submitted_at)
+        if dt_ini is None or dt_sub is None:
+            prev_submitted_at = submitted_at
+            continue
+
+        duration = (dt_sub - dt_ini).total_seconds()
+        if duration >= 0:
+            results.append(
+                {
+                    "step": str(sk),
+                    "duration_seconds": duration,
+                    "duration_minutes": round(duration / 60.0, 1),
+                    "initial_at": initial_at,
+                    "submitted_at": submitted_at,
+                    "fallback": fallback,
+                }
+            )
+        # 更新 prev_submitted_at（无论本 step 是否产出结果）
+        prev_submitted_at = submitted_at
+
+    return results
+
+
+def _aggregate_phases_across_reports(
+    all_stats: List[Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    """
+    把多份 report 的 per_phase 跨 report 聚合，按 phase_id 分组。
+
+    每个 phase 输出：
+        {
+            "phase_id": str,
+            "phase_name": str,
+            "report_count": int,         # 贡献了这个 phase 的 report 数
+            "turns_list": [int, ...],    # 各 report 的轮数
+            "minutes_list": [float, ...], # 各 report 的总时长（分钟）
+            "turns_avg/min/max": float,
+            "minutes_avg/min/max": float,
+        }
+
+    Returns:
+        {phase_id: aggregated_dict}
+    """
+    grouped: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for stat in all_stats:
+        for ph in stat.get("per_phase", []):
+            grouped[ph["phase_id"]].append(ph)
+
+    aggregated: Dict[str, Dict[str, Any]] = {}
+    for phase_id in STEP_IDS:
+        phase_list = grouped.get(phase_id) or []
+        if not phase_list:
+            continue
+        turns_list = [p["turns"] for p in phase_list]
+        minutes_list = [p["total_minutes"] for p in phase_list]
+        aggregated[phase_id] = {
+            "phase_id": phase_id,
+            "phase_name": PHASE_LABEL_CN.get(phase_id, phase_id),
+            "report_count": len(phase_list),
+            "turns_list": turns_list,
+            "minutes_list": minutes_list,
+            "turns_avg": sum(turns_list) / len(turns_list) if turns_list else 0.0,
+            "turns_min": min(turns_list) if turns_list else 0,
+            "turns_max": max(turns_list) if turns_list else 0,
+            "minutes_avg": sum(minutes_list) / len(minutes_list) if minutes_list else 0.0,
+            "minutes_min": min(minutes_list) if minutes_list else 0.0,
+            "minutes_max": max(minutes_list) if minutes_list else 0.0,
+        }
+    return aggregated
+
+
+def _aggregate_rumination_steps_across_reports(
+    all_stats: List[Dict[str, Any]],
+) -> Dict[str, List[float]]:
+    """
+    把多份 report 的 rumination 子 step 时长跨 report 聚合。
+
+    Returns:
+        {sub_step_id: [duration_seconds, ...]}
+    """
+    grouped: Dict[str, List[float]] = defaultdict(list)
+    for stat in all_stats:
+        rum_steps = stat.get("rumination_step_durations") or []
+        for s in rum_steps:
+            grouped[s["step"]].append(s["duration_seconds"])
+    return grouped
+
+
+# ── 输出：聚合报表 ──────────────────────────────────────────────
+
+
+def _print_aggregate_report(
+    all_stats: List[Dict[str, Any]],
+    args: argparse.Namespace,
+    filtered_reports: List[Tuple[str, str]],
+    total_reports: int,
+) -> None:
+    """打印聚合报表（不输出逐 report 明细）。"""
+    print(f"{'=' * 70}")
+    print("对话统计聚合报表")
+    print(f"{'=' * 70}")
+    print(
+        f"  共扫描 {total_reports} 份报告，统计 {len(all_stats)} 份"
+        f"（过滤 {len(filtered_reports)} 份）"
+    )
+    if filtered_reports:
+        reason_count: Dict[str, int] = defaultdict(int)
+        for _rid, reason in filtered_reports:
+            reason_count[reason] += 1
+        print(f"  报告级过滤明细:")
+        for reason, cnt in sorted(reason_count.items(), key=lambda x: -x[1]):
+            print(f"    - {reason}: {cnt} 份")
+    print()
+
+    if not all_stats:
+        print("  无可统计数据。")
+        return
+
+    # ── 各 phase 聚合表 ──────────────────────────────────────────
+    phase_agg = _aggregate_phases_across_reports(all_stats)
+
+    print(f"{'─' * 70}")
+    print("【各阶段聚合】（每份 report 的轮数 / 总时长，跨 report 聚合）")
+    print(f"{'─' * 70}")
+    header = (
+        f"  {'阶段':<14} "
+        f"{'报告数':>6} "
+        f"{'轮数(平均)':>12} "
+        f"{'轮数(最小)':>12} "
+        f"{'轮数(最大)':>12} "
+        f"{'时长分(平均)':>14} "
+        f"{'时长分(最小)':>14} "
+        f"{'时长分(最大)':>14}"
+    )
+    print(header)
+    print(f"  {'─' * 66}")
+    for phase_id in STEP_IDS:
+        agg = phase_agg.get(phase_id)
+        if not agg:
+            print(f"  {PHASE_LABEL_CN.get(phase_id, phase_id):<14} "
+                  f"{'-':>6} {'-':>12} {'-':>12} {'-':>12} {'-':>14} {'-':>14} {'-':>14}")
+            continue
+        print(
+            f"  {agg['phase_name']:<14} "
+            f"{agg['report_count']:>6} "
+            f"{agg['turns_avg']:>12.1f} "
+            f"{agg['turns_min']:>12} "
+            f"{agg['turns_max']:>12} "
+            f"{agg['minutes_avg']:>14.1f} "
+            f"{agg['minutes_min']:>14.1f} "
+            f"{agg['minutes_max']:>14.1f}"
+        )
+    print()
+
+    # ── rumination 子 step 时长 ─────────────────────────────────
+    rum_step_agg = _aggregate_rumination_steps_across_reports(all_stats)
+    if rum_step_agg:
+        print(f"{'─' * 70}")
+        print("【rumination 子 step 时长】（基于 initial_at → submitted_at）")
+        print(f"{'─' * 70}")
+        header = (
+            f"  {'子step':>6} "
+            f"{'样本数':>6} "
+            f"{'时长分(平均)':>14} "
+            f"{'时长分(最小)':>14} "
+            f"{'时长分(最大)':>14}"
+        )
+        print(header)
+        print(f"  {'─' * 56}")
+        for sk in sorted(rum_step_agg.keys(), key=lambda x: (int(x) if x.isdigit() else 99)):
+            durations_min = [d / 60.0 for d in rum_step_agg[sk]]
+            if not durations_min:
+                continue
+            print(
+                f"  {sk:>6} "
+                f"{len(durations_min):>6} "
+                f"{sum(durations_min) / len(durations_min):>14.1f} "
+                f"{min(durations_min):>14.1f} "
+                f"{max(durations_min):>14.1f}"
+            )
+        print()
+
+    # ── 全局总计 ────────────────────────────────────────────────
+    total_turns = sum(s["total_turns"] for s in all_stats)
+    total_seconds = sum(s["total_seconds"] for s in all_stats)
+    avg_seconds = (total_seconds / total_turns) if total_turns > 0 else 0.0
+    total_minutes = total_seconds / 60.0
+    avg_minutes = avg_seconds / 60.0
+    print(f"{'─' * 70}")
+    print("【全局总计】")
+    print(
+        f"  总轮数 {total_turns}，"
+        f"平均每轮 {avg_minutes:.1f} 分钟，"
+        f"总时长 {total_minutes:.0f} 分钟"
+    )
+    print()
+
+
+# ── CLI ──────────────────────────────────────────────────────────
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="离线对话每轮平均时长统计（raw JSON 数据源）",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    parser.add_argument(
+        "source",
+        nargs="?",
+        default=None,
+        help=(
+            "数据源：zip 文件路径 / report 目录路径 / 不传则默认扫 "
+            f"{_DEFAULT_REPORTS_DIR.relative_to(_THIS_DIR.parent)}"
+        ),
+    )
+
+    # 报告级过滤
+    g_report = parser.add_argument_group("报告级过滤")
+    g_report.add_argument(
+        "--exclude-user",
+        action="append",
+        default=[],
+        metavar="ID",
+        help="按 user_id 精确排除（可多次）",
+    )
+    g_report.add_argument(
+        "--exclude-user-regex",
+        default=None,
+        metavar="PATTERN",
+        help="按正则排除 user_id",
+    )
+    g_report.add_argument(
+        "--min-phases-locked",
+        type=int,
+        default=0,
+        metavar="N",
+        help="至少 N 个 phase locked 才统计（0=不过滤；5=只看走完全程）",
+    )
+
+    # Phase 级过滤
+    g_phase = parser.add_argument_group("phase 级过滤")
+    g_phase.add_argument(
+        "--include-unlocked",
+        action="store_true",
+        help="包含未 locked 的 phase（默认只统计 locked=true 的）",
+    )
+
+    # 轮次时长过滤
+    g_turn = parser.add_argument_group("轮次时长过滤")
+    g_turn.add_argument(
+        "--max-minutes",
+        type=float,
+        default=120.0,
+        metavar="N",
+        help="单轮时长上限（分钟），默认 120",
+    )
+    g_turn.add_argument(
+        "--min-seconds",
+        type=float,
+        default=0.0,
+        metavar="N",
+        help="单轮时长下限（秒），默认 0 不过滤",
+    )
+
+    # 输出
+    g_out = parser.add_argument_group("输出")
+    g_out.add_argument(
+        "--show-detail",
+        action="store_true",
+        help="输出每份 report 的逐条明细（默认只输出聚合报表）",
+    )
+    g_out.add_argument(
+        "--show-skipped",
+        action="store_true",
+        help="列出被过滤的具体 phase / 报告",
+    )
+
+    return parser
+
+
+def _resolve_source(source: Optional[str]) -> Tuple[str, str]:
+    """
+    解析数据源。返回 (mode, path)。
+
+    mode:
+        - 'zip': 读 zip 文件
+        - 'dir': 扫目录
+    """
+    if source is None:
+        # 不传参数 -> 默认扫 data/simple/reports
+        return ("dir", str(_DEFAULT_REPORTS_DIR))
+
+    p = Path(source)
+    if p.is_file() and source.endswith(".zip"):
+        return ("zip", source)
+    if p.is_dir():
+        return ("dir", source)
+
+    # 既不是 zip 也不是目录，报错
+    raise SystemExit(
+        f"错误：'{source}' 既不是 zip 文件也不是目录。\n"
+        f"用法：python scripts/conversation_stats.py [zip文件 | 目录路径]\n"
+        f"不传参数则默认扫 {_DEFAULT_REPORTS_DIR}"
+    )
 
 
 def main(argv: List[str]) -> int:
     """命令行入口。"""
-    if len(argv) < 2:
-        print(__doc__)
-        return 1
+    parser = _build_parser()
+    args = parser.parse_args(argv[1:])
 
-    export_path = argv[1]
-    files = _iter_export_files(export_path)
-    if not files:
-        print("未找到 .md 或 .txt 导出文件", file=sys.stderr)
-        return 1
+    mode, path = _resolve_source(args.source)
 
-    print(f"共发现 {len(files)} 个导出文件\n")
+    if mode == "zip":
+        try:
+            raw_files = _iter_raw_files_from_zip(path)
+        except zipfile.BadZipFile as e:
+            print(f"错误：zip 文件损坏: {e}", file=sys.stderr)
+            return 1
 
-    for filename, content in files:
-        report_id, meta, phases = parse_export_file(content, filename)
-        if not report_id:
-            print(f"[跳过] {filename}：无法解析 report_id")
+        if not raw_files:
+            print(
+                "错误：zip 中未找到 raw/*.json 文件。"
+                "请确认这是 BatchExportService 导出的 zip，"
+                "且 zip 版本包含 report_step_locked 字段（旧版本需重新导出）。",
+                file=sys.stderr,
+            )
+            return 1
+
+        reports = _group_by_report(raw_files)
+        print(f"[zip 模式] {path}")
+    else:
+        reports = _load_from_dir(path)
+        if not reports:
+            print(
+                f"错误：目录 {path} 下未找到有效的 report。",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"[目录扫描] {path}")
+
+    print(f"共发现 {len(reports)} 份报告\n")
+
+    all_stats: List[Dict[str, Any]] = []
+    filtered_reports: List[Tuple[str, str]] = []
+
+    # 按 report_id 排序保证输出稳定
+    for report_id in sorted(reports.keys()):
+        steps = reports[report_id]
+        passed, reason = _filter_report_level(report_id, steps, args)
+        if not passed:
+            filtered_reports.append((report_id, reason))
+            if args.show_skipped:
+                print(f"[过滤] 报告 {report_id}: {reason}")
             continue
 
-        stats = compute_report_stats_from_parsed(report_id, meta, phases)
+        stats = _compute_report_stats(report_id, steps, args)
+        all_stats.append(stats)
+        if args.show_detail:
+            _print_detail_report(stats, args)
 
-        print(f"{'=' * 60}")
-        print(f"报告: {report_id}")
-        print(f"文件: {filename}")
-        if meta.get("用户ID"):
-            print(f"用户ID: {meta['用户ID']}")
-        if meta.get("用户名") and meta["用户名"] != "未提供":
-            print(f"用户名: {meta['用户名']}")
-        print(f"{'─' * 40}")
-        print(f"  总轮数: {stats['total_turns']}")
-        print(f"  平均每轮: {stats['avg_minutes']:.1f} 分钟")
-        print(f"  总时长: {stats['total_minutes']:.0f} 分钟")
-        if stats["skipped_no_ts"] > 0:
-            print(f"  跳过(缺时间戳): {stats['skipped_no_ts']} 轮")
-        if stats["skipped_long_turns"] > 0:
-            print(f"  跳过(异常>2h): {stats['skipped_long_turns']} 轮")
-        print(f"  提醒: {stats['reminder_text']}")
-
-        if stats["per_phase"]:
-            print(f"  {'─' * 36}")
-            print(f"  各阶段明细:")
-            for ph in stats["per_phase"]:
-                print(
-                    f"    {ph['phase_name']}({ph['phase_id']}): "
-                    f"{ph['turns']}轮 / 均{ph['avg_minutes']:.1f}分 / 总{ph['total_minutes']:.0f}分"
-                )
-        print()
-
+    _print_aggregate_report(all_stats, args, filtered_reports, len(reports))
     return 0
 
 

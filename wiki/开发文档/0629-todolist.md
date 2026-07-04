@@ -360,7 +360,7 @@ POST /sessions/...
   - `src/frontend/lib/api/admin.ts`(+111)— `exportReportsBatch`
 - **接口**:`POST /api/v1/admin/reports/export/batch`,入参 `{report_ids[], format: "md"|"txt"}`,返回 `application/zip`,每 report 一文件。守卫:super_admin(403)、>50 个(400)、空列表(400)、非法 format(400)、不存在 report 跳过、全不存在(404)
 - **冻结的导出格式**(供 T3 参考,写在 batch_export_service.py 顶部):
-  - 文件头:`# 寻录探索报告 - <report_id>` + `=` 分隔线 + 元信息块 + `-` 分隔线
+  - 文件头:`# 寻路探索报告 - <report_id>` + `=` 分隔线 + 元信息块 + `-` 分隔线
   - Phase 章节:`## <序号>. <中文阶段名>（<step_id>）`,映射 values=价值观/strengths=优势/interests=热爱/purpose=使命/rumination=沉淀
   - 消息块:`**[<角色>]** <时间戳>`(md)/ `[<角色>] <时间戳>`(txt)
   - 文件名:`report_<report_id>.<ext>`
