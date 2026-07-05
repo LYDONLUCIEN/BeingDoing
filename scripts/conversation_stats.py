@@ -383,41 +383,94 @@ def _filter_report_level(
     return True, ""
 
 
-def _compute_phase_duration(messages: List[Dict[str, Any]]) -> Optional[float]:
+def _compute_phase_duration(
+    messages: List[Dict[str, Any]],
+    *,
+    gap_threshold_seconds: float = 30 * 60,
+) -> Dict[str, Any]:
     """
-    计算单个 phase 的整体耗时（秒）。
+    计算单个 phase 的「真实投入耗时」（秒）。
 
-    口径：messages[0].created_at → 末条 role==assistant 的 created_at。
+    口径（会话分段累加）：
+        扫描消息时间戳序列，相邻两条消息间隔 > gap_threshold_seconds
+        视为「用户离开」，把序列切成多个会话段。phase 耗时 = 各段
+        （段首消息 → 段末消息）时长之和。这样能剔除用户跨天/跨周
+        回来看页面造成的虚高耗时。
+
+    终点选取：每段以「段末最后一条 role==assistant 的消息」为终点；
+              若整段无 assistant 消息，则用段末最后一条消息。
 
     Args:
         messages: 该 phase 的全部消息（按时间先后）
+        gap_threshold_seconds: 相邻消息间隔超过此值视为「离开」。
+                              默认 30 分钟。
 
     Returns:
-        时长秒数（float）；缺时间戳或无 assistant 消息返回 None。
+        {
+            "active_seconds": float | None,   # 分段累加后的真实耗时（无有效段返回 None）
+            "span_seconds": float | None,     # 首条→末条 raw 跨度（参考用）
+            "segments": int,                  # 切出的会话段数
+            "skipped_gap_seconds": float,     # 被视为「离开」剔除的总时长
+        }
     """
     if not messages:
-        return None
+        return {"active_seconds": None, "span_seconds": None, "segments": 0, "skipped_gap_seconds": 0.0}
 
-    first_ts = messages[0].get("created_at") or messages[0].get("timestamp")
-    first_dt = _parse_iso(first_ts)
-    if first_dt is None:
-        return None
+    # 抽出所有带时间戳的消息
+    ts_list: List[Tuple[Any, str]] = []  # (datetime, role)
+    for m in messages:
+        ts = m.get("created_at") or m.get("timestamp")
+        dt = _parse_iso(ts)
+        if dt is None:
+            continue
+        ts_list.append((dt, (m.get("role") or "").strip().lower()))
 
-    last_assistant_dt: Optional[Any] = None
-    for m in reversed(messages):
-        if (m.get("role") or "").strip().lower() == "assistant":
-            dt = _parse_iso(m.get("created_at") or m.get("timestamp"))
-            if dt is not None:
-                last_assistant_dt = dt
+    if not ts_list:
+        return {"active_seconds": None, "span_seconds": None, "segments": 0, "skipped_gap_seconds": 0.0}
+
+    # raw 跨度（参考）
+    span_seconds = (ts_list[-1][0] - ts_list[0][0]).total_seconds()
+
+    # 按间隔切分段
+    segments: List[List[Tuple[Any, str]]] = [[ts_list[0]]]
+    skipped_gap_seconds = 0.0
+    for prev_dt, _ in ts_list[:-1]:
+        pass  # 仅用于类型提示，实际循环在下
+    for i in range(1, len(ts_list)):
+        dt, role = ts_list[i]
+        prev_dt = ts_list[i - 1][0]
+        gap = (dt - prev_dt).total_seconds()
+        if gap > gap_threshold_seconds:
+            # 离开：结束当前段，开新段；gap 计入剔除时长
+            segments.append([ts_list[i]])
+            skipped_gap_seconds += gap
+        else:
+            segments[-1].append(ts_list[i])
+
+    # 各段累加（段首 → 段末最后一条 assistant；无 assistant 则段末最后一条）
+    active_seconds = 0.0
+    for seg in segments:
+        if len(seg) < 2:
+            # 单条消息段：时长 0
+            continue
+        seg_start = seg[0][0]
+        seg_end: Optional[Any] = None
+        for dt, role in reversed(seg):
+            if role == "assistant":
+                seg_end = dt
                 break
+        if seg_end is None:
+            seg_end = seg[-1][0]  # 段末最后一条
+        dur = (seg_end - seg_start).total_seconds()
+        if dur > 0:
+            active_seconds += dur
 
-    if last_assistant_dt is None:
-        return None
-
-    duration = (last_assistant_dt - first_dt).total_seconds()
-    if duration < 0:
-        return None
-    return duration
+    return {
+        "active_seconds": active_seconds if active_seconds > 0 else None,
+        "span_seconds": span_seconds,
+        "segments": len(segments),
+        "skipped_gap_seconds": skipped_gap_seconds,
+    }
 
 
 def _filter_phase_level(
@@ -491,11 +544,17 @@ def _compute_report_stats(
         avg_minutes = stats["avg_seconds"] / 60.0
         total_minutes = stats["total_seconds"] / 60.0
 
-        # phase 整体耗时（新口径：首条消息 → 末条 assistant）
-        phase_duration_seconds = _compute_phase_duration(messages)
+        # phase 真实投入耗时（会话分段累加，剔除离开时段）
+        gap_seconds = args.gap_threshold_minutes * 60.0
+        phase_dur = _compute_phase_duration(messages, gap_threshold_seconds=gap_seconds)
         phase_duration_minutes = (
-            round(phase_duration_seconds / 60.0, 1)
-            if phase_duration_seconds is not None
+            round(phase_dur["active_seconds"] / 60.0, 1)
+            if phase_dur["active_seconds"] is not None
+            else None
+        )
+        phase_span_minutes = (
+            round(phase_dur["span_seconds"] / 60.0, 1)
+            if phase_dur["span_seconds"] is not None
             else None
         )
 
@@ -504,10 +563,13 @@ def _compute_report_stats(
                 "phase_id": phase_id,
                 "phase_name": phase_name,
                 "locked": step.get("locked", False),
-                # 主口径：phase 整体耗时
-                "phase_duration_seconds": phase_duration_seconds,
+                # 主口径：phase 真实投入耗时（分段累加）
+                "phase_duration_seconds": phase_dur["active_seconds"],
                 "phase_duration_minutes": phase_duration_minutes,
-                # 辅助口径：对话轮次（保留作参考）
+                "phase_segments": phase_dur["segments"],
+                # 参考口径：首条→末条 raw 跨度（含离开时段）
+                "phase_span_minutes": phase_span_minutes,
+                # 辅助口径：对话轮次
                 "turns": stats["turns"],
                 "avg_seconds": stats["avg_seconds"],
                 "total_seconds": stats["total_seconds"],
@@ -569,14 +631,18 @@ def _print_detail_report(
 
     if stats["per_phase"]:
         print(f"  {'─' * 36}")
-        print(f"  各阶段明细（phase 整体耗时为主，轮数为辅）:")
+        print(f"  各阶段明细（真实耗时为主，跨度作参考）:")
         for ph in stats["per_phase"]:
             lock_mark = "✓" if ph.get("locked") else " "
             dur = ph.get("phase_duration_minutes")
+            span = ph.get("phase_span_minutes")
+            seg = ph.get("phase_segments", 0)
             dur_str = f"{dur:.1f}分" if dur is not None else "—"
+            span_str = f"{span:.1f}分" if span is not None else "—"
+            seg_str = f"{seg}段" if seg > 1 else "1段"
             print(
                 f"    [{lock_mark}] {ph['phase_name']}({ph['phase_id']}): "
-                f"耗时{dur_str} / {ph['turns']}轮"
+                f"耗时{dur_str}（{seg_str}）/ 跨度{span_str} / {ph['turns']}轮"
             )
 
     rum_steps = stats.get("rumination_step_durations") or []
@@ -749,6 +815,8 @@ def _aggregate_phases_across_reports(
             "turns_avg": sum(turns_list) / len(turns_list) if turns_list else 0.0,
             "turns_min": min(turns_list) if turns_list else 0,
             "turns_max": max(turns_list) if turns_list else 0,
+            # 用于算平均段数等扩展字段
+            "_raw": phase_list,
         }
     return aggregated
 
@@ -804,7 +872,10 @@ def _print_aggregate_report(
     phase_agg = _aggregate_phases_across_reports(all_stats)
 
     print(f"{'─' * 70}")
-    print("【各阶段聚合】（每份 report 的 phase 整体耗时为主，轮数为辅）")
+    print(
+        f"【各阶段聚合】（phase 真实耗时 = 会话分段累加；离开阈值 "
+        f"{args.gap_threshold_minutes:.0f} 分钟）"
+    )
     print(f"{'─' * 70}")
     header = (
         f"  {'阶段':<14} "
@@ -813,6 +884,7 @@ def _print_aggregate_report(
         f"{'耗时分(平均)':>14} "
         f"{'耗时分(最小)':>14} "
         f"{'耗时分(最大)':>14} "
+        f"{'段数(平均)':>12} "
         f"{'轮数(平均)':>12}"
     )
     print(header)
@@ -821,8 +893,11 @@ def _print_aggregate_report(
         agg = phase_agg.get(phase_id)
         if not agg:
             print(f"  {PHASE_LABEL_CN.get(phase_id, phase_id):<14} "
-                  f"{'-':>6} {'-':>8} {'-':>14} {'-':>14} {'-':>14} {'-':>12}")
+                  f"{'-':>6} {'-':>8} {'-':>14} {'-':>14} {'-':>14} {'-':>12} {'-':>12}")
             continue
+        # 平均段数：sum(segments) / report_count
+        seg_list = [p.get("phase_segments", 0) for p in agg.get("_raw", [])]
+        seg_avg = (sum(seg_list) / len(seg_list)) if seg_list else 0.0
         print(
             f"  {agg['phase_name']:<14} "
             f"{agg['report_count']:>6} "
@@ -830,6 +905,7 @@ def _print_aggregate_report(
             f"{agg['duration_minutes_avg']:>14.1f} "
             f"{agg['duration_minutes_min']:>14.1f} "
             f"{agg['duration_minutes_max']:>14.1f} "
+            f"{seg_avg:>12.1f} "
             f"{agg['turns_avg']:>12.1f}"
         )
     print()
@@ -879,11 +955,14 @@ def _print_aggregate_report(
         sum_phase_minutes / report_count if report_count > 0 else 0.0
     )
     print(f"{'─' * 70}")
-    print("【全局总计】（基于 phase 整体耗时）")
+    print(
+        f"【全局总计】（基于 phase 真实耗时 = 会话分段累加；离开阈值 "
+        f"{args.gap_threshold_minutes:.0f} 分钟）"
+    )
     print(
         f"  共 {report_count} 份 report，"
         f"有效 phase 样本 {len(all_phase_durations)} 个，"
-        f"phase 平均耗时 {avg_phase_minutes:.1f} 分钟，"
+        f"phase 平均真实耗时 {avg_phase_minutes:.1f} 分钟，"
         f"每份 report 平均 {avg_per_report_minutes:.0f} 分钟"
     )
     print()
@@ -954,6 +1033,19 @@ def _build_parser() -> argparse.ArgumentParser:
         default=0.0,
         metavar="N",
         help="单轮时长下限（秒），默认 0 不过滤",
+    )
+
+    # phase 时长口径
+    g_phase_dur = parser.add_argument_group("phase 真实耗时口径")
+    g_phase_dur.add_argument(
+        "--gap-threshold-minutes",
+        type=float,
+        default=30.0,
+        metavar="N",
+        help=(
+            "相邻消息间隔超过此值（分钟）视为用户离开，phase 时长按会话分段累加。"
+            "默认 30 分钟。设为很大的值（如 999999）等价于「首条→末条」整体跨度。"
+        ),
     )
 
     # 输出
