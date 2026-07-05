@@ -383,6 +383,43 @@ def _filter_report_level(
     return True, ""
 
 
+def _compute_phase_duration(messages: List[Dict[str, Any]]) -> Optional[float]:
+    """
+    计算单个 phase 的整体耗时（秒）。
+
+    口径：messages[0].created_at → 末条 role==assistant 的 created_at。
+
+    Args:
+        messages: 该 phase 的全部消息（按时间先后）
+
+    Returns:
+        时长秒数（float）；缺时间戳或无 assistant 消息返回 None。
+    """
+    if not messages:
+        return None
+
+    first_ts = messages[0].get("created_at") or messages[0].get("timestamp")
+    first_dt = _parse_iso(first_ts)
+    if first_dt is None:
+        return None
+
+    last_assistant_dt: Optional[Any] = None
+    for m in reversed(messages):
+        if (m.get("role") or "").strip().lower() == "assistant":
+            dt = _parse_iso(m.get("created_at") or m.get("timestamp"))
+            if dt is not None:
+                last_assistant_dt = dt
+                break
+
+    if last_assistant_dt is None:
+        return None
+
+    duration = (last_assistant_dt - first_dt).total_seconds()
+    if duration < 0:
+        return None
+    return duration
+
+
 def _filter_phase_level(
     step: Dict[str, Any],
     args: argparse.Namespace,
@@ -453,11 +490,24 @@ def _compute_report_stats(
         )
         avg_minutes = stats["avg_seconds"] / 60.0
         total_minutes = stats["total_seconds"] / 60.0
+
+        # phase 整体耗时（新口径：首条消息 → 末条 assistant）
+        phase_duration_seconds = _compute_phase_duration(messages)
+        phase_duration_minutes = (
+            round(phase_duration_seconds / 60.0, 1)
+            if phase_duration_seconds is not None
+            else None
+        )
+
         per_phase.append(
             {
                 "phase_id": phase_id,
                 "phase_name": phase_name,
                 "locked": step.get("locked", False),
+                # 主口径：phase 整体耗时
+                "phase_duration_seconds": phase_duration_seconds,
+                "phase_duration_minutes": phase_duration_minutes,
+                # 辅助口径：对话轮次（保留作参考）
                 "turns": stats["turns"],
                 "avg_seconds": stats["avg_seconds"],
                 "total_seconds": stats["total_seconds"],
@@ -519,12 +569,14 @@ def _print_detail_report(
 
     if stats["per_phase"]:
         print(f"  {'─' * 36}")
-        print(f"  各阶段明细:")
+        print(f"  各阶段明细（phase 整体耗时为主，轮数为辅）:")
         for ph in stats["per_phase"]:
             lock_mark = "✓" if ph.get("locked") else " "
+            dur = ph.get("phase_duration_minutes")
+            dur_str = f"{dur:.1f}分" if dur is not None else "—"
             print(
                 f"    [{lock_mark}] {ph['phase_name']}({ph['phase_id']}): "
-                f"{ph['turns']}轮 / 均{ph['avg_minutes']:.1f}分 / 总{ph['total_minutes']:.0f}分"
+                f"耗时{dur_str} / {ph['turns']}轮"
             )
 
     rum_steps = stats.get("rumination_step_durations") or []
@@ -643,15 +695,18 @@ def _aggregate_phases_across_reports(
     """
     把多份 report 的 per_phase 跨 report 聚合，按 phase_id 分组。
 
+    主口径：phase 整体耗时（phase_duration_minutes）。
+    辅助：对话轮数（turns）一并聚合，作参考列。
+
     每个 phase 输出：
         {
             "phase_id": str,
             "phase_name": str,
-            "report_count": int,         # 贡献了这个 phase 的 report 数
-            "turns_list": [int, ...],    # 各 report 的轮数
-            "minutes_list": [float, ...], # 各 report 的总时长（分钟）
+            "report_count": int,                # 贡献了这个 phase 的 report 数
+            "duration_minutes_list": [float],   # 各 report 的 phase 耗时（分钟）
+            "duration_minutes_avg/min/max": float,
+            "turns_list": [int],                # 各 report 的轮数（辅助）
             "turns_avg/min/max": float,
-            "minutes_avg/min/max": float,
         }
 
     Returns:
@@ -667,20 +722,33 @@ def _aggregate_phases_across_reports(
         phase_list = grouped.get(phase_id) or []
         if not phase_list:
             continue
+        # 主口径：phase 耗时（None 的样本不计入耗时统计，但计入轮数）
+        duration_list = [
+            p["phase_duration_minutes"]
+            for p in phase_list
+            if p.get("phase_duration_minutes") is not None
+        ]
         turns_list = [p["turns"] for p in phase_list]
-        minutes_list = [p["total_minutes"] for p in phase_list]
         aggregated[phase_id] = {
             "phase_id": phase_id,
             "phase_name": PHASE_LABEL_CN.get(phase_id, phase_id),
             "report_count": len(phase_list),
+            "duration_minutes_list": duration_list,
+            "duration_minutes_avg": (
+                sum(duration_list) / len(duration_list) if duration_list else 0.0
+            ),
+            "duration_minutes_min": (
+                min(duration_list) if duration_list else 0.0
+            ),
+            "duration_minutes_max": (
+                max(duration_list) if duration_list else 0.0
+            ),
+            "duration_valid_count": len(duration_list),
+            # 辅助：轮数
             "turns_list": turns_list,
-            "minutes_list": minutes_list,
             "turns_avg": sum(turns_list) / len(turns_list) if turns_list else 0.0,
             "turns_min": min(turns_list) if turns_list else 0,
             "turns_max": max(turns_list) if turns_list else 0,
-            "minutes_avg": sum(minutes_list) / len(minutes_list) if minutes_list else 0.0,
-            "minutes_min": min(minutes_list) if minutes_list else 0.0,
-            "minutes_max": max(minutes_list) if minutes_list else 0.0,
         }
     return aggregated
 
@@ -736,17 +804,16 @@ def _print_aggregate_report(
     phase_agg = _aggregate_phases_across_reports(all_stats)
 
     print(f"{'─' * 70}")
-    print("【各阶段聚合】（每份 report 的轮数 / 总时长，跨 report 聚合）")
+    print("【各阶段聚合】（每份 report 的 phase 整体耗时为主，轮数为辅）")
     print(f"{'─' * 70}")
     header = (
         f"  {'阶段':<14} "
         f"{'报告数':>6} "
-        f"{'轮数(平均)':>12} "
-        f"{'轮数(最小)':>12} "
-        f"{'轮数(最大)':>12} "
-        f"{'时长分(平均)':>14} "
-        f"{'时长分(最小)':>14} "
-        f"{'时长分(最大)':>14}"
+        f"{'有效耗时':>8} "
+        f"{'耗时分(平均)':>14} "
+        f"{'耗时分(最小)':>14} "
+        f"{'耗时分(最大)':>14} "
+        f"{'轮数(平均)':>12}"
     )
     print(header)
     print(f"  {'─' * 66}")
@@ -754,17 +821,16 @@ def _print_aggregate_report(
         agg = phase_agg.get(phase_id)
         if not agg:
             print(f"  {PHASE_LABEL_CN.get(phase_id, phase_id):<14} "
-                  f"{'-':>6} {'-':>12} {'-':>12} {'-':>12} {'-':>14} {'-':>14} {'-':>14}")
+                  f"{'-':>6} {'-':>8} {'-':>14} {'-':>14} {'-':>14} {'-':>12}")
             continue
         print(
             f"  {agg['phase_name']:<14} "
             f"{agg['report_count']:>6} "
-            f"{agg['turns_avg']:>12.1f} "
-            f"{agg['turns_min']:>12} "
-            f"{agg['turns_max']:>12} "
-            f"{agg['minutes_avg']:>14.1f} "
-            f"{agg['minutes_min']:>14.1f} "
-            f"{agg['minutes_max']:>14.1f}"
+            f"{agg['duration_valid_count']:>8} "
+            f"{agg['duration_minutes_avg']:>14.1f} "
+            f"{agg['duration_minutes_min']:>14.1f} "
+            f"{agg['duration_minutes_max']:>14.1f} "
+            f"{agg['turns_avg']:>12.1f}"
         )
     print()
 
@@ -797,17 +863,28 @@ def _print_aggregate_report(
         print()
 
     # ── 全局总计 ────────────────────────────────────────────────
-    total_turns = sum(s["total_turns"] for s in all_stats)
-    total_seconds = sum(s["total_seconds"] for s in all_stats)
-    avg_seconds = (total_seconds / total_turns) if total_turns > 0 else 0.0
-    total_minutes = total_seconds / 60.0
-    avg_minutes = avg_seconds / 60.0
+    # 主口径：所有 phase 的整体耗时之和（按 report 平均）
+    all_phase_durations: List[float] = []
+    for s in all_stats:
+        for ph in s.get("per_phase", []):
+            if ph.get("phase_duration_minutes") is not None:
+                all_phase_durations.append(ph["phase_duration_minutes"])
+
+    report_count = len(all_stats)
+    sum_phase_minutes = sum(all_phase_durations)
+    avg_phase_minutes = (
+        sum_phase_minutes / len(all_phase_durations) if all_phase_durations else 0.0
+    )
+    avg_per_report_minutes = (
+        sum_phase_minutes / report_count if report_count > 0 else 0.0
+    )
     print(f"{'─' * 70}")
-    print("【全局总计】")
+    print("【全局总计】（基于 phase 整体耗时）")
     print(
-        f"  总轮数 {total_turns}，"
-        f"平均每轮 {avg_minutes:.1f} 分钟，"
-        f"总时长 {total_minutes:.0f} 分钟"
+        f"  共 {report_count} 份 report，"
+        f"有效 phase 样本 {len(all_phase_durations)} 个，"
+        f"phase 平均耗时 {avg_phase_minutes:.1f} 分钟，"
+        f"每份 report 平均 {avg_per_report_minutes:.0f} 分钟"
     )
     print()
 
