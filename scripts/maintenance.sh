@@ -69,8 +69,22 @@ set -a; source "$ENV_FILE"; set +a
 MAINTENANCE_FLAG_PATH="${MAINTENANCE_FLAG_PATH:-/www/sites/zhiyinapp/maintenance.flag}"
 MAINTENANCE_PAGE_DIR="${MAINTENANCE_PAGE_DIR:-/www/sites/zhiyinapp/maintenance}"
 MAINTENANCE_TEMPLATE_PATH="${MAINTENANCE_TEMPLATE_PATH:-$REPO_ROOT/src/frontend/maintenance.html}"
-NGINX_RELOAD_CMD="${NGINX_RELOAD_CMD:-nginx -s reload}"
 BYPASS_COOKIE_NAME="${BYPASS_COOKIE_NAME:-bypass_maintenance}"
+
+# 自动探测 1Panel OpenResty 容器名（仅在 NGINX_RELOAD_CMD 未显式设置时兜底）
+# dev 机容器名：1Panel-openresty-hjWm；prod 机：1Panel-openresty-UpQ6 等
+# 若机器上只有一个 1Panel-openresty-* 容器（绝大多数情况），自动取它
+if [ -z "${NGINX_RELOAD_CMD:-}" ]; then
+  AUTO_CONTAINER="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^1Panel-openresty-' | head -1)"
+  if [ -n "$AUTO_CONTAINER" ]; then
+    NGINX_RELOAD_CMD="docker exec $AUTO_CONTAINER nginx -s reload"
+    info "自动探测到 openresty 容器: $AUTO_CONTAINER → NGINX_RELOAD_CMD='$NGINX_RELOAD_CMD'"
+  else
+    # 探测失败，回退到裸 nginx 命令（适用于 nginx 装在宿主机的情况）
+    NGINX_RELOAD_CMD="nginx -s reload"
+    warn "未探测到 1Panel-openresty-* 容器，回退 NGINX_RELOAD_CMD='$NGINX_RELOAD_CMD'（若 nginx 在容器内请在 .env 显式指定）"
+  fi
+fi
 
 # ── 帮助 ─────────────────────────────────────────────────────
 usage() {

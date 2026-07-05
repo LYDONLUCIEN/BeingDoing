@@ -114,6 +114,21 @@ export interface MaintenanceStatus {
   meta?: { raw?: string };
 }
 
+/**
+ * 按当前域名自动判断环境，决定 maintenance.sh 走 .env.dev 还是 .env.prod
+ *   - career.soulhappylab.com / localhost / 127.0.0.1 → dev
+ *   - xunlu.soulhappylab.com → prod
+ *   - 兜底：localhost/127/IP → dev，其他 → prod
+ */
+function detectEnvFromHost(): 'dev' | 'prod' {
+  if (typeof window === 'undefined') return 'prod'; // SSR 兜底
+  const host = window.location.hostname;
+  if (host === 'career.soulhappylab.com') return 'dev';
+  if (host === 'xunlu.soulhappylab.com') return 'prod';
+  if (host === 'localhost' || host === '127.0.0.1' || /^\d+\.\d+\.\d+\.\d+$/.test(host)) return 'dev';
+  return 'prod';
+}
+
 export async function getMaintenanceStatus(): Promise<MaintenanceStatus> {
   const res = await apiClient.get<MaintenanceStatus>('/admin/maintenance/status');
   return res.data as MaintenanceStatus;
@@ -125,9 +140,11 @@ export async function setMaintenanceMode(payload: {
   reason?: string;
   env?: string;
 }): Promise<{ ok: boolean; stdout?: string }> {
+  // env 优先用调用方显式传入；否则按域名自动判断
+  const env = payload.env ?? detectEnvFromHost();
   const res = await apiClient.post<{ ok: boolean; stdout?: string }>(
     '/admin/maintenance',
-    { env: 'prod', ...payload }
+    { ...payload, env }
   );
   return res.data as { ok: boolean; stdout?: string };
 }

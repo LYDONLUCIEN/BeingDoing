@@ -4,6 +4,11 @@
 **对应仓库**：`/home/gitclone/BeingDoing`
 **维护机制**：脚本只切 `/www/sites/zhiyinapp/maintenance.flag` 文件存在与否，nginx 配置一次性加好后不再动。
 
+> **⚠️ dev/prod 不要混用配置**：这是 **dev 机**（career / zhiyinapp）的配置。
+> - dev 容器名：`1Panel-openresty-hjWm`，宿主机 www 路径：`/opt/1panel/apps/openresty/openresty/www`
+> - prod 容器名：`1Panel-openresty-UpQ6`，宿主机 www 路径：`/opt/1panel/www`（**无中间层**，1Panel 版本不同）
+> - prod（xunlu）配置见 [`0705-nginx-prod.md`](./0705-nginx-prod.md)，**不要把本文档的路径模板直接搬到 prod**。
+
 ---
 
 ## 完整配置（直接复制粘贴到 1Panel）

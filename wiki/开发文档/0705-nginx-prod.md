@@ -26,14 +26,17 @@ include /www/sites/xunlu/proxy/*.conf;
 
 ## 容器内实际路径（用于脚本/诊断）
 
+**⚠️ prod 机 1Panel 版本与 dev 不同，容器挂载是 `/opt/1panel/www → /www`（无 `apps/openresty/openresty` 中间层）。容器名 `1Panel-openresty-UpQ6`（不是 dev 机的 `hjWm`）。**
+
 | 用途 | 路径 |
 |------|------|
 | 主配置 | `/usr/local/openresty/nginx/conf/conf.d/xunlu.conf` |
 | 反代 include 目录 | `/www/sites/xunlu/proxy/` |
 | 维护 flag（容器内） | `/www/sites/xunlu/maintenance.flag` |
 | 维护页目录（容器内） | `/www/sites/xunlu/maintenance/` |
-| 维护 flag（宿主机） | `/opt/1panel/apps/openresty/openresty/www/sites/xunlu/maintenance.flag` |
-| 维护页目录（宿主机） | `/opt/1panel/apps/openresty/openresty/www/sites/xunlu/maintenance/` |
+| 维护 flag（宿主机） | `/opt/1panel/www/sites/xunlu/maintenance.flag` |
+| 维护页目录（宿主机） | `/opt/1panel/www/sites/xunlu/maintenance/` |
+| 容器名 | `1Panel-openresty-UpQ6`（prod），自动探测兜底见 `maintenance.sh` |
 
 ---
 
@@ -241,9 +244,10 @@ location ^~ /api/ {
 ### 步骤 4：创建维护页目录（宿主机执行）
 
 ```bash
-mkdir -p /opt/1panel/apps/openresty/openresty/www/sites/xunlu/maintenance
+# ⚠️ prod 机容器挂载是 /opt/1panel/www → /www（无中间层）
+mkdir -p /opt/1panel/www/sites/xunlu/maintenance
 # 设置让后端进程能写入（脚本会用 sudo 或 root 身份写）
-chmod 755 /opt/1panel/apps/openresty/openresty/www/sites/xunlu/maintenance
+chmod 755 /opt/1panel/www/sites/xunlu/maintenance
 ```
 
 ### 步骤 5：填 `.env.prod` 维护相关变量
@@ -252,10 +256,12 @@ chmod 755 /opt/1panel/apps/openresty/openresty/www/sites/xunlu/maintenance
 
 ```bash
 # 维护模式（xunlu 生产环境）
-MAINTENANCE_FLAG_PATH=/opt/1panel/apps/openresty/openresty/www/sites/xunlu/maintenance.flag
-MAINTENANCE_PAGE_DIR=/opt/1panel/apps/openresty/openresty/www/sites/xunlu/maintenance
+# ⚠️ prod 机容器挂载是 /opt/1panel/www → /www（无 apps/openresty/openresty 中间层）
+# 容器名：1Panel-openresty-UpQ6（prod），留空则 maintenance.sh 自动探测
+MAINTENANCE_FLAG_PATH=/opt/1panel/www/sites/xunlu/maintenance.flag
+MAINTENANCE_PAGE_DIR=/opt/1panel/www/sites/xunlu/maintenance
 MAINTENANCE_TEMPLATE_PATH=/home/gitclone/BeingDoing/src/frontend/maintenance.html
-NGINX_RELOAD_CMD="docker exec 1Panel-openresty-hjWm nginx -s reload"
+NGINX_RELOAD_CMD="docker exec 1Panel-openresty-UpQ6 nginx -s reload"
 BYPASS_COOKIE_NAME=bypass_maintenance
 ```
 
@@ -315,10 +321,10 @@ curl 再验证 → `HTTP/2 200`（所有人都能访问）。
 
 ```bash
 # 主配置应有 5 处 maintenance 相关
-docker exec 1Panel-openresty-hjWm grep -c "maintenance_on\|maintenance.flag\|@maintenance" /usr/local/openresty/nginx/conf/conf.d/xunlu.conf
+docker exec 1Panel-openresty-UpQ6 grep -c "maintenance_on\|maintenance.flag\|@maintenance" /usr/local/openresty/nginx/conf/conf.d/xunlu.conf
 
 # / 反代文件应有 if 拦截
-docker exec 1Panel-openresty-hjWm grep -l "maintenance_on" /www/sites/xunlu/proxy/*.conf
+docker exec 1Panel-openresty-UpQ6 grep -l "maintenance_on" /www/sites/xunlu/proxy/*.conf
 ```
 
 ---
@@ -331,7 +337,7 @@ A: `set $maintenance_on 0;` 必须在 `server { }` 内部。检查是否被误�
 ### Q: 反代 location 改了但没生效
 A: 1Panel 的反代配置在 `proxy/*.conf` 里，必须改那里的文件，不是主配置。验证：
 ```bash
-docker exec 1Panel-openresty-hjWm ls /www/sites/xunlu/proxy/
+docker exec 1Panel-openresty-UpQ6 ls /www/sites/xunlu/proxy/
 ```
 
 ### Q: 维护模式开启但拦截不生效
@@ -355,5 +361,11 @@ A: 浏览器 Console 执行 `document.cookie='bypass_maintenance=1;path=/;max-ag
 | 反代 location | 在主配置里 | **在 `proxy/*.conf` include 里** |
 | 限流 | `limit_conn perserver 300` | 无（看你原版没有） |
 | HSTS | `max-age=31536000` | `max-age=31536000; includeSubDomains` |
+| **容器名** | `1Panel-openresty-hjWm` | `1Panel-openresty-UpQ6` |
+| **宿主机 www 路径** | `/opt/1panel/apps/openresty/openresty/www`（含中间层） | `/opt/1panel/www`（**无中间层**，1Panel 版本不同） |
+| **MAINTENANCE_FLAG_PATH** | `/opt/1panel/apps/openresty/openresty/www/sites/zhiyinapp/maintenance.flag` | `/opt/1panel/www/sites/xunlu/maintenance.flag` |
 
-**关键差异**:xunlu 的反代 location 走 include，所以拦截 if 要加在 include 文件里，不是主配置。这是 prod 配置最容易踩坑的地方。
+**关键差异**:
+1. xunlu 的反代 location 走 include，所以拦截 if 要加在 include 文件里，不是主配置。这是 prod 配置最容易踩坑的地方。
+2. **dev/prod 容器挂载路径不一样**（1Panel 版本不同），不要把 dev 的 `.env` 路径模板硬搬到 prod。
+3. **容器名不一样**（`hjWm` vs `UpQ6`），如不显式设 `NGINX_RELOAD_CMD`，`maintenance.sh` 会自动探测 `docker ps` 里的 `1Panel-openresty-*`。
