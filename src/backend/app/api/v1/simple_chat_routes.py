@@ -6611,3 +6611,13 @@ async def delete_thread(
             "step_locked": bool(step_payload.get("locked", False)),
         },
     )
+
+
+# ── Rumination v4 子路由挂载(见 wiki/开发文档/0707-tag1.6.0.md)──────────
+# v4 与 v3 端点共存,v4 路径前缀: /simple-chat/rumination-v4/...
+try:
+    from app.api.v1.rumination_v4_routes import router as _rumination_v4_router
+    router.include_router(_rumination_v4_router)
+except Exception as _v4_import_err:  # noqa: BLE001
+    import logging as _logging
+    _logging.getLogger(__name__).warning("rumination v4 路由挂载失败: %s", _v4_import_err)

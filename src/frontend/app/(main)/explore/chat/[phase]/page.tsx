@@ -41,6 +41,11 @@ const Step3MatrixLeftPanel = dynamic(
   () => import('@/components/explore/step3/Step3MatrixLeftPanel'),
   { ssr: false },
 );
+// v4 入口(见 wiki/开发文档/0707-tag1.6.0.md):phase=rumination 且 ?v4=1 时启用
+const RuminationV4Page = dynamic(
+  () => import('@/components/explore/ruminationV4/RuminationV4Page'),
+  { ssr: false },
+);
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { apiClient, getApiErrorMessage } from '@/lib/api/client';
 import { authApi } from '@/lib/api/auth';
@@ -3891,6 +3896,20 @@ export default function ChatPhasePage() {
   if (!session || !phaseMeta || !phaseInfo) return null;
 
   const useCareeringMatte = phase !== 'rumination';
+
+  // ── v4 分支:phase=rumination 且 URL 有 ?v4=1 → 渲染 RuminationV4Page ──
+  // 见 wiki/开发文档/0707-tag1.6.0.md。v3 行为不受影响(默认无 ?v4=1)。
+  const isRuminationV4 =
+    phase === 'rumination' &&
+    (searchParams?.get('v4') === '1' ||
+      (typeof window !== 'undefined' && localStorage.getItem('rumination_v4') === '1'));
+  if (isRuminationV4 && activationCode) {
+    return (
+      <div className="flex min-h-0 flex-col overflow-hidden h-[calc(100dvh-3.5rem)] max-h-[calc(100dvh-3.5rem)]">
+        <RuminationV4Page activationCode={activationCode} />
+      </div>
+    );
+  }
 
   return (
     <div

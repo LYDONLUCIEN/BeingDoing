@@ -1,0 +1,103 @@
+{
+  "schema_version": 4,
+  "matrix_snapshot": {
+    "passions": ["音乐", "写作", "教学"],
+    "strengths": ["创造表达", "解决问题", "掌控全局", "连接他人", "发现规律"]
+  },
+  "combo_sessions": [
+    {
+      "combo_id": "combo_1",
+      "passion": "音乐",
+      "strengths": ["创造表达", "解决问题"],
+      "created_at": "2026-07-07T10:00:00Z",
+      "updated_at": "2026-07-07T10:15:00Z",
+      "status": "concluded",
+      "messages": [
+        {"role": "assistant", "content": "好的,我们就来聊聊「音乐」+「创造表达、解决问题」这个组合。在正式展开之前,我想先听听你 —— 是什么吸引你把这个热爱和这几个优势放在一起?", "ts": "2026-07-07T10:00:00Z"},
+        {"role": "user", "content": "我喜欢舞台,也喜欢把复杂的东西拆开看", "ts": "2026-07-07T10:01:00Z"},
+        {"role": "assistant", "content": "能告诉我一个具体的瞬间吗?你在什么时候同时感受到了舞台的吸引和拆解的乐趣?", "ts": "2026-07-07T10:01:30Z"}
+      ],
+      "summary": null,
+      "summary_last_round": 0,
+      "fields_collected": {
+        "motivation": "舞台的光芒和拆解复杂问题的满足感",
+        "hypothesis": "我假设音乐+创造+解决问题能让我成为独特的原创音乐人,既写出自己的作品,又能精准打磨每一个细节",
+        "work_purposes": ["发现", "成长"],
+        "passion_mark": "忍不住想做",
+        "timing_mark": "现在"
+      },
+      "conclusion_card": {
+        "hypothesis": "我假设音乐+创造+解决问题能让我成为独特的原创音乐人,既写出自己的作品,又能精准打磨每一个细节",
+        "motivation": "舞台的光芒和拆解复杂问题的满足感",
+        "work_purposes": ["发现", "成长"],
+        "passion_mark": "忍不住想做",
+        "timing_mark": "现在",
+        "created_at": "2026-07-07T10:15:00Z",
+        "updated_at": "2026-07-07T10:15:00Z"
+      }
+    },
+    {
+      "combo_id": "combo_2",
+      "passion": "音乐",
+      "strengths": ["创造表达"],
+      "created_at": "2026-07-07T10:20:00Z",
+      "updated_at": "2026-07-07T10:30:00Z",
+      "status": "discussing",
+      "messages": [
+        {"role": "assistant", "content": "好的,这次只看「音乐」+「创造表达」。告诉我,你最近一次因为创造而心动是什么时候?", "ts": "2026-07-07T10:20:00Z"},
+        {"role": "user", "content": "前天写了一段旋律", "ts": "2026-07-07T10:21:00Z"},
+        {"role": "assistant", "content": "那段旋律让你想到了什么?或者你想把它送给谁?", "ts": "2026-07-07T10:21:30Z"}
+      ],
+      "summary": null,
+      "summary_last_round": 0,
+      "fields_collected": {
+        "motivation": null,
+        "hypothesis": null,
+        "work_purposes": null,
+        "passion_mark": null,
+        "timing_mark": null
+      },
+      "conclusion_card": null
+    },
+    {
+      "combo_id": "combo_3",
+      "passion": "写作",
+      "strengths": ["掌控全局", "连接他人"],
+      "created_at": "2026-07-07T11:00:00Z",
+      "updated_at": "2026-07-07T11:30:00Z",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "fields_collected": {
+        "motivation": "想写出能影响很多人的故事",
+        "hypothesis": {
+          "掌控全局": "我假设写作+掌控能让我成为构建宏大叙事的作者",
+          "连接他人": "我假设写作+连接能让我的故事真正触达读者内心"
+        },
+        "work_purposes": ["贡献", "连接"],
+        "passion_mark": "应该做",
+        "timing_mark": "未来"
+      },
+      "conclusion_card": {
+        "hypothesis": {
+          "掌控全局": "我假设写作+掌控能让我成为构建宏大叙事的作者",
+          "连接他人": "我假设写作+连接能让我的故事真正触达读者内心"
+        },
+        "motivation": "想写出能影响很多人的故事",
+        "work_purposes": ["贡献", "连接"],
+        "passion_mark": "应该做",
+        "timing_mark": "未来",
+        "created_at": "2026-07-07T11:30:00Z",
+        "updated_at": "2026-07-07T11:30:00Z"
+      }
+    }
+  ],
+  "active_combo_id": "combo_2",
+  "final_selection": {
+    "selected_combo_ids": ["combo_1"],
+    "submitted": false,
+    "submitted_at": null
+  },
+  "main_section": "combo_session"
+}
