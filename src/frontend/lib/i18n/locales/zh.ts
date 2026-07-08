@@ -115,6 +115,10 @@ export const zh = {
       subtitle: '休息一下，我们再继续',
       continue: '谢谢，继续',
       dontRemind: '不再提醒',
+      fatigueNote:
+        '你已专注约 {minutes} 分钟。记得起身活动、喝杯水——进度已自动保存，随时可以休息，下次回来再继续。',
+      fatigueNoteGeneric:
+        '记得起身活动、喝杯水——进度已自动保存，随时可以休息，下次回来再继续。',
       outro: {
         values:
           '恭喜你完成了第一轮价值观探索。下一轮我们将进入优势探索，帮助你发现你的核心能力。我们下次见。',
@@ -126,6 +130,14 @@ export const zh = {
           '太棒了！你已经完成了使命探索。接下来我们将进行最后一轮对话——帮助你整合所有发现，找到具体的职业发展方向。我们下次见！',
         rumination: '恭喜你完成了全部探索！你的专属职业规划报告即将生成。',
       },
+    },
+    phaseWelcome: {
+      title: '欢迎进入「{phase}」',
+      estimateLabel: '本轮约需 {minutes} 分钟',
+      autoSaveHint: '进度自动保存，可随时离开，下次回来继续。',
+      reassuranceHint: '累了就歇——不必一口气做完，按你自己的节奏来。',
+      start: '开始探索',
+      dontRemind: '不再提醒',
     },
     transition: {
       badge: '阶段完成',

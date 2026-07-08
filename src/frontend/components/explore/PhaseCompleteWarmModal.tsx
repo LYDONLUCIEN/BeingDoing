@@ -8,6 +8,8 @@ export type PhaseCompleteWarmModalProps = {
   title: string;
   /** 纯展示文案，由父组件用 t() 注入，与动效/结构解耦 */
   body: string;
+  /** 可选疲劳管理提示文案，传入则在 body 下方渲染浅色 callout；不传则不渲染 */
+  fatigueNote?: string;
   continueLabel: string;
   dontRemindLabel?: string;
   /** 关闭回调，参数 dontRemind 表示用户是否勾选了"不再提醒" */
@@ -17,11 +19,13 @@ export type PhaseCompleteWarmModalProps = {
 /**
  * 阶段完成祝贺弹层：结构固定，文案全部由父组件传入。
  * 可选"不再提醒"勾选框，勾选后父组件通过 dontRemind 回调持久化。
+ * 可选 fatigueNote 在 body 下方渲染疲劳管理 callout（survey 页不传即不渲染）。
  */
 export default function PhaseCompleteWarmModal({
   open,
   title,
   body,
+  fatigueNote,
   continueLabel,
   dontRemindLabel,
   onContinue,
@@ -77,6 +81,24 @@ export default function PhaseCompleteWarmModal({
               </div>
             </div>
             <p className="mb-6 whitespace-pre-line text-[15px] leading-relaxed text-stone-600">{body}</p>
+            {fatigueNote ? (
+              <div className="mb-6 flex gap-3 rounded-xl border border-stone-200/80 bg-stone-50/80 p-4">
+                <div
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-50 text-sky-500 ring-1 ring-sky-100"
+                  aria-hidden
+                >
+                  {/* 水滴/活动图标 */}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path
+                      d="M12 2.5S5.5 9 5.5 14a6.5 6.5 0 0 0 13 0c0-5-6.5-11.5-6.5-11.5z"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+                <p className="text-[13px] leading-relaxed text-stone-600">{fatigueNote}</p>
+              </div>
+            ) : null}
             {dontRemindLabel && (
               <label className="mb-6 flex cursor-pointer items-center gap-2 text-sm text-stone-500">
                 <input

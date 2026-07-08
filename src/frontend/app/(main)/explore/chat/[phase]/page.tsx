@@ -19,6 +19,7 @@ import {
 import FlowAiMessage from '@/components/explore/FlowAiMessage';
 import DimensionConclusionCard, { type DimensionConclusionData } from '@/components/explore/DimensionConclusionCard';
 import PhaseCompleteWarmModal from '@/components/explore/PhaseCompleteWarmModal';
+import PhaseWelcomeModal from '@/components/explore/PhaseWelcomeModal';
 import ChatPhaseBackground from '@/components/explore/ChatPhaseBackground';
 import ExploreLandingMeshLayers from '@/components/explore/ExploreLandingMeshLayers';
 const PhaseCelebrateBurst = dynamic(
@@ -46,6 +47,7 @@ import { apiClient, getApiErrorMessage } from '@/lib/api/client';
 import { authApi } from '@/lib/api/auth';
 import {
   PHASES,
+  PHASE_ESTIMATE_MINUTES,
   loadSession,
   saveSession,
   getActivationSessionId,
@@ -56,6 +58,11 @@ import {
   setLastActivationCode,
   applyExploreResumeToSession,
   getUserSurveyCompleted,
+  setPhaseEnterTimestamp,
+  getPhaseEnterTimestamp,
+  clearPhaseEnterTimestamp,
+  isPhaseWelcomeDismissed,
+  setPhaseWelcomeDismissed,
   type PhaseKey,
   type ExploreSession,
 } from '@/lib/explore/session';
@@ -345,6 +352,10 @@ export default function ChatPhasePage() {
   const [ruminationStep7FinalizeOpen, setRuminationStep7FinalizeOpen] = useState(false);
   const [phaseCelebrateSignal, setPhaseCelebrateSignal] = useState(0);
   const [phaseCompleteModalOpen, setPhaseCompleteModalOpen] = useState(false);
+  /** 完成弹窗"已专注 N 分钟"——由 handleConfirmConclusion 在打开弹窗前计算；null 时使用通用文案 */
+  const [fatigueMinutes, setFatigueMinutes] = useState<number | null>(null);
+  /** 进入新 phase 的时间预估欢迎卡（首次进入且未 dismiss 时弹出） */
+  const [phaseWelcomeOpen, setPhaseWelcomeOpen] = useState(false);
   const pendingRuminationNavigateRef = useRef(false);
   /** 防止"完成并继续"连点 / 多处导航竞态：导航中置 true，跳转完成后置 false */
   const isNavigatingRef = useRef(false);
@@ -692,6 +703,8 @@ export default function ChatPhasePage() {
     autoInitGuardRef.current = '';
     // 切换阶段时重置导航锁
     isNavigatingRef.current = false;
+    // 记录进入该 phase 的时间戳，用于完成弹窗的"已专注约 N 分钟"疲劳提醒
+    setPhaseEnterTimestamp(activationCode, phase);
   }, [activationCode, phase]);
 
   // 从后端同步线程列表（主数据源，支持跨设备）
@@ -2161,6 +2174,10 @@ export default function ChatPhasePage() {
       }
     }
     setPhaseCompleteModalOpen(false);
+    // 清除 phase 进入时间戳，避免下次进入误算
+    if (activationCode && phase) {
+      clearPhaseEnterTimestamp(activationCode, phase);
+    }
     if (!pendingRuminationNavigateRef.current) return;
     pendingRuminationNavigateRef.current = false;
     if (!activationCode || !session) return;
@@ -2240,6 +2257,16 @@ export default function ChatPhasePage() {
       }
     }
     if (!skipModal) {
+      // 在打开弹窗前计算"已专注约 N 分钟"（保守值，最低 1 分钟；时间戳缺失则 null 走通用文案）
+      if (activationCode && phase) {
+        const ts = getPhaseEnterTimestamp(activationCode, phase);
+        if (ts) {
+          const mins = Math.max(1, Math.round((Date.now() - ts) / 60000));
+          setFatigueMinutes(Number.isFinite(mins) ? mins : null);
+        } else {
+          setFatigueMinutes(null);
+        }
+      }
       setPhaseCompleteModalOpen(true);
     }
 
@@ -2249,6 +2276,31 @@ export default function ChatPhasePage() {
       pendingRuminationNavigateRef.current = false;
     }
   };
+
+  /**
+   * 进入新 phase 的时间预估欢迎卡：
+   * 仅在 (a) 已有 activationCode/phase，(b) 初始化完成（!initLoading），
+   * (c) 阶段未锁定（!phaseInteractionLocked），(d) 未勾选"不再提醒" 时弹出。
+   * 与 phaseLockNotice（z-57, locked 时弹）和 PhaseCompleteModal（确认结论卡触发）天然互斥。
+   */
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!activationCode || !phase) return;
+    if (initLoading) return;
+    if (phaseInteractionLocked) return;
+    if (isPhaseWelcomeDismissed(activationCode, phase)) return;
+    setPhaseWelcomeOpen(true);
+  }, [activationCode, phase, initLoading, phaseInteractionLocked]);
+
+  const handlePhaseWelcomeClose = useCallback(
+    (dontRemind?: boolean) => {
+      if (activationCode && phase && dontRemind) {
+        setPhaseWelcomeDismissed(activationCode, phase, true);
+      }
+      setPhaseWelcomeOpen(false);
+    },
+    [activationCode, phase]
+  );
 
   /** 终步表格在弹窗确认后提交，并进过渡页（无结论卡） */
   const handleRuminationStep7FinalizeConfirmed = useCallback(async () => {
@@ -5051,9 +5103,25 @@ export default function ChatPhasePage() {
         open={phaseCompleteModalOpen}
         title={t('explore.phaseComplete.title')}
         body={`${t('explore.phaseComplete.subtitle')}\n\n${t(`explore.phaseComplete.outro.${phase}`)}`}
+        fatigueNote={
+          fatigueMinutes != null
+            ? t('explore.phaseComplete.fatigueNote', { minutes: String(fatigueMinutes) })
+            : t('explore.phaseComplete.fatigueNoteGeneric')
+        }
         continueLabel={t('explore.phaseComplete.continue')}
         dontRemindLabel={t('explore.phaseComplete.dontRemind')}
         onContinue={handlePhaseCompleteModalContinue}
+      />
+      <PhaseWelcomeModal
+        open={phaseWelcomeOpen}
+        phaseLabel={t(`explore.chat.phaseLabels.${phase}`)}
+        phaseNum={phaseInfo?.num ?? ''}
+        estimateLabel={t('explore.phaseWelcome.estimateLabel', { minutes: PHASE_ESTIMATE_MINUTES[phase] })}
+        autoSaveHint={t('explore.phaseWelcome.autoSaveHint')}
+        reassuranceHint={t('explore.phaseWelcome.reassuranceHint')}
+        startLabel={t('explore.phaseWelcome.start')}
+        dontRemindLabel={t('explore.phaseWelcome.dontRemind')}
+        onClose={handlePhaseWelcomeClose}
       />
     </div>
   );
