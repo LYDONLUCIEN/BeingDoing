@@ -95,6 +95,7 @@ def build_system_prompt(
     values_info: str = "",
     rumination_step_addon: str = "",
     purpose_progress_injection: str = "",
+    conclusion_state_injection: str = "",
 ) -> str:
     """根据阶段构建 system prompt（通过模板渲染，避免超长硬编码）。"""
     prior_block = f"\n\n以下是该来访者在上一轮咨询中的谈话结果，供你参考：\n{prior_context}" if prior_context.strip() else ""
@@ -137,5 +138,9 @@ def build_system_prompt(
 - 禁止用「系统将弹出结论卡」「即将输出 pending」「严格遵循协议」等元话术代替真实隐藏块；界面是否出卡仅由隐藏块触发，口头承诺无效。
 - 对用户只说话题本身，就像没有后台协议存在。
 """
-    return f"{base_prompt}{purpose_block}\n{protocol}"
+    # 结论卡实时状态注入：放最末尾，保证 prefix cache 命中最大化（状态是动态变量）
+    state_tail = ""
+    if (conclusion_state_injection or "").strip():
+        state_tail = f"\n{conclusion_state_injection.strip()}"
+    return f"{base_prompt}{purpose_block}\n{protocol}{state_tail}"
 

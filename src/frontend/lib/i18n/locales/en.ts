@@ -120,6 +120,10 @@ export const en = {
       subtitle: 'Take a short break — we will keep going when you are ready.',
       continue: 'Thank you — continue',
       dontRemind: "Don't show this again",
+      fatigueNote:
+        "You've been focused for about {minutes} min. Stand up, stretch, grab some water — your progress is auto-saved. Take a break anytime and continue later.",
+      fatigueNoteGeneric:
+        'Stand up, stretch, grab some water — your progress is auto-saved. Take a break anytime and continue later.',
       outro: {
         values:
           "You've completed round one — values. Next we'll explore your strengths. See you in the next step.",
@@ -131,6 +135,14 @@ export const en = {
           "Wonderful — purpose is done. Next is the final dialogue to integrate everything into directions. See you soon!",
         rumination: "You've completed the full journey. Your personalized insight report is on the way.",
       },
+    },
+    phaseWelcome: {
+      title: 'Welcome to {phase}',
+      estimateLabel: 'This step takes about {minutes} min',
+      autoSaveHint: 'Your progress is auto-saved — you can step away and return anytime.',
+      reassuranceHint: "Tired? Rest. You don't have to finish in one sitting — go at your own pace.",
+      start: 'Start exploring',
+      dontRemind: "Don't remind me again",
     },
     transition: {
       badge: 'Step complete',

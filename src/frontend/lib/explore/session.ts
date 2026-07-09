@@ -13,6 +13,18 @@ export const PHASES: { key: PhaseKey; label: string; color: string; num: string 
   { key: 'rumination', label: '沉淀', color: 'violet',  num: '05' },
 ];
 
+/**
+ * 每个 phase 的预估时长（分钟，字符串形式以便 i18n 插值）。
+ * 前 4 个阶段 30~45 分钟；rumination 60~100 分钟。
+ */
+export const PHASE_ESTIMATE_MINUTES: Record<PhaseKey, string> = {
+  values: '30~45',
+  strengths: '30~45',
+  interests: '30~45',
+  purpose: '30~45',
+  rumination: '60~100',
+};
+
 export interface ExploreSession {
   activationCode: string;
   unlockedPhases: PhaseKey[];
@@ -252,4 +264,67 @@ export function setUserPrivacyAck(userId: string, ack: boolean): void {
 export function getUserPrivacyAck(userId?: string): boolean {
   if (typeof window === 'undefined' || !userId) return false;
   return localStorage.getItem(`${USER_PRIVACY_ACK_PREFIX}${userId}`) === '1';
+}
+
+// ──────────────────────────────────────────────
+// Phase 进入时间戳（用于完成弹窗"已专注约 N 分钟"疲劳提醒）
+// 按 activationCode + phase 隔离，进入 chat 页 mount/切换 phase 时写入，
+// 完成阶段时读取差值，关闭完成弹窗时清除。
+// ──────────────────────────────────────────────
+
+const PHASE_ENTER_TS_PREFIX = 'explore_phase_enter_ts_';
+
+const phaseEnterTsKey = (code: string, phase: PhaseKey) =>
+  `${PHASE_ENTER_TS_PREFIX}${code}_${phase}`;
+
+/** 进入 phase 时写入当前时间戳（Date.now()）。code/phase 为空时不写。 */
+export function setPhaseEnterTimestamp(code: string, phase: PhaseKey): void {
+  if (typeof window === 'undefined') return;
+  if (!code || !phase) return;
+  localStorage.setItem(phaseEnterTsKey(code, phase), String(Date.now()));
+}
+
+/** 读取 phase 进入时间戳；不存在或环境异常时返回 null。 */
+export function getPhaseEnterTimestamp(code: string, phase: PhaseKey): number | null {
+  if (typeof window === 'undefined') return null;
+  const raw = localStorage.getItem(phaseEnterTsKey(code, phase));
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** 清除 phase 进入时间戳（完成弹窗关闭后调用，避免下次误算）。 */
+export function clearPhaseEnterTimestamp(code: string, phase: PhaseKey): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(phaseEnterTsKey(code, phase));
+}
+
+// ──────────────────────────────────────────────
+// Phase 欢迎卡（时间预估提示）"不再提醒"持久化
+// 按 activationCode + phase 隔离，仅 localStorage，不写后端
+// ──────────────────────────────────────────────
+
+const PHASE_WELCOME_DISMISS_PREFIX = 'explore_phase_welcome_dismiss_';
+
+const phaseWelcomeDismissKey = (code: string, phase: PhaseKey) =>
+  `${PHASE_WELCOME_DISMISS_PREFIX}${code}_${phase}`;
+
+/** 读取指定 phase 的欢迎卡是否已被用户 dismiss（勾选"不再提醒"）。 */
+export function isPhaseWelcomeDismissed(code: string, phase: PhaseKey): boolean {
+  if (typeof window === 'undefined') return false;
+  return localStorage.getItem(phaseWelcomeDismissKey(code, phase)) === '1';
+}
+
+/** 标记/取消标记指定 phase 欢迎卡的 dismiss 状态。 */
+export function setPhaseWelcomeDismissed(
+  code: string,
+  phase: PhaseKey,
+  dismissed: boolean
+): void {
+  if (typeof window === 'undefined') return;
+  if (dismissed) {
+    localStorage.setItem(phaseWelcomeDismissKey(code, phase), '1');
+  } else {
+    localStorage.removeItem(phaseWelcomeDismissKey(code, phase));
+  }
 }
