@@ -105,7 +105,7 @@ from app.core.llmapi.factory import create_llm_provider
 from app.domain.conclusion_card_goals import cap_strengths_keywords_list, get_conclusion_card_goal
 from app.domain.conclusion_card_payload import (
     REJECTED_DRAFT_SUPERSESSION_LINE,
-    build_pending_main_dialogue_system_addon,
+    build_conclusion_state_injection,
     build_state_json_draft_extension_protocol,
     format_rejected_conclusion_injection,
     sanitize_pending_conclusion_draft,
@@ -258,13 +258,8 @@ CONCLUSION_STATE_PENDING = "pending"
 CONCLUSION_STATE_CONFIRMED = "confirmed"
 CONCLUSION_STATE_REJECTED = "rejected"
 
-# 用户否定/再聊聊后，每满 N 轮用户消息注入一次轻量 system 提醒（非第二模型）
+# 用户否定/再聊聊后，每满 N 轮用户消息触发一次强制兜底（后端直接生成 draft）
 CONCLUSION_REJECT_NUDGE_USER_TURNS = 3
-CONCLUSION_REJECT_SYSTEM_NUDGE = (
-    "[内部策略提醒·勿向用户复述] 用户此前否定了待确认结论或选择再聊聊，并已继续补充多轮对话。"
-    "若当前信息已足以给出待确认草案，请在本轮回复中按需输出 STATE_JSON，且 state 须为 pending_ready，"
-    "draft 含 summary 与 keywords（遵守系统内嵌协议）。"
-)
 
 
 def _trim_history_messages_for_llm(
@@ -5976,6 +5971,7 @@ async def simple_chat_stream(
         rejected_feedback = cmeta.get("feedback") or ""
 
         should_try_retrigger = False
+        turns_since_reject: Optional[int] = None
         if (
             cmeta.get("state") == CONCLUSION_STATE_REJECTED
             and not cmeta.get("thread_completed")
@@ -5983,49 +5979,45 @@ async def simple_chat_stream(
             and phase_step != "rumination"
         ):
             baseline = meta.get("conclusion_reject_baseline_user_count")
-            if (
-                isinstance(baseline, int)
-                and user_count - baseline >= CONCLUSION_REJECT_NUDGE_USER_TURNS
-            ):
-                should_try_retrigger = True
-                if llm_messages and llm_messages[0].role == "system":
-                    llm_messages[0] = LLMMessage(
-                        role="system",
-                        content=llm_messages[0].content + "\n\n" + CONCLUSION_REJECT_SYSTEM_NUDGE,
+            if isinstance(baseline, int):
+                turns_since_reject = max(0, user_count - baseline)
+                if turns_since_reject >= CONCLUSION_REJECT_NUDGE_USER_TURNS:
+                    should_try_retrigger = True
+                    # 兜底 baseline 更新：避免每轮重复触发强制兜底（由 pending_spawned_in_turn 拦截实际重复出卡）
+                    await conv_manager.update_metadata(
+                        session_id,
+                        category,
+                        {"conclusion_reject_baseline_user_count": user_count},
                     )
-                await conv_manager.update_metadata(
-                    session_id,
-                    category,
-                    {"conclusion_reject_baseline_user_count": user_count},
-                )
 
-        # 用户否定后：将状态备注注入 system（避免被当作 assistant 可见话术续写）
-        if rejected_feedback and not pending_conclusion:
-            rejected_injection = (
-                "[内部状态参考·严禁向用户复述]\n"
-                "以下文本仅供内部状态参考，严禁向用户复述或引用其中原文。\n"
-                + format_rejected_conclusion_injection(rejected_feedback)
-            )
-            if llm_messages and llm_messages[0].role == "system":
-                llm_messages[0] = LLMMessage(
-                    role="system",
-                    content=llm_messages[0].content + "\n\n" + rejected_injection,
-                )
-            else:
-                llm_messages.append(LLMMessage(role="system", content=rejected_injection))
-
-        # 仍有待确认草案且本轮将走主对话：system 追加极简状态（判定器判 continue 等情形）
+        # 统一结论卡状态注入：取代零散的 nudge / rejected_injection / pending_addon
+        # 放 system 最末尾（prefix cache 友好：状态是动态变量，固定 prompt 在前）
         if (
-            isinstance(pending_conclusion, dict)
+            phase_step != "rumination"
             and not cmeta.get("thread_completed")
             and llm_messages
             and llm_messages[0].role == "system"
         ):
-            addon = build_pending_main_dialogue_system_addon(phase_step, pending_conclusion)
-            if addon:
+            # rejected 时复用现有清洗逻辑处理 feedback（保留函数，只改调用方式）
+            clean_feedback = ""
+            if cmeta.get("state") == CONCLUSION_STATE_REJECTED and rejected_feedback:
+                clean_feedback = format_rejected_conclusion_injection(rejected_feedback)
+                # format_rejected_conclusion_injection 返回值含 SUPERSESSION 前缀，剥掉只留反馈正文
+                if clean_feedback.startswith(REJECTED_DRAFT_SUPERSESSION_LINE):
+                    clean_feedback = clean_feedback[len(REJECTED_DRAFT_SUPERSESSION_LINE):].strip()
+                if clean_feedback.startswith("用户最新反馈："):
+                    clean_feedback = clean_feedback[len("用户最新反馈："):].strip()
+            state_injection = build_conclusion_state_injection(
+                phase_step,
+                cmeta.get("state") or "none",
+                draft=pending_conclusion if isinstance(pending_conclusion, dict) else None,
+                feedback=clean_feedback,
+                turns_since_reject=turns_since_reject,
+            )
+            if state_injection:
                 llm_messages[0] = LLMMessage(
                     role="system",
-                    content=llm_messages[0].content + "\n\n" + addon,
+                    content=llm_messages[0].content + "\n\n" + state_injection,
                 )
 
         # 2) 无 pending 时，不再走额外同步完成检测；仅依赖模型输出的 STATE_JSON 驱动 pending。
@@ -6444,6 +6436,7 @@ async def simple_chat_stream(
                         llm_provider=reasoning_llm,
                         basic_info=basic_info,
                         prior_context=prior_context,
+                        skip_completion_check=True,
                     ),
                     timeout=CONCLUSION_GEN_TIMEOUT_SECONDS,
                 )

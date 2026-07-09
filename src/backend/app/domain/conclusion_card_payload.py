@@ -112,6 +112,76 @@ def build_pending_main_dialogue_system_addon(phase: str, draft: Dict[str, Any]) 
     return "\n".join(bits)
 
 
+def build_conclusion_state_injection(
+    phase: str,
+    state: str,
+    draft: Optional[Dict[str, Any]] = None,
+    feedback: str = "",
+    turns_since_reject: Optional[int] = None,
+) -> str:
+    """
+    统一结论卡状态注入段（放 system 最末尾，[输出协议] 之后）。
+    取代零散的 build_pending_main_dialogue_system_addon / format_rejected_conclusion_injection / nudge。
+
+    三态说明 + 当前状态 + 各状态补充信息。state 变量放最后，保证 prefix cache 命中最大化。
+
+    state: none | pending | rejected | confirmed
+    draft: pending/rejected 时的草案内容
+    feedback: rejected 时的用户拒绝理由（已清洗）
+    turns_since_reject: rejected 状态下距上次拒绝已补充的轮数
+    """
+    s = (state or "").strip().lower()
+    if s not in {"none", "pending", "rejected", "confirmed"}:
+        s = "none"
+
+    header = (
+        "[结论卡状态·内部参考·严禁向用户复述]\n"
+        "本阶段配有结论卡机制，三态转换规则：\n"
+        "- none：未生成过草案。→ 用户对本阶段探索结果明确点头确认时，本轮末尾输出 STATE_JSON(state=pending_ready)。\n"
+        "- pending：已有一份待确认草案。→ 不要重复输出 STATE_JSON，后端会单独处理确认/拒绝；除非草案需重大调整才输出新版覆盖。\n"
+        "- rejected：用户曾否定草案，正在补充。→ 用户对新内容明确点头确认时，本轮末尾输出 STATE_JSON。若已补充较多内容（≥2轮），可先主动询问用户「是否重新整理一份总结给你确认」，获肯定后再输出 STATE_JSON。\n"
+        "\n"
+        f"当前状态：{s}"
+    )
+
+    detail = ""
+    if s == "none":
+        detail = "尚未生成草案。"
+    elif s == "pending":
+        if isinstance(draft, dict):
+            summ = str(draft.get("summary") or draft.get("ai_summary") or "").strip().replace("\n", " ")
+            if len(summ) > 90:
+                summ = summ[:89] + "…"
+            kw = _coerce_keywords_list(draft.get("keywords"))
+            kw_s = "、".join(kw[:8])
+            parts = []
+            if summ:
+                parts.append(f"待确认草案摘要：{summ}")
+            if kw_s:
+                parts.append(f"关键词：{kw_s}")
+            detail = "；".join(parts) if parts else "待确认草案已生成。"
+        else:
+            detail = "待确认草案已生成。"
+    elif s == "rejected":
+        parts = []
+        if isinstance(draft, dict):
+            summ = str(draft.get("summary") or draft.get("ai_summary") or "").strip().replace("\n", " ")
+            if len(summ) > 90:
+                summ = summ[:89] + "…"
+            if summ:
+                parts.append(f"上版草案摘要：{summ}")
+        fb = (feedback or "").strip()
+        if fb:
+            parts.append(f"用户拒绝理由：{fb[:200]}")
+        if isinstance(turns_since_reject, int):
+            parts.append(f"距上次拒绝已补充 {turns_since_reject} 轮")
+        detail = "；".join(parts) if parts else "用户曾否定草案，正在补充。"
+    elif s == "confirmed":
+        detail = "本阶段已完成确认。"
+
+    return f"{header}\n{detail}"
+
+
 def sanitize_pending_conclusion_keywords(phase: str, keywords: List[str]) -> List[str]:
     """pending 草案：keywords 条数上限 + 禀赋截断前 5。"""
     kw = list(keywords)
