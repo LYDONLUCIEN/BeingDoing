@@ -79,6 +79,11 @@ class Settings(BaseSettings):
     # 子步 3：AI 回复后若假设已完整则自动 cursor+1（默认关，避免抢跑跳行）
     RUMINATION_STEP3_AUTO_UNLOCK_ENABLED: bool = False
 
+    # Rumination 版本切换：'v3'（强制 v3）| 'v4'（强制 v4）| 'ab'（按比例随机，默认）
+    RUMINATION_VERSION_MODE: str = "ab"
+    # AB 模式下分配到 v4 的概率（0.0~1.0，默认 0.5）
+    RUMINATION_AB_V4_RATIO: float = 0.5
+
     # 全局思维链开关：控制 v4-pro 等模型是否开启 thinking 模式（默认关，提升响应速度）
     LLM_THINKING_ENABLED: bool = False
 

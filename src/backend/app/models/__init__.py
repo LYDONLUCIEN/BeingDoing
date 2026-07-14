@@ -11,6 +11,7 @@ from app.models.refresh_token import RefreshToken
 from app.models.notification import NotificationTask, NotificationRecipient
 from app.models.email_bounce import EmailBounce
 from app.models.site_notice import SiteNotice
+from app.models.rumination_ab import RuminationAbAssignment
 
 __all__ = [
     "Base",
@@ -36,4 +37,5 @@ __all__ = [
     "NotificationRecipient",
     "EmailBounce",
     "SiteNotice",
+    "RuminationAbAssignment",
 ]

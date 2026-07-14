@@ -49,6 +49,7 @@ const RuminationV4Page = dynamic(
 );
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { apiClient, getApiErrorMessage } from '@/lib/api/client';
+import { fetchRuminationVersion } from '@/lib/explore/ruminationV4Api';
 import { authApi } from '@/lib/api/auth';
 import {
   PHASES,
@@ -334,6 +335,8 @@ export default function ChatPhasePage() {
   >(null);
   /** 首次进入 rumination 时等待用户回复开场白后再加载 step1 表格 */
   const [ruminationAwaitingReady, setRuminationAwaitingReady] = useState(false);
+  /** rumination v3/v4 版本判定：null=加载中，'v3'/'v4'=后端已判定 */
+  const [ruminationVersion, setRuminationVersion] = useState<'v3' | 'v4' | null>(null);
   /** 标记首次从 awaitingReady 过渡时需要播放 step1 opening */
   const pendingStep1OpeningRef = useRef(false);
   /** 表格提交等操作后递增，驱动标题区六段进度条重新拉取 */
@@ -710,6 +713,31 @@ export default function ChatPhasePage() {
     isNavigatingRef.current = false;
     // 记录进入该 phase 的时间戳，用于完成弹窗的"已专注约 N 分钟"疲劳提醒
     setPhaseEnterTimestamp(activationCode, phase);
+  }, [activationCode, phase]);
+
+  // rumination v3/v4 版本判定：进 rumination 时向后端查询该 report 应走哪个版本。
+  // 后端为权威（配置强制 / AB 随机），结果持久化在 rumination_ab_assignments 表。
+  useEffect(() => {
+    if (phase !== 'rumination' || !activationCode) return;
+    let cancelled = false;
+    setRuminationVersion(null);
+    (async () => {
+      try {
+        const resp = await fetchRuminationVersion(activationCode);
+        if (!cancelled && resp.data?.version) {
+          setRuminationVersion(resp.data.version);
+        } else if (!cancelled) {
+          // 兜底：后端未返回有效版本，默认 v3
+          setRuminationVersion('v3');
+        }
+      } catch {
+        // 兜底：查询失败默认 v3，不阻塞用户
+        if (!cancelled) setRuminationVersion('v3');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [activationCode, phase]);
 
   // 从后端同步线程列表（主数据源，支持跨设备）
@@ -3949,18 +3977,69 @@ export default function ChatPhasePage() {
 
   const useCareeringMatte = phase !== 'rumination';
 
-  // ── v4 分支:phase=rumination 且 URL 有 ?v4=1 → 渲染 RuminationV4Page ──
-  // 见 wiki/开发文档/0707-tag1.6.0.md。v3 行为不受影响(默认无 ?v4=1)。
-  const isRuminationV4 =
-    phase === 'rumination' &&
-    (searchParams?.get('v4') === '1' ||
-      (typeof window !== 'undefined' && localStorage.getItem('rumination_v4') === '1'));
-  if (isRuminationV4 && activationCode) {
-    return (
-      <div className="flex min-h-0 flex-col overflow-hidden h-[calc(100dvh-3.5rem)] max-h-[calc(100dvh-3.5rem)]">
-        <RuminationV4Page activationCode={activationCode} />
-      </div>
-    );
+  // ── v3/v4 版本判定 ──
+  // 优先级：调试覆盖（?v4=1 / ?v3=1，最高）> 后端判定（ruminationVersion）> 兜底 v3。
+  // 见 wiki/开发文档/0707-tag1.6.0.md。后端判定由 rumination_ab_assignments 表持久化。
+  if (phase === 'rumination' && activationCode) {
+    const debugV4 = searchParams?.get('v4') === '1';
+    const debugV3 = searchParams?.get('v3') === '1';
+    const shouldUseV4 = debugV4 || (!debugV3 && ruminationVersion === 'v4');
+
+    // 后端判定还在加载中且无调试覆盖 → 轻量 loading，避免先闪 v3 再切 v4
+    if (ruminationVersion === null && !debugV4 && !debugV3) {
+      return (
+        <div className="flex min-h-0 flex-col overflow-hidden h-[calc(100dvh-3.5rem)] max-h-[calc(100dvh-3.5rem)] items-center justify-center text-gray-400">
+          加载中…
+        </div>
+      );
+    }
+
+    if (shouldUseV4) {
+      // v4 暂不依赖 v3 线程 completed 门控；导航逻辑与「完成并继续」一致，仅跳过 thread canContinue。
+      const handleV4CompleteAndContinue = () => {
+        if (!activationCode) {
+          setChatError('激活码上下文丢失，请返回激活页重新进入');
+          return;
+        }
+        let sessionSnapshot = session;
+        if (!sessionSnapshot) {
+          try {
+            sessionSnapshot = loadSession(activationCode);
+            setSession(sessionSnapshot);
+          } catch {
+            setChatError('会话状态读取失败，请刷新页面后重试');
+            return;
+          }
+        }
+        if (isNavigatingRef.current) return;
+        if (sessionSnapshot.currentPhase !== phase) {
+          router.push(`/explore/chat/${sessionSnapshot.currentPhase}`);
+          return;
+        }
+        isNavigatingRef.current = true;
+        try {
+          const updated = unlockNextPhase({ ...sessionSnapshot, currentPhase: phase });
+          setSession(updated);
+          router.push(`/explore/transition?from=${phase}`);
+          window.setTimeout(() => {
+            isNavigatingRef.current = false;
+          }, 1800);
+        } catch (err) {
+          console.error('[V4 CompleteAndContinue] 导航异常', err);
+          isNavigatingRef.current = false;
+          setChatError('跳转失败，请刷新页面后重试');
+        }
+      };
+
+      return (
+        <div className="flex min-h-0 flex-col overflow-hidden h-[calc(100dvh-3.5rem)] max-h-[calc(100dvh-3.5rem)]">
+          <RuminationV4Page
+            activationCode={activationCode}
+            onCompleteAndContinue={handleV4CompleteAndContinue}
+          />
+        </div>
+      );
+    }
   }
 
   return (

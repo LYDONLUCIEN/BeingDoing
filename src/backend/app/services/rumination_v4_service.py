@@ -7,7 +7,7 @@ combo_session 管理:
 - 兜底机制(双信号监测 + 异步补全)
 - 后台 30 轮滚动摘要
 
-存储: data/simple/reports/{report_id}/rumination_progress.json (单文件,所有 combo 嵌入)
+存储: data/simple/reports/{report_id}/rumination_v4_progress.json (独立文件,与 v3 物理隔离)
 删除 = 从 combo_sessions 数组移除该元素(含 messages,彻底消失)
 """
 from __future__ import annotations
@@ -93,13 +93,13 @@ def _now_iso() -> str:
 
 # ── 存储 IO ─────────────────────────────────────────────────────────────
 def _v4_progress_file(reports_root: Path, report_id: str) -> Path:
-    """v4 与 v3 共用同一文件名 —— 这是 schema_version=4 的同一 rumination_progress.json。
-    若发现 schema_version < 4,视为老数据忽略,返回新 v4 state(不破坏老数据,见第十一节)。"""
-    return reports_root / report_id / "rumination_progress.json"
+    """v4 使用独立文件 rumination_v4_progress.json，与 v3 的 rumination_progress.json
+    物理隔离。这样同一 report 在 v3/v4 间切换时，两版本数据互不覆盖。"""
+    return reports_root / report_id / "rumination_v4_progress.json"
 
 
 def load_v4_state(reports_root: Path, report_id: str) -> Dict[str, Any]:
-    """加载 v4 state。若文件是 v3 或不存在 → 返回默认 v4 state(老数据忽略)。"""
+    """加载 v4 state。文件不存在或损坏 → 返回默认 v4 state。"""
     path = _v4_progress_file(reports_root, report_id)
     if not path.is_file():
         return default_state()
@@ -109,10 +109,7 @@ def load_v4_state(reports_root: Path, report_id: str) -> Dict[str, Any]:
         return default_state()
     if not isinstance(data, dict):
         return default_state()
-    # 仅当 schema_version >= 4 才视为 v4 数据;否则当新用户处理(不破坏 v3)
-    if int(data.get("schema_version", 0) or 0) < 4:
-        return default_state()
-    # 归一化(补缺字段)
+    # 归一化(补缺字段);v4 独立文件，不再需要 schema_version 兼容判断
     return _normalize_v4_state(data)
 
 
@@ -192,14 +189,40 @@ def next_combo_id(state: Dict[str, Any]) -> str:
     return f"combo_{max_n + 1}"
 
 
+MAX_COMBOS = 10  # 组合数量上限
+
+
+def _combo_key(passion: str, strengths: List[str]) -> str:
+    """组合的唯一键:passion + 排序后的 strengths(严格集合相等判定)。"""
+    return f"{passion.strip()}||{'|'.join(sorted(s.strip() for s in strengths))}"
+
+
+def find_duplicate_combo(
+    state: Dict[str, Any], passion: str, strengths: List[str]
+) -> Optional[Dict[str, Any]]:
+    """严格集合相等判重:同 passion + 同 strengths 集合 → 返回已存在的 combo,否则 None。"""
+    target = _combo_key(passion, strengths)
+    for c in state.get("combo_sessions") or []:
+        if _combo_key(c.get("passion") or "", c.get("strengths") or []) == target:
+            return c
+    return None
+
+
 def create_combo(
     reports_root: Path,
     report_id: str,
     passion: str,
     strengths: List[str],
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    """创建新 combo_session,设为 active,返回 (state, combo_session)。"""
+    """创建新 combo_session,设为 active,返回 (state, combo_session)。
+    校验:10 上限 + 严格集合判重(重复时抛 ValueError)。"""
     state = load_v4_state(reports_root, report_id)
+    existing = state.get("combo_sessions") or []
+    if len(existing) >= MAX_COMBOS:
+        raise ValueError(f"组合已达上限({MAX_COMBOS}个),请删除已有组合后再新建")
+    dup = find_duplicate_combo(state, passion, strengths)
+    if dup:
+        raise ValueError("已存在相同的热爱+优势组合,请切换或调整优势")
     cid = next_combo_id(state)
     combo = new_combo_session(cid, passion, strengths)
     state.setdefault("combo_sessions", []).append(combo)
@@ -207,6 +230,37 @@ def create_combo(
     state["main_section"] = "combo_session"
     save_v4_state(reports_root, report_id, state)
     return state, combo
+
+
+def build_opening_text(passion: str, strengths: List[str]) -> str:
+    """生成引导语开场(固定模板 + 个性化占位)。"""
+    strengths_str = "、".join(strengths)
+    return (
+        f"好的,我们就来聊聊「{passion}」+「{strengths_str}」这个组合。\n\n"
+        f"在正式展开之前,我想先听听你 —— 是什么吸引你把这个热爱和这几个优势放在一起?"
+        f"可以告诉我一个具体的场景,或者一个让你心动的瞬间吗?"
+    )
+
+
+def create_and_start(
+    reports_root: Path,
+    report_id: str,
+    passion: str,
+    strengths: List[str],
+) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+    """原子操作:创建 combo + 生成引导语开场,返回 (state, combo, opening_msg)。
+    - 校验 10 上限 + 严格集合判重(重复/超限抛 ValueError)
+    - 创建后立即追加 assistant 开场消息
+    """
+    state, combo = create_combo(reports_root, report_id, passion, strengths)
+    opening_text = build_opening_text(passion, strengths)
+    append_message(state, combo["combo_id"], "assistant", opening_text)
+    save_v4_state(reports_root, report_id, state)
+    # 重新加载拿带 ts 的消息
+    state = load_v4_state(reports_root, report_id)
+    combo = find_combo(state, combo["combo_id"])
+    opening_msg = combo["messages"][-1] if combo.get("messages") else None
+    return state, combo, opening_msg
 
 
 def delete_combo(reports_root: Path, report_id: str, combo_id: str) -> Dict[str, Any]:

@@ -17,7 +17,7 @@ import {
   fetchComboDetail,
   fetchCombos,
   fetchV4State,
-  createCombo as apiCreateCombo,
+  createAndStart as apiCreateAndStart,
   startDiscussion as apiStartDiscussion,
   deleteCombo as apiDeleteCombo,
   patchConclusionCard as apiPatchCard,
@@ -46,7 +46,8 @@ interface RuminationV4Store {
   init: (activationCode: string) => Promise<void>;
   refreshCombos: () => Promise<void>;
   loadCombo: (comboId: string) => Promise<void>;
-  createCombo: (passion: string, strengths: string[]) => Promise<string | null>;
+  /** 原子:创建 combo + 唤起引导语。成功返回 combo_id,失败返回 null 并设 error */
+  createAndStart: (passion: string, strengths: string[]) => Promise<string | null>;
   removeCombo: (comboId: string) => Promise<void>;
   switchCombo: (comboId: string) => Promise<void>;
   beginDiscussion: (comboId: string) => Promise<void>;
@@ -118,26 +119,52 @@ export const useRuminationV4Store = create<RuminationV4Store>((set, get) => ({
     }
   },
 
-  createCombo: async (passion, strengths) => {
+  createAndStart: async (passion, strengths) => {
     const ac = get().activationCode;
-    if (!ac) return null;
+    if (!ac) {
+      set({ error: '激活码未就绪，请刷新页面后重试' });
+      return null;
+    }
+    set({ error: null });
     try {
-      const resp = await apiCreateCombo(ac, passion, strengths);
-      const combo = resp.data.combo;
+      const resp = await apiCreateAndStart(ac, passion, strengths);
+      const payload = resp?.data;
+      const combo = payload?.combo;
+      const opening = payload?.opening;
+      if (!combo?.combo_id) {
+        set({ error: '创建组合失败：后端未返回组合数据' });
+        return null;
+      }
+      // 兜底：确保开场消息在 messages 里，右侧可立刻解锁对话
+      const withOpening: ComboSession = {
+        ...combo,
+        messages:
+          combo.messages?.length
+            ? combo.messages
+            : opening
+              ? [opening]
+              : combo.messages || [],
+      };
       set((s) => ({
         state: s.state
           ? {
               ...s.state,
-              combo_sessions: [...s.state.combo_sessions, combo],
-              active_combo_id: combo.combo_id,
+              combo_sessions: [...s.state.combo_sessions, withOpening],
+              active_combo_id: withOpening.combo_id,
               main_section: 'combo_session',
             }
           : s.state,
-        comboCache: { ...s.comboCache, [combo.combo_id]: combo },
+        comboCache: { ...s.comboCache, [withOpening.combo_id]: withOpening },
+        error: null,
       }));
-      return combo.combo_id;
+      return withOpening.combo_id;
     } catch (e: any) {
-      set({ error: e?.message || '创建组合失败' });
+      const detail =
+        e?.response?.data?.detail ||
+        e?.response?.data?.message ||
+        e?.message ||
+        '创建并开始失败';
+      set({ error: typeof detail === 'string' ? detail : JSON.stringify(detail) });
       return null;
     }
   },

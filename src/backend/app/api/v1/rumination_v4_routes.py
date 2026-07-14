@@ -40,12 +40,13 @@ from app.utils.simple_activation_manager import (
     get_activation_manager_for_code,
     get_effective_simple_root,
 )
+from app.utils.rumination_ops import extract_dimension_lists_for_rumination_table
 from app.services.rumination_v4_service import (
     CONCLUSION_READY_MARKER,
     apply_tool_call,
     append_message,
     build_chat_messages,
-    create_combo as svc_create_combo,
+    create_and_start as svc_create_and_start,
     delete_combo as svc_delete_combo,
     detect_conclusion_signals,
     fallback_generate_conclusion,
@@ -61,6 +62,11 @@ from app.services.rumination_v4_service import (
     update_final_selection,
 )
 from app.utils.activation_audit import append_activation_audit  # 复用项目审计日志
+
+# v3/v4 分组判定
+from app.models.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.services.rumination_ab_service import resolve_rumination_version
 
 logger = logging.getLogger(__name__)
 
@@ -148,12 +154,63 @@ def _audit_log(event: str, user: Optional[dict], activation_code: str, detail: D
         logger.info("AUDIT %s user=%s code=%s detail=%s", event, (user or {}).get("user_id"), activation_code, detail)
 
 
+# ── 端点 0:GET /version（v3/v4 分组判定，前端进 rumination 时首调）────────
+@router.get("/version")
+async def get_rumination_version(
+    activation_code: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """返回该 report 应走的 rumination 版本。
+
+    首次进入时按配置（强制 v3/v4 或 AB 随机）分配并落库，后续直接返回已分配结果。
+    返回 {version: 'v3'|'v4', source: 'forced'|'ab', assigned_at, ratio_at_assignment}。
+    """
+    reports_root, rid = _resolve_v4_ctx(activation_code, current_user)
+    result = await resolve_rumination_version(db, rid, (current_user or {}).get("user_id"))
+    _audit_log("version_assigned", current_user, activation_code, result)
+    return {"code": 200, "message": "success", "data": result}
+
+
 # ── 端点 1:GET /state ──────────────────────────────────────────────────
 @router.get("/state")
 async def get_state(activation_code: str, current_user: dict = Depends(get_current_user)):
-    """获取全局 v4 rumination_state。"""
-    reports_root, rid = _resolve_v4_ctx(activation_code, current_user)
+    """获取全局 v4 rumination_state。
+
+    若 matrix_snapshot 的 passions/strengths 为空（首次进入），
+    从前置阶段（values/strengths/interests 结论）提取并填充。
+    """
+    manager = get_activation_manager_for_code(activation_code)
+    rec, report, _phase_step, _sid, _cat, _conv = _resolve_report_context(
+        manager=manager,
+        activation_code=activation_code,
+        current_user=current_user,
+        phase="rumination",
+    )
+    storage_root = str(get_effective_simple_root(rec))
+    reports_root = Path(storage_root) / "reports"
+    rid = report["report_id"]
+
     state = load_v4_state(reports_root, rid)
+    snap = state.get("matrix_snapshot") or {}
+    needs_fill = not snap.get("passions") or not snap.get("strengths")
+    if needs_fill:
+        try:
+            record_obj = rec.record_dict if hasattr(rec, "record_dict") else None
+            _, strengths_list, interests_list, _, _ = extract_dimension_lists_for_rumination_table(
+                str(reports_root), rid, record_obj
+            )
+            passions = (interests_list or [])[:3]
+            strengths = (strengths_list or [])[:5]
+            state["matrix_snapshot"] = {"passions": passions, "strengths": strengths}
+            save_v4_state(reports_root, rid, state)
+            logger.info(
+                "v4 matrix_snapshot filled report=%s passions=%d strengths=%d",
+                rid, len(passions), len(strengths),
+            )
+        except Exception as e:
+            logger.warning("v4 matrix_snapshot fill failed report=%s: %s", rid, e)
+
     return {"code": 200, "message": "success", "data": {"state": state, "combos": list_combos(state)}}
 
 
@@ -178,18 +235,33 @@ async def get_combo_detail(combo_id: str, activation_code: str, current_user: di
     return {"code": 200, "message": "success", "data": {"combo": combo}}
 
 
-# ── 端点 4:POST /create-combo ──────────────────────────────────────────
-@router.post("/create-combo")
-async def create_combo_endpoint(req: CreateComboReq, current_user: dict = Depends(get_current_user)):
-    """确认热爱+优势子集,创建新 combo_session,返回 combo_id。"""
+# ── 端点 4:POST /create-and-start(原子:建 combo + 唤起引导语)────────
+@router.post("/create-and-start")
+async def create_and_start_endpoint(req: CreateComboReq, current_user: dict = Depends(get_current_user)):
+    """原子操作:创建 combo + 生成引导语开场,一次调用完成。
+    校验:10 上限 + 严格集合判重。返回 {combo_id, combo, opening}。"""
     if not req.passion.strip():
         raise HTTPException(status_code=400, detail="passion 不可为空")
     if not req.strengths or not all(isinstance(s, str) and s.strip() for s in req.strengths):
         raise HTTPException(status_code=400, detail="strengths 不可为空")
     reports_root, rid = _resolve_v4_ctx(req.activation_code, current_user)
-    state, combo = svc_create_combo(reports_root, rid, req.passion.strip(), [s.strip() for s in req.strengths])
-    _audit_log("rumination_v4_combo_created", current_user, req.activation_code, {"combo_id": combo["combo_id"]})
-    return {"code": 200, "message": "success", "data": {"combo_id": combo["combo_id"], "combo": combo}}
+    try:
+        state, combo, opening = svc_create_and_start(
+            reports_root, rid, req.passion.strip(), [s.strip() for s in req.strengths]
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit_log(
+        "rumination_v4_combo_created_and_started",
+        current_user,
+        req.activation_code,
+        {"combo_id": combo["combo_id"]},
+    )
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {"combo_id": combo["combo_id"], "combo": combo, "opening": opening},
+    }
 
 
 # ── 端点 5:POST /start-discussion ─────────────────────────────────────

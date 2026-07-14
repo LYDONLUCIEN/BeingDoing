@@ -78,6 +78,22 @@ export interface RuminationV4State {
 // ── API 调用 ──────────────────────────────────────────────────────────
 const PREFIX = '/simple-chat/rumination-v4';
 
+/** v3/v4 分组判定结果 */
+export interface RuminationVersionInfo {
+  version: 'v3' | 'v4';
+  source: 'forced' | 'ab';
+  assigned_at: string | null;
+  ratio_at_assignment: number | null;
+}
+
+/** 查询该 report 应走的 rumination 版本（后端权威，首次分配后续稳定） */
+export async function fetchRuminationVersion(activationCode: string) {
+  return apiClient.get<RuminationVersionInfo>(
+    `${PREFIX}/version`,
+    { params: { activation_code: activationCode } }
+  );
+}
+
 export async function fetchV4State(activationCode: string) {
   return apiClient.get<{ state: RuminationV4State; combos: ComboMeta[] }>(
     `${PREFIX}/state`,
@@ -99,9 +115,10 @@ export async function fetchComboDetail(activationCode: string, comboId: string) 
   );
 }
 
-export async function createCombo(activationCode: string, passion: string, strengths: string[]) {
-  return apiClient.post<{ combo_id: string; combo: ComboSession }>(
-    `${PREFIX}/create-combo`,
+/** 原子操作:创建 combo + 唤起引导语开场,一次调用完成 */
+export async function createAndStart(activationCode: string, passion: string, strengths: string[]) {
+  return apiClient.post<{ combo_id: string; combo: ComboSession; opening: ComboMessage }>(
+    `${PREFIX}/create-and-start`,
     { activation_code: activationCode, passion, strengths }
   );
 }
