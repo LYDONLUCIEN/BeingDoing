@@ -11,12 +11,12 @@ import V4ComboMatrixSelector from './V4ComboMatrixSelector';
 import ConclusionCardEditable from './ConclusionCardEditable';
 
 const glassPanelStyle: CSSProperties = {
-  borderRadius: '16px',
-  border: '1px solid rgba(255,255,255,0.38)',
-  background:
-    'linear-gradient(135deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.28) 100%)',
-  backdropFilter: 'blur(16px)',
-  padding: '12px 14px 11px',
+  borderRadius: '18px',
+  border: '1px solid rgba(255,255,255,0.42)',
+  background: 'rgba(255,255,255,0.38)',
+  backdropFilter: 'blur(14px)',
+  padding: '20px 24px 16px',
+  boxShadow: '0 10px 30px rgba(0,0,0,0.03)',
 };
 
 export default function V4MatrixLeftPanel() {
@@ -72,7 +72,7 @@ export default function V4MatrixLeftPanel() {
         </div>
       )}
 
-      <div className="max-h-[58%] shrink-0 overflow-y-auto rumination-hyp-preview-scroll">
+      <div className="shrink-0">
         <V4ComboMatrixSelector
           passions={passions}
           strengths={strengths}

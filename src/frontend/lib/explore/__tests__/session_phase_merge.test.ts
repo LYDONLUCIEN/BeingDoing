@@ -23,7 +23,7 @@ function makeSession(currentPhase: string, unlocked: string[]): ExploreSession {
   };
 }
 
-function makeResume(resumePhase: string, unlockedPhases: string[] | null = null): ExploreResumePayload {
+function makeResume(resumePhase: string, unlockedPhases?: string[]): ExploreResumePayload {
   return { resume_phase: resumePhase, unlocked_phases: unlockedPhases };
 }
 
@@ -117,7 +117,7 @@ describe('Rumination edge', () => {
 
 describe('Backend unlocked_phases missing (derive)', () => {
   const session = makeSession('strengths', ['values', 'strengths']);
-  const resume = makeResume('values', null);
+  const resume = makeResume('values', undefined);
   const result = applyExploreResumeToSession(session, resume);
 
   assert(result.currentPhase === 'strengths',

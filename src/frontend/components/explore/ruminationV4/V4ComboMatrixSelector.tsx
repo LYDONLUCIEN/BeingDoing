@@ -2,7 +2,7 @@
 
 /**
  * v4 选择器 — 块状网格：热爱一行三列 / 优势一行五列
- * 视觉：v3 橙热爱 / 绿优势；「开始探索」保留紫 CTA
+ * 视觉对齐 preview.html：橙热爱 / 绿优势、数字圆圈标题、已选计数
  */
 
 import { useEffect, useState, type CSSProperties } from 'react';
@@ -30,11 +30,11 @@ function normalizeOptions(items: Array<string | DimensionOption>): DimensionOpti
 
 const glassPanelStyle: CSSProperties = {
   borderRadius: '18px',
-  border: '1px solid rgba(255,255,255,0.38)',
-  background:
-    'linear-gradient(135deg, rgba(255,245,248,0.22) 0%, rgba(255,250,241,0.18) 20%, rgba(245,239,255,0.16) 54%, rgba(237,255,247,0.18) 100%)',
-  backdropFilter: 'blur(18px)',
-  padding: '14px 14px 12px',
+  border: '1px solid rgba(255,255,255,0.42)',
+  background: 'rgba(255,255,255,0.38)',
+  backdropFilter: 'blur(14px)',
+  padding: '20px 24px 16px',
+  boxShadow: '0 10px 30px rgba(0,0,0,0.03)',
 };
 
 export default function V4ComboMatrixSelector({
@@ -83,123 +83,148 @@ export default function V4ComboMatrixSelector({
   return (
     <div style={glassPanelStyle}>
       {/* ① 热爱 — 一行三列 */}
-      <div className="mb-2 flex items-center gap-2">
-        <span className="text-[14px] font-[800] text-[#f07d43]">① 选择 1 项热爱</span>
-        <span className="text-[12px] font-[500] text-[#9ca3af]">（单选）</span>
-      </div>
-      <div className="mb-3.5 grid grid-cols-3 gap-2.5">
-        {passionOpts.map((p) => {
-          const isActive = p.name === activePassion;
-          const glyph = p.glyph || '♥';
-          return (
-            <button
-              key={p.name}
-              type="button"
-              disabled={locked}
-              onClick={() => !locked && setSelPassion(p.name)}
-              className={`
-                relative flex min-h-[96px] flex-col items-center justify-center gap-2
-                rounded-[16px] px-2 py-3 text-center
-                font-[700] transition-all duration-[0.18s] ease
-                backdrop-blur-[12px]
-                ${locked ? 'cursor-default' : 'cursor-pointer'}
-                ${
+      <div className="selection-block mb-4">
+        <div className="section-title mb-4 flex items-center gap-2.5 text-[16px] font-extrabold text-[#ff6426]">
+          <span
+            className="flex h-[25px] w-[25px] items-center justify-center rounded-full border-2 border-current text-[15px]"
+          >
+            1
+          </span>
+          <span>选择 1 项热爱</span>
+          <small className="text-[13px] font-semibold text-[#78849a]">（单选）</small>
+        </div>
+        <div className="cards-row love-cards grid grid-cols-3 gap-[18px]">
+          {passionOpts.map((p) => {
+            const isActive = p.name === activePassion;
+            const glyph = p.glyph || (isActive ? '♥' : '♡');
+            return (
+              <button
+                key={p.name}
+                type="button"
+                disabled={locked}
+                onClick={() => !locked && setSelPassion(p.name)}
+                className={`
+                  choice-card love-card relative flex min-h-[106px] flex-col items-center justify-center gap-2.5
+                  rounded-[14px] border px-2 py-3 text-center font-semibold transition-all duration-200
+                  ${locked ? 'cursor-default' : 'cursor-pointer hover:-translate-y-0.5'}
+                  ${
+                    isActive
+                      ? 'selected border-[#ff6b36] text-white shadow-[0_12px_25px_rgba(255,90,51,0.23)]'
+                      : 'border-[#dfe5ee] bg-white/70 text-[#334563] shadow-[0_4px_12px_rgba(18,40,75,0.04)] hover:border-[#c7d7ef] hover:shadow-[0_8px_20px_rgba(18,40,75,0.08)]'
+                  }
+                `}
+                style={
                   isActive
-                    ? 'border border-white/58 text-white shadow-[0_12px_24px_rgba(255,137,95,0.26),inset_0_1px_0_rgba(255,255,255,0.4)]'
-                    : 'border border-white/46 bg-white/55 text-[#5d6c80] shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_6px_16px_rgba(33,48,79,0.04)] hover:-translate-y-[1px] hover:bg-white/70'
+                    ? {
+                        background:
+                          'linear-gradient(135deg, #ff9835 0%, #ff722e 52%, #ff3e4f 100%)',
+                      }
+                    : undefined
                 }
-              `}
-              style={
-                isActive
-                  ? {
-                      background:
-                        'linear-gradient(135deg, #ffb05c 0%, #ff7a59 60%, #ff6a7c 100%)',
-                    }
-                  : undefined
-              }
-            >
-              {isActive && (
-                <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-white/22 text-[11px] text-white">
-                  ✓
-                </span>
-              )}
-              <span
-                className={`flex h-9 w-9 items-center justify-center rounded-full text-[16px] ${
-                  isActive ? 'bg-white/28' : 'bg-[rgba(255,122,89,0.12)] text-[#f07d43]'
-                }`}
               >
-                {glyph}
-              </span>
-              <span className="line-clamp-2 px-1 text-[13px] leading-snug">{p.name}</span>
-            </button>
-          );
-        })}
-        {passionOpts.length === 0 && (
-          <div className="col-span-3 py-3 text-center text-[12px] text-[#9ca3af]">
-            暂无可选热爱
-          </div>
-        )}
+                {isActive && (
+                  <span
+                    className="selected-mark absolute right-2 top-2 grid h-5 w-5 place-items-center rounded-full text-[11px] text-white"
+                    style={{ background: '#ff7041', border: '2px solid rgba(255,255,255,0.9)' }}
+                  >
+                    ✓
+                  </span>
+                )}
+                <span
+                  className={`round-icon flex h-[42px] w-[42px] items-center justify-center rounded-full border text-[24px] ${
+                    isActive
+                      ? 'border-0 bg-white text-[#ff6037]'
+                      : 'border-[#dbe1eb] bg-white/82 text-[#ff6037]'
+                  }`}
+                >
+                  {glyph}
+                </span>
+                <span className="label line-clamp-2 px-1 text-[15px] leading-snug">{p.name}</span>
+              </button>
+            );
+          })}
+          {passionOpts.length === 0 && (
+            <div className="col-span-3 py-3 text-center text-[12px] text-[#9ca3af]">
+              暂无可选热爱
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ② 优势 — 一行五列 */}
-      <div className="mb-2 flex items-center gap-2">
-        <span className="text-[14px] font-[800] text-[#3ca56c]">② 选择你的优势</span>
-        <span className="text-[12px] font-[500] text-[#9ca3af]">
-          （可多选 · {activeStrengths.length}）
-        </span>
-      </div>
-      <div className="mb-3.5 grid grid-cols-5 gap-2">
-        {strengthOpts.map((s) => {
-          const isActive = activeStrengths.includes(s.name);
-          const glyph = s.glyph || '✦';
-          return (
-            <button
-              key={s.name}
-              type="button"
-              disabled={locked}
-              onClick={() => toggleStrength(s.name)}
-              className={`
-                relative flex min-h-[88px] flex-col items-center justify-center gap-1.5
-                rounded-[14px] px-1.5 py-2.5 text-center
-                font-[700] transition-all duration-[0.18s] ease
-                backdrop-blur-[12px]
-                ${locked ? 'cursor-default' : 'cursor-pointer'}
-                ${
+      <div className="selection-block">
+        <div className="section-title mb-4 flex items-center gap-2.5 text-[16px] font-extrabold text-[#00a878]">
+          <span
+            className="flex h-[25px] w-[25px] items-center justify-center rounded-full border-2 border-current text-[15px]"
+          >
+            2
+          </span>
+          <span>选择你的优势</span>
+          <small className="text-[13px] font-semibold text-[#78849a]">（可多选）</small>
+        </div>
+        <div className="cards-row strength-cards grid grid-cols-5 gap-4">
+          {strengthOpts.map((s) => {
+            const isActive = activeStrengths.includes(s.name);
+            const glyph = s.glyph || '✦';
+            return (
+              <button
+                key={s.name}
+                type="button"
+                disabled={locked}
+                onClick={() => toggleStrength(s.name)}
+                className={`
+                  choice-card strength-card relative flex min-h-[110px] flex-col items-center justify-center gap-1.5
+                  rounded-[14px] border px-1.5 py-2.5 text-center font-semibold transition-all duration-200
+                  ${locked ? 'cursor-default' : 'cursor-pointer hover:-translate-y-0.5'}
+                  ${
+                    isActive
+                      ? 'selected border-[#9ee4d0] text-[#008f6a] shadow-[0_9px_20px_rgba(11,179,132,0.09)]'
+                      : 'border-[#dfe5ee] bg-white/70 text-[#354768] shadow-[0_4px_12px_rgba(18,40,75,0.04)] hover:border-[#c7d7ef] hover:shadow-[0_8px_20px_rgba(18,40,75,0.08)]'
+                  }
+                `}
+                style={
                   isActive
-                    ? 'border border-white/58 text-white shadow-[0_8px_16px_rgba(101,208,150,0.22),inset_0_1px_0_rgba(255,255,255,0.4)]'
-                    : 'border border-white/46 bg-white/55 text-[#5d6c80] shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_4px_12px_rgba(33,48,79,0.04)] hover:-translate-y-[1px] hover:bg-white/70'
+                    ? {
+                        background:
+                          'linear-gradient(145deg, rgba(232,253,247,0.96), rgba(235,248,244,0.86))',
+                      }
+                    : undefined
                 }
-              `}
-              style={
-                isActive
-                  ? {
-                      background:
-                        'linear-gradient(135deg, #57deb0 0%, #72ddb8 56%, #79cfa5 100%)',
-                    }
-                  : undefined
-              }
-            >
-              {isActive && (
-                <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-white/22 text-[10px] text-white">
-                  ✓
-                </span>
-              )}
-              <span
-                className={`flex h-7 w-7 items-center justify-center rounded-full text-[13px] ${
-                  isActive ? 'bg-white/28' : 'bg-[rgba(60,165,108,0.12)] text-[#3ca56c]'
-                }`}
               >
-                {glyph}
-              </span>
-              <span className="line-clamp-2 px-0.5 text-[12px] leading-snug">{s.name}</span>
-            </button>
-          );
-        })}
-        {strengthOpts.length === 0 && (
-          <div className="col-span-5 py-3 text-center text-[12px] text-[#9ca3af]">
-            暂无可选优势
-          </div>
-        )}
+                {isActive && (
+                  <span
+                    className="selected-mark absolute right-1.5 top-1.5 grid h-4 w-4 place-items-center rounded-full text-[10px] text-white"
+                    style={{ background: '#08aa7e', border: '2px solid rgba(255,255,255,0.9)' }}
+                  >
+                    ✓
+                  </span>
+                )}
+                <span
+                  className={`round-icon flex h-[37px] w-[37px] items-center justify-center rounded-full bg-transparent text-[25px] ${
+                    isActive ? 'text-[#00a979]' : 'text-[#39517b]'
+                  }`}
+                >
+                  {glyph}
+                </span>
+                <span
+                  className="label line-clamp-2 px-0.5 text-[12px] leading-snug"
+                  dangerouslySetInnerHTML={{
+                    __html: s.name.replace(/\n/g, '<br>'),
+                  }}
+                />
+              </button>
+            );
+          })}
+          {strengthOpts.length === 0 && (
+            <div className="col-span-5 py-3 text-center text-[12px] text-[#9ca3af]">
+              暂无可选优势
+            </div>
+          )}
+        </div>
+        <div className="selected-count mt-3.5 text-center text-[13px] text-[#7a8598]">
+          <strong className="mr-1.5 text-[#03a878]">✓</strong>
+          已选择 {activeStrengths.length} 项优势
+        </div>
       </div>
 
       {!locked && (
@@ -208,7 +233,7 @@ export default function V4ComboMatrixSelector({
             type="button"
             disabled={!canCreate}
             onClick={handleCreate}
-            className="flex w-full min-h-[52px] items-center justify-center gap-3 rounded-[15px] border-0 transition-all duration-200 ease-out"
+            className="mt-4 flex w-full min-h-[52px] items-center justify-center gap-3 rounded-[15px] border-0 transition-all duration-200 ease-out"
             style={
               canCreate
                 ? {
@@ -243,7 +268,7 @@ export default function V4ComboMatrixSelector({
       )}
 
       {locked && (
-        <div className="flex items-center justify-center gap-1.5 py-1 text-[12px] text-[#9ca3af]">
+        <div className="mt-3 flex items-center justify-center gap-1.5 text-[12px] text-[#9ca3af]">
           <span className="text-[#3ca56c]">✓</span>
           组合已固定；改方向请点「新建组合」
         </div>

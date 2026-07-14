@@ -1,32 +1,80 @@
 'use client';
 
 /**
- * v4 组合 tab 条 — 可水平滑动 +「新建组合」
+ * v4 组合 tab 条
  *
- * tabs 用固定最小宽度 + overflow-x 滚动，不再 flex-1 均分（否则多 tab 挤成两格看不到更多）。
+ * - 胶囊式 tab，带序号 01/02/03，标签截断
+ * - hover 显示删除按钮，点击二次确认
+ * - 「管理组合」模式：多选 tab，批量删除
+ * - 至少保留一个组合
  */
 
-import { useRef, useState, type WheelEvent } from 'react';
-import { Plus } from 'lucide-react';
+import { useRef, useState, useCallback, useMemo, type WheelEvent } from 'react';
+import { Plus, Trash2, X } from 'lucide-react';
 import { useRuminationV4Store } from '@/stores/ruminationV4Store';
 
 const MAX_COMBOS = 10;
 
-export default function TopComboBar() {
+export interface TopComboBarProps {
+  /** 管理态变化时通知父级（用于调整外层布局/遮罩） */
+  onManageChange?: (managing: boolean) => void;
+}
+
+export default function TopComboBar({ onManageChange }: TopComboBarProps) {
   const { state, switchCombo, removeCombo } = useRuminationV4Store();
-  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [managing, setManaging] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmSingleId, setConfirmSingleId] = useState<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
+
+  const combos = useMemo(() => state?.combo_sessions || [], [state]);
+  const activeId = state?.active_combo_id ?? null;
+  const atLimit = combos.length >= MAX_COMBOS;
+
+  const toggleManaging = useCallback(
+    (next: boolean) => {
+      setManaging(next);
+      setSelectedIds(new Set());
+      setConfirmSingleId(null);
+      onManageChange?.(next);
+    },
+    [onManageChange]
+  );
 
   if (!state) return null;
 
-  const combos = state.combo_sessions || [];
-  const activeId = state.active_combo_id;
-  const atLimit = combos.length >= MAX_COMBOS;
-  const isDraft = !activeId;
-
-  const handleConfirmDelete = async (comboId: string) => {
+  const handleSingleDelete = async (comboId: string) => {
+    if (combos.length <= 1) {
+      showToast('至少保留一个组合');
+      return;
+    }
     await removeCombo(comboId);
-    setConfirmId(null);
+    setConfirmSingleId(null);
+  };
+
+  const handleBatchDelete = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    const remaining = combos.length - ids.length;
+    if (remaining < 1) {
+      showToast('至少保留一个组合');
+      return;
+    }
+    for (const id of ids) {
+      await removeCombo(id);
+    }
+    setSelectedIds(new Set());
+    setManaging(false);
+    onManageChange?.(false);
+  };
+
+  const toggleSelect = (comboId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(comboId)) next.delete(comboId);
+      else next.add(comboId);
+      return next;
+    });
   };
 
   const enterDraft = () => {
@@ -47,69 +95,130 @@ export default function TopComboBar() {
     el.scrollLeft += e.deltaY;
   };
 
+  const allSelected = combos.length > 0 && combos.every((c) => selectedIds.has(c.combo_id));
+
   return (
-    <div className="flex min-w-0 items-center gap-2.5">
+    <div
+      className="combo-toolbar flex min-h-[52px] min-w-0 items-center gap-3 rounded-[18px] px-5 py-1.5"
+      style={{
+        background: 'rgba(255,255,255,0.38)',
+        border: '1px solid rgba(255,255,255,0.42)',
+        boxShadow: '0 10px 30px rgba(0,0,0,0.03)',
+        backdropFilter: 'blur(14px)',
+      }}
+    >
       <div
         ref={scrollerRef}
         onWheel={onWheel}
-        className="flex min-w-0 flex-1 items-stretch overflow-x-auto overflow-y-hidden"
+        className="tabs flex min-w-0 flex-1 items-center gap-3 overflow-x-auto overflow-y-hidden"
         style={{
-          height: '48px',
-          borderRadius: '14px',
-          background: 'rgba(255,255,255,0.55)',
-          border: '1px solid rgba(255,255,255,0.44)',
-          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.55), 0 6px 16px rgba(33,48,79,0.05)',
-          backdropFilter: 'blur(12px)',
-          scrollbarWidth: 'thin',
+          scrollbarWidth: 'none',
           WebkitOverflowScrolling: 'touch',
         }}
       >
         {combos.length === 0 && (
-          <div className="flex shrink-0 items-center px-4 text-[12px] text-[#9ca3af]">
+          <div className="flex shrink-0 items-center px-2 text-[12px] text-[#9ca3af]">
             还没有组合，选完后点「开始探索」
           </div>
         )}
         {combos.map((c, idx) => {
-          const isActive = c.combo_id === activeId;
-          const isConfirming = confirmId === c.combo_id;
+          const isActive = c.combo_id === activeId && !managing;
+          const isSelected = selectedIds.has(c.combo_id);
+          const isConfirming = confirmSingleId === c.combo_id;
           return (
             <button
               key={c.combo_id}
               type="button"
               onClick={() => {
+                if (managing) {
+                  toggleSelect(c.combo_id);
+                  return;
+                }
                 if (isConfirming) return;
-                if (confirmId) setConfirmId(null);
+                setConfirmSingleId(null);
                 switchCombo(c.combo_id);
               }}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                setConfirmId(c.combo_id);
-              }}
-              className="relative shrink-0 cursor-pointer whitespace-nowrap border-0 px-4 transition-colors"
+              className={`
+                combo-tab group relative flex h-9 shrink-0 cursor-pointer items-center gap-2.5
+                overflow-hidden whitespace-nowrap rounded-full border px-4 pr-9 text-left
+                transition-all duration-200 ease
+                ${isActive ? 'active' : ''}
+                ${isSelected ? 'selected' : ''}
+                ${managing ? 'managing' : ''}
+              `}
               style={{
-                background: 'transparent',
-                minWidth: '112px',
-                maxWidth: '160px',
-                color: isActive
-                  ? '#1f6f8b'
-                  : c.status === 'abandoned'
-                    ? '#b0b8c4'
-                    : '#536184',
-                fontSize: '13px',
-                fontWeight: 700,
-                textDecoration: c.status === 'abandoned' ? 'line-through' : 'none',
+                minWidth: '180px',
+                maxWidth: '240px',
+                fontSize: '14px',
+                fontWeight: 650,
+                color: isActive ? '#078bd8' : isSelected ? '#ef5163' : '#45536f',
+                background: isActive
+                  ? 'rgba(255,255,255,0.92)'
+                  : isSelected
+                    ? 'rgba(255,240,240,0.85)'
+                    : 'rgba(255,255,255,0.55)',
+                borderColor: isActive
+                  ? '#e1e6ef'
+                  : isSelected
+                    ? '#ffccd0'
+                    : '#e1e6ef',
+                boxShadow: '0 4px 15px rgba(19,38,76,0.06)',
               }}
-              title={`${c.passion} + ${c.strengths.join(', ')}（右键删除）`}
+              title={managing ? '点击选择/取消选择' : `${c.passion} + ${c.strengths.join('、')}`}
             >
-              {isConfirming ? (
-                <span className="flex items-center justify-center gap-2 text-[12px]">
+              {managing && (
+                <span
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px]"
+                  style={{
+                    borderColor: isSelected ? '#ff416c' : '#c7cdd8',
+                    background: isSelected ? '#ff416c' : 'transparent',
+                    color: isSelected ? '#fff' : '#9ca3af',
+                  }}
+                >
+                  {isSelected ? '✓' : ''}
+                </span>
+              )}
+              <span
+                className="tab-index shrink-0 text-[12px] font-bold"
+                style={{ opacity: isActive ? 0.9 : 0.6 }}
+              >
+                {String(idx + 1).padStart(2, '0')}
+              </span>
+              <span className="tab-label flex-1 truncate">{c.passion}</span>
+
+              {/* hover 删除按钮 */}
+              {!managing && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="tab-close absolute right-2 top-1/2 hidden h-5 w-5 -translate-y-1/2 place-items-center rounded-full text-[16px] transition-colors hover:bg-[#fff0f0] hover:text-[#ed5163] group-hover:grid"
+                  style={{ color: '#2e4268' }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (combos.length <= 1) {
+                      showToast('至少保留一个组合');
+                      return;
+                    }
+                    setConfirmSingleId(c.combo_id);
+                  }}
+                  title="删除组合"
+                >
+                  ×
+                </span>
+              )}
+
+              {isConfirming && (
+                <span
+                  className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1 text-[11px]"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <span
                     role="button"
                     tabIndex={0}
-                    className="text-red-500"
+                    className="rounded-full bg-[#fff0f0] px-1.5 py-0.5 text-red-500 hover:bg-[#ffe0e0]"
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleConfirmDelete(c.combo_id);
+                      void handleSingleDelete(c.combo_id);
                     }}
                   >
                     删除?
@@ -117,38 +226,22 @@ export default function TopComboBar() {
                   <span
                     role="button"
                     tabIndex={0}
-                    className="text-[#9ca3af]"
+                    className="rounded-full bg-white/80 px-1.5 py-0.5 text-[#9ca3af] hover:bg-white"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setConfirmId(null);
+                      setConfirmSingleId(null);
                     }}
                   >
                     取消
                   </span>
                 </span>
-              ) : (
-                <span className="flex items-center justify-center gap-1.5">
-                  <span className="text-[11px] opacity-60">
-                    {String(idx + 1).padStart(2, '0')}
-                  </span>
-                  <span className="max-w-[100px] truncate">{c.passion}</span>
-                  {c.status === 'concluded' && c.conclusion_card && (
-                    <span className="text-[11px]">✓</span>
-                  )}
-                </span>
               )}
-              {!isActive && idx < combos.length - 1 && (
-                <span className="absolute right-0 top-3 h-6 w-px bg-[rgba(91,107,159,.10)]" />
-              )}
-              {isActive && (
+
+              {isActive && !managing && (
                 <span
-                  className="absolute bottom-0 rounded-t-lg"
+                  className="absolute bottom-[-3px] left-3 right-3 h-[3px] rounded-full"
                   style={{
-                    left: '24%',
-                    right: '24%',
-                    height: '3px',
-                    background: 'linear-gradient(90deg, #67dfda, #70c9ff)',
-                    boxShadow: '0 -4px 10px rgba(103,210,238,0.28)',
+                    background: 'linear-gradient(90deg,#17cbd1,#5f8dff)',
                   }}
                 />
               )}
@@ -157,34 +250,105 @@ export default function TopComboBar() {
         })}
       </div>
 
-      <button
-        type="button"
-        disabled={atLimit}
-        onClick={enterDraft}
-        className="flex shrink-0 items-center gap-1.5 transition-all duration-200 ease-out"
-        style={{
-          height: '48px',
-          padding: '0 16px',
-          borderRadius: '14px',
-          border: isDraft
-            ? '1.2px solid rgba(103,210,238,0.45)'
-            : '1.2px solid rgba(255,255,255,0.48)',
-          background: atLimit
-            ? 'rgba(200,200,220,.2)'
-            : isDraft
-              ? 'rgba(103,223,218,0.18)'
-              : 'rgba(255,255,255,0.55)',
-          color: atLimit ? '#b0b8c4' : '#2a7a8c',
-          fontSize: '13px',
-          fontWeight: 750,
-          cursor: atLimit ? 'not-allowed' : 'pointer',
-          boxShadow: '0 6px 14px rgba(33,48,79,0.05)',
-        }}
-        title={atLimit ? `已达上限(${MAX_COMBOS}个)` : '新建组合'}
+      {/* 操作按钮区 */}
+      <div
+        className="toolbar-actions flex shrink-0 items-center gap-3 pl-3"
+        style={{ borderLeft: '1px solid #edf0f5' }}
       >
-        <Plus size={18} strokeWidth={2.5} />
-        新建组合
-      </button>
+        {managing ? (
+          <>
+            <button
+              type="button"
+              onClick={() => toggleManaging(false)}
+              className="ghost-btn flex h-9 items-center gap-2 rounded-full border border-[#d9e0e9] bg-white px-3.5 text-[12px] font-semibold text-[#485671] transition-colors hover:bg-[#f6f8fb]"
+            >
+              <X size={15} />
+              取消
+            </button>
+            <button
+              type="button"
+              disabled={selectedIds.size === 0}
+              onClick={handleBatchDelete}
+              className="flex h-9 items-center gap-2 rounded-full border-0 px-3.5 text-[12px] font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-45"
+              style={{
+                background:
+                  selectedIds.size > 0
+                    ? 'linear-gradient(135deg,#ff416c,#ff6b36)'
+                    : 'rgba(200,200,220,0.5)',
+                boxShadow:
+                  selectedIds.size > 0 ? '0 8px 18px rgba(255,65,108,0.18)' : 'none',
+              }}
+            >
+              <Trash2 size={15} />
+              删除选中（{selectedIds.size}）
+            </button>
+            {combos.length > 1 && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (allSelected) {
+                    setSelectedIds(new Set());
+                  } else {
+                    setSelectedIds(new Set(combos.map((c) => c.combo_id)));
+                  }
+                }}
+                className="text-[12px] font-semibold text-[#485671] underline-offset-2 hover:underline"
+              >
+                {allSelected ? '取消全选' : '全选'}
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => toggleManaging(true)}
+              className="ghost-btn flex h-9 items-center gap-2 rounded-full px-3.5 text-[12px] font-semibold text-[#485671] transition-colors hover:bg-[#f6f8fb]"
+            >
+              <span>♜</span>
+              <span>管理组合</span>
+            </button>
+            <button
+              type="button"
+              disabled={atLimit}
+              onClick={enterDraft}
+              className="new-btn flex h-9 items-center gap-2 rounded-full border bg-white px-3.5 text-[12px] font-semibold transition-all"
+              style={{
+                borderColor: '#e7eaf0',
+                color: atLimit ? '#b0b8c4' : '#008ea7',
+                boxShadow: '0 6px 16px rgba(21,47,88,0.06)',
+                cursor: atLimit ? 'not-allowed' : 'pointer',
+              }}
+              title={atLimit ? `已达上限(${MAX_COMBOS}个)` : '新建组合'}
+            >
+              <Plus size={16} strokeWidth={2.5} />
+              新建组合
+            </button>
+          </>
+        )}
+      </div>
     </div>
   );
+}
+
+function showToast(text: string) {
+  const existing = document.getElementById('rumination-v4-toast');
+  if (existing) existing.remove();
+  const toast = document.createElement('div');
+  toast.id = 'rumination-v4-toast';
+  toast.className =
+    'fixed left-1/2 bottom-8 z-[200] -translate-x-1/2 rounded-full bg-[#0e2045] px-5 py-2.5 text-sm font-medium text-white shadow-lg transition-all duration-200';
+  toast.style.opacity = '0';
+  toast.style.transform = 'translate(-50%, 20px)';
+  toast.textContent = text;
+  document.body.appendChild(toast);
+  requestAnimationFrame(() => {
+    toast.style.opacity = '1';
+    toast.style.transform = 'translate(-50%, 0)';
+  });
+  window.setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translate(-50%, 20px)';
+    window.setTimeout(() => toast.remove(), 200);
+  }, 1800);
 }

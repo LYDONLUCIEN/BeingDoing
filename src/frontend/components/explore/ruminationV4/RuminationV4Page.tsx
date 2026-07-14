@@ -5,15 +5,16 @@
  *
  * 一个大容器内：顶栏（居中「05 沉淀」+ 右上「完成并继续」）
  * → 组合 tabs +「新建组合」
- * → 左选择器/结论 + 右对话（内部分区，不是两个独立外层壳）
+ * → 左选择器/结论 + 右对话（内部分区）
  */
 
-import { useEffect, type CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import dynamic from 'next/dynamic';
 import { FileText } from 'lucide-react';
 import { useRuminationV4Store } from '@/stores/ruminationV4Store';
 import V4ChatPanel from './V4ChatPanel';
 import TopComboBar from './TopComboBar';
+import V4FinalSelectionModal from './V4FinalSelectionModal';
 
 const ExploreLandingMeshLayers = dynamic(
   () => import('@/components/explore/ExploreLandingMeshLayers'),
@@ -52,6 +53,7 @@ export default function RuminationV4Page({
   continueDisabledHint = '',
 }: Props) {
   const { state, init } = useRuminationV4Store();
+  const [finalModalOpen, setFinalModalOpen] = useState(false);
 
   useEffect(() => {
     if (activationCode) {
@@ -90,39 +92,49 @@ export default function RuminationV4Page({
       <div className="relative z-10 flex min-h-0 w-full flex-col px-3 pb-3 pt-1 sm:px-4">
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={outerShellStyle}>
           {/* 顶栏：居中标题 + 右上完成并继续 */}
-          <header className="relative mb-2.5 shrink-0 border-b border-[rgba(80,94,145,0.08)] pb-3 pt-1">
-            <div className="px-12 text-center sm:px-40">
-              <h1 className="m-0 text-[26px] font-[850] leading-tight tracking-wide text-[#1f2a44] sm:text-[28px]">
+          <header className="hero mb-2.5 grid shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-[rgba(80,94,145,0.08)] pb-3 pt-1 text-center">
+            <div />
+            <div className="px-4 sm:px-8">
+              <h1 className="m-0 text-[26px] font-[850] leading-tight tracking-wide text-[#1f2a44] sm:text-[42px]">
                 05 沉淀
+                <span className="ml-2 inline-block text-[#ff987b]" style={{ fontSize: '0.85em' }}>
+                  ✦
+                </span>
               </h1>
-              <p className="mx-auto mt-1.5 max-w-[520px] text-[13px] font-[500] leading-relaxed text-[#657198]">
+              <p className="mx-auto mt-2 max-w-[520px] text-[13px] font-[500] leading-relaxed text-[#657198] sm:text-[16px]">
                 把热爱与优势组成方向，和 AI 深入聊一聊，留下你的假设结论
               </p>
             </div>
-            {onCompleteAndContinue && (
-              <button
-                type="button"
-                onClick={onCompleteAndContinue}
-                disabled={!v4CanContinue}
-                title={continueDisabledHint || undefined}
-                className="bd-btn-black absolute right-0 top-0 flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold text-white sm:px-4 sm:py-2.5 sm:text-sm disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <FileText size={15} strokeWidth={2} className="hidden shrink-0 sm:inline" />
-                <span className="max-w-[7.5rem] truncate sm:max-w-none">完成并继续</span>
-              </button>
-            )}
+            <div className="flex justify-end pr-1">
+              {onCompleteAndContinue && (
+                <button
+                  type="button"
+                  onClick={() => setFinalModalOpen(true)}
+                  disabled={!v4CanContinue}
+                  title={continueDisabledHint || undefined}
+                  className="complete-btn flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-bold text-white transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40 sm:px-5 sm:py-3 sm:text-base"
+                  style={{
+                    background: 'linear-gradient(180deg,#121f3f,#07132f)',
+                    boxShadow: '0 10px 22px rgba(4,19,52,0.22)',
+                  }}
+                >
+                  <FileText size={18} strokeWidth={2} className="hidden shrink-0 sm:inline" />
+                  <span className="max-w-[7.5rem] truncate sm:max-w-none">完成并继续</span>
+                </button>
+              )}
+            </div>
           </header>
 
-          {/* 组合 tabs + 新建组合 — 大容器内顶栏下一行 */}
+          {/* 组合 tabs + 新建组合 */}
           <div className="mb-2.5 min-w-0 shrink-0">
             <TopComboBar />
           </div>
 
-          {/* 左选择器 / 右对话 — 同一大容器内的两个分区 */}
+          {/* 左选择器 / 右对话 */}
           <div className="rumination-workbench flex min-h-0 flex-1 gap-3 overflow-hidden">
             <div
               className="flex min-h-0 min-w-0 flex-[1.05] flex-col overflow-hidden"
-              style={innerPaneStyle}
+              style={{ ...innerPaneStyle, padding: 0 }}
             >
               <V4MatrixLeftPanel />
             </div>
@@ -132,6 +144,15 @@ export default function RuminationV4Page({
           </div>
         </div>
       </div>
+
+      <V4FinalSelectionModal
+        open={finalModalOpen}
+        onClose={() => setFinalModalOpen(false)}
+        onConfirm={() => {
+          setFinalModalOpen(false);
+          onCompleteAndContinue?.();
+        }}
+      />
     </div>
   );
 }
