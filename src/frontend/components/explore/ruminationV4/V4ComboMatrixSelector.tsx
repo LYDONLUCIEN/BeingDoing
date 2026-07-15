@@ -5,7 +5,7 @@
  * 视觉对齐 preview.html：橙热爱 / 绿优势、数字圆圈标题、已选计数
  */
 
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useState } from 'react';
 
 export interface DimensionOption {
   name: string;
@@ -27,15 +27,6 @@ interface V4ComboMatrixSelectorProps {
 function normalizeOptions(items: Array<string | DimensionOption>): DimensionOption[] {
   return items.map((item) => (typeof item === 'string' ? { name: item } : item));
 }
-
-const glassPanelStyle: CSSProperties = {
-  borderRadius: '18px',
-  border: '1px solid rgba(255,255,255,0.42)',
-  background: 'rgba(255,255,255,0.38)',
-  backdropFilter: 'blur(14px)',
-  padding: '20px 24px 16px',
-  boxShadow: '0 10px 30px rgba(0,0,0,0.03)',
-};
 
 export default function V4ComboMatrixSelector({
   passions,
@@ -81,7 +72,7 @@ export default function V4ComboMatrixSelector({
   };
 
   return (
-    <div style={glassPanelStyle}>
+    <div>
       {/* ① 热爱 — 一行三列 */}
       <div className="selection-block mb-4">
         <div className="section-title mb-4 flex items-center gap-2.5 text-[16px] font-extrabold text-[#ff6426]">

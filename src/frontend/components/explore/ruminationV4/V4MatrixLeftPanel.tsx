@@ -2,21 +2,29 @@
 
 /**
  * v4 左栏：选择器网格 + 当前结论卡
- * （tabs / 标题已上移到页壳大容器）
+ * 视觉对齐 new-rumination-v4.html：选择器与结论卡共用同一个毛玻璃外壳，
+ * 内部仅通过轻微背景/边框区分 panel。
  */
 
-import { useState, useMemo, type CSSProperties } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { useRuminationV4Store } from '@/stores/ruminationV4Store';
 import V4ComboMatrixSelector from './V4ComboMatrixSelector';
 import ConclusionCardEditable from './ConclusionCardEditable';
 
-const glassPanelStyle: CSSProperties = {
-  borderRadius: '18px',
-  border: '1px solid rgba(255,255,255,0.42)',
-  background: 'rgba(255,255,255,0.38)',
-  backdropFilter: 'blur(14px)',
-  padding: '20px 24px 16px',
-  boxShadow: '0 10px 30px rgba(0,0,0,0.03)',
+const selectionPanelStyle: CSSProperties = {
+  borderRadius: '16px',
+  border: '1px solid rgba(118,135,192,0.09)',
+  background: 'rgba(255,255,255,0.46)',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.65)',
+  padding: '16px 16px 14px',
+};
+
+const conclusionPanelStyle: CSSProperties = {
+  borderRadius: '16px',
+  border: '1px solid rgba(118,135,192,0.09)',
+  background: 'rgba(255,255,255,0.46)',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.65)',
+  padding: '14px 16px 12px',
 };
 
 export default function V4MatrixLeftPanel() {
@@ -72,7 +80,7 @@ export default function V4MatrixLeftPanel() {
         </div>
       )}
 
-      <div className="shrink-0">
+      <div className="shrink-0" style={selectionPanelStyle}>
         <V4ComboMatrixSelector
           passions={passions}
           strengths={strengths}
@@ -84,45 +92,47 @@ export default function V4MatrixLeftPanel() {
         />
       </div>
 
-      <div
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto rumination-hyp-preview-scroll"
-        style={glassPanelStyle}
-      >
-        <div className="mb-2 flex shrink-0 items-center gap-2 px-1">
-          <span className="text-[14px] font-[760] text-[#4b5563]">结论卡</span>
-          {activeCombo && (
-            <span className="text-[12px] font-[500] text-[#9ca3af]">
-              {activeCombo.passion}
-            </span>
+      <div className="shrink-0 flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div
+          className="flex min-h-0 flex-1 flex-col overflow-y-auto rumination-hyp-preview-scroll"
+          style={conclusionPanelStyle}
+        >
+          <div className="mb-2 flex shrink-0 items-center gap-2 px-1">
+            <span className="text-[14px] font-[760] text-[#4b5563]">结论卡</span>
+            {activeCombo && (
+              <span className="text-[12px] font-[500] text-[#9ca3af]">
+                {activeCombo.passion}
+              </span>
+            )}
+          </div>
+
+          {!activeCombo ? (
+            <div className="flex flex-1 items-center justify-center px-4 py-6 text-center text-[13px] font-[700] text-[#9ca3af]">
+              选择热爱与优势后，点击「开始探索」
+            </div>
+          ) : !conclusionCard ? (
+            <div className="flex flex-col items-center justify-center py-6 text-center">
+              <div
+                className="mb-2 flex h-[48px] w-[48px] items-center justify-center rounded-full text-white opacity-50"
+                style={{
+                  background: 'linear-gradient(135deg, #c0c8d4, #d0d4dc, #e0e4ec)',
+                }}
+              >
+                ✦
+              </div>
+              <p className="mb-1 text-[13px] font-[700] text-[#9ca3af]">结论卡待生成</p>
+              <p className="text-[11px] font-[500] leading-relaxed text-[#b0b8c4]">
+                在右侧与 AI 深度对话后，结论卡会自动生成
+              </p>
+            </div>
+          ) : (
+            <ConclusionCardEditable
+              comboId={activeCombo.combo_id}
+              card={conclusionCard}
+              strengths={activeCombo.strengths}
+            />
           )}
         </div>
-
-        {!activeCombo ? (
-          <div className="flex flex-1 items-center justify-center px-4 py-6 text-center text-[13px] font-[700] text-[#9ca3af]">
-            选择热爱与优势后，点击「开始探索」
-          </div>
-        ) : !conclusionCard ? (
-          <div className="flex flex-col items-center justify-center py-6 text-center">
-            <div
-              className="mb-2 flex h-[48px] w-[48px] items-center justify-center rounded-full text-white opacity-50"
-              style={{
-                background: 'linear-gradient(135deg, #c0c8d4, #d0d4dc, #e0e4ec)',
-              }}
-            >
-              ✦
-            </div>
-            <p className="mb-1 text-[13px] font-[700] text-[#9ca3af]">结论卡待生成</p>
-            <p className="text-[11px] font-[500] leading-relaxed text-[#b0b8c4]">
-              在右侧与 AI 深度对话后，结论卡会自动生成
-            </p>
-          </div>
-        ) : (
-          <ConclusionCardEditable
-            comboId={activeCombo.combo_id}
-            card={conclusionCard}
-            strengths={activeCombo.strengths}
-          />
-        )}
       </div>
     </div>
   );

@@ -32,6 +32,8 @@ pydantic-settings>=2.0.0
 reportlab>=4.0.0  # PDF导出（可选）
 PyYAML>=6.0
 Jinja2>=3.1.0
+markdown>=3.5  # markdown → HTML（报告 PDF 中间层）
+weasyprint>=60.0  # HTML/CSS → PDF（报告导出）
 
 # 测试（开发依赖）
 pytest>=7.4.0

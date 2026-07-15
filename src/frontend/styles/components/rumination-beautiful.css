@@ -7,8 +7,9 @@
   color: var(--bd-fg, #1a1a24);
 }
 
-/* 双栏工作台与气泡区整体比原先收窄 60px */
-.rumination-beautiful-root .rumination-workbench {
+/* 双栏工作台与 toolbar 统一收窄 60px，保证上下边缘对齐 */
+.rumination-beautiful-root .rumination-workbench,
+.rumination-beautiful-root .rumination-toolbar-wrap {
   width: calc(100% - 60px);
   max-width: calc(100vw - 60px);
   margin-left: auto;
@@ -47,6 +48,7 @@ html[data-rumination-mesh-page='true']:not([data-color-scheme='dark'])
 
 .rumination-beautiful-card--chat {
   background: rgba(255, 255, 255, 0.38);
+  border-radius: 18px;
 }
 
 /* 沉淀对话内：表格行 Floating Header（无边框，轻阴影） */
@@ -111,12 +113,12 @@ html[data-rumination-mesh-page='true']:not([data-color-scheme='dark'])
 }
 
 /*
- * 沉淀右栏对话：AI 尽量靠左（仅消息区内边距）；用户靠右且整列不超展示区宽度的 2/3，超长自动换行。
+ * 沉淀右栏对话：对齐 v3 careering-matte 排布。
+ * AI 与用户均保留舒适内边距；用户整列不超展示区宽度的 2/3，超长自动换行。
  */
 .rumination-beautiful-root .rumination-beautiful-chat-panel {
-  /* 强约束：用户气泡左边界 >= AI 正文气泡左边界 */
-  --rumination-msg-left-edge: 0px;
-  --rumination-msg-right-edge: 0px;
+  --rumination-msg-left-edge: 12px;
+  --rumination-msg-right-edge: 12px;
   --rumination-msg-max-track: min(
     960px,
     calc(100% - var(--rumination-msg-left-edge) - var(--rumination-msg-right-edge))
@@ -148,6 +150,18 @@ html[data-rumination-mesh-page='true']:not([data-color-scheme='dark'])
   min-width: 0;
   width: 100%;
   box-sizing: border-box;
+}
+
+/* 用户消息 meta（头像 + 名称/时间）在沉淀右栏中的间距微调 */
+.rumination-beautiful-root .rumination-beautiful-chat-panel .flow-msg-careering-meta {
+  margin-bottom: 0.375rem;
+  font-size: 0.75rem;
+  color: #77829f;
+}
+.rumination-beautiful-root .rumination-beautiful-chat-panel .flow-msg-careering-avatar {
+  width: 26px;
+  height: 26px;
+  font-size: 12px;
 }
 
 /*

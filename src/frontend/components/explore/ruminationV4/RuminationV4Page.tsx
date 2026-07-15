@@ -41,7 +41,7 @@ const outerShellStyle: CSSProperties = {
 const innerPaneStyle: CSSProperties = {
   borderRadius: '18px',
   border: '1px solid rgba(255,255,255,0.42)',
-  background: 'rgba(255,255,255,0.36)',
+  background: 'rgba(255,255,255,0.38)',
   boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.55)',
   padding: '12px',
 };
@@ -126,7 +126,7 @@ export default function RuminationV4Page({
           </header>
 
           {/* 组合 tabs + 新建组合 */}
-          <div className="mb-2.5 min-w-0 shrink-0">
+          <div className="rumination-toolbar-wrap mb-2.5 min-w-0 shrink-0">
             <TopComboBar />
           </div>
 
@@ -134,7 +134,7 @@ export default function RuminationV4Page({
           <div className="rumination-workbench flex min-h-0 flex-1 gap-3 overflow-hidden">
             <div
               className="flex min-h-0 min-w-0 flex-[1.05] flex-col overflow-hidden"
-              style={{ ...innerPaneStyle, padding: 0 }}
+              style={innerPaneStyle}
             >
               <V4MatrixLeftPanel />
             </div>

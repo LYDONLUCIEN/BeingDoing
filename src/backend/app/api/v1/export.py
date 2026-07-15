@@ -2,12 +2,23 @@
 导出API
 """
 from fastapi import APIRouter, HTTPException, Depends, status, Query, Response
+from fastapi.responses import Response as FastResponse
 from pydantic import BaseModel
 from typing import Optional
 from app.api.v1.auth import get_current_user
 from app.services.export_service import ExportService
+from app.utils.report_registry import ReportRegistry
+from app.utils.simple_activation_manager import (
+    get_activation_with_manager,
+    get_effective_simple_root,
+)
+from app.utils.super_admin import is_super_admin_user
 from pathlib import Path
+from urllib.parse import quote
+import logging
 import tempfile
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/export", tags=["导出"])
 
@@ -145,7 +156,7 @@ async def download_export(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="导出文件不存在"
         )
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -153,3 +164,93 @@ async def download_export(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+
+# ── PDF 报告导出 ────────────────────────────────────────────
+
+
+@router.get("/my-report-id")
+async def get_my_report_id(
+    activation_code: str = Query(..., description="激活码"),
+    current_user: dict = Depends(get_current_user),
+):
+    """用户端：通过 activation_code 获取自己的 report_id。"""
+    user_id = current_user.get("user_id") or ""
+    code = activation_code.strip().upper()
+    _mgr, rec = get_activation_with_manager(code)
+    if not rec:
+        raise HTTPException(status_code=404, detail="激活码不存在")
+    root = get_effective_simple_root(rec)
+    registry = ReportRegistry(base_dir=str(root))
+    report = registry.get_by_activation_user(code, user_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="未找到您的报告")
+    return {"report_id": report.get("report_id")}
+
+
+@router.post("/report-pdf/{report_id}")
+async def generate_report_pdf(
+    report_id: str,
+    force: bool = Query(False, description="强制重新生成，跳过缓存"),
+    activation_code: Optional[str] = Query(None, description="用户端需传入自己的激活码用于权限校验"),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    生成并下载 PDF 报告。
+
+    权限：
+    - admin（super_admin）可下载任意 report_id
+    - 普通用户必须传入 activation_code，且 report 必须属于该用户
+    """
+    from app.services.report_pdf_service import ReportPdfService
+
+    user_id = current_user.get("user_id") or ""
+    is_admin = is_super_admin_user(current_user)
+
+    # 权限校验
+    if not is_admin:
+        # 普通用户：通过 activation_code 找到自己的 report 并验证
+        code = (activation_code or "").strip().upper()
+        if not code:
+            raise HTTPException(status_code=403, detail="缺少 activation_code 参数")
+        _mgr, rec = get_activation_with_manager(code)
+        if not rec:
+            raise HTTPException(status_code=404, detail="激活码不存在")
+        root = get_effective_simple_root(rec)
+        registry = ReportRegistry(base_dir=str(root))
+        report = registry.get_by_activation_user(code, user_id)
+        if not report or report.get("report_id") != report_id:
+            raise HTTPException(status_code=403, detail="无权下载此报告")
+        base_dir = str(root)
+    else:
+        # admin
+        registry = ReportRegistry()
+        report = registry.get_report_by_id(report_id)
+        if not report:
+            raise HTTPException(status_code=404, detail="报告不存在")
+        base_dir = None  # 用默认 base_dir
+
+    # 生成 PDF
+    try:
+        service = ReportPdfService(base_dir=base_dir)
+        pdf_bytes = await service.generate_pdf(
+            report_id=report_id,
+            user_id=user_id,
+            force=force,
+        )
+    except Exception as e:
+        logger.exception("PDF 生成失败: report_id=%s", report_id)
+        raise HTTPException(status_code=500, detail=f"PDF 生成失败: {e}")
+
+    # 文件名
+    filename = service.get_report_filename(report)
+    # RFC 5987 编码中文文件名
+    filename_encoded = quote(filename)
+
+    return FastResponse(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{filename_encoded}",
+        },
+    )

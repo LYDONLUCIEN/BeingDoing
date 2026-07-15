@@ -1,15 +1,21 @@
 'use client';
 
 /**
- * v4 对话面板 — DOM/样式对齐 v3 rumination beautiful 聊天区
+ * v4 对话面板 — DOM/样式对齐 v3 rumination 聊天区
  *
- * 依赖父级 `.rumination-beautiful-root.flow-light[data-phase=rumination]`。
- * 选点草稿（无 active combo）：整区模糊锁定。
+ * 复用 v3 风格：
+ * - 用户消息：头像 + 名称 + 时间 + 复制工具栏
+ * - AI 消息：FlowAiMessage（时间 + 复制/点赞/保存工具栏）
+ * - 输入区：白色胶囊 + 发送/停止按钮
+ * - 草稿态：整区模糊锁定
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { ArrowUp, Square, Copy } from 'lucide-react';
 import { useRuminationV4Store } from '@/stores/ruminationV4Store';
+import { useAuthStore } from '@/stores/authStore';
+import { copyToClipboard } from '@/lib/utils/clipboard';
 import type { ComboMessage } from '@/lib/explore/ruminationV4Api';
 
 const FlowAiMessage = dynamic(() => import('@/components/explore/FlowAiMessage'), {
@@ -18,6 +24,11 @@ const FlowAiMessage = dynamic(() => import('@/components/explore/FlowAiMessage')
 
 interface Props {
   comboId: string | null;
+}
+
+function formatMsgTime(ts?: string): string {
+  const d = ts ? new Date(ts) : new Date();
+  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 }
 
 export default function V4ChatPanel({ comboId }: Props) {
@@ -34,21 +45,39 @@ export default function V4ChatPanel({ comboId }: Props) {
     clearError,
     activationCode,
   } = useRuminationV4Store();
+  const { user } = useAuthStore();
 
   const [input, setInput] = useState('');
   const bodyRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const userInitials = useMemo(
+    () => (user?.username || user?.email || 'U').slice(0, 2).toUpperCase(),
+    [user?.username, user?.email]
+  );
 
   const isDraft = !comboId;
   const combo = comboId ? comboCache[comboId] : null;
-  const messages = combo?.messages || [];
+  const messages = useMemo(() => combo?.messages || [], [combo?.messages]);
   const hasOpening = messages.some((m) => m.role === 'assistant');
   const isReadOnly = combo?.status === 'concluded' || combo?.status === 'abandoned';
+
+  // 为每条消息补充稳定 id / 时间，用于 key、时间戳、埋点
+  const enrichedMessages = useMemo(
+    () =>
+      messages.map((m, idx) => ({
+        ...m,
+        id: `${comboId || 'draft'}-${m.role}-${idx}`,
+        createdAt: m.ts ? new Date(m.ts).getTime() : Date.now() - (messages.length - 1 - idx) * 60000,
+      })),
+    [messages, comboId]
+  );
 
   useEffect(() => {
     if (bodyRef.current) {
       bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
     }
-  }, [messages.length, streamingText]);
+  }, [enrichedMessages.length, streamingText]);
 
   const handleStart = async () => {
     if (!comboId) return;
@@ -103,7 +132,7 @@ export default function V4ChatPanel({ comboId }: Props) {
               ref={bodyRef}
               className="flow-chat-body rumination-chat-body-fade min-h-0 min-w-0 w-full flex-1 overflow-y-auto"
             >
-              <div className="careering-chat-messages-inner min-w-0 w-full max-w-none px-4 sm:px-6 lg:px-12">
+              <div className="careering-chat-messages-inner min-w-0 w-full max-w-none px-4 sm:px-6 lg:px-8">
                 {error && !isStreaming && !isDraft && (
                   <div className="flex flex-col items-center justify-center py-10 text-center">
                     <p className="mb-1 text-sm text-red-500">操作失败</p>
@@ -140,12 +169,20 @@ export default function V4ChatPanel({ comboId }: Props) {
                   </div>
                 ) : (
                   <>
-                    {messages.map((m, idx) => (
+                    {enrichedMessages.map((m, idx) => (
                       <MessageRow
-                        key={`${m.role}-${idx}-${m.ts || ''}`}
+                        key={m.id}
                         msg={m}
-                        isLast={idx === messages.length - 1}
+                        isLast={idx === enrichedMessages.length - 1}
                         isStreaming={isStreaming}
+                        userInitials={userInitials}
+                        comboId={comboId}
+                        activationCode={activationCode}
+                        aiLogIndex={
+                          enrichedMessages
+                            .slice(0, idx)
+                            .filter((x) => x.role === 'assistant').length
+                        }
                       />
                     ))}
 
@@ -161,6 +198,12 @@ export default function V4ChatPanel({ comboId }: Props) {
                         toolbarLikeTitle="点赞"
                         toolbarSavepointTitle="保存"
                         thinkPlaceholders={['正在思考…', '整理思路中…', '组织回复…']}
+                        timestamp={Date.now()}
+                        sessionId={activationCode ?? undefined}
+                        messageId={`${comboId}-streaming-assistant`}
+                        threadId={comboId ?? undefined}
+                        phaseKey="rumination"
+                        activationCode={activationCode ?? undefined}
                       />
                     )}
                     {fallbackActive && (
@@ -199,6 +242,7 @@ export default function V4ChatPanel({ comboId }: Props) {
                     )}
                     <div className="flex w-full min-w-0 items-end gap-2.5">
                       <textarea
+                        ref={inputRef}
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => {
@@ -228,7 +272,13 @@ export default function V4ChatPanel({ comboId }: Props) {
                           disabled={!isStreaming && (!canInput || !input.trim())}
                           className={`flow-send-btn ${isStreaming ? 'is-stop' : ''}`}
                           aria-label={isStreaming ? '停止' : '发送'}
-                        />
+                        >
+                          {isStreaming ? (
+                            <Square size={16} strokeWidth={0} fill="white" />
+                          ) : (
+                            <ArrowUp size={16} strokeWidth={2.2} />
+                          )}
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -265,11 +315,20 @@ function MessageRow({
   msg,
   isLast,
   isStreaming,
+  userInitials,
+  comboId,
+  activationCode,
+  aiLogIndex,
 }: {
-  msg: ComboMessage;
+  msg: ComboMessage & { id: string; createdAt: number };
   isLast: boolean;
   isStreaming: boolean;
+  userInitials: string;
+  comboId: string | null;
+  activationCode: string | null;
+  aiLogIndex: number;
 }) {
+  const { user } = useAuthStore();
   if (msg.role === 'user') {
     const s = (msg.content || '').replace(/\r\n/g, '\n');
     const charCount = [...s].length;
@@ -282,15 +341,43 @@ function MessageRow({
     return (
       <div className="flow-msg-user">
         <div className="flow-msg-user-wrap">
+          <div className="flow-msg-careering-meta flow-msg-careering-meta--user">
+            <div
+              className="flow-msg-careering-avatar flow-msg-careering-avatar--user text-xs font-semibold text-white"
+              style={{
+                background: user?.avatar_url
+                  ? `url(${user.avatar_url}) center/cover no-repeat`
+                  : 'linear-gradient(135deg, var(--bd-phase-values), var(--bd-phase-strengths))',
+              }}
+              aria-hidden
+            >
+              {!user?.avatar_url ? userInitials : null}
+            </div>
+            <span>
+              我 · {formatMsgTime(new Date(msg.createdAt).toISOString())}
+            </span>
+          </div>
           <div className="flow-msg-user-anchor">
             <div className="flow-msg-user-content" lang="zh-CN">
               <span className={textClass}>{s}</span>
             </div>
           </div>
+          <div className="flow-msg-user-toolbar opacity-0 transition-opacity hover:opacity-100">
+            <button
+              type="button"
+              className="flow-toolbar-btn"
+              title="复制"
+              onClick={() => copyToClipboard(msg.content)}
+            >
+              <Copy size={14} strokeWidth={1.6} />
+            </button>
+          </div>
         </div>
       </div>
     );
   }
+
+  if (msg.role === 'system') return null;
 
   return (
     <FlowAiMessage
@@ -304,6 +391,14 @@ function MessageRow({
       toolbarLikeTitle="点赞"
       toolbarSavepointTitle="保存"
       thinkPlaceholders={['正在思考…', '整理思路中…', '组织回复…']}
+      timestamp={msg.createdAt}
+      sessionId={activationCode ?? undefined}
+      logIndex={aiLogIndex}
+      dimension="rumination"
+      messageId={msg.id}
+      threadId={comboId ?? undefined}
+      phaseKey="rumination"
+      activationCode={activationCode ?? undefined}
     />
   );
 }

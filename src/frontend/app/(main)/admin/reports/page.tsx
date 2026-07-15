@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import {
   downloadReportJson,
+  downloadReportPdf,
   exportReportsBatch,
   fetchAdminReportDetail,
   fetchAdminReports,
@@ -27,6 +28,7 @@ export default function AdminReportsPage() {
   const [statsResult, setStatsResult] = useState<ConversationStatsResult | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsReportId, setStatsReportId] = useState<string | null>(null);
+  const [pdfDownloadingId, setPdfDownloadingId] = useState<string | null>(null);
 
   const loadReports = async () => {
     setLoading(true);
@@ -136,6 +138,30 @@ export default function AdminReportsPage() {
       await downloadReportJson(reportId);
     } catch (e: any) {
       setError(e?.message || '下载失败');
+    }
+  };
+
+  // 下载报告 PDF
+  const handleDownloadPdf = async (reportId: string) => {
+    setError(null);
+    setPdfDownloadingId(reportId);
+    try {
+      await downloadReportPdf(reportId);
+    } catch (e: any) {
+      // blob 错误响应需要解析
+      if (e?.response?.data instanceof Blob) {
+        try {
+          const text = await e.response.data.text();
+          const parsed = JSON.parse(text);
+          setError(parsed?.detail || 'PDF 下载失败');
+        } catch {
+          setError('PDF 下载失败');
+        }
+      } else {
+        setError(e?.message || 'PDF 下载失败');
+      }
+    } finally {
+      setPdfDownloadingId(null);
     }
   };
 
@@ -267,6 +293,14 @@ export default function AdminReportsPage() {
                           className="px-2 py-1 rounded border border-bd-border hover:bg-bd-overlay-md whitespace-nowrap"
                         >
                           下载完整数据
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadPdf(item.report_id)}
+                          disabled={pdfDownloadingId === item.report_id}
+                          className="px-2 py-1 rounded border border-bd-border hover:bg-bd-overlay-md whitespace-nowrap disabled:opacity-60"
+                        >
+                          {pdfDownloadingId === item.report_id ? '生成中...' : '下载PDF'}
                         </button>
                       </div>
                     </td>

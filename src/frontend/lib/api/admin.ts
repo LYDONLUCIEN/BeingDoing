@@ -375,6 +375,33 @@ export async function downloadReportJson(reportId: string): Promise<void> {
   triggerBlobDownload(blob, filename);
 }
 
+/**
+ * Admin 端：下载报告 PDF（支持强制重新生成）。
+ */
+export async function downloadReportPdf(
+  reportId: string,
+  options?: { force?: boolean },
+): Promise<void> {
+  const params: Record<string, any> = {};
+  if (options?.force) {
+    params.force = 'true';
+  }
+  const res = await apiClient.raw.post(
+    `/export/report-pdf/${encodeURIComponent(reportId)}`,
+    undefined,
+    {
+      params,
+      responseType: 'blob',
+    },
+  );
+  const blob = res.data as Blob;
+  const filename = pickFilenameFromHeaders(
+    res.headers,
+    `寻路报告_${reportId}.pdf`,
+  );
+  triggerBlobDownload(blob, filename);
+}
+
 export async function fetchAdminChatRecords(params?: {
   page?: number;
   page_size?: number;
