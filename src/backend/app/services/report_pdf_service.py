@@ -92,6 +92,47 @@ class ReportPdfService:
         # 4. 转 PDF
         return self._markdown_to_pdf(report_md)
 
+    # ── 异步生成支持（拆分为 markdown 生成 + PDF 转换）─────────
+
+    async def generate_markdown_only(
+        self,
+        report_id: str,
+        *,
+        user_id: Optional[str] = None,
+        force: bool = False,
+        vip_level: int = 1,
+    ) -> str:
+        """
+        只生成并缓存 markdown（不含 PDF 转换）。
+        供异步后台任务调用。
+        """
+        # 缓存命中
+        if not force:
+            cached = self._load_cached_markdown(report_id)
+            if cached is not None:
+                logger.info("report_pdf markdown 缓存命中: report_id=%s", report_id)
+                return cached
+
+        # LLM 生成
+        report_md = await self._generate_report_markdown(
+            report_id, user_id=user_id, vip_level=vip_level
+        )
+        # 写缓存
+        self._save_cached_markdown(report_id, report_md)
+        return report_md
+
+    def has_cached_markdown(self, report_id: str) -> bool:
+        """检查是否有有效的缓存 markdown。"""
+        return self._load_cached_markdown(report_id) is not None
+
+    def load_cached_markdown(self, report_id: str) -> Optional[str]:
+        """读取缓存的 markdown（公开接口）。"""
+        return self._load_cached_markdown(report_id)
+
+    def markdown_to_pdf_bytes(self, markdown_text: str) -> bytes:
+        """将 markdown 转为 PDF bytes（公开接口）。"""
+        return self._markdown_to_pdf(markdown_text)
+
     def get_report_filename(self, record: dict) -> str:
         """根据 record 生成 PDF 文件名。"""
         user_id = (record.get("user_id") or "user").strip()

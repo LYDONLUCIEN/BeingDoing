@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import {
   downloadReportJson,
-  downloadReportPdf,
   exportReportsBatch,
   fetchAdminReportDetail,
   fetchAdminReports,
@@ -12,6 +11,7 @@ import {
   type AdminReportItem,
   type ConversationStatsResult,
 } from '@/lib/api/admin';
+import { useReportPdfDownload } from '@/hooks/useReportPdfDownload';
 
 export default function AdminReportsPage() {
   const [items, setItems] = useState<AdminReportItem[]>([]);
@@ -28,7 +28,10 @@ export default function AdminReportsPage() {
   const [statsResult, setStatsResult] = useState<ConversationStatsResult | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsReportId, setStatsReportId] = useState<string | null>(null);
-  const [pdfDownloadingId, setPdfDownloadingId] = useState<string | null>(null);
+
+  // PDF 异步下载（admin 不传 activationCode）
+  const { status: pdfStatus, error: pdfError, activeReportId, download: downloadPdf } =
+    useReportPdfDownload();
 
   const loadReports = async () => {
     setLoading(true);
@@ -141,28 +144,10 @@ export default function AdminReportsPage() {
     }
   };
 
-  // 下载报告 PDF
+  // 下载报告 PDF（异步生成 + 轮询 + 下载）
   const handleDownloadPdf = async (reportId: string) => {
     setError(null);
-    setPdfDownloadingId(reportId);
-    try {
-      await downloadReportPdf(reportId);
-    } catch (e: any) {
-      // blob 错误响应需要解析
-      if (e?.response?.data instanceof Blob) {
-        try {
-          const text = await e.response.data.text();
-          const parsed = JSON.parse(text);
-          setError(parsed?.detail || 'PDF 下载失败');
-        } catch {
-          setError('PDF 下载失败');
-        }
-      } else {
-        setError(e?.message || 'PDF 下载失败');
-      }
-    } finally {
-      setPdfDownloadingId(null);
-    }
+    await downloadPdf(reportId);
   };
 
   return (
@@ -223,9 +208,15 @@ export default function AdminReportsPage() {
         </button>
       </section>
 
-      {error && (
+      {(error || pdfError) && (
         <section className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-xs">
-          {error}
+          {error || pdfError}
+        </section>
+      )}
+
+      {pdfStatus === 'generating' && activeReportId && (
+        <section className="rounded-xl border border-amber-200 bg-amber-50 text-amber-700 px-4 py-3 text-xs animate-pulse">
+          报告 {activeReportId.slice(0, 8)}... 正在生成中，请勿关闭页面（通常需要 10-30 秒）
         </section>
       )}
 
@@ -297,10 +288,12 @@ export default function AdminReportsPage() {
                         <button
                           type="button"
                           onClick={() => handleDownloadPdf(item.report_id)}
-                          disabled={pdfDownloadingId === item.report_id}
+                          disabled={pdfStatus === 'generating' && activeReportId === item.report_id}
                           className="px-2 py-1 rounded border border-bd-border hover:bg-bd-overlay-md whitespace-nowrap disabled:opacity-60"
                         >
-                          {pdfDownloadingId === item.report_id ? '生成中...' : '下载PDF'}
+                          {pdfStatus === 'generating' && activeReportId === item.report_id
+                            ? '生成中...'
+                            : '下载PDF'}
                         </button>
                       </div>
                     </td>

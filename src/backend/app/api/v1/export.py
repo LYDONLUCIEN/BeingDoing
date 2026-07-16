@@ -4,7 +4,7 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Query, Response
 from fastapi.responses import Response as FastResponse
 from pydantic import BaseModel
-from typing import Optional
+from typing import Dict, Optional
 from app.api.v1.auth import get_current_user
 from app.services.export_service import ExportService
 from app.utils.report_registry import ReportRegistry
@@ -166,7 +166,42 @@ async def download_export(
         )
 
 
-# ── PDF 报告导出 ────────────────────────────────────────────
+# ── PDF 报告导出（异步生成 + 轮询 + 下载）────────────────────
+
+import asyncio
+import uuid
+
+# 内存任务表：report_id → 任务状态
+# 状态: {"status": "pending"|"done"|"error", "error": str|None, "created_at": float}
+_pdf_tasks: Dict[str, dict] = {}
+
+
+async def _run_pdf_generation(report_id: str, user_id: str, base_dir: Optional[str], force: bool):
+    """后台异步生成报告 markdown（PDF 由下载时即时转换）。"""
+    from app.services.report_pdf_service import ReportPdfService
+
+    try:
+        service = ReportPdfService(base_dir=base_dir)
+        # 只生成并缓存 markdown，不在此处生成 PDF bytes
+        # 如果缓存命中或生成完毕，markdown 会写入文件
+        await service.generate_markdown_only(
+            report_id=report_id,
+            user_id=user_id,
+            force=force,
+        )
+        _pdf_tasks[report_id] = {
+            "status": "done",
+            "error": None,
+            "created_at": _pdf_tasks.get(report_id, {}).get("created_at", asyncio.get_event_loop().time()),
+        }
+        logger.info("PDF 报告 markdown 生成完成: report_id=%s", report_id)
+    except Exception as e:
+        logger.exception("PDF 报告生成失败: report_id=%s", report_id)
+        _pdf_tasks[report_id] = {
+            "status": "error",
+            "error": str(e),
+            "created_at": _pdf_tasks.get(report_id, {}).get("created_at", asyncio.get_event_loop().time()),
+        }
 
 
 @router.get("/my-report-id")
@@ -188,28 +223,17 @@ async def get_my_report_id(
     return {"report_id": report.get("report_id")}
 
 
-@router.post("/report-pdf/{report_id}")
-async def generate_report_pdf(
-    report_id: str,
-    force: bool = Query(False, description="强制重新生成，跳过缓存"),
-    activation_code: Optional[str] = Query(None, description="用户端需传入自己的激活码用于权限校验"),
-    current_user: dict = Depends(get_current_user),
-):
+def _verify_report_access(
+    report_id: str, current_user: dict, activation_code: Optional[str]
+) -> tuple:
     """
-    生成并下载 PDF 报告。
-
-    权限：
-    - admin（super_admin）可下载任意 report_id
-    - 普通用户必须传入 activation_code，且 report 必须属于该用户
+    校验权限，返回 (base_dir, user_id)。
+    admin 可访问任意 report；用户必须通过 activation_code 访问自己的。
     """
-    from app.services.report_pdf_service import ReportPdfService
-
     user_id = current_user.get("user_id") or ""
     is_admin = is_super_admin_user(current_user)
 
-    # 权限校验
     if not is_admin:
-        # 普通用户：通过 activation_code 找到自己的 report 并验证
         code = (activation_code or "").strip().upper()
         if not code:
             raise HTTPException(status_code=403, detail="缺少 activation_code 参数")
@@ -220,31 +244,127 @@ async def generate_report_pdf(
         registry = ReportRegistry(base_dir=str(root))
         report = registry.get_by_activation_user(code, user_id)
         if not report or report.get("report_id") != report_id:
-            raise HTTPException(status_code=403, detail="无权下载此报告")
-        base_dir = str(root)
+            raise HTTPException(status_code=403, detail="无权访问此报告")
+        return str(root), user_id
     else:
-        # admin
         registry = ReportRegistry()
         report = registry.get_report_by_id(report_id)
         if not report:
             raise HTTPException(status_code=404, detail="报告不存在")
-        base_dir = None  # 用默认 base_dir
+        return None, user_id
 
-    # 生成 PDF
-    try:
+
+@router.post("/report-pdf/{report_id}")
+async def trigger_report_pdf(
+    report_id: str,
+    force: bool = Query(False, description="强制重新生成，跳过缓存"),
+    activation_code: Optional[str] = Query(None, description="用户端需传入激活码"),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    触发 PDF 报告生成（异步）。
+
+    - 如果缓存命中（已有 markdown），直接返回 status=ready
+    - 如果正在生成中，返回 status=generating
+    - 否则启动后台任务，返回 status=generating
+    """
+    from app.services.report_pdf_service import ReportPdfService
+
+    base_dir, user_id = _verify_report_access(report_id, current_user, activation_code)
+
+    # 检查缓存是否已有 markdown
+    service = ReportPdfService(base_dir=base_dir)
+    has_cache = service.has_cached_markdown(report_id) and not force
+
+    if has_cache:
+        return {"report_id": report_id, "status": "ready"}
+
+    # 检查是否正在生成
+    existing = _pdf_tasks.get(report_id)
+    if existing and existing.get("status") == "pending":
+        return {"report_id": report_id, "status": "generating"}
+
+    # 如果上次失败，重新触发
+    # 启动后台任务
+    _pdf_tasks[report_id] = {
+        "status": "pending",
+        "error": None,
+        "created_at": asyncio.get_event_loop().time(),
+    }
+    asyncio.create_task(
+        _run_pdf_generation(report_id, user_id, base_dir, force)
+    )
+
+    return {"report_id": report_id, "status": "generating"}
+
+
+@router.get("/report-pdf-status/{report_id}")
+async def get_report_pdf_status(
+    report_id: str,
+    activation_code: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_user),
+):
+    """轮询报告生成状态。"""
+    # 权限校验
+    _verify_report_access(report_id, current_user, activation_code)
+
+    task = _pdf_tasks.get(report_id)
+    if not task:
+        # 没有任务记录，检查是否有缓存
+        from app.services.report_pdf_service import ReportPdfService
+
+        base_dir, _ = _verify_report_access(report_id, current_user, activation_code)
         service = ReportPdfService(base_dir=base_dir)
-        pdf_bytes = await service.generate_pdf(
-            report_id=report_id,
-            user_id=user_id,
-            force=force,
-        )
+        if service.has_cached_markdown(report_id):
+            return {"report_id": report_id, "status": "ready"}
+        return {"report_id": report_id, "status": "none"}
+
+    status = task.get("status")
+    if status == "done":
+        return {"report_id": report_id, "status": "ready"}
+    elif status == "error":
+        return {
+            "report_id": report_id,
+            "status": "error",
+            "error": task.get("error", "生成失败"),
+        }
+    else:
+        return {"report_id": report_id, "status": "generating"}
+
+
+@router.get("/report-pdf-download/{report_id}")
+async def download_report_pdf(
+    report_id: str,
+    activation_code: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    下载已生成的 PDF 报告。
+    如果 markdown 缓存不存在，返回 409。
+    """
+    from app.services.report_pdf_service import ReportPdfService
+
+    base_dir, user_id = _verify_report_access(report_id, current_user, activation_code)
+    service = ReportPdfService(base_dir=base_dir)
+
+    if not service.has_cached_markdown(report_id):
+        raise HTTPException(status_code=409, detail="报告尚未生成，请先触发生成")
+
+    # 从缓存读 markdown，转 PDF
+    markdown_text = service.load_cached_markdown(report_id)
+    if not markdown_text:
+        raise HTTPException(status_code=409, detail="报告缓存已失效，请重新生成")
+
+    try:
+        pdf_bytes = service.markdown_to_pdf_bytes(markdown_text)
     except Exception as e:
-        logger.exception("PDF 生成失败: report_id=%s", report_id)
-        raise HTTPException(status_code=500, detail=f"PDF 生成失败: {e}")
+        logger.exception("PDF 转换失败: report_id=%s", report_id)
+        raise HTTPException(status_code=500, detail=f"PDF 转换失败: {e}")
 
     # 文件名
+    registry = ReportRegistry(base_dir=base_dir) if base_dir else ReportRegistry()
+    report = registry.get_report_by_id(report_id) or {}
     filename = service.get_report_filename(report)
-    # RFC 5987 编码中文文件名
     filename_encoded = quote(filename)
 
     return FastResponse(
