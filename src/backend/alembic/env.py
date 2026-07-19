@@ -21,6 +21,8 @@ from app.models import (
     AnalyticsChatTurn, AnalyticsReport, AnalyticsLike,
     NotificationTask, NotificationRecipient,
     EmailBounce,
+    LlmModelConfig,
+    UserLlmModelConfig,
 )
 
 # 导入配置与数据库URL

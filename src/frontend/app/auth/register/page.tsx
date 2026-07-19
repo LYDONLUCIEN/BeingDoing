@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { authApi } from '@/lib/api/auth';
 import { useAuthStore } from '@/stores/authStore';
+import LegalDocLink from '@/components/legal/LegalDocLink';
 import Link from 'next/link';
 
 const registerSchema = z.object({
@@ -15,12 +16,16 @@ const registerSchema = z.object({
   username: z.string().optional(),
   password: z.string().min(6, '密码至少6位'),
   confirmPassword: z.string(),
+  agreeTerms: z.boolean(),
 }).refine((data) => data.email || data.phone, {
   message: '邮箱或手机号至少提供一个',
   path: ['email'],
 }).refine((data) => data.password === data.confirmPassword, {
   message: '两次输入的密码不一致',
   path: ['confirmPassword'],
+}).refine((data) => data.agreeTerms === true, {
+  message: '请阅读并同意协议后继续',
+  path: ['agreeTerms'],
 });
 
 type RegisterFormData = z.infer<typeof registerSchema>;
@@ -39,6 +44,7 @@ function RegisterForm() {
     formState: { errors },
   } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
+    defaultValues: { agreeTerms: false } as Partial<RegisterFormData>,
   });
 
   const onSubmit = async (data: RegisterFormData) => {
@@ -158,6 +164,32 @@ function RegisterForm() {
             />
             {errors.confirmPassword && (
               <p className="mt-1 text-sm text-red-600">{errors.confirmPassword.message}</p>
+            )}
+          </div>
+
+          {/* 隐私政策 & 服务条款勾选 */}
+          <div>
+            <label className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
+              <input
+                type="checkbox"
+                {...register('agreeTerms')}
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <span>
+                我已阅读并同意
+                <LegalDocLink
+                  type="privacy"
+                  className="text-primary-600 hover:text-primary-700 hover:underline mx-1 align-baseline"
+                />
+                和
+                <LegalDocLink
+                  type="terms"
+                  className="text-primary-600 hover:text-primary-700 hover:underline ml-1 align-baseline"
+                />
+              </span>
+            </label>
+            {errors.agreeTerms && (
+              <p className="mt-1 text-sm text-red-600">{errors.agreeTerms.message}</p>
             )}
           </div>
 

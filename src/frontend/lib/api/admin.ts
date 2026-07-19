@@ -1417,3 +1417,191 @@ export async function getReportConversationStats(reportId: string): Promise<Conv
   return (res.data ?? {}) as ConversationStatsResult;
 }
 
+// ===================== LLM 模型配置 =====================
+
+export type LlmProvider = 'openai' | 'deepseek' | 'kimi' | 'qwen';
+
+export interface AdminModelConfig {
+  id: string;
+  name: string;
+  provider: LlmProvider;
+  model: string;
+  base_url?: string | null;
+  api_key_masked: string;
+  has_api_key: boolean;
+  api_key_revealed?: string | null;
+  is_default: boolean;
+  enabled: boolean;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ModelConfigTestResult {
+  success: boolean;
+  content: string;
+  model: string;
+  latency_ms: number;
+  error?: string | null;
+}
+
+export interface AdminUserLlmBinding {
+  id: string;
+  user_id: string;
+  config_id: string;
+  config_name: string;
+  config_provider: string;
+  config_model: string;
+  user_email?: string | null;
+  user_username?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function fetchAdminModelConfigs(): Promise<AdminModelConfig[]> {
+  const res = await apiClient.get<AdminModelConfig[]>('/admin/model-configs');
+  return (res.data ?? []) as AdminModelConfig[];
+}
+
+export async function createAdminModelConfig(payload: {
+  name: string;
+  provider: LlmProvider;
+  model: string;
+  base_url?: string | null;
+  api_key?: string | null;
+  is_default?: boolean;
+  enabled?: boolean;
+  notes?: string | null;
+}): Promise<AdminModelConfig> {
+  const res = await apiClient.post<AdminModelConfig>('/admin/model-configs', payload);
+  return res.data as AdminModelConfig;
+}
+
+export async function updateAdminModelConfig(
+  id: string,
+  payload: Partial<{
+    name: string;
+    provider: LlmProvider;
+    model: string;
+    base_url: string | null;
+    api_key: string | null;
+    is_default: boolean;
+    enabled: boolean;
+    notes: string | null;
+  }>,
+): Promise<AdminModelConfig> {
+  const res = await apiClient.patch<AdminModelConfig>(
+    `/admin/model-configs/${encodeURIComponent(id)}`,
+    payload,
+  );
+  return res.data as AdminModelConfig;
+}
+
+export async function deleteAdminModelConfig(id: string): Promise<void> {
+  await apiClient.delete(`/admin/model-configs/${encodeURIComponent(id)}`);
+}
+
+export async function setAdminDefaultModelConfig(id: string): Promise<AdminModelConfig> {
+  const res = await apiClient.post<AdminModelConfig>(
+    `/admin/model-configs/${encodeURIComponent(id)}/set-default`,
+  );
+  return res.data as AdminModelConfig;
+}
+
+export async function revealAdminModelConfigKey(id: string): Promise<string | null> {
+  const res = await apiClient.get<AdminModelConfig>(
+    `/admin/model-configs/${encodeURIComponent(id)}?reveal=true`,
+  );
+  return (res.data?.api_key_revealed as string | null) ?? null;
+}
+
+export async function testAdminModelConfig(
+  id: string,
+  payload: { prompt?: string; temperature?: number; max_tokens?: number },
+): Promise<ModelConfigTestResult> {
+  const res = await apiClient.post<ModelConfigTestResult>(
+    `/admin/model-configs/${encodeURIComponent(id)}/test`,
+    payload,
+  );
+  return (res.data ?? {}) as ModelConfigTestResult;
+}
+
+export async function fetchAdminUserLlmBindings(): Promise<AdminUserLlmBinding[]> {
+  const res = await apiClient.get<AdminUserLlmBinding[]>('/admin/user-bindings');
+  return (res.data ?? []) as AdminUserLlmBinding[];
+}
+
+export async function bindAdminUserLlm(payload: {
+  user_id: string;
+  config_id: string;
+}): Promise<AdminUserLlmBinding> {
+  const res = await apiClient.post<AdminUserLlmBinding>('/admin/user-bindings', payload);
+  return res.data as AdminUserLlmBinding;
+}
+
+export async function unbindAdminUserLlm(userId: string): Promise<void> {
+  await apiClient.delete(`/admin/user-bindings/${encodeURIComponent(userId)}`);
+}
+
+// =========== 反馈管理 ===========
+
+export type AdminFeedbackStatus = 'received' | 'in_progress' | 'done';
+export type AdminFeedbackType = 'bug' | 'idea';
+
+export interface AdminFeedbackItem {
+  id: string;
+  user_id: string;
+  user_email: string;
+  username?: string | null;
+  type: AdminFeedbackType;
+  content: string;
+  status: AdminFeedbackStatus;
+  attachments_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminFeedbackList {
+  items: AdminFeedbackItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface AdminFeedbackAttachment {
+  id: string;
+  signed_url: string;
+  size_bytes: number;
+  content_type: string;
+}
+
+export interface AdminFeedbackDetail extends AdminFeedbackItem {
+  attachments: AdminFeedbackAttachment[];
+}
+
+export async function fetchAdminFeedbacks(params: {
+  type?: AdminFeedbackType;
+  status?: AdminFeedbackStatus;
+  page?: number;
+  page_size?: number;
+}): Promise<AdminFeedbackList> {
+  const res = await apiClient.get('/admin/feedbacks', { params });
+  return res.data;
+}
+
+export async function fetchAdminFeedbackDetail(id: string): Promise<AdminFeedbackDetail> {
+  const res = await apiClient.get(`/admin/feedbacks/${encodeURIComponent(id)}`);
+  return res.data;
+}
+
+export async function updateAdminFeedbackStatus(
+  id: string,
+  status: AdminFeedbackStatus
+): Promise<AdminFeedbackDetail> {
+  const res = await apiClient.patch(
+    `/admin/feedbacks/${encodeURIComponent(id)}/status`,
+    { status }
+  );
+  return res.data;
+}
+

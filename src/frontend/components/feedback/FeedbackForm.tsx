@@ -1,0 +1,194 @@
+'use client';
+
+import { useState } from 'react';
+import { Bug, Lightbulb, Loader2, Send } from 'lucide-react';
+import { createFeedback, type FeedbackType } from '@/lib/api/feedback';
+import { getApiErrorMessage } from '@/lib/api/client';
+import AttachmentUploader from './AttachmentUploader';
+
+interface Props {
+  onSubmitted?: () => void;
+}
+
+export default function FeedbackForm({ onSubmitted }: Props) {
+  const [type, setType] = useState<FeedbackType | ''>('');
+  const [content, setContent] = useState('');
+  const [attachmentIds, setAttachmentIds] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+
+  const handleSubmit = async () => {
+    setError('');
+
+    if (!type) {
+      setError('请选择反馈类型');
+      return;
+    }
+    if (content.trim().length < 5) {
+      setError('反馈内容至少 5 个字');
+      return;
+    }
+    if (content.length > 2000) {
+      setError('反馈内容不能超过 2000 字');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await createFeedback({
+        type: type as FeedbackType,
+        content: content.trim(),
+        attachment_ids: attachmentIds,
+      });
+      setSuccess(true);
+      // 重置
+      setType('');
+      setContent('');
+      setAttachmentIds([]);
+      // 3 秒后自动切回通知页
+      setTimeout(() => {
+        setSuccess(false);
+        onSubmitted?.();
+      }, 2500);
+    } catch (e) {
+      setError(getApiErrorMessage(e, '提交失败，请稍后重试'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (success) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center px-6 text-center gap-3">
+        <div className="w-14 h-14 rounded-full bg-bd-ui-accent/15 flex items-center justify-center">
+          <Send className="w-6 h-6" style={{ color: 'var(--bd-ui-accent)' }} />
+        </div>
+        <div>
+          <p className="text-sm font-semibold" style={{ color: 'var(--bd-fg)' }}>
+            反馈已提交
+          </p>
+          <p className="text-xs mt-1" style={{ color: 'var(--bd-fg-muted)' }}>
+            感谢您的反馈，我们将在 3 天内通过邮箱与您联系
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full flex flex-col">
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        {/* 类型选择 */}
+        <div>
+          <label className="text-xs font-medium mb-2 block" style={{ color: 'var(--bd-fg)' }}>
+            类型 <span style={{ color: 'var(--bd-error)' }}>*</span>
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <TypeButton
+              active={type === 'bug'}
+              onClick={() => setType('bug')}
+              icon={<Bug className="w-4 h-4" />}
+              label="Bug 报告"
+              accentColor="#ef4444"
+            />
+            <TypeButton
+              active={type === 'idea'}
+              onClick={() => setType('idea')}
+              icon={<Lightbulb className="w-4 h-4" />}
+              label="产品想法"
+              accentColor="#f59e0b"
+            />
+          </div>
+        </div>
+
+        {/* 内容 */}
+        <div>
+          <label className="text-xs font-medium mb-2 block" style={{ color: 'var(--bd-fg)' }}>
+            内容 <span style={{ color: 'var(--bd-error)' }}>*</span>
+          </label>
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder="请描述您遇到的 bug 或想法（5-2000 字）"
+            rows={6}
+            maxLength={2000}
+            className="w-full text-sm px-3 py-2.5 rounded-xl border border-bd-border bg-bd-bg/60 resize-none focus:outline-none focus:ring-2 focus:ring-bd-ui-accent/40"
+            style={{ color: 'var(--bd-fg)' }}
+          />
+          <div className="flex justify-end mt-1">
+            <span className="text-[10px] text-bd-subtle">{content.length}/2000</span>
+          </div>
+        </div>
+
+        {/* 截图 */}
+        <div>
+          <label className="text-xs font-medium mb-2 block" style={{ color: 'var(--bd-fg)' }}>
+            截图（可选）
+          </label>
+          <AttachmentUploader attachmentIds={attachmentIds} onChange={setAttachmentIds} />
+        </div>
+
+        {/* 错误 */}
+        {error && (
+          <p className="text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700">{error}</p>
+        )}
+      </div>
+
+      {/* 提交 */}
+      <div className="px-5 py-3 border-t border-bd-border">
+        <button
+          onClick={handleSubmit}
+          disabled={submitting}
+          className="w-full py-2.5 rounded-xl text-sm font-medium text-white disabled:opacity-50 flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
+          style={{
+            background:
+              'linear-gradient(145deg, var(--bd-ui-accent), var(--bd-primary))',
+          }}
+        >
+          {submitting ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              提交中…
+            </>
+          ) : (
+            <>
+              <Send className="w-4 h-4" />
+              提交反馈
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TypeButton({
+  active,
+  onClick,
+  icon,
+  label,
+  accentColor,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  accentColor: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-sm font-medium transition-all"
+      style={{
+        borderColor: active ? accentColor : 'var(--bd-border)',
+        background: active ? `${accentColor}10` : 'transparent',
+        color: active ? accentColor : 'var(--bd-fg-muted)',
+      }}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}

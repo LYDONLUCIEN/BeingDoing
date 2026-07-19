@@ -12,6 +12,8 @@ from app.models.notification import NotificationTask, NotificationRecipient
 from app.models.email_bounce import EmailBounce
 from app.models.site_notice import SiteNotice
 from app.models.rumination_ab import RuminationAbAssignment
+from app.models.llm_model_config import LlmModelConfig, UserLlmModelConfig
+from app.models.feedback import Feedback, FeedbackAttachment, Notification
 
 __all__ = [
     "Base",
@@ -38,4 +40,10 @@ __all__ = [
     "EmailBounce",
     "SiteNotice",
     "RuminationAbAssignment",
+    "LlmModelConfig",
+    "UserLlmModelConfig",
+    # 反馈与站内信
+    "Feedback",
+    "FeedbackAttachment",
+    "Notification",
 ]

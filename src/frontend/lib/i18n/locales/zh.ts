@@ -1,6 +1,8 @@
 /**
  * 中文文案配置
  */
+import { privacyPolicyZh, termsOfServiceZh } from './legal.zh';
+
 export const zh = {
   common: {
     login: '登录',
@@ -428,6 +430,8 @@ export const zh = {
     qrCode: '二维码',
     privacyPolicy: '隐私政策',
     termsOfService: '服务条款',
+    privacyBody: privacyPolicyZh,
+    termsBody: termsOfServiceZh,
     copyright: '© {year} 寻路. 保留所有权利。',
   },
   admin: {

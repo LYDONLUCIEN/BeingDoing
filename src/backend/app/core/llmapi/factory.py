@@ -94,7 +94,22 @@ def get_default_llm_provider(vip_level: Optional[int] = None) -> BaseLLMProvider
     """
     获取默认LLM Provider。
     若传入 vip_level（1 或 2），则按 VIP 选择；否则使用 legacy 配置（LLM_PROVIDER）。
+
+    DB 配置优先：无 vip_level 时先查 resolver（DB 默认记录），
+    命中则用 DB 中的 provider/model/api_key/base_url；否则回退 .env。
     """
     if vip_level is not None and vip_level in (1, 2):
         return get_llm_provider_for_vip(vip_level)
-    return create_llm_provider()
+    try:
+        from app.core.llmapi.resolver import get_default_config
+
+        rc = get_default_config()
+        return create_llm_provider(
+            provider=rc.provider,
+            model=rc.model,
+            api_key=rc.api_key,
+            base_url=rc.base_url,
+        )
+    except Exception:
+        # resolver 任何异常 → 完全回退原行为
+        return create_llm_provider()

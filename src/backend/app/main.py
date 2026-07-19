@@ -15,7 +15,11 @@ from app.api.v1 import admin_bounces  # 新增：退信黑名单管理
 from app.api.v1 import admin_notifications  # 新增：通知邮件群发
 from app.api.v1 import site_notices  # 新增：站内公告（banner / 维护通知）
 from app.api.v1 import admin_maintenance  # 新增：维护模式切换
+from app.api.v1 import admin_model_config  # 新增：LLM 模型配置后台
 from app.api.v1 import chat_optimized  # 新增：优化的对话API
+from app.api.v1 import feedbacks  # 新增：用户反馈
+from app.api.v1 import notifications  # 新增：站内信
+from app.api.v1 import admin_feedbacks  # 新增：管理员反馈管理
 from app.api.v1 import (  # 新增：简单模式激活与对话
     admin,
     analytics,
@@ -225,6 +229,7 @@ def _start_bounce_scheduler() -> None:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from apscheduler.triggers.cron import CronTrigger
         from app.services.bounce_scanner import BounceScanner
+        from app.services.feedback_orphan_cleanup import cleanup_orphan_attachments
 
         sched = AsyncIOScheduler(timezone="Asia/Shanghai")
         sched.add_job(
@@ -236,10 +241,24 @@ def _start_bounce_scheduler() -> None:
             max_instances=1,
             misfire_grace_time=3600,
         )
+        # 反馈附件孤儿清理（每日 04:00，单独 cron）
+        sched.add_job(
+            lambda: asyncio.create_task(cleanup_orphan_attachments()),
+            CronTrigger.from_crontab(settings.FEEDBACK_ORPHAN_CLEANUP_CRON),
+            id="feedback_orphan_cleanup",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=3600,
+        )
         sched.start()
         _bounce_scheduler = sched
         logging.getLogger(__name__).info(
             "bounce scheduler started, cron='%s'", settings.BOUNCE_SCAN_CRON
+        )
+        logging.getLogger(__name__).info(
+            "feedback orphan cleanup scheduler started, cron='%s'",
+            settings.FEEDBACK_ORPHAN_CLEANUP_CRON,
         )
     except Exception as e:
         # APScheduler 不可用不能阻断启动，只警告
@@ -316,3 +335,7 @@ app.include_router(admin_notifications.router, prefix="/api/v1")  # 通知邮件
 app.include_router(admin_bounces.router, prefix="/api/v1")  # 退信黑名单
 app.include_router(site_notices.router, prefix="/api/v1")  # 站内公告（公开 + admin）
 app.include_router(admin_maintenance.router, prefix="/api/v1")  # 维护模式切换（admin）
+app.include_router(admin_model_config.router, prefix="/api/v1")  # LLM 模型配置（admin）
+app.include_router(feedbacks.router, prefix="/api/v1")  # 用户反馈（提反馈、传截图）
+app.include_router(notifications.router, prefix="/api/v1")  # 站内信（用户侧）
+app.include_router(admin_feedbacks.router, prefix="/api/v1")  # 管理员反馈管理

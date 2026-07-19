@@ -5,7 +5,7 @@
 - 对输入和配置做 trim 归一化
 """
 
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from app.config.settings import settings
 
@@ -46,3 +46,18 @@ def is_super_admin_user(user: Optional[Dict[str, Any]]) -> bool:
         return True
 
     return False
+
+
+def get_super_admin_user_ids() -> List[str]:
+    """
+    返回所有配置为 super_admin 的 user_id 列表（仅 SUPER_ADMIN_USER_IDS 配置的）。
+
+    SUPER_ADMIN_EMAILS 配置的需要查 DB 才能拿到 user_id，这里不处理
+    （调用方如果有需要，可在此函数基础上扩展）。
+
+    用于「给所有 admin 发通知」类的场景。
+    """
+    ids = _parse_csv_set(
+        getattr(settings, "SUPER_ADMIN_USER_IDS", None), lowercase=False
+    )
+    return [i for i in ids if i]

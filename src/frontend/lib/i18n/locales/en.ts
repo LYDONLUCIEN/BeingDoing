@@ -2,6 +2,8 @@
  * English copy
  * Mirrors zh.ts structure for i18n
  */
+import { privacyPolicyEn, termsOfServiceEn } from './legal.en';
+
 export const en = {
   common: {
     login: 'Login',
@@ -435,6 +437,8 @@ export const en = {
     qrCode: 'QR Code',
     privacyPolicy: 'Privacy Policy',
     termsOfService: 'Terms of Service',
+    privacyBody: privacyPolicyEn,
+    termsBody: termsOfServiceEn,
     copyright: '© {year} xunlu. All rights reserved.',
   },
   admin: {

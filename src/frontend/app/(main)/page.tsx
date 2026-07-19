@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Sparkles, Star } from 'lucide-react';
 import { useLocale } from '@/hooks/useLocale';
+import LegalDocLink from '@/components/legal/LegalDocLink';
 // ── 用户故事（9 条，3x3 平铺，头像占位 assets/user_story/）──────────────────────────
 const TESTIMONIALS: Array<{
   quote: string;
@@ -361,12 +362,13 @@ function LandingFooter() {
   const { t } = useLocale();
   const year = new Date().getFullYear();
   const copyright = t('footer.copyright').replace('{year}', String(year));
+  // about / contact 走 Link，privacy / terms 走 LegalDocLink 弹层
   const links = [
     { label: t('footer.aboutUs'), href: '/about' },
     { label: t('footer.contactUs'), href: '/contact' },
-    { label: t('footer.privacyPolicy'), href: '/privacy' },
-    { label: t('footer.termsOfService'), href: '/terms' },
   ];
+  const footerLinkClass = 'text-sm hover:underline transition-colors';
+  const footerLinkStyle = { color: 'var(--bd-fg-muted)' } as const;
 
   return (
     <footer className="border-t border-black/5 dark:border-white/10 mt-8">
@@ -377,12 +379,22 @@ function LandingFooter() {
               <Link
                 key={href}
                 href={href}
-                className="text-sm hover:underline transition-colors"
-                style={{ color: 'var(--bd-fg-muted)' }}
+                className={footerLinkClass}
+                style={footerLinkStyle}
               >
                 {label}
               </Link>
             ))}
+            <LegalDocLink
+              type="privacy"
+              className={footerLinkClass}
+              style={footerLinkStyle}
+            />
+            <LegalDocLink
+              type="terms"
+              className={footerLinkClass}
+              style={footerLinkStyle}
+            />
           </div>
           {/* 二维码占位：后续可替换为真实 QR 图 */}
           <div className="flex flex-col items-center gap-2">

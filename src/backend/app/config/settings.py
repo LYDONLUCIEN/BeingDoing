@@ -87,6 +87,10 @@ class Settings(BaseSettings):
     # 全局思维链开关：控制 v4-pro 等模型是否开启 thinking 模式（默认关，提升响应速度）
     LLM_THINKING_ENABLED: bool = False
 
+    # LLM 模型配置加密密钥（admin 后台存的 api_key 用 Fernet 加密）
+    # 为空时回退 SECRET_KEY；轮换会让历史密文不可解密，需重新填写 api_key
+    MODEL_CONFIG_ENC_KEY: Optional[str] = None
+
     # SMTP 邮件配置（忘记密码验证码）
     SMTP_HOST: Optional[str] = None
     SMTP_PORT: int = 465
@@ -108,6 +112,11 @@ class Settings(BaseSettings):
     BOUNCE_SCAN_CRON: str = "0 3 * * *"          # 默认每日 03:00
     BOUNCE_SCAN_LOOKBACK_HOURS: int = 48          # 每次扫描回看窗口，watermark 丢失时兜底
     BOUNCE_SCAN_SOFT_THRESHOLD: int = 3           # soft 累计次数阈值，达到升级为 blocked
+
+    # 反馈附件孤儿清理 cron（本地时间，5 字段）
+    # 用户上传截图后未提交反馈（feedback_id IS NULL）超 N 天的附件，DB 记录 + OSS 对象都删
+    FEEDBACK_ORPHAN_CLEANUP_CRON: str = "0 4 * * *"  # 默认每日 04:00
+    FEEDBACK_ORPHAN_CLEANUP_DAYS: int = 7             # 超过 7 天未关联反馈视为孤儿
 
     # 前端地址（用于邮箱验证链接）
     FRONTEND_URL: str = "http://localhost:3000"
@@ -142,6 +151,15 @@ class Settings(BaseSettings):
 
     # 对话文件存储目录（项目根 data/conversations）
     CONVERSATION_DIR: str = str(get_conversation_dir())
+
+    # ========== 对象存储（阿里云 OSS，用于反馈截图等）==========
+    OSS_ACCESS_KEY_ID: Optional[str] = None
+    OSS_ACCESS_KEY_SECRET: Optional[str] = None
+    OSS_ENDPOINT: Optional[str] = None  # 如 oss-cn-shanghai.aliyuncs.com
+    OSS_BUCKET_NAME: Optional[str] = None
+    OSS_PUBLIC_BASE_URL: Optional[str] = None  # 可选，绑定 CDN/域名后填
+    # 签名 URL 有效期（秒），用户查看截图时用
+    OSS_SIGNED_URL_EXPIRES: int = 3600
 
     # basic_info 多源合并策略（迁移时用）：A=最新覆盖 B=并集(非空优先) C=A∩B 交集
     BASIC_INFO_MERGE_STRATEGY: str = "A"
