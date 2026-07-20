@@ -29,6 +29,7 @@ try:
 except ImportError:  # 精简 venv 时仍可跑通（如仅跑部分测试）
     _FileLock = None  # type: ignore[misc, assignment]
 
+from app.utils.report_review import init_review_fields
 from app.utils.simple_activation_manager import (
     ActivationRecord,
     SimpleActivationManager,
@@ -214,7 +215,7 @@ class ReportRegistry:
         self, report_id: str, activation_code: str, user_id: str, created_at: Optional[str] = None
     ) -> dict:
         ts = created_at or self._now_iso()
-        return {
+        record = {
             "report_id": report_id,
             "activation_code": activation_code,
             "user_id": user_id,
@@ -233,6 +234,9 @@ class ReportRegistry:
                 for sid in STEP_IDS
             },
         }
+        # 报告阻塞式审核（ADR-0009）：新生成的报告进入 pending_review + 随机 3~24h 时限
+        init_review_fields(record)
+        return record
 
     def _load_record(self, report_id: str) -> Optional[dict]:
         file = self._record_file(report_id)
@@ -270,7 +274,16 @@ class ReportRegistry:
         data.setdefault("status", "in_progress")
         data.setdefault("final_conclusion", None)
         data.setdefault("updated_at", now)
+        # 审核字段兼容：仅补可空字段；review_status/review_deadline 不 setdefault，
+        # 存量报告无字段视为 approved（祖父豁免，ADR-0009）
+        data.setdefault("review_type", None)
+        data.setdefault("reviewed_by", None)
+        data.setdefault("reviewed_at", None)
         return data
+
+    def save_record(self, record: dict) -> None:
+        """公开保存入口（审核批复等外部模块写 record.json 用）。"""
+        self._save_record(record)
 
     def _save_record(self, record: dict) -> None:
         report_id = record.get("report_id")

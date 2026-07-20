@@ -232,6 +232,11 @@ from app.utils.simple_activation_manager import (
     get_effective_simple_root,
 )
 from app.utils.super_admin import is_super_admin_user
+from app.utils.trial_codes import (
+    TRIAL_VALUES_USER_MESSAGE_LIMIT,
+    count_values_user_messages as _count_values_user_messages,
+)
+from app.utils.trial_codes import is_trial_code as _is_trial_code
 from app.utils.survey_storage import (
     build_values_info_for_prompt,
     format_basic_info_for_prompt,
@@ -830,6 +835,78 @@ def _can_bypass_flow_limits(current_user: Optional[dict], rec) -> bool:
         return True
     # 兼容旧沙箱记录（尚未回填 workspace_kind）
     return bool(getattr(rec, "is_sandbox", False))
+
+
+# ── 试用码门控（P-A，ADR-0008）──────────────────────────────────────────
+# - 阶段锁：试用码仅 values 阶段可写，非 values 写请求 → 402 trial_phase_locked
+# - 轮数锁：values 用户消息 ≥10 → 402 trial_limit_reached（仅 message/stream 主路径）
+# - 只读 GET 端点不加任何新限制；admin/沙箱经 _can_bypass_flow_limits 豁免
+
+
+def _trial_error_detail(payload: dict) -> str:
+    """试用拦截 detail：JSON 字符串，前端按 type 识别。"""
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def _assert_trial_phase_allowed(rec, current_user: Optional[dict], phase_step: str) -> None:
+    """试用码阶段锁：非 values 写请求一律 402。full 码与豁免场景直接放行。"""
+    if not _is_trial_code(rec):
+        return
+    if _can_bypass_flow_limits(current_user, rec):
+        return
+    if (phase_step or "").strip().lower() != "values":
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=_trial_error_detail({"type": "trial_phase_locked"}),
+        )
+
+
+def _peek_trial_phase_lock(
+    manager: SimpleActivationManager,
+    activation_code: str,
+    current_user: Optional[dict],
+    phase_step: str,
+) -> None:
+    """
+    轻量预检：在 _resolve_report_context 之前按激活码 peek 记录并套用试用阶段锁。
+    用于 rumination 系列写端点——否则阶段推进锁（lock_previous_step）会先以 400 拦截，
+    试用用户拿不到 402 trial_phase_locked 的结构化语义。记录不存在时不做任何事，
+    交由后续正式解析返回 404。
+    """
+    rec = manager.get_activation(activation_code)
+    if rec is not None:
+        _assert_trial_phase_allowed(rec, current_user, phase_step)
+
+
+def _assert_trial_message_allowed(
+    rec,
+    current_user: Optional[dict],
+    phase_step: str,
+    registry: ReportRegistry,
+    report_id: str,
+) -> None:
+    """
+    试用码对话主路径门控：先做阶段锁，values 内再检查 10 轮上限。
+    轮 = 该 report 全部 values 线程的用户消息条数（排除 internal 消息）；
+    第 10 条正常回复，第 11 条起拦截。
+    """
+    _assert_trial_phase_allowed(rec, current_user, phase_step)
+    if not _is_trial_code(rec):
+        return
+    if _can_bypass_flow_limits(current_user, rec):
+        return
+    used = _count_values_user_messages(registry, report_id)
+    if used >= TRIAL_VALUES_USER_MESSAGE_LIMIT:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=_trial_error_detail(
+                {
+                    "type": "trial_limit_reached",
+                    "used": used,
+                    "limit": TRIAL_VALUES_USER_MESSAGE_LIMIT,
+                }
+            ),
+        )
 
 
 def _resolve_prompt_lab_override_for_request(rec, current_user: Optional[dict]) -> Optional[Dict]:
@@ -1584,6 +1661,10 @@ async def save_prior_context_endpoint(
     rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
     if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="激活码已过期")
+    # 试用码阶段锁：仅允许写 values 阶段的上一轮咨询结果（未知 phase 宽容按 values 处理）
+    _assert_trial_phase_allowed(
+        rec, current_user, ReportRegistry.normalize_step_id(request.phase)
+    )
     user_id = (current_user or {}).get("user_id") or (current_user or {}).get("email") or ""
     root = get_effective_simple_root(rec)
     registry = ReportRegistry(base_dir=str(root))
@@ -1722,6 +1803,8 @@ def save_rumination_progress_endpoint(
     rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
     if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
         raise HTTPException(status_code=400, detail="激活码已过期")
+    # 试用码阶段锁：rumination 进度写入对试用码一律拦截
+    _assert_trial_phase_allowed(rec, current_user, "rumination")
     root = get_effective_simple_root(rec)
     registry = ReportRegistry(base_dir=str(root))
     report = registry.ensure_report(
@@ -2024,6 +2107,9 @@ async def rumination_step_opening_stream(
         raise
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+    # 试用码阶段锁：rumination 引导语流式生成对试用码一律拦截
+    _assert_trial_phase_allowed(rec, current_user, "rumination")
 
     ctx = build_opening_context(
         filter_step=step, progress=progress, values_list=values_list, values_source=values_source
@@ -2375,6 +2461,8 @@ async def rumination_table_submit(
             rec, current_user
         ):
             raise HTTPException(status_code=400, detail="激活码已过期")
+        # 试用码阶段锁：rumination 表格提交对试用码一律拦截
+        _assert_trial_phase_allowed(rec, current_user, "rumination")
         root = get_effective_simple_root(rec)
         registry = ReportRegistry(base_dir=str(root))
         report = registry.ensure_report(
@@ -3096,6 +3184,8 @@ async def rumination_save_combo_conclusion(
     """保存单个组合的结论状态（确认/跳过）。"""
     try:
         manager = get_activation_manager_for_code(request.activation_code)
+        # 试用码阶段锁（预检，保证 402 优先于阶段推进锁的 400）
+        _peek_trial_phase_lock(manager, request.activation_code, current_user, "rumination")
         rec, report, _, _, _, _ = _resolve_report_context(
             manager=manager,
             activation_code=request.activation_code,
@@ -3303,6 +3393,8 @@ async def rumination_ensure_combo_guide(
 
         # Fast path: check existing messages (synchronous)
         manager = get_activation_manager_for_code(request.activation_code)
+        # 试用码阶段锁（预检，保证 402 优先于阶段推进锁的 400）
+        _peek_trial_phase_lock(manager, request.activation_code, current_user, "rumination")
         rec, report, _, logical_session_id, category, conv_manager = _resolve_report_context(
             manager=manager,
             activation_code=request.activation_code,
@@ -3381,6 +3473,8 @@ async def rumination_combo_matrix_submit(
     """提交组合矩阵，将已确认的组合转为 3b 深度讨论表格。"""
     try:
         manager = get_activation_manager_for_code(request.activation_code)
+        # 试用码阶段锁（预检，保证 402 优先于阶段推进锁的 400）
+        _peek_trial_phase_lock(manager, request.activation_code, current_user, "rumination")
         rec, report, _, _, _, category = _resolve_report_context(
             manager=manager,
             activation_code=request.activation_code,
@@ -3592,6 +3686,8 @@ async def rumination_neg_resolve(
             rec, current_user
         ):
             raise HTTPException(status_code=400, detail="激活码已过期")
+        # 试用码阶段锁：rumination 闸门操作对试用码一律拦截
+        _assert_trial_phase_allowed(rec, current_user, "rumination")
         root = get_effective_simple_root(rec)
         registry = ReportRegistry(base_dir=str(root))
         report = registry.ensure_report(
@@ -4186,6 +4282,13 @@ async def simple_chat(
     前端已全部迁移到 /message/stream 流式端点，此端点仅作降级保留。
     """
     manager = get_activation_manager_for_code(request.activation_code)
+    # 试用码阶段锁（预检，保证 402 优先于阶段推进锁的 400）
+    _peek_trial_phase_lock(
+        manager,
+        request.activation_code,
+        current_user,
+        ReportRegistry.normalize_step_id(request.phase),
+    )
     rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
         manager=manager,
         activation_code=request.activation_code,
@@ -4202,6 +4305,11 @@ async def simple_chat(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="激活码已过期（历史记录已保留，可以用于回放或导出）",
         )
+
+    # 试用码门控（同 /message/stream 主路径口径）
+    _assert_trial_message_allowed(
+        rec, current_user, phase_step, registry, report["report_id"]
+    )
 
     # 更新最后活跃时间（过期时不更新）
     if rec.status == ActivationStatus.ACTIVE:
@@ -4382,6 +4490,13 @@ async def simple_init(
 
 async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> SimpleChatResponse:
     manager = get_activation_manager_for_code(request.activation_code)
+    # 试用码阶段锁（预检，保证 402 优先于阶段推进锁的 400）
+    _peek_trial_phase_lock(
+        manager,
+        request.activation_code,
+        current_user,
+        ReportRegistry.normalize_step_id(request.phase),
+    )
     rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
         manager=manager,
         activation_code=request.activation_code,
@@ -4396,6 +4511,8 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="激活码已过期（历史记录已保留，可以用于回放或导出）",
         )
+    # 试用码阶段锁：试用仅 values 可初始化（values 内推进 strengths 在此拦截）
+    _assert_trial_phase_allowed(rec, current_user, phase_step)
     session_id = report["report_id"]
     init_loc = _normalize_client_locale(getattr(request, "locale", None))
 
@@ -4574,6 +4691,13 @@ async def reopen_thread(
 ):
     """用户选择「再聊聊」完善答案时，清除完成状态以便继续对话"""
     manager = get_activation_manager_for_code(request.activation_code)
+    # 试用码阶段锁（预检，保证 402 优先于阶段推进锁的 400）
+    _peek_trial_phase_lock(
+        manager,
+        request.activation_code,
+        current_user,
+        ReportRegistry.normalize_step_id(request.phase),
+    )
     try:
         rec, report, phase_step, logical_session_id, category, conv_manager = (
             _resolve_report_context(
@@ -4592,6 +4716,8 @@ async def reopen_thread(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="解析会话上下文失败，请刷新页面后重试",
         ) from e
+    # 试用码阶段锁：非 values 线程不可重开
+    _assert_trial_phase_allowed(rec, current_user, phase_step)
     registry = ReportRegistry(base_dir=str(get_effective_simple_root(rec)))
     registry.bind_session(report["report_id"], phase_step, logical_session_id)
     _assert_step_editable(
@@ -4680,6 +4806,13 @@ async def mark_thread_complete(
 ):
     """标记某对话为已完成（用户点击「确认没有问题」后调用）"""
     manager = get_activation_manager_for_code(request.activation_code)
+    # 试用码阶段锁（预检，保证 402 优先于阶段推进锁的 400）
+    _peek_trial_phase_lock(
+        manager,
+        request.activation_code,
+        current_user,
+        ReportRegistry.normalize_step_id(request.phase),
+    )
     rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
         manager=manager,
         activation_code=request.activation_code,
@@ -4687,6 +4820,8 @@ async def mark_thread_complete(
         phase=request.phase,
         thread_id=request.thread_id,
     )
+    # 试用码阶段锁：非 values 线程不可标记完成
+    _assert_trial_phase_allowed(rec, current_user, phase_step)
     root = get_effective_simple_root(rec)
     registry = ReportRegistry(base_dir=str(root))
     registry.bind_session(report["report_id"], phase_step, logical_session_id)
@@ -5289,6 +5424,13 @@ async def simple_chat_stream(
     - 结束时保存完整助手回复
     """
     manager = get_activation_manager_for_code(request.activation_code)
+    # 试用码阶段锁（预检，保证 402 优先于阶段推进锁的 400）
+    _peek_trial_phase_lock(
+        manager,
+        request.activation_code,
+        current_user,
+        ReportRegistry.normalize_step_id(request.phase),
+    )
     rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
         manager=manager,
         activation_code=request.activation_code,
@@ -5303,6 +5445,10 @@ async def simple_chat_stream(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="激活码已过期（历史记录已保留，可以用于回放或导出）",
         )
+    # 试用码门控：非 values → 402 trial_phase_locked；values 用户消息 ≥10 → 402 trial_limit_reached
+    _assert_trial_message_allowed(
+        rec, current_user, phase_step, registry, report["report_id"]
+    )
     session_id = report["report_id"]
     vip_level = getattr(rec, "vip_level", 1) or 1
     storage_root = str(get_effective_simple_root(rec))
@@ -6540,6 +6686,8 @@ async def delete_thread(
     manager = get_activation_manager_for_code(request.activation_code)
     phase_step = _require_simple_chat_phase(request.phase)
     rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
+    # 试用码阶段锁：非 values 线程不可删除
+    _assert_trial_phase_allowed(rec, current_user, phase_step)
     user_id = (current_user or {}).get("user_id")
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="请先登录")

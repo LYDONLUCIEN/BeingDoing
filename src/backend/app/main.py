@@ -20,6 +20,12 @@ from app.api.v1 import chat_optimized  # 新增：优化的对话API
 from app.api.v1 import feedbacks  # 新增：用户反馈
 from app.api.v1 import notifications  # 新增：站内信
 from app.api.v1 import admin_feedbacks  # 新增：管理员反馈管理
+from app.api.v1 import admin_payment  # 新增：支付管理（P1 折扣券 / P2a 订单退款）
+from app.api.v1 import payment  # 新增：支付（P2a 用户侧下单/订单）
+from app.api.v1 import payment_webhook  # 新增：支付回调（P2a，无登录鉴权）
+from app.api.v1 import consultation  # 新增：报告解读咨询（P-D 用户侧）
+from app.api.v1 import admin_consultations  # 新增：咨询管理（P-D admin）
+from app.api.v1 import team_analysis  # 新增：团队分析（P-E）
 from app.api.v1 import (  # 新增：简单模式激活与对话
     admin,
     analytics,
@@ -251,6 +257,46 @@ def _start_bounce_scheduler() -> None:
             max_instances=1,
             misfire_grace_time=3600,
         )
+        # 支付超时关单（每 5 分钟，job 内部异常不得影响调度器）
+        from apscheduler.triggers.interval import IntervalTrigger
+        from app.services.payment_service import PaymentService
+
+        async def _close_timeout_orders_safe() -> None:
+            try:
+                await PaymentService.close_timeout_orders()
+            except Exception as job_err:
+                logging.getLogger(__name__).error("close timeout orders job failed: %s", job_err)
+
+        sched.add_job(
+            lambda: asyncio.create_task(_close_timeout_orders_safe()),
+            IntervalTrigger(minutes=5),
+            id="payment_close_timeout_orders",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=600,
+        )
+        # 报告审核超时自动批复（ADR-0009，每 10 分钟扫描）
+        from app.services.report_review_service import auto_approve_overdue
+        from app.utils.report_review import REVIEW_SCAN_INTERVAL_MINUTES
+
+        async def _auto_approve_reports_safe() -> None:
+            try:
+                await auto_approve_overdue()
+            except Exception as job_err:
+                logging.getLogger(__name__).error(
+                    "report review auto approve job failed: %s", job_err
+                )
+
+        sched.add_job(
+            lambda: asyncio.create_task(_auto_approve_reports_safe()),
+            IntervalTrigger(minutes=REVIEW_SCAN_INTERVAL_MINUTES),
+            id="report_review_auto_approve",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=600,
+        )
         sched.start()
         _bounce_scheduler = sched
         logging.getLogger(__name__).info(
@@ -259,6 +305,10 @@ def _start_bounce_scheduler() -> None:
         logging.getLogger(__name__).info(
             "feedback orphan cleanup scheduler started, cron='%s'",
             settings.FEEDBACK_ORPHAN_CLEANUP_CRON,
+        )
+        logging.getLogger(__name__).info(
+            "report review auto approve scheduler started, interval=%dmin",
+            REVIEW_SCAN_INTERVAL_MINUTES,
         )
     except Exception as e:
         # APScheduler 不可用不能阻断启动，只警告
@@ -339,3 +389,9 @@ app.include_router(admin_model_config.router, prefix="/api/v1")  # LLM 模型配
 app.include_router(feedbacks.router, prefix="/api/v1")  # 用户反馈（提反馈、传截图）
 app.include_router(notifications.router, prefix="/api/v1")  # 站内信（用户侧）
 app.include_router(admin_feedbacks.router, prefix="/api/v1")  # 管理员反馈管理
+app.include_router(admin_payment.router, prefix="/api/v1")  # 支付管理（P1 折扣券 / P2a 订单退款）
+app.include_router(payment.router, prefix="/api/v1")  # 支付（P2a 用户侧下单/订单）
+app.include_router(payment_webhook.router, prefix="/api/v1")  # 支付回调（P2a，无登录鉴权）
+app.include_router(consultation.router, prefix="/api/v1")  # 报告解读咨询（P-D 用户侧）
+app.include_router(admin_consultations.router, prefix="/api/v1")  # 咨询管理（P-D admin）
+app.include_router(team_analysis.router, prefix="/api/v1")  # 团队分析（P-E）

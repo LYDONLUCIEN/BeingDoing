@@ -46,3 +46,6 @@ pytest-cov>=4.1.0
 
 # 退信扫描（IMAP + 定时任务）
 apscheduler>=3.10.0
+
+# 支付模块 P2a（支付宝官方 SDK）
+alipay-sdk-python>=3.7.0

@@ -17,6 +17,7 @@ export default function FloatingFeedbackWidget() {
     refreshUnreadCount,
     openWidget,
     closeWidget,
+    fetchFirstPage,
   } = useNotificationStore();
 
   const [view, setView] = useState<View>('notifications');
@@ -99,7 +100,13 @@ export default function FloatingFeedbackWidget() {
             {view === 'notifications' ? (
               <NotificationList />
             ) : (
-              <FeedbackForm onSubmitted={() => setView('notifications')} />
+              <FeedbackForm
+                onSubmitted={() => {
+                  setView('notifications');
+                  // 刷新通知列表，让用户立即看到 auto_ack 确认通知
+                  fetchFirstPage();
+                }}
+              />
             )}
           </div>
 

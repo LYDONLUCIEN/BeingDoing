@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Bug, Lightbulb, Loader2, Send } from 'lucide-react';
 import { createFeedback, type FeedbackType } from '@/lib/api/feedback';
 import { getApiErrorMessage } from '@/lib/api/client';
-import AttachmentUploader from './AttachmentUploader';
+import AttachmentUploader, { type AttachmentUploaderHandle } from './AttachmentUploader';
 
 interface Props {
   onSubmitted?: () => void;
@@ -17,6 +17,24 @@ export default function FeedbackForm({ onSubmitted }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const uploaderRef = useRef<AttachmentUploaderHandle>(null);
+
+  // 粘贴截图：自动作为图片附件上传，显示在上方截图区
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const files: File[] = [];
+    for (const item of Array.from(items)) {
+      if (item.kind === 'file' && item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+    }
+    if (files.length > 0) {
+      e.preventDefault();
+      uploaderRef.current?.addFiles(files);
+    }
+  };
 
   const handleSubmit = async () => {
     setError('');
@@ -46,11 +64,11 @@ export default function FeedbackForm({ onSubmitted }: Props) {
       setType('');
       setContent('');
       setAttachmentIds([]);
-      // 3 秒后自动切回通知页
+      // 5 秒后自动切回通知页，给用户足够时间看到成功提示
       setTimeout(() => {
         setSuccess(false);
         onSubmitted?.();
-      }, 2500);
+      }, 5000);
     } catch (e) {
       setError(getApiErrorMessage(e, '提交失败，请稍后重试'));
     } finally {
@@ -102,6 +120,18 @@ export default function FeedbackForm({ onSubmitted }: Props) {
           </div>
         </div>
 
+        {/* 截图（置于内容上方：粘贴的截图会自动显示在这里） */}
+        <div>
+          <label className="text-xs font-medium mb-2 block" style={{ color: 'var(--bd-fg)' }}>
+            截图（可选）
+          </label>
+          <AttachmentUploader
+            ref={uploaderRef}
+            attachmentIds={attachmentIds}
+            onChange={setAttachmentIds}
+          />
+        </div>
+
         {/* 内容 */}
         <div>
           <label className="text-xs font-medium mb-2 block" style={{ color: 'var(--bd-fg)' }}>
@@ -110,7 +140,8 @@ export default function FeedbackForm({ onSubmitted }: Props) {
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            placeholder="请描述您遇到的 bug 或想法（5-2000 字）"
+            onPaste={handlePaste}
+            placeholder="请描述您遇到的 bug 或想法（5-2000 字），可直接 Ctrl+V 粘贴截图"
             rows={6}
             maxLength={2000}
             className="w-full text-sm px-3 py-2.5 rounded-xl border border-bd-border bg-bd-bg/60 resize-none focus:outline-none focus:ring-2 focus:ring-bd-ui-accent/40"
@@ -119,14 +150,6 @@ export default function FeedbackForm({ onSubmitted }: Props) {
           <div className="flex justify-end mt-1">
             <span className="text-[10px] text-bd-subtle">{content.length}/2000</span>
           </div>
-        </div>
-
-        {/* 截图 */}
-        <div>
-          <label className="text-xs font-medium mb-2 block" style={{ color: 'var(--bd-fg)' }}>
-            截图（可选）
-          </label>
-          <AttachmentUploader attachmentIds={attachmentIds} onChange={setAttachmentIds} />
         </div>
 
         {/* 错误 */}

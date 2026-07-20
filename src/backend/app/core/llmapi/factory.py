@@ -50,7 +50,15 @@ def _get_vip_provider_config(vip_level: int) -> tuple[str, Optional[str], Option
     """按 VIP 等级返回 (provider, model, api_key, base_url)"""
     level = 1 if vip_level not in (1, 2) else vip_level
     if level == 2:
-        p = getattr(settings, "LLM_VIP2_PROVIDER", "kimi").lower()
+        p = getattr(settings, "LLM_VIP2_PROVIDER", "deepseek").lower()
+        if p == "deepseek":
+            # P-A 起（ADR-0008）：VIP2 与 VIP1 同配 DeepSeek
+            return (
+                "deepseek",
+                getattr(settings, "LLM_VIP1_MODEL", None) or "deepseek-v4-pro",
+                settings.DEEPSEEK_API_KEY,
+                settings.LLM_BASE_URL or "https://api.deepseek.com",
+            )
         if p == "qwen":
             return (
                 "qwen",

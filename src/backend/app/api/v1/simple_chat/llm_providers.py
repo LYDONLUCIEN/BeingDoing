@@ -13,7 +13,10 @@ def _resolve_provider_and_key_for_vip(vip_level: int) -> tuple[str, Optional[str
     """按 vip_level 解析 provider/api_key/base_url。"""
     level = 1 if vip_level not in (1, 2) else vip_level
     if level == 2:
-        provider = (getattr(settings, "LLM_VIP2_PROVIDER", "kimi") or "kimi").lower()
+        provider = (getattr(settings, "LLM_VIP2_PROVIDER", "deepseek") or "deepseek").lower()
+        if provider == "deepseek":
+            # P-A 起（ADR-0008）：VIP2 与 VIP1 同配 DeepSeek
+            return ("deepseek", getattr(settings, "DEEPSEEK_API_KEY", None), settings.LLM_BASE_URL)
         if provider == "qwen":
             return (
                 "qwen",

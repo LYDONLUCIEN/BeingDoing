@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Check, Lock, ChevronRight, BookOpen, User } from 'lucide-react';
+import { Check, Lock, ChevronRight, BookOpen, User, ShoppingCart } from 'lucide-react';
 import { PHASES, loadSession, saveSession, setLastActivationCode, applyExploreResumeToSession, type PhaseKey } from '@/lib/explore/session';
 import { clearThreadCache } from '@/lib/explore/threads';
 import { useLocale } from '@/hooks/useLocale';
@@ -12,6 +12,7 @@ import { fetchExploreResumeFromJourneys } from '@/lib/explore/journeyResume';
 import { formatUTC } from '@/lib/utils/formatTime';
 import { useAuthStore } from '@/stores/authStore';
 import type { SurveyData } from '@/lib/survey/schema';
+import PurchaseModal from '@/components/payment/PurchaseModal';
 
 const PHASE_COLORS = [
   'var(--bd-phase-values)',
@@ -26,6 +27,10 @@ const REPORT_NODE_COLOR = '#d97706';
 
 interface JourneyItem {
   activation_code: string;
+  /** P-A：码类型（trial 试用 / full 完整），老后端无此字段时不展示 badge */
+  code_type?: 'trial' | 'full';
+  /** P-A：完整码有效期；试用码为 null（不过期） */
+  expires_at?: string | null;
   mode: string;
   status: string;
   created_at: string;
@@ -219,6 +224,20 @@ function JourneyCard({
       </div>
 
       <div className="mb-4 space-y-0.5 text-xs text-bd-muted">
+        <p className="flex items-center gap-2">
+          <span className="font-mono text-[11px] text-bd-fg/80">{journey.activation_code}</span>
+          {journey.code_type && (
+            <span
+              className={`rounded-full border px-1.5 py-px text-[10px] font-medium ${
+                journey.code_type === 'trial'
+                  ? 'bg-sky-100 text-sky-700 border-sky-200'
+                  : 'bg-amber-100 text-amber-700 border-amber-200'
+              }`}
+            >
+              {t(`dashboard.codeType.${journey.code_type}`)}
+            </span>
+          )}
+        </p>
         <p>开始时间：{formatJourneyDateTime(journey.created_at)}</p>
         <p>最后编辑：{formatJourneyDateTime(journey.last_activity_at)}</p>
       </div>
@@ -362,6 +381,38 @@ function JourneyCard({
   );
 }
 
+/** 购买套餐卡片：展示季度/年度价格入口，点击打开购买弹窗 */
+function PurchaseCard({ onBuy, t }: { onBuy: () => void; t: (k: string) => string }) {
+  return (
+    <div className="bg-bd-card/80 backdrop-blur-lg border border-bd-border rounded-2xl shadow-sm p-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-bd-overlay-md">
+            <ShoppingCart className="h-5 w-5 text-bd-muted" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="font-medium text-bd-fg text-base">{t('dashboard.purchaseCard.title')}</h2>
+            <p className="text-xs text-bd-muted mt-0.5">{t('dashboard.purchaseCard.desc')}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="text-right text-xs text-bd-muted leading-tight">
+            <div>{t('dashboard.purchaseCard.quarterly')} <span className="font-semibold text-bd-fg">¥69</span></div>
+            <div>{t('dashboard.purchaseCard.annual')} <span className="font-semibold text-bd-fg">¥99</span> · {t('dashboard.purchaseCard.popular')}</div>
+          </div>
+          <button
+            type="button"
+            onClick={onBuy}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-bd-ui-accent text-bd-ui-accent-fg hover:opacity-90"
+          >
+            {t('dashboard.purchaseCard.buy')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardCurrentProgressPage() {
   const { t } = useLocale();
   const router = useRouter();
@@ -369,6 +420,7 @@ export default function DashboardCurrentProgressPage() {
   const [userSurvey, setUserSurvey] = useState<UserSurveyInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
 
   const fetchJourneys = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -519,6 +571,15 @@ export default function DashboardCurrentProgressPage() {
           </div>
         </div>
       )}
+
+      {/* 购买激活码卡片：所有状态下常驻 */}
+      {!loading && (
+        <div className="mt-4">
+          <PurchaseCard onBuy={() => setPurchaseOpen(true)} t={t} />
+        </div>
+      )}
+
+      <PurchaseModal open={purchaseOpen} onClose={() => setPurchaseOpen(false)} />
     </div>
   );
 }

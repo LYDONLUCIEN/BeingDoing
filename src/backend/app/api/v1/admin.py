@@ -23,6 +23,7 @@ from sqlalchemy import select
 from app.models.database import AsyncSessionLocal
 from app.models.analytics import AnalyticsReport
 from app.utils.report_registry import ReportRegistry
+from app.utils.report_review import get_review_status
 from app.config.settings import settings
 from app.utils.super_admin import is_super_admin_user
 
@@ -869,9 +870,12 @@ async def list_reports(
     q: Optional[str] = None,
     activation_code: Optional[str] = None,
     user_id: Optional[str] = None,
+    review_status: Optional[str] = Query(
+        None, description="审核状态筛选：pending_review | approved"
+    ),
     current_user: Optional[dict] = Depends(get_current_user),
 ):
-    """报告列表（文件注册表）"""
+    """报告列表（文件注册表，含审核字段）"""
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     registry = ReportRegistry()
@@ -889,6 +893,10 @@ async def list_reports(
             target = f"{rid} {ac} {uid}".lower()
             if q.lower() not in target:
                 continue
+        # 审核状态（存量无字段视为 approved，祖父豁免）
+        rs = get_review_status(report)
+        if review_status and rs != review_status:
+            continue
         steps = report.get("steps") or {}
         step_stats = {}
         completed = 0
@@ -908,10 +916,51 @@ async def list_reports(
                 "updated_at": report.get("updated_at"),
                 "step_stats": step_stats,
                 "completed_steps": completed,
+                "review_status": rs,
+                "review_type": report.get("review_type"),
+                "review_deadline": report.get("review_deadline"),
+                "reviewed_at": report.get("reviewed_at"),
             }
         )
     items.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
     return {"code": 200, "message": "success", "data": {"items": items, "total": len(items)}}
+
+
+@router.post("/reports/{report_id}/approve")
+async def approve_report_manual(
+    report_id: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """
+    人工确认审核（仅 super_admin）：pending_review → approved（review_type=manual），
+    并触发站内信通知用户。幂等：已 approved 直接返回，不重复通知。
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+
+    from app.services import report_review_service
+
+    registry = ReportRegistry()
+    async with AsyncSessionLocal() as db:
+        record = await report_review_service.approve_report(
+            registry,
+            report_id,
+            review_type="manual",
+            reviewed_by=(current_user or {}).get("user_id"),
+            db=db,
+        )
+        await db.commit()
+    if record is None:
+        raise HTTPException(status_code=404, detail="报告不存在")
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "report_id": report_id,
+            "review_status": get_review_status(record),
+            "review_type": record.get("review_type"),
+        },
+    }
 
 
 @router.get("/reports/{report_id}")

@@ -11,6 +11,8 @@
 - 进度落 SQLite（notification_tasks + notification_recipients），重启不丢
 - SMTP 限流：每封之间 sleep 1 秒（163 邮箱限频）
 - 失败重试 1 次：第一封失败 → 间隔 2 秒再试一次
+- 附折扣券（attach_coupon）：逐收件人从券池 FIFO 取码渲染 {{coupon_code}}，
+  池空按 DEFAULT_COUPON_AMOUNT 自动创建；取券失败不中断整批
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ from app.models.database import AsyncSessionLocal
 from app.models.email_bounce import EmailBounce
 from app.models.notification import NotificationRecipient, NotificationTask
 from app.models.user import User, UserProfile
+from app.services.coupon_service import CouponService
 from app.services.email_service import EmailService
 
 logger = logging.getLogger(__name__)
@@ -49,6 +52,7 @@ class NotificationService:
         subject: str,
         body: str,
         user_filter: Optional[Dict[str, Any]] = None,
+        attach_coupon: bool = False,
     ) -> str:
         """创建群发任务：落 task 记录 + 展开收件人列表落库
 
@@ -59,13 +63,18 @@ class NotificationService:
                 - is_active: Optional[bool] 按是否活跃筛选
                 - profile_completed: Optional[bool] 按 profile 完成度筛选
                 - created_after: Optional[str] ISO 时间，注册时间下界
+            attach_coupon: 是否随邮件附折扣券（为 True 时正文必须含 {{coupon_code}} 占位符，
+                发送时逐收件人从券池 FIFO 取券渲染）
 
         Returns:
             task_id: 新建任务 ID
 
         Raises:
-            ValueError: 筛选后收件人为空
+            ValueError: 筛选后收件人为空 / 附券但正文缺 {{coupon_code}} 占位符
         """
+        if attach_coupon and "{{coupon_code}}" not in body:
+            raise ValueError("附折扣券时正文必须包含 {{coupon_code}} 占位符")
+
         user_filter = user_filter or {}
         filter_json_str = json.dumps(user_filter, ensure_ascii=False)
 
@@ -84,6 +93,7 @@ class NotificationService:
                 sent=0,
                 failed=0,
                 status="pending",
+                attach_coupon=attach_coupon,
                 created_at=now,
                 updated_at=now,
             )
@@ -170,6 +180,9 @@ class NotificationService:
         # 标记 running
         await cls._mark_running(task_id)
 
+        # 附折扣券任务：本批次内已分出的券 ID（保证每个收件人拿到不同券码）
+        drawn_coupon_ids: set = set()
+
         try:
             async with AsyncSessionLocal() as db:
                 # 锁定 pending 收件人（同一任务不会被并发发送，这里简单查）
@@ -189,12 +202,17 @@ class NotificationService:
                     logger.info("task %s interrupted, stop sending", task_id)
                     return
 
-                ok, err = await cls._send_one_with_retry(recipient.email, task_id)
+                ok, err, coupon_code, coupon_id = await cls._send_one_with_retry(
+                    recipient.email, task_id, coupon_exclude_ids=drawn_coupon_ids
+                )
+                if coupon_id:
+                    drawn_coupon_ids.add(coupon_id)
                 await cls._update_recipient_and_progress(
                     task_id=task_id,
                     recipient_id=recipient.id,
                     success=ok,
                     error_msg=err,
+                    coupon_code=coupon_code,
                 )
                 # SMTP 限流
                 await asyncio.sleep(cls.SMTP_INTERVAL_SECONDS)
@@ -206,29 +224,53 @@ class NotificationService:
             await cls._mark_interrupted(task_id)
 
     @classmethod
-    async def _send_one_with_retry(cls, to_email: str, task_id: str) -> tuple[bool, Optional[str]]:
+    async def _send_one_with_retry(
+        cls,
+        to_email: str,
+        task_id: str,
+        coupon_exclude_ids: Optional[set] = None,
+    ) -> tuple[bool, Optional[str], Optional[str], Optional[str]]:
         """发送单封邮件，失败重试 1 次。
 
+        附折扣券任务：先从券池 FIFO 取一码（exclude 本批次已分出的），
+        逐收件人替换正文 {{coupon_code}} 渲染后发送。取券失败不中断整批，
+        该收件人标记失败原因。
+
         Returns:
-            (success, error_msg)
+            (success, error_msg, coupon_code, coupon_id)
         """
         # 通过 task 取 subject/body（每次查避免持有 db 连接）
         async with AsyncSessionLocal() as db:
             result = await db.execute(
-                select(NotificationTask.subject, NotificationTask.body).where(
-                    NotificationTask.task_id == task_id
-                )
+                select(
+                    NotificationTask.subject,
+                    NotificationTask.body,
+                    NotificationTask.attach_coupon,
+                ).where(NotificationTask.task_id == task_id)
             )
             row = result.first()
             if not row:
-                return False, "task not found"
-            subject, body = row[0], row[1]
+                return False, "task not found", None, None
+            subject, body, attach_coupon = row[0], row[1], bool(row[2])
+
+        # 附折扣券：逐收件人取券渲染
+        coupon_code: Optional[str] = None
+        coupon_id: Optional[str] = None
+        if attach_coupon:
+            try:
+                coupon = await CouponService.draw_from_pool(exclude_ids=coupon_exclude_ids)
+                coupon_code = coupon.code
+                coupon_id = coupon.id
+                body = body.replace("{{coupon_code}}", coupon_code)
+            except Exception as e:
+                logger.warning("draw coupon for %s failed: %s", to_email, e)
+                return False, f"取券失败: {type(e).__name__}: {e}", None, None
 
         last_err: Optional[str] = None
         for attempt in range(2):  # 最多 2 次（初次 + 1 次重试）
             try:
                 await EmailService.send_email(to_email=to_email, subject=subject, body_text=body)
-                return True, None
+                return True, None, coupon_code, coupon_id
             except Exception as e:
                 last_err = f"{type(e).__name__}: {e}"
                 logger.warning(
@@ -239,7 +281,7 @@ class NotificationService:
                 )
                 if attempt == 0:
                     await asyncio.sleep(cls.RETRY_INTERVAL_SECONDS)
-        return False, last_err
+        return False, last_err, coupon_code, coupon_id
 
     @classmethod
     async def _update_recipient_and_progress(
@@ -248,6 +290,7 @@ class NotificationService:
         recipient_id: int,
         success: bool,
         error_msg: Optional[str],
+        coupon_code: Optional[str] = None,
     ) -> None:
         """更新单个收件人状态 + task 进度计数（原子）"""
         async with AsyncSessionLocal() as db:
@@ -255,7 +298,7 @@ class NotificationService:
                 await db.execute(
                     update(NotificationRecipient)
                     .where(NotificationRecipient.id == recipient_id)
-                    .values(status="sent")
+                    .values(status="sent", coupon_code=coupon_code)
                 )
                 await db.execute(
                     update(NotificationTask)
@@ -266,7 +309,7 @@ class NotificationService:
                 await db.execute(
                     update(NotificationRecipient)
                     .where(NotificationRecipient.id == recipient_id)
-                    .values(status="failed", error_msg=error_msg)
+                    .values(status="failed", error_msg=error_msg, coupon_code=coupon_code)
                 )
                 await db.execute(
                     update(NotificationTask)
@@ -337,9 +380,9 @@ class NotificationService:
 
         Returns:
             {
-                task_id, subject, body, filter, total, sent, failed, status,
+                task_id, subject, body, filter, attach_coupon, total, sent, failed, status,
                 created_at, started_at, finished_at,
-                recipients: [{email, status, error_msg}]
+                recipients: [{email, status, error_msg, coupon_code}]
             }
             未找到返回 None
         """
@@ -363,6 +406,7 @@ class NotificationService:
                 "subject": task.subject,
                 "body": task.body,
                 "filter": json.loads(task.filter_json) if task.filter_json else {},
+                "attach_coupon": bool(task.attach_coupon),
                 "total": task.total,
                 "sent": task.sent,
                 "failed": task.failed,
@@ -376,6 +420,7 @@ class NotificationService:
                         "user_id": r.user_id,
                         "status": r.status,
                         "error_msg": r.error_msg,
+                        "coupon_code": r.coupon_code,
                     }
                     for r in recipients
                 ],
@@ -408,6 +453,7 @@ class NotificationService:
                     {
                         "task_id": t.task_id,
                         "subject": t.subject,
+                        "attach_coupon": bool(t.attach_coupon),
                         "total": t.total,
                         "sent": t.sent,
                         "failed": t.failed,

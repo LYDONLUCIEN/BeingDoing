@@ -14,6 +14,13 @@ from app.models.site_notice import SiteNotice
 from app.models.rumination_ab import RuminationAbAssignment
 from app.models.llm_model_config import LlmModelConfig, UserLlmModelConfig
 from app.models.feedback import Feedback, FeedbackAttachment, Notification
+from app.models.payment import (
+    PaymentOrder,
+    Coupon,
+    Subscription,
+    ConsultationBooking,
+    TeamAnalysis,
+)
 
 __all__ = [
     "Base",
@@ -46,4 +53,10 @@ __all__ = [
     "Feedback",
     "FeedbackAttachment",
     "Notification",
+    # 支付与会员
+    "PaymentOrder",
+    "Coupon",
+    "Subscription",
+    "ConsultationBooking",
+    "TeamAnalysis",
 ]

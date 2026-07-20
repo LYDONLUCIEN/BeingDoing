@@ -4,6 +4,8 @@
 封装跨表事务：
 - 创建反馈 + 关联附件 + 发 auto_ack 通知 + 发新反馈通知给所有 admin
 - 改 status + 发状态变更通知给用户
+- admin 查看详情自动 received → in_progress
+- admin 通过站内邮件服务回复用户（EmailService）
 - 用户上传/删除附件（孤儿模式）
 - 拉通知列表/未读数/标记已读
 """
@@ -38,6 +40,9 @@ AUTO_ACK_CONTENT = (
     "感谢您的反馈，我们将在 3 天内通过邮箱与您联系。请留意您注册邮箱的邮件。"
 )
 NEW_FEEDBACK_TITLE_FOR_ADMIN = "【留言反馈】收到一条新反馈"
+
+REPLY_TYPE_LABEL = {"bug": "Bug 报告", "idea": "产品想法"}
+MAX_REPLY_CHARS = 5000
 
 
 # ---------- 内部工具 ----------
@@ -272,6 +277,49 @@ async def admin_get_feedback_detail(
     )
     atts = list(att_result.scalars().all())
     return feedback, atts
+
+
+async def admin_reply_feedback(
+    db: AsyncSession,
+    feedback_id: str,
+    content: str,
+) -> Feedback:
+    """
+    管理员通过站内邮件服务（EmailService）回复反馈用户。
+
+    Raises:
+        LookupError: 反馈不存在
+        ValueError: 内容不合法或 SMTP 未配置完整
+    """
+    from app.services.email_service import EmailService
+
+    content = (content or "").strip()
+    if not content or len(content) > MAX_REPLY_CHARS:
+        raise ValueError(f"回复内容长度必须在 1-{MAX_REPLY_CHARS} 字之间")
+
+    result = await db.execute(
+        select(Feedback).where(Feedback.id == feedback_id)
+    )
+    feedback = result.scalar_one_or_none()
+    if not feedback:
+        raise LookupError("反馈不存在")
+
+    type_label = REPLY_TYPE_LABEL.get(feedback.type, feedback.type)
+    subject = f"【寻路】关于您的「{type_label}」反馈的回复"
+    body = (
+        f"您好，\n\n"
+        f"{content}\n\n"
+        f"—— 寻路团队\n\n"
+        f"----------\n"
+        f"附：您的原始反馈\n"
+        f"{feedback.content[:500]}"
+    )
+    await EmailService.send_email(
+        to_email=feedback.user_email,
+        subject=subject,
+        body_text=body,
+    )
+    return feedback
 
 
 async def admin_update_status(

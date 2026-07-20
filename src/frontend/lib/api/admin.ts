@@ -270,6 +270,9 @@ export async function saveAsMock(payload: {
   return ((res.data as any)?.data ?? {}) as any;
 }
 
+export type AdminReportReviewStatus = 'pending_review' | 'approved';
+export type AdminReportReviewType = 'manual' | 'auto';
+
 export interface AdminReportItem {
   report_id: string;
   activation_code: string;
@@ -279,15 +282,32 @@ export interface AdminReportItem {
   updated_at: string;
   step_stats: Record<string, number>;
   completed_steps: number;
+  /** 审核状态；存量报告无该字段，视为 approved */
+  review_status?: AdminReportReviewStatus | null;
+  /** 批复类型：manual=人工确认 / auto=超时自动批复；pending 或未批复时为 null */
+  review_type?: AdminReportReviewType | null;
+  /** 审核截止时间（ISO 字符串） */
+  review_deadline?: string | null;
+  /** 批复时间（ISO 字符串） */
+  reviewed_at?: string | null;
 }
 
 export async function fetchAdminReports(params?: {
   q?: string;
   activation_code?: string;
   user_id?: string;
+  review_status?: AdminReportReviewStatus;
 }): Promise<{ items: AdminReportItem[]; total: number }> {
   const res = await apiClient.get('/admin/reports', { params });
   return (res.data ?? { items: [], total: 0 }) as { items: AdminReportItem[]; total: number };
+}
+
+/**
+ * 人工确认审核：将 pending_review 报告批复为 approved（review_type=manual）。
+ */
+export async function approveAdminReport(reportId: string): Promise<AdminReportItem | null> {
+  const res = await apiClient.post(`/admin/reports/${encodeURIComponent(reportId)}/approve`);
+  return (res.data ?? null) as AdminReportItem | null;
 }
 
 export async function fetchAdminReportDetail(reportId: string): Promise<any> {
@@ -1245,6 +1265,8 @@ export interface NotificationTaskListItem {
   status: 'pending' | 'running' | 'completed' | 'interrupted' | 'failed';
   created_at?: string | null;
   finished_at?: string | null;
+  /** 附折扣券任务（P1 邮件发券，后端可选返回） */
+  attach_coupon?: boolean;
 }
 
 /**
@@ -1254,6 +1276,8 @@ export async function sendNotificationEmail(payload: {
   subject: string;
   body: string;
   user_filter?: NotificationUserFilter;
+  /** 附折扣券：为 true 时正文必须包含 {{coupon_code}} 占位符（后端 400 校验） */
+  attach_coupon?: boolean;
 }): Promise<{ task_id: string }> {
   // apiClient.post 已返回 response.data（ApiResponse 或后端原始 JSON），
   // 后端此接口直接返回 {task_id}，无需再 .data 解包
@@ -1603,5 +1627,9 @@ export async function updateAdminFeedbackStatus(
     { status }
   );
   return res.data;
+}
+
+export async function replyAdminFeedback(id: string, content: string): Promise<void> {
+  await apiClient.post(`/admin/feedbacks/${encodeURIComponent(id)}/reply`, { content });
 }
 

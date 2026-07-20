@@ -1,12 +1,16 @@
 """
 认证API
 """
+import logging
+
 from fastapi import APIRouter, HTTPException, Depends, status, Header, Response, Cookie
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 from app.services.auth_service import AuthService
 from app.config.settings import settings
 from app.utils.super_admin import is_super_admin_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["认证"])
 
@@ -179,7 +183,21 @@ async def register(request: RegisterRequest, response: Response):
             username=request.username,
             password=request.password
         )
-        
+
+        # P-A 试用激活码（ADR-0008）：注册即送、自动绑定。
+        # 用户已落库后赠送；送码失败只记日志，不阻断注册。
+        try:
+            from app.utils.trial_codes import create_trial_activation_for_user
+
+            create_trial_activation_for_user(
+                {"user_id": result.get("user_id"), "email": result.get("email")}
+            )
+        except Exception:
+            logger.exception(
+                "注册赠送试用激活码失败（不阻断注册）: user_id=%s",
+                (result or {}).get("user_id"),
+            )
+
         refresh_token = (result or {}).pop("refresh_token", None)
         if refresh_token:
             _set_refresh_cookie(response, refresh_token)

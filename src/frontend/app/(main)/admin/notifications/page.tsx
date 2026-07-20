@@ -53,6 +53,10 @@ export default function AdminNotificationsPage() {
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
 
+  // 附折扣券（P1 邮件发券）：勾选后正文必须包含 {{coupon_code}} 占位符
+  const [attachCoupon, setAttachCoupon] = useState(false);
+  const couponPlaceholderMissing = attachCoupon && !body.includes('{{coupon_code}}');
+
   // 当前任务进度
   const [currentTask, setCurrentTask] = useState<NotificationTaskStatus | null>(null);
   const [polling, setPolling] = useState(false);
@@ -142,6 +146,10 @@ export default function AdminNotificationsPage() {
       setError('请先勾选收件人，或切回条件筛选模式');
       return;
     }
+    if (couponPlaceholderMissing) {
+      setError('已勾选附折扣券，正文必须包含 {{coupon_code}} 占位符');
+      return;
+    }
     setError(null);
     setInfo(null);
     setSending(true);
@@ -150,6 +158,7 @@ export default function AdminNotificationsPage() {
         subject: subject.trim(),
         body: body.trim(),
         user_filter: buildFilter(),
+        attach_coupon: attachCoupon,
       });
       setInfo(`任务已创建：${res.task_id}，正在后台发送...`);
       // 立即开始轮询
@@ -476,6 +485,33 @@ export default function AdminNotificationsPage() {
             />
           </div>
 
+          {/* 附折扣券（P1 邮件发券） */}
+          <div
+            className={`mb-4 rounded border px-3 py-2 ${
+              couponPlaceholderMissing
+                ? 'border-amber-300 bg-amber-50'
+                : 'border-gray-200 bg-gray-50'
+            }`}
+          >
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={attachCoupon}
+                onChange={(e) => setAttachCoupon(e.target.checked)}
+              />
+              <span className="font-medium">附折扣券</span>
+            </label>
+            <p className="mt-1 pl-6 text-xs text-gray-500">
+              正文需包含 {'{{coupon_code}}'} 占位符；每个收件人将分得一张独立券码，券池不足时按系统默认面额
+              ¥50 自动创建。
+            </p>
+            {couponPlaceholderMissing && (
+              <p className="mt-1 pl-6 text-xs font-medium text-amber-700">
+                已勾选附折扣券，但正文未包含 {'{{coupon_code}}'} 占位符，发送前请补充。
+              </p>
+            )}
+          </div>
+
           {error && <div className="mb-3 rounded bg-red-50 p-2 text-sm text-red-700">{error}</div>}
           {info && <div className="mb-3 rounded bg-green-50 p-2 text-sm text-green-700">{info}</div>}
 
@@ -574,7 +610,14 @@ export default function AdminNotificationsPage() {
               <tbody>
                 {history.map((t) => (
                   <tr key={t.task_id} className="border-t border-gray-100">
-                    <td className="py-2">{t.subject}</td>
+                    <td className="py-2">
+                      {t.subject}
+                      {t.attach_coupon && (
+                        <span className="ml-2 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                          含券
+                        </span>
+                      )}
+                    </td>
                     <td className="py-2">{t.total}</td>
                     <td className="py-2 text-green-600">{t.sent}</td>
                     <td className="py-2 text-red-600">{t.failed}</td>

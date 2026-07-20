@@ -22,6 +22,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { fetchAdminSystemSettings } from '@/lib/api/admin';
 import { useLocale } from '@/hooks/useLocale';
 import { authApi } from '@/lib/api/auth';
+import PurchaseModal from '@/components/payment/PurchaseModal';
 
 function useActivateBg() {
   useEffect(() => {
@@ -39,6 +40,7 @@ function ActivatePageContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showReport, setShowReport] = useState(false);
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
   const { user, setUser, isAuthenticated } = useAuthStore();
 
   // 从后端同步 email_verified 到本地 store
@@ -124,7 +126,7 @@ function ActivatePageContent() {
         surveyDone = true;
       }
       if (activationStatus === 'expired' && !adminBypass) {
-        setError('激活码已过期，当前仅可查看历史记录。请联系管理员续期或更换激活码。');
+        setError(t('explore.activate.expiredGuide'));
         return;
       }
 
@@ -288,6 +290,21 @@ function ActivatePageContent() {
           )}
         </div>
         )}
+
+        {/* 购买入口：无激活码时可在线购买 */}
+        <button
+          type="button"
+          onClick={() => setPurchaseOpen(true)}
+          className="w-full text-center text-sm text-bd-subtle hover:text-bd-fg transition-colors underline-offset-4 hover:underline"
+        >
+          {t('explore.activate.buyCta')}
+        </button>
+
+        <PurchaseModal
+          open={purchaseOpen}
+          onClose={() => setPurchaseOpen(false)}
+          onSuccess={(newCode) => setCode(newCode)}
+        />
 
       </motion.div>
     </div>

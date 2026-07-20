@@ -8,7 +8,9 @@ import {
   fetchAdminReports,
   syncReportsFromActivations,
   getReportConversationStats,
+  approveAdminReport,
   type AdminReportItem,
+  type AdminReportReviewStatus,
   type ConversationStatsResult,
 } from '@/lib/api/admin';
 import { useReportPdfDownload } from '@/hooks/useReportPdfDownload';
@@ -29,6 +31,17 @@ export default function AdminReportsPage() {
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsReportId, setStatsReportId] = useState<string | null>(null);
 
+  // 审核状态筛选 + 人工确认审核
+  const [reviewFilter, setReviewFilter] = useState<'' | AdminReportReviewStatus>('');
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
   // PDF 异步下载（admin 不传 activationCode）
   const { status: pdfStatus, error: pdfError, activeReportId, download: downloadPdf } =
     useReportPdfDownload();
@@ -37,7 +50,10 @@ export default function AdminReportsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchAdminReports({ q: query || undefined });
+      const res = await fetchAdminReports({
+        q: query || undefined,
+        review_status: reviewFilter || undefined,
+      });
       setItems(res.items || []);
     } catch (e: any) {
       setError(e?.message || '加载报告失败');
@@ -49,7 +65,7 @@ export default function AdminReportsPage() {
   useEffect(() => {
     loadReports();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [reviewFilter]);
 
   const openDetail = async (reportId: string) => {
     setDetailOpen(true);
@@ -134,6 +150,52 @@ export default function AdminReportsPage() {
     setStatsResult(null);
   };
 
+  // 人工确认审核：二次确认 → approve API → toast + 刷新
+  const handleApprove = async (reportId: string) => {
+    if (
+      !window.confirm(
+        `确认审核通过报告 ${reportId} 吗？\n通过后用户即可查看并下载报告内容。`,
+      )
+    ) {
+      return;
+    }
+    setApprovingId(reportId);
+    try {
+      await approveAdminReport(reportId);
+      setToast({ type: 'success', msg: '已确认审核，报告批复通过' });
+      await loadReports();
+    } catch (e: any) {
+      setToast({ type: 'error', msg: e?.message || '审核操作失败' });
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
+  // 审核状态 badge：pending_review=黄「待审核」/ approved+manual=绿「人工已审」/ approved+auto=青「自动批复」
+  const renderReviewBadge = (item: AdminReportItem) => {
+    const base =
+      'inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-medium whitespace-nowrap';
+    const reviewStatus = item.review_status ?? 'approved'; // 存量报告视为 approved
+    if (reviewStatus === 'pending_review') {
+      return (
+        <span className={`${base} bg-amber-100 text-amber-700 border-amber-200`}>待审核</span>
+      );
+    }
+    if (item.review_type === 'auto') {
+      return <span className={`${base} bg-teal-100 text-teal-700 border-teal-200`}>自动批复</span>;
+    }
+    if (item.review_type === 'manual') {
+      return (
+        <span className={`${base} bg-emerald-100 text-emerald-700 border-emerald-200`}>
+          人工已审
+        </span>
+      );
+    }
+    return (
+      <span className={`${base} bg-emerald-100 text-emerald-700 border-emerald-200`}>已审核</span>
+    );
+  };
+
   // 下载单个 report 的完整明细 zip（带认证 token，走 axios 拉取）
   const handleDownloadJson = async (reportId: string) => {
     setError(null);
@@ -169,6 +231,16 @@ export default function AdminReportsPage() {
           placeholder="搜索 report_id / activation_code / user_id"
           className="min-w-[280px] rounded-lg border border-bd-border bg-bd-overlay px-3 py-2"
         />
+        <select
+          value={reviewFilter}
+          onChange={(e) => setReviewFilter(e.target.value as '' | AdminReportReviewStatus)}
+          className="rounded-lg border border-bd-border bg-bd-overlay px-3 py-2"
+          aria-label="审核状态筛选"
+        >
+          <option value="">审核状态：全部</option>
+          <option value="pending_review">待审核</option>
+          <option value="approved">已审核</option>
+        </select>
         <button
           type="button"
           onClick={loadReports}
@@ -243,6 +315,7 @@ export default function AdminReportsPage() {
                   <th className="px-2 py-2 text-left font-medium">user_id</th>
                   <th className="px-2 py-2 text-left font-medium">完成步骤</th>
                   <th className="px-2 py-2 text-left font-medium">状态</th>
+                  <th className="px-2 py-2 text-left font-medium">审核状态</th>
                   <th className="px-2 py-2 text-left font-medium">操作</th>
                 </tr>
               </thead>
@@ -262,8 +335,19 @@ export default function AdminReportsPage() {
                     <td className="px-2 py-2 font-mono text-[11px]">{item.user_id}</td>
                     <td className="px-2 py-2">{item.completed_steps}/5</td>
                     <td className="px-2 py-2">{item.status}</td>
+                    <td className="px-2 py-2">{renderReviewBadge(item)}</td>
                     <td className="px-2 py-2 whitespace-nowrap">
                       <div className="flex items-center gap-2 whitespace-nowrap flex-nowrap">
+                        {item.review_status === 'pending_review' && (
+                          <button
+                            type="button"
+                            onClick={() => handleApprove(item.report_id)}
+                            disabled={approvingId === item.report_id}
+                            className="px-2 py-1 rounded border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 whitespace-nowrap disabled:opacity-60"
+                          >
+                            {approvingId === item.report_id ? '审核中...' : '确认审核'}
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => openDetail(item.report_id)}
@@ -304,6 +388,21 @@ export default function AdminReportsPage() {
           </div>
         )}
       </section>
+
+      {/* Toast */}
+      {toast && (
+        <div
+          role="alert"
+          className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-5 py-3 rounded-xl text-sm font-medium shadow-lg z-[130] ${
+            toast.type === 'success'
+              ? 'bg-emerald-600/95 text-white'
+              : 'bg-red-600/95 text-white'
+          }`}
+          style={{ animation: 'toast-in 0.25s ease-out' }}
+        >
+          {toast.msg}
+        </div>
+      )}
 
       {(statsReportId !== null || statsLoading) && (
         <div

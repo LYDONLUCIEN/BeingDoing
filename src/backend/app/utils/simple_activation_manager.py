@@ -66,7 +66,7 @@ class ActivationRecord:
     session_id: str
     mode: str
     created_at: str
-    expires_at: str
+    expires_at: Optional[str]  # None = 不过期（试用码）
     last_activity_at: str
     activation_session_id: Optional[str] = None
     status: str = ActivationStatus.ACTIVE
@@ -93,6 +93,12 @@ class ActivationRecord:
     # activation_code -> report_id 快速索引（权威仍以 reports/{report_id}/record.json 为准）
     report_id: Optional[str] = None
     report_index_updated_at: Optional[str] = None
+    # ── 套餐与试用体系（ADR-0008；存量码一律 code_type=full）──
+    code_type: str = "full"  # trial | full
+    package_type: Optional[str] = None  # None | quarterly | annual（决定延期价格档）
+    source_order_id: Optional[str] = None  # 交付来源订单（赠品码/升级追溯）
+    purchaser_user_id: Optional[str] = None  # 所属人（购买者）；激活人看 owner_user_id
+    report_authorized: bool = False  # 激活人一键授权报告给所属人
 
 
 @dataclass
@@ -255,6 +261,12 @@ class SimpleActivationManager:
                 data.setdefault("workspace_root", None)
                 data.setdefault("report_id", None)
                 data.setdefault("report_index_updated_at", None)
+                # 套餐与试用体系：存量记录一律视为完整码（ADR-0008）
+                data.setdefault("code_type", "full")
+                data.setdefault("package_type", None)
+                data.setdefault("source_order_id", None)
+                data.setdefault("purchaser_user_id", None)
+                data.setdefault("report_authorized", False)
                 records[code] = ActivationRecord(**data)
             except (TypeError, ValueError):
                 continue
@@ -301,14 +313,32 @@ class SimpleActivationManager:
         self,
         mode: str,
         ttl_minutes: int = 60,
+        code_type: str = "full",
+        vip_level: Optional[int] = None,
+        package_type: Optional[str] = None,
+        no_expiry: bool = False,
     ) -> ActivationRecord:
         """
         创建一个新的激活会话
+
+        Args:
+            mode: 模式（values / strengths / interests / combined）
+            ttl_minutes: 有效期（分钟）；code_type=trial 或 no_expiry=True 时忽略
+            code_type: trial（试用码，不过期，默认 vip_level=1）| full（完整码）
+            vip_level: LLM 档位；缺省时 trial=1，full 保持历史默认 1
+            package_type: 套餐类型（quarterly | annual），决定延期价格档与赠品码有效期时长
+            no_expiry: True 时 expires_at=None（赠品码首次激活时才落有效期）
 
         Returns:
             ActivationRecord
         """
         records = self._load_all()
+        code_type = (code_type or "full").strip().lower()
+        if code_type not in {"trial", "full"}:
+            raise ValueError(f"不支持的 code_type: {code_type}")
+        package_type = (package_type or "").strip().lower() or None
+        if package_type not in {None, "quarterly", "annual"}:
+            raise ValueError(f"不支持的 package_type: {package_type}")
 
         # 简单生成一个 10 位激活码（大写字母+数字）
         import random
@@ -322,7 +352,11 @@ class SimpleActivationManager:
 
         session_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc)
-        expires_at = now + timedelta(minutes=ttl_minutes)
+        if code_type == "trial" or no_expiry:
+            # 不过期：试用码永久；赠品码首次激活（claim）时才落有效期
+            expires_at_iso: Optional[str] = None
+        else:
+            expires_at_iso = (now + timedelta(minutes=ttl_minutes)).isoformat()
 
         record = ActivationRecord(
             code=code,
@@ -330,10 +364,12 @@ class SimpleActivationManager:
             activation_session_id=session_id,
             mode=mode,
             created_at=now.isoformat(),
-            expires_at=expires_at.isoformat(),
+            expires_at=expires_at_iso,
             last_activity_at=now.isoformat(),
             status=ActivationStatus.ACTIVE,
-            vip_level=1,
+            vip_level=int(vip_level) if vip_level is not None else 1,
+            code_type=code_type,
+            package_type=package_type,
         )
         records[code] = record
         self._save_all(records)
@@ -363,10 +399,13 @@ class SimpleActivationManager:
         if not rec:
             return None
 
+        # 不过期码（试用码，expires_at=None）直接返回
+        if not rec.expires_at:
+            return rec
         # 自动标记状态为 expired（但不删除）
         try:
             expires_dt = self._parse_dt(rec.expires_at)
-        except ValueError:
+        except (ValueError, TypeError):
             return rec
         if rec.status == ActivationStatus.ACTIVE and datetime.now(timezone.utc) > expires_dt:
             rec.status = ActivationStatus.EXPIRED
@@ -461,8 +500,8 @@ class SimpleActivationManager:
                 continue
 
             try:
-                old_expires_dt = self._parse_dt(rec.expires_at)
-            except ValueError:
+                old_expires_dt = self._parse_dt(rec.expires_at) if rec.expires_at else now
+            except (ValueError, TypeError):
                 old_expires_dt = now
 
             base_dt = old_expires_dt if old_expires_dt > now else now
@@ -494,6 +533,174 @@ class SimpleActivationManager:
         if changed:
             self._save_all(records)
         return {"changed": changed, "skipped": skipped}
+
+    def upgrade_to_full(
+        self,
+        code: str,
+        package_type: str,
+        duration_days: int,
+        *,
+        source_order_id: Optional[str] = None,
+        purchaser_user_id: Optional[str] = None,
+        actor: Optional[dict] = None,
+    ) -> ActivationRecord:
+        """试用码付费升级为完整码（ADR-0008）
+
+        - code_type: trial → full；vip_level=2
+        - package_type 写入（决定延期价格档）
+        - 有效期从付款时刻起算：expires_at = now + duration_days
+        - 记录来源订单与所属人（已有值不覆盖）
+        """
+        norm = (code or "").strip().upper()
+        package_type = (package_type or "").strip().lower()
+        if package_type not in {"quarterly", "annual"}:
+            raise ValueError(f"不支持的 package_type: {package_type}")
+        days = int(duration_days or 0)
+        if days <= 0:
+            raise ValueError("duration_days 必须大于 0")
+
+        records = self._load_all()
+        rec = records.get(norm)
+        if not rec:
+            raise ValueError("激活码不存在")
+        if rec.status in {ActivationStatus.REVOKED.value, ActivationStatus.DELETED.value}:
+            raise ValueError("激活码已作废或已删除，无法升级")
+
+        now = datetime.now(timezone.utc)
+        old_snapshot = {
+            "code_type": rec.code_type,
+            "vip_level": rec.vip_level,
+            "expires_at": rec.expires_at,
+        }
+        rec.code_type = "full"
+        rec.vip_level = 2
+        rec.package_type = package_type
+        rec.expires_at = (now + timedelta(days=days)).isoformat()
+        rec.status = ActivationStatus.ACTIVE.value
+        rec.last_activity_at = now.isoformat()
+        if source_order_id and not rec.source_order_id:
+            rec.source_order_id = source_order_id
+        if purchaser_user_id and not rec.purchaser_user_id:
+            rec.purchaser_user_id = purchaser_user_id
+        records[norm] = rec
+        self._save_all(records)
+
+        from app.utils.activation_audit import append_activation_audit
+
+        append_activation_audit(
+            "paid_upgraded_to_full",
+            norm,
+            actor_user_id=(actor or {}).get("user_id"),
+            actor_email=(actor or {}).get("email"),
+            detail={
+                "package_type": package_type,
+                "duration_days": days,
+                "source_order_id": source_order_id,
+                "old": old_snapshot,
+                "new_expires_at": rec.expires_at,
+            },
+        )
+        logger.info("激活码付费升级为完整码: code=%s package=%s days=%d", norm, package_type, days)
+        return rec
+
+    def extend_validity(
+        self,
+        code: str,
+        days: int,
+        *,
+        actor: Optional[dict] = None,
+    ) -> ActivationRecord:
+        """延期激活（ADR-0008）：expires_at = max(当前到期, now) + days
+
+        expires_at=None（未激活的赠品码）时从 now 起算。
+        """
+        norm = (code or "").strip().upper()
+        days = int(days or 0)
+        if days <= 0:
+            raise ValueError("days 必须大于 0")
+
+        records = self._load_all()
+        rec = records.get(norm)
+        if not rec:
+            raise ValueError("激活码不存在")
+        if rec.status in {ActivationStatus.REVOKED.value, ActivationStatus.DELETED.value}:
+            raise ValueError("激活码已作废或已删除，无法延期")
+
+        from app.utils.activation_audit import EVENT_EXTENDED, append_activation_audit
+
+        now = datetime.now(timezone.utc)
+        try:
+            old_expires_dt = self._parse_dt(rec.expires_at) if rec.expires_at else now
+        except (ValueError, TypeError):
+            old_expires_dt = now
+        base_dt = old_expires_dt if old_expires_dt > now else now
+        old_expires = rec.expires_at
+        rec.expires_at = (base_dt + timedelta(days=days)).isoformat()
+        rec.status = ActivationStatus.ACTIVE.value
+        rec.last_activity_at = now.isoformat()
+        records[norm] = rec
+        self._save_all(records)
+
+        append_activation_audit(
+            EVENT_EXTENDED,
+            norm,
+            actor_user_id=(actor or {}).get("user_id"),
+            actor_email=(actor or {}).get("email"),
+            detail={
+                "extend_days": days,
+                "renewal": True,
+                "old_expires_at": old_expires,
+                "new_expires_at": rec.expires_at,
+            },
+        )
+        logger.info("激活码延期激活: code=%s days=%d new_expires=%s", norm, days, rec.expires_at)
+        return rec
+
+    def set_purchase_source(
+        self,
+        code: str,
+        *,
+        source_order_id: Optional[str] = None,
+        purchaser_user_id: Optional[str] = None,
+    ) -> ActivationRecord:
+        """记录激活码的购买来源（来源订单 + 所属人），供团队分析的购买链路追溯（ADR-0010）"""
+        norm = (code or "").strip().upper()
+        records = self._load_all()
+        rec = records.get(norm)
+        if not rec:
+            raise ValueError("激活码不存在")
+        if source_order_id:
+            rec.source_order_id = source_order_id
+        if purchaser_user_id:
+            rec.purchaser_user_id = purchaser_user_id
+        records[norm] = rec
+        self._save_all(records)
+        return rec
+
+    def set_report_authorized(
+        self, code: str, authorized: bool, *, actor: Optional[dict] = None
+    ) -> ActivationRecord:
+        """激活人一键授权/撤销报告给所属人（ADR-0010：仅授权报告，对话不可分享）"""
+        norm = (code or "").strip().upper()
+        records = self._load_all()
+        rec = records.get(norm)
+        if not rec:
+            raise ValueError("激活码不存在")
+        rec.report_authorized = bool(authorized)
+        records[norm] = rec
+        self._save_all(records)
+
+        from app.utils.activation_audit import append_activation_audit
+
+        append_activation_audit(
+            "report_authorization_changed",
+            norm,
+            actor_user_id=(actor or {}).get("user_id"),
+            actor_email=(actor or {}).get("email"),
+            detail={"report_authorized": rec.report_authorized},
+        )
+        logger.info("报告授权变更: code=%s authorized=%s", norm, rec.report_authorized)
+        return rec
 
     def claim_owner(self, code: str, user: dict) -> ActivationRecord:
         """
@@ -529,10 +736,25 @@ class SimpleActivationManager:
         now = datetime.now(timezone.utc).isoformat()
         old_owner_user_id = rec.owner_user_id
         old_owner_email = rec.owner_email
+        is_new_claim = not bool(old_owner_user_id or old_owner_email)
         rec.owner_user_id = uid
         rec.owner_email = email
         rec.claimed_at = rec.claimed_at or now
         rec.last_activity_at = now
+
+        # 套餐赠品码：首次激活时落有效期（ADR-0008：赠品码有效期从激活起算）
+        if is_new_claim and not rec.expires_at:
+            pkg = (getattr(rec, "package_type", None) or "").strip().lower()
+            if pkg in {"quarterly", "annual"}:
+                from app.config.settings import settings as _settings
+
+                days = (
+                    _settings.QUARTERLY_DAYS if pkg == "quarterly" else _settings.ANNUAL_DAYS
+                )
+                rec.expires_at = (
+                    datetime.now(timezone.utc) + timedelta(days=days)
+                ).isoformat()
+
         records[norm or code] = rec
         self._save_all(records)
 

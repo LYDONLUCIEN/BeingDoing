@@ -2,7 +2,7 @@
 导出API
 """
 from fastapi import APIRouter, HTTPException, Depends, status, Query, Response
-from fastapi.responses import Response as FastResponse
+from fastapi.responses import JSONResponse, Response as FastResponse
 from pydantic import BaseModel
 from typing import Dict, Optional
 from app.api.v1.auth import get_current_user
@@ -13,6 +13,12 @@ from app.utils.simple_activation_manager import (
     get_effective_simple_root,
 )
 from app.utils.super_admin import is_super_admin_user
+from app.utils.report_review import (
+    REVIEW_STATUS_APPROVED,
+    get_review_status,
+    is_pending_review,
+    pending_review_payload,
+)
 from pathlib import Path
 from urllib.parse import quote
 import logging
@@ -209,7 +215,7 @@ async def get_my_report_id(
     activation_code: str = Query(..., description="激活码"),
     current_user: dict = Depends(get_current_user),
 ):
-    """用户端：通过 activation_code 获取自己的 report_id。"""
+    """用户端：通过 activation_code 获取自己的 report_id（含审核状态）。"""
     user_id = current_user.get("user_id") or ""
     code = activation_code.strip().upper()
     _mgr, rec = get_activation_with_manager(code)
@@ -220,7 +226,10 @@ async def get_my_report_id(
     report = registry.get_by_activation_user(code, user_id)
     if not report:
         raise HTTPException(status_code=404, detail="未找到您的报告")
-    return {"report_id": report.get("report_id")}
+    data = {"report_id": report.get("report_id"), "review_status": get_review_status(report)}
+    if is_pending_review(report):
+        data["review_deadline"] = report.get("review_deadline")
+    return data
 
 
 def _verify_report_access(
@@ -254,6 +263,23 @@ def _verify_report_access(
         return None, user_id
 
 
+def _review_block_payload(
+    report_id: str, base_dir: Optional[str], current_user: dict
+) -> Optional[dict]:
+    """
+    报告阻塞式审核（ADR-0009）：非 admin 用户访问 pending_review 报告时，
+    返回阻塞 payload（HTTP 200，由前端展示「审核中」）；否则返回 None 放行。
+    admin 不受阻塞（审核需要查看报告内容）。存量无审核字段视为 approved。
+    """
+    if is_super_admin_user(current_user):
+        return None
+    registry = ReportRegistry(base_dir=base_dir) if base_dir else ReportRegistry()
+    report = registry.get_report_by_id(report_id)
+    if not report or not is_pending_review(report):
+        return None
+    return pending_review_payload(report)
+
+
 @router.post("/report-pdf/{report_id}")
 async def trigger_report_pdf(
     report_id: str,
@@ -272,17 +298,22 @@ async def trigger_report_pdf(
 
     base_dir, user_id = _verify_report_access(report_id, current_user, activation_code)
 
+    # 审核阻塞：pending_review 时不触发生成，HTTP 200 返回审核中状态
+    blocked = _review_block_payload(report_id, base_dir, current_user)
+    if blocked is not None:
+        return {"report_id": report_id, "status": "pending_review", **blocked}
+
     # 检查缓存是否已有 markdown
     service = ReportPdfService(base_dir=base_dir)
     has_cache = service.has_cached_markdown(report_id) and not force
 
     if has_cache:
-        return {"report_id": report_id, "status": "ready"}
+        return {"report_id": report_id, "status": "ready", "review_status": REVIEW_STATUS_APPROVED}
 
     # 检查是否正在生成
     existing = _pdf_tasks.get(report_id)
     if existing and existing.get("status") == "pending":
-        return {"report_id": report_id, "status": "generating"}
+        return {"report_id": report_id, "status": "generating", "review_status": REVIEW_STATUS_APPROVED}
 
     # 如果上次失败，重新触发
     # 启动后台任务
@@ -295,7 +326,7 @@ async def trigger_report_pdf(
         _run_pdf_generation(report_id, user_id, base_dir, force)
     )
 
-    return {"report_id": report_id, "status": "generating"}
+    return {"report_id": report_id, "status": "generating", "review_status": REVIEW_STATUS_APPROVED}
 
 
 @router.get("/report-pdf-status/{report_id}")
@@ -306,30 +337,35 @@ async def get_report_pdf_status(
 ):
     """轮询报告生成状态。"""
     # 权限校验
-    _verify_report_access(report_id, current_user, activation_code)
+    base_dir, _ = _verify_report_access(report_id, current_user, activation_code)
+
+    # 审核阻塞：pending_review 时 HTTP 200 返回审核中状态
+    blocked = _review_block_payload(report_id, base_dir, current_user)
+    if blocked is not None:
+        return {"report_id": report_id, "status": "pending_review", **blocked}
 
     task = _pdf_tasks.get(report_id)
     if not task:
         # 没有任务记录，检查是否有缓存
         from app.services.report_pdf_service import ReportPdfService
 
-        base_dir, _ = _verify_report_access(report_id, current_user, activation_code)
         service = ReportPdfService(base_dir=base_dir)
         if service.has_cached_markdown(report_id):
-            return {"report_id": report_id, "status": "ready"}
-        return {"report_id": report_id, "status": "none"}
+            return {"report_id": report_id, "status": "ready", "review_status": REVIEW_STATUS_APPROVED}
+        return {"report_id": report_id, "status": "none", "review_status": REVIEW_STATUS_APPROVED}
 
     status = task.get("status")
     if status == "done":
-        return {"report_id": report_id, "status": "ready"}
+        return {"report_id": report_id, "status": "ready", "review_status": REVIEW_STATUS_APPROVED}
     elif status == "error":
         return {
             "report_id": report_id,
             "status": "error",
             "error": task.get("error", "生成失败"),
+            "review_status": REVIEW_STATUS_APPROVED,
         }
     else:
-        return {"report_id": report_id, "status": "generating"}
+        return {"report_id": report_id, "status": "generating", "review_status": REVIEW_STATUS_APPROVED}
 
 
 @router.get("/report-pdf-download/{report_id}")
@@ -345,6 +381,15 @@ async def download_report_pdf(
     from app.services.report_pdf_service import ReportPdfService
 
     base_dir, user_id = _verify_report_access(report_id, current_user, activation_code)
+
+    # 审核阻塞：pending_review 时不返回 PDF，HTTP 200 返回审核中状态
+    blocked = _review_block_payload(report_id, base_dir, current_user)
+    if blocked is not None:
+        return JSONResponse(
+            status_code=200,
+            content={"code": 200, "message": "报告审核中", "data": {"report_id": report_id, **blocked}},
+        )
+
     service = ReportPdfService(base_dir=base_dir)
 
     if not service.has_cached_markdown(report_id):

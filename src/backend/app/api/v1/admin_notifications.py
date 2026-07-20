@@ -51,6 +51,9 @@ class CreateNotificationRequest(BaseModel):
     subject: str = Field(..., min_length=1, max_length=255, description="邮件主题")
     body: str = Field(..., min_length=1, description="邮件正文（纯文本）")
     user_filter: UserFilter = Field(default_factory=UserFilter, description="收件人筛选")
+    attach_coupon: bool = Field(
+        False, description="是否随邮件附折扣券（正文须含 {{coupon_code}} 占位符）"
+    )
 
 
 @router.post("/email")
@@ -71,12 +74,16 @@ async def create_notification_email(
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
 
+    if payload.attach_coupon and "{{coupon_code}}" not in payload.body:
+        raise HTTPException(status_code=400, detail="附折扣券时正文必须包含 {{coupon_code}} 占位符")
+
     user_filter_dict = payload.user_filter.model_dump(exclude_none=True)
     try:
         task_id = await NotificationService.create_task(
             subject=payload.subject,
             body=payload.body,
             user_filter=user_filter_dict,
+            attach_coupon=payload.attach_coupon,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

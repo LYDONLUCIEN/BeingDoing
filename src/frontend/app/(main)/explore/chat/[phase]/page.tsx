@@ -20,6 +20,8 @@ import FlowAiMessage from '@/components/explore/FlowAiMessage';
 import DimensionConclusionCard, { type DimensionConclusionData } from '@/components/explore/DimensionConclusionCard';
 import PhaseCompleteWarmModal from '@/components/explore/PhaseCompleteWarmModal';
 import PhaseWelcomeModal from '@/components/explore/PhaseWelcomeModal';
+import TrialLimitModal from '@/components/explore/TrialLimitModal';
+import PurchaseModal from '@/components/payment/PurchaseModal';
 import ChatPhaseBackground from '@/components/explore/ChatPhaseBackground';
 import ExploreLandingMeshLayers from '@/components/explore/ExploreLandingMeshLayers';
 const PhaseCelebrateBurst = dynamic(
@@ -146,6 +148,28 @@ const BACKEND_PHASE: Record<PhaseKey, string> = {
 function lastDimensionConclusionMessage<T extends { type?: string }>(msgs: T[]): T | undefined {
   const list = msgs.filter((m) => m.type === 'dimension_conclusion');
   return list.length ? list[list.length - 1] : undefined;
+}
+
+/** 试用拦截类型：limit=试用 10 轮用完；locked=试用码进非价值观阶段 */
+type TrialBlockKind = 'limit' | 'locked';
+
+/**
+ * 解析 402 试用拦截错误。detail 可能是 JSON 字符串也可能是已解析对象，两种都兼容；
+ * 非试用拦截返回 null。
+ */
+function parseTrialBlockKind(detail: unknown): TrialBlockKind | null {
+  let obj: unknown = detail;
+  if (typeof detail === 'string') {
+    try {
+      obj = JSON.parse(detail);
+    } catch {
+      return null;
+    }
+  }
+  const type = (obj as { type?: unknown } | null)?.type;
+  if (type === 'trial_limit_reached') return 'limit';
+  if (type === 'trial_phase_locked') return 'locked';
+  return null;
 }
 
 /** 待确认结论仅存 metadata、无 conclusion_card 消息行时，从历史 meta 补一条卡，避免必须刷新才看见 */
@@ -360,6 +384,10 @@ export default function ChatPhasePage() {
   const [ruminationStep7FinalizeOpen, setRuminationStep7FinalizeOpen] = useState(false);
   const [phaseCelebrateSignal, setPhaseCelebrateSignal] = useState(0);
   const [phaseCompleteModalOpen, setPhaseCompleteModalOpen] = useState(false);
+  /** 试用拦截弹层（402 trial_limit_reached / trial_phase_locked），非 null 时展示 */
+  const [trialBlock, setTrialBlock] = useState<TrialBlockKind | null>(null);
+  /** 购买引导：试用拦截弹层点「去购买」后打开现有 PurchaseModal */
+  const [trialPurchaseOpen, setTrialPurchaseOpen] = useState(false);
   /** 完成弹窗"已专注 N 分钟"——由 handleConfirmConclusion 在打开弹窗前计算；null 时使用通用文案 */
   const [fatigueMinutes, setFatigueMinutes] = useState<number | null>(null);
   /** 进入新 phase 的时间预估欢迎卡（首次进入且未 dismiss 时弹出） */
@@ -1854,12 +1882,21 @@ export default function ChatPhasePage() {
         if (res.status === 401) {
           throw new Error(t('explore.chat.streamAuthExpired'));
         }
-        let detail = '';
+        let detail: unknown = '';
         try {
           const errPayload = await res.json();
           detail = errPayload?.detail || errPayload?.message || '';
         } catch {}
-        throw new Error(detail || `请求失败（${res.status}）`);
+        // 试用拦截（402）：不落地错误气泡，直接弹购买引导层，终止本次发送
+        if (res.status === 402) {
+          const blockKind = parseTrialBlockKind(detail);
+          if (blockKind) {
+            setTrialBlock(blockKind);
+            return;
+          }
+        }
+        const detailMsg = typeof detail === 'string' ? detail : '';
+        throw new Error(detailMsg || `请求失败（${res.status}）`);
       }
       if (!res.body) throw new Error('流式接口返回为空');
       const reader = res.body.getReader();
@@ -1877,7 +1914,13 @@ export default function ChatPhasePage() {
           try {
             const payload = JSON.parse(line.slice(6));
             if (payload.error) {
-              setChatError(String(payload.error));
+              // SSE 内嵌试用拦截（防御：后端也可能以流内 error + type 下发）
+              const blockKind = parseTrialBlockKind(payload);
+              if (blockKind) {
+                setTrialBlock(blockKind);
+              } else {
+                setChatError(String(payload.error));
+              }
               reader.cancel();
               break;
             }
@@ -5209,6 +5252,33 @@ export default function ChatPhasePage() {
         continueLabel={t('explore.phaseComplete.continue')}
         dontRemindLabel={t('explore.phaseComplete.dontRemind')}
         onContinue={handlePhaseCompleteModalContinue}
+      />
+      <TrialLimitModal
+        open={trialBlock !== null}
+        title={
+          trialBlock === 'locked'
+            ? t('explore.trial.lockedTitle')
+            : t('explore.trial.limitTitle')
+        }
+        body={
+          trialBlock === 'locked' ? t('explore.trial.lockedBody') : t('explore.trial.limitBody')
+        }
+        primaryLabel={t('explore.trial.buy')}
+        secondaryLabel={t('explore.trial.later')}
+        onPrimary={() => {
+          setTrialBlock(null);
+          setTrialPurchaseOpen(true);
+        }}
+        onClose={() => setTrialBlock(null)}
+      />
+      <PurchaseModal
+        open={trialPurchaseOpen}
+        onClose={() => setTrialPurchaseOpen(false)}
+        onSuccess={(code) => {
+          // 支付成功：提示用户去激活页使用新码（激活页从 query 预填）
+          setTrialPurchaseOpen(false);
+          router.push(`/explore/activate?code=${encodeURIComponent(code)}`);
+        }}
       />
       <PhaseWelcomeModal
         open={phaseWelcomeOpen}

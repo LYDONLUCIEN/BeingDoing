@@ -8,6 +8,7 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_user
@@ -19,10 +20,18 @@ from app.schemas.feedback import (
 )
 from app.services import feedback_service
 
+
+class StandardResponse(BaseModel):
+    """统一响应"""
+
+    code: int = 200
+    message: str = "success"
+    data: dict
+
 router = APIRouter(prefix="/feedbacks", tags=["用户反馈"])
 
 
-@router.post("", response_model=FeedbackOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=StandardResponse, status_code=status.HTTP_201_CREATED)
 async def create_feedback(
     payload: FeedbackCreate,
     current_user: dict = Depends(get_current_user),
@@ -49,18 +58,22 @@ async def create_feedback(
         raise HTTPException(status_code=400, detail=str(e))
 
     await db.commit()
-    return FeedbackOut(
-        id=feedback.id,
-        type=feedback.type,
-        content=feedback.content,
-        status=feedback.status,
-        created_at=feedback.created_at,
+    return StandardResponse(
+        code=201,
+        message="反馈提交成功",
+        data=FeedbackOut(
+            id=feedback.id,
+            type=feedback.type,
+            content=feedback.content,
+            status=feedback.status,
+            created_at=feedback.created_at,
+        ).model_dump(),
     )
 
 
 @router.post(
     "/attachments",
-    response_model=AttachmentUploadOut,
+    response_model=StandardResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def upload_attachment(
@@ -73,14 +86,14 @@ async def upload_attachment(
 
     # 校验 content_type
     ct = (file.content_type or "").lower()
-    data = await file.read()
-    size = len(data)
+    file_bytes = await file.read()
+    size = len(file_bytes)
 
     try:
         att = await feedback_service.upload_attachment(
             db=db,
             user_id=user_id,
-            file_data=data,
+            file_data=file_bytes,
             content_type=ct,
             size_bytes=size,
         )
@@ -91,16 +104,20 @@ async def upload_attachment(
         raise HTTPException(status_code=500, detail=str(e))
 
     await db.commit()
-    return AttachmentUploadOut(
-        id=att.id,
-        preview_url=signed_url,
-        size_bytes=att.size_bytes,
-        content_type=att.content_type,
+    return StandardResponse(
+        code=201,
+        message="上传成功",
+        data=AttachmentUploadOut(
+            id=att.id,
+            preview_url=signed_url,
+            size_bytes=att.size_bytes,
+            content_type=att.content_type,
+        ).model_dump(),
     )
 
 
 @router.delete(
-    "/attachments/{attachment_id}", status_code=status.HTTP_204_NO_CONTENT
+    "/attachments/{attachment_id}", response_model=StandardResponse
 )
 async def delete_attachment(
     attachment_id: str,
@@ -119,4 +136,4 @@ async def delete_attachment(
         raise HTTPException(status_code=400, detail=str(e))
 
     await db.commit()
-    return None
+    return StandardResponse(code=200, message="删除成功", data={})

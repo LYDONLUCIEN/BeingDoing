@@ -102,3 +102,8 @@ class AdminFeedbackDetailOut(BaseModel):
 
 class FeedbackStatusUpdate(BaseModel):
     status: str = Field(..., description="received / in_progress / done")
+
+
+class FeedbackReply(BaseModel):
+    # 长度校验放 service 层，统一返回 400
+    content: str = Field(..., description="回复正文，将通过站内邮件服务发送给用户")

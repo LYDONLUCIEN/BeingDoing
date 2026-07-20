@@ -11,7 +11,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.models.database import Base
@@ -29,6 +29,7 @@ class NotificationTask(Base):
         sent: 已成功发送数
         failed: 发送失败数
         status: 任务状态（pending/running/completed/interrupted/failed）
+        attach_coupon: 是否随邮件附折扣券（逐收件人渲染 {{coupon_code}}）
         created_at / updated_at: 通用时间戳
         started_at: 开始发送时间
         finished_at: 结束时间（完成或中断）
@@ -44,6 +45,8 @@ class NotificationTask(Base):
     sent = Column(Integer, default=0, nullable=False)
     failed = Column(Integer, default=0, nullable=False)
     status = Column(String(20), default="pending", nullable=False)
+    # 是否随邮件附折扣券（正文需含 {{coupon_code}} 占位符，逐收件人渲染）
+    attach_coupon = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(
         DateTime,
@@ -72,6 +75,7 @@ class NotificationRecipient(Base):
         email: 收件人邮箱（冗余存，便于失败追溯）
         status: 单条发送状态（pending/sent/failed）
         error_msg: 失败原因（status=failed 时填）
+        coupon_code: 附折扣券任务分给该收件人的券码
         created_at: 记录创建时间
     """
 
@@ -88,6 +92,8 @@ class NotificationRecipient(Base):
     email = Column(String(255), nullable=False)
     status = Column(String(20), default="pending", nullable=False)
     error_msg = Column(Text, nullable=True)
+    # 附折扣券任务：分给该收件人的券码（未发券任务为 NULL）
+    coupon_code = Column(String(32), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     # 关系

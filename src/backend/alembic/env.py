@@ -23,6 +23,8 @@ from app.models import (
     EmailBounce,
     LlmModelConfig,
     UserLlmModelConfig,
+    PaymentOrder, Coupon, Subscription,
+    ConsultationBooking, TeamAnalysis,
 )
 
 # 导入配置与数据库URL

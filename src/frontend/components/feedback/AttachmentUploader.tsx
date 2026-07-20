@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import { ImagePlus, Trash2, Loader2 } from 'lucide-react';
 import { uploadAttachment, deleteAttachment, type AttachmentUploadResult } from '@/lib/api/feedback';
 import { getApiErrorMessage } from '@/lib/api/client';
@@ -8,6 +8,11 @@ import { getApiErrorMessage } from '@/lib/api/client';
 const MAX_SIZE = 2 * 1024 * 1024; // 2MB
 const MAX_COUNT = 3;
 const ACCEPT = 'image/jpeg,image/png,image/webp';
+
+export interface AttachmentUploaderHandle {
+  /** 供外部（如粘贴事件）直接添加图片文件 */
+  addFiles: (files: File[]) => void;
+}
 
 interface Props {
   attachmentIds: string[];
@@ -21,7 +26,8 @@ interface Item {
   error?: string;
 }
 
-export default function AttachmentUploader({ attachmentIds, onChange }: Props) {
+const AttachmentUploader = forwardRef<AttachmentUploaderHandle, Props>(
+  function AttachmentUploader({ attachmentIds, onChange }, ref) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<Item[]>([]);
 
@@ -98,6 +104,13 @@ export default function AttachmentUploader({ attachmentIds, onChange }: Props) {
     e.target.value = '';
   };
 
+  // 暴露给父组件：粘贴图片时直接走同一套上传流程
+  useImperativeHandle(ref, () => ({
+    addFiles: (files: File[]) => {
+      files.forEach(handleFile);
+    },
+  }));
+
   const validCount = items.filter((i) => i.status !== 'error').length;
   const canAdd = validCount < MAX_COUNT;
 
@@ -155,7 +168,7 @@ export default function AttachmentUploader({ attachmentIds, onChange }: Props) {
         )}
       </div>
       <p className="text-[10px] mt-1.5 text-bd-subtle">
-        可选，最多 {MAX_COUNT} 张，单张 ≤ 2MB（jpg/png/webp）
+        可选，最多 {MAX_COUNT} 张，单张 ≤ 2MB（jpg/png/webp），也可在下方输入框直接粘贴截图
       </p>
 
       <input
@@ -168,4 +181,7 @@ export default function AttachmentUploader({ attachmentIds, onChange }: Props) {
       />
     </div>
   );
-}
+  }
+);
+
+export default AttachmentUploader;

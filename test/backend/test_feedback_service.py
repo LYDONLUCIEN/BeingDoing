@@ -368,3 +368,61 @@ async def test_delete_attachment_rules(db_session, user_and_admin):
 
     with pytest.raises(ValueError, match="已提交"):
         await feedback_service.delete_attachment(db_session, "user-001", att.id)
+
+
+@pytest.mark.asyncio
+async def test_admin_reply_feedback(db_session, user_and_admin, monkeypatch):
+    """admin 回复：通过 EmailService 发送邮件，主题含反馈类型，正文含原始反馈摘要"""
+    user, admin = user_and_admin
+
+    feedback = Feedback(
+        user_id="user-001",
+        user_email="user@example.com",
+        type="bug",
+        content="点击登录按钮没反应",
+        status="in_progress",
+    )
+    db_session.add(feedback)
+    await db_session.commit()
+
+    send_mock = AsyncMock()
+    monkeypatch.setattr(
+        "app.services.email_service.EmailService.send_email", send_mock
+    )
+
+    await feedback_service.admin_reply_feedback(
+        db=db_session,
+        feedback_id=feedback.id,
+        content="您好，该问题已修复，请重试。",
+    )
+
+    send_mock.assert_awaited_once()
+    kwargs = send_mock.await_args.kwargs
+    assert kwargs["to_email"] == "user@example.com"
+    assert "Bug 报告" in kwargs["subject"]
+    assert "该问题已修复" in kwargs["body_text"]
+    assert "点击登录按钮没反应" in kwargs["body_text"]  # 附原始反馈
+
+
+@pytest.mark.asyncio
+async def test_admin_reply_feedback_validation(db_session, user_and_admin):
+    """回复内容为空 / 反馈不存在 → 抛错"""
+    feedback = Feedback(
+        user_id="user-001",
+        user_email="user@example.com",
+        type="idea",
+        content="希望支持深色模式",
+        status="received",
+    )
+    db_session.add(feedback)
+    await db_session.commit()
+
+    with pytest.raises(ValueError, match="回复内容"):
+        await feedback_service.admin_reply_feedback(
+            db=db_session, feedback_id=feedback.id, content="   "
+        )
+
+    with pytest.raises(LookupError, match="不存在"):
+        await feedback_service.admin_reply_feedback(
+            db=db_session, feedback_id="not-exist", content="正常回复内容"
+        )

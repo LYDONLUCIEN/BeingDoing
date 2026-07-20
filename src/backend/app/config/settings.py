@@ -62,10 +62,11 @@ class Settings(BaseSettings):
     LLM_BASE_URL: Optional[str] = None  # 如 https://api.deepseek.com
 
     # API 池与 VIP 模型（按 vip_level 选择）
-    # VIP1 = 基础（DeepSeek），VIP2 = 高级（Kimi/Qwen）
+    # VIP1 = 基础（DeepSeek），VIP2 = 高级
+    # P-A 起（ADR-0008）：试用码 vip_level=1、完整码 vip_level=2，两档均配置为 DeepSeek
     LLM_VIP1_PROVIDER: str = "deepseek"
     LLM_VIP1_MODEL: Optional[str] = None  # 默认 deepseek-v4-pro
-    LLM_VIP2_PROVIDER: str = "kimi"  # kimi | qwen
+    LLM_VIP2_PROVIDER: str = "deepseek"  # deepseek | kimi | qwen（当前默认 deepseek）
     KIMI_API_KEY: Optional[str] = None
     KIMI_BASE_URL: Optional[str] = "https://api.moonshot.cn/v1"
     KIMI_MODEL: str = "moonshot-v1-8k"
@@ -117,6 +118,44 @@ class Settings(BaseSettings):
     # 用户上传截图后未提交反馈（feedback_id IS NULL）超 N 天的附件，DB 记录 + OSS 对象都删
     FEEDBACK_ORPHAN_CLEANUP_CRON: str = "0 4 * * *"  # 默认每日 04:00
     FEEDBACK_ORPHAN_CLEANUP_DAYS: int = 7             # 超过 7 天未关联反馈视为孤儿
+
+    # ========== 支付模块（计划见 tasks/payment-module-plan.md）==========
+    # 旧商品：全程激活码（单一 SKU，已下架；配置保留供历史订单展示）
+    ACTIVATION_CODE_PRICE: int = 9900  # 99 元
+    ACTIVATION_CODE_TTL_DAYS: int = 180
+    # 套餐商品化（P-B，ADR-0008，金额单位：分）
+    QUARTERLY_PRICE: int = 6900  # 季度套餐 69 元
+    ANNUAL_PRICE: int = 9900  # 年度套餐 99 元
+    RENEWAL_QUARTERLY_PRICE: int = 2300  # 季度码延期 23 元
+    RENEWAL_ANNUAL_PRICE: int = 3300  # 年度码延期 33 元
+    CONSULTATION_PRICE: int = 29800  # 报告解读咨询 298 元
+    QUARTERLY_DAYS: int = 90  # 季度时长（天）
+    ANNUAL_DAYS: int = 365  # 年度时长（天）
+    # 折扣券：券池空时邮件发券按此面额（分）自动创建
+    DEFAULT_COUPON_AMOUNT: int = 5000  # 50 元
+    # 订单：pending 超时关单时间（分钟）
+    ORDER_TIMEOUT_MINUTES: int = 30
+    # 会员（P3 预留，本期不开放）
+    MEMBERSHIP_ENABLED: bool = False
+    MEMBERSHIP_MONTHLY_PRICE: int = 1500  # 15 元
+    MEMBERSHIP_LIFETIME_PRICE: int = 29900  # 299 元
+    MEMBER_DISCOUNT_PERCENT: int = 85  # 8.5 折
+
+    # ========== 支付渠道（P2 预留，未配置时支付接口不可用）==========
+    # 微信支付 V3
+    WECHAT_MCH_ID: str = ""
+    WECHAT_APP_ID: str = ""
+    WECHAT_API_V3_KEY: str = ""
+    WECHAT_PRIVATE_KEY_PATH: str = ""
+    WECHAT_CERT_SERIAL_NO: str = ""
+    WECHAT_NOTIFY_URL: str = ""
+    # 支付宝
+    ALIPAY_APP_ID: str = ""
+    ALIPAY_PRIVATE_KEY_PATH: str = ""
+    ALIPAY_PUBLIC_KEY_PATH: str = ""
+    ALIPAY_NOTIFY_URL: str = ""
+    # 网关：正式 https://openapi.alipay.com/gateway.do；沙箱切 openapi-sandbox
+    ALIPAY_GATEWAY: str = "https://openapi.alipay.com/gateway.do"
 
     # 前端地址（用于邮箱验证链接）
     FRONTEND_URL: str = "http://localhost:3000"

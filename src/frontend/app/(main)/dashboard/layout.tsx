@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { User, BarChart3, BookOpen, HelpCircle, Trash2, Settings } from 'lucide-react';
+import { User, BarChart3, BookOpen, HelpCircle, Trash2, Settings, Receipt, Ticket, UsersRound } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useLocale } from '@/hooks/useLocale';
 
@@ -13,6 +13,9 @@ const NAV_ITEMS = [
   { path: '/dashboard/guide', icon: BookOpen, labelKey: 'dashboard.usageGuide' },
   { path: '/dashboard/help', icon: HelpCircle, labelKey: 'dashboard.helpCenter' },
   { path: '/dashboard/recycle', icon: Trash2, labelKey: 'dashboard.recycleBin' },
+  { path: '/dashboard/orders', icon: Receipt, labelKey: 'dashboard.orders' },
+  { path: '/dashboard/codes', icon: Ticket, labelKey: 'dashboard.myCodes' },
+  { path: '/dashboard/team-analysis', icon: UsersRound, labelKey: 'dashboard.teamAnalysis' },
   { path: '/dashboard/settings', icon: Settings, labelKey: 'dashboard.setting' },
 ];
 

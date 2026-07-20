@@ -4,9 +4,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Sparkles, Star } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Sparkles, Star, Check } from 'lucide-react';
 import { useLocale } from '@/hooks/useLocale';
+import { useAuthStore } from '@/stores/authStore';
+import { useAuthModalStore } from '@/stores/authModalStore';
 import LegalDocLink from '@/components/legal/LegalDocLink';
+import PurchaseModal from '@/components/payment/PurchaseModal';
 // ── 用户故事（9 条，3x3 平铺，头像占位 assets/user_story/）──────────────────────────
 const TESTIMONIALS: Array<{
   quote: string;
@@ -357,6 +360,128 @@ function TestimonialGrid({ videoSrc }: { videoSrc?: string }) {
   );
 }
 
+// ── 定价区块（套餐双卡：季度/年度，未登录点击先弹登录）──
+const PRICING_PLANS = [
+  { key: 'quarterly' as const, productType: 'quarterly_package' as const, popular: false },
+  { key: 'annual' as const, productType: 'annual_package' as const, popular: true },
+];
+
+function PricingSection() {
+  const { t } = useLocale();
+  const { isAuthenticated } = useAuthStore();
+  const { openAuthModal } = useAuthModalStore();
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [defaultType, setDefaultType] = useState<
+    'quarterly_package' | 'annual_package'
+  >('annual_package');
+
+  const handleCta = (productType: 'quarterly_package' | 'annual_package') => {
+    if (!isAuthenticated) {
+      // 未登录：先弹登录，登录后回到落地页
+      openAuthModal('/');
+      return;
+    }
+    setDefaultType(productType);
+    setPurchaseOpen(true);
+  };
+
+  return (
+    <section className="relative z-10 max-w-4xl mx-auto px-5 py-20">
+      <div className="text-center mb-12">
+        <motion.h2
+          initial={false}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          className="text-5xl font-semibold mb-4 tracking-[0.05em]"
+          style={{ color: 'var(--bd-fg)' }}
+        >
+          {t('home.pricing.title')}
+        </motion.h2>
+        <motion.p
+          initial={false}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          className="text-xl font-light"
+          style={{ color: 'var(--bd-fg-muted)' }}
+        >
+          {t('home.pricing.subtitle')}
+        </motion.p>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
+        {PRICING_PLANS.map((plan) => {
+          const featureKeys = ['f1', 'f2', 'f3', 'f4']
+            .map((f) => `home.pricing.${plan.key}.${f}`)
+            .filter((k) => t(k) !== k);
+          return (
+            <motion.div
+              key={plan.key}
+              initial={false}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, ease: [0.165, 0.84, 0.44, 1] }}
+              className={`relative bg-white/60 dark:bg-white/10 backdrop-blur-[24px] rounded-3xl p-8 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.03)] ${
+                plan.popular
+                  ? 'border-2 border-amber-400/80 dark:border-amber-400/60'
+                  : 'border border-white/90 dark:border-white/20'
+              }`}
+            >
+              {plan.popular && (
+                <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-white shadow-sm">
+                  {t('home.pricing.popular')}
+                </span>
+              )}
+              <h3 className="text-xl font-medium mb-2" style={{ color: 'var(--bd-fg)' }}>
+                {t(`home.pricing.${plan.key}.name`)}
+              </h3>
+              <div className="flex items-baseline gap-2 mb-6">
+                <span className="text-4xl font-bold" style={{ color: 'var(--bd-fg)' }}>
+                  {t(`home.pricing.${plan.key}.price`)}
+                </span>
+                <span className="text-sm" style={{ color: 'var(--bd-fg-muted)' }}>
+                  {t(`home.pricing.${plan.key}.period`)}
+                </span>
+              </div>
+              <ul className="space-y-2.5 mb-8">
+                {featureKeys.map((key) => (
+                  <li key={key} className="flex items-center gap-2.5 text-sm" style={{ color: 'var(--bd-fg-muted)' }}>
+                    <Check className="h-4 w-4 shrink-0 text-emerald-500" strokeWidth={2.5} />
+                    {t(key)}
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                onClick={() => handleCta(plan.productType)}
+                className={`bd-btn-hero w-full py-3.5 rounded-2xl font-semibold text-base ${
+                  plan.popular ? 'text-white' : ''
+                }`}
+                style={
+                  plan.popular
+                    ? { background: '#1d1d1f' }
+                    : {
+                        background: 'transparent',
+                        color: 'var(--bd-fg)',
+                        border: '1px solid var(--bd-fg-muted)',
+                      }
+                }
+              >
+                {t(`home.pricing.${plan.key}.cta`)}
+              </button>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      <PurchaseModal
+        open={purchaseOpen}
+        onClose={() => setPurchaseOpen(false)}
+        defaultProductType={defaultType}
+      />
+    </section>
+  );
+}
+
 // ── 页脚 ──────────────────────────────────────────────────
 function LandingFooter() {
   const { t } = useLocale();
@@ -514,7 +639,10 @@ export default function LandingPage() {
       {/* ④ 他们的故事：3×3 平铺 */}
       <TestimonialGrid videoSrc={STORIES_VIDEO_SRC || undefined} />
 
-      {/* ⑤ 页脚 */}
+      {/* ⑤ 定价 */}
+      <PricingSection />
+
+      {/* ⑥ 页脚 */}
       <LandingFooter />
     </div>
     </div>

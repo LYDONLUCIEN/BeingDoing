@@ -33,6 +33,10 @@ class User(Base):
     )
     last_login_at = Column(DateTime, nullable=True)
 
+    # 会员缓存字段（P3 订阅变更时维护；none/monthly/lifetime）
+    membership_plan = Column(String(16), default="none", nullable=False)
+    membership_expires_at = Column(DateTime, nullable=True)
+
     # 关系
     profile = relationship(
         "UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan"

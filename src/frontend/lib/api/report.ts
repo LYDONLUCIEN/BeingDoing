@@ -39,6 +39,34 @@ export async function getMyReportId(activationCode: string): Promise<string | nu
   return (res.data as any)?.report_id ?? null;
 }
 
+export type ReportReviewStatus = 'pending_review' | 'approved';
+
+export interface MyReportInfo {
+  report_id: string | null;
+  /** 审核状态；存量报告无该字段，视为 approved（祖父豁免） */
+  review_status: ReportReviewStatus | null;
+  /** 审核截止时间（ISO 字符串），仅 pending_review 时可能返回 */
+  review_deadline: string | null;
+}
+
+/**
+ * 用户端：通过激活码获取报告信息（含审核状态）。
+ * 契约：审核中时返回 review_status="pending_review" + review_deadline（不含报告内容）；
+ * 已批准时 review_status="approved" + 原报告内容。
+ */
+export async function getMyReportInfo(activationCode: string): Promise<MyReportInfo> {
+  const res = await apiClient.raw.get('/export/my-report-id', {
+    params: { activation_code: activationCode },
+  });
+  const body = res.data as any;
+  const data = body?.data ?? body;
+  return {
+    report_id: data?.report_id ?? null,
+    review_status: data?.review_status ?? null,
+    review_deadline: data?.review_deadline ?? null,
+  };
+}
+
 /**
  * 触发 PDF 报告生成。
  * 返回 status: 'generating' | 'ready'
