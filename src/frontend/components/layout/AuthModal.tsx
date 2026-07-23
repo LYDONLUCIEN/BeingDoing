@@ -9,14 +9,20 @@ import { authApi } from '@/lib/api/auth';
 import { getApiErrorMessage } from '@/lib/api/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useRouter, usePathname } from 'next/navigation';
+import AgreeTermsCheckbox from '@/components/legal/AgreeTermsCheckbox';
+import { useLegalConsentPersistence } from '@/hooks/useLegalConsent';
 
 const loginSchema = z.object({
   email: z.string().email().optional().or(z.literal('')),
   phone: z.string().optional(),
   password: z.string().min(6, '密码至少6位'),
+  agreeTerms: z.boolean(),
 }).refine((data) => data.email || data.phone, {
   message: '邮箱或手机号至少提供一个',
   path: ['email'],
+}).refine((data) => data.agreeTerms === true, {
+  message: '请阅读并同意协议后继续',
+  path: ['agreeTerms'],
 });
 
 const registerSchema = z.object({
@@ -25,12 +31,16 @@ const registerSchema = z.object({
   username: z.string().optional(),
   password: z.string().min(6, '密码至少6位'),
   confirmPassword: z.string(),
+  agreeTerms: z.boolean(),
 }).refine((data) => data.email || data.phone, {
   message: '邮箱或手机号至少提供一个',
   path: ['email'],
 }).refine((data) => data.password === data.confirmPassword, {
   message: '两次输入的密码不一致',
   path: ['confirmPassword'],
+}).refine((data) => data.agreeTerms === true, {
+  message: '请阅读并同意协议后继续',
+  path: ['agreeTerms'],
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
@@ -56,7 +66,14 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
   const pathname = usePathname();
 
   const loginForm = useForm<LoginFormData>({ resolver: zodResolver(loginSchema) });
-  const registerForm = useForm<RegisterFormData>({ resolver: zodResolver(registerSchema) });
+  const registerForm = useForm<RegisterFormData>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: { agreeTerms: false } as Partial<RegisterFormData>,
+  });
+
+  // 勾选状态记忆：上次勾过则自动预勾选，变更时实时记忆
+  useLegalConsentPersistence(loginForm.watch, loginForm.setValue);
+  useLegalConsentPersistence(registerForm.watch, registerForm.setValue);
 
   const [successMsg, setSuccessMsg] = useState('');
   useEffect(() => {
@@ -97,6 +114,25 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
       });
       const resData = response?.data;
       if (response?.code === 200 && resData?.token) {
+        // 已注销账户：保存受限 token 后跳转恢复页（受限 token 无法调用 /auth/me，直接用登录响应数据）
+        if (resData.account_status === 'deleted') {
+          setToken(resData.token);
+          setUser({
+            user_id: resData.user_id,
+            email: resData.email,
+            phone: resData.phone,
+            username: resData.username,
+            is_super_admin: false,
+            email_verified: resData.email_verified,
+          });
+          setSuccessMsg('账户已注销，请完成邮箱验证以恢复');
+          setTimeout(() => {
+            setLoading(false);
+            onClose();
+            router.push('/account-recovery');
+          }, 400);
+          return;
+        }
         try {
           const me = await authApi.getCurrentUser();
           const userData = me?.data || resData;
@@ -332,6 +368,12 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
                 <input {...loginForm.register('password')} type="password" id="login-password" className={inputClass} placeholder="至少6位" />
                 {loginForm.formState.errors.password && <p className={errorClass}>{loginForm.formState.errors.password.message}</p>}
               </div>
+              {/* 隐私政策 & 服务条款勾选（登录也需同意，勾选状态本地记忆） */}
+              <AgreeTermsCheckbox
+                inputProps={loginForm.register('agreeTerms')}
+                error={loginForm.formState.errors.agreeTerms?.message}
+                errorClassName={errorClass}
+              />
               <button
                 type="submit"
                 disabled={loading}
@@ -452,6 +494,12 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
                 <input {...registerForm.register('confirmPassword')} type="password" id="register-confirmPassword" className={inputClass} placeholder="再次输入密码" />
                 {registerForm.formState.errors.confirmPassword && <p className={errorClass}>{registerForm.formState.errors.confirmPassword.message}</p>}
               </div>
+              {/* 隐私政策 & 服务条款勾选（勾选状态本地记忆） */}
+              <AgreeTermsCheckbox
+                inputProps={registerForm.register('agreeTerms')}
+                error={registerForm.formState.errors.agreeTerms?.message}
+                errorClassName={errorClass}
+              />
               <button
                 type="submit"
                 disabled={loading}

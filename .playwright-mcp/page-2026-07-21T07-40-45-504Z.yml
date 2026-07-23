@@ -1,0 +1,171 @@
+- generic [active] [ref=f1e1]:
+  - generic [ref=f1e2]:
+    - navigation [ref=f1e3]:
+      - generic [ref=f1e4]:
+        - link "寻路" [ref=f1e6] [cursor=pointer]:
+          - /url: /
+        - generic [ref=f1e7]:
+          - link "首页" [ref=f1e8] [cursor=pointer]:
+            - /url: /
+          - link "开始探索" [ref=f1e9] [cursor=pointer]:
+            - /url: /explore/intro
+          - link "社区" [ref=f1e10] [cursor=pointer]:
+            - /url: /community
+        - generic [ref=f1e11]:
+          - combobox [ref=f1e12] [cursor=pointer]:
+            - option "中文" [selected]
+            - option "EN"
+          - button "登录 / 注册" [ref=f1e13] [cursor=pointer]
+    - main [ref=f1e14]:
+      - generic [ref=f1e17]:
+        - generic [ref=f1e18]:
+          - heading "寻路" [level=1] [ref=f1e19]
+          - paragraph [ref=f1e20]: 所有热爱,都值得成为事业。
+          - button "开始探索 →" [ref=f1e22] [cursor=pointer]:
+            - text: 开始探索
+            - generic [ref=f1e23]: →
+        - generic [ref=f1e24]:
+          - generic [ref=f1e25]:
+            - generic [ref=f1e26]:
+              - paragraph [ref=f1e27]: 第一步
+              - heading "明确你的价值观" [level=3] [ref=f1e28]
+              - paragraph [ref=f1e29]: 找出对你最重要的核心价值观。了解过去工作不满的根源，建立评估未来选择的正确标准。
+            - generic [ref=f1e30]:
+              - paragraph [ref=f1e31]: 第二步
+              - heading "发现你的优势" [level=3] [ref=f1e32]
+              - paragraph [ref=f1e33]: 揭示你独特的天赋和自然擅长的事情。看到让你有价值的独特优势。
+            - generic [ref=f1e34]:
+              - paragraph [ref=f1e35]: 第三步
+              - heading "找到你的热爱" [level=3] [ref=f1e36]
+              - paragraph [ref=f1e37]: 探索能给你带来活力的活动和话题。找到能够维持长期动力的热爱所在。
+            - generic [ref=f1e38]:
+              - paragraph [ref=f1e39]: 第四步
+              - heading "定义你的使命" [level=3] [ref=f1e40]
+              - paragraph [ref=f1e41]: 将未来的工作与更大的使命联系起来。明确你期望的工作能创造的社会价值或影响。
+          - generic [ref=f1e43]:
+            - heading "获取「四维共鸣」专属报告" [level=2] [ref=f1e44]
+            - paragraph [ref=f1e45]: 基于你的价值观、优势、热爱与使命，为你深度推演高度匹配的职业方向。
+            - button "你的方向 →" [ref=f1e46] [cursor=pointer]:
+              - text: 你的方向
+              - generic [ref=f1e47]: →
+        - generic [ref=f1e48]:
+          - generic [ref=f1e49]:
+            - generic [ref=f1e50]: 即将推出
+            - heading "下一版本" [level=2] [ref=f1e54]
+            - paragraph [ref=f1e55]: 激动人心的新功能，助力你的职业之旅
+          - generic [ref=f1e56]:
+            - generic [ref=f1e57]:
+              - heading "职业双轨" [level=3] [ref=f1e58]
+              - paragraph [ref=f1e59]: 职业不是人生的全部，但可以是人生最重要的表达。我们正在构建一套工具，帮你同时规划职业成就路径与人生意义路径。
+            - generic [ref=f1e60]:
+              - heading "光谱共振" [level=3] [ref=f1e61]
+              - paragraph [ref=f1e62]: 匹配与你四个维度相似或互补的伙伴，在共振中看见彼此、共创可能。
+            - generic [ref=f1e63]:
+              - heading "静室之我" [level=3] [ref=f1e64]
+              - paragraph [ref=f1e65]: 属于你自己的读书与思考空间。可随时记录、可空闲沉淀，亦可匿名分享给有缘人。
+        - generic [ref=f1e66]:
+          - generic [ref=f1e67]:
+            - heading "用户评价" [level=2] [ref=f1e68]
+            - paragraph [ref=f1e69]: 加入数千名找到方向的用户
+          - generic [ref=f1e70]:
+            - generic [ref=f1e71]:
+              - generic [ref=f1e73]:
+                - generic [ref=f1e74]:
+                  - generic [ref=f1e75]:
+                    - generic [ref=f1e76]: 小
+                    - generic [ref=f1e77]:
+                      - generic [ref=f1e78]: 小林
+                      - generic [ref=f1e79]: 产品经理
+                  - generic "5 星" [ref=f1e80]
+                - paragraph [ref=f1e91]: 我第一次意识到，我一直在做别人期待的事，而不是我认为重要的事。这个过程让我看清了自己。
+              - generic [ref=f1e93]:
+                - generic [ref=f1e94]:
+                  - generic [ref=f1e95]:
+                    - generic [ref=f1e96]: M
+                    - generic [ref=f1e97]:
+                      - generic [ref=f1e98]: Maggie
+                      - generic [ref=f1e99]: 市场运营
+                  - generic "5 星" [ref=f1e100]
+                - paragraph [ref=f1e111]: 原来沟通协调这件事对我来说真的是优势，不是习惯。这个区分让我第一次觉得自己有竞争力。
+              - generic [ref=f1e113]:
+                - generic [ref=f1e114]:
+                  - generic [ref=f1e115]:
+                    - generic [ref=f1e116]: 阿
+                    - generic [ref=f1e117]:
+                      - generic [ref=f1e118]: 阿文
+                      - generic [ref=f1e119]: 应届生
+                  - generic "5 星" [ref=f1e120]
+                - paragraph [ref=f1e131]: 帮助别人成长这件事，让我忘我。我以为那只是爱好，没想到可以成为职业核心。
+            - button "下一页" [ref=f1e132] [cursor=pointer]
+          - generic [ref=f1e135]:
+            - button "第1页" [ref=f1e136] [cursor=pointer]
+            - button "第2页" [ref=f1e137] [cursor=pointer]
+            - button "第3页" [ref=f1e138] [cursor=pointer]
+        - generic [ref=f1e139]:
+          - generic [ref=f1e140]:
+            - heading "定价" [level=2] [ref=f1e141]
+            - paragraph [ref=f1e142]: 选择适合你的套餐，开启完整的自我探索之旅
+          - generic [ref=f1e143]:
+            - generic [ref=f1e144]:
+              - heading "免费版" [level=3] [ref=f1e145]
+              - generic [ref=f1e146]:
+                - generic [ref=f1e147]: 免费
+                - generic [ref=f1e148]: / 10轮对话
+              - list [ref=f1e149]:
+                - listitem [ref=f1e150]: 对话额度：10轮（基于价值观话题的交互式测评）
+                - listitem [ref=f1e153]: 报告生成：不提供完整报告，仅输出对话过程中的即时反馈摘要
+                - listitem [ref=f1e156]: 人工审核：不涉及
+                - listitem [ref=f1e159]: 适用说明：用于体验产品交互形式，了解测评的基本逻辑
+              - button "开始免费体验" [ref=f1e162] [cursor=pointer]
+            - generic [ref=f1e163]:
+              - heading "季度卡" [level=3] [ref=f1e164]
+              - generic [ref=f1e165]:
+                - generic [ref=f1e166]: ¥69
+                - generic [ref=f1e167]: / 3 个月
+              - list [ref=f1e168]:
+                - listitem [ref=f1e169]: 不限量对话
+                - listitem [ref=f1e172]: 全部 5 个探索阶段
+                - listitem [ref=f1e175]: 1 份专属报告 + 人工审核
+              - button "选择季度卡" [ref=f1e178] [cursor=pointer]
+            - generic [ref=f1e179]:
+              - generic [ref=f1e180]: 最受欢迎
+              - heading "年度卡" [level=3] [ref=f1e181]
+              - generic [ref=f1e182]:
+                - generic [ref=f1e183]: ¥99
+                - generic [ref=f1e184]: / 1 年
+              - list [ref=f1e185]:
+                - listitem [ref=f1e186]: 不限量对话 · 全部 5 阶段
+                - listitem [ref=f1e189]: 3 份专属报告 + 人工审核
+                - listitem [ref=f1e192]: 2 个赠品码，可送朋友
+                - listitem [ref=f1e195]: 团队分析
+              - button "选择年度卡" [ref=f1e198] [cursor=pointer]
+            - generic [ref=f1e199]:
+              - heading "报告解读咨询" [level=3] [ref=f1e200]
+              - generic [ref=f1e201]:
+                - generic [ref=f1e202]: ¥298
+                - generic [ref=f1e203]: / 次
+              - generic [ref=f1e204]:
+                - paragraph [ref=f1e205]: 服务形式：一对一线上沟通，时长约60分钟
+                - paragraph [ref=f1e206]: 前置条件：需至少持有一份已完成的有效报告（来自季度或年度套餐）
+                - generic [ref=f1e207]:
+                  - paragraph [ref=f1e208]: 服务内容：
+                  - list [ref=f1e209]:
+                    - listitem [ref=f1e210]: 对报告数据做业务场景化的引申解读
+                    - listitem [ref=f1e213]: 针对个人发展或团队管理中的具体问题，提供可执行的方向建议
+                    - listitem [ref=f1e216]: 可在沟通中处理特定冲突情境的第三方视角分析
+                - paragraph [ref=f1e219]: 适用场景：已有报告但数据解读存在困惑，或面临关键决策需结合外部专业意见时
+              - button "预约咨询" [ref=f1e220] [cursor=pointer]
+        - generic [ref=f1e222]:
+          - generic [ref=f1e223]:
+            - generic [ref=f1e224]:
+              - link "关于我们" [ref=f1e225] [cursor=pointer]:
+                - /url: /about
+              - link "联系我们" [ref=f1e226] [cursor=pointer]:
+                - /url: /contact
+              - button "隐私政策" [ref=f1e227] [cursor=pointer]
+              - button "服务条款" [ref=f1e228] [cursor=pointer]
+            - generic [ref=f1e229]:
+              - generic [ref=f1e230]: QR
+              - generic [ref=f1e231]: 二维码
+          - paragraph [ref=f1e232]: © 2026 寻路. 保留所有权利。
+  - alert [ref=f1e233]

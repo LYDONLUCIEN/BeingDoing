@@ -66,6 +66,16 @@ class EmailVerifyRequest(BaseModel):
     email: EmailStr
 
 
+class AccountDeleteRequest(BaseModel):
+    """账户注销请求"""
+    confirm_text: str
+
+
+class AccountRecoveryConfirmRequest(BaseModel):
+    """账户恢复确认请求"""
+    code: str
+
+
 class AuthResponse(BaseModel):
     """认证响应"""
     code: int = 200
@@ -150,6 +160,31 @@ async def get_current_user_optional(token: Optional[str] = Depends(get_token_fro
     if not token:
         return None
     user = await AuthService.get_current_user(token)
+    return user
+
+
+async def get_deleted_current_user(
+    token: Optional[str] = Depends(get_token_from_header),
+) -> dict:
+    """
+    获取已注销当前用户（依赖注入，仅账户恢复端点使用）
+
+    校验注销恢复受限 token（payload type == "deleted_recovery"）、
+    用户存在且 deleted_at 非空，否则 401。
+    """
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="未提供认证Token"
+        )
+
+    user = await AuthService.get_deleted_current_user(token)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token无效或账户非注销状态"
+        )
+
     return user
 
 
@@ -370,6 +405,103 @@ async def get_me(current_user: dict = Depends(get_current_user)):
     """
     data = {**current_user, "is_super_admin": _is_super_admin(current_user)}
     return AuthResponse(code=200, message="success", data=data)
+
+
+# ===================== 账户注销 / 恢复 =====================
+
+
+@router.post("/account/delete", response_model=AuthResponse)
+async def delete_account(
+    request: AccountDeleteRequest,
+    response: Response,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    注销当前账户：确认文字校验 → 超管拦截 → 关 pending 订单 →
+    置注销标记 + 撤销 refresh token + 审计（retention==0 时立即物理清除）。
+    """
+    if (request.confirm_text or "").strip() != "注销我的账户":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="确认文字不正确"
+        )
+    if _is_super_admin(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="超级管理员账户不能注销"
+        )
+
+    user_id = current_user["user_id"]
+
+    # 关掉该用户全部 pending 订单（失败只记日志，不阻断注销）
+    try:
+        from app.services.payment_service import PaymentService
+
+        await PaymentService.close_pending_orders_for_user(user_id)
+    except Exception:
+        logger.exception("注销前关闭 pending 订单失败: user_id=%s", user_id)
+
+    from app.services.account_deletion_service import AccountDeletionService
+
+    try:
+        purge_after = await AccountDeletionService.request_deletion(user_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+    _clear_refresh_cookie(response)
+    return AuthResponse(
+        code=200,
+        message="注销成功",
+        data={"purge_after": purge_after.isoformat() if purge_after else None}
+    )
+
+
+@router.post("/account/recovery/code", response_model=AuthResponse)
+async def request_account_recovery_code(
+    current_user: dict = Depends(get_deleted_current_user),
+):
+    """发送账号恢复验证码到该用户邮箱（6 位数字，5 分钟有效，60 秒冷却）"""
+    try:
+        await AuthService.request_account_recovery_code(current_user["user_id"])
+        return AuthResponse(
+            code=200,
+            message="验证码已发送到该账号的注册邮箱（5分钟有效，60秒内不可重复发送）",
+            data={}
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.post("/account/recovery/confirm", response_model=AuthResponse)
+async def confirm_account_recovery(
+    request: AccountRecoveryConfirmRequest,
+    response: Response,
+    current_user: dict = Depends(get_deleted_current_user),
+):
+    """校验恢复验证码并恢复账户，签发正式 token 对"""
+    try:
+        result = await AuthService.confirm_account_recovery(
+            current_user["user_id"], request.code
+        )
+        refresh_token = (result or {}).pop("refresh_token", None)
+        if refresh_token:
+            _set_refresh_cookie(response, refresh_token)
+        return AuthResponse(
+            code=200,
+            message="账户恢复成功",
+            data=result
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
 
 
 @router.post("/refresh", response_model=AuthResponse)

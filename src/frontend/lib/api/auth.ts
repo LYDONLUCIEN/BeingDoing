@@ -21,7 +21,15 @@ export interface AuthResponse {
   token: string;
   expires_in: number;
   email_verified?: boolean;
+  /** 已注销账户登录时为 "deleted"，此时 token 为受限 token（仅可调用账户恢复端点） */
+  account_status?: string;
 }
+
+export interface DeleteAccountResponse {
+  /** 数据永久删除时间（ISO 格式），在此之前登录可恢复账户 */
+  purge_after: string;
+}
+
 
 export interface PasswordResetCodeRequest {
   email: string;
@@ -73,5 +81,30 @@ export const authApi = {
 
   logout: async (): Promise<ApiResponse<{ logged_out: boolean }>> => {
     return apiClient.post('/auth/logout', {});
+  },
+
+  /** 注销账户（需登录）。confirmText 必须为「注销我的账户」 */
+  deleteAccount: async (confirmText: string): Promise<ApiResponse<DeleteAccountResponse>> => {
+    return apiClient.post('/auth/account/delete', { confirm_text: confirmText });
+  },
+
+  /** 发送账户恢复邮箱验证码（需受限 token） */
+  sendAccountRecoveryCode: async (): Promise<ApiResponse<void>> => {
+    return apiClient.post('/auth/account/recovery/code', {});
+  },
+
+  /** 校验验证码并恢复账户（需受限 token），成功返回正式 token（refresh 经 cookie 下发，与登录一致） */
+  confirmAccountRecovery: async (
+    code: string
+  ): Promise<ApiResponse<AuthResponse>> => {
+    const response = await apiClient.post<AuthResponse>(
+      '/auth/account/recovery/confirm',
+      { code }
+    );
+    const token = response.data?.token;
+    if (token) {
+      apiClient.setToken(token);
+    }
+    return response;
   },
 };

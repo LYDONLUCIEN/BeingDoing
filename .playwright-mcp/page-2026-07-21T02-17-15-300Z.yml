@@ -1,0 +1,30 @@
+- generic [active] [ref=f2e1]:
+  - generic [ref=f2e3]:
+    - heading "找到想做的事" [level=1] [ref=f2e4]
+    - heading "登录" [level=2] [ref=f2e5]
+    - generic [ref=f2e6]:
+      - generic [ref=f2e7]:
+        - generic [ref=f2e8]: 邮箱
+        - textbox "邮箱" [ref=f2e9]:
+          - /placeholder: your@email.com
+      - generic [ref=f2e10]:
+        - generic [ref=f2e11]: 手机号（可选）
+        - textbox "手机号（可选）" [ref=f2e12]:
+          - /placeholder: "13800138000"
+      - generic [ref=f2e13]:
+        - generic [ref=f2e14]: 密码
+        - textbox "密码" [ref=f2e15]:
+          - /placeholder: ••••••
+      - generic [ref=f2e17] [cursor=pointer]:
+        - checkbox "我已阅读并同意 隐私政策 和 服务条款" [ref=f2e18]
+        - generic [ref=f2e19]:
+          - text: 我已阅读并同意
+          - button "隐私政策" [ref=f2e20]
+          - text: 和
+          - button "服务条款" [ref=f2e21]
+      - button "登录" [ref=f2e22] [cursor=pointer]
+    - paragraph [ref=f2e24]:
+      - text: 还没有账号？
+      - link "立即注册" [ref=f2e25] [cursor=pointer]:
+        - /url: /auth/register
+  - alert [ref=f2e26]

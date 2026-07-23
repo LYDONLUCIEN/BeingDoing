@@ -846,6 +846,48 @@ class PaymentService:
             logger.info("关闭超时订单 %d 笔", closed)
         return closed
 
+    @classmethod
+    async def close_pending_orders_for_user(cls, user_id: str) -> int:
+        """关闭某用户全部 pending 订单（账户注销时调用）
+
+        复用超时关单逻辑：尝试渠道关单（失败仅记日志）→ 释放券 → status closed。
+        单订单异常不影响其余订单。
+
+        Returns:
+            关闭的订单数
+        """
+        closed = 0
+        async with AsyncSessionLocal() as db:
+            rows = (
+                (
+                    await db.execute(
+                        select(PaymentOrder).where(
+                            PaymentOrder.user_id == user_id,
+                            PaymentOrder.status == "pending",
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for order in rows:
+                try:
+                    await cls._close_channel_order(order)
+                    coupon_id = order.coupon_id
+                    order.status = "closed"
+                    order.closed_at = _utcnow()
+                    await db.commit()
+                    closed += 1
+                    await cls._release_coupon_safe(coupon_id)
+                except Exception as e:
+                    await db.rollback()
+                    logger.error(
+                        "注销关单失败：order_no=%s err=%s", order.order_no, e
+                    )
+        if closed:
+            logger.info("账户注销关闭 pending 订单 %d 笔：user_id=%s", closed, user_id)
+        return closed
+
     @staticmethod
     async def _close_channel_order(order: PaymentOrder) -> None:
         """尝试渠道关单（仅对已向渠道预下单的订单；失败仅记日志不阻断）"""

@@ -123,23 +123,49 @@ async def _recycle_cleanup_loop():
         await asyncio.sleep(12 * 60 * 60)
 
 
+_account_purge_task: asyncio.Task | None = None
+
+
+async def _account_purge_loop():
+    """
+    账户注销到期清除循环：
+    启动时先跑一次，之后每小时扫描一次 deleted_at 到期用户并物理清除。
+    """
+    while True:
+        try:
+            from app.services.account_deletion_service import AccountDeletionService
+
+            purged = await AccountDeletionService.purge_expired_accounts()
+            if purged:
+                logging.getLogger(__name__).info(
+                    "account deletion auto-purge removed %d accounts", purged
+                )
+        except Exception as e:
+            logging.getLogger(__name__).exception("account deletion auto-purge failed: %s", e)
+        await asyncio.sleep(3600)
+
+
 @app.on_event("startup")
 async def _start_background_tasks():
-    global _recycle_cleanup_task
+    global _recycle_cleanup_task, _account_purge_task
     if _recycle_cleanup_task is None or _recycle_cleanup_task.done():
         _recycle_cleanup_task = asyncio.create_task(_recycle_cleanup_loop())
+    if _account_purge_task is None or _account_purge_task.done():
+        _account_purge_task = asyncio.create_task(_account_purge_loop())
 
 
 @app.on_event("shutdown")
 async def _stop_background_tasks():
-    global _recycle_cleanup_task
-    if _recycle_cleanup_task and not _recycle_cleanup_task.done():
-        _recycle_cleanup_task.cancel()
-        try:
-            await _recycle_cleanup_task
-        except asyncio.CancelledError:
-            pass
+    global _recycle_cleanup_task, _account_purge_task
+    for task in (_recycle_cleanup_task, _account_purge_task):
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
     _recycle_cleanup_task = None
+    _account_purge_task = None
 
 
 async def _run_profile_backfill_task():
@@ -238,8 +264,12 @@ def _start_bounce_scheduler() -> None:
         from app.services.feedback_orphan_cleanup import cleanup_orphan_attachments
 
         sched = AsyncIOScheduler(timezone="Asia/Shanghai")
+        # 注意：AsyncIOScheduler 只会在事件循环里直接调度「协程函数」，
+        # 普通 callable（如 lambda）会被丢到线程池执行，那里没有 running loop，
+        # lambda 里再 asyncio.create_task 会 RuntimeError: no running event loop。
+        # 因此这里一律直接传协程函数本身。
         sched.add_job(
-            lambda: asyncio.create_task(BounceScanner.scan_once()),
+            BounceScanner.scan_once,
             CronTrigger.from_crontab(settings.BOUNCE_SCAN_CRON),
             id="bounce_scan",
             replace_existing=True,
@@ -249,7 +279,7 @@ def _start_bounce_scheduler() -> None:
         )
         # 反馈附件孤儿清理（每日 04:00，单独 cron）
         sched.add_job(
-            lambda: asyncio.create_task(cleanup_orphan_attachments()),
+            cleanup_orphan_attachments,
             CronTrigger.from_crontab(settings.FEEDBACK_ORPHAN_CLEANUP_CRON),
             id="feedback_orphan_cleanup",
             replace_existing=True,
@@ -268,7 +298,7 @@ def _start_bounce_scheduler() -> None:
                 logging.getLogger(__name__).error("close timeout orders job failed: %s", job_err)
 
         sched.add_job(
-            lambda: asyncio.create_task(_close_timeout_orders_safe()),
+            _close_timeout_orders_safe,
             IntervalTrigger(minutes=5),
             id="payment_close_timeout_orders",
             replace_existing=True,
@@ -289,7 +319,7 @@ def _start_bounce_scheduler() -> None:
                 )
 
         sched.add_job(
-            lambda: asyncio.create_task(_auto_approve_reports_safe()),
+            _auto_approve_reports_safe,
             IntervalTrigger(minutes=REVIEW_SCAN_INTERVAL_MINUTES),
             id="report_review_auto_approve",
             replace_existing=True,

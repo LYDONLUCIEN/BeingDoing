@@ -117,6 +117,7 @@ ACTIVATION_CODE_PRICE=9900        # 旧 SKU 价（历史订单展示用）
 ACTIVATION_CODE_TTL_DAYS=180      # 旧 SKU 有效期（历史用）
 DEFAULT_COUPON_AMOUNT=5000        # 券池空时邮件发券自动创建的面额（分）
 ORDER_TIMEOUT_MINUTES=30          # pending 订单超时关单（分钟）
+ACCOUNT_DELETION_RETENTION_DAYS=30  # 账户注销冷存天数（float，0=立即删除）
 MEMBERSHIP_ENABLED=False          # 会员（保留不上线，ADR-0006/0007）
 WECHAT_MCH_ID=                    # 微信支付 V3（P2b 预留，空值占位）
 ALIPAY_APP_ID=                    # 支付宝（空值时支付接口转 503，部署可先于密钥到位）

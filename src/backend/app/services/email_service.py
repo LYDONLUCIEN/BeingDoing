@@ -26,6 +26,20 @@ class EmailService:
         await EmailService.send_email(to_email=to_email, subject=subject, body_text=body)
 
     @staticmethod
+    async def send_account_recovery_code(
+        to_email: str, code: str, valid_minutes: int = 5
+    ) -> None:
+        subject = "【寻路】账号恢复验证码"
+        body = (
+            f"您好，\n\n"
+            f"您正在恢复已注销的寻路账号。\n"
+            f"本次验证码为：{code}\n"
+            f"有效期：{valid_minutes} 分钟。\n\n"
+            f"如果这不是您的操作，请忽略本邮件。\n"
+        )
+        await EmailService.send_email(to_email=to_email, subject=subject, body_text=body)
+
+    @staticmethod
     async def send_email_verification(to_email: str, token: str) -> None:
         base_url = settings.FRONTEND_URL.rstrip("/")
         link = f"{base_url}/verify-email?token={token}"

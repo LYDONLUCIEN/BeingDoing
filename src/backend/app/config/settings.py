@@ -137,6 +137,8 @@ class Settings(BaseSettings):
     ORDER_TIMEOUT_MINUTES: int = 30
     # 会员（P3 预留，本期不开放）
     MEMBERSHIP_ENABLED: bool = False
+    # 账户注销：冷存保留天数（float，支持 0.01 这种小数值；0=注销时立即物理清除）
+    ACCOUNT_DELETION_RETENTION_DAYS: float = 30.0
     MEMBERSHIP_MONTHLY_PRICE: int = 1500  # 15 元
     MEMBERSHIP_LIFETIME_PRICE: int = 29900  # 299 元
     MEMBER_DISCOUNT_PERCENT: int = 85  # 8.5 折

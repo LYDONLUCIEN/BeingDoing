@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { authApi } from '@/lib/api/auth';
 import { useAuthStore } from '@/stores/authStore';
 import LegalDocLink from '@/components/legal/LegalDocLink';
+import { useLegalConsentPersistence } from '@/hooks/useLegalConsent';
 import Link from 'next/link';
 
 const registerSchema = z.object({
@@ -41,11 +42,16 @@ function RegisterForm() {
   const {
     register,
     handleSubmit,
+    watch,
+    setValue,
     formState: { errors },
   } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
     defaultValues: { agreeTerms: false } as Partial<RegisterFormData>,
   });
+
+  // 勾选状态记忆：上次勾过则自动预勾选，变更时实时记忆
+  useLegalConsentPersistence(watch, setValue);
 
   const onSubmit = async (data: RegisterFormData) => {
     setError('');

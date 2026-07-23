@@ -360,14 +360,24 @@ function TestimonialGrid({ videoSrc }: { videoSrc?: string }) {
   );
 }
 
-// ── 定价区块（套餐双卡：季度/年度，未登录点击先弹登录）──
-const PRICING_PLANS = [
-  { key: 'quarterly' as const, productType: 'quarterly_package' as const, popular: false },
-  { key: 'annual' as const, productType: 'annual_package' as const, popular: true },
+// ── 定价区块（四卡：免费版/季度/年度/报告解读咨询，未登录点击先弹登录）──
+type PricingPlan = {
+  key: 'free' | 'quarterly' | 'annual' | 'consult';
+  action: 'free' | 'purchase' | 'consult';
+  productType?: 'quarterly_package' | 'annual_package';
+  popular?: boolean;
+};
+
+const PRICING_PLANS: PricingPlan[] = [
+  { key: 'free', action: 'free' },
+  { key: 'quarterly', action: 'purchase', productType: 'quarterly_package' },
+  { key: 'annual', action: 'purchase', productType: 'annual_package', popular: true },
+  { key: 'consult', action: 'consult' },
 ];
 
 function PricingSection() {
   const { t } = useLocale();
+  const router = useRouter();
   const { isAuthenticated } = useAuthStore();
   const { openAuthModal } = useAuthModalStore();
   const [purchaseOpen, setPurchaseOpen] = useState(false);
@@ -375,18 +385,30 @@ function PricingSection() {
     'quarterly_package' | 'annual_package'
   >('annual_package');
 
-  const handleCta = (productType: 'quarterly_package' | 'annual_package') => {
+  const handleCta = (plan: PricingPlan) => {
     if (!isAuthenticated) {
       // 未登录：先弹登录，登录后回到落地页
       openAuthModal('/');
       return;
     }
-    setDefaultType(productType);
-    setPurchaseOpen(true);
+    if (plan.action === 'free') {
+      // 免费版：进入探索引导页（注册即送试用码）
+      router.push('/explore/intro');
+      return;
+    }
+    if (plan.action === 'consult') {
+      // 报告解读咨询：跳报告页现有咨询购买入口（不新增购买逻辑）
+      router.push('/explore/report/view');
+      return;
+    }
+    if (plan.productType) {
+      setDefaultType(plan.productType);
+      setPurchaseOpen(true);
+    }
   };
 
   return (
-    <section className="relative z-10 max-w-4xl mx-auto px-5 py-20">
+    <section className="relative z-10 max-w-7xl mx-auto px-5 py-20">
       <div className="text-center mb-12">
         <motion.h2
           initial={false}
@@ -408,7 +430,7 @@ function PricingSection() {
         </motion.p>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         {PRICING_PLANS.map((plan) => {
           const featureKeys = ['f1', 'f2', 'f3', 'f4']
             .map((f) => `home.pricing.${plan.key}.${f}`)
@@ -420,7 +442,7 @@ function PricingSection() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.5, ease: [0.165, 0.84, 0.44, 1] }}
-              className={`relative bg-white/60 dark:bg-white/10 backdrop-blur-[24px] rounded-3xl p-8 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.03)] ${
+              className={`relative flex flex-col bg-white/60 dark:bg-white/10 backdrop-blur-[24px] rounded-3xl p-8 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.03)] ${
                 plan.popular
                   ? 'border-2 border-amber-400/80 dark:border-amber-400/60'
                   : 'border border-white/90 dark:border-white/20'
@@ -444,16 +466,16 @@ function PricingSection() {
               </div>
               <ul className="space-y-2.5 mb-8">
                 {featureKeys.map((key) => (
-                  <li key={key} className="flex items-center gap-2.5 text-sm" style={{ color: 'var(--bd-fg-muted)' }}>
-                    <Check className="h-4 w-4 shrink-0 text-emerald-500" strokeWidth={2.5} />
+                  <li key={key} className="flex items-start gap-2.5 text-sm" style={{ color: 'var(--bd-fg-muted)' }}>
+                    <Check className="h-4 w-4 shrink-0 mt-0.5 text-emerald-500" strokeWidth={2.5} />
                     {t(key)}
                   </li>
                 ))}
               </ul>
               <button
                 type="button"
-                onClick={() => handleCta(plan.productType)}
-                className={`bd-btn-hero w-full py-3.5 rounded-2xl font-semibold text-base ${
+                onClick={() => handleCta(plan)}
+                className={`bd-btn-hero mt-auto w-full py-3.5 rounded-2xl font-semibold text-base ${
                   plan.popular ? 'text-white' : ''
                 }`}
                 style={

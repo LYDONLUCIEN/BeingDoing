@@ -14,7 +14,7 @@ import type { SurveyData } from '@/lib/survey/schema';
 export default function DashboardSettingsPage() {
   const { t } = useLocale();
   const router = useRouter();
-  const { user, setUser, isAuthenticated } = useAuthStore();
+  const { user, setUser, isAuthenticated, logout } = useAuthStore();
   const [nickname, setNickname] = useState(user?.username || user?.email || '');
   const [avatarPreview, setAvatarPreview] = useState<string | null>(user?.avatar_url || null);
   const [introData, setIntroData] = useState<Partial<SurveyData>>({});
@@ -29,6 +29,12 @@ export default function DashboardSettingsPage() {
   const [verifySending, setVerifySending] = useState(false);
   const [verifyCooldown, setVerifyCooldown] = useState(0);
   const verifyCooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // 账户注销 state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteWorking, setDeleteWorking] = useState(false);
+  const DELETE_CONFIRM_PHRASE = '注销我的账户';
 
   useEffect(() => {
     if (!toast) return;
@@ -104,6 +110,30 @@ export default function DashboardSettingsPage() {
       setVerifySending(false);
     }
   }, [user?.email, verifySending, verifyCooldown, t]);
+
+  const openDeleteDialog = () => {
+    setDeleteConfirmText('');
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteWorking || deleteConfirmText !== DELETE_CONFIRM_PHRASE) return;
+    setDeleteWorking(true);
+    try {
+      await authApi.deleteAccount(deleteConfirmText);
+      setDeleteDialogOpen(false);
+      setToast({ type: 'success', msg: '账户已注销，数据将保留 30 天，期间登录可恢复' });
+      // 短暂展示提示后清除登录态并跳转
+      setTimeout(() => {
+        logout();
+        router.push('/');
+      }, 800);
+    } catch (err: unknown) {
+      setToast({ type: 'error', msg: getApiErrorMessage(err, '注销失败，请稍后重试') });
+    } finally {
+      setDeleteWorking(false);
+    }
+  };
 
   const handleAvatarClick = () => {
     fileInputRef.current?.click();
@@ -251,6 +281,76 @@ export default function DashboardSettingsPage() {
           onSubmit={handleIntroSubmit}
         />
       </section>
+
+      {/* 危险区：注销账户 */}
+      <section className="rounded-2xl border border-rose-300/60 bg-bd-card/80 backdrop-blur-lg p-8 shadow-sm">
+        <h2 className="text-lg font-medium text-rose-600 mb-1">危险区</h2>
+        <p className="text-sm text-bd-muted mb-6">
+          注销后将无法使用任何功能；数据保留 30 天，期间登录可恢复；到期后数据永久删除，无法找回。
+        </p>
+        <button
+          type="button"
+          onClick={openDeleteDialog}
+          className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 transition-colors"
+        >
+          注销账户
+        </button>
+      </section>
+
+      {/* 注销账户二次确认弹窗 */}
+      {deleteDialogOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center px-5">
+          <button
+            type="button"
+            className="absolute inset-0 bg-stone-900/25 backdrop-blur-[2px]"
+            aria-label="关闭"
+            onClick={() => !deleteWorking && setDeleteDialogOpen(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal
+            className="relative w-full max-w-sm rounded-2xl border border-bd-border bg-bd-card px-6 py-5 shadow-xl space-y-4"
+          >
+            <h3 className="text-sm font-semibold text-rose-600">确认注销账户</h3>
+            <div className="space-y-1.5 text-xs text-bd-muted">
+              <p>注销后你将无法使用任何功能：</p>
+              <p>· 数据保留 30 天，期间登录可恢复账户；</p>
+              <p>· 到期后数据将被永久删除，无法找回。</p>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-xs text-bd-subtle">
+                请输入「{DELETE_CONFIRM_PHRASE}」以确认注销：
+              </p>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder={DELETE_CONFIRM_PHRASE}
+                disabled={deleteWorking}
+                className="w-full rounded-xl border border-bd-border bg-bd-overlay px-4 py-2.5 text-sm text-bd-fg placeholder:text-bd-subtle focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 outline-none transition-colors"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteDialogOpen(false)}
+                disabled={deleteWorking}
+                className="px-3 py-1.5 rounded-lg border border-bd-border text-bd-muted hover:text-bd-fg hover:bg-bd-overlay-md text-xs"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDeleteAccount()}
+                disabled={deleteWorking || deleteConfirmText !== DELETE_CONFIRM_PHRASE}
+                className="px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-medium disabled:opacity-50"
+              >
+                {deleteWorking ? '注销中…' : '确认注销'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast */}
       {toast && (

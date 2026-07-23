@@ -37,6 +37,10 @@ class User(Base):
     membership_plan = Column(String(16), default="none", nullable=False)
     membership_expires_at = Column(DateTime, nullable=True)
 
+    # 账户注销：注销时间与到期物理清除时间（NULL = 未注销）
+    deleted_at = Column(DateTime, nullable=True)
+    deletion_purge_after = Column(DateTime, nullable=True)
+
     # 关系
     profile = relationship(
         "UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan"

@@ -1,0 +1,171 @@
+- generic [active] [ref=f1e1]:
+  - generic [ref=f1e2]:
+    - navigation [ref=f1e3]:
+      - generic [ref=f1e4]:
+        - link "xunlu" [ref=f1e274] [cursor=pointer]:
+          - /url: /
+        - generic [ref=f1e7]:
+          - link "Home" [ref=f1e275] [cursor=pointer]:
+            - /url: /
+          - link "Explore" [ref=f1e276] [cursor=pointer]:
+            - /url: /explore/intro
+          - link "Community" [ref=f1e277] [cursor=pointer]:
+            - /url: /community
+        - generic [ref=f1e11]:
+          - combobox [ref=f1e12] [cursor=pointer]:
+            - option "中文"
+            - option "EN" [selected]
+          - button "Login / Register" [ref=f1e278] [cursor=pointer]
+    - main [ref=f1e14]:
+      - generic [ref=f1e17]:
+        - generic [ref=f1e18]:
+          - heading "xunlu" [level=1] [ref=f1e282]
+          - paragraph [ref=f1e20]: All interests deserve to be careers.
+          - button "Start Exploring →" [ref=f1e283] [cursor=pointer]:
+            - text: Start Exploring
+            - generic [ref=f1e23]: →
+        - generic [ref=f1e24]:
+          - generic [ref=f1e25]:
+            - generic [ref=f1e26]:
+              - paragraph [ref=f1e27]: Step 1
+              - heading "Clarify Your Values" [level=3] [ref=f1e284]
+              - paragraph [ref=f1e29]: Identify the core values that matter most to you. Understand the root of past job dissatisfaction and establish the right criteria to evaluate future choices.
+            - generic [ref=f1e30]:
+              - paragraph [ref=f1e31]: Step 2
+              - heading "Discover Your Strengths" [level=3] [ref=f1e285]
+              - paragraph [ref=f1e33]: Uncover your unique talents and what you naturally excel at. See the distinct advantages that make you valuable.
+            - generic [ref=f1e34]:
+              - paragraph [ref=f1e35]: Step 3
+              - heading "Find Your Interests" [level=3] [ref=f1e286]
+              - paragraph [ref=f1e37]: Explore the activities and topics that energize you. Identify interests that can sustain long-term motivation.
+            - generic [ref=f1e38]:
+              - paragraph [ref=f1e39]: Step 4
+              - heading "Define Your Purpose" [level=3] [ref=f1e287]
+              - paragraph [ref=f1e41]: Connect your future work to a larger mission. Identify the social value or impact your desired work can create.
+          - generic [ref=f1e43]:
+            - heading "Get Your「Four-Dimension Resonance」Report" [level=2] [ref=f1e288]
+            - paragraph [ref=f1e45]: Based on your values, strengths, interests and purpose,we derive your best-matched career direction.
+            - button "Your Direction →" [ref=f1e289] [cursor=pointer]:
+              - text: Your Direction
+              - generic [ref=f1e47]: →
+        - generic [ref=f1e48]:
+          - generic [ref=f1e49]:
+            - generic [ref=f1e50]: Coming Soon
+            - heading "Next Release" [level=2] [ref=f1e290]
+            - paragraph [ref=f1e55]: Exciting new features to enhance your journey
+          - generic [ref=f1e56]:
+            - generic [ref=f1e57]:
+              - heading "职业双轨" [level=3] [ref=f1e58]
+              - paragraph [ref=f1e59]: 职业不是人生的全部，但可以是人生最重要的表达。我们正在构建一套工具，帮你同时规划职业成就路径与人生意义路径。
+            - generic [ref=f1e60]:
+              - heading "光谱共振" [level=3] [ref=f1e61]
+              - paragraph [ref=f1e62]: 匹配与你四个维度相似或互补的伙伴，在共振中看见彼此、共创可能。
+            - generic [ref=f1e63]:
+              - heading "静室之我" [level=3] [ref=f1e64]
+              - paragraph [ref=f1e65]: 属于你自己的读书与思考空间。可随时记录、可空闲沉淀，亦可匿名分享给有缘人。
+        - generic [ref=f1e66]:
+          - generic [ref=f1e67]:
+            - heading "What Our Users Say" [level=2] [ref=f1e291]
+            - paragraph [ref=f1e69]: Join thousands who've found their path
+          - generic [ref=f1e70]:
+            - generic [ref=f1e71]:
+              - generic [ref=f1e73]:
+                - generic [ref=f1e74]:
+                  - generic [ref=f1e75]:
+                    - generic [ref=f1e76]: 小
+                    - generic [ref=f1e77]:
+                      - generic [ref=f1e78]: 小林
+                      - generic [ref=f1e79]: 产品经理
+                  - generic "5 星" [ref=f1e80]
+                - paragraph [ref=f1e91]: 我第一次意识到，我一直在做别人期待的事，而不是我认为重要的事。这个过程让我看清了自己。
+              - generic [ref=f1e93]:
+                - generic [ref=f1e94]:
+                  - generic [ref=f1e95]:
+                    - generic [ref=f1e96]: M
+                    - generic [ref=f1e97]:
+                      - generic [ref=f1e98]: Maggie
+                      - generic [ref=f1e99]: 市场运营
+                  - generic "5 星" [ref=f1e100]
+                - paragraph [ref=f1e111]: 原来沟通协调这件事对我来说真的是优势，不是习惯。这个区分让我第一次觉得自己有竞争力。
+              - generic [ref=f1e113]:
+                - generic [ref=f1e114]:
+                  - generic [ref=f1e115]:
+                    - generic [ref=f1e116]: 阿
+                    - generic [ref=f1e117]:
+                      - generic [ref=f1e118]: 阿文
+                      - generic [ref=f1e119]: 应届生
+                  - generic "5 星" [ref=f1e120]
+                - paragraph [ref=f1e131]: 帮助别人成长这件事，让我忘我。我以为那只是爱好，没想到可以成为职业核心。
+            - button "下一页" [ref=f1e132] [cursor=pointer]
+          - generic [ref=f1e135]:
+            - button "第1页" [ref=f1e136] [cursor=pointer]
+            - button "第2页" [ref=f1e137] [cursor=pointer]
+            - button "第3页" [ref=f1e138] [cursor=pointer]
+        - generic [ref=f1e139]:
+          - generic [ref=f1e140]:
+            - heading "Pricing" [level=2] [ref=f1e292]
+            - paragraph [ref=f1e142]: Choose a plan to unlock your full self-exploration journey
+          - generic [ref=f1e143]:
+            - generic [ref=f1e144]:
+              - heading "Free" [level=3] [ref=f1e293]
+              - generic [ref=f1e146]:
+                - generic [ref=f1e147]: Free
+                - generic [ref=f1e148]: / 10 rounds
+              - list [ref=f1e149]:
+                - listitem [ref=f1e150]: "Quota: 10 rounds of interactive assessment on values"
+                - listitem [ref=f1e153]: "Report: no full report, only instant feedback summaries during the conversation"
+                - listitem [ref=f1e156]: "Manual review: not included"
+                - listitem [ref=f1e159]: "Purpose: experience the product interaction and learn the basic logic of the assessment"
+              - button "Start Free Trial" [ref=f1e294] [cursor=pointer]
+            - generic [ref=f1e163]:
+              - heading "Quarterly" [level=3] [ref=f1e295]
+              - generic [ref=f1e165]:
+                - generic [ref=f1e166]: ¥69
+                - generic [ref=f1e167]: / 3 months
+              - list [ref=f1e168]:
+                - listitem [ref=f1e169]: Unlimited conversations
+                - listitem [ref=f1e172]: All 5 exploration phases
+                - listitem [ref=f1e175]: 1 personal report + manual review
+              - button "Choose Quarterly" [ref=f1e296] [cursor=pointer]
+            - generic [ref=f1e179]:
+              - generic [ref=f1e180]: Most Popular
+              - heading "Annual" [level=3] [ref=f1e297]
+              - generic [ref=f1e182]:
+                - generic [ref=f1e183]: ¥99
+                - generic [ref=f1e184]: / 1 year
+              - list [ref=f1e185]:
+                - listitem [ref=f1e186]: Unlimited conversations · all 5 phases
+                - listitem [ref=f1e189]: 3 personal reports + manual review
+                - listitem [ref=f1e192]: 2 gift codes for friends
+                - listitem [ref=f1e195]: Team analysis
+              - button "Choose Annual" [ref=f1e298] [cursor=pointer]
+            - generic [ref=f1e199]:
+              - heading "Report Consultation" [level=3] [ref=f1e299]
+              - generic [ref=f1e201]:
+                - generic [ref=f1e202]: ¥298
+                - generic [ref=f1e203]: / session
+              - generic [ref=f1e204]:
+                - paragraph [ref=f1e205]: "Format: one-on-one online session, about 60 minutes"
+                - paragraph [ref=f1e206]: "Prerequisite: at least one completed valid report (from a quarterly or annual plan)"
+                - generic [ref=f1e207]:
+                  - paragraph [ref=f1e208]: "What you get:"
+                  - list [ref=f1e209]:
+                    - listitem [ref=f1e210]: Scenario-based interpretation of your report data
+                    - listitem [ref=f1e213]: Actionable suggestions for specific issues in personal growth or team management
+                    - listitem [ref=f1e216]: Third-party perspective analysis for specific conflict situations
+                - paragraph [ref=f1e219]: "Best for: you have a report but find the data confusing, or you face a key decision and need external professional input"
+              - button "Book Consultation" [ref=f1e300] [cursor=pointer]
+        - generic [ref=f1e222]:
+          - generic [ref=f1e223]:
+            - generic [ref=f1e224]:
+              - link "About Us" [ref=f1e301] [cursor=pointer]:
+                - /url: /about
+              - link "Contact Us" [ref=f1e302] [cursor=pointer]:
+                - /url: /contact
+              - button "Privacy Policy" [ref=f1e303] [cursor=pointer]
+              - button "Terms of Service" [ref=f1e304] [cursor=pointer]
+            - generic [ref=f1e229]:
+              - generic [ref=f1e230]: QR
+              - generic [ref=f1e231]: QR Code
+          - paragraph [ref=f1e232]: © 2026 xunlu. All rights reserved.
+  - alert [ref=f1e233]

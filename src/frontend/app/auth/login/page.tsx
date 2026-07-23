@@ -7,15 +7,21 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { authApi } from '@/lib/api/auth';
 import { useAuthStore } from '@/stores/authStore';
+import AgreeTermsCheckbox from '@/components/legal/AgreeTermsCheckbox';
+import { useLegalConsentPersistence } from '@/hooks/useLegalConsent';
 import Link from 'next/link';
 
 const loginSchema = z.object({
   email: z.string().email().optional().or(z.literal('')),
   phone: z.string().optional(),
   password: z.string().min(6, '密码至少6位'),
+  agreeTerms: z.boolean(),
 }).refine((data) => data.email || data.phone, {
   message: '邮箱或手机号至少提供一个',
   path: ['email'],
+}).refine((data) => data.agreeTerms === true, {
+  message: '请阅读并同意协议后继续',
+  path: ['agreeTerms'],
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
@@ -31,10 +37,16 @@ function LoginForm() {
   const {
     register,
     handleSubmit,
+    watch,
+    setValue,
     formState: { errors },
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
+    defaultValues: { agreeTerms: false } as Partial<LoginFormData>,
   });
+
+  // 勾选状态记忆：上次勾过则自动预勾选，变更时实时记忆
+  useLegalConsentPersistence(watch, setValue);
 
   const onSubmit = async (data: LoginFormData) => {
     setError('');
@@ -48,6 +60,18 @@ function LoginForm() {
       });
 
       if (response.code === 200 && response.data) {
+        // 已注销账户：保存受限 token 后跳转恢复页（受限 token 无法调用 /auth/me，直接用登录响应数据）
+        if (response.data.account_status === 'deleted') {
+          setToken(response.data.token);
+          setUser({
+            user_id: response.data.user_id,
+            email: response.data.email,
+            phone: response.data.phone,
+            username: response.data.username,
+          });
+          router.push('/account-recovery');
+          return;
+        }
         try {
           const me = await authApi.getCurrentUser();
           const userData = me.data || response.data;
@@ -137,6 +161,14 @@ function LoginForm() {
               <p className="mt-1 text-sm text-red-600">{errors.password.message}</p>
             )}
           </div>
+
+          {/* 隐私政策 & 服务条款勾选（勾选状态本地记忆） */}
+          <AgreeTermsCheckbox
+            inputProps={register('agreeTerms')}
+            error={errors.agreeTerms?.message}
+            labelClassName="flex items-start gap-2 text-sm text-gray-700 cursor-pointer"
+            errorClassName="mt-1 text-sm text-red-600"
+          />
 
           <button
             type="submit"

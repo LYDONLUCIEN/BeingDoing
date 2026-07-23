@@ -36,6 +36,9 @@ REFRESH_TOKEN_SECRET_KEY = settings.REFRESH_TOKEN_SECRET_KEY or SECRET_KEY
 # key: email/phone, value: {"code": str, "expires_at": datetime, "sent_at": datetime}
 _password_reset_email_codes: Dict[str, Dict[str, any]] = {}
 _password_reset_phone_codes: Dict[str, Dict[str, any]] = {}
+# 账号恢复验证码（已注销账户恢复用，进程内内存存储，重启失效）
+# key: email, value: {"code": str, "expires_at": datetime, "sent_at": datetime}
+_account_recovery_codes: Dict[str, Dict[str, Any]] = {}
 _email_verify_cooldowns: Dict[str, datetime] = {}
 _refresh_schema_ready: bool = False
 
@@ -726,6 +729,25 @@ class AuthService:
                 raise ValueError("用户不存在")
 
             if not user.is_active:
+                # 已注销账户：验证密码后签发受限 token（仅供恢复流程，不签发 refresh token）
+                if getattr(user, "deleted_at", None):
+                    if not AuthService.verify_password(password, user.password_hash):
+                        raise ValueError("密码错误")
+                    restricted_token = _create_token(
+                        {"sub": user.id, "email": user.email, "phone": user.phone},
+                        expires_delta=timedelta(minutes=30),
+                        token_type="deleted_recovery",
+                    )
+                    return {
+                        "user_id": user.id,
+                        "email": user.email,
+                        "phone": user.phone,
+                        "username": user.username,
+                        "token": restricted_token,
+                        "expires_in": 30 * 60,
+                        "account_status": "deleted",
+                    }
+                # admin 禁用场景保持原报错
                 raise ValueError("用户已被禁用")
 
             # 验证密码
@@ -777,3 +799,148 @@ class AuthService:
                 "username": user.username,
                 "email_verified": getattr(user, "email_verified", True),
             }
+
+    @staticmethod
+    async def get_deleted_current_user(token: str) -> Optional[Dict]:
+        """
+        从注销恢复受限 Token 获取当前用户信息（仅恢复端点使用）
+
+        要求 payload type == "deleted_recovery"、用户存在且 deleted_at 非空。
+
+        Args:
+            token: 注销恢复受限 JWT Token
+
+        Returns:
+            用户信息字典，如果 Token 无效或账户非注销状态则返回 None
+        """
+        payload = AuthService.verify_token(token, expected_type="deleted_recovery")
+        if not payload:
+            return None
+
+        user_id = payload.get("sub")
+        if not user_id:
+            return None
+
+        async with AsyncSessionLocal() as db:
+            user_db = UserDB(db)
+            user = await user_db.get_user_by_id(user_id)
+
+            if not user or not getattr(user, "deleted_at", None):
+                return None
+
+            return {
+                "user_id": user.id,
+                "email": user.email,
+                "phone": user.phone,
+                "username": user.username,
+            }
+
+    # ===================== 账号恢复相关（已注销账户） =====================
+
+    @staticmethod
+    async def request_account_recovery_code(user_id: str) -> None:
+        """
+        发送账号恢复验证码到该用户邮箱（6 位数字，5 分钟有效，60 秒发送冷却）
+
+        Args:
+            user_id: 已注销用户 ID
+
+        Raises:
+            ValueError: 账户状态异常 / 未绑定邮箱 / 发送过于频繁
+        """
+        async with AsyncSessionLocal() as db:
+            user_db = UserDB(db)
+            user = await user_db.get_user_by_id(user_id)
+            if not user or not getattr(user, "deleted_at", None):
+                raise ValueError("账户状态异常")
+            email = _normalize_email(user.email)
+            if not email:
+                raise ValueError("该账户未绑定邮箱，无法通过邮箱恢复")
+
+        # 60 秒冷却期：避免连续轰炸发送
+        last = _account_recovery_codes.get(email)
+        if (
+            last
+            and last.get("sent_at")
+            and (datetime.now(timezone.utc) - last["sent_at"]).total_seconds() < 60
+        ):
+            raise ValueError("发送过于频繁，请 60 秒后再试")
+
+        # 生成 6 位数字验证码（最新发送覆盖旧验证码），发送成功后才写入
+        code = f"{random.randint(0, 999999):06d}"
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+        await EmailService.send_account_recovery_code(
+            to_email=email,
+            code=code,
+            valid_minutes=5,
+        )
+        _account_recovery_codes[email] = {
+            "code": code,
+            "expires_at": expires_at,
+            "sent_at": datetime.now(timezone.utc),
+        }
+
+    @staticmethod
+    async def confirm_account_recovery(user_id: str, code: str) -> Dict:
+        """
+        校验恢复验证码并恢复账户：清 deleted_at/deletion_purge_after、is_active=True，
+        写审计 recovered，签发正式 access + refresh token 对。
+
+        Args:
+            user_id: 已注销用户 ID
+            code: 6 位数字验证码
+
+        Returns:
+            恢复结果（含正式 token 对）
+
+        Raises:
+            ValueError: 验证码错误/过期，或账户状态异常
+        """
+        async with AsyncSessionLocal() as db:
+            user_db = UserDB(db)
+            user = await user_db.get_user_by_id(user_id)
+            if not user or not getattr(user, "deleted_at", None):
+                raise ValueError("账户状态异常")
+            email = _normalize_email(user.email)
+
+        record = _account_recovery_codes.get(email)
+        if not record:
+            raise ValueError("请先获取恢复验证码")
+
+        # 检查过期
+        if datetime.now(timezone.utc) > record["expires_at"]:
+            _account_recovery_codes.pop(email, None)
+            raise ValueError("验证码已过期，请重新获取")
+
+        # 检查验证码
+        if record["code"] != (code or "").strip():
+            raise ValueError("验证码错误")
+
+        # 一次性验证码，验证通过即消费
+        _account_recovery_codes.pop(email, None)
+
+        async with AsyncSessionLocal() as db:
+            user_db = UserDB(db)
+            await user_db.update_user(
+                user_id,
+                deleted_at=None,
+                deletion_purge_after=None,
+                is_active=True,
+            )
+            user = await user_db.get_user_by_id(user_id)
+            token_pair = await AuthService._issue_token_pair(user)
+
+        from app.services.account_deletion_service import (
+            EVENT_RECOVERED,
+            append_account_deletion_audit,
+        )
+
+        append_account_deletion_audit(EVENT_RECOVERED, user_id, email)
+
+        return {
+            "user_id": user.id,
+            "email": user.email,
+            "phone": user.phone,
+            "username": user.username,
+            **token_pair,
+        }

@@ -2209,6 +2209,12 @@ async def admin_list_users(
                     "email_verified": getattr(u, "email_verified", True),
                     "created_at": u.created_at.isoformat() if u.created_at else None,
                     "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
+                    "deleted_at": u.deleted_at.isoformat() if getattr(u, "deleted_at", None) else None,
+                    "deletion_purge_after": (
+                        u.deletion_purge_after.isoformat()
+                        if getattr(u, "deletion_purge_after", None)
+                        else None
+                    ),
                     "profile_completed": profile.profile_completed if profile else False,
                     "activation_count": len(activations),
                 }
@@ -2305,6 +2311,12 @@ async def admin_get_user_detail(
             "phone": user.phone,
             "username": user.username,
             "is_active": user.is_active,
+            "deleted_at": user.deleted_at.isoformat() if getattr(user, "deleted_at", None) else None,
+            "deletion_purge_after": (
+                user.deletion_purge_after.isoformat()
+                if getattr(user, "deletion_purge_after", None)
+                else None
+            ),
             "created_at": user.created_at.isoformat() if user.created_at else None,
             "updated_at": user.updated_at.isoformat() if user.updated_at else None,
             "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
