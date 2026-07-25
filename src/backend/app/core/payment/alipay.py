@@ -18,6 +18,7 @@ SDK 同步调用一律 asyncio.to_thread 包装。
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
@@ -55,6 +56,20 @@ def _yuan_to_fen(amount_yuan: str) -> int:
 def _read_key(path: str) -> str:
     """读取 PEM 密钥文件内容"""
     return Path(path).read_text(encoding="utf-8").strip()
+
+
+def _parse_response(response) -> Dict:
+    """解析 SDK execute 的响应
+
+    官方 alipay-sdk-python 的 execute() 验签后返回 JSON 字符串（非 dict），
+    统一在此转成 dict；解析失败视为渠道错误。
+    """
+    if isinstance(response, str):
+        try:
+            return json.loads(response)
+        except json.JSONDecodeError as e:
+            raise PaymentChannelError(f"支付宝响应解析失败：{e}（原始响应：{response[:200]}）")
+    return response or {}
 
 
 class AlipayChannel(PaymentChannel):
@@ -189,6 +204,7 @@ class AlipayChannel(PaymentChannel):
         logger.info("alipay query response: %s", response)
         if not response:
             raise PaymentChannelError("支付宝查单失败：空响应")
+        response = _parse_response(response)
 
         code = str(response.get("code"))
         sub_code = str(response.get("sub_code") or "")
@@ -236,6 +252,7 @@ class AlipayChannel(PaymentChannel):
         }
         response = await asyncio.to_thread(self._client.execute, request)
         logger.info("alipay refund response: %s", response)
+        response = _parse_response(response)
         if not response or str(response.get("code")) != "10000":
             sub_msg = (response or {}).get("sub_msg") or (response or {}).get("msg")
             raise PaymentChannelError(f"支付宝退款失败：{sub_msg or response}")
@@ -256,6 +273,7 @@ class AlipayChannel(PaymentChannel):
         request.biz_content = {"out_trade_no": order_no}
         response = await asyncio.to_thread(self._client.execute, request)
         logger.info("alipay close response: %s", response)
+        response = _parse_response(response)
         if not response or str(response.get("code")) != "10000":
             sub_msg = (response or {}).get("sub_msg") or (response or {}).get("msg")
             raise PaymentChannelError(f"支付宝关单失败：{sub_msg or response}")
