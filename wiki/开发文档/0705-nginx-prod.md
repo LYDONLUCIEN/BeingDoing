@@ -46,7 +46,9 @@ include /www/sites/xunlu/proxy/*.conf;
 server {
     listen 80 default_server;
     listen 443 ssl default_server;
-    server_name xunlu.soulhappylab.com;
+    # 双域名并存：soulhappylab.com 与 beyondego.me 同时可用
+    # 注意：SSL 证书需同时覆盖两个域名（可申请多域名 SAN 证书，或两张证书选其一指向）
+    server_name xunlu.soulhappylab.com xunlu.beyondego.me;
 
     index index.php index.html index.htm default.php default.htm default.html;
 
@@ -302,7 +304,9 @@ curl -sI -H "Cookie: bypass_maintenance=1" https://xunlu.soulhappylab.com | head
 ### 4. 管理员绕过（Console 执行）
 
 ```javascript
+// 按你当前访问的域名选一条
 document.cookie='bypass_maintenance=1;path=/;max-age=86400;domain=.soulhappylab.com'
+document.cookie='bypass_maintenance=1;path=/;max-age=86400;domain=.beyondego.me'
 ```
 
 刷新 → 应看到真实站点。
@@ -347,7 +351,7 @@ A: 检查 `if ($maintenance_on = 1) { return 503; }` 是否在 location 内部�
 A: 浏览器缓存。开无痕 + F12 → Network → Disable cache，或者直接用 curl 验证（curl 不缓存）。
 
 ### Q: 进入维护后我（管理员）也被拦截
-A: 浏览器 Console 执行 `document.cookie='bypass_maintenance=1;path=/;max-age=86400;domain=.soulhappylab.com'`，刷新即可。
+A: 浏览器 Console 执行 `document.cookie='bypass_maintenance=1;path=/;max-age=86400;domain=.soulhappylab.com'`（beyondego 域名访问时改用 `domain=.beyondego.me`），刷新即可。
 
 ---
 
@@ -355,7 +359,7 @@ A: 浏览器 Console 执行 `document.cookie='bypass_maintenance=1;path=/;max-ag
 
 | 维度 | career (dev) | xunlu (prod) |
 |------|--------------|--------------|
-| server_name | soulhappylab.com / www / career | xunlu.soulhappylab.com |
+| server_name | soulhappylab.com / www / career + career.beyondego.me | xunlu.soulhappylab.com + xunlu.beyondego.me |
 | 站点目录 | `/www/sites/zhiyinapp/` | `/www/sites/xunlu/` |
 | 维护 flag | `/www/sites/zhiyinapp/maintenance.flag` | `/www/sites/xunlu/maintenance.flag` |
 | 反代 location | 在主配置里 | **在 `proxy/*.conf` include 里** |

@@ -33,6 +33,10 @@ export interface FieldsCollected {
 export interface ConclusionCard extends FieldsCollected {
   created_at: string;
   updated_at: string;
+  /** 平衡点验证结果（后台隐藏字段，终选徽章用；null=AI 尚未完成评估） */
+  balance_found: boolean | null;
+  /** 未找到平衡点时的原因说明（balance_found=false 时有值） */
+  balance_fail_reason: string | null;
 }
 
 export interface ComboSession {
@@ -47,6 +51,8 @@ export interface ComboSession {
   summary_last_round: number;
   fields_collected: FieldsCollected;
   conclusion_card: ConclusionCard | null;
+  /** 用户主动跳过（status=abandoned 时置 true，卡内容保留、可逆） */
+  user_skipped?: boolean;
 }
 
 export interface ComboMeta {
@@ -58,6 +64,8 @@ export interface ComboMeta {
   updated_at: string;
   has_card: boolean;
   round_count: number;
+  /** 用户主动跳过 */
+  user_skipped?: boolean;
 }
 
 export interface FinalSelection {
@@ -187,6 +195,7 @@ export async function submitFinalSelection(activationCode: string) {
  * - { think_end: string }       —— 思考结束
  * - { fallback: true }          —— 兜底触发中
  * - { conclusion_card: Card }   —— 结论卡(展示)
+ * - { hyp_candidates: string[] }—— 假设候选 chips(无候选时不推)
  * - { tool_errors: string[] }   —— tool 调用错误(调试)
  * - { done: true }              —— 流结束
  */
@@ -197,6 +206,7 @@ export interface ComboChatEvent {
   think_end?: string;
   fallback?: boolean;
   conclusion_card?: ConclusionCard;
+  hyp_candidates?: string[];
   tool_errors?: string[];
   done?: boolean;
   error?: string;

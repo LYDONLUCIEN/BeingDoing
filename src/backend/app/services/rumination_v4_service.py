@@ -4,8 +4,12 @@ Rumination v4 Service
 combo_session 管理:
 - CRUD(create / get / list / delete / patch)
 - tool handler(update_field / save_conclusion_card)
+- 平衡点(balance_found / balance_fail_reason)与再评估闸
 - 兜底机制(双信号监测 + 异步补全)
+- chips 候选隐藏块解析([STEP3_HYP_JSON])
 - 后台 30 轮滚动摘要
+
+实施契约: wiki/开发文档/7-25-rumination-v4-实施口径.md §2.2
 
 存储: data/simple/reports/{report_id}/rumination_v4_progress.json (独立文件,与 v3 物理隔离)
 删除 = 从 combo_sessions 数组移除该元素(含 messages,彻底消失)
@@ -31,10 +35,19 @@ logger = logging.getLogger(__name__)
 
 # ── 协议常量(与 prompt 双信号约定一致)─────────────────────────────────
 CONCLUSION_READY_MARKER = "<<CONCLUSION_READY>>"
-# 用户可见话术的关键词(后端用 startswith/包含 监测)
-CONCLUSION_VISIBLE_PHRASE_KEYWORDS = ("现在我为你总结了", "你可以选择其中一个")
+# 用户可见话术的锚点短语(后端包含监测;旧句式「现在我为你总结了 N 个假设」已废弃)
+CONCLUSION_VISIBLE_PHRASE_KEYWORDS = ("整理成了结论卡",)
 # tool call 隐藏块标记
 TOOL_BLOCK_REGEX = re.compile(r"```tool\s*(\{.*?\})\s*```", re.DOTALL)
+
+# chips 候选隐藏块协议(复用 v3 同款,后端解析、前端渲染为可点击选项)
+HYP_JSON_START = "[STEP3_HYP_JSON]"
+HYP_JSON_END = "[/STEP3_HYP_JSON]"
+HYP_JSON_BLOCK_REGEX = re.compile(
+    re.escape(HYP_JSON_START) + r"(.*?)" + re.escape(HYP_JSON_END), re.DOTALL
+)
+# 候选最短字数门槛(v3 为 20,v4 放宽到 10;过短的多为纯标签,无画面感)
+HYP_CANDIDATE_MIN_LEN = 10
 
 # 触发阈值
 SUMMARIZE_EVERY_N_ROUNDS = 30  # 每 30 轮触发滚动摘要
@@ -82,8 +95,11 @@ def new_combo_session(
             "work_purposes": None,
             "passion_mark": None,
             "timing_mark": None,
+            "balance_found": None,
+            "balance_fail_reason": None,
         },
         "conclusion_card": None,
+        "user_skipped": False,  # 用户手动跳过(卡保留,可逆;置 concluded 即恢复)
     }
 
 
@@ -162,6 +178,7 @@ def _combo_meta(c: Dict[str, Any]) -> Dict[str, Any]:
         "updated_at": c.get("updated_at"),
         "has_card": bool(c.get("conclusion_card")),
         "round_count": _count_user_rounds(c.get("messages") or []),
+        "user_skipped": bool(c.get("user_skipped")),
     }
 
 
@@ -337,15 +354,79 @@ def detect_conclusion_signals(text: str) -> Dict[str, bool]:
     """双信号监测。
     返回 {"hidden": bool, "visible": bool}。
     - hidden: 文本中包含 <<CONCLUSION_READY>> 标记
-    - visible: 文本中包含 "现在我为你总结了" 等关键词
+    - visible: 文本中包含锚点短语「整理成了结论卡」
     """
     hidden = CONCLUSION_READY_MARKER in text
     visible = any(k in text for k in CONCLUSION_VISIBLE_PHRASE_KEYWORDS)
     return {"hidden": hidden, "visible": visible}
 
 
+# ── chips 候选隐藏块解析 ──────────────────────────────────────────────
+def extract_hyp_candidates(text: str) -> Tuple[str, List[str]]:
+    """从回复文本解析 chips 候选隐藏块 [STEP3_HYP_JSON]...[/STEP3_HYP_JSON]。
+
+    协议复用 v3 同款(参考 app.api.v1.simple_chat.stream_utils.extract_step3_hyp_json),
+    sanitize 逻辑参考 v3 rumination_step3_flow.sanitize_hyp_candidates,
+    字数门槛由 20 放宽到 10(实施口径 §2.2)。
+
+    Args:
+        text: LLM 完整回复文本
+
+    Returns:
+        (剥离隐藏块后的可见文本, 候选假设列表)
+    """
+    if not text:
+        return "", []
+    candidates: List[str] = []
+    for m in HYP_JSON_BLOCK_REGEX.finditer(text):
+        raw = (m.group(1) or "").strip()
+        if not raw:
+            continue
+        try:
+            obj = json.loads(raw)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            continue
+        if not isinstance(obj, dict):
+            continue
+        raw_cands = obj.get("candidates")
+        if not isinstance(raw_cands, list):
+            continue
+        for c in raw_cands:
+            t = str(c or "").strip()
+            if not t or len(t) < HYP_CANDIDATE_MIN_LEN:
+                continue
+            if t not in candidates:  # 去重保序
+                candidates.append(t)
+    visible = HYP_JSON_BLOCK_REGEX.sub("", text).strip()
+    return visible, candidates
+
+
 # ── tool handler ───────────────────────────────────────────────────────
-VALID_FIELDS = ("motivation", "hypothesis", "work_purposes", "passion_mark", "timing_mark")
+VALID_FIELDS = (
+    "motivation",
+    "hypothesis",
+    "work_purposes",
+    "passion_mark",
+    "timing_mark",
+    "balance_found",
+    "balance_fail_reason",
+)
+
+
+def _reset_balance_on_hypothesis_change(
+    combo: Dict[str, Any], old_hyp: Any, new_hyp: Any
+) -> None:
+    """平衡再评估闸(实施口径 §1-新5):hypothesis 内容变化 → balance 两字段置 None。
+    fields_collected 与已存在的 conclusion_card 同步重置。"""
+    if old_hyp == new_hyp:
+        return
+    fc = combo.setdefault("fields_collected", {})
+    fc["balance_found"] = None
+    fc["balance_fail_reason"] = None
+    card = combo.get("conclusion_card")
+    if isinstance(card, dict):
+        card["balance_found"] = None
+        card["balance_fail_reason"] = None
 
 
 def apply_tool_call(
@@ -366,6 +447,11 @@ def apply_tool_call(
         value = tool_call.get("value")
         if field not in VALID_FIELDS:
             return None, f"未知字段: {field}"
+        if field == "hypothesis":
+            # 平衡再评估闸:hypothesis 变更 → balance 两字段置 None
+            _reset_balance_on_hypothesis_change(
+                combo, (combo.get("fields_collected") or {}).get("hypothesis"), value
+            )
         combo.setdefault("fields_collected", {})[field] = value
         combo["updated_at"] = _now_iso()
         return None, None
@@ -383,18 +469,28 @@ def apply_tool_call(
             # 用已有的
             fields.setdefault("hypothesis", existing)
         # 合并到 fields_collected(其他字段也更新)
+        # 平衡再评估闸:捕获合并前的旧 hypothesis,变化且本次未显式给 balance_found → 重置
+        existing_card = combo.get("conclusion_card") or {}
+        old_hyp = existing_card.get("hypothesis") or (
+            (combo.get("fields_collected") or {}).get("hypothesis")
+        )
         fc = combo.setdefault("fields_collected", {})
         for k in VALID_FIELDS:
             if k in fields and fields[k] is not None:
                 fc[k] = fields[k]
+        hyp_changed = fields.get("hypothesis") is not None and fields.get("hypothesis") != old_hyp
+        if hyp_changed and "balance_found" not in fields:
+            fc["balance_found"] = None
+            fc["balance_fail_reason"] = None
         # 构造 conclusion_card
-        existing_card = combo.get("conclusion_card") or {}
         card = {
             "hypothesis": fc.get("hypothesis"),
             "motivation": fc.get("motivation"),
             "work_purposes": fc.get("work_purposes"),
             "passion_mark": fc.get("passion_mark"),
             "timing_mark": fc.get("timing_mark"),
+            "balance_found": fc.get("balance_found"),
+            "balance_fail_reason": fc.get("balance_fail_reason"),
             "created_at": existing_card.get("created_at") or _now_iso(),
             "updated_at": _now_iso(),
         }
@@ -428,21 +524,29 @@ def patch_conclusion_card(
     if not combo:
         raise ValueError(f"combo_id 不存在: {combo_id}")
     if combo.get("status") == "abandoned":
-        raise ValueError("abandoned 的 combo 没有结论卡")
+        raise ValueError("abandoned(已跳过)的 combo 不可直接编辑结论卡,请先恢复确认")
     card = combo.get("conclusion_card") or {
         "hypothesis": None,
         "motivation": None,
         "work_purposes": None,
         "passion_mark": None,
         "timing_mark": None,
+        "balance_found": None,
+        "balance_fail_reason": None,
         "created_at": _now_iso(),
         "updated_at": _now_iso(),
     }
+    old_hyp = card.get("hypothesis")
     for k in VALID_FIELDS:
         if k in fields:
             card[k] = fields[k]
     if not _hyp_filled(card.get("hypothesis")):
         raise ValueError("hypothesis 不可清空")
+    # 平衡再评估闸:hypothesis 变化且本次未显式给 balance_found → 重置
+    if "hypothesis" in fields and card.get("hypothesis") != old_hyp:
+        if "balance_found" not in fields:
+            card["balance_found"] = None
+            card["balance_fail_reason"] = None
     card["updated_at"] = _now_iso()
     combo["conclusion_card"] = card
     combo["status"] = "concluded"
@@ -454,8 +558,9 @@ def patch_conclusion_card(
 def set_combo_status(
     reports_root: Path, report_id: str, combo_id: str, status: str
 ) -> Dict[str, Any]:
-    """更新 combo_session 状态(confirmed/abandoned)。
-    confirmed: 用户接受卡(进只读);abandoned: 用户放弃(不出卡,删已有卡)。"""
+    """更新 combo_session 状态(concluded/abandoned)。
+    实施口径 §1-新4:abandoned(跳过)不再清空结论卡,仅置 user_skipped=True(可逆);
+    concluded(确认)清除 user_skipped。终选只出现 concluded 卡。"""
     state = load_v4_state(reports_root, report_id)
     combo = find_combo(state, combo_id)
     if not combo:
@@ -464,8 +569,9 @@ def set_combo_status(
     if status not in ("concluded", "abandoned", "discussing"):
         raise ValueError(f"非法 status: {status}")
     if status == "abandoned":
-        combo["conclusion_card"] = None
-        combo["fields_collected"]["hypothesis"] = None
+        combo["user_skipped"] = True  # 卡内容保留,UI 删除线 + 灰色标记
+    elif status == "concluded":
+        combo["user_skipped"] = False  # 跳过可逆:再点确认即恢复
     combo["status"] = status
     combo["updated_at"] = _now_iso()
     save_v4_state(reports_root, report_id, state)
@@ -484,14 +590,18 @@ def update_final_selection(
         raise ValueError("selected_combo_ids 必须是数组")
     if len(selected_combo_ids) < 1 or len(selected_combo_ids) > 3:
         raise ValueError("必须选定 1-3 个组合")
-    # 校验所有 combo 存在且 has_card
+    # 校验所有 combo 存在且为已确认结论卡(终选只出现 concluded 且未跳过的卡)
     valid_ids = set()
     for c in state.get("combo_sessions") or []:
-        if c.get("conclusion_card"):
+        if (
+            c.get("conclusion_card")
+            and c.get("status") == "concluded"
+            and not c.get("user_skipped")
+        ):
             valid_ids.add(c.get("combo_id"))
     for cid in selected_combo_ids:
         if cid not in valid_ids:
-            raise ValueError(f"combo {cid} 不存在或无结论卡")
+            raise ValueError(f"combo {cid} 不存在或未确认结论卡")
     fs = state.setdefault("final_selection", {})
     fs["selected_combo_ids"] = selected_combo_ids
     fs["submitted"] = False
@@ -569,14 +679,22 @@ def _messages_to_text(messages: List[Dict[str, Any]], since_round: int = 0) -> s
 def build_chat_messages(
     combo: Dict[str, Any],
     user_input: str,
-    values_list: Optional[List[str]] = None,
+    user_context: str = "",
+    values_keywords: Optional[List[str]] = None,
 ) -> Tuple[List[Any], str]:
     """拼装发给 LLM 的消息列表 = [system: mega-prompt] + 摘要注入 + 最近对话 + 用户最新输入。
+
+    Args:
+        combo: combo_session 对象
+        user_input: 用户最新输入
+        user_context: 用户背景(basic_info + 前四阶段结论卡全量,由 routes 装配)
+        values_keywords: 用户 values 真实关键词;None/空 → prompt 省略价值观块
+
     返回 (LLMMessage 列表, 系统提示词)。"""
     from app.core.llmapi import LLMMessage
     passion = combo.get("passion") or ""
     strengths = combo.get("strengths") or []
-    sys_prompt = render_mega_prompt(passion, strengths, values_list)
+    sys_prompt = render_mega_prompt(passion, strengths, user_context, values_keywords)
     messages: List[LLMMessage] = [LLMMessage(role="system", content=sys_prompt)]
     # 摘要以 system 消息注入
     summary = combo.get("summary")
@@ -629,15 +747,15 @@ def _select_recent_dialog(
 async def fallback_generate_conclusion(
     combo: Dict[str, Any],
     llm,
-    values_list: Optional[List[str]] = None,
+    values_keywords: Optional[List[str]] = None,
 ) -> Optional[Dict[str, Any]]:
-    """兜底:LLM 忘输出 <<CONCLUSION_READY>>,但有用户可见话术(或反之)。
-    用独立 conclusion prompt + 摘要,重新生成结论卡。
+    """兜底:LLM 忘输出 <<CONCLUSION_READY>>,但有用户可见锚点话术(或反之)。
+    用独立 conclusion prompt + 摘要,重新生成结论卡(含 balance 两字段)。
     """
     passion = combo.get("passion") or ""
     strengths = combo.get("strengths") or []
     summary = combo.get("summary") or _messages_to_text(combo.get("messages") or [])
-    prompt = render_conclusion_prompt(passion, strengths, summary, values_list)
+    prompt = render_conclusion_prompt(passion, strengths, summary, values_keywords)
     from app.core.llmapi import LLMMessage
     try:
         resp = await llm.chat(
@@ -654,6 +772,14 @@ async def fallback_generate_conclusion(
             return None
         if not _hyp_filled(card.get("hypothesis")):
             return None
+        # balance 两字段规范化:balance_found 只接受 true/false/null;
+        # 非 false 时 fail_reason 无意义,统一置 None
+        if not isinstance(card.get("balance_found"), bool):
+            card["balance_found"] = None
+        if card["balance_found"] is False:
+            card["balance_fail_reason"] = card.get("balance_fail_reason") or None
+        else:
+            card["balance_fail_reason"] = None
         card["created_at"] = _now_iso()
         card["updated_at"] = _now_iso()
         return card

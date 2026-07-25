@@ -17,7 +17,9 @@
 server {
     listen 80;
     listen 443 ssl http2;
-    server_name soulhappylab.com www.soulhappylab.com career.soulhappylab.com;
+    # 双域名并存：soulhappylab.com 与 beyondego.me 同时可用
+    # 注意：SSL 证书需同时覆盖两个域名（可申请多域名 SAN 证书，或两张证书选其一指向）
+    server_name soulhappylab.com www.soulhappylab.com career.soulhappylab.com career.beyondego.me;
 
     index index.php index.html index.htm default.php default.htm default.html;
 
@@ -191,7 +193,9 @@ bash /home/gitclone/BeingDoing/scripts/maintenance.sh on \
 
 普通浏览器 Console：
 ```javascript
+// 按你当前访问的域名选一条
 document.cookie='bypass_maintenance=1;path=/;max-age=86400;domain=.soulhappylab.com'
+document.cookie='bypass_maintenance=1;path=/;max-age=86400;domain=.beyondego.me'
 ```
 刷新 → **应看到真实站点**。
 

@@ -32,36 +32,66 @@ function getCardTheme(index: number) {
   return THEMES[index % THEMES.length];
 }
 
+/** 防御：dict 形态已废弃，统一转纯字符串 */
+function hypToString(h: ConclusionCard['hypothesis']): string {
+  if (!h) return '';
+  if (typeof h === 'string') return h;
+  return Object.values(h).filter(Boolean).join('\n');
+}
+
 function getDirectionTitle(combo: ComboSession, card: ConclusionCard | null): string {
-  if (card?.hypothesis && typeof card.hypothesis === 'string') {
-    const t = card.hypothesis.trim();
-    if (t) {
-      // 取第一句或前 18 字作为标题
-      const first = t.split(/[。；;\n]/)[0].trim();
-      return first.length > 18 ? first.slice(0, 18) + '…' : first;
-    }
-  }
-  if (card?.hypothesis && typeof card.hypothesis === 'object') {
-    const vals = Object.values(card.hypothesis).filter((v) => typeof v === 'string' && v.trim());
-    if (vals.length > 0) {
-      const first = String(vals[0]).split(/[。；;\n]/)[0].trim();
-      return first.length > 18 ? first.slice(0, 18) + '…' : first;
-    }
+  const t = hypToString(card?.hypothesis ?? null).trim();
+  if (t) {
+    // 取第一句或前 18 字作为标题
+    const first = t.split(/[。；;\n]/)[0].trim();
+    return first.length > 18 ? first.slice(0, 18) + '…' : first;
   }
   return combo.passion;
 }
 
 function getDirectionDesc(combo: ComboSession, card: ConclusionCard | null): string {
-  if (card?.hypothesis && typeof card.hypothesis === 'string') {
-    const t = card.hypothesis.trim();
-    if (t) return t;
-  }
-  if (card?.hypothesis && typeof card.hypothesis === 'object') {
-    const vals = Object.values(card.hypothesis).filter((v) => typeof v === 'string' && v.trim());
-    if (vals.length > 0) return vals.join('\n');
-  }
-  if (card?.motivation) return card.motivation;
+  const t = hypToString(card?.hypothesis ?? null).trim();
+  if (t) return t;
   return `基于「${combo.passion}」与「${combo.strengths.join('、')}」的探索方向。`;
+}
+
+/** 平衡点徽章：绿 ✓ 推荐 / 琥珀 ⚠ 未找到平衡点 / 灰 ？ 未评估（仅提示，不影响可选） */
+function BalanceBadge({ card }: { card: ConclusionCard | null }) {
+  const found = card?.balance_found ?? null;
+  if (found === true) {
+    return (
+      <span
+        className="grid h-[20px] w-[20px] shrink-0 place-items-center rounded-full text-[12px] font-extrabold text-white"
+        style={{ background: '#09aa7c' }}
+        title="已通过理想与现实的平衡验证"
+        aria-label="已通过理想与现实的平衡验证"
+      >
+        ✓
+      </span>
+    );
+  }
+  if (found === false) {
+    return (
+      <span
+        className="grid h-[20px] w-[20px] shrink-0 place-items-center rounded-full text-[12px] font-extrabold text-white"
+        style={{ background: '#f0a020' }}
+        title={card?.balance_fail_reason?.trim() || '未找到平衡点'}
+        aria-label="未找到平衡点"
+      >
+        ⚠
+      </span>
+    );
+  }
+  return (
+    <span
+      className="grid h-[20px] w-[20px] shrink-0 place-items-center rounded-full text-[12px] font-extrabold text-white"
+      style={{ background: '#b6c0cf' }}
+      title="AI 尚未完成平衡评估"
+      aria-label="AI 尚未完成平衡评估"
+    >
+      ？
+    </span>
+  );
 }
 
 export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Props) {
@@ -69,11 +99,11 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
 
-  // 只展示有结论卡的 combo
+  // 只展示已确认（concluded）且有结论卡的 combo；用户跳过（user_skipped/abandoned）的不进终选
   const candidates = useMemo(() => {
     if (!state) return [];
     return (state.combo_sessions || [])
-      .filter((c) => !!c.conclusion_card)
+      .filter((c) => !!c.conclusion_card && c.status === 'concluded' && !c.user_skipped)
       .map((c) => {
         const full = comboCache[c.combo_id] || c;
         return {
@@ -267,12 +297,15 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
                     >
                       {theme.icon}
                     </span>
-                    <h3
-                      className="mx-auto mb-2 line-clamp-2 text-base font-bold leading-snug"
-                      style={{ color: selected ? theme.color : '#07163b' }}
-                    >
-                      {title}
-                    </h3>
+                    <div className="mx-auto mb-2 flex items-start justify-center gap-1.5">
+                      <h3
+                        className="line-clamp-2 text-base font-bold leading-snug"
+                        style={{ color: selected ? theme.color : '#07163b' }}
+                      >
+                        {title}
+                      </h3>
+                      <BalanceBadge card={card} />
+                    </div>
                     <div className="tags mb-2 flex flex-wrap justify-center gap-1">
                       {tags.map((t) => (
                         <span

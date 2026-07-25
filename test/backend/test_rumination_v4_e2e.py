@@ -4,7 +4,7 @@ Rumination v4 e2e 集成测试(用 Mock LLM,跑完整流程)
 覆盖场景:
 1. 完整成功路径:矩阵 → 创建 → 讨论 → 出卡(双信号都全)→ 确认 → 第 8 步选择 → 提交
 2. 兜底路径:LLM 忘了输出 <<CONCLUSION_READY>>(只有 visible 话术)→ 触发 fallback
-3. 放弃路径:用户放弃,不出卡
+3. 跳过路径:用户手动跳过,卡保留(可逆),不进终选
 4. 多优势 hypothesis 分字典形态
 5. 30 轮摘要触发(用 mock 计数)
 
@@ -71,8 +71,8 @@ async def test_full_happy_path_with_dual_signals(tmp_reports, rid, monkeypatch):
         # 第二轮回复:出结论卡(双信号齐全)
         "太好了!结合你说的,\n<<CONCLUSION_READY>>\n"
         "```tool\n"
-        '{"tool":"save_conclusion_card","fields":{"hypothesis":"音乐+创造能让我成为独特创作者","motivation":"我喜欢舞台的光","work_purposes":["发现","成长"],"passion_mark":"忍不住想做","timing_mark":"现在"}}\n```\n'
-        "现在我为你总结了 1 个假设,你可以选择其中一个",
+        '{"tool":"save_conclusion_card","fields":{"hypothesis":"音乐+创造能让我成为独特创作者","motivation":"我喜欢舞台的光","work_purposes":["发现","成长"],"passion_mark":"忍不住想做","timing_mark":"现在","balance_found":true}}\n```\n'
+        "- 方向:音乐+创造,成为独特创作者\n- 它与你的热爱和优势都搭\n我已经把这次探索整理成了结论卡,你看看有没有要调整的",
     ])
 
     # 模拟用户第一轮
@@ -114,6 +114,7 @@ async def test_full_happy_path_with_dual_signals(tmp_reports, rid, monkeypatch):
     assert signals["visible"] is True
     assert card_event is not None
     assert card_event["hypothesis"] == "音乐+创造能让我成为独特创作者"
+    assert card_event["balance_found"] is True
     c2 = find_combo(state, combo_id)
     assert c2["status"] == "concluded"
     assert c2["conclusion_card"]["hypothesis"].startswith("音乐+创造")
@@ -138,11 +139,11 @@ async def test_fallback_when_llm_forgets_hidden_marker(tmp_reports, rid):
     main_llm = MockLLMProvider([
         "好的,我们继续。\n```tool\n"
         '{"tool":"update_field","field":"hypothesis","value":"我假设写作能让我表达自己"}\n```',
-        "很好,现在我为你总结了 1 个假设,你可以选择其中一个",  # 注意:无 <<CONCLUSION_READY>>
+        "很好,我已经把这次探索整理成了结论卡,你确认一下",  # 注意:无 <<CONCLUSION_READY>>
     ])
-    # 兜底 LLM(独立 conclusion prompt):返回 JSON
+    # 兜底 LLM(独立 conclusion prompt):返回 JSON(含 balance 字段)
     fallback_llm = MockLLMProvider([
-        '{"hypothesis":"我假设写作+掌控能让我成为有影响力的作者","motivation":"表达欲","work_purposes":["成长"],"passion_mark":"忍不住想做","timing_mark":"未来"}'
+        '{"hypothesis":"我假设写作+掌控能让我成为有影响力的作者","motivation":"表达欲","work_purposes":["成长"],"passion_mark":"忍不住想做","timing_mark":"未来","balance_found":false,"balance_fail_reason":"当下投入难启动"}'
     ])
 
     # 第一轮:收集 hypothesis
@@ -181,6 +182,8 @@ async def test_fallback_when_llm_forgets_hidden_marker(tmp_reports, rid):
     )
     assert fallback_card is not None
     assert fallback_card["hypothesis"].startswith("我假设写作")
+    assert fallback_card["balance_found"] is False
+    assert fallback_card["balance_fail_reason"] == "当下投入难启动"
     # 写入
     apply_tc = {"tool": "save_conclusion_card", "fields": {
         "hypothesis": fallback_card["hypothesis"],
@@ -190,18 +193,30 @@ async def test_fallback_when_llm_forgets_hidden_marker(tmp_reports, rid):
     assert card["hypothesis"].startswith("我假设写作")
 
 
-# ── 场景 3:用户放弃 ──────────────────────────────────────────────────
-def test_user_abandons_no_card(tmp_reports, rid):
+# ── 场景 3:用户跳过(卡保留+可逆)──────────────────────────────────────
+def test_user_skips_keeps_card(tmp_reports, rid):
+    """实施口径 §1-新4:跳过不清卡,置 user_skipped;跳过的卡不进终选。"""
     state, combo = svc.create_combo(tmp_reports, rid, "教学", ["解决问题"])
     combo_id = combo["combo_id"]
-    # 放弃
+    # 先出一张卡再跳过
+    svc.apply_tool_call(state, combo_id, {
+        "tool": "save_conclusion_card", "fields": {"hypothesis": "我假设教学能让我影响更多人"}
+    })
+    svc.save_v4_state(tmp_reports, rid, state)
+    # 跳过
     state = svc.set_combo_status(tmp_reports, rid, combo_id, "abandoned")
     c = find_combo(state, combo_id)
     assert c["status"] == "abandoned"
-    assert c["conclusion_card"] is None
+    assert c["user_skipped"] is True
+    assert c["conclusion_card"] is not None  # 卡内容保留
     # abandoned 不能进 final_selection
     with pytest.raises(ValueError):
         svc.update_final_selection(tmp_reports, rid, [combo_id])
+    # 跳过可逆:恢复 concluded 后可进终选
+    state = svc.set_combo_status(tmp_reports, rid, combo_id, "concluded")
+    assert find_combo(state, combo_id)["user_skipped"] is False
+    state = svc.update_final_selection(tmp_reports, rid, [combo_id])
+    assert state["final_selection"]["selected_combo_ids"] == [combo_id]
 
 
 # ── 场景 4:多优势 hypothesis 分字典 ────────────────────────────────────

@@ -92,6 +92,11 @@ app.add_middleware(
         "http://xunlu.soulhappylab.com",
         "https://admin.soulhappylab.com",
         "http://admin.soulhappylab.com",
+        # 双域名并存：beyondego.me 与 soulhappylab.com 同时可用
+        "https://career.beyondego.me",
+        "http://career.beyondego.me",
+        "https://xunlu.beyondego.me",
+        "http://xunlu.beyondego.me",
     ],
     allow_credentials=True,
     allow_methods=["*"],

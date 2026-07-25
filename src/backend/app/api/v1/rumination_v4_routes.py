@@ -23,13 +23,16 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.api.v1.auth import get_current_user
+from app.api.v1.simple_chat.context_resolver import (
+    load_basic_info_from_activation as _load_basic_info_from_activation,
+)
 from app.api.v1.simple_chat.context_resolver import (
     resolve_report_context as _resolve_report_context,
 )
@@ -41,6 +44,10 @@ from app.utils.simple_activation_manager import (
     get_effective_simple_root,
 )
 from app.utils.rumination_ops import extract_dimension_lists_for_rumination_table
+from app.utils.survey_storage import (
+    format_conclusion_prior_block,
+    load_dimension_conclusions,
+)
 from app.services.rumination_v4_service import (
     CONCLUSION_READY_MARKER,
     apply_tool_call,
@@ -49,6 +56,7 @@ from app.services.rumination_v4_service import (
     create_and_start as svc_create_and_start,
     delete_combo as svc_delete_combo,
     detect_conclusion_signals,
+    extract_hyp_candidates,
     fallback_generate_conclusion,
     find_combo,
     list_combos,
@@ -134,10 +142,67 @@ def _resolve_v4_ctx(activation_code: str, current_user: dict):
     return reports_root, rid
 
 
-def _get_values_list() -> List[str]:
-    """从价值观 CSV 读取可选价值观列表(供 LLM prompt 参考)。
-    简化:返回固定列表(可后续接 CSV 加载)。"""
-    return ["发现", "冒险", "达成", "贡献", "自由", "成长", "连接", "掌控"]
+def _resolve_v4_ctx_with_rec(activation_code: str, current_user: dict):
+    """同 _resolve_v4_ctx,但额外返回激活记录 rec(装配用户上下文需要 record_dict)。"""
+    manager = get_activation_manager_for_code(activation_code)
+    rec, report, _phase_step, _sid, _cat, _conv = _resolve_report_context(
+        manager=manager,
+        activation_code=activation_code,
+        current_user=current_user,
+        phase="rumination",
+    )
+    storage_root = str(get_effective_simple_root(rec))
+    reports_root = Path(storage_root) / "reports"
+    rid = report["report_id"]
+    return reports_root, rid, rec
+
+
+# 前四阶段结论卡按此顺序注入用户背景
+_DIMENSION_PHASE_ORDER = ("values", "strengths", "interests", "purpose")
+
+
+def _build_user_context(
+    reports_root: Path, rid: str, rec, activation_code: str
+) -> Tuple[str, Optional[List[str]]]:
+    """装配 combo-chat 的用户上下文(实施口径 §1-Q5 / §2.3)。
+
+    - basic_info: 复用 simple_chat 的激活码维度拼装(format_basic_info_for_prompt)
+    - 前四阶段结论卡: load_dimension_conclusions,逐阶段 keywords + summary 全量不截断
+    - values 关键词: extract_dimension_lists_for_rumination_table 的 values 结果,
+      为空则返回 None(prompt 整块省略,禁固定 8 词兜底)
+
+    Returns:
+        (user_context 文本, values_keywords 或 None)
+    """
+    parts: List[str] = []
+    try:
+        basic = (_load_basic_info_from_activation(activation_code) or "").strip()
+        if basic and basic != "暂无":
+            parts.append(f"【基本资料】\n{basic}")
+    except Exception as e:
+        logger.warning("v4 user_context basic_info 装配失败 report=%s: %s", rid, e)
+    try:
+        conclusions = load_dimension_conclusions(rid, str(reports_root))
+        for phase in _DIMENSION_PHASE_ORDER:
+            conclusion = conclusions.get(phase)
+            if not conclusion:
+                continue
+            block = format_conclusion_prior_block(phase, conclusion)
+            if block:
+                parts.append(block)
+    except Exception as e:
+        logger.warning("v4 user_context 结论卡装配失败 report=%s: %s", rid, e)
+    values_keywords: Optional[List[str]] = None
+    try:
+        record_obj = rec.record_dict if hasattr(rec, "record_dict") else None
+        values_list, _s, _i, _p, _src = extract_dimension_lists_for_rumination_table(
+            str(reports_root), rid, record_obj
+        )
+        if values_list:
+            values_keywords = list(values_list)
+    except Exception as e:
+        logger.warning("v4 values 关键词装配失败 report=%s: %s", rid, e)
+    return "\n\n".join(parts), values_keywords
 
 
 def _audit_log(event: str, user: Optional[dict], activation_code: str, detail: Dict[str, Any]):
@@ -301,8 +366,10 @@ async def start_discussion_endpoint(req: StartDiscussionReq, current_user: dict 
 # ── 端点 6:POST /combo-chat(SSE 流式)─────────────────────────────────
 @router.post("/combo-chat")
 async def combo_chat_endpoint(req: ComboChatReq, current_user: dict = Depends(get_current_user)):
-    """主对话端点(SSE 流式)。LLM 自主调 tool,后端解析隐藏 JSON 块 + 双信号兜底。"""
-    reports_root, rid = _resolve_v4_ctx(req.activation_code, current_user)
+    """主对话端点(SSE 流式)。LLM 自主调 tool,后端解析隐藏 JSON 块 + 双信号兜底。
+    实施口径 §2.3:回复完成后解析 chips 隐藏块并推 hyp_candidates 事件;
+    <<CONCLUSION_READY>> / tool 块 / [STEP3_HYP_JSON] 块均剥离后再入库/推送。"""
+    reports_root, rid, rec = _resolve_v4_ctx_with_rec(req.activation_code, current_user)
     state = load_v4_state(reports_root, rid)
     combo = find_combo(state, req.combo_id)
     if not combo:
@@ -318,7 +385,10 @@ async def combo_chat_endpoint(req: ComboChatReq, current_user: dict = Depends(ge
     append_message(state, req.combo_id, "user", user_msg)
     save_v4_state(reports_root, rid, state)
 
-    values_list = _get_values_list()
+    # 装配用户上下文(basic_info + 前四阶段结论卡全量 + values 真实关键词,空则 None)
+    user_context, values_keywords = _build_user_context(
+        reports_root, rid, rec, req.activation_code
+    )
     vip_level = 1
 
     async def event_stream() -> AsyncIterator[str]:
@@ -326,7 +396,9 @@ async def combo_chat_endpoint(req: ComboChatReq, current_user: dict = Depends(ge
         latest_state = load_v4_state(reports_root, rid)
         combo_obj = find_combo(latest_state, req.combo_id)
         # 拼装 LLM 消息
-        llm_messages, _sys_prompt = build_chat_messages(combo_obj, user_msg, values_list)
+        llm_messages, _sys_prompt = build_chat_messages(
+            combo_obj, user_msg, user_context, values_keywords
+        )
         llm = _get_dialogue_llm_provider(vip_level=vip_level)
 
         full_reply = ""
@@ -348,8 +420,10 @@ async def combo_chat_endpoint(req: ComboChatReq, current_user: dict = Depends(ge
                 if safe:
                     yield f"data: {json.dumps({'chunk': safe}, ensure_ascii=False)}\n\n"
 
-        # 流式结束,解析完整回复
+        # 流式结束,解析完整回复:剥离 tool 块 → chips 隐藏块 → 隐藏标记
         visible_text, tool_calls = _parse_and_clean(full_reply)
+        visible_text, hyp_candidates = extract_hyp_candidates(visible_text)
+        visible_text = visible_text.replace(CONCLUSION_READY_MARKER, "").strip()
         signals = detect_conclusion_signals(full_reply)
 
         # 执行所有 tool call(透明 + 校验)
@@ -365,15 +439,17 @@ async def combo_chat_endpoint(req: ComboChatReq, current_user: dict = Depends(ge
         # 兜底机制:有 visible 信号但无 hidden 标记 → 重新生成结论
         if signals.get("visible") and not signals.get("hidden") and not conclusion_card_event:
             yield f"data: {json.dumps({'fallback': True}, ensure_ascii=False)}\n\n"
-            card = await fallback_generate_conclusion(combo_obj, llm, values_list)
+            card = await fallback_generate_conclusion(combo_obj, llm, values_keywords)
             if card:
-                # 直接写 conclusion_card
+                # 直接写 conclusion_card(含 balance 两字段)
                 apply_tc = {"tool": "save_conclusion_card", "fields": {
                     "hypothesis": card.get("hypothesis"),
                     "motivation": card.get("motivation"),
                     "work_purposes": card.get("work_purposes"),
                     "passion_mark": card.get("passion_mark"),
                     "timing_mark": card.get("timing_mark"),
+                    "balance_found": card.get("balance_found"),
+                    "balance_fail_reason": card.get("balance_fail_reason"),
                 }}
                 c2, _e = apply_tool_call(latest_state, req.combo_id, apply_tc)
                 if c2:
@@ -394,6 +470,10 @@ async def combo_chat_endpoint(req: ComboChatReq, current_user: dict = Depends(ge
         # 推送结论卡事件(若有)
         if conclusion_card_event:
             yield f"data: {json.dumps({'conclusion_card': conclusion_card_event}, ensure_ascii=False)}\n\n"
+
+        # 推送 chips 候选事件(无候选不推;前端收到即替换选择器)
+        if hyp_candidates:
+            yield f"data: {json.dumps({'type': 'hyp_candidates', 'hyp_candidates': hyp_candidates}, ensure_ascii=False)}\n\n"
 
         # 推送 tool 错误(若有,仅调试用)
         if tool_errors:

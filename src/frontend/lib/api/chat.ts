@@ -101,7 +101,8 @@ export const chatApi = {
     },
     signal?: AbortSignal
   ): Promise<void> => {
-    const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    // 未配置 NEXT_PUBLIC_API_URL 时走同域相对路径（双域名并存：soulhappylab.com / beyondego.me 均可用）
+    const baseURL = (process.env.NEXT_PUBLIC_API_URL || '').trim().replace(/\/+$/, '');
     const url = `${baseURL}/api/v1/chat-optimized/messages/stream`;
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     const res = await fetch(url, {
@@ -210,7 +211,8 @@ export const chatApi = {
     callbacks: any,
     signal?: AbortSignal
   ): Promise<void> => {
-    const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    // 未配置 NEXT_PUBLIC_API_URL 时走同域相对路径（双域名并存：soulhappylab.com / beyondego.me 均可用）
+    const baseURL = (process.env.NEXT_PUBLIC_API_URL || '').trim().replace(/\/+$/, '');
     const url = `${baseURL}/api/v1/chat-optimized/messages/stream`;
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
 

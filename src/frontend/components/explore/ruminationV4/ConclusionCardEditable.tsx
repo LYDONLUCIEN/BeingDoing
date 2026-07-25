@@ -1,20 +1,19 @@
 'use client';
 
 /**
- * v4 可编辑结论卡
+ * v4 可编辑结论卡（极简版）
  *
- * 视觉对齐 new-rumination-v4.html：
- * - 左侧公文包 icon
- * - 中间：标题（含 combo badge）+ 描述 copy + 「查看全文」
- * - 右侧：时间 + 更多操作
- * - 展开后：下方 textarea + 跳过/确认修改
+ * 卡面 = hypothesis（textarea 可编辑）+「确认」/「跳过」
+ * - PATCH 只传 hypothesis
+ * - 跳过态：卡内容保留，删除线 + 灰色 + 「已跳过」标记；
+ *   灰色卡上保留「确认」按钮（点击恢复 concluded，可逆）
+ * - 不渲染/不提交 motivation/work_purposes/passion_mark/timing_mark/balance 等后台字段
  *
- * 默认折叠时只展示核心假设 textarea + 跳过/确认结论；
- * 点击「查看全文」后展开更多字段编辑。
+ * 见 wiki/开发文档/7-25-rumination-v4-实施口径.md §3.2
  */
 
-import { useEffect, useMemo, useState } from 'react';
-import { Briefcase, MoreHorizontal } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Briefcase } from 'lucide-react';
 import { useRuminationV4Store } from '@/stores/ruminationV4Store';
 import { ConclusionCard } from '@/lib/explore/ruminationV4Api';
 
@@ -22,70 +21,55 @@ interface Props {
   comboId: string;
   card: ConclusionCard;
   strengths: string[];
+  /** 用户已跳过（status=abandoned / user_skipped），卡保留、可逆 */
+  userSkipped?: boolean;
 }
 
-export default function ConclusionCardEditable({ comboId, card, strengths }: Props) {
+/** 防御：dict 形态已废弃，统一转纯字符串 */
+function hypToString(h: ConclusionCard['hypothesis']): string {
+  if (!h) return '';
+  if (typeof h === 'string') return h;
+  return Object.values(h).filter(Boolean).join('\n');
+}
+
+export default function ConclusionCardEditable({ comboId, card, strengths, userSkipped }: Props) {
   const { patchCard, setStatus } = useRuminationV4Store();
-  const [localHypothesis, setLocalHypothesis] = useState<string>(
-    typeof card.hypothesis === 'string' ? card.hypothesis || '' : ''
-  );
-  const [localMotivation, setLocalMotivation] = useState(card.motivation || '');
-  const [localWorkPurposes, setLocalWorkPurposes] = useState<string>(
-    (card.work_purposes || []).join('、')
-  );
-  const [localPassionMark, setLocalPassionMark] = useState(card.passion_mark || '');
-  const [localTimingMark, setLocalTimingMark] = useState(card.timing_mark || '');
+  const [localHypothesis, setLocalHypothesis] = useState<string>(hypToString(card.hypothesis));
   const [saving, setSaving] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
 
   useEffect(() => {
-    setLocalHypothesis(typeof card.hypothesis === 'string' ? card.hypothesis || '' : '');
-    setLocalMotivation(card.motivation || '');
-    setLocalWorkPurposes((card.work_purposes || []).join('、'));
-    setLocalPassionMark(card.passion_mark || '');
-    setLocalTimingMark(card.timing_mark || '');
-  }, [card.hypothesis, card.motivation, card.work_purposes, card.passion_mark, card.timing_mark, card.updated_at]);
+    setLocalHypothesis(hypToString(card.hypothesis));
+  }, [card.hypothesis, card.updated_at]);
 
-  const displayCopy = useMemo(() => {
-    const parts: string[] = [];
-    if (localMotivation.trim()) parts.push(`动机：${localMotivation.trim()}`);
-    if (localWorkPurposes.trim()) parts.push(`工作目的：${localWorkPurposes.trim()}`);
-    if (localPassionMark) parts.push(`激情感受：${localPassionMark}`);
-    if (localTimingMark) parts.push(`时机：${localTimingMark}`);
-    if (!parts.length) return '这个方向还在探索中，和 AI 聊聊后完善你的假设结论。';
-    return parts.join(' · ');
-  }, [localMotivation, localWorkPurposes, localPassionMark, localTimingMark]);
-
-  const handleSaveFields = async (fields: Partial<ConclusionCard>) => {
+  const handleConfirm = async () => {
+    const text = localHypothesis.trim();
+    if (text.length < 5) return;
     setSaving(true);
     try {
-      await patchCard(comboId, fields);
+      // hypothesis 有变更才 PATCH（避免无谓触发后端平衡再评估闸）
+      if (text !== hypToString(card.hypothesis).trim()) {
+        await patchCard(comboId, { hypothesis: text });
+      }
+      await setStatus(comboId, 'concluded');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleConfirm = async () => {
-    if (localHypothesis.trim().length < 5) return;
-    await handleSaveFields({
-      hypothesis: localHypothesis.trim(),
-      motivation: localMotivation.trim() || null,
-      work_purposes: splitPurposes(localWorkPurposes),
-      passion_mark: (localPassionMark as any) || null,
-      timing_mark: (localTimingMark as any) || null,
-    });
-    await setStatus(comboId, 'concluded');
-  };
-
   const handleSkip = async () => {
-    await setStatus(comboId, 'abandoned');
+    setSaving(true);
+    try {
+      await setStatus(comboId, 'abandoned');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const canConfirm = localHypothesis.trim().length >= 5;
 
   return (
     <article
-      className={`conclusion-card-v4 ${isExpanded ? 'open' : ''}`}
+      className="conclusion-card-v4"
       style={{
         display: 'grid',
         gridTemplateColumns: 'auto 1fr auto',
@@ -93,15 +77,20 @@ export default function ConclusionCardEditable({ comboId, card, strengths }: Pro
         padding: '14px',
         borderRadius: '17px',
         border: '1px solid rgba(106,121,174,0.11)',
-        background: 'rgba(255,255,255,0.65)',
+        background: userSkipped ? 'rgba(243,244,246,0.7)' : 'rgba(255,255,255,0.65)',
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7)',
+        opacity: userSkipped ? 0.75 : 1,
       }}
     >
       {/* 左侧 icon */}
       <div
-        className="bag-icon flex h-[56px] w-[56px] flex-shrink-0 items-center justify-center rounded-full text-[#6656f7]"
+        className={`bag-icon flex h-[56px] w-[56px] flex-shrink-0 items-center justify-center rounded-full ${
+          userSkipped ? 'text-[#9ca3af]' : 'text-[#6656f7]'
+        }`}
         style={{
-          background: 'linear-gradient(160deg,#f4f0ff,#eef2ff)',
+          background: userSkipped
+            ? 'linear-gradient(160deg,#f3f4f6,#e5e7eb)'
+            : 'linear-gradient(160deg,#f4f0ff,#eef2ff)',
         }}
         aria-hidden
       >
@@ -110,155 +99,77 @@ export default function ConclusionCardEditable({ comboId, card, strengths }: Pro
 
       {/* 中间内容 */}
       <div className="min-w-0">
-        <div className="conclusion-title mb-1.5 text-[16px] font-[800] text-[#1f2937]">
-          <span className="break-words">
-            {localHypothesis.trim() || '你的假设方向'}
-          </span>
+        <div className="conclusion-title mb-1.5 flex flex-wrap items-center gap-2 text-[14px] font-[800] text-[#1f2937]">
           <span
-            className="combo-badge ml-2 inline-flex align-middle rounded-full px-2 py-0.5 text-[11px] font-[700]"
-            style={{ background: '#efedff', color: '#6756ee' }}
+            className="combo-badge inline-flex rounded-full px-2 py-0.5 text-[11px] font-[700]"
+            style={
+              userSkipped
+                ? { background: '#e5e7eb', color: '#6b7280' }
+                : { background: '#efedff', color: '#6756ee' }
+            }
           >
             {strengths.slice(0, 2).join('、') || '组合'}
           </span>
+          {userSkipped && (
+            <span
+              className="inline-flex rounded-full bg-[#e5e7eb] px-2 py-0.5 text-[11px] font-[700] text-[#6b7280]"
+            >
+              已跳过
+            </span>
+          )}
+          <span className="ml-auto text-[11px] font-[500] text-[#9ca3af]">
+            {saving ? '保存中…' : ''}
+          </span>
         </div>
 
-        <p className="conclusion-copy m-0 text-[13px] leading-[1.58] text-[#516082]">
-          {displayCopy}
-        </p>
-
-        <button
-          type="button"
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="full-link mt-1.5 inline-block text-[13px] font-[700] text-[#6656f6] hover:underline"
+        <label
+          className={`mb-1 block text-[12px] font-[700] ${userSkipped ? 'text-[#9ca3af]' : 'text-[#6b7280]'}`}
         >
-          {isExpanded ? '收起全文' : '查看全文'}
-        </button>
-
-        {/* 展开编辑器 */}
-        {isExpanded && (
-          <div
-            className="expanded-editor mt-3"
-            style={{ gridColumn: '2 / 4' }}
-          >
-            <label className="mb-1.5 block text-[12px] font-[700] text-[#6b7280]">
-              假设（核心）
-            </label>
-            <textarea
-              value={localHypothesis}
-              onChange={(e) => setLocalHypothesis(e.target.value)}
-              placeholder="我假设这个方向能带给我什么…"
-              className="editor mb-3 w-full resize-y rounded-[13px] border border-[rgba(109,121,176,0.16)] bg-[rgba(250,251,255,0.92)] px-3.5 py-3 text-[13px] leading-[1.6] text-[#334163] outline-none focus:border-[#7b68ff] focus:shadow-[0_0_0_3px_rgba(123,104,255,0.10)]"
-              rows={4}
-            />
-
-            <div className="mb-3 grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1.5 block text-[12px] font-[700] text-[#6b7280]">激情感受</label>
-                <select
-                  value={localPassionMark}
-                  onChange={(e) => {
-                    setLocalPassionMark(e.target.value);
-                    handleSaveFields({
-                      passion_mark: e.target.value ? (e.target.value as any) : null,
-                    });
-                  }}
-                  className="w-full rounded-xl border border-[rgba(109,121,176,0.16)] bg-[rgba(250,251,255,0.92)] px-3 py-2 text-[13px] text-[#334163] outline-none"
-                >
-                  <option value="">未选择</option>
-                  <option value="忍不住想做">忍不住想做</option>
-                  <option value="应该做">应该做</option>
-                </select>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-[12px] font-[700] text-[#6b7280]">时机</label>
-                <select
-                  value={localTimingMark}
-                  onChange={(e) => {
-                    setLocalTimingMark(e.target.value);
-                    handleSaveFields({
-                      timing_mark: e.target.value ? (e.target.value as any) : null,
-                    });
-                  }}
-                  className="w-full rounded-xl border border-[rgba(109,121,176,0.16)] bg-[rgba(250,251,255,0.92)] px-3 py-2 text-[13px] text-[#334163] outline-none"
-                >
-                  <option value="">未选择</option>
-                  <option value="现在">现在</option>
-                  <option value="未来">未来</option>
-                </select>
-              </div>
-            </div>
-
-            <label className="mb-1.5 block text-[12px] font-[700] text-[#6b7280]">动机</label>
-            <input
-              value={localMotivation}
-              onChange={(e) => setLocalMotivation(e.target.value)}
-              onBlur={() => handleSaveFields({ motivation: localMotivation.trim() || null })}
-              className="mb-3 w-full rounded-xl border border-[rgba(109,121,176,0.16)] bg-[rgba(250,251,255,0.92)] px-3 py-2 text-[13px] text-[#334163] outline-none focus:border-[#7b68ff]"
-              placeholder="驱动我选择这个方向的内在动力…"
-            />
-
-            <label className="mb-1.5 block text-[12px] font-[700] text-[#6b7280]">
-              工作目的（用顿号分隔）
-            </label>
-            <input
-              value={localWorkPurposes}
-              onChange={(e) => setLocalWorkPurposes(e.target.value)}
-              onBlur={() => handleSaveFields({ work_purposes: splitPurposes(localWorkPurposes) })}
-              className="mb-4 w-full rounded-xl border border-[rgba(109,121,176,0.16)] bg-[rgba(250,251,255,0.92)] px-3 py-2 text-[13px] text-[#334163] outline-none focus:border-[#7b68ff]"
-              placeholder="例如：帮助他人、创造作品、获得稳定收入…"
-            />
-          </div>
-        )}
+          假设方向
+        </label>
+        <textarea
+          value={localHypothesis}
+          onChange={(e) => setLocalHypothesis(e.target.value)}
+          placeholder="我假设这个方向能带给我什么…"
+          rows={4}
+          className={`editor w-full resize-y rounded-[13px] border px-3.5 py-3 text-[13px] leading-[1.6] outline-none focus:border-[#7b68ff] focus:shadow-[0_0_0_3px_rgba(123,104,255,0.10)] ${
+            userSkipped
+              ? 'border-[rgba(109,121,176,0.10)] bg-[rgba(243,244,246,0.8)] text-[#9ca3af] line-through'
+              : 'border-[rgba(109,121,176,0.16)] bg-[rgba(250,251,255,0.92)] text-[#334163]'
+          }`}
+        />
       </div>
 
-      {/* 右侧操作 */}
-      <div className="card-actions flex flex-shrink-0 flex-col items-end gap-4 text-[12px] text-[#77829f]">
-        <span className="whitespace-nowrap">
-          {saving ? '保存中…' : '刚刚'}
-        </span>
-        <button
-          type="button"
-          className="rounded-full p-1 text-[#1f2d67] transition-colors hover:bg-black/5"
-          title="更多"
-        >
-          <MoreHorizontal size={22} />
-        </button>
-      </div>
+      {/* 右侧占位（保持 grid 三列结构对齐） */}
+      <div className="card-actions flex flex-shrink-0 flex-col items-end gap-4 text-[12px] text-[#77829f]" />
 
-      {/* 底部操作按钮：折叠/展开均显示 */}
+      {/* 底部操作按钮 */}
       <div
         className="col-span-full mt-1 flex items-center justify-end gap-2"
         style={{ gridColumn: '1 / 4' }}
       >
-        <button
-          type="button"
-          onClick={handleSkip}
-          disabled={saving}
-          className="small-btn rounded-[10px] border border-[rgba(101,86,239,0.24)] bg-white px-[18px] py-2 text-[13px] font-[700] text-[#6254eb] transition-transform hover:-translate-y-px disabled:opacity-50"
-        >
-          跳过
-        </button>
+        {!userSkipped && (
+          <button
+            type="button"
+            onClick={handleSkip}
+            disabled={saving}
+            className="small-btn rounded-[10px] border border-[rgba(101,86,239,0.24)] bg-white px-[18px] py-2 text-[13px] font-[700] text-[#6254eb] transition-transform hover:-translate-y-px disabled:opacity-50"
+          >
+            跳过
+          </button>
+        )}
         <button
           type="button"
           disabled={!canConfirm || saving}
           onClick={handleConfirm}
           className="small-btn primary rounded-[10px] border-0 px-[18px] py-2 text-[13px] font-[700] text-white transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-40"
           style={{
-            background: canConfirm
-              ? 'linear-gradient(135deg,#7a64ff,#5d49ef)'
-              : undefined,
+            background: canConfirm ? 'linear-gradient(135deg,#7a64ff,#5d49ef)' : undefined,
           }}
         >
-          {saving ? '保存中…' : '确认结论'}
+          {saving ? '保存中…' : userSkipped ? '确认（恢复）' : '确认'}
         </button>
       </div>
     </article>
   );
-}
-
-function splitPurposes(text: string): string[] {
-  return text
-    .split(/[、,，;；]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
 }

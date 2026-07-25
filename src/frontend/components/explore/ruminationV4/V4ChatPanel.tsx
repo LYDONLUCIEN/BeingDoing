@@ -17,6 +17,7 @@ import { useRuminationV4Store } from '@/stores/ruminationV4Store';
 import { useAuthStore } from '@/stores/authStore';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import type { ComboMessage } from '@/lib/explore/ruminationV4Api';
+import V4HypChipsSelector from './V4HypChipsSelector';
 
 const FlowAiMessage = dynamic(() => import('@/components/explore/FlowAiMessage'), {
   ssr: false,
@@ -40,6 +41,7 @@ export default function V4ChatPanel({ comboId }: Props) {
     isStreaming,
     streamingText,
     fallbackActive,
+    latestHypCandidates,
     error,
     init,
     clearError,
@@ -84,14 +86,19 @@ export default function V4ChatPanel({ comboId }: Props) {
     await beginDiscussion(comboId);
   };
 
-  const handleSend = async () => {
+  const sendText = async (text: string) => {
     if (!comboId || isDraft) return;
-    const text = input.trim();
     if (!text || isStreaming) return;
-    setInput('');
     const token =
       typeof window !== 'undefined' ? localStorage.getItem('token') || undefined : undefined;
     await sendChat(comboId, text, undefined, undefined, token);
+  };
+
+  const handleSend = async () => {
+    const text = input.trim();
+    if (!text) return;
+    setInput('');
+    await sendText(text);
   };
 
   const canInput = !!comboId && hasOpening && !isStreaming && !isReadOnly && !isDraft;
@@ -239,6 +246,14 @@ export default function V4ChatPanel({ comboId }: Props) {
                       >
                         AI 正在回复…
                       </p>
+                    )}
+                    {/* 假设候选 chips 选择器（输入区上方） */}
+                    {latestHypCandidates && latestHypCandidates.length > 0 && !isReadOnly && (
+                      <V4HypChipsSelector
+                        candidates={latestHypCandidates}
+                        disabled={isStreaming || !hasOpening}
+                        onSend={(text) => void sendText(text)}
+                      />
                     )}
                     <div className="flex w-full min-w-0 items-end gap-2.5">
                       <textarea

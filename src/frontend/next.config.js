@@ -7,6 +7,9 @@ const nextConfig = {
     'http://127.0.0.1:3000',
     'https://career.soulhappylab.com',
     'http://career.soulhappylab.com',
+    // 双域名并存：beyondego.me 与 soulhappylab.com 同时可用
+    'https://career.beyondego.me',
+    'http://career.beyondego.me',
     'http://47.96.75.69:3000',
     'http://47.96.75.69',
     'http://60.205.194.159:3000',

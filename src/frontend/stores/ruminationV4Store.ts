@@ -40,6 +40,8 @@ interface RuminationV4Store {
   isStreaming: boolean;
   /** 最近一次兜底触发标志 */
   fallbackActive: boolean;
+  /** 最新一组假设候选 chips(SSE hyp_candidates 事件到达即替换;发送用户消息后清空) */
+  latestHypCandidates: string[] | null;
   activationCode: string | null;
 
   // ── 动作 ────────────────────────────────────────────────
@@ -59,6 +61,7 @@ interface RuminationV4Store {
     token?: string
   ) => Promise<void>;
   abortChat: () => void;
+  clearHypCandidates: () => void;
   patchCard: (comboId: string, fields: Partial<ConclusionCard>) => Promise<void>;
   setStatus: (comboId: string, status: ComboSession['status']) => Promise<void>;
   selectFinal: (comboIds: string[]) => Promise<void>;
@@ -76,6 +79,7 @@ export const useRuminationV4Store = create<RuminationV4Store>((set, get) => ({
   streamingText: '',
   isStreaming: false,
   fallbackActive: false,
+  latestHypCandidates: null,
   activationCode: null,
 
   init: async (activationCode) => {
@@ -210,6 +214,7 @@ export const useRuminationV4Store = create<RuminationV4Store>((set, get) => ({
       await apiSetActive(ac, comboId);
       set((s) => ({
         state: s.state ? { ...s.state, active_combo_id: comboId, main_section: 'combo_session' } : s.state,
+        latestHypCandidates: null,
       }));
       await get().loadCombo(comboId);
     } catch (e: any) {
@@ -247,7 +252,7 @@ export const useRuminationV4Store = create<RuminationV4Store>((set, get) => ({
   sendChat: async (comboId, message, onChunk, onCard, token) => {
     const ac = get().activationCode;
     if (!ac) return;
-    set({ isStreaming: true, streamingText: '', fallbackActive: false, error: null });
+    set({ isStreaming: true, streamingText: '', fallbackActive: false, error: null, latestHypCandidates: null });
     // 先把用户消息加入缓存(乐观)
     const userMsg = { role: 'user' as const, content: message, ts: new Date().toISOString() };
     set((s) => {
@@ -278,6 +283,10 @@ export const useRuminationV4Store = create<RuminationV4Store>((set, get) => ({
       }
       if (evt.fallback) {
         set({ fallbackActive: true });
+      }
+      if (evt.hyp_candidates && evt.hyp_candidates.length > 0) {
+        // 新一组 chips 生成 → 替换选择器
+        set({ latestHypCandidates: evt.hyp_candidates });
       }
       if (evt.conclusion_card) {
         onCard?.(evt.conclusion_card);
@@ -342,6 +351,8 @@ export const useRuminationV4Store = create<RuminationV4Store>((set, get) => ({
     chatHandle = null;
     set({ isStreaming: false, streamingText: '' });
   },
+
+  clearHypCandidates: () => set({ latestHypCandidates: null }),
 
   patchCard: async (comboId, fields) => {
     const ac = get().activationCode;

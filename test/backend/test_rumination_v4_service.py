@@ -23,6 +23,7 @@ from app.services.rumination_v4_service import (
     default_state,
     delete_combo,
     detect_conclusion_signals,
+    extract_hyp_candidates,
     fallback_generate_conclusion,
     find_combo,
     list_combos,
@@ -153,12 +154,28 @@ def test_set_active_combo(tmp_reports, rid, state_with_two_combos):
     assert state["active_combo_id"] == "combo_1"
 
 
-def test_set_combo_status_abandoned_clears_card(tmp_reports, rid, state_with_two_combos):
+def test_set_combo_status_abandoned_keeps_card_and_marks_skipped(tmp_reports, rid, state_with_two_combos):
+    """实施口径 §1-新4:跳过不再清卡,仅置 user_skipped=True;恢复 concluded 可逆。"""
     state = set_combo_status(tmp_reports, rid, "combo_1", "abandoned")
     c1 = find_combo(state, "combo_1")
     assert c1["status"] == "abandoned"
-    assert c1["conclusion_card"] is None
-    assert c1["fields_collected"]["hypothesis"] is None
+    assert c1["user_skipped"] is True
+    # 卡内容保留
+    assert c1["conclusion_card"] is not None
+    assert c1["conclusion_card"]["hypothesis"] == "我假设音乐+创造能让我成为独特创作者"
+    assert c1["fields_collected"]["hypothesis"] is not None
+    # 跳过可逆:再点确认恢复 concluded,清除 user_skipped
+    state = set_combo_status(tmp_reports, rid, "combo_1", "concluded")
+    c1 = find_combo(state, "combo_1")
+    assert c1["status"] == "concluded"
+    assert c1["user_skipped"] is False
+
+
+def test_set_combo_status_abandoned_excluded_from_final_selection(tmp_reports, rid, state_with_two_combos):
+    """跳过的卡不进终选(即使卡内容保留)。"""
+    set_combo_status(tmp_reports, rid, "combo_1", "abandoned")
+    with pytest.raises(ValueError):
+        update_final_selection(tmp_reports, rid, ["combo_1"])
 
 
 # ── tool call 协议测试 ─────────────────────────────────────────────────
@@ -249,18 +266,26 @@ def test_apply_save_conclusion_card_with_dict_hypothesis():
 
 
 def test_detect_conclusion_signals_both():
-    text = f"好的,{CONCLUSION_READY_MARKER}\n现在我为你总结了 2 个假设,你可以选择其中一个"
+    text = f"好的,{CONCLUSION_READY_MARKER}\n我已经把这次探索整理成了结论卡,你看看有没有要改的"
     s = detect_conclusion_signals(text)
     assert s["hidden"] is True
     assert s["visible"] is True
 
 
 def test_detect_conclusion_signals_only_visible_triggers_fallback():
-    """有 visible 话术但无 hidden 标记 → 触发兜底。"""
-    text = "现在我为你总结了 2 个假设,你可以选择其中一个"
+    """有 visible 锚点话术但无 hidden 标记 → 触发兜底。"""
+    text = "我把咱们聊的内容整理成了结论卡,确认一下?"
     s = detect_conclusion_signals(text)
     assert s["hidden"] is False
     assert s["visible"] is True
+
+
+def test_detect_conclusion_signals_old_phrase_deprecated():
+    """旧句式「现在我为你总结了 N 个假设」已废弃,不再视为可见信号。"""
+    text = "现在我为你总结了 2 个假设,你可以选择其中一个"
+    s = detect_conclusion_signals(text)
+    assert s["hidden"] is False
+    assert s["visible"] is False
 
 
 def test_detect_conclusion_signals_neither():
@@ -341,11 +366,160 @@ def test_build_chat_messages_includes_summary_and_recent():
         {"role": "assistant", "content": "为什么?"},
         {"role": "user", "content": "我喜欢舞台"},
     ]
-    msgs, sys_prompt = build_chat_messages(c, "下一句", values_list=["发现"])
+    msgs, sys_prompt = build_chat_messages(
+        c, "下一句", user_context="【基本资料】\n年龄: 30", values_keywords=["发现"]
+    )
     assert msgs[0].role == "system"
     assert "音乐" in msgs[0].content
+    assert "基本资料" in msgs[0].content
+    assert "发现" in msgs[0].content
     # 摘要注入
     assert any("历史对话摘要" in m.content for m in msgs if m.role == "system")
     # 最后是用户最新输入
     assert msgs[-1].role == "user"
     assert msgs[-1].content == "下一句"
+
+
+def test_build_chat_messages_omits_values_block_when_empty():
+    """values_keywords 为 None → prompt 省略价值观关键词注入块(禁固定词兜底)。"""
+    c = new_combo_session("combo_1", "音乐", ["创造表达"])
+    msgs, sys_prompt = build_chat_messages(c, "你好", user_context="", values_keywords=None)
+    assert "用户在价值观阶段确认的关键词" not in sys_prompt
+    # 传真实关键词 → 块出现
+    _, sys_prompt2 = build_chat_messages(c, "你好", user_context="", values_keywords=["发现"])
+    assert "用户在价值观阶段确认的关键词：发现" in sys_prompt2
+
+
+# ── 平衡点字段与再评估闸(实施口径 §1-新5 / §2.2)───────────────────────────
+def test_update_field_accepts_balance_fields():
+    state = default_state()
+    c = new_combo_session("combo_1", "音乐", ["创造表达"])
+    state["combo_sessions"] = [c]
+    card, err = apply_tool_call(state, "combo_1", {
+        "tool": "update_field", "field": "balance_found", "value": False
+    })
+    assert err is None
+    _, err = apply_tool_call(state, "combo_1", {
+        "tool": "update_field", "field": "balance_fail_reason", "value": "投入过大,当下难启动"
+    })
+    assert err is None
+    assert c["fields_collected"]["balance_found"] is False
+    assert c["fields_collected"]["balance_fail_reason"] == "投入过大,当下难启动"
+
+
+def test_hypothesis_change_via_update_field_resets_balance():
+    """hypothesis 变更 → balance_found / balance_fail_reason 置 None(再评估闸)。"""
+    state = default_state()
+    c = new_combo_session("combo_1", "音乐", ["创造表达"])
+    c["fields_collected"]["hypothesis"] = "旧假设"
+    c["fields_collected"]["balance_found"] = True
+    state["combo_sessions"] = [c]
+    apply_tool_call(state, "combo_1", {
+        "tool": "update_field", "field": "hypothesis", "value": "新假设"
+    })
+    assert c["fields_collected"]["hypothesis"] == "新假设"
+    assert c["fields_collected"]["balance_found"] is None
+    assert c["fields_collected"]["balance_fail_reason"] is None
+
+
+def test_hypothesis_unchanged_keeps_balance():
+    state = default_state()
+    c = new_combo_session("combo_1", "音乐", ["创造表达"])
+    c["fields_collected"]["hypothesis"] = "同一个假设"
+    c["fields_collected"]["balance_found"] = True
+    state["combo_sessions"] = [c]
+    apply_tool_call(state, "combo_1", {
+        "tool": "update_field", "field": "hypothesis", "value": "同一个假设"
+    })
+    assert c["fields_collected"]["balance_found"] is True
+
+
+def test_save_conclusion_card_includes_balance_and_reset_on_hyp_change():
+    state = default_state()
+    c = new_combo_session("combo_1", "音乐", ["创造表达"])
+    state["combo_sessions"] = [c]
+    # 首次出卡:带 balance
+    card, err = apply_tool_call(state, "combo_1", {
+        "tool": "save_conclusion_card",
+        "fields": {"hypothesis": "假设A", "balance_found": True},
+    })
+    assert err is None
+    assert card["balance_found"] is True
+    assert card["balance_fail_reason"] is None
+    # 换 hypothesis 且未显式给 balance_found → 重置为 None
+    card, err = apply_tool_call(state, "combo_1", {
+        "tool": "save_conclusion_card",
+        "fields": {"hypothesis": "假设B"},
+    })
+    assert err is None
+    assert card["hypothesis"] == "假设B"
+    assert card["balance_found"] is None
+    assert card["balance_fail_reason"] is None
+    # 换 hypothesis 但同时显式给出 balance_found → 保留 AI 的新评估
+    card, err = apply_tool_call(state, "combo_1", {
+        "tool": "save_conclusion_card",
+        "fields": {
+            "hypothesis": "假设C",
+            "balance_found": False,
+            "balance_fail_reason": "价值观不一致",
+        },
+    })
+    assert err is None
+    assert card["balance_found"] is False
+    assert card["balance_fail_reason"] == "价值观不一致"
+
+
+def test_patch_conclusion_card_hypothesis_change_resets_balance(tmp_reports, rid, state_with_two_combos):
+    state = load_v4_state(tmp_reports, rid)
+    c1 = find_combo(state, "combo_1")
+    c1["conclusion_card"]["balance_found"] = True
+    c1["conclusion_card"]["balance_fail_reason"] = None
+    save_v4_state(tmp_reports, rid, state)
+    state, card = patch_conclusion_card(tmp_reports, rid, "combo_1", {"hypothesis": "改后的假设"})
+    assert card["hypothesis"] == "改后的假设"
+    assert card["balance_found"] is None
+    assert card["balance_fail_reason"] is None
+
+
+def test_combo_meta_includes_user_skipped(tmp_reports, rid, state_with_two_combos):
+    metas = list_combos(load_v4_state(tmp_reports, rid))
+    by_id = {m["combo_id"]: m for m in metas}
+    assert by_id["combo_1"]["user_skipped"] is False
+    set_combo_status(tmp_reports, rid, "combo_1", "abandoned")
+    metas = list_combos(load_v4_state(tmp_reports, rid))
+    by_id = {m["combo_id"]: m for m in metas}
+    assert by_id["combo_1"]["user_skipped"] is True
+
+
+# ── chips 候选隐藏块解析(实施口径 §2.4)─────────────────────────────────────
+def test_extract_hyp_candidates_parses_and_strips_block():
+    text = (
+        "我为你准备了两条候选,点一条我们继续聊:\n"
+        "[STEP3_HYP_JSON]\n"
+        '{"candidates": ["开设一家面向都市青年的手工陶艺工作室,定期开课教学",'
+        ' "加入一家生活方式品牌公司担任陶艺课程设计师,开发系列产品"]}\n'
+        "[/STEP3_HYP_JSON]"
+    )
+    visible, candidates = extract_hyp_candidates(text)
+    assert "[STEP3_HYP_JSON]" not in visible
+    assert "我为你准备了两条候选" in visible
+    assert len(candidates) == 2
+    assert candidates[0].startswith("开设一家")
+
+
+def test_extract_hyp_candidates_filters_short_and_invalid():
+    """过短(<10字)候选被滤除;非法 JSON 块仅剥离不出候选。"""
+    text = '[STEP3_HYP_JSON]{"candidates": ["设计师", ""]}[/STEP3_HYP_JSON]回复正文'
+    visible, candidates = extract_hyp_candidates(text)
+    assert candidates == []
+    assert "[STEP3_HYP_JSON]" not in visible
+    text2 = "[STEP3_HYP_JSON]{bad json}[/STEP3_HYP_JSON]正文"
+    visible2, candidates2 = extract_hyp_candidates(text2)
+    assert candidates2 == []
+    assert visible2 == "正文"
+
+
+def test_extract_hyp_candidates_empty_text():
+    visible, candidates = extract_hyp_candidates("")
+    assert visible == ""
+    assert candidates == []

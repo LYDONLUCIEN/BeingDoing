@@ -130,6 +130,7 @@ export default function V4MatrixLeftPanel() {
               comboId={activeCombo.combo_id}
               card={conclusionCard}
               strengths={activeCombo.strengths}
+              userSkipped={!!activeCombo.user_skipped || activeCombo.status === 'abandoned'}
             />
           )}
         </div>

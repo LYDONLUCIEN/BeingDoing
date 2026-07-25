@@ -145,9 +145,10 @@ do_on() {
 
 ${B}━━━ 维护模式已开启 ━━━${X}
 用户访问站点将看到维护页。
-你（管理员）请在浏览器 DevTools Console 执行：
+你（管理员）请在浏览器 DevTools Console 执行（按你当前访问的域名选一条）：
 
   ${C}document.cookie='${BYPASS_COOKIE_NAME}=1;path=/;max-age=86400;domain=.soulhappylab.com'${X}
+  ${C}document.cookie='${BYPASS_COOKIE_NAME}=1;path=/;max-age=86400;domain=.beyondego.me'${X}
 
 即可绕过维护页，走正常 HTTPS 验证。
 

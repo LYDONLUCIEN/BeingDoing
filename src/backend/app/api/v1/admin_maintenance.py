@@ -13,7 +13,7 @@ import os
 import subprocess
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from app.api.v1.auth import get_current_user
@@ -31,8 +31,27 @@ _CANDIDATES = [
 REPO_ROOT = next((p for p in _CANDIDATES if os.path.isfile(os.path.join(p, "scripts", "maintenance.sh"))), _CANDIDATES[0])
 MAINT_SCRIPT = os.path.join(REPO_ROOT, "scripts", "maintenance.sh")
 BYPASS_COOKIE_NAME = os.getenv("BYPASS_COOKIE_NAME", "bypass_maintenance")
-# 主访问域名（用于 cookie domain）
-COOKIE_DOMAIN = os.getenv("COOKIE_DOMAIN", ".soulhappylab.com")
+# 显式指定 cookie domain（可选）；不指定时按请求 Host 自动适配（双域名并存）
+COOKIE_DOMAIN = os.getenv("COOKIE_DOMAIN", "").strip()
+
+# 支持的站点主域名（双域名并存：soulhappylab.com / beyondego.me）
+_SUPPORTED_SITE_DOMAINS = ("soulhappylab.com", "beyondego.me")
+
+
+def _cookie_domain_for_request(request: Request) -> Optional[str]:
+    """按请求 Host 推导 cookie domain，使两个域名下种的 bypass cookie 各自生效
+
+    - 显式配置 COOKIE_DOMAIN 时优先使用
+    - Host 属于支持的站点域名 → 返回对应 .主域名
+    - 其他（localhost / IP）→ None，即 host-only cookie
+    """
+    if COOKIE_DOMAIN:
+        return COOKIE_DOMAIN
+    host = (request.headers.get("host") or "").split(":")[0].lower()
+    for suffix in _SUPPORTED_SITE_DOMAINS:
+        if host == suffix or host.endswith("." + suffix):
+            return "." + suffix
+    return None
 
 
 def _is_super_admin(user: Optional[dict]) -> bool:
@@ -49,6 +68,7 @@ class MaintenanceAction(BaseModel):
 @router.post("")
 async def set_maintenance_mode(
     payload: MaintenanceAction,
+    request: Request,
     response: Response,
     current_user: Optional[dict] = Depends(get_current_user),
 ):
@@ -103,7 +123,7 @@ async def set_maintenance_mode(
             value="1",
             max_age=86400,  # 1 天
             path="/",
-            domain=COOKIE_DOMAIN,
+            domain=_cookie_domain_for_request(request),
             httponly=False,  # 前端需要能读（虽然不必要）
             samesite="lax",
         )
