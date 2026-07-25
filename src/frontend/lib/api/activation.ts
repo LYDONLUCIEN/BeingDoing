@@ -17,7 +17,7 @@ export type CodeSource = 'trial_gift' | 'purchase' | 'admin' | (string & {});
 export interface MyCodeItem {
   code: string;
   code_type: CodeType;
-  /** active / expired / revoked（其余取值按原文展示） */
+  /** active / inactive（已购买未开始探索，有效期首次起算）/ expired / revoked（其余取值按原文展示） */
   status: string;
   /** 试用码为 null（不过期）；完整码为 ISO 时间 */
   expires_at?: string | null;

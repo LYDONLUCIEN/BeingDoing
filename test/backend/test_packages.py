@@ -2,10 +2,11 @@
 套餐商品化测试（P-B，ADR-0008；mock 渠道层，不打真实支付宝）
 
 测试场景：
-1. 商品目录：新目录（季度/年度/咨询），旧 SKU 下架拒绝
-2. 季度套餐交付：有试用码→升级（code_type/vip/有效期/来源）；无试用码→发新码并绑定
-3. 年度套餐交付：1 升级 + 2 赠品码（字段/所属人追溯/首次激活起算有效期）
-4. 赠品码 claim 落有效期
+1. 商品目录：新目录（单人激活码/三人包/咨询），旧 SKU 下架拒绝
+2. 单人激活码交付：有试用码→升级（code_type/vip/来源；有效期 None 待首次探索起算）；
+   无试用码→发新码并绑定
+3. 三人包交付：1 升级 + 2 赠品码（字段/所属人追溯；有效期 None）
+4. 首次使用起算：maybe_start_validity 落 90/365 天；试用码/已有有效期码不受影响
 5. 延期激活：校验（非本人/试用码/无套餐类型拒绝）+ 延期数学（未过期累加/已过期从此刻）
 6. 咨询交付：生成 pending_survey 预约单 + meta.booking_id
 7. 退款守卫：套餐/延期拒退；咨询未预约可退（booking 取消）、已预约拒退
@@ -158,7 +159,7 @@ async def test_legacy_sku_rejected():
         )
 
 
-# ─── 2. 季度套餐交付 ──────────────────────────────────────────
+# ─── 2. 单人激活码交付 ────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -184,7 +185,12 @@ async def test_quarterly_upgrades_trial_code(_setup_db):
     assert rec.vip_level == 2
     assert rec.purchaser_user_id == "u1"
     assert rec.source_order_id == order.id
-    # 有效期 ≈ now + 90 天（付款起算）
+    # 交付时不落有效期（未激活）；首次开始探索时起算
+    assert rec.expires_at is None
+
+    # 首次使用 → 有效期 ≈ now + 90 天
+    mgr.maybe_start_validity(trial.code)
+    rec = mgr.get_activation(trial.code)
     expires = datetime.fromisoformat(rec.expires_at)
     expected = datetime.now(timezone.utc) + timedelta(days=settings.QUARTERLY_DAYS)
     assert abs((expires - expected).total_seconds()) < 120
@@ -211,11 +217,12 @@ async def test_quarterly_issues_new_code_without_trial(_setup_db):
     assert rec.package_type == "quarterly"
     assert rec.owner_user_id == "u1"  # 自动绑定购买者
     assert rec.vip_level == 2
+    assert rec.expires_at is None  # 未激活，首次开始探索起算
     meta = PaymentService._parse_meta(order.meta)
     assert meta["upgraded"] is False
 
 
-# ─── 3. 年度套餐交付（1 升级 + 2 赠品）─────────────────────────
+# ─── 3. 三人包交付（1 升级 + 2 赠品）──────────────────────────
 
 
 @pytest.mark.asyncio
@@ -245,14 +252,14 @@ async def test_annual_delivers_upgrade_plus_gifts(_setup_db):
         assert rec.code_type == "full"
         assert rec.package_type == "annual"
         assert rec.vip_level == 2
-        assert rec.expires_at is None  # 首次激活才落有效期
+        assert rec.expires_at is None  # 首次开始探索才落有效期
         assert rec.owner_user_id is None  # 未绑定，可转送
         assert rec.purchaser_user_id == "u1"  # 所属人追溯
         assert rec.source_order_id == order.id
 
 
 @pytest.mark.asyncio
-async def test_gift_code_claim_lands_expiry(_setup_db):
+async def test_gift_code_first_use_lands_expiry(_setup_db):
     mgr = _setup_db
     coupon = await _big_coupon()
     order, _ = await PaymentService.create_order(
@@ -263,14 +270,37 @@ async def test_gift_code_claim_lands_expiry(_setup_db):
     )
     gift = PaymentService._parse_meta(order.meta)["gift_codes"][0]
 
-    # 另一个人激活赠品码 → 有效期从激活起算 365 天
+    # 另一个人绑定赠品码 → 仍不落有效期（claim 不再起算）
     claimed = mgr.claim_owner(gift, {"user_id": "u2", "email": "bob@test.com"})
-    assert claimed.expires_at is not None
-    expires = datetime.fromisoformat(claimed.expires_at)
-    expected = datetime.now(timezone.utc) + timedelta(days=settings.ANNUAL_DAYS)
-    assert abs((expires - expected).total_seconds()) < 120
+    assert claimed.expires_at is None
     assert claimed.owner_user_id == "u2"
     assert claimed.purchaser_user_id == "u1"  # 所属人不变
+
+    # 首次开始探索 → 有效期从此时起算 365 天（幂等：再次调用不变）
+    mgr.maybe_start_validity(gift)
+    rec = mgr.get_activation(gift)
+    expires = datetime.fromisoformat(rec.expires_at)
+    expected = datetime.now(timezone.utc) + timedelta(days=settings.ANNUAL_DAYS)
+    assert abs((expires - expected).total_seconds()) < 120
+    mgr.maybe_start_validity(gift)
+    assert mgr.get_activation(gift).expires_at == rec.expires_at
+
+
+@pytest.mark.asyncio
+async def test_maybe_start_validity_ignores_trial_and_started(_setup_db):
+    """maybe_start_validity：试用码/无套餐类型/已有有效期的码一律不动"""
+    mgr = _setup_db
+    trial = _make_trial(mgr)
+    full = _make_full(mgr, package_type="quarterly", days=30)  # 已有有效期
+    legacy = mgr.create_activation(mode="combined", ttl_minutes=30 * 24 * 60)  # 无套餐类型
+
+    mgr.maybe_start_validity(trial.code)
+    mgr.maybe_start_validity(full.code)
+    mgr.maybe_start_validity(legacy.code)
+
+    assert mgr.get_activation(trial.code).expires_at is None  # 试用码不过期
+    assert mgr.get_activation(full.code).expires_at == full.expires_at  # 不变
+    assert mgr.get_activation(legacy.code).expires_at == legacy.expires_at  # 不变
 
 
 # ─── 4. 延期激活 ──────────────────────────────────────────────

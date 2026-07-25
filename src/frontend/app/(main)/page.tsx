@@ -432,7 +432,7 @@ function PricingSection() {
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         {PRICING_PLANS.map((plan) => {
-          const featureKeys = ['f1', 'f2', 'f3', 'f4']
+          const featureKeys = ['f1', 'f2', 'f3', 'f4', 'f5']
             .map((f) => `home.pricing.${plan.key}.${f}`)
             .filter((k) => t(k) !== k);
           return (

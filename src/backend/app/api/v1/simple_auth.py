@@ -43,6 +43,22 @@ from app.utils.trial_codes import (
 router = APIRouter(prefix="/simple-auth", tags=["简单模式认证"])
 
 
+def _derive_code_status(rec) -> str:
+    """派生展示状态：套餐完整码尚未首次使用（expires_at 为空）时显示 inactive（未激活）
+
+    仅展示层派生，不落盘；试用码（不过期）与已有有效期的码不受影响。
+    """
+    status_out = rec.status
+    if (
+        status_out == "active"
+        and (getattr(rec, "code_type", None) or "full") == "full"
+        and (getattr(rec, "package_type", None) or "").strip()
+        and not getattr(rec, "expires_at", None)
+    ):
+        return "inactive"
+    return status_out
+
+
 def _client_ip(request) -> str:
     """从 FastAPI Request 中提取客户端 IP。"""
     if request is None:
@@ -371,7 +387,7 @@ async def list_my_codes(
         items.append({
             "code": rec.code,
             "code_type": getattr(rec, "code_type", None) or "full",
-            "status": rec.status,
+            "status": _derive_code_status(rec),
             "expires_at": rec.expires_at,
             "created_at": rec.created_at,
             "source": source,
@@ -438,7 +454,7 @@ async def list_my_purchased_codes(
                 "code": rec.code,
                 "code_type": getattr(rec, "code_type", None) or "full",
                 "package_type": getattr(rec, "package_type", None),
-                "status": rec.status,
+                "status": _derive_code_status(rec),
                 "expires_at": rec.expires_at,
                 "created_at": rec.created_at,
                 "activated": bool(rec.owner_user_id),

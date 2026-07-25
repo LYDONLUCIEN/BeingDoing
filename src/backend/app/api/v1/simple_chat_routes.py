@@ -4305,6 +4305,8 @@ async def simple_chat(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="激活码已过期（历史记录已保留，可以用于回放或导出）",
         )
+    # 套餐完整码：首次使用起算有效期（幂等，仅 expires_at 为空时落地）
+    manager.maybe_start_validity(rec.code)
 
     # 试用码门控（同 /message/stream 主路径口径）
     _assert_trial_message_allowed(
@@ -4511,6 +4513,8 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="激活码已过期（历史记录已保留，可以用于回放或导出）",
         )
+    # 套餐完整码：首次使用起算有效期（幂等，仅 expires_at 为空时落地）
+    manager.maybe_start_validity(rec.code)
     # 试用码阶段锁：试用仅 values 可初始化（values 内推进 strengths 在此拦截）
     _assert_trial_phase_allowed(rec, current_user, phase_step)
     session_id = report["report_id"]
@@ -5445,6 +5449,8 @@ async def simple_chat_stream(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="激活码已过期（历史记录已保留，可以用于回放或导出）",
         )
+    # 套餐完整码：首次使用起算有效期（幂等，仅 expires_at 为空时落地）
+    manager.maybe_start_validity(rec.code)
     # 试用码门控：非 values → 402 trial_phase_locked；values 用户消息 ≥10 → 402 trial_limit_reached
     _assert_trial_message_allowed(
         rec, current_user, phase_step, registry, report["report_id"]

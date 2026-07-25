@@ -2,7 +2,7 @@
 支付订单服务（P2a：支付宝闭环；P-B：套餐商品化，ADR-0008）
 
 职责：
-1. 商品与金额：商品目录（季度/年度套餐、延期、咨询）；会员价（先折）→ 减券面额（后券）→ 下限 0 元
+1. 商品与金额：商品目录（单人激活码/三人包、延期、咨询）；会员价（先折）→ 减券面额（后券）→ 下限 0 元
 2. create_order：下单（order_no 唯一重试）→ 锁券 → 调渠道下单存 qr_code（支付跳转 URL）；
    0 元单不调渠道，直接走支付成功交付（status granted）。旧 SKU activation_code 已下架
 3. handle_alipay_notify：验签 → 查单 → 校验金额 → 幂等交付（TRADE_SUCCESS / TRADE_FINISHED）
@@ -98,8 +98,8 @@ def _product_price(product_type: str) -> int:
 def _product_name(product_type: str) -> str:
     """渠道预下单 subject 用的商品名"""
     return {
-        PRODUCT_QUARTERLY: "季度套餐",
-        PRODUCT_ANNUAL: "年度套餐",
+        PRODUCT_QUARTERLY: "单人激活码",
+        PRODUCT_ANNUAL: "三人包",
         PRODUCT_RENEWAL: "延期激活",
         PRODUCT_CONSULTATION: "报告解读咨询",
         _LEGACY_PRODUCT_TYPE: _LEGACY_PRODUCT_NAME,
@@ -133,7 +133,7 @@ class PaymentService:
 
     @staticmethod
     def get_products() -> Dict[str, Any]:
-        """商品目录 + 会员折扣信息（P-B：季度/年度套餐 + 咨询；旧 SKU 已下架）
+        """商品目录 + 会员折扣信息（P-B：单人激活码/三人包 + 咨询；旧 SKU 已下架）
 
         延期激活不在目录中：从「我的激活码」页带 target_code 进 renewal 下单。
         """
@@ -141,30 +141,39 @@ class PaymentService:
             "items": [
                 {
                     "product_type": PRODUCT_QUARTERLY,
-                    "name": "季度套餐",
+                    "name": "单人激活码",
                     "price": settings.QUARTERLY_PRICE,
                     "duration_days": settings.QUARTERLY_DAYS,
-                    "description": "把试用码升级为完整码（无试用码时发新码），有效期 3 个月",
+                    "description": (
+                        "1 个激活码：已有试用码将直接升级为完整版（探索记录保留），"
+                        "无试用码则发新码；自首次开始探索起算，有效期 90 天"
+                    ),
                     "features": [
                         "不限量对话",
                         "全部 5 阶段解锁",
                         "1 份个人报告",
                         "报告人工审核",
+                        "有效期 90 天（首次探索起算）",
                     ],
                 },
                 {
                     "product_type": PRODUCT_ANNUAL,
-                    "name": "年度套餐",
+                    "name": "三人包",
                     "price": settings.ANNUAL_PRICE,
                     "duration_days": settings.ANNUAL_DAYS,
                     "popular": True,
-                    "description": "1 个码升级/新发 + 2 个赠品码（可转送），有效期 1 年",
+                    "description": (
+                        "3 个激活码：1 个自用（有试用码直接升级）+ 2 个赠品码可转送朋友；"
+                        "每码自首次开始探索起算，有效期 1 年"
+                    ),
                     "features": [
                         "不限量对话",
                         "全部 5 阶段解锁",
                         "3 份报告能力（含 2 个赠品码）",
                         "团队分析",
                         "报告人工审核",
+                        "3 个激活码（1 自用 + 2 可转送）",
+                        "每码有效期 1 年（首次探索起算）",
                     ],
                 },
                 {
@@ -249,10 +258,10 @@ class PaymentService:
         if rec.status not in ("active", "expired"):
             raise ValueError("目标激活码不可用（已作废或已删除）")
         if (getattr(rec, "code_type", "full") or "full") != "full":
-            raise ValueError("仅完整码可延期（试用码请先购买套餐升级）")
+            raise ValueError("仅完整码可延期（试用码请先购买激活码升级）")
         package_type = (getattr(rec, "package_type", None) or "").strip().lower()
         if package_type not in ("quarterly", "annual"):
-            raise ValueError("该激活码无套餐类型，无法延期，请购买季度/年度套餐")
+            raise ValueError("该激活码无套餐类型，无法延期，请购买激活码")
         if user_id not in {rec.owner_user_id, getattr(rec, "purchaser_user_id", None)}:
             raise ValueError("仅该激活码的激活人或所属人可为其延期")
         return rec, package_type
@@ -277,7 +286,7 @@ class PaymentService:
             PaymentChannelError: 渠道下单失败（订单保留 pending 可取消/超时关单）
         """
         if product_type == _LEGACY_PRODUCT_TYPE:
-            raise ValueError("该商品已下架，请选择季度/年度套餐")
+            raise ValueError("该商品已下架，请选择激活码")
         if product_type not in _VALID_PRODUCT_TYPES:
             raise ValueError(f"不支持的商品类型：{product_type}")
         if channel == "wechat":
@@ -489,9 +498,10 @@ class PaymentService:
     def _deliver_package(
         cls, order: PaymentOrder, meta: Dict[str, Any], user_email: Optional[str]
     ) -> Tuple[Optional[str], Dict[str, Any]]:
-        """季度/年度套餐交付：升级试用码（无则发新码并绑定）；年度另发 2 赠品码
+        """单人激活码/三人包交付：升级试用码（无则发新码并绑定）；三人包另发 2 赠品码
 
-        升级码有效期从付款起算；赠品码有效期从首次激活起算（claim 时落地）。
+        所有套餐码有效期均自首次开始探索起算（交付时 expires_at=None，
+        首次对话时由 maybe_start_validity 落地）。
         """
         package_type = "quarterly" if order.product_type == PRODUCT_QUARTERLY else "annual"
         days = _package_days(package_type)
@@ -523,7 +533,7 @@ class PaymentService:
         else:
             rec = mgr.create_activation(
                 mode="combined",
-                ttl_minutes=days * 24 * 60,
+                no_expiry=True,  # 未激活：首次开始探索时起算有效期
                 code_type="full",
                 vip_level=2,
                 package_type=package_type,
@@ -535,7 +545,7 @@ class PaymentService:
             meta["upgraded"] = False
         own_code = rec.code
 
-        # 年度套餐：2 个赠品完整码（未绑定、首次激活起算有效期）
+        # 三人包：2 个赠品完整码（未绑定、首次开始探索起算有效期）
         if order.product_type == PRODUCT_ANNUAL:
             gift_codes: List[str] = []
             for _ in range(2):
@@ -551,7 +561,7 @@ class PaymentService:
                 )
                 gift_codes.append(gift.code)
             meta["gift_codes"] = gift_codes
-            logger.info("年度套餐赠品码已生成：order=%s gifts=%s", order.order_no, gift_codes)
+            logger.info("三人包赠品码已生成：order=%s gifts=%s", order.order_no, gift_codes)
 
         return own_code, meta
 
@@ -617,17 +627,17 @@ class PaymentService:
                 lines = [
                     "您好，",
                     "",
-                    "感谢您的购买，您的套餐已生效：",
+                    "感谢您的购买，您的激活码已就绪：",
                     "",
                     f"您的激活码：{delivered_code}",
-                    f"有效期：{days} 天（自支付之日起）",
+                    f"有效期：{days} 天（自首次开始探索起算）",
                     f"激活入口：{activate_url}",
                 ]
                 gift_codes = (meta or {}).get("gift_codes") or []
                 if gift_codes:
                     lines += [
                         "",
-                        "年度套餐赠品激活码（可转送朋友，有效期自对方激活起算）：",
+                        "赠品激活码（可转送朋友，每码自对方首次开始探索起算）：",
                     ]
                     lines += [f"  - {c}" for c in gift_codes]
                 lines += [
@@ -636,7 +646,7 @@ class PaymentService:
                     "",
                     "—— 寻路 xunlu",
                 ]
-                subject = "【寻路】您的套餐激活码"
+                subject = "【寻路】您的激活码"
                 body = "\n".join(lines)
             elif product_type == PRODUCT_RENEWAL:
                 subject = "【寻路】延期激活成功"

@@ -260,7 +260,7 @@ async def test_create_order_locks_coupon(fake_channel):
     assert len(order.order_no) == 21 and order.order_no.startswith("X")
 
     # 渠道下单：金额 = 实付，跳转 URL 存 qr_code 列
-    assert fake_channel.created_orders == [(order.order_no, 1900, "季度套餐")]
+    assert fake_channel.created_orders == [(order.order_no, 1900, "单人激活码")]
     assert payment == {
         "channel": "alipay",
         "pay_url": f"https://openapi.alipay.com/gateway.do?fake-page-pay-{order.order_no}",

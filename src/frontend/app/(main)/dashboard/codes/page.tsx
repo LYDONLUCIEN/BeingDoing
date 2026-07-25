@@ -11,9 +11,10 @@ import { formatLocalDateTime, toDate } from '@/lib/utils/formatTime';
 import PurchaseModal from '@/components/payment/PurchaseModal';
 import { useLocale } from '@/hooks/useLocale';
 
-/** 状态 badge 配色：active 绿 / expired 灰 / revoked 红 / 其他 灰 */
+/** 状态 badge 配色：active 绿 / inactive 橙 / expired 灰 / revoked 红 / 其他 灰 */
 const STATUS_COLOR: Record<string, string> = {
   active: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  inactive: 'bg-orange-100 text-orange-700 border-orange-200',
   expired: 'bg-neutral-200 text-neutral-600 border-neutral-300',
   revoked: 'bg-red-100 text-red-700 border-red-200',
 };
@@ -118,9 +119,12 @@ function CodeCard({
         <div className="space-y-0.5">
           <p className="text-[10px] text-bd-muted">{t('dashboard.codesPage.expiresLabel')}</p>
           <p className="text-bd-fg">
-            {codeType === 'trial' || !item.expires_at
-              ? t('dashboard.codesPage.noExpiry')
-              : formatTime(item.expires_at)}
+            {/* inactive（已购买未开始探索）：有效期首次创建 session 才起算；trial 不过期仍显示「不限」 */}
+            {item.status === 'inactive'
+              ? t('dashboard.codesPage.startsOnUse')
+              : codeType === 'trial' || !item.expires_at
+                ? t('dashboard.codesPage.noExpiry')
+                : formatTime(item.expires_at)}
           </p>
           {daysLeft != null && (
             <p className="text-[10px] text-bd-muted">

@@ -548,7 +548,7 @@ class SimpleActivationManager:
 
         - code_type: trial → full；vip_level=2
         - package_type 写入（决定延期价格档）
-        - 有效期从付款时刻起算：expires_at = now + duration_days
+        - 有效期自首次开始探索起算：此处置 None，由 maybe_start_validity 首次对话时落地
         - 记录来源订单与所属人（已有值不覆盖）
         """
         norm = (code or "").strip().upper()
@@ -575,7 +575,7 @@ class SimpleActivationManager:
         rec.code_type = "full"
         rec.vip_level = 2
         rec.package_type = package_type
-        rec.expires_at = (now + timedelta(days=days)).isoformat()
+        rec.expires_at = None  # 未激活：首次开始探索时（maybe_start_validity）才落有效期
         rec.status = ActivationStatus.ACTIVE.value
         rec.last_activity_at = now.isoformat()
         if source_order_id and not rec.source_order_id:
@@ -655,6 +655,40 @@ class SimpleActivationManager:
         )
         logger.info("激活码延期激活: code=%s days=%d new_expires=%s", norm, days, rec.expires_at)
         return rec
+
+    def maybe_start_validity(self, code: str) -> None:
+        """首次使用起算有效期（套餐完整码「未激活，首次开始探索起算」口径）
+
+        仅当 code_type=full 且 package_type∈{quarterly,annual} 且 status=active
+        且 expires_at 为 None 时：expires_at = now + 套餐天数（90/365）并落盘；
+        其余情况（试用码、无套餐类型、已有有效期、非 active）一律不动。幂等。
+        """
+        norm = (code or "").strip().upper()
+        if not norm:
+            return
+        records = self._load_all()
+        rec = records.get(norm)
+        if not rec:
+            return
+        if (getattr(rec, "code_type", "full") or "full") != "full":
+            return
+        pkg = (getattr(rec, "package_type", None) or "").strip().lower()
+        if pkg not in {"quarterly", "annual"}:
+            return
+        if rec.status != ActivationStatus.ACTIVE.value:
+            return
+        if rec.expires_at:
+            return
+
+        from app.config.settings import settings as _settings
+
+        days = _settings.QUARTERLY_DAYS if pkg == "quarterly" else _settings.ANNUAL_DAYS
+        now = datetime.now(timezone.utc)
+        rec.expires_at = (now + timedelta(days=days)).isoformat()
+        rec.last_activity_at = now.isoformat()
+        records[norm] = rec
+        self._save_all(records)
+        logger.info("套餐码首次使用起算有效期: code=%s package=%s days=%d", norm, pkg, days)
 
     def set_purchase_source(
         self,
@@ -736,24 +770,10 @@ class SimpleActivationManager:
         now = datetime.now(timezone.utc).isoformat()
         old_owner_user_id = rec.owner_user_id
         old_owner_email = rec.owner_email
-        is_new_claim = not bool(old_owner_user_id or old_owner_email)
         rec.owner_user_id = uid
         rec.owner_email = email
         rec.claimed_at = rec.claimed_at or now
         rec.last_activity_at = now
-
-        # 套餐赠品码：首次激活时落有效期（ADR-0008：赠品码有效期从激活起算）
-        if is_new_claim and not rec.expires_at:
-            pkg = (getattr(rec, "package_type", None) or "").strip().lower()
-            if pkg in {"quarterly", "annual"}:
-                from app.config.settings import settings as _settings
-
-                days = (
-                    _settings.QUARTERLY_DAYS if pkg == "quarterly" else _settings.ANNUAL_DAYS
-                )
-                rec.expires_at = (
-                    datetime.now(timezone.utc) + timedelta(days=days)
-                ).isoformat()
 
         records[norm or code] = rec
         self._save_all(records)

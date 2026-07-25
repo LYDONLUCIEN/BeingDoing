@@ -292,6 +292,25 @@ async def test_my_codes_lists_owned_codes(patched_roots, manager, prod_base: Pat
     assert all(i["code"] != other.code for i in items)
 
 
+async def test_my_codes_derives_inactive_for_fresh_package_code(patched_roots, manager):
+    """套餐完整码未首次使用（expires_at 为空）→ my-codes 派生 status=inactive；试用码不受影响"""
+    full = manager.create_activation(
+        mode="combined",
+        code_type="full",
+        vip_level=2,
+        package_type="quarterly",
+        no_expiry=True,
+    )
+    manager.claim_owner(full.code, USER)
+    trial = create_trial_activation_for_user(USER, manager=manager)
+
+    out = await simple_auth_module.list_my_codes(current_user=dict(USER))
+    items = {i["code"]: i for i in out.data["items"]}
+    assert items[full.code]["status"] == "inactive"
+    assert items[full.code]["expires_at"] is None
+    assert items[trial.code]["status"] == "active"  # 试用码不过期，保持 active
+
+
 # ──────────────────────────────────────────────────────────────────
 # 6. 轮数统计与 10 轮门控
 # ──────────────────────────────────────────────────────────────────
