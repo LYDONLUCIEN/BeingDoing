@@ -176,13 +176,14 @@ export interface OrderListResult {
 
 export interface CreateOrderResult {
   order: OrderItem;
-  /** 0 元单为 null（订单直接 granted）；否则含支付二维码串 */
-  payment: { channel: PayChannel; qr_code: string } | null;
+  /** 0 元单为 null（订单直接 granted）；否则含支付宝收银台跳转 URL（page.pay） */
+  payment: { channel: PayChannel; pay_url: string } | null;
 }
 
 export interface OrderDetailResult {
   order: OrderItem;
-  qr_code: string | null;
+  /** 支付宝收银台跳转 URL（仅 pending 订单返回） */
+  pay_url: string | null;
 }
 
 /** 商品与价格列表 */
@@ -218,9 +219,25 @@ export async function listMyOrders(params?: {
   return (res.data ?? { items: [], total: 0, page: 1, page_size: 20 }) as OrderListResult;
 }
 
-/** 订单详情（含二维码串，前端轮询支付状态用） */
-export async function getOrder(id: string): Promise<OrderDetailResult> {
-  const res = await apiClient.get(`/payment/orders/${encodeURIComponent(id)}`);
+/**
+ * 订单详情（pending 订单含收银台跳转 URL）
+ * sync=true 时后端先实时调用支付宝查单核实（已付则立即发码），每单 10 秒冷却
+ */
+export async function getOrder(id: string, sync?: boolean): Promise<OrderDetailResult> {
+  const res = await apiClient.get(
+    `/payment/orders/${encodeURIComponent(id)}${sync ? '?sync=1' : ''}`,
+  );
+  return res.data as OrderDetailResult;
+}
+
+/**
+ * 按订单号查询订单（支付结果页用：支付宝同步回跳带 out_trade_no）
+ * sync=true 时后端先实时调用支付宝查单核实（已付则立即发码），每单 10 秒冷却
+ */
+export async function getOrderByNo(orderNo: string, sync?: boolean): Promise<OrderDetailResult> {
+  const res = await apiClient.get(
+    `/payment/orders/by-no/${encodeURIComponent(orderNo)}${sync ? '?sync=1' : ''}`,
+  );
   return res.data as OrderDetailResult;
 }
 

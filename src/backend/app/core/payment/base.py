@@ -2,8 +2,9 @@
 支付渠道抽象（ADR-0005：官方接口双线，微信/支付宝插入同一抽象）
 
 各渠道实现 PaymentChannel：
-- create_order: 下单生成支付二维码串（扫码支付）
+- create_order: 下单生成支付跳转 URL（收银台跳转）
 - verify_notify: 异步通知验签 + 解析（验签失败抛 NotifyVerifyError）
+- query_order: 主动查询订单支付状态（对账兜底，渠道无此单返回 None）
 - refund: 官方退款（同步成功或抛异常）
 - close_order: 关单（超时/取消时调用）
 
@@ -48,7 +49,7 @@ class PaymentChannel(ABC):
 
     @abstractmethod
     async def create_order(self, order_no: str, amount_fen: int, subject: str) -> str:
-        """下单，返回支付二维码串（qr_code）
+        """下单，返回支付跳转 URL（pay_url，用户跳转收银台完成支付）
 
         Raises:
             PaymentChannelError: 下单失败
@@ -60,6 +61,17 @@ class PaymentChannel(ABC):
 
         Raises:
             NotifyVerifyError: 验签失败
+        """
+
+    @abstractmethod
+    async def query_order(self, order_no: str) -> Optional["NotifyResult"]:
+        """主动查询订单支付状态（对账兜底用）。订单在渠道不存在时返回 None
+
+        Returns:
+            NotifyResult；渠道无此单时返回 None
+
+        Raises:
+            PaymentChannelError: 查询失败
         """
 
     @abstractmethod

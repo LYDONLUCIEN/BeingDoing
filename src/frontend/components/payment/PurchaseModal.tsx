@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { QRCodeSVG } from 'qrcode.react';
-import { Check, Copy, X } from 'lucide-react';
+import { Check, Copy, Loader2, X } from 'lucide-react';
 import { getApiErrorMessage } from '@/lib/api/client';
 import {
   cancelOrder,
@@ -18,8 +17,8 @@ import {
   type ProductItem,
   type ProductType,
 } from '@/lib/api/payment';
-import { toDate } from '@/lib/utils/formatTime';
 import { useLocale } from '@/hooks/useLocale';
+import { CopyableCode } from '@/components/payment/CopyableCode';
 
 export type PurchaseModalProps = {
   open: boolean;
@@ -34,10 +33,16 @@ export type PurchaseModalProps = {
   renewalTargetCode?: string;
 };
 
-type ViewState = 'order' | 'paying' | 'success';
+type ViewState = 'order' | 'waiting' | 'success';
 
-const ORDER_TIMEOUT_MS = 30 * 60 * 1000;
+/** 等待支付视图的子状态：轮询中 / 订单已关闭 / 订单已过期 */
+type WaitStatus = 'polling' | 'closed' | 'expired';
+
+/** 订单状态轮询间隔 */
 const POLL_INTERVAL_MS = 2000;
+
+/** 订单等待超时（与后端 ORDER_TIMEOUT_MINUTES 对应） */
+const ORDER_TIMEOUT_MS = 30 * 60 * 1000;
 
 /** 下单视图可选的套餐类型（咨询走报告页入口，P-D） */
 const PACKAGE_TYPES: ProductType[] = ['quarterly_package', 'annual_package'];
@@ -61,53 +66,10 @@ const FALLBACK_PRODUCTS: ProductItem[] = [
   },
 ];
 
-function formatCountdown(ms: number): string {
-  const totalSec = Math.ceil(ms / 1000);
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
-
-/** 单个可复制码行（自己的码 / 赠品码共用） */
-function CopyableCode({
-  code,
-  copiedCode,
-  onCopy,
-  t,
-}: {
-  code: string;
-  copiedCode: string | null;
-  onCopy: (code: string) => void;
-  t: (k: string) => string;
-}) {
-  const copied = copiedCode === code;
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-stone-200/80 bg-stone-50/60 px-3.5 py-2.5">
-      <span className="font-mono text-sm font-semibold tracking-widest text-stone-900">{code}</span>
-      <button
-        type="button"
-        onClick={() => onCopy(code)}
-        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-stone-200 px-2.5 py-1 text-xs font-medium text-stone-600 transition hover:bg-stone-100"
-      >
-        {copied ? (
-          <>
-            <Check className="h-3.5 w-3.5 text-emerald-500" />
-            {t('payment.copied')}
-          </>
-        ) : (
-          <>
-            <Copy className="h-3.5 w-3.5" />
-            {t('payment.copy')}
-          </>
-        )}
-      </button>
-    </div>
-  );
-}
-
 /**
  * 购买套餐弹窗（P-B 套餐商品化；P2a 支付宝闭环）
- * 三视图：下单（套餐选择/延期激活 + 渠道 + 券码）→ 支付（二维码 + 倒计时 + 轮询）→ 成功（码/赠品码/延期天数）
+ * 三视图：下单（套餐选择/延期激活 + 渠道 + 券码）→ 等待支付（新标签页打开支付宝收银台，本页轮询订单状态）→ 成功（0 元单直接发码 / 轮询到 granted）
+ * 支付宝同步回跳页 /payment/result 仍保留，作为新标签页付完款后的落地页。
  * 弹层模式与 LegalDocModal 一致：fixed inset-0 z-[210]、ESC/遮罩关闭、锁定背景滚动。
  */
 export default function PurchaseModal({
@@ -134,12 +96,12 @@ export default function PurchaseModal({
   const [couponError, setCouponError] = useState<string | null>(null);
   const [couponChecking, setCouponChecking] = useState(false);
   const [order, setOrder] = useState<OrderItem | null>(null);
-  const [qrCode, setQrCode] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [remainMs, setRemainMs] = useState(ORDER_TIMEOUT_MS);
-  const [orderClosed, setOrderClosed] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  /** 等待支付视图：收银台 URL（「如果没有弹出，请点击这里」重开用） */
+  const [payUrl, setPayUrl] = useState<string | null>(null);
+  const [waitStatus, setWaitStatus] = useState<WaitStatus>('polling');
 
   const successFiredRef = useRef(false);
 
@@ -175,15 +137,52 @@ export default function PurchaseModal({
   const resetToOrderView = useCallback(() => {
     setView('order');
     setOrder(null);
-    setQrCode(null);
-    setOrderClosed(false);
     setAppliedCoupon(null);
     setCouponInput('');
     setCouponError(null);
     setError(null);
-    setRemainMs(ORDER_TIMEOUT_MS);
+    setPayUrl(null);
+    setWaitStatus('polling');
     successFiredRef.current = false;
   }, []);
+
+  // ── 进入等待支付视图：新标签页打开收银台，本页保持上下文轮询 ──
+  const startWaiting = useCallback((ord: OrderItem, url: string) => {
+    setOrder(ord);
+    setPayUrl(url);
+    setWaitStatus('polling');
+    setView('waiting');
+    window.open(url, '_blank');
+  }, []);
+
+  // ── 等待支付：每 2s 轮询订单状态，直到发放/关闭/取消，或 30 分钟超时 ──
+  // 视图切换或组件卸载时由 cleanup 清理 interval
+  useEffect(() => {
+    if (view !== 'waiting' || !order) return;
+    const deadline = Date.now() + ORDER_TIMEOUT_MS;
+    const timer = setInterval(async () => {
+      if (Date.now() > deadline) {
+        clearInterval(timer);
+        setWaitStatus('expired');
+        return;
+      }
+      try {
+        // sync=true：后端实时向支付宝查单核实（每单 10s 冷却，2s 轮询可放心携带）
+        const res = await getOrder(order.id, true);
+        const st = res.order.status;
+        if (st === 'granted') {
+          clearInterval(timer);
+          enterSuccess(res.order);
+        } else if (st === 'closed' || st === 'cancelled' || st === 'refunded') {
+          clearInterval(timer);
+          setWaitStatus('closed');
+        }
+      } catch {
+        /* 单次轮询失败静默，等待下次 */
+      }
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [view, order, enterSuccess]);
 
   // ── ESC 关闭 + 锁定背景滚动（同 LegalDocModal）──
   useEffect(() => {
@@ -220,10 +219,9 @@ export default function PurchaseModal({
       getOrder(resumeOrderId)
         .then((res) => {
           const st = res.order.status;
-          if (st === 'pending' || st === 'paid') {
-            setOrder(res.order);
-            setQrCode(res.qr_code);
-            setView('paying');
+          if ((st === 'pending' || st === 'paid') && res.pay_url) {
+            // 继续支付：新标签页打开支付宝收银台
+            startWaiting(res.order, res.pay_url);
           } else if (st === 'granted') {
             enterSuccess(res.order);
           } else {
@@ -236,39 +234,6 @@ export default function PurchaseModal({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, resumeOrderId, defaultProductType]);
-
-  // ── 支付视图：30:00 倒计时（order.created_at + 30 分钟）──
-  useEffect(() => {
-    if (!open || view !== 'paying' || !order) return;
-    const created = toDate(order.created_at)?.getTime() ?? Date.now();
-    const deadline = created + ORDER_TIMEOUT_MS;
-    const tick = () => setRemainMs(Math.max(0, deadline - Date.now()));
-    tick();
-    const timer = setInterval(tick, 1000);
-    return () => clearInterval(timer);
-  }, [open, view, order]);
-
-  // ── 支付视图：每 2s 轮询订单状态 ──
-  useEffect(() => {
-    if (!open || view !== 'paying' || !order || orderClosed) return;
-    const timer = setInterval(async () => {
-      try {
-        const res = await getOrder(order.id);
-        const st = res.order.status;
-        if (st === 'granted') {
-          enterSuccess(res.order);
-        } else if (st === 'closed' || st === 'cancelled') {
-          setOrder(res.order);
-          setOrderClosed(true);
-        } else {
-          setOrder(res.order);
-        }
-      } catch {
-        /* 单次轮询失败静默，等待下次 */
-      }
-    }, POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [open, view, order, orderClosed, enterSuccess]);
 
   // ── 券码校验 ──
   const handleApplyCoupon = async () => {
@@ -311,9 +276,8 @@ export default function PurchaseModal({
         // 0 元单：直接发放
         enterSuccess(res.order);
       } else {
-        setOrder(res.order);
-        setQrCode(res.payment.qr_code);
-        setView('paying');
+        // 新标签页打开支付宝收银台（本页轮询等待支付完成）
+        startWaiting(res.order, res.payment.pay_url);
       }
     } catch (e: unknown) {
       setError(getApiErrorMessage(e, t('payment.error.createOrder')));
@@ -361,8 +325,6 @@ export default function PurchaseModal({
     router.push(bookingId ? `/dashboard/consultation/${bookingId}` : '/dashboard/orders');
   };
 
-  const expired = remainMs <= 0;
-
   const orderTitle = renewalMode ? t('payment.renewal.title') : t('payment.title');
   const giftCodes = order?.meta?.gift_codes ?? [];
 
@@ -396,8 +358,8 @@ export default function PurchaseModal({
             {/* 标题栏 + 关闭按钮 */}
             <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-stone-200/70">
               <h2 id="purchase-modal-title" className="text-lg font-semibold tracking-tight text-stone-800">
-                {view === 'paying'
-                  ? t('payment.paying.title')
+                {view === 'waiting'
+                  ? t('payment.waiting.title')
                   : view === 'success'
                     ? t('payment.success.title')
                     : orderTitle}
@@ -592,59 +554,57 @@ export default function PurchaseModal({
                 </div>
               )}
 
-              {view === 'paying' && order && (
+              {view === 'waiting' && order && (
+                /* 等待支付：收银台已在新标签页打开，本页轮询订单状态 */
                 <div className="space-y-5">
-                  {orderClosed || expired ? (
-                    /* 已关闭/已过期：可重新下单 */
-                    <div className="flex flex-col items-center py-6 text-center space-y-4">
-                      <p className="text-sm text-stone-600">
-                        {orderClosed ? t('payment.paying.closed') : t('payment.paying.expired')}
+                  {waitStatus === 'polling' ? (
+                    <div className="flex flex-col items-center space-y-3 py-6 text-center">
+                      <Loader2 className="h-8 w-8 animate-spin text-stone-400" />
+                      <p className="text-sm font-medium leading-relaxed text-stone-700">
+                        {t('payment.waiting.hint')}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => payUrl && window.open(payUrl, '_blank')}
+                        className="text-xs text-[#1677ff] underline-offset-2 transition hover:underline"
+                      >
+                        {t('payment.waiting.reopen')}
+                      </button>
+                    </div>
+                  ) : (
+                    /* 订单已关闭/已过期：引导重新下单 */
+                    <div className="flex flex-col items-center space-y-3 py-6 text-center">
+                      <p className="text-sm font-medium text-stone-700">
+                        {waitStatus === 'expired'
+                          ? t('payment.waiting.expired')
+                          : t('payment.waiting.closed')}
                       </p>
                       <button
                         type="button"
                         onClick={resetToOrderView}
                         className="rounded-xl bg-stone-900 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-800"
                       >
-                        {t('payment.paying.reorder')}
+                        {t('payment.waiting.reorder')}
                       </button>
                     </div>
-                  ) : (
-                    <>
-                      <div className="flex flex-col items-center space-y-3">
-                        <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
-                          {qrCode ? (
-                            <QRCodeSVG value={qrCode} size={192} level="M" includeMargin={false} />
-                          ) : (
-                            <div className="flex h-48 w-48 items-center justify-center text-xs text-stone-400">
-                              {t('payment.paying.qrLoading')}
-                            </div>
-                          )}
-                        </div>
-                        <p className="text-sm text-stone-600">{t('payment.paying.hint')}</p>
-                        <p className="font-mono text-lg font-semibold tabular-nums text-stone-800">
-                          {formatCountdown(remainMs)}
-                        </p>
-                        {order.status === 'paid' && (
-                          <p className="text-sm text-emerald-600">{t('payment.paying.processing')}</p>
-                        )}
-                      </div>
-                      <div className="flex items-center justify-between border-t border-stone-200/70 pt-4 text-sm">
-                        <span className="text-stone-500">{t('payment.price.final')}</span>
-                        <span className="text-lg font-bold text-stone-900">
-                          ¥{fenToYuan(order.amount_paid)}
-                        </span>
-                      </div>
-                      {error && <p className="text-sm text-red-600">{error}</p>}
-                      <div className="text-center">
-                        <button
-                          type="button"
-                          onClick={() => void handleCancelOrder()}
-                          className="text-xs text-stone-400 underline-offset-2 transition hover:text-stone-600 hover:underline"
-                        >
-                          {t('payment.paying.cancel')}
-                        </button>
-                      </div>
-                    </>
+                  )}
+                  <div className="flex items-center justify-between border-t border-stone-200/70 pt-4 text-sm">
+                    <span className="text-stone-500">{t('payment.price.final')}</span>
+                    <span className="text-lg font-bold text-stone-900">
+                      ¥{fenToYuan(order.amount_paid)}
+                    </span>
+                  </div>
+                  {error && <p className="text-sm text-red-600">{error}</p>}
+                  {waitStatus === 'polling' && (
+                    <div className="text-center">
+                      <button
+                        type="button"
+                        onClick={() => void handleCancelOrder()}
+                        className="text-xs text-stone-400 underline-offset-2 transition hover:text-stone-600 hover:underline"
+                      >
+                        {t('payment.waiting.cancel')}
+                      </button>
+                    </div>
                   )}
                 </div>
               )}

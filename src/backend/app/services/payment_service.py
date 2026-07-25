@@ -3,7 +3,7 @@
 
 职责：
 1. 商品与金额：商品目录（季度/年度套餐、延期、咨询）；会员价（先折）→ 减券面额（后券）→ 下限 0 元
-2. create_order：下单（order_no 唯一重试）→ 锁券 → 调渠道预下单存 qr_code；
+2. create_order：下单（order_no 唯一重试）→ 锁券 → 调渠道下单存 qr_code（支付跳转 URL）；
    0 元单不调渠道，直接走支付成功交付（status granted）。旧 SKU activation_code 已下架
 3. handle_alipay_notify：验签 → 查单 → 校验金额 → 幂等交付（TRADE_SUCCESS / TRADE_FINISHED）
 4. cancel_order / close_timeout_orders：关单（尝试渠道 close_order，失败仅记日志）+ 释放券
@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import logging
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -47,6 +48,10 @@ _MAX_ORDER_NO_RETRIES = 5
 
 # 支付宝视为支付成功的交易状态
 _ALIPAY_PAID_STATUSES = {"TRADE_SUCCESS", "TRADE_FINISHED"}
+
+# 即时查单（sync）冷却：order_no → 上次查渠道的 time.monotonic()，10 秒内不重复查（防刷）
+_ORDER_SYNC_COOLDOWN: Dict[str, float] = {}
+_SYNC_COOLDOWN_SECONDS = 10.0
 
 # 旧 SKU（已下架，仅历史订单兼容）
 _LEGACY_PRODUCT_TYPE = "activation_code"
@@ -264,7 +269,7 @@ class PaymentService:
         """创建支付订单
 
         Returns:
-            (order, payment)：payment = {"channel", "qr_code}；0 元单为 None
+            (order, payment)：payment = {"channel", "pay_url"}；0 元单为 None
 
         Raises:
             ValueError: 商品/渠道不支持、券无效、renewal 目标码校验失败
@@ -347,18 +352,18 @@ class PaymentService:
             order = await cls._deliver_order(order.id)
             return order, None
 
-        # 调渠道预下单，存 qr_code
-        qr_code = await pay_channel.create_order(
+        # 调渠道下单（page.pay），跳转 URL 存 qr_code 列
+        pay_url = await pay_channel.create_order(
             order_no=order.order_no,
             amount_fen=paid,
             subject=_product_name(product_type),
         )
         async with AsyncSessionLocal() as db:
             row = await cls._get_order_or_raise(db, order.id)
-            row.qr_code = qr_code
+            row.qr_code = pay_url
             await db.commit()
             await db.refresh(row)
-            return row, {"channel": channel, "qr_code": qr_code}
+            return row, {"channel": channel, "pay_url": pay_url}
 
     @classmethod
     async def _insert_order(cls, db, **fields) -> PaymentOrder:
@@ -718,7 +723,109 @@ class PaymentService:
             channel_transaction_id=notify.channel_transaction_id,
         )
 
+    # ─── 主动查单对账（notify 兜底）─────────────────────────────
+
+    @classmethod
+    async def reconcile_pending_orders(cls) -> int:
+        """主动查单补交付（APScheduler 每 2 分钟调用）
+
+        异步回调 notify 偶发不到达时，对「已向渠道下单」的 pending 订单
+        （创建满 3 分钟，避开正常支付窗口）主动调渠道查单；渠道侧已支付
+        且金额一致 → 幂等交付。单笔异常仅记日志，不影响其余订单，整体不抛。
+
+        Returns:
+            本轮补交付的订单数
+        """
+        threshold = (_utcnow() - timedelta(minutes=3)).replace(tzinfo=None)
+        async with AsyncSessionLocal() as db:
+            rows = (
+                (
+                    await db.execute(
+                        select(PaymentOrder).where(
+                            PaymentOrder.status == "pending",
+                            PaymentOrder.channel == "alipay",
+                            PaymentOrder.amount_paid > 0,
+                            PaymentOrder.qr_code.isnot(None),
+                            PaymentOrder.created_at < threshold,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            # 提取所需字段，避免会话关闭后访问延迟属性
+            candidates = [(o.id, o.order_no, o.amount_paid, o.channel) for o in rows]
+
+        delivered = 0
+        for order_id, order_no, amount_paid, channel_name in candidates:
+            try:
+                channel = get_channel(channel_name)
+                result = await channel.query_order(order_no)
+                if result is None:
+                    continue  # 渠道无此单，跳过
+                if result.trade_status not in _ALIPAY_PAID_STATUSES:
+                    continue  # WAIT_BUYER_PAY 等未支付状态，跳过
+                if result.total_amount_fen != amount_paid:
+                    logger.critical(
+                        "对账查单金额不符，跳过交付并告警：order_no=%s query=%d order=%d",
+                        order_no,
+                        result.total_amount_fen,
+                        amount_paid,
+                    )
+                    continue
+                await cls._deliver_order(
+                    order_id,
+                    paid_at=result.paid_at,
+                    channel_transaction_id=result.channel_transaction_id,
+                )
+                delivered += 1
+                logger.info("对账补交付成功：order_no=%s", order_no)
+            except Exception as e:
+                logger.error("对账查单失败（跳过本笔）：order_no=%s err=%s", order_no, e)
+        if delivered:
+            logger.info("对账补交付 %d 笔", delivered)
+        return delivered
+
     # ─── 用户侧查询 ─────────────────────────────────────────────
+
+    @classmethod
+    async def _sync_order_from_channel(cls, order: PaymentOrder) -> None:
+        """即时主动查单（sync 查询用）：pending 订单向渠道查单，已支付则幂等交付
+
+        仅处理 pending 且已向渠道下单（qr_code 非空）的订单；同一订单 10 秒
+        冷却期内不重复查渠道（无论成败都更新冷却时间，防刷）。
+        金额不符记 critical；渠道无单/未支付/异常均忽略（仅记日志，不抛）。
+        """
+        if order.status != "pending" or not order.qr_code:
+            return
+        now = time.monotonic()
+        if now - _ORDER_SYNC_COOLDOWN.get(order.order_no, 0.0) < _SYNC_COOLDOWN_SECONDS:
+            return
+        _ORDER_SYNC_COOLDOWN[order.order_no] = now
+        if len(_ORDER_SYNC_COOLDOWN) > 10000:  # 防御：避免冷却字典无限增长
+            _ORDER_SYNC_COOLDOWN.clear()
+        try:
+            channel = get_channel(order.channel)
+            result = await channel.query_order(order.order_no)
+        except Exception as e:
+            logger.warning("即时查单失败（忽略）：order_no=%s err=%s", order.order_no, e)
+            return
+        if result is None or result.trade_status not in _ALIPAY_PAID_STATUSES:
+            return
+        if result.total_amount_fen != order.amount_paid:
+            logger.critical(
+                "即时查单金额不符，跳过交付并告警：order_no=%s query=%d order=%d",
+                order.order_no,
+                result.total_amount_fen,
+                order.amount_paid,
+            )
+            return
+        await cls._deliver_order(
+            order.id,
+            paid_at=result.paid_at,
+            channel_transaction_id=result.channel_transaction_id,
+        )
+        logger.info("即时查单补交付成功：order_no=%s", order.order_no)
 
     @staticmethod
     async def _get_order_or_raise(db, order_id: str) -> PaymentOrder:
@@ -753,11 +860,16 @@ class PaymentService:
             return [cls._order_to_dict(order, coupon_code) for order, coupon_code in rows], total
 
     @classmethod
-    async def get_user_order(cls, user_id: str, order_id: str) -> Dict[str, Any]:
-        """订单详情（仅本人）；pending 时返回存储的 qr_code 供继续支付
+    async def get_user_order(
+        cls, user_id: str, order_id: str, sync: bool = False
+    ) -> Dict[str, Any]:
+        """订单详情（仅本人）；pending 时返回存储的支付跳转 URL 供继续支付
+
+        Args:
+            sync: True 时先向渠道即时查单补交付（10 秒冷却防刷），再返回最新状态
 
         Returns:
-            {"order": OrderItem, "qr_code": str | None}
+            {"order": OrderItem, "pay_url": str | None}
 
         Raises:
             OrderNotFoundError: 订单不存在或非本人
@@ -773,9 +885,46 @@ class PaymentService:
             if not row or row[0].user_id != user_id:
                 raise OrderNotFoundError("订单不存在")
             order, coupon_code = row
+            if sync:
+                await cls._sync_order_from_channel(order)
+                await db.refresh(order)  # sync 可能已触发交付，重取最新数据
             return {
                 "order": cls._order_to_dict(order, coupon_code),
-                "qr_code": order.qr_code if order.status == "pending" else None,
+                "pay_url": order.qr_code if order.status == "pending" else None,
+            }
+
+    @classmethod
+    async def get_order_by_no(
+        cls, user_id: str, order_no: str, sync: bool = False
+    ) -> Dict[str, Any]:
+        """按商户订单号查订单详情（仅本人）；结构与 get_user_order 相同
+
+        Args:
+            sync: True 时先向渠道即时查单补交付（10 秒冷却防刷），再返回最新状态
+
+        Returns:
+            {"order": OrderItem, "pay_url": str | None}
+
+        Raises:
+            OrderNotFoundError: 订单不存在或非本人
+        """
+        async with AsyncSessionLocal() as db:
+            row = (
+                await db.execute(
+                    select(PaymentOrder, Coupon.code)
+                    .outerjoin(Coupon, PaymentOrder.coupon_id == Coupon.id)
+                    .where(PaymentOrder.order_no == order_no)
+                )
+            ).first()
+            if not row or row[0].user_id != user_id:
+                raise OrderNotFoundError("订单不存在")
+            order, coupon_code = row
+            if sync:
+                await cls._sync_order_from_channel(order)
+                await db.refresh(order)  # sync 可能已触发交付，重取最新数据
+            return {
+                "order": cls._order_to_dict(order, coupon_code),
+                "pay_url": order.qr_code if order.status == "pending" else None,
             }
 
     # ─── 取消与超时关单 ─────────────────────────────────────────

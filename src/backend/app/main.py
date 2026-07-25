@@ -311,6 +311,22 @@ def _start_bounce_scheduler() -> None:
             max_instances=1,
             misfire_grace_time=600,
         )
+        # 支付主动查单对账（notify 兜底，每 2 分钟；job 内部异常不得影响调度器）
+        async def _reconcile_orders_safe() -> None:
+            try:
+                await PaymentService.reconcile_pending_orders()
+            except Exception as job_err:
+                logging.getLogger(__name__).error("reconcile orders job failed: %s", job_err)
+
+        sched.add_job(
+            _reconcile_orders_safe,
+            IntervalTrigger(minutes=2),
+            id="payment_reconcile_orders",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=600,
+        )
         # 报告审核超时自动批复（ADR-0009，每 10 分钟扫描）
         from app.services.report_review_service import auto_approve_overdue
         from app.utils.report_review import REVIEW_SCAN_INTERVAL_MINUTES

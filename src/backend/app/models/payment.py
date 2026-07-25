@@ -58,7 +58,8 @@ class PaymentOrder(Base):
     status = Column(String(16), default="pending", nullable=False, index=True)
     channel_transaction_id = Column(String(64), nullable=True)
     delivered_code = Column(String(16), nullable=True)
-    qr_code = Column(String(512), nullable=True)
+    # 列名保留 qr_code（兼容历史），实际存支付跳转 URL/凭证（page.pay URL 约 800~1000 字符，故用 Text）
+    qr_code = Column(Text, nullable=True)
     # 商品特定载荷（JSON 文本）：renewal={target_code, added_days}；
     # annual={gift_codes: [...]}；consultation={booking_id}（P-B，迁移 013）
     meta = Column(Text, nullable=True)

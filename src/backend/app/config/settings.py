@@ -156,6 +156,7 @@ class Settings(BaseSettings):
     ALIPAY_PRIVATE_KEY_PATH: str = ""
     ALIPAY_PUBLIC_KEY_PATH: str = ""
     ALIPAY_NOTIFY_URL: str = ""
+    ALIPAY_RETURN_URL: str = ""  # 电脑网站支付同步回跳地址（前端支付结果页）
     # 网关：正式 https://openapi.alipay.com/gateway.do；沙箱切 openapi-sandbox
     ALIPAY_GATEWAY: str = "https://openapi.alipay.com/gateway.do"
 

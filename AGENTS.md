@@ -120,10 +120,11 @@ ORDER_TIMEOUT_MINUTES=30          # pending 订单超时关单（分钟）
 ACCOUNT_DELETION_RETENTION_DAYS=30  # 账户注销冷存天数（float，0=立即删除）
 MEMBERSHIP_ENABLED=False          # 会员（保留不上线，ADR-0006/0007）
 WECHAT_MCH_ID=                    # 微信支付 V3（P2b 预留，空值占位）
-ALIPAY_APP_ID=                    # 支付宝（空值时支付接口转 503，部署可先于密钥到位）
+ALIPAY_APP_ID=                    # 支付宝（电脑网站支付 page.pay；空值时支付接口转 503，部署可先于密钥到位）
 ALIPAY_PRIVATE_KEY_PATH=          # 应用私钥 PEM（建议放 src/backend/certs/，已 gitignore）
 ALIPAY_PUBLIC_KEY_PATH=           # 支付宝公钥 PEM
 ALIPAY_NOTIFY_URL=                # 支付回调公网地址（需 nginx 放行 /api/v1/payment/notify/*）
+ALIPAY_RETURN_URL=                # 电脑网站支付同步回跳地址（前端 /payment/result 结果页）
 ALIPAY_GATEWAY=https://openapi.alipay.com/gateway.do  # 沙箱切 openapi-sandbox
 
 # 可选：支付模块（P1 折扣券；P2 渠道 WECHAT_*/ALIPAY_* 预留）

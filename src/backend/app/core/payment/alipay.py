@@ -1,14 +1,15 @@
 """
 支付宝渠道适配（官方 alipay-sdk-python）
 
-- 下单：当面付预下单 alipay.trade.precreate → 返回 qr_code 串
+- 下单：电脑网站支付 alipay.trade.page.pay → 返回收银台跳转 URL
 - 回调验签：RSA2 + 支付宝公钥（sign/sign_type 不参与签名内容）
 - 退款：alipay.trade.refund（同步响应 code=10000 且 fund_change=Y 即成功）
 - 关单：alipay.trade.close
 
 配置（settings / .env）：
     ALIPAY_APP_ID / ALIPAY_PRIVATE_KEY_PATH / ALIPAY_PUBLIC_KEY_PATH /
-    ALIPAY_NOTIFY_URL / ALIPAY_GATEWAY（默认正式网关，沙箱切 openapi-sandbox）
+    ALIPAY_NOTIFY_URL / ALIPAY_RETURN_URL /
+    ALIPAY_GATEWAY（默认正式网关，沙箱切 openapi-sandbox）
 
 密钥未配置时构造抛 RuntimeError（路由层转 503），部署可先于密钥到位。
 SDK 同步调用一律 asyncio.to_thread 包装。
@@ -85,34 +86,37 @@ class AlipayChannel(PaymentChannel):
         config.sign_type = "RSA2"
         return DefaultAlipayClient(config)
 
-    # ─── 下单：当面付 precreate ─────────────────────────────────
+    # ─── 下单：电脑网站支付 page.pay ──────────────────────────
 
     async def create_order(self, order_no: str, amount_fen: int, subject: str) -> str:
-        """预下单，返回 qr_code 串
+        """电脑网站支付下单，返回带签名的收银台跳转 URL
+
+        page_execute 仅本地签名拼接 URL，不发起网络请求。
 
         Raises:
-            PaymentChannelError: 下单失败（含网关返回非 10000）
+            PaymentChannelError: 下单失败（URL 生成异常）
         """
-        from alipay.aop.api.request.AlipayTradePrecreateRequest import (
-            AlipayTradePrecreateRequest,
+        from alipay.aop.api.request.AlipayTradePagePayRequest import (
+            AlipayTradePagePayRequest,
         )
 
-        request = AlipayTradePrecreateRequest()
+        request = AlipayTradePagePayRequest()
         request.notify_url = settings.ALIPAY_NOTIFY_URL or None
+        request.return_url = settings.ALIPAY_RETURN_URL or None
         request.biz_content = {
             "out_trade_no": order_no,
             "total_amount": _fen_to_yuan(amount_fen),
             "subject": subject,
+            "product_code": "FAST_INSTANT_TRADE_PAY",
         }
-        response = await asyncio.to_thread(self._client.execute, request)
-        logger.info("alipay precreate response: %s", response)
-        if not response or str(response.get("code")) != "10000":
-            sub_msg = (response or {}).get("sub_msg") or (response or {}).get("msg")
-            raise PaymentChannelError(f"支付宝下单失败：{sub_msg or response}")
-        qr_code = response.get("qr_code")
-        if not qr_code:
-            raise PaymentChannelError("支付宝下单失败：响应缺少 qr_code")
-        return qr_code
+        try:
+            pay_url = await asyncio.to_thread(self._client.page_execute, request, "GET")
+        except Exception as e:
+            raise PaymentChannelError(f"支付宝下单失败：{e}")
+        logger.info("alipay page.pay url generated: order_no=%s", order_no)
+        if not pay_url:
+            raise PaymentChannelError("支付宝下单失败：未生成跳转 URL")
+        return pay_url
 
     # ─── 回调验签 ───────────────────────────────────────────────
 
@@ -161,6 +165,57 @@ class AlipayChannel(PaymentChannel):
             paid_at=paid_at,
             total_amount_fen=_yuan_to_fen(total_amount),
             trade_status=trade_status,
+        )
+
+    # ─── 主动查单（对账兜底）────────────────────────────────────
+
+    async def query_order(self, order_no: str) -> Optional[NotifyResult]:
+        """主动查询订单支付状态（alipay.trade.query，notify 不到达时兜底）
+
+        Returns:
+            NotifyResult；订单在渠道不存在（code=40004 / TRADE_NOT_EXIST）时返回 None
+
+        Raises:
+            PaymentChannelError: 查询失败
+        """
+        from alipay.aop.api.request.AlipayTradeQueryRequest import AlipayTradeQueryRequest
+
+        request = AlipayTradeQueryRequest()
+        request.biz_content = {"out_trade_no": order_no}
+        try:
+            response = await asyncio.to_thread(self._client.execute, request)
+        except Exception as e:
+            raise PaymentChannelError(f"支付宝查单失败：{e}")
+        logger.info("alipay query response: %s", response)
+        if not response:
+            raise PaymentChannelError("支付宝查单失败：空响应")
+
+        code = str(response.get("code"))
+        sub_code = str(response.get("sub_code") or "")
+        if code == "40004" or "TRADE_NOT_EXIST" in sub_code:
+            return None
+        if code != "10000":
+            sub_msg = response.get("sub_msg") or response.get("msg")
+            raise PaymentChannelError(f"支付宝查单失败：{sub_msg or response}")
+
+        paid_at: Optional[datetime] = None
+        send_pay_date = response.get("send_pay_date")
+        if send_pay_date:
+            try:
+                paid_at = (
+                    datetime.strptime(send_pay_date, "%Y-%m-%d %H:%M:%S")
+                    .replace(tzinfo=_ALIPAY_TZ)
+                    .astimezone(timezone.utc)
+                )
+            except ValueError:
+                logger.warning("alipay query send_pay_date parse failed: %s", send_pay_date)
+
+        return NotifyResult(
+            order_no=order_no,
+            channel_transaction_id=response.get("trade_no", ""),
+            paid_at=paid_at,
+            total_amount_fen=_yuan_to_fen(response.get("total_amount", "0")),
+            trade_status=response.get("trade_status", ""),
         )
 
     # ─── 退款 ───────────────────────────────────────────────────

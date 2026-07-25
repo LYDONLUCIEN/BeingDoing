@@ -4,9 +4,10 @@
 接口（全部 get_current_user 登录鉴权，统一响应 {code, message, data}）：
 - GET  /payment/products             商品目录 + 会员折扣信息
 - POST /payment/coupons/validate     校验券码（返回面额）
-- POST /payment/orders               下单（锁券 + 渠道预下单；0 元单直接交付）
+- POST /payment/orders               下单（锁券 + 渠道下单；0 元单直接交付）
 - GET  /payment/orders               我的订单列表（分页，仅当前用户）
-- GET  /payment/orders/{id}          订单详情（pending 返回 qr_code 供继续支付）
+- GET  /payment/orders/by-no/{order_no}  按商户订单号查详情（支付回跳页用）
+- GET  /payment/orders/{id}          订单详情（pending 返回 pay_url 供继续支付）
 - POST /payment/orders/{id}/cancel   取消订单（仅 pending，释放券）
 
 异常映射：ValueError → 400；OrderNotFoundError → 404；渠道未配置 RuntimeError → 503。
@@ -94,7 +95,7 @@ async def create_order(
 ) -> Dict[str, Any]:
     """创建支付订单
 
-    返回 {order, payment}：payment = {channel, qr_code}；0 元单 payment=null（已直接交付）。
+    返回 {order, payment}：payment = {channel, pay_url}；0 元单 payment=null（已直接交付）。
     """
     try:
         order, payment = await PaymentService.create_order(
@@ -127,15 +128,40 @@ async def list_orders(
     return _ok({"items": items, "total": total, "page": page, "page_size": page_size})
 
 
+@router.get("/orders/by-no/{order_no}")
+async def get_order_by_no(
+    order_no: str,
+    sync: bool = Query(False),
+    current_user: dict = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """按商户订单号查订单详情（仅本人）
+
+    ⚠️ 必须声明在 GET /orders/{order_id} 之前，避免被路径参数路由抢走。
+    用于支付宝 page.pay 同步回跳后的支付结果页查询。
+    sync=true 时先向渠道即时查单补交付（10 秒冷却防刷），秒级确认支付结果。
+    """
+    try:
+        data = await PaymentService.get_order_by_no(
+            user_id=str(current_user["user_id"]), order_no=order_no, sync=sync
+        )
+    except OrderNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return _ok(data)
+
+
 @router.get("/orders/{order_id}")
 async def get_order(
     order_id: str,
+    sync: bool = Query(False),
     current_user: dict = Depends(get_current_user),
 ) -> Dict[str, Any]:
-    """订单详情（仅本人）；pending 时返回存储的 qr_code 供继续支付"""
+    """订单详情（仅本人）；pending 时返回存储的 pay_url 供继续支付
+
+    sync=true 时先向渠道即时查单补交付（10 秒冷却防刷），秒级确认支付结果。
+    """
     try:
         data = await PaymentService.get_user_order(
-            user_id=str(current_user["user_id"]), order_id=order_id
+            user_id=str(current_user["user_id"]), order_id=order_id, sync=sync
         )
     except OrderNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))

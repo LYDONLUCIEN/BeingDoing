@@ -3,7 +3,7 @@
 
 测试场景：
 1. 金额计算：无券 / 有券 / 券>原价→0 元 / 会员价叠加（先折后券）/ 过期会员
-2. 下单锁券 + 渠道预下单存 qr_code
+2. 下单锁券 + 渠道下单存 pay_url（page.pay 跳转 URL，存 qr_code 列）
 3. 取消订单释放券（尝试渠道关单）
 4. 回调幂等：重复通知不重复发码
 5. 回调金额不符拒绝交付
@@ -46,10 +46,11 @@ class FakeAlipayChannel:
         self.created_orders = []  # (order_no, amount_fen, subject)
         self.closed_orders = []
         self.refunds = []  # (order_no, amount_fen, refund_no)
+        self.query_results = {}  # order_no -> NotifyResult | None | Exception
 
     async def create_order(self, order_no, amount_fen, subject):
         self.created_orders.append((order_no, amount_fen, subject))
-        return f"https://qr.alipay.com/fake-{order_no}"
+        return f"https://openapi.alipay.com/gateway.do?fake-page-pay-{order_no}"
 
     async def verify_notify(self, form):
         yuan = form.get("total_amount", "0")
@@ -66,6 +67,13 @@ class FakeAlipayChannel:
 
     async def close_order(self, order_no):
         self.closed_orders.append(order_no)
+
+    async def query_order(self, order_no):
+        """对账查单：query_results 中未配置视为渠道无此单（返回 None）"""
+        result = self.query_results.get(order_no)
+        if isinstance(result, Exception):
+            raise result
+        return result
 
 
 @pytest.fixture
@@ -229,7 +237,7 @@ async def test_compute_amounts_expired_member_no_discount():
 
 @pytest.mark.asyncio
 async def test_create_order_locks_coupon(fake_channel):
-    """下单锁券：券 unused→locked（locked_order_id=订单）；渠道预下单金额正确；qr_code 落库"""
+    """下单锁券：券 unused→locked（locked_order_id=订单）；渠道下单金额正确；pay_url 落库"""
     coupon = (await CouponService.create_coupons(amount=5000, count=1))[0]
 
     order, payment = await PaymentService.create_order(
@@ -251,13 +259,13 @@ async def test_create_order_locks_coupon(fake_channel):
     assert order.coupon_id == coupon.id
     assert len(order.order_no) == 21 and order.order_no.startswith("X")
 
-    # 渠道预下单：金额 = 实付，qr_code 存库
+    # 渠道下单：金额 = 实付，跳转 URL 存 qr_code 列
     assert fake_channel.created_orders == [(order.order_no, 1900, "季度套餐")]
     assert payment == {
         "channel": "alipay",
-        "qr_code": f"https://qr.alipay.com/fake-{order.order_no}",
+        "pay_url": f"https://openapi.alipay.com/gateway.do?fake-page-pay-{order.order_no}",
     }
-    assert (await _get_order(order.id)).qr_code == payment["qr_code"]
+    assert (await _get_order(order.id)).qr_code == payment["pay_url"]
 
 
 @pytest.mark.asyncio
@@ -393,6 +401,129 @@ async def test_notify_non_paid_status_ignored():
     """非成功交易状态（如 WAIT_BUYER_PAY）：确认收到但不交付"""
     order, _ = await PaymentService.create_order("u1", "quarterly_package", "alipay", None)
     await PaymentService.handle_alipay_notify(_notify_form(order, trade_status="WAIT_BUYER_PAY"))
+    assert (await _get_order(order.id)).status == "pending"
+
+
+# ─── 主动查单对账（notify 兜底）─────────────────────────────────
+
+
+async def _backdate_order(order_id: str, minutes: int = 5) -> None:
+    """把订单 created_at 拨到指定分钟前（使订单进入对账扫描范围）"""
+    async with _TestSessionLocal() as db:
+        row = (
+            await db.execute(select(PaymentOrder).where(PaymentOrder.id == order_id))
+        ).scalar_one()
+        row.created_at = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+        await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_reconcile_delivers_paid_order(fake_channel):
+    """对账：渠道已支付（TRADE_SUCCESS）且金额一致 → 补交付 granted"""
+    order, _ = await PaymentService.create_order("u1", "quarterly_package", "alipay", None)
+    await _backdate_order(order.id)
+    fake_channel.query_results[order.order_no] = NotifyResult(
+        order_no=order.order_no,
+        channel_transaction_id="2026072500001",
+        paid_at=None,
+        total_amount_fen=order.amount_paid,
+        trade_status="TRADE_SUCCESS",
+    )
+
+    delivered = await PaymentService.reconcile_pending_orders()
+
+    assert delivered == 1
+    final = await _get_order(order.id)
+    assert final.status == "granted"
+    assert final.delivered_code
+    assert final.channel_transaction_id == "2026072500001"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_skips_not_exist_and_unpaid(fake_channel):
+    """对账：渠道无此单（None）/ 未支付（WAIT_BUYER_PAY）→ 保持 pending"""
+    order_none, _ = await PaymentService.create_order("u1", "quarterly_package", "alipay", None)
+    order_unpaid, _ = await PaymentService.create_order("u1", "quarterly_package", "alipay", None)
+    await _backdate_order(order_none.id)
+    await _backdate_order(order_unpaid.id)
+    # order_none 不配置 query_results → 返回 None；order_unpaid 返回未支付状态
+    fake_channel.query_results[order_unpaid.order_no] = NotifyResult(
+        order_no=order_unpaid.order_no,
+        channel_transaction_id="",
+        paid_at=None,
+        total_amount_fen=order_unpaid.amount_paid,
+        trade_status="WAIT_BUYER_PAY",
+    )
+
+    delivered = await PaymentService.reconcile_pending_orders()
+
+    assert delivered == 0
+    assert (await _get_order(order_none.id)).status == "pending"
+    assert (await _get_order(order_unpaid.id)).status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_amount_mismatch_skipped(fake_channel):
+    """对账：渠道已支付但金额不符 → 不交付，保持 pending"""
+    order, _ = await PaymentService.create_order("u1", "quarterly_package", "alipay", None)
+    await _backdate_order(order.id)
+    fake_channel.query_results[order.order_no] = NotifyResult(
+        order_no=order.order_no,
+        channel_transaction_id="2026072500002",
+        paid_at=None,
+        total_amount_fen=order.amount_paid - 1,
+        trade_status="TRADE_SUCCESS",
+    )
+
+    delivered = await PaymentService.reconcile_pending_orders()
+
+    assert delivered == 0
+    final = await _get_order(order.id)
+    assert final.status == "pending"
+    assert final.delivered_code is None
+
+
+# ─── 即时主动查单（sync 参数）───────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_get_order_sync_delivers_paid(fake_channel):
+    """sync=True 即时查单：渠道已支付且金额一致 → 返回 granted，不再带 pay_url"""
+    ps_mod._ORDER_SYNC_COOLDOWN.clear()
+    order, _ = await PaymentService.create_order("u1", "quarterly_package", "alipay", None)
+    fake_channel.query_results[order.order_no] = NotifyResult(
+        order_no=order.order_no,
+        channel_transaction_id="2026072500010",
+        paid_at=None,
+        total_amount_fen=order.amount_paid,
+        trade_status="TRADE_SUCCESS",
+    )
+
+    detail = await PaymentService.get_order_by_no("u1", order.order_no, sync=True)
+
+    assert detail["order"]["status"] == "granted"
+    assert detail["order"]["delivered_code"]
+    assert detail["pay_url"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_order_sync_cooldown(fake_channel):
+    """sync 冷却：10 秒内第二次 sync 不再调渠道查单"""
+    ps_mod._ORDER_SYNC_COOLDOWN.clear()
+    order, _ = await PaymentService.create_order("u1", "quarterly_package", "alipay", None)
+    calls = 0
+
+    async def _counting_query(order_no):
+        nonlocal calls
+        calls += 1
+        return None  # 渠道无此单
+
+    fake_channel.query_order = _counting_query
+
+    await PaymentService.get_user_order("u1", order.id, sync=True)
+    await PaymentService.get_user_order("u1", order.id, sync=True)
+
+    assert calls == 1
     assert (await _get_order(order.id)).status == "pending"
 
 
@@ -558,7 +689,7 @@ async def test_admin_list_and_get_order(tmp_path):
 
 @pytest.mark.asyncio
 async def test_list_and_get_user_orders():
-    """我的订单：仅当前用户；详情 pending 返回 qr_code，非 pending 返回 None"""
+    """我的订单：仅当前用户；详情 pending 返回 pay_url，非 pending 返回 None"""
     order, payment = await PaymentService.create_order("u1", "quarterly_package", "alipay", None)
     await PaymentService.create_order("u2", "quarterly_package", "alipay", None)
 
@@ -566,15 +697,32 @@ async def test_list_and_get_user_orders():
     assert total == 1
     assert items[0]["id"] == order.id
 
-    # pending：返回存储的 qr_code
+    # pending：返回存储的 pay_url
     detail = await PaymentService.get_user_order("u1", order.id)
-    assert detail["qr_code"] == payment["qr_code"]
+    assert detail["pay_url"] == payment["pay_url"]
 
-    # 支付后：不再返回 qr_code
+    # 支付后：不再返回 pay_url
     await PaymentService.handle_alipay_notify(_notify_form(order))
     detail2 = await PaymentService.get_user_order("u1", order.id)
-    assert detail2["qr_code"] is None
+    assert detail2["pay_url"] is None
 
     # 非本人 → 404
     with pytest.raises(OrderNotFoundError):
         await PaymentService.get_user_order("u2", order.id)
+
+
+@pytest.mark.asyncio
+async def test_get_order_by_no():
+    """按商户订单号查详情：本人 pending 返回 pay_url；非本人/不存在 → 404"""
+    order, payment = await PaymentService.create_order("u1", "quarterly_package", "alipay", None)
+
+    detail = await PaymentService.get_order_by_no("u1", order.order_no)
+    assert detail["order"]["id"] == order.id
+    assert detail["pay_url"] == payment["pay_url"]
+
+    # 非本人 → 404
+    with pytest.raises(OrderNotFoundError):
+        await PaymentService.get_order_by_no("u2", order.order_no)
+    # 不存在的订单号 → 404
+    with pytest.raises(OrderNotFoundError):
+        await PaymentService.get_order_by_no("u1", "X_NOT_EXIST")
