@@ -131,6 +131,13 @@ hr {
     font-size: 9pt;
     color: #bbb;
   }
+
+  /* 每页右下角 AI 声明小字 */
+  @bottom-right {
+    content: "AI生成，仅供参考";
+    font-size: 7.5pt;
+    color: #ccc;
+  }
 }
 
 /* 封面页不显示页码 */

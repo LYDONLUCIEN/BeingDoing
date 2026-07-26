@@ -67,6 +67,7 @@ async def create_feedback(
             content=feedback.content,
             status=feedback.status,
             created_at=feedback.created_at,
+            due_at=feedback.due_at,
         ).model_dump(),
     )
 

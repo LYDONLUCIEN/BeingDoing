@@ -32,6 +32,7 @@ class FeedbackOut(BaseModel):
     content: str
     status: str
     created_at: datetime
+    due_at: Optional[datetime] = None
 
 
 class AttachmentUploadOut(BaseModel):
@@ -78,6 +79,9 @@ class AdminFeedbackItem(BaseModel):
     attachments_count: int
     created_at: datetime
     updated_at: datetime
+    due_at: Optional[datetime] = None
+    assignee_id: Optional[str] = None
+    assignee_email: Optional[str] = None
 
 
 class AdminFeedbackListOut(BaseModel):
@@ -97,11 +101,25 @@ class AdminFeedbackDetailOut(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+    due_at: Optional[datetime] = None
+    assignee_id: Optional[str] = None
+    assignee_email: Optional[str] = None
     attachments: List[dict]  # [{"id": ..., "signed_url": ..., "size_bytes": ..., "content_type": ...}]
 
 
 class FeedbackStatusUpdate(BaseModel):
     status: str = Field(..., description="received / in_progress / done")
+
+
+class FeedbackAssigneeUpdate(BaseModel):
+    assignee_id: Optional[str] = Field(
+        None, description="处理人 user_id（必须是 super_admin）；null 表示清除"
+    )
+
+
+class AdminAssigneeOut(BaseModel):
+    user_id: str
+    email: str
 
 
 class FeedbackReply(BaseModel):

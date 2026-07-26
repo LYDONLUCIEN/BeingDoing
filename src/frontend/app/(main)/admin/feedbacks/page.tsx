@@ -9,7 +9,7 @@ import {
   type AdminFeedbackStatus,
   type AdminFeedbackType,
 } from '@/lib/api/admin';
-import { formatLocalDateTime } from '@/lib/utils/formatTime';
+import { formatLocalDateTime, toDate } from '@/lib/utils/formatTime';
 
 const STATUS_LABEL: Record<AdminFeedbackStatus, string> = {
   received: '待处理',
@@ -22,6 +22,18 @@ const STATUS_COLOR: Record<AdminFeedbackStatus, string> = {
   in_progress: '#3b82f6',
   done: '#10b981',
 };
+
+const TYPE_LABEL: Record<AdminFeedbackType, string> = {
+  bug: '问题反馈',
+  idea: '意见建议',
+};
+
+/** 已过承诺时限且未完结 */
+function isOverdue(item: AdminFeedbackItem): boolean {
+  if (!item.due_at || item.status === 'done') return false;
+  const due = toDate(item.due_at);
+  return !!due && due.getTime() < Date.now();
+}
 
 export default function AdminFeedbacksPage() {
   const [items, setItems] = useState<AdminFeedbackItem[]>([]);
@@ -65,7 +77,7 @@ export default function AdminFeedbacksPage() {
             用户反馈
           </h1>
           <p className="text-xs mt-1" style={{ color: 'var(--bd-fg-muted)' }}>
-            查看用户提交的 bug 报告和产品想法。点击详情查看用户邮箱，通过邮件回复用户。
+            查看用户提交的问题反馈和意见建议。点击详情查看用户邮箱，通过邮件回复用户。
           </p>
         </div>
         <button
@@ -89,8 +101,8 @@ export default function AdminFeedbacksPage() {
           }}
           options={[
             { value: '', label: '全部' },
-            { value: 'bug', label: 'Bug' },
-            { value: 'idea', label: '产品想法' },
+            { value: 'bug', label: '问题反馈' },
+            { value: 'idea', label: '意见建议' },
           ]}
         />
         <FilterGroup
@@ -141,7 +153,7 @@ export default function AdminFeedbacksPage() {
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span
                       className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
                       style={{
@@ -150,6 +162,14 @@ export default function AdminFeedbacksPage() {
                       }}
                     >
                       {STATUS_LABEL[item.status]}
+                    </span>
+                    {isOverdue(item) && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-red-100 text-red-600">
+                        已超时
+                      </span>
+                    )}
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-bd-overlay-md text-bd-muted">
+                      {TYPE_LABEL[item.type]}
                     </span>
                     <span
                       className="text-[11px] flex items-center gap-1"
@@ -160,6 +180,19 @@ export default function AdminFeedbacksPage() {
                     </span>
                     <span className="text-[10px] text-bd-subtle">
                       {formatLocalDateTime(item.created_at)}
+                    </span>
+                    <span className="text-[10px] text-bd-subtle">
+                      处理人：{item.assignee_email || '未指派'}
+                    </span>
+                    <span
+                      className="text-[10px]"
+                      style={{
+                        color: isOverdue(item)
+                          ? '#dc2626'
+                          : 'var(--bd-fg-muted)',
+                      }}
+                    >
+                      截止：{item.due_at ? formatLocalDateTime(item.due_at) : '—'}
                     </span>
                   </div>
                   <p

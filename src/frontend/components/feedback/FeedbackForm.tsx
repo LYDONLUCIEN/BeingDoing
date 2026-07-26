@@ -4,7 +4,18 @@ import { useRef, useState } from 'react';
 import { Bug, Lightbulb, Loader2, Send } from 'lucide-react';
 import { createFeedback, type FeedbackType } from '@/lib/api/feedback';
 import { getApiErrorMessage } from '@/lib/api/client';
+import { toDate } from '@/lib/utils/formatTime';
 import AttachmentUploader, { type AttachmentUploaderHandle } from './AttachmentUploader';
+
+/** 类型 → 承诺处理时限（工作日），与后端 FEEDBACK_DUE_WORKDAYS 保持一致 */
+const TYPE_LABEL: Record<FeedbackType, string> = {
+  bug: '问题反馈',
+  idea: '意见建议',
+};
+const TYPE_WORKDAYS: Record<FeedbackType, number> = {
+  bug: 3,
+  idea: 5,
+};
 
 interface Props {
   onSubmitted?: () => void;
@@ -16,7 +27,10 @@ export default function FeedbackForm({ onSubmitted }: Props) {
   const [attachmentIds, setAttachmentIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
+  const [successInfo, setSuccessInfo] = useState<{
+    type: FeedbackType;
+    dueAt: string | null;
+  } | null>(null);
   const uploaderRef = useRef<AttachmentUploaderHandle>(null);
 
   // 粘贴截图：自动作为图片附件上传，显示在上方截图区
@@ -54,19 +68,19 @@ export default function FeedbackForm({ onSubmitted }: Props) {
 
     setSubmitting(true);
     try {
-      await createFeedback({
+      const res = await createFeedback({
         type: type as FeedbackType,
         content: content.trim(),
         attachment_ids: attachmentIds,
       });
-      setSuccess(true);
+      setSuccessInfo({ type: type as FeedbackType, dueAt: res.due_at ?? null });
       // 重置
       setType('');
       setContent('');
       setAttachmentIds([]);
       // 5 秒后自动切回通知页，给用户足够时间看到成功提示
       setTimeout(() => {
-        setSuccess(false);
+        setSuccessInfo(null);
         onSubmitted?.();
       }, 5000);
     } catch (e) {
@@ -76,7 +90,8 @@ export default function FeedbackForm({ onSubmitted }: Props) {
     }
   };
 
-  if (success) {
+  if (successInfo) {
+    const dueDate = toDate(successInfo.dueAt);
     return (
       <div className="h-full flex flex-col items-center justify-center px-6 text-center gap-3">
         <div className="w-14 h-14 rounded-full bg-bd-ui-accent/15 flex items-center justify-center">
@@ -87,7 +102,14 @@ export default function FeedbackForm({ onSubmitted }: Props) {
             反馈已提交
           </p>
           <p className="text-xs mt-1" style={{ color: 'var(--bd-fg-muted)' }}>
-            感谢您的反馈，我们将在 3 天内通过邮箱与您联系
+            感谢您的反馈，我们将在 {TYPE_WORKDAYS[successInfo.type]} 个工作日内
+            {dueDate && (
+              <>（预计 {dueDate.getMonth() + 1} 月 {dueDate.getDate()} 日前）</>
+            )}
+            通过邮箱与您联系
+          </p>
+          <p className="text-[11px] mt-1" style={{ color: 'var(--bd-fg-muted)' }}>
+            法定节假日可能略有延期，请留意您注册邮箱的邮件
           </p>
         </div>
       </div>
@@ -107,17 +129,23 @@ export default function FeedbackForm({ onSubmitted }: Props) {
               active={type === 'bug'}
               onClick={() => setType('bug')}
               icon={<Bug className="w-4 h-4" />}
-              label="Bug 报告"
+              label="问题反馈"
               accentColor="#ef4444"
             />
             <TypeButton
               active={type === 'idea'}
               onClick={() => setType('idea')}
               icon={<Lightbulb className="w-4 h-4" />}
-              label="产品想法"
+              label="意见建议"
               accentColor="#f59e0b"
             />
           </div>
+          {/* 选中类型后提示对应的承诺处理时限 */}
+          {type && (
+            <p className="text-[11px] mt-1.5" style={{ color: 'var(--bd-fg-muted)' }}>
+              {TYPE_LABEL[type as FeedbackType]}承诺 {TYPE_WORKDAYS[type as FeedbackType]} 个工作日内通过邮箱回复（法定节假日可能略有延期）
+            </p>
+          )}
         </div>
 
         {/* 截图（置于内容上方：粘贴的截图会自动显示在这里） */}
@@ -141,7 +169,7 @@ export default function FeedbackForm({ onSubmitted }: Props) {
             value={content}
             onChange={(e) => setContent(e.target.value)}
             onPaste={handlePaste}
-            placeholder="请描述您遇到的 bug 或想法（5-2000 字），可直接 Ctrl+V 粘贴截图"
+            placeholder="请描述您遇到的问题或建议（5-2000 字），可直接 Ctrl+V 粘贴截图"
             rows={6}
             maxLength={2000}
             className="w-full text-sm px-3 py-2.5 rounded-xl border border-bd-border bg-bd-bg/60 resize-none focus:outline-none focus:ring-2 focus:ring-bd-ui-accent/40"

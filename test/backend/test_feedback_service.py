@@ -399,7 +399,7 @@ async def test_admin_reply_feedback(db_session, user_and_admin, monkeypatch):
     send_mock.assert_awaited_once()
     kwargs = send_mock.await_args.kwargs
     assert kwargs["to_email"] == "user@example.com"
-    assert "Bug 报告" in kwargs["subject"]
+    assert "问题反馈" in kwargs["subject"]
     assert "该问题已修复" in kwargs["body_text"]
     assert "点击登录按钮没反应" in kwargs["body_text"]  # 附原始反馈
 
@@ -426,3 +426,207 @@ async def test_admin_reply_feedback_validation(db_session, user_and_admin):
         await feedback_service.admin_reply_feedback(
             db=db_session, feedback_id="not-exist", content="正常回复内容"
         )
+
+
+# ---------- SLA / 处理人 / 超时扫描（016_feedback_sla_assignee） ----------
+
+
+def test_calc_due_at_skips_weekends():
+    """工作日计算：跳过周六日，截止当天 23:59（北京时间）"""
+    from zoneinfo import ZoneInfo
+
+    SH = ZoneInfo("Asia/Shanghai")
+    # 2026-07-25 周六（北京 12:00）提交 bug → 周一二三 = 7/29 截止
+    now_sat = datetime(2026, 7, 25, 4, 0, tzinfo=timezone.utc)
+    due = feedback_service.calc_due_at("bug", now_sat).astimezone(SH)
+    assert (due.month, due.day, due.hour) == (7, 29, 23)
+
+    # 同日提交 idea → 5 个工作日 = 7/31 截止
+    due_idea = feedback_service.calc_due_at("idea", now_sat).astimezone(SH)
+    assert (due_idea.month, due_idea.day) == (7, 31)
+
+    # 2026-07-31 周五提交 bug → 下周一二三 = 8/5 截止
+    now_fri = datetime(2026, 7, 31, 2, 0, tzinfo=timezone.utc)
+    due_fri = feedback_service.calc_due_at("bug", now_fri).astimezone(SH)
+    assert (due_fri.month, due_fri.day) == (8, 5)
+
+
+@pytest.mark.asyncio
+async def test_create_feedback_sets_due_at(db_session, user_and_admin, monkeypatch):
+    """创建反馈：due_at 落库 + auto_ack 文案含工作日与节假日提示"""
+    monkeypatch.setattr(
+        "app.services.feedback_service.get_super_admin_user_ids",
+        lambda: ["admin-001"],
+    )
+    feedback = await feedback_service.create_feedback(
+        db=db_session,
+        user_id="user-001",
+        user_email="user@example.com",
+        type_="idea",
+        content="希望能支持导出 PDF 报告",
+        attachment_ids=[],
+    )
+    await db_session.commit()
+
+    assert feedback.due_at is not None
+
+    from sqlalchemy import select
+    user_notifs = (
+        await db_session.execute(
+            select(Notification).where(
+                Notification.user_id == "user-001",
+                Notification.type == "feedback_auto_ack",
+            )
+        )
+    ).scalars().all()
+    assert "5 个工作日" in user_notifs[0].content
+    assert "法定节假日可能略有延期" in user_notifs[0].content
+    assert "邮箱" in user_notifs[0].content
+
+
+@pytest.mark.asyncio
+async def test_admin_update_assignee(db_session, user_and_admin, monkeypatch):
+    """指派处理人：只能指派 super_admin，可清除"""
+    monkeypatch.setattr(
+        "app.services.feedback_service.get_super_admin_user_ids",
+        lambda: ["admin-001"],
+    )
+    feedback = await feedback_service.create_feedback(
+        db=db_session,
+        user_id="user-001",
+        user_email="user@example.com",
+        type_="bug",
+        content="页面白屏无法使用",
+        attachment_ids=[],
+    )
+    await db_session.commit()
+    assert feedback.assignee_id is None
+
+    # 指派给 admin
+    updated = await feedback_service.admin_update_assignee(
+        db_session, feedback.id, "admin-001"
+    )
+    assert updated.assignee_id == "admin-001"
+
+    # 非 super_admin 不能指派
+    with pytest.raises(ValueError):
+        await feedback_service.admin_update_assignee(
+            db_session, feedback.id, "user-001"
+        )
+
+    # 不存在的用户
+    with pytest.raises(ValueError):
+        await feedback_service.admin_update_assignee(
+            db_session, feedback.id, "ghost-999"
+        )
+
+    # 清除
+    cleared = await feedback_service.admin_update_assignee(
+        db_session, feedback.id, None
+    )
+    assert cleared.assignee_id is None
+
+    # 不存在的反馈
+    with pytest.raises(LookupError):
+        await feedback_service.admin_update_assignee(
+            db_session, "no-such-id", "admin-001"
+        )
+
+
+@pytest.mark.asyncio
+async def test_list_assignees(db_session, user_and_admin, monkeypatch):
+    """可指派处理人列表 = super_admin 用户"""
+    monkeypatch.setattr(
+        "app.services.feedback_service.get_super_admin_user_ids",
+        lambda: ["admin-001"],
+    )
+    users = await feedback_service.list_assignees(db_session)
+    assert [u.id for u in users] == ["admin-001"]
+
+
+@pytest.mark.asyncio
+async def test_overdue_scan_notify_and_idempotent(user_and_admin, monkeypatch):
+    """超时扫描：过期未完结 → 通知 admin；当天重复扫描不重复通知"""
+    from app.models.database import Base
+    from app.services import feedback_overdue_scan
+
+    # 独立内存库 + sessionmaker，patch 到扫描模块
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(feedback_overdue_scan, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(
+        "app.services.feedback_service.get_super_admin_user_ids",
+        lambda: ["admin-001"],
+    )
+
+    past = datetime(2026, 7, 20, 0, 0)  # naive UTC，已过期
+    future = datetime(2099, 1, 1, 0, 0)
+    async with session_factory() as s:
+        s.add_all(
+            [
+                Feedback(
+                    id="fb-overdue",
+                    user_id="user-001",
+                    user_email="user@example.com",
+                    type="bug",
+                    content="过期未处理的反馈",
+                    status="in_progress",
+                    due_at=past,
+                ),
+                Feedback(
+                    id="fb-done",
+                    user_id="user-001",
+                    user_email="user@example.com",
+                    type="bug",
+                    content="已完结的过期反馈（不应提醒）",
+                    status="done",
+                    due_at=past,
+                ),
+                Feedback(
+                    id="fb-future",
+                    user_id="user-001",
+                    user_email="user@example.com",
+                    type="idea",
+                    content="未到期的反馈（不应提醒）",
+                    status="received",
+                    due_at=future,
+                ),
+                Feedback(
+                    id="fb-legacy",
+                    user_id="user-001",
+                    user_email="user@example.com",
+                    type="bug",
+                    content="存量老数据 due_at 为空（不应提醒）",
+                    status="received",
+                    due_at=None,
+                ),
+            ]
+        )
+        await s.commit()
+
+    stats1 = await feedback_overdue_scan.scan_overdue_feedbacks()
+    assert stats1["overdue"] == 1
+    assert stats1["notified"] == 1
+
+    from sqlalchemy import select
+    async with session_factory() as s:
+        notifs = (
+            await s.execute(
+                select(Notification).where(
+                    Notification.type == "feedback_overdue",
+                    Notification.related_feedback_id == "fb-overdue",
+                )
+            )
+        ).scalars().all()
+        assert len(notifs) == 1
+        assert notifs[0].user_id == "admin-001"
+        assert "超过承诺处理时限" in notifs[0].content
+
+    # 当天再扫：幂等，不重复通知
+    stats2 = await feedback_overdue_scan.scan_overdue_feedbacks()
+    assert stats2["notified"] == 0
+    assert stats2["skipped_already_notified"] == 1
+
+    await engine.dispose()

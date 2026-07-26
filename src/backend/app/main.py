@@ -328,6 +328,7 @@ def _start_bounce_scheduler() -> None:
             misfire_grace_time=600,
         )
         # 报告审核超时自动批复（ADR-0009，每 10 分钟扫描）
+        from app.services.feedback_overdue_scan import scan_overdue_feedbacks
         from app.services.report_review_service import auto_approve_overdue
         from app.utils.report_review import REVIEW_SCAN_INTERVAL_MINUTES
 
@@ -348,6 +349,24 @@ def _start_bounce_scheduler() -> None:
             max_instances=1,
             misfire_grace_time=600,
         )
+        # 反馈超时扫描（每日，站内信提醒所有 super_admin，当天幂等）
+        async def _feedback_overdue_scan_safe() -> None:
+            try:
+                await scan_overdue_feedbacks()
+            except Exception as job_err:
+                logging.getLogger(__name__).error(
+                    "feedback overdue scan job failed: %s", job_err
+                )
+
+        sched.add_job(
+            _feedback_overdue_scan_safe,
+            CronTrigger.from_crontab(settings.FEEDBACK_OVERDUE_SCAN_CRON),
+            id="feedback_overdue_scan",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=3600,
+        )
         sched.start()
         _bounce_scheduler = sched
         logging.getLogger(__name__).info(
@@ -360,6 +379,10 @@ def _start_bounce_scheduler() -> None:
         logging.getLogger(__name__).info(
             "report review auto approve scheduler started, interval=%dmin",
             REVIEW_SCAN_INTERVAL_MINUTES,
+        )
+        logging.getLogger(__name__).info(
+            "feedback overdue scan scheduler started, cron='%s'",
+            settings.FEEDBACK_OVERDUE_SCAN_CRON,
         )
     except Exception as e:
         # APScheduler 不可用不能阻断启动，只警告

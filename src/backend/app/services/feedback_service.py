@@ -9,8 +9,9 @@
 - 用户上传/删除附件（孤儿模式）
 - 拉通知列表/未读数/标记已读
 """
-from datetime import datetime, timezone
+from datetime import datetime, time, timedelta, timezone
 from typing import List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,13 +37,15 @@ MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024  # 2MB
 MAX_ATTACHMENTS_PER_FEEDBACK = 3
 
 AUTO_ACK_TITLE = "【留言反馈】我们已收到您的反馈"
-AUTO_ACK_CONTENT = (
-    "感谢您的反馈，我们将在 3 天内通过邮箱与您联系。请留意您注册邮箱的邮件。"
-)
 NEW_FEEDBACK_TITLE_FOR_ADMIN = "【留言反馈】收到一条新反馈"
+OVERDUE_TITLE_FOR_ADMIN = "【留言反馈】有反馈已超过承诺处理时限"
 
-REPLY_TYPE_LABEL = {"bug": "Bug 报告", "idea": "产品想法"}
+REPLY_TYPE_LABEL = {"bug": "问题反馈", "idea": "意见建议"}
 MAX_REPLY_CHARS = 5000
+
+# SLA 承诺时限（工作日，跳过周六日；法定节假日不计算，文案提示可能略有延期）
+FEEDBACK_DUE_WORKDAYS = {"bug": 3, "idea": 5}
+SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
 
 
 # ---------- 内部工具 ----------
@@ -67,15 +70,54 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def as_utc(dt: datetime) -> datetime:
+    """DB 读回的 naive datetime 按 UTC 处理（SQLite DateTime 不保留 tz）"""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def calc_due_at(type_: str, now: Optional[datetime] = None) -> datetime:
+    """按类型计算承诺回复截止时间：N 个工作日（跳过周六日），当天 23:59（北京时间）截止。
+
+    法定节假日不计算（成本过高），对用户文案提示「法定节假日可能略有延期」。
+    """
+    days = FEEDBACK_DUE_WORKDAYS[type_]
+    local = (now or _now()).astimezone(SHANGHAI_TZ)
+    cur = local.date()
+    added = 0
+    while added < days:
+        cur += timedelta(days=1)
+        if cur.weekday() < 5:  # 0=周一 … 4=周五
+            added += 1
+    due_local = datetime.combine(cur, time(23, 59, 59), tzinfo=SHANGHAI_TZ)
+    return due_local.astimezone(timezone.utc)
+
+
+def _auto_ack_content(type_: str, due_at: datetime) -> str:
+    days = FEEDBACK_DUE_WORKDAYS[type_]
+    due_local = due_at.astimezone(SHANGHAI_TZ)
+    return (
+        f"感谢您的反馈，我们将在 {days} 个工作日内（预计 {due_local.month} 月 "
+        f"{due_local.day} 日前，法定节假日可能略有延期）通过邮箱与您联系。"
+        "请留意您注册邮箱的邮件。"
+    )
+
+
 async def _get_super_admin_ids(db: AsyncSession) -> List[str]:
-    """获取所有 super_admin 的 user_id（来自 SUPER_ADMIN_USER_IDS/SUPER_ADMIN_EMAILS）"""
-    # get_super_admin_user_ids 来自 app.utils.super_admin，读 settings
-    ids = get_super_admin_user_ids()
-    if ids:
-        return ids
-    # 兜底：直接查 users 表（若实现支持 is_super_admin 字段或类似）
-    # 这里保守返回空，由调用方处理
-    return []
+    """获取所有 super_admin 的 user_id（SUPER_ADMIN_USER_IDS + SUPER_ADMIN_EMAILS 解析）"""
+    ids = set(get_super_admin_user_ids())
+    emails = {
+        e.strip().lower()
+        for e in (getattr(settings, "SUPER_ADMIN_EMAILS", None) or "").split(",")
+        if e.strip()
+    }
+    if emails:
+        result = await db.execute(
+            select(User.id).where(func.lower(User.email).in_(emails))
+        )
+        ids.update(result.scalars().all())
+    return list(ids)
 
 
 # ---------- 核心业务 ----------
@@ -169,13 +211,15 @@ async def create_feedback(
     if len(attachment_ids) > MAX_ATTACHMENTS_PER_FEEDBACK:
         raise ValueError(f"最多 {MAX_ATTACHMENTS_PER_FEEDBACK} 张截图")
 
-    # 1. 插 feedback
+    # 1. 插 feedback（含 SLA 截止时间）
+    due_at = calc_due_at(type_)
     feedback = Feedback(
         user_id=user_id,
         user_email=user_email,
         type=type_,
         content=content,
         status="received",
+        due_at=due_at,
     )
     db.add(feedback)
     await db.flush()  # 拿 id
@@ -205,7 +249,7 @@ async def create_feedback(
         user_id=user_id,
         type="feedback_auto_ack",
         title=AUTO_ACK_TITLE,
-        content=AUTO_ACK_CONTENT,
+        content=_auto_ack_content(type_, due_at),
         read_at=None,
         related_feedback_id=feedback.id,
     )
@@ -367,6 +411,46 @@ async def admin_update_status(
         )
         await db.flush()
 
+    return feedback
+
+
+# ---------- 处理人（assignee） ----------
+
+
+async def list_assignees(db: AsyncSession) -> List[User]:
+    """可指派的处理人列表 = 所有 super_admin 用户"""
+    admin_ids = await _get_super_admin_ids(db)
+    if not admin_ids:
+        return []
+    result = await db.execute(select(User).where(User.id.in_(admin_ids)))
+    return list(result.scalars().all())
+
+
+async def admin_update_assignee(
+    db: AsyncSession,
+    feedback_id: str,
+    assignee_id: Optional[str],
+) -> Feedback:
+    """指派/清除处理人。assignee_id 必须是 super_admin 用户；传 None 表示清除。"""
+    result = await db.execute(
+        select(Feedback).where(Feedback.id == feedback_id)
+    )
+    feedback = result.scalar_one_or_none()
+    if not feedback:
+        raise LookupError("反馈不存在")
+
+    if assignee_id is not None:
+        admin_ids = await _get_super_admin_ids(db)
+        if assignee_id not in admin_ids:
+            raise ValueError("处理人必须是超级管理员")
+        user_result = await db.execute(
+            select(User).where(User.id == assignee_id)
+        )
+        if user_result.scalar_one_or_none() is None:
+            raise ValueError("处理人用户不存在")
+
+    feedback.assignee_id = assignee_id
+    await db.flush()
     return feedback
 
 

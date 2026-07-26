@@ -8,6 +8,7 @@ export type NotificationType =
   | 'feedback_auto_ack'
   | 'feedback_new'
   | 'feedback_status_changed'
+  | 'feedback_overdue'
   | 'announcement';
 
 export interface Feedback {
@@ -16,6 +17,8 @@ export interface Feedback {
   content: string;
   status: FeedbackStatus;
   created_at: string;
+  /** SLA 承诺回复截止时间（bug=3 个工作日 / idea=5 个工作日）；存量老数据为 null */
+  due_at: string | null;
 }
 
 export interface AttachmentUploadResult {

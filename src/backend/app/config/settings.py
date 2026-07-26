@@ -119,6 +119,10 @@ class Settings(BaseSettings):
     FEEDBACK_ORPHAN_CLEANUP_CRON: str = "0 4 * * *"  # 默认每日 04:00
     FEEDBACK_ORPHAN_CLEANUP_DAYS: int = 7             # 超过 7 天未关联反馈视为孤儿
 
+    # 反馈超时扫描 cron（本地时间，5 字段）
+    # 扫描 due_at 已过且未完结的反馈，站内信提醒所有 super_admin（当天幂等）
+    FEEDBACK_OVERDUE_SCAN_CRON: str = "0 9 * * *"  # 默认每日 09:00
+
     # ========== 支付模块（计划见 tasks/payment-module-plan.md）==========
     # 旧商品：全程激活码（单一 SKU，已下架；配置保留供历史订单展示）
     ACTIVATION_CODE_PRICE: int = 9900  # 99 元

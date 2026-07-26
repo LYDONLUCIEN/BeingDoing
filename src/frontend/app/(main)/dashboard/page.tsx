@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Check, Lock, ChevronRight, BookOpen, User, ShoppingCart } from 'lucide-react';
-import { PHASES, loadSession, saveSession, setLastActivationCode, applyExploreResumeToSession, type PhaseKey } from '@/lib/explore/session';
+import { PHASES, loadSession, saveSession, setLastActivationCode, applyExploreResumeToSession, setUserSurveyCompleted, type PhaseKey } from '@/lib/explore/session';
 import { clearThreadCache } from '@/lib/explore/threads';
 import { useLocale } from '@/hooks/useLocale';
 import { apiClient } from '@/lib/api/client';
@@ -432,6 +432,12 @@ export default function DashboardCurrentProgressPage() {
       // 用户级问卷直读：登录后即可获取，不依赖激活码
       if (resp.user_survey) {
         setUserSurvey(resp.user_survey);
+        // 后端为准回填本地完成标记：登出会清除 localStorage 中的问卷标记，
+        // 而 chat 页问卷门控只认 localStorage，不回填会导致重新登录后每次进探索都被拉去填问卷
+        if (resp.user_survey.completed) {
+          const uid = useAuthStore.getState().user?.user_id;
+          if (uid) setUserSurveyCompleted(uid, true);
+        }
       }
       setFetchError(null);
 

@@ -230,6 +230,7 @@ export const zh = {
       streamStatusHypothesis: '正在为您生成假设建议，请稍后…',
       conclusionChoiceRequiredBanner:
         '请先在上方结论卡片上点击「确认没有问题」或「我想再聊聊」，之后才能继续输入。',
+      aiDisclaimer: 'AI生成，仅供参考',
       completeStep: '完成此步，进入下一步',
       completeAndContinue: '完成并继续',
       selectCompletedHint: '请选中一个已完成的对话',

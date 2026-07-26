@@ -244,7 +244,7 @@ export default function FloatingFeedbackWidget() {
                 className="w-full text-xs px-3 py-2 rounded-xl border border-bd-border hover:bg-bd-overlay-md transition-colors"
                 style={{ color: 'var(--bd-fg-muted)' }}
               >
-                💡 提交新反馈（Bug / 产品想法）
+                💡 提交新反馈（问题反馈 / 意见建议）
               </button>
             </div>
           )}
@@ -340,7 +340,7 @@ export default function FloatingFeedbackWidget() {
             )}
             <div className="flex flex-col leading-tight">
               <span className="text-[13px] font-semibold text-white">站内信 · 反馈</span>
-              <span className="text-[10px] text-white/75">查看通知 / 提交问题与想法</span>
+              <span className="text-[10px] text-white/75">查看通知 / 提交问题与建议</span>
             </div>
           </div>
           {!isOpen && unreadCount > 0 && (

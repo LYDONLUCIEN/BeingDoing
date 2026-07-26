@@ -1583,6 +1583,10 @@ export interface AdminFeedbackItem {
   attachments_count: number;
   created_at: string;
   updated_at: string;
+  /** SLA 承诺回复截止时间；存量老数据为 null */
+  due_at?: string | null;
+  assignee_id?: string | null;
+  assignee_email?: string | null;
 }
 
 export interface AdminFeedbackList {
@@ -1631,5 +1635,26 @@ export async function updateAdminFeedbackStatus(
 
 export async function replyAdminFeedback(id: string, content: string): Promise<void> {
   await apiClient.post(`/admin/feedbacks/${encodeURIComponent(id)}/reply`, { content });
+}
+
+export interface AdminFeedbackAssignee {
+  user_id: string;
+  email: string;
+}
+
+export async function fetchAdminFeedbackAssignees(): Promise<AdminFeedbackAssignee[]> {
+  const res = await apiClient.get('/admin/feedbacks/assignees');
+  return res.data.items;
+}
+
+export async function assignAdminFeedback(
+  id: string,
+  assigneeId: string | null
+): Promise<AdminFeedbackDetail> {
+  const res = await apiClient.patch(
+    `/admin/feedbacks/${encodeURIComponent(id)}/assignee`,
+    { assignee_id: assigneeId }
+  );
+  return res.data;
 }
 

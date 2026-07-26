@@ -4912,6 +4912,9 @@ export default function ChatPhasePage() {
                   </div>
                   </div>
                 </div>
+                <p className="mt-1 w-full shrink-0 text-center text-[10px] leading-tight text-[var(--flow-text-muted)] opacity-70">
+                  {t('explore.chat.aiDisclaimer')}
+                </p>
               </form>
             </div>
           </div>

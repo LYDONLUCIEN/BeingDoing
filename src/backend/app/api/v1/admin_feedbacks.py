@@ -10,18 +10,23 @@ Admin 反馈管理 API
 全部 is_super_admin 守卫。
 改状态时同步发 feedback_status_changed 通知给用户。
 """
-from typing import Optional
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_user
 from app.models.database import get_db
+from app.models.feedback import Feedback
+from app.models.user import User
 from app.schemas.feedback import (
+    AdminAssigneeOut,
     AdminFeedbackDetailOut,
     AdminFeedbackItem,
     AdminFeedbackListOut,
+    FeedbackAssigneeUpdate,
     FeedbackReply,
     FeedbackStatusUpdate,
 )
@@ -47,6 +52,36 @@ def _require_admin(user: Optional[dict]) -> None:
         )
 
 
+async def _assignee_email_map(
+    db: AsyncSession, feedbacks: List[Feedback]
+) -> Dict[str, str]:
+    """批量查处理人邮箱，避免 N+1"""
+    ids = {f.assignee_id for f in feedbacks if f.assignee_id}
+    if not ids:
+        return {}
+    result = await db.execute(select(User.id, User.email).where(User.id.in_(ids)))
+    return {row.id: row.email for row in result.all()}
+
+
+@router.get("/assignees", response_model=StandardResponse)
+async def list_assignees(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """可指派的处理人列表（所有 super_admin）"""
+    _require_admin(current_user)
+    users = await feedback_service.list_assignees(db)
+    return StandardResponse(
+        code=200,
+        message="success",
+        data={
+            "items": [
+                AdminAssigneeOut(user_id=u.id, email=u.email).model_dump()
+                for u in users
+            ]
+        },
+    )
+
 @router.get("", response_model=StandardResponse)
 async def list_feedbacks(
     type: Optional[str] = Query(None, description="bug / idea"),
@@ -71,6 +106,7 @@ async def list_feedbacks(
         page=page,
         page_size=page_size,
     )
+    email_map = await _assignee_email_map(db, items)
     return StandardResponse(
         code=200,
         message="success",
@@ -87,6 +123,9 @@ async def list_feedbacks(
                     attachments_count=0,  # 列表页不查附件数，避免 N+1
                     created_at=f.created_at,
                     updated_at=f.updated_at,
+                    due_at=f.due_at,
+                    assignee_id=f.assignee_id,
+                    assignee_email=email_map.get(f.assignee_id),
                 )
                 for f in items
             ],
@@ -137,6 +176,7 @@ async def get_feedback_detail(
             }
         )
 
+    email_map = await _assignee_email_map(db, [feedback])
     return StandardResponse(
         code=200,
         message="success",
@@ -150,6 +190,9 @@ async def get_feedback_detail(
             status=feedback.status,
             created_at=feedback.created_at,
             updated_at=feedback.updated_at,
+            due_at=feedback.due_at,
+            assignee_id=feedback.assignee_id,
+            assignee_email=email_map.get(feedback.assignee_id),
             attachments=attachments_out,
         ).model_dump(),
     )
@@ -206,6 +249,7 @@ async def update_feedback_status(
     await db.commit()
 
     # 返回更新后的详情（不含附件，简化）
+    email_map = await _assignee_email_map(db, [feedback])
     return StandardResponse(
         code=200,
         message="状态更新成功",
@@ -219,6 +263,54 @@ async def update_feedback_status(
             status=feedback.status,
             created_at=feedback.created_at,
             updated_at=feedback.updated_at,
+            due_at=feedback.due_at,
+            assignee_id=feedback.assignee_id,
+            assignee_email=email_map.get(feedback.assignee_id),
+            attachments=[],
+        ).model_dump(),
+    )
+
+
+@router.patch("/{feedback_id}/assignee", response_model=StandardResponse)
+async def update_feedback_assignee(
+    feedback_id: str,
+    payload: FeedbackAssigneeUpdate,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """指派/清除处理人（仅限 super_admin）"""
+    _require_admin(current_user)
+
+    try:
+        feedback = await feedback_service.admin_update_assignee(
+            db=db,
+            feedback_id=feedback_id,
+            assignee_id=payload.assignee_id,
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    await db.commit()
+
+    email_map = await _assignee_email_map(db, [feedback])
+    return StandardResponse(
+        code=200,
+        message="处理人已更新",
+        data=AdminFeedbackDetailOut(
+            id=feedback.id,
+            user_id=feedback.user_id,
+            user_email=feedback.user_email,
+            username=None,
+            type=feedback.type,
+            content=feedback.content,
+            status=feedback.status,
+            created_at=feedback.created_at,
+            updated_at=feedback.updated_at,
+            due_at=feedback.due_at,
+            assignee_id=feedback.assignee_id,
+            assignee_email=email_map.get(feedback.assignee_id),
             attachments=[],
         ).model_dump(),
     )

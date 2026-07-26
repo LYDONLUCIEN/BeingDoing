@@ -13,13 +13,17 @@ import {
   Send,
 } from 'lucide-react';
 import {
+  assignAdminFeedback,
+  fetchAdminFeedbackAssignees,
   fetchAdminFeedbackDetail,
   replyAdminFeedback,
   updateAdminFeedbackStatus,
+  type AdminFeedbackAssignee,
   type AdminFeedbackDetail,
   type AdminFeedbackStatus,
+  type AdminFeedbackType,
 } from '@/lib/api/admin';
-import { formatLocalDateTime } from '@/lib/utils/formatTime';
+import { formatLocalDateTime, toDate } from '@/lib/utils/formatTime';
 import { getApiErrorMessage } from '@/lib/api/client';
 
 const STATUS_LABEL: Record<AdminFeedbackStatus, string> = {
@@ -34,6 +38,18 @@ const STATUS_COLOR: Record<AdminFeedbackStatus, string> = {
   done: '#10b981',
 };
 
+const TYPE_LABEL: Record<AdminFeedbackType, string> = {
+  bug: '问题反馈',
+  idea: '意见建议',
+};
+
+/** 已过承诺时限且未完结 */
+function isOverdue(detail: AdminFeedbackDetail): boolean {
+  if (!detail.due_at || detail.status === 'done') return false;
+  const due = toDate(detail.due_at);
+  return !!due && due.getTime() < Date.now();
+}
+
 export default function AdminFeedbackDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -46,13 +62,19 @@ export default function AdminFeedbackDetailPage() {
   const [replyContent, setReplyContent] = useState('');
   const [sendingReply, setSendingReply] = useState(false);
   const [replyMsg, setReplyMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [assignees, setAssignees] = useState<AdminFeedbackAssignee[]>([]);
+  const [assigning, setAssigning] = useState(false);
 
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchAdminFeedbackDetail(id);
+      const [data, assigneeList] = await Promise.all([
+        fetchAdminFeedbackDetail(id),
+        fetchAdminFeedbackAssignees().catch(() => [] as AdminFeedbackAssignee[]),
+      ]);
       setDetail(data);
+      setAssignees(assigneeList);
     } catch (e: any) {
       setError(getApiErrorMessage(e, '加载失败'));
     } finally {
@@ -75,6 +97,21 @@ export default function AdminFeedbackDetailPage() {
       alert(getApiErrorMessage(e, '状态更新失败'));
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const handleAssigneeChange = async (assigneeId: string) => {
+    if (!detail) return;
+    setAssigning(true);
+    try {
+      const updated = await assignAdminFeedback(id, assigneeId || null);
+      setDetail((prev) =>
+        prev ? { ...prev, ...updated, attachments: prev.attachments } : updated
+      );
+    } catch (e) {
+      alert(getApiErrorMessage(e, '处理人更新失败'));
+    } finally {
+      setAssigning(false);
     }
   };
 
@@ -141,7 +178,7 @@ export default function AdminFeedbackDetailPage() {
           )}
         </div>
         <div className="flex-1">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span
               className="text-[10px] px-2 py-0.5 rounded-full font-medium"
               style={{
@@ -151,8 +188,13 @@ export default function AdminFeedbackDetailPage() {
             >
               {STATUS_LABEL[detail.status]}
             </span>
+            {isOverdue(detail) && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-red-100 text-red-600">
+                已超时
+              </span>
+            )}
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-bd-overlay-md text-bd-muted">
-              {detail.type === 'bug' ? 'Bug' : '产品想法'}
+              {TYPE_LABEL[detail.type]}
             </span>
           </div>
           <p className="text-xs text-bd-subtle">
@@ -160,6 +202,10 @@ export default function AdminFeedbackDetailPage() {
             {detail.updated_at !== detail.created_at && (
               <> · 更新：{formatLocalDateTime(detail.updated_at)}</>
             )}
+            {' · 承诺截止：'}
+            <span style={{ color: isOverdue(detail) ? '#dc2626' : undefined }}>
+              {detail.due_at ? formatLocalDateTime(detail.due_at) : '—'}
+            </span>
           </p>
         </div>
       </div>
@@ -173,6 +219,31 @@ export default function AdminFeedbackDetailPage() {
             {detail.user_email}
           </span>
         </div>
+      </div>
+
+      {/* 处理人 */}
+      <div className="px-4 py-3 rounded-xl border border-bd-border bg-bd-card/60">
+        <p className="text-[10px] uppercase tracking-wide text-bd-subtle mb-2">处理人</p>
+        <div className="flex items-center gap-2">
+          <select
+            value={detail.assignee_id || ''}
+            onChange={(e) => handleAssigneeChange(e.target.value)}
+            disabled={assigning}
+            className="text-sm px-3 py-1.5 rounded-lg border border-bd-border bg-bd-bg/60 focus:outline-none focus:ring-2 focus:ring-bd-ui-accent/40 disabled:opacity-50"
+            style={{ color: 'var(--bd-fg)' }}
+          >
+            <option value="">未指派</option>
+            {assignees.map((a) => (
+              <option key={a.user_id} value={a.user_id}>
+                {a.email}
+              </option>
+            ))}
+          </select>
+          {assigning && <Loader2 className="w-4 h-4 animate-spin text-bd-muted" />}
+        </div>
+        <p className="text-[11px] mt-2 text-bd-subtle">
+          超过承诺截止时间未完结的反馈，会每天通过站内信提醒所有管理员。
+        </p>
       </div>
 
       {/* 反馈内容 */}

@@ -234,6 +234,7 @@ export const en = {
       streamStatusHypothesis: 'Generating hypothesis suggestions for you, please wait…',
       conclusionChoiceRequiredBanner:
         'Please use the conclusion card above: tap “Confirm” or “Chat more” before you can type here.',
+      aiDisclaimer: 'AI-generated, for reference only',
       completeStep: 'Complete This Step',
       completeAndContinue: 'Complete & Continue',
       selectCompletedHint: 'Please select a completed conversation',

@@ -34,6 +34,16 @@ class Feedback(Base):
     status = Column(String(20), default="received", nullable=False)
     # received → in_progress → done（admin 手动改）
 
+    # SLA 承诺截止时间（提交时按类型算：bug=3 个工作日 / idea=5 个工作日，跳过周末）
+    # NULL = 存量老数据（上线前提交），不参与超时扫描
+    due_at = Column(DateTime, nullable=True)
+    # 处理人（admin 手动指派，仅限 super_admin；NULL = 未指派）
+    assignee_id = Column(
+        String(36),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime,
