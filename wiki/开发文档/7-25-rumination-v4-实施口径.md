@@ -127,3 +127,17 @@ combo/card 类型 += `balance_found: boolean | null`、`balance_fail_reason: str
 
 - CONTEXT.md：更新「v4 结论卡区」定义（跳过保留卡、可逆）、「平衡点」（补 null 态与再评估闸）、chips 选择器定义
 - 本文件即实施口径；产品文档 `7-25-rumination-v4.md` 保持原文不动
+
+---
+
+## 附:2026-07-27 交互口径修订(出卡不锁 / 确认才锁 / 再聊聊)
+
+> 与领域专家 grill 后定案,优先级高于上文冲突条目。
+
+1. **出卡 = 草案,不锁定**:`apply_tool_call(save_conclusion_card)` 与 `patch_conclusion_card` 均**不再强制 `status=concluded`**;草案期对话继续,AI 每轮可迭代覆盖卡内容。确认动作统一走 `set_combo_status(concluded)`。
+2. **草案卡注入上下文**:`build_chat_messages` 在草案期(有卡且非 concluded)每轮注入【当前结论草案(用户尚未确认)】system 消息;concluded 后不注入(对话已锁定)。
+3. **「再聊聊」**:`concluded → discussing` 时 `set_combo_status` 写入 `reopen_feedback`(用户对当前结论不满意,先问哪里不合适),随草案一起注入 LLM 上下文;AI 下次 `save_conclusion_card` 或用户再确认时自动清除。
+4. **前端三态卡底**:草案卡常显「跳过/确认」;已确认卡显示「✓ 已确认」+「再聊聊」;跳过卡维持删除线灰标、编辑态「确认(恢复)」。点击文本进编辑态不变。
+5. **终选口径不变**:只认 `concluded` 且未跳过的卡;「再聊聊」的组合掉出终选池,重新确认后回池。
+6. 顺手修复:`set_combo_status(discussing)` 现在也清除 `user_skipped`(原 abandoned→discussing 会残留跳过标记)。
+7. **空可见回复兜底(空气泡修复)**:prompt 硬约束"每次回复必须含可见正文,隐藏块禁止单独成条";routes 在 `visible_text` 为空时按情境补兜底话术(出卡/chips/一般追问)并 `logger.warning` 记录原始回复;`build_chat_messages` 跳过空内容消息;前端 store `done` 空文本不追加、`V4ChatPanel` 不渲染空消息。前端 store 收到 `conclusion_card` 事件不再强制本地 `status='concluded'`(与"出卡不锁"对齐)。

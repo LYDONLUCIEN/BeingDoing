@@ -290,6 +290,8 @@ export const useRuminationV4Store = create<RuminationV4Store>((set, get) => ({
       }
       if (evt.conclusion_card) {
         onCard?.(evt.conclusion_card);
+        // 卡已生成/更新 → 关掉「结论卡生成中」指示
+        set({ fallbackActive: false });
         // 写入 cache + state
         set((s) => {
           const cache = s.comboCache[comboId];
@@ -297,7 +299,7 @@ export const useRuminationV4Store = create<RuminationV4Store>((set, get) => ({
           const updated: ComboSession = {
             ...cache,
             conclusion_card: evt.conclusion_card!,
-            status: 'concluded',
+            // 出卡 = 草案,不锁定:status 保持原值,确认动作走 setStatus('concluded')
             fields_collected: { ...cache.fields_collected, ...evt.conclusion_card! },
           };
           return {
@@ -306,7 +308,7 @@ export const useRuminationV4Store = create<RuminationV4Store>((set, get) => ({
               ? {
                   ...s.state,
                   combo_sessions: s.state.combo_sessions.map((c) =>
-                    c.combo_id === comboId ? { ...c, conclusion_card: evt.conclusion_card!, status: 'concluded' } : c
+                    c.combo_id === comboId ? { ...c, conclusion_card: evt.conclusion_card! } : c
                   ),
                 }
               : s.state,
@@ -317,7 +319,14 @@ export const useRuminationV4Store = create<RuminationV4Store>((set, get) => ({
         // 仅调试用,可忽略
       }
       if (evt.done) {
-        // 把 assistant 的完整可见回复加入消息
+        // 流结束 → 无论如何关掉「结论卡生成中」指示
+        set({ fallbackActive: false });
+        // 把 assistant 的完整可见回复加入消息(空回复不追加,避免空气泡;
+        // 后端已有空值守卫会补兜底话术,这里是双保险)
+        if (!full.trim()) {
+          set({ isStreaming: false, streamingText: '' });
+          return;
+        }
         const assistantMsg = { role: 'assistant' as const, content: full, ts: new Date().toISOString() };
         set((s) => {
           const cache = s.comboCache[comboId];
@@ -339,7 +348,7 @@ export const useRuminationV4Store = create<RuminationV4Store>((set, get) => ({
         });
       }
       if (evt.error) {
-        set({ error: evt.error, isStreaming: false, streamingText: '' });
+        set({ error: evt.error, isStreaming: false, streamingText: '', fallbackActive: false });
       }
     });
     await handle.done;

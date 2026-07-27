@@ -253,6 +253,7 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
                     key={combo.combo_id}
                     type="button"
                     onClick={() => toggle(combo.combo_id)}
+                    title={desc} // 悬停任意位置可见完整假设（推荐/不推荐均生效）
                     className={`
                       direction-card relative flex flex-col rounded-[15px] border p-4 text-center transition-all duration-200
                       ${selected ? 'selected' : ''}
@@ -323,10 +324,22 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
                     <p
                       className="line-clamp-3 flex-1 text-xs leading-relaxed"
                       style={{ color: selected ? theme.tagColor : '#66748d' }}
-                      title={desc}
                     >
                       {desc}
                     </p>
+                    {/* 不推荐（未找到平衡点）时直接展示理由 */}
+                    {card?.balance_found === false && (
+                      <p
+                        className="mt-1.5 line-clamp-2 rounded-md px-1.5 py-1 text-left text-[11px] leading-snug"
+                        style={{
+                          background: '#fff6e5',
+                          color: '#b57908',
+                        }}
+                        title={card.balance_fail_reason?.trim() || '未找到平衡点'}
+                      >
+                        ⚠ 不推荐：{card.balance_fail_reason?.trim() || '未找到平衡点'}
+                      </p>
+                    )}
                   </button>
                 );
               })}

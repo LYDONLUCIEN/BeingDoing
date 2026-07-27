@@ -109,18 +109,20 @@ async def test_full_happy_path_with_dual_signals(tmp_reports, rid, monkeypatch):
     svc.append_message(state, combo_id, "assistant", visible)
     svc.save_v4_state(tmp_reports, rid, state)
 
-    # 第二轮后:出卡,双信号齐全,无 fallback
+    # 第二轮后:出卡(草案,不锁定),双信号齐全,无 fallback
     assert signals["hidden"] is True
     assert signals["visible"] is True
     assert card_event is not None
     assert card_event["hypothesis"] == "音乐+创造能让我成为独特创作者"
     assert card_event["balance_found"] is True
     c2 = find_combo(state, combo_id)
-    assert c2["status"] == "concluded"
+    # 2026-07-27 交互口径:出卡不锁,用户确认才置 concluded
+    assert c2["status"] == "discussing"
     assert c2["conclusion_card"]["hypothesis"].startswith("音乐+创造")
 
-    # 用户确认
+    # 用户确认 → concluded 进终选
     state = svc.set_combo_status(tmp_reports, rid, combo_id, "concluded")
+    assert find_combo(state, combo_id)["status"] == "concluded"
     # 第 8 步选择 + 提交
     state = svc.update_final_selection(tmp_reports, rid, [combo_id])
     state = svc.submit_final_selection(tmp_reports, rid)
@@ -258,6 +260,51 @@ async def test_summary_triggered_at_30_rounds(tmp_reports, rid):
     combo_obj = find_combo(state, combo_id)
     assert combo_obj["summary"] == new_summary
     assert combo_obj["summary_last_round"] == SUMMARIZE_EVERY_N_ROUNDS
+
+
+# ── 场景 6:SSE 流式隐藏块过滤(回归:标记/tool 块泄漏到聊天气泡)────────
+def test_stream_hidden_blocks_never_leak_across_chunks():
+    """combo-chat SSE 流式阶段:<<CONCLUSION_READY>> / ```tool 块 / [STEP3_HYP_JSON] 块
+    即使被流式 chunk 任意拆开,也不得出现在推给前端的 chunk 增量里。"""
+    from app.services.rumination_v4_service import STREAM_HIDDEN_BLOCK_MARKERS
+    # 直接按文件路径加载,避免触发 simple_chat 包 __init__ 的连锁导入
+    import importlib.util
+    _spec = importlib.util.spec_from_file_location(
+        "stream_utils",
+        Path(__file__).resolve().parents[2] / "src/backend/app/api/v1/simple_chat/stream_utils.py",
+    )
+    _su = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_su)
+    build_stream_hidden_block_filter = _su.build_stream_hidden_block_filter
+
+    visible_head = "我明白了。这件事的核心回报是自我成长和认知突破。\n\n"
+    visible_tail = "我已经把这次探索整理成了结论卡,你可以看看有没有需要调整的地方。"
+    hidden = (
+        "<<CONCLUSION_READY>>\n```tool\n"
+        '{"tool":"save_conclusion_card","fields":{"hypothesis":"做一个持续性的深度人物观察项目","balance_found":true}}\n```'
+    )
+    full = visible_head + visible_tail + "\n\n" + hidden
+
+    # 多种切块粒度都必须零泄漏(1 字符粒度最苛刻,模拟标记被拆散)
+    for step in (1, 3, 5, 20):
+        f = build_stream_hidden_block_filter(block_markers=STREAM_HIDDEN_BLOCK_MARKERS)
+        out = ""
+        for i in range(0, len(full), step):
+            out += f(full[: i + step])
+        assert "<<CONCLUSION_READY>>" not in out
+        assert "save_conclusion_card" not in out
+        assert "```tool" not in out
+        assert out == visible_head + visible_tail + "\n\n"
+
+    # chips 隐藏块同样不泄漏
+    t = "选一个方向:\n[STEP3_HYP_JSON]{" + '"candidates":["abc"]' + "}[/STEP3_HYP_JSON]"
+    f = build_stream_hidden_block_filter(block_markers=STREAM_HIDDEN_BLOCK_MARKERS)
+    out = ""
+    for i in range(0, len(t), 2):
+        out += f(t[: i + 2])
+    assert "STEP3_HYP_JSON" not in out
+    assert "candidates" not in out
+    assert out.startswith("选一个方向:")
 
 
 # ── 辅助 ───────────────────────────────────────────────────────────────

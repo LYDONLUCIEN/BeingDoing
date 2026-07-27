@@ -39,6 +39,9 @@ from app.api.v1.simple_chat.context_resolver import (
 from app.api.v1.simple_chat.llm_providers import (
     get_dialogue_llm_provider as _get_dialogue_llm_provider,
 )
+from app.api.v1.simple_chat.stream_utils import (
+    build_stream_hidden_block_filter as _build_stream_hidden_block_filter,
+)
 from app.utils.simple_activation_manager import (
     get_activation_manager_for_code,
     get_effective_simple_root,
@@ -57,6 +60,8 @@ from app.services.rumination_v4_service import (
     delete_combo as svc_delete_combo,
     detect_conclusion_signals,
     extract_hyp_candidates,
+    HYP_JSON_END,
+    HYP_JSON_START,
     fallback_generate_conclusion,
     find_combo,
     list_combos,
@@ -67,6 +72,7 @@ from app.services.rumination_v4_service import (
     set_active_combo,
     set_combo_status,
     submit_final_selection,
+    STREAM_HIDDEN_BLOCK_MARKERS,
     update_final_selection,
 )
 from app.utils.activation_audit import append_activation_audit  # 复用项目审计日志
@@ -401,6 +407,13 @@ async def combo_chat_endpoint(req: ComboChatReq, current_user: dict = Depends(ge
         )
         llm = _get_dialogue_llm_provider(vip_level=vip_level)
 
+        # 流式隐藏块过滤(跨 chunk 安全,复用 v3 同款):
+        # ```tool 块 / [STEP3_HYP_JSON] 块 / <<CONCLUSION_READY>> 标记均不推给前端,
+        # 避免标记被切块拆开或 tool JSON 原样泄漏到聊天气泡。
+        stream_hidden_filter = _build_stream_hidden_block_filter(
+            block_markers=STREAM_HIDDEN_BLOCK_MARKERS
+        )
+
         full_reply = ""
         async for piece in llm.chat_stream(llm_messages, temperature=0.7, max_tokens=800):
             if isinstance(piece, dict):
@@ -415,8 +428,8 @@ async def combo_chat_endpoint(req: ComboChatReq, current_user: dict = Depends(ge
                 continue
             if piece:
                 full_reply += piece
-                # 过滤掉 <<CONCLUSION_READY>> 标记后再流给前端
-                safe = piece.replace(CONCLUSION_READY_MARKER, "")
+                # 基于累计文本计算可见增量,隐藏块跨 chunk 也不会泄漏
+                safe = stream_hidden_filter(full_reply)
                 if safe:
                     yield f"data: {json.dumps({'chunk': safe}, ensure_ascii=False)}\n\n"
 
@@ -454,6 +467,22 @@ async def combo_chat_endpoint(req: ComboChatReq, current_user: dict = Depends(ge
                 c2, _e = apply_tool_call(latest_state, req.combo_id, apply_tc)
                 if c2:
                     conclusion_card_event = c2
+
+        # 空可见回复兜底:LLM 整轮只输出隐藏块(或 tool 校验失败)时 visible_text 为空,
+        # 直接落库/渲染会出现「空气泡」。补一句与情境相符的兜底话术并记日志。
+        if not visible_text.strip():
+            logger.warning(
+                "combo-chat 空可见回复 combo_id=%s tool_errors=%s raw=%.300s",
+                req.combo_id, tool_errors, full_reply,
+            )
+            if conclusion_card_event:
+                visible_text = "我已经把最新的共识更新到结论卡了,你看看这版是否更贴合?有想调整的随时告诉我。"
+            elif hyp_candidates:
+                visible_text = "基于你的想法,我整理了两条候选方向,点一条我们继续细聊。"
+            else:
+                visible_text = "嗯,我记下了。这个想法里,最吸引你的是哪一点?可以多跟我说说。"
+            # 流式阶段一个 chunk 都没推过,补推兜底话术让前端即时可见
+            yield f"data: {json.dumps({'chunk': visible_text}, ensure_ascii=False)}\n\n"
 
         # 把 LLM 的可见回复追加到 messages(注意:存的是过滤后的可见文本)
         append_message(latest_state, req.combo_id, "assistant", visible_text)

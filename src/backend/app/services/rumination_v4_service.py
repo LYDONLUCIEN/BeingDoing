@@ -43,6 +43,14 @@ TOOL_BLOCK_REGEX = re.compile(r"```tool\s*(\{.*?\})\s*```", re.DOTALL)
 # chips 候选隐藏块协议(复用 v3 同款,后端解析、前端渲染为可点击选项)
 HYP_JSON_START = "[STEP3_HYP_JSON]"
 HYP_JSON_END = "[/STEP3_HYP_JSON]"
+
+# SSE 流式隐藏块标记(跨 chunk 过滤,复用 v3 stream_utils):
+# tool 块 / chips 候选块 / 结论就绪标记在流式阶段即对前端隐藏,落库前再统一剥离解析
+STREAM_HIDDEN_BLOCK_MARKERS: Tuple[Tuple[str, str], ...] = (
+    ("```tool", "```"),
+    (HYP_JSON_START, HYP_JSON_END),
+    (CONCLUSION_READY_MARKER, CONCLUSION_READY_MARKER),
+)
 HYP_JSON_BLOCK_REGEX = re.compile(
     re.escape(HYP_JSON_START) + r"(.*?)" + re.escape(HYP_JSON_END), re.DOTALL
 )
@@ -495,7 +503,10 @@ def apply_tool_call(
             "updated_at": _now_iso(),
         }
         combo["conclusion_card"] = card
-        combo["status"] = "concluded"
+        # 出卡 = 草案,不强制 concluded(2026-07-27 交互口径):
+        # 对话不锁定,用户点「确认」后才置 concluded 进终选池;
+        # AI 本轮已迭代卡 → 清除「再聊聊」不满意反馈标记
+        combo.pop("reopen_feedback", None)
         combo["updated_at"] = _now_iso()
         return card, None
     return None, f"未知 tool: {name}"
@@ -549,7 +560,7 @@ def patch_conclusion_card(
             card["balance_fail_reason"] = None
     card["updated_at"] = _now_iso()
     combo["conclusion_card"] = card
-    combo["status"] = "concluded"
+    # 不强制 concluded:草案期用户手动编辑 ≠ 确认,确认动作统一走 set_combo_status
     combo["updated_at"] = _now_iso()
     save_v4_state(reports_root, report_id, state)
     return state, card
@@ -558,9 +569,12 @@ def patch_conclusion_card(
 def set_combo_status(
     reports_root: Path, report_id: str, combo_id: str, status: str
 ) -> Dict[str, Any]:
-    """更新 combo_session 状态(concluded/abandoned)。
+    """更新 combo_session 状态(discussing/concluded/abandoned)。
     实施口径 §1-新4:abandoned(跳过)不再清空结论卡,仅置 user_skipped=True(可逆);
-    concluded(确认)清除 user_skipped。终选只出现 concluded 卡。"""
+    concluded(确认)清除 user_skipped。终选只出现 concluded 卡。
+    2026-07-27 交互口径:concluded → discussing(用户点「再聊聊」)时写入 reopen_feedback,
+    供 build_chat_messages 注入 LLM 上下文(用户对当前结论不满意,继续打磨);
+    AI 下次 save_conclusion_card 迭代卡后自动清除。"""
     state = load_v4_state(reports_root, report_id)
     combo = find_combo(state, combo_id)
     if not combo:
@@ -568,10 +582,19 @@ def set_combo_status(
     status = (status or "").strip().lower()
     if status not in ("concluded", "abandoned", "discussing"):
         raise ValueError(f"非法 status: {status}")
+    prev_status = combo.get("status")
     if status == "abandoned":
         combo["user_skipped"] = True  # 卡内容保留,UI 删除线 + 灰色标记
-    elif status == "concluded":
-        combo["user_skipped"] = False  # 跳过可逆:再点确认即恢复
+    else:
+        combo["user_skipped"] = False  # concluded/discussing 都清除跳过标记
+    if prev_status == "concluded" and status == "discussing" and combo.get("conclusion_card"):
+        combo["reopen_feedback"] = (
+            "用户看过结论卡后选择「再聊聊」,表示对当前结论还不够满意,希望继续打磨。"
+            "请先询问用户:觉得这版结论哪里不合适、缺了什么、或者哪里不打动你?"
+            "再根据用户的回答迭代,准备好后重新调 save_conclusion_card 更新结论卡。"
+        )
+    if status == "concluded":
+        combo.pop("reopen_feedback", None)  # 确认即闭环,清除反馈标记
     combo["status"] = status
     combo["updated_at"] = _now_iso()
     save_v4_state(reports_root, report_id, state)
@@ -700,12 +723,40 @@ def build_chat_messages(
     summary = combo.get("summary")
     if summary:
         messages.append(LLMMessage(role="system", content=f"【历史对话摘要】\n{summary}"))
+    # 草案卡注入(2026-07-27 交互口径):出卡不锁定,草案期每轮把当前卡内容告诉 AI;
+    # 若用户点了「再聊聊」,附带 reopen_feedback(用户对当前结论不满意,先问哪里不合适)。
+    # 已确认(concluded)时不注入——对话已锁定;解锁后状态回 discussing 自然恢复注入。
+    card = combo.get("conclusion_card")
+    if (
+        isinstance(card, dict)
+        and _hyp_filled(card.get("hypothesis"))
+        and combo.get("status") != "concluded"
+    ):
+        hyp = card.get("hypothesis")
+        if isinstance(hyp, dict):
+            hyp = "\n".join(str(v) for v in hyp.values() if v)
+        note_parts: List[str] = []
+        feedback = combo.get("reopen_feedback")
+        if feedback:
+            note_parts.append(f"【重要】{feedback}")
+        note_parts.append(
+            "【当前结论草案(用户尚未确认)】\n"
+            f"{hyp}\n"
+            "以上是当前版本的结论卡草案,对话围绕它继续打磨:\n"
+            "- 用户提出新的方向想法时,按 chips 协议重新给出 2 条候选假设(跟随在可见正文之后);\n"
+            "- 达成新的共识时调 save_conclusion_card 迭代卡,并同时输出可见话术说明你改了什么、邀请确认;\n"
+            "- 不要重复提交相同内容;隐藏块不能单独成一条回复,必须配可见正文。"
+        )
+        messages.append(LLMMessage(role="system", content="\n\n".join(note_parts)))
     # 最近 30 轮对话(若已摘要则取摘要之后的;否则取全部最近 30 轮)
     all_msgs = combo.get("messages") or []
     last_summary_round = int(combo.get("summary_last_round") or 0)
     recent = _select_recent_dialog(all_msgs, last_summary_round, 30)
     for m in recent:
-        messages.append(LLMMessage(role=m.get("role"), content=m.get("content") or ""))
+        content = m.get("content") or ""
+        if not content.strip():
+            continue  # 跳过空消息(历史上 tool-only 轮次可能落盘过空 assistant 消息),避免污染上下文
+        messages.append(LLMMessage(role=m.get("role"), content=content))
     # 用户最新输入
     messages.append(LLMMessage(role="user", content=user_input))
     return messages, sys_prompt

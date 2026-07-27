@@ -3,11 +3,12 @@
 /**
  * v4 可编辑结论卡（极简版）
  *
- * 卡面 = hypothesis（textarea 可编辑）+「确认」/「跳过」
- * - PATCH 只传 hypothesis
- * - 跳过态：卡内容保留，删除线 + 灰色 + 「已跳过」标记；
- *   灰色卡上保留「确认」按钮（点击恢复 concluded，可逆）
- * - 不渲染/不提交 motivation/work_purposes/passion_mark/timing_mark/balance 等后台字段
+ * 交互（2026-07-27 口径）：出卡 = 草案，不锁定对话；用户确认才锁定进终选池。
+ * - 草案卡：展示态常显「跳过」「确认」；点击文本进编辑态（+「取消」）
+ * - 已确认卡：展示态显示「✓ 已确认」+「再聊聊」；点「再聊聊」解锁继续聊
+ *   （AI 上下文中会注入"用户对当前结论不满意"，卡保留待 AI 迭代覆盖）
+ * - 跳过卡：删除线 + 灰色 + 「已跳过」标记；点文本进编辑态「确认（恢复）」
+ * - PATCH 只传 hypothesis；不渲染/不提交 motivation/work_purposes 等后台字段
  *
  * 见 wiki/开发文档/7-25-rumination-v4-实施口径.md §3.2
  */
@@ -23,6 +24,8 @@ interface Props {
   strengths: string[];
   /** 用户已跳过（status=abandoned / user_skipped），卡保留、可逆 */
   userSkipped?: boolean;
+  /** 已确认（status=concluded 且未跳过）：对话锁定，展示「再聊聊」入口 */
+  confirmed?: boolean;
 }
 
 /** 防御：dict 形态已废弃，统一转纯字符串 */
@@ -32,10 +35,12 @@ function hypToString(h: ConclusionCard['hypothesis']): string {
   return Object.values(h).filter(Boolean).join('\n');
 }
 
-export default function ConclusionCardEditable({ comboId, card, strengths, userSkipped }: Props) {
+export default function ConclusionCardEditable({ comboId, card, strengths, userSkipped, confirmed }: Props) {
   const { patchCard, setStatus } = useRuminationV4Store();
   const [localHypothesis, setLocalHypothesis] = useState<string>(hypToString(card.hypothesis));
   const [saving, setSaving] = useState(false);
+  /** 默认展示态；点击文本进入编辑态 */
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     setLocalHypothesis(hypToString(card.hypothesis));
@@ -51,6 +56,7 @@ export default function ConclusionCardEditable({ comboId, card, strengths, userS
         await patchCard(comboId, { hypothesis: text });
       }
       await setStatus(comboId, 'concluded');
+      setEditing(false); // 确认后消失编辑框，回到展示框
     } finally {
       setSaving(false);
     }
@@ -60,6 +66,22 @@ export default function ConclusionCardEditable({ comboId, card, strengths, userS
     setSaving(true);
     try {
       await setStatus(comboId, 'abandoned');
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setLocalHypothesis(hypToString(card.hypothesis));
+    setEditing(false);
+  };
+
+  /** 「再聊聊」：解锁回 discussing，继续打磨草案（后端会注入不满意反馈给 AI） */
+  const handleReopen = async () => {
+    setSaving(true);
+    try {
+      await setStatus(comboId, 'discussing');
     } finally {
       setSaving(false);
     }
@@ -110,13 +132,6 @@ export default function ConclusionCardEditable({ comboId, card, strengths, userS
           >
             {strengths.slice(0, 2).join('、') || '组合'}
           </span>
-          {userSkipped && (
-            <span
-              className="inline-flex rounded-full bg-[#e5e7eb] px-2 py-0.5 text-[11px] font-[700] text-[#6b7280]"
-            >
-              已跳过
-            </span>
-          )}
           <span className="ml-auto text-[11px] font-[500] text-[#9ca3af]">
             {saving ? '保存中…' : ''}
           </span>
@@ -127,49 +142,138 @@ export default function ConclusionCardEditable({ comboId, card, strengths, userS
         >
           假设方向
         </label>
-        <textarea
-          value={localHypothesis}
-          onChange={(e) => setLocalHypothesis(e.target.value)}
-          placeholder="我假设这个方向能带给我什么…"
-          rows={4}
-          className={`editor w-full resize-y rounded-[13px] border px-3.5 py-3 text-[13px] leading-[1.6] outline-none focus:border-[#7b68ff] focus:shadow-[0_0_0_3px_rgba(123,104,255,0.10)] ${
-            userSkipped
-              ? 'border-[rgba(109,121,176,0.10)] bg-[rgba(243,244,246,0.8)] text-[#9ca3af] line-through'
-              : 'border-[rgba(109,121,176,0.16)] bg-[rgba(250,251,255,0.92)] text-[#334163]'
-          }`}
-        />
+        {editing ? (
+          <textarea
+            value={localHypothesis}
+            onChange={(e) => setLocalHypothesis(e.target.value)}
+            placeholder="我假设这个方向能带给我什么…"
+            rows={4}
+            autoFocus
+            className={`editor w-full resize-y rounded-[13px] border px-3.5 py-3 text-[13px] leading-[1.6] outline-none focus:border-[#7b68ff] focus:shadow-[0_0_0_3px_rgba(123,104,255,0.10)] ${
+              userSkipped
+                ? 'border-[rgba(109,121,176,0.10)] bg-[rgba(243,244,246,0.8)] text-[#9ca3af]'
+                : 'border-[rgba(109,121,176,0.16)] bg-[rgba(250,251,255,0.92)] text-[#334163]'
+            }`}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            title="点击编辑"
+            className={`group block w-full rounded-[13px] border px-3.5 py-3 text-left text-[13px] leading-[1.6] whitespace-pre-wrap transition-colors ${
+              userSkipped
+                ? 'border-[rgba(109,121,176,0.10)] bg-[rgba(243,244,246,0.8)] text-[#9ca3af] line-through'
+                : 'border-[rgba(109,121,176,0.10)] bg-[rgba(250,251,255,0.65)] text-[#334163] hover:border-[#7b68ff] hover:bg-[rgba(250,251,255,0.95)]'
+            }`}
+          >
+            {hypToString(card.hypothesis)}
+            <span className="mt-1.5 block text-[11px] font-[500] text-[#9ca3af]">
+              ✎ 点击文字可直接编辑
+            </span>
+          </button>
+        )}
       </div>
 
       {/* 右侧占位（保持 grid 三列结构对齐） */}
       <div className="card-actions flex flex-shrink-0 flex-col items-end gap-4 text-[12px] text-[#77829f]" />
 
-      {/* 底部操作按钮 */}
+      {/* 底部操作区(2026-07-27 统一口径):
+          左侧状态标签恒在(待确认/已确认/已跳过),编辑态也不消失;
+          右侧:展示态 = 编辑 + 状态动作(草案:跳过+确认 / 已确认:再聊聊 / 已跳过:仅编辑);
+               编辑态 = 只管编辑(取消 + 确认),状态动作请先退出编辑 */}
       <div
-        className="col-span-full mt-1 flex items-center justify-end gap-2"
+        className="col-span-full mt-1 flex items-center justify-between gap-2"
         style={{ gridColumn: '1 / 4' }}
       >
-        {!userSkipped && (
-          <button
-            type="button"
-            onClick={handleSkip}
-            disabled={saving}
-            className="small-btn rounded-[10px] border border-[rgba(101,86,239,0.24)] bg-white px-[18px] py-2 text-[13px] font-[700] text-[#6254eb] transition-transform hover:-translate-y-px disabled:opacity-50"
-          >
-            跳过
-          </button>
+        {/* 左:状态标签 */}
+        {userSkipped ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-[#e5e7eb] px-2.5 py-1 text-[12px] font-[700] text-[#6b7280]">
+            已跳过
+          </span>
+        ) : confirmed ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-[#e8faf3] px-2.5 py-1 text-[12px] font-[700] text-[#02a475]">
+            ✓ 已确认
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 rounded-full bg-[#fff6e5] px-2.5 py-1 text-[12px] font-[700] text-[#b57908]">
+            待确认
+          </span>
         )}
-        <button
-          type="button"
-          disabled={!canConfirm || saving}
-          onClick={handleConfirm}
-          className="small-btn primary rounded-[10px] border-0 px-[18px] py-2 text-[13px] font-[700] text-white transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-40"
-          style={{
-            background: canConfirm ? 'linear-gradient(135deg,#7a64ff,#5d49ef)' : undefined,
-          }}
-        >
-          {saving ? '保存中…' : userSkipped ? '确认（恢复）' : '确认'}
-        </button>
+
+        {/* 右:动作按钮 */}
+        <div className="flex items-center gap-2">
+          {editing ? (
+            <>
+              <button
+                type="button"
+                onClick={handleCancel}
+                disabled={saving}
+                className="small-btn rounded-[10px] border border-[rgba(109,121,176,0.20)] bg-white px-[18px] py-2 text-[13px] font-[700] text-[#77829f] transition-transform hover:-translate-y-px disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={!canConfirm || saving}
+                onClick={handleConfirm}
+                className="small-btn primary rounded-[10px] border-0 px-[18px] py-2 text-[13px] font-[700] text-white transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-40"
+                style={{
+                  background: canConfirm ? 'linear-gradient(135deg,#7a64ff,#5d49ef)' : undefined,
+                }}
+              >
+                {saving ? '保存中…' : userSkipped ? '确认（恢复）' : confirmed ? '保存修改' : '确认'}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                disabled={saving}
+                className="small-btn rounded-[10px] border border-[rgba(109,121,176,0.20)] bg-white px-[14px] py-2 text-[13px] font-[700] text-[#77829f] transition-transform hover:-translate-y-px disabled:opacity-50"
+              >
+                ✎ 编辑
+              </button>
+              {!userSkipped && !confirmed && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleSkip}
+                    disabled={saving}
+                    className="small-btn rounded-[10px] border border-[rgba(101,86,239,0.24)] bg-white px-[18px] py-2 text-[13px] font-[700] text-[#6254eb] transition-transform hover:-translate-y-px disabled:opacity-50"
+                  >
+                    跳过
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canConfirm || saving}
+                    onClick={handleConfirm}
+                    className="small-btn primary rounded-[10px] border-0 px-[18px] py-2 text-[13px] font-[700] text-white transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-40"
+                    style={{
+                      background: canConfirm ? 'linear-gradient(135deg,#7a64ff,#5d49ef)' : undefined,
+                    }}
+                  >
+                    {saving ? '保存中…' : '确认'}
+                  </button>
+                </>
+              )}
+              {confirmed && !userSkipped && (
+                <button
+                  type="button"
+                  onClick={handleReopen}
+                  disabled={saving}
+                  title="解锁对话,和 AI 继续打磨这张卡"
+                  className="small-btn rounded-[10px] border-0 px-[18px] py-2 text-[13px] font-[700] text-white transition-transform hover:-translate-y-px disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg,#7a64ff,#5d49ef)' }}
+                >
+                  {saving ? '解锁中…' : '再聊聊'}
+                </button>
+              )}
+            </>
+          )}
+        </div>
       </div>
+
     </article>
   );
 }

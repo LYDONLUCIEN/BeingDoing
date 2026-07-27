@@ -65,13 +65,16 @@ export default function V4ChatPanel({ comboId }: Props) {
   const isReadOnly = combo?.status === 'concluded' || combo?.status === 'abandoned';
 
   // 为每条消息补充稳定 id / 时间，用于 key、时间戳、埋点
+  // 过滤空内容消息(历史 tool-only 轮次可能落盘过空 assistant 消息,避免空气泡)
   const enrichedMessages = useMemo(
     () =>
-      messages.map((m, idx) => ({
-        ...m,
-        id: `${comboId || 'draft'}-${m.role}-${idx}`,
-        createdAt: m.ts ? new Date(m.ts).getTime() : Date.now() - (messages.length - 1 - idx) * 60000,
-      })),
+      messages
+        .filter((m) => (m.content || '').trim().length > 0)
+        .map((m, idx) => ({
+          ...m,
+          id: `${comboId || 'draft'}-${m.role}-${idx}`,
+          createdAt: m.ts ? new Date(m.ts).getTime() : Date.now() - (messages.length - 1 - idx) * 60000,
+        })),
     [messages, comboId]
   );
 
@@ -118,7 +121,9 @@ export default function V4ChatPanel({ comboId }: Props) {
                   ? '请先在左侧选点并点击「开始探索」'
                   : combo
                     ? isReadOnly
-                      ? '该组合已锁定'
+                      ? combo.status === 'concluded'
+                        ? '结论已确认，点左侧结论卡上的「再聊聊」可继续探讨'
+                        : '该组合已跳过，点左侧结论卡可恢复'
                       : hasOpening
                         ? '与 AI 探讨这个组合的假设方向'
                         : '点击下方开始讨论'
@@ -215,7 +220,7 @@ export default function V4ChatPanel({ comboId }: Props) {
                     )}
                     {fallbackActive && (
                       <p className="py-2 text-center text-xs text-orange-500">
-                        兜底生成中，请稍候…
+                        结论卡生成中，请稍候…
                       </p>
                     )}
                   </>
@@ -272,7 +277,9 @@ export default function V4ChatPanel({ comboId }: Props) {
                             : !hasOpening
                               ? '点击「开始讨论」'
                               : isReadOnly
-                                ? '该组合已锁定'
+                                ? combo.status === 'concluded'
+                                  ? '已确认，点左侧结论卡「再聊聊」继续探讨'
+                                  : '已跳过，点左侧结论卡可恢复'
                                 : '输入你的想法...'
                         }
                         rows={1}

@@ -249,7 +249,8 @@ def test_apply_save_conclusion_card_with_hypothesis_string():
     assert err is None
     assert card is not None
     assert card["hypothesis"] == "我假设这个组合能让我成为创作者"
-    assert c["status"] == "concluded"
+    # 2026-07-27 交互口径:出卡 = 草案,不强制 concluded;确认动作走 set_combo_status
+    assert c["status"] == "discussing"
 
 
 def test_apply_save_conclusion_card_with_dict_hypothesis():
@@ -523,3 +524,106 @@ def test_extract_hyp_candidates_empty_text():
     visible, candidates = extract_hyp_candidates("")
     assert visible == ""
     assert candidates == []
+
+
+# ── 2026-07-27 交互口径:出卡不锁 / 确认才锁 / 再聊聊反馈注入 ──────────
+def test_reopen_feedback_injected_and_cleared(tmp_path):
+    """已确认 →「再聊聊」(discussing):写入 reopen_feedback 并注入 LLM 上下文;
+    AI 重新 save_conclusion_card 迭代后自动清除;确认闭环也清除。"""
+    from app.services.rumination_v4_service import (
+        apply_tool_call,
+        build_chat_messages,
+        find_combo,
+        load_v4_state,
+        new_combo_session,
+        default_state,
+        save_v4_state,
+        set_combo_status,
+    )
+
+    rid = "reopen_report"
+    state = default_state()
+    c = new_combo_session("combo_1", "音乐", ["创造表达"])
+    state["combo_sessions"] = [c]
+    save_v4_state(tmp_path, rid, state)
+
+    # 1) LLM 出草案卡:状态仍是 discussing(不锁)
+    state = load_v4_state(tmp_path, rid)
+    card, err = apply_tool_call(state, "combo_1", {
+        "tool": "save_conclusion_card",
+        "fields": {"hypothesis": "我假设音乐+创造能让我成为独特创作者"},
+    })
+    assert err is None and card is not None
+    assert find_combo(state, "combo_1")["status"] == "discussing"
+    save_v4_state(tmp_path, rid, state)
+
+    # 2) 草案期 build_chat_messages 注入当前草案
+    msgs, _ = build_chat_messages(find_combo(state, "combo_1"), "再帮我想想")
+    sys_texts = [m.content for m in msgs if m.role == "system"]
+    draft_note = [t for t in sys_texts if "当前结论草案" in t]
+    assert draft_note, "草案期应注入当前结论草案"
+    assert "我假设音乐+创造能让我成为独特创作者" in draft_note[0]
+    assert "再聊聊" not in draft_note[0]  # 无 reopen_feedback 时不带不满意话术
+
+    # 3) 用户确认 → concluded:不再注入草案
+    state = set_combo_status(tmp_path, rid, "combo_1", "concluded")
+    msgs, _ = build_chat_messages(find_combo(state, "combo_1"), "好")
+    assert not [m for m in msgs if m.role == "system" and "当前结论草案" in m.content]
+
+    # 4) 用户点「再聊聊」→ discussing:写入并注入 reopen_feedback
+    state = set_combo_status(tmp_path, rid, "combo_1", "discussing")
+    combo = find_combo(state, "combo_1")
+    assert combo.get("reopen_feedback")
+    msgs, _ = build_chat_messages(combo, "我觉得还差点意思")
+    fb_note = [m.content for m in msgs if m.role == "system" and "再聊聊" in m.content]
+    assert fb_note, "再聊聊后应注入不满意反馈"
+    assert "哪里不合适" in fb_note[0]
+
+    # 5) AI 迭代重出卡 → reopen_feedback 清除,但草案注入保留
+    card2, err2 = apply_tool_call(state, "combo_1", {
+        "tool": "save_conclusion_card",
+        "fields": {"hypothesis": "我假设音乐+创造+教学能让我成为独特创作者"},
+    })
+    assert err2 is None
+    assert combo.get("reopen_feedback") is None
+    assert combo["status"] == "discussing"  # 仍不锁
+    msgs, _ = build_chat_messages(combo, "嗯")
+    notes = [m.content for m in msgs if m.role == "system" and "当前结论草案" in m.content]
+    assert notes and "教学" in notes[0] and "再聊聊" not in notes[0]
+
+    # 6) 再次确认闭环
+    save_v4_state(tmp_path, rid, state)
+    state = set_combo_status(tmp_path, rid, "combo_1", "concluded")
+    assert find_combo(state, "combo_1").get("reopen_feedback") is None
+
+
+def test_build_chat_messages_skips_empty_messages(tmp_path):
+    """历史 tool-only 轮次落盘的空 assistant 消息不得进入 LLM 上下文(防污染/空气泡后遗症)。"""
+    from app.services.rumination_v4_service import (
+        build_chat_messages,
+        find_combo,
+        new_combo_session,
+        default_state,
+        append_message,
+        save_v4_state,
+        load_v4_state,
+    )
+
+    rid = "empty_msg_report"
+    state = default_state()
+    c = new_combo_session("combo_1", "音乐", ["创造表达"])
+    state["combo_sessions"] = [c]
+    append_message(state, "combo_1", "user", "我喜欢舞台")
+    append_message(state, "combo_1", "assistant", "说说看,舞台最吸引你的是什么?")
+    append_message(state, "combo_1", "user", "灯光亮起的那一刻")
+    append_message(state, "combo_1", "assistant", "")  # 历史空气泡
+    save_v4_state(tmp_path, rid, state)
+
+    state = load_v4_state(tmp_path, rid)
+    msgs, _ = build_chat_messages(find_combo(state, "combo_1"), "继续说")
+    conv = [(m.role, m.content) for m in msgs if m.role in ("user", "assistant")]
+    assert all(content.strip() for _, content in conv)
+    assert ("assistant", "") not in conv
+    # 有效消息保留
+    assert ("user", "我喜欢舞台") in conv
+    assert ("assistant", "说说看,舞台最吸引你的是什么?") in conv
