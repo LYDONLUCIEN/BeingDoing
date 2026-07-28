@@ -191,7 +191,7 @@ async def test_compute_amounts_no_coupon():
     """无券普通用户：原价支付，无抵扣"""
     user = await _get_user("u1")
     original, discount, paid = PaymentService.compute_amounts(user, coupon_amount=0)
-    assert (original, discount, paid) == (settings.ACTIVATION_CODE_PRICE, 0, 9900)
+    assert (original, discount, paid) == (settings.ANNUAL_PRICE, 0, 12800)
 
 
 @pytest.mark.asyncio
@@ -199,7 +199,7 @@ async def test_compute_amounts_with_coupon():
     """有券：实付 = 原价 - 券面额，抵扣 = 券面额"""
     user = await _get_user("u1")
     original, discount, paid = PaymentService.compute_amounts(user, coupon_amount=5000)
-    assert (original, discount, paid) == (9900, 5000, 4900)
+    assert (original, discount, paid) == (12800, 5000, 7800)
 
 
 @pytest.mark.asyncio
@@ -207,21 +207,21 @@ async def test_compute_amounts_coupon_exceeds_price():
     """券面额 > 原价：实付下限 0 元，抵扣 = 原价"""
     user = await _get_user("u1")
     original, discount, paid = PaymentService.compute_amounts(user, coupon_amount=20000)
-    assert (original, discount, paid) == (9900, 9900, 0)
+    assert (original, discount, paid) == (12800, 12800, 0)
 
 
 @pytest.mark.asyncio
 async def test_compute_amounts_member_then_coupon():
     """会员价叠加券：先折（原价×0.85 四舍五入）后券"""
     user = await _get_user("u2")  # 生效会员
-    # 会员价：round(9900*85/100)=8415
+    # 会员价：round(12800*85/100)=10880
     _, discount, paid = PaymentService.compute_amounts(user, coupon_amount=0)
-    assert paid == 8415
-    assert discount == 9900 - 8415
-    # 叠加 5000 券：8415-5000=3415
+    assert paid == 10880
+    assert discount == 12800 - 10880
+    # 叠加 5000 券：10880-5000=5880
     _, discount2, paid2 = PaymentService.compute_amounts(user, coupon_amount=5000)
-    assert paid2 == 3415
-    assert discount2 == 9900 - 3415
+    assert paid2 == 5880
+    assert discount2 == 12800 - 5880
 
 
 @pytest.mark.asyncio
@@ -229,7 +229,7 @@ async def test_compute_amounts_expired_member_no_discount():
     """过期会员：不享会员价"""
     user = await _get_user("u3")  # 会员已过期
     _, discount, paid = PaymentService.compute_amounts(user, coupon_amount=0)
-    assert (discount, paid) == (0, 9900)
+    assert (discount, paid) == (0, 12800)
 
 
 # ─── 下单 ──────────────────────────────────────────────────────
@@ -260,7 +260,7 @@ async def test_create_order_locks_coupon(fake_channel):
     assert len(order.order_no) == 21 and order.order_no.startswith("X")
 
     # 渠道下单：金额 = 实付，跳转 URL 存 qr_code 列
-    assert fake_channel.created_orders == [(order.order_no, 1900, "单人激活码")]
+    assert fake_channel.created_orders == [(order.order_no, 1900, "季度套餐")]
     assert payment == {
         "channel": "alipay",
         "pay_url": f"https://openapi.alipay.com/gateway.do?fake-page-pay-{order.order_no}",

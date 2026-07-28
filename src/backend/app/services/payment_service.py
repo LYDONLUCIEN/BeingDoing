@@ -2,7 +2,7 @@
 支付订单服务（P2a：支付宝闭环；P-B：套餐商品化，ADR-0008）
 
 职责：
-1. 商品与金额：商品目录（单人激活码/三人包、延期、咨询）；会员价（先折）→ 减券面额（后券）→ 下限 0 元
+1. 商品与金额：商品目录（季度套餐/年度套餐、延期、咨询）；会员价（先折）→ 减券面额（后券）→ 下限 0 元
 2. create_order：下单（order_no 唯一重试）→ 锁券 → 调渠道下单存 qr_code（支付跳转 URL）；
    0 元单不调渠道，直接走支付成功交付（status granted）。旧 SKU activation_code 已下架
 3. handle_alipay_notify：验签 → 查单 → 校验金额 → 幂等交付（TRADE_SUCCESS / TRADE_FINISHED）
@@ -98,8 +98,8 @@ def _product_price(product_type: str) -> int:
 def _product_name(product_type: str) -> str:
     """渠道预下单 subject 用的商品名"""
     return {
-        PRODUCT_QUARTERLY: "单人激活码",
-        PRODUCT_ANNUAL: "三人包",
+        PRODUCT_QUARTERLY: "季度套餐",
+        PRODUCT_ANNUAL: "年度套餐",
         PRODUCT_RENEWAL: "延期激活",
         PRODUCT_CONSULTATION: "报告解读咨询",
         _LEGACY_PRODUCT_TYPE: _LEGACY_PRODUCT_NAME,
@@ -133,7 +133,7 @@ class PaymentService:
 
     @staticmethod
     def get_products() -> Dict[str, Any]:
-        """商品目录 + 会员折扣信息（P-B：单人激活码/三人包 + 咨询；旧 SKU 已下架）
+        """商品目录 + 会员折扣信息（P-B：季度套餐/年度套餐 + 咨询；旧 SKU 已下架）
 
         延期激活不在目录中：从「我的激活码」页带 target_code 进 renewal 下单。
         """
@@ -141,37 +141,37 @@ class PaymentService:
             "items": [
                 {
                     "product_type": PRODUCT_QUARTERLY,
-                    "name": "单人激活码",
+                    "name": "季度套餐",
                     "price": settings.QUARTERLY_PRICE,
                     "duration_days": settings.QUARTERLY_DAYS,
                     "description": (
                         "1 个激活码：已有试用码将直接升级为完整版（探索记录保留），"
-                        "无试用码则发新码；自首次开始探索起算，有效期 90 天"
+                        "无试用码则发新码；自首次开始探索起算，有效期 3 个月"
                     ),
                     "features": [
                         "不限量对话",
-                        "全部 5 阶段解锁",
-                        "1 份个人报告",
-                        "报告人工审核",
-                        "有效期 90 天（首次探索起算）",
+                        "开放全部 5 个探索阶段",
+                        "1 份完整报告（30+ 页 / 7+ 主题维度）",
+                        "报告 24 小时内人工审核后交付",
+                        "有效期 3 个月（首次探索起算）",
                     ],
                 },
                 {
                     "product_type": PRODUCT_ANNUAL,
-                    "name": "三人包",
+                    "name": "年度套餐",
                     "price": settings.ANNUAL_PRICE,
                     "duration_days": settings.ANNUAL_DAYS,
                     "popular": True,
                     "description": (
                         "3 个激活码：1 个自用（有试用码直接升级）+ 2 个赠品码可转送朋友；"
-                        "每码自首次开始探索起算，有效期 1 年"
+                        "可用于 3 个不同账号，或同一账号分阶段对比；每码有效期 1 年"
                     ),
                     "features": [
                         "不限量对话",
-                        "全部 5 阶段解锁",
-                        "3 份报告能力（含 2 个赠品码）",
-                        "团队分析",
-                        "报告人工审核",
+                        "开放全部 5 个探索阶段",
+                        "3 份完整报告（单份 30+ 页 / 7+ 主题）",
+                        "团队匹配度分析 + 团队角色投射",
+                        "报告 24 小时内人工审核后交付",
                         "3 个激活码（1 自用 + 2 可转送）",
                         "每码有效期 1 年（首次探索起算）",
                     ],
@@ -294,16 +294,12 @@ class PaymentService:
         if channel != "alipay":
             raise ValueError(f"不支持的支付渠道：{channel}")
 
-        # renewal：目标码归属/类型校验 + 按目标码 package_type 定价
+        # renewal：目标码归属/类型校验 + 统一定价（不分套餐，2026-07-28 起）
         original_price: Optional[int] = None
         order_meta: Optional[Dict[str, Any]] = None
         if product_type == PRODUCT_RENEWAL:
-            _, package_type = cls._validate_renewal_target(user_id, target_code or "")
-            original_price = (
-                settings.RENEWAL_QUARTERLY_PRICE
-                if package_type == "quarterly"
-                else settings.RENEWAL_ANNUAL_PRICE
-            )
+            cls._validate_renewal_target(user_id, target_code or "")
+            original_price = settings.RENEWAL_PRICE
             order_meta = {"target_code": (target_code or "").strip().upper()}
 
         # consultation：前置校验——至少持有一份已完成且审核通过的报告（ADR-0008）
@@ -498,7 +494,7 @@ class PaymentService:
     def _deliver_package(
         cls, order: PaymentOrder, meta: Dict[str, Any], user_email: Optional[str]
     ) -> Tuple[Optional[str], Dict[str, Any]]:
-        """单人激活码/三人包交付：升级试用码（无则发新码并绑定）；三人包另发 2 赠品码
+        """季度套餐/年度套餐交付：升级试用码（无则发新码并绑定）；年度套餐另发 2 赠品码
 
         所有套餐码有效期均自首次开始探索起算（交付时 expires_at=None，
         首次对话时由 maybe_start_validity 落地）。
@@ -545,7 +541,7 @@ class PaymentService:
             meta["upgraded"] = False
         own_code = rec.code
 
-        # 三人包：2 个赠品完整码（未绑定、首次开始探索起算有效期）
+        # 年度套餐：2 个赠品完整码（未绑定、首次开始探索起算有效期）
         if order.product_type == PRODUCT_ANNUAL:
             gift_codes: List[str] = []
             for _ in range(2):
@@ -561,7 +557,7 @@ class PaymentService:
                 )
                 gift_codes.append(gift.code)
             meta["gift_codes"] = gift_codes
-            logger.info("三人包赠品码已生成：order=%s gifts=%s", order.order_no, gift_codes)
+            logger.info("年度套餐赠品码已生成：order=%s gifts=%s", order.order_no, gift_codes)
 
         return own_code, meta
 
@@ -569,7 +565,7 @@ class PaymentService:
     def _deliver_renewal(
         cls, order: PaymentOrder, meta: Dict[str, Any]
     ) -> Tuple[Optional[str], Dict[str, Any]]:
-        """延期激活交付：目标码有效期从 max(当前到期, now) 追加套餐时长"""
+        """延期激活交付：目标码有效期从 max(当前到期, now) 追加统一延期时长（不分套餐）"""
         meta = dict(meta or {})
         target_code = (meta.get("target_code") or "").strip().upper()
         if not target_code:
@@ -577,8 +573,7 @@ class PaymentService:
         mgr, rec = get_activation_with_manager(target_code)
         if rec is None:
             raise ValueError("延期目标码不存在，需人工核查")
-        package_type = (getattr(rec, "package_type", None) or "").strip().lower()
-        days = _package_days(package_type)
+        days = settings.RENEWAL_DAYS
         mgr.extend_validity(target_code, days, actor={"user_id": order.user_id})
         meta["added_days"] = days
         return target_code, meta

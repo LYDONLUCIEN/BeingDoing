@@ -27,7 +27,7 @@ export type PurchaseModalProps = {
   onSuccess?: (code: string) => void;
   /** 「继续支付」：打开即拉取该订单并直接进入支付视图 */
   resumeOrderId?: string;
-  /** 下单视图默认选中的商品（如 dashboard 购买卡默认三人包） */
+  /** 下单视图默认选中的商品（如 dashboard 购买卡默认年度套餐） */
   defaultProductType?: ProductType;
   /** 传入即进入「延期激活」模式：跳过商品选择，直接渠道 + 券码下单 */
   renewalTargetCode?: string;
@@ -51,16 +51,16 @@ const PACKAGE_TYPES: ProductType[] = ['quarterly_package', 'annual_package'];
 const FALLBACK_PRODUCTS: ProductItem[] = [
   {
     product_type: 'quarterly_package',
-    name: '单人激活码',
-    description: '不限量对话 · 全部 5 阶段 · 1 份报告 + 人工审核',
+    name: '季度套餐',
+    description: '不限量对话 · 全部 5 阶段 · 1 份完整报告 + 人工审核',
     price: 6900,
     duration_days: 90,
   },
   {
     product_type: 'annual_package',
-    name: '三人包',
-    description: '3 份报告 · 2 个赠品码 · 团队分析 · 人工审核',
-    price: 9900,
+    name: '年度套餐',
+    description: '3 份完整报告 · 2 个赠品码 · 团队分析 · 人工审核',
+    price: 12800,
     duration_days: 365,
     popular: true,
   },
@@ -389,7 +389,7 @@ export default function PurchaseModal({
                       </p>
                     </div>
                   ) : (
-                    /* 套餐选择：单人激活码 / 三人包 */
+                    /* 套餐选择：季度套餐 / 年度套餐 */
                     <div className="grid grid-cols-2 gap-3">
                       {products.map((p) => {
                         const selected = p.product_type === selectedType;

@@ -2,10 +2,10 @@
 套餐商品化测试（P-B，ADR-0008；mock 渠道层，不打真实支付宝）
 
 测试场景：
-1. 商品目录：新目录（单人激活码/三人包/咨询），旧 SKU 下架拒绝
-2. 单人激活码交付：有试用码→升级（code_type/vip/来源；有效期 None 待首次探索起算）；
+1. 商品目录：新目录（季度套餐/年度套餐/咨询），旧 SKU 下架拒绝
+2. 季度套餐交付：有试用码→升级（code_type/vip/来源；有效期 None 待首次探索起算）；
    无试用码→发新码并绑定
-3. 三人包交付：1 升级 + 2 赠品码（字段/所属人追溯；有效期 None）
+3. 年度套餐交付：1 升级 + 2 赠品码（字段/所属人追溯；有效期 None）
 4. 首次使用起算：maybe_start_validity 落 90/365 天；试用码/已有有效期码不受影响
 5. 延期激活：校验（非本人/试用码/无套餐类型拒绝）+ 延期数学（未过期累加/已过期从此刻）
 6. 咨询交付：生成 pending_survey 预约单 + meta.booking_id
@@ -159,7 +159,7 @@ async def test_legacy_sku_rejected():
         )
 
 
-# ─── 2. 单人激活码交付 ────────────────────────────────────────
+# ─── 2. 季度套餐交付 ────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -222,7 +222,7 @@ async def test_quarterly_issues_new_code_without_trial(_setup_db):
     assert meta["upgraded"] is False
 
 
-# ─── 3. 三人包交付（1 升级 + 2 赠品）──────────────────────────
+# ─── 3. 年度套餐交付（1 升级 + 2 赠品）──────────────────────────
 
 
 @pytest.mark.asyncio
@@ -349,13 +349,13 @@ async def test_renewal_extends_active_code(_setup_db):
     )
 
     assert payment is None
-    assert order.amount_original == settings.RENEWAL_QUARTERLY_PRICE
+    assert order.amount_original == settings.RENEWAL_PRICE
     meta = PaymentService._parse_meta(order.meta)
-    assert meta["added_days"] == settings.QUARTERLY_DAYS
+    assert meta["added_days"] == settings.RENEWAL_DAYS
 
     rec = mgr.get_activation(full.code)
     new_expires = datetime.fromisoformat(rec.expires_at)
-    expected = old_expires + timedelta(days=settings.QUARTERLY_DAYS)
+    expected = old_expires + timedelta(days=settings.RENEWAL_DAYS)
     assert abs((new_expires - expected).total_seconds()) < 120
 
 
@@ -380,10 +380,10 @@ async def test_renewal_extends_expired_code_from_now(_setup_db):
         target_code=full.code,
     )
 
-    assert order.amount_original == settings.RENEWAL_ANNUAL_PRICE
+    assert order.amount_original == settings.RENEWAL_PRICE
     rec = mgr.get_activation(full.code)
     new_expires = datetime.fromisoformat(rec.expires_at)
-    expected = datetime.now(timezone.utc) + timedelta(days=settings.ANNUAL_DAYS)
+    expected = datetime.now(timezone.utc) + timedelta(days=settings.RENEWAL_DAYS)
     assert abs((new_expires - expected).total_seconds()) < 120
     assert rec.status == "active"
 

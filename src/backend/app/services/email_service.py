@@ -50,10 +50,27 @@ class EmailService:
             f"{link}\n\n"
             f"链接 24 小时内有效。如果这不是您的操作，请忽略本邮件。\n"
         )
-        await EmailService.send_email(to_email=to_email, subject=subject, body_text=body)
+        # HTML 版本：保证各邮箱客户端中链接可点击（multipart/alternative，纯文本兜底）
+        body_html = (
+            "<html><body style=\"font-family: sans-serif; line-height: 1.6; color: #333;\">"
+            "<p>您好，</p>"
+            "<p>感谢您注册寻路！请点击下方按钮验证您的邮箱：</p>"
+            f"<p><a href=\"{link}\" style=\"display: inline-block; padding: 10px 24px; "
+            "background-color: #4F46E5; color: #ffffff; text-decoration: none; "
+            "border-radius: 6px;\">验证邮箱</a></p>"
+            "<p>如果按钮无法点击，请复制以下链接到浏览器打开：<br>"
+            f'<a href="{link}">{link}</a></p>'
+            "<p>链接 24 小时内有效。如果这不是您的操作，请忽略本邮件。</p>"
+            "</body></html>"
+        )
+        await EmailService.send_email(
+            to_email=to_email, subject=subject, body_text=body, body_html=body_html
+        )
 
     @staticmethod
-    async def send_email(to_email: str, subject: str, body_text: str) -> None:
+    async def send_email(
+        to_email: str, subject: str, body_text: str, body_html: str | None = None
+    ) -> None:
         missing = [
             k for k, v in {
                 "SMTP_HOST": settings.SMTP_HOST,
@@ -72,6 +89,9 @@ class EmailService:
         msg["From"] = formataddr((from_name, from_email))
         msg["To"] = to_email
         msg.set_content(body_text)
+        if body_html:
+            # multipart/alternative：纯文本兜底，支持 HTML 的客户端优先渲染 HTML
+            msg.add_alternative(body_html, subtype="html")
 
         await EmailService._send_via_smtp(msg)
 

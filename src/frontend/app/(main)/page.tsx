@@ -495,12 +495,128 @@ function PricingSection() {
         })}
       </div>
 
+      <PricingCompareTable />
+
       <PurchaseModal
         open={purchaseOpen}
         onClose={() => setPurchaseOpen(false)}
         defaultProductType={defaultType}
       />
     </section>
+  );
+}
+
+// ── 方案对比表（定价卡下方；✅=包含，留空=不包含）──
+const COMPARE_COLUMNS = ['colFree', 'colQuarterly', 'colAnnual', 'colConsult'] as const;
+const COMPARE_ROWS = [
+  { label: 'r1', cells: ['r1Free', 'r1Quarterly', 'r1Annual', 'r1Consult'] },
+  { label: 'r2', cells: ['r2Free', 'r2Quarterly', 'r2Annual', 'r2Consult'] },
+  { label: 'r3', cells: ['r3Free', 'r3Quarterly', 'r3Annual', 'r3Consult'] },
+  { label: 'r4', cells: ['r4Free', 'r4Quarterly', 'r4Annual', 'r4Consult'] },
+  { label: 'r5', cells: ['r5Free', 'r5Quarterly', 'r5Annual', 'r5Consult'] },
+] as const;
+const COMPARE_NOTES = ['note1', 'note2', 'note3'] as const;
+
+function PricingCompareTable() {
+  const { t } = useLocale();
+  const k = (key: string) => t(`home.pricing.compare.${key}`);
+
+  return (
+    <motion.div
+      initial={false}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.5, ease: [0.165, 0.84, 0.44, 1] }}
+      className="mt-16"
+    >
+      <h3
+        className="text-2xl font-semibold text-center mb-8 tracking-[0.05em]"
+        style={{ color: 'var(--bd-fg)' }}
+      >
+        {k('title')}
+      </h3>
+
+      <div className="overflow-x-auto bg-white/60 dark:bg-white/10 backdrop-blur-[24px] rounded-3xl border border-white/90 dark:border-white/20 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.03)]">
+        <table className="w-full min-w-[640px] text-sm">
+          <thead>
+            <tr className="border-b border-black/5 dark:border-white/10">
+              <th
+                className="text-left font-medium px-6 py-4"
+                style={{ color: 'var(--bd-fg)' }}
+              >
+                {k('colFeature')}
+              </th>
+              {COMPARE_COLUMNS.map((col) => (
+                <th
+                  key={col}
+                  className={`text-center font-medium px-4 py-4 ${
+                    col === 'colAnnual' ? 'bg-amber-50/60 dark:bg-amber-400/10' : ''
+                  }`}
+                  style={{ color: 'var(--bd-fg)' }}
+                >
+                  {k(col)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {COMPARE_ROWS.map((row, ri) => (
+              <tr
+                key={row.label}
+                className={
+                  ri < COMPARE_ROWS.length - 1
+                    ? 'border-b border-black/5 dark:border-white/10'
+                    : ''
+                }
+              >
+                <td className="px-6 py-4" style={{ color: 'var(--bd-fg)' }}>
+                  {k(row.label)}
+                </td>
+                {row.cells.map((cell, ci) => {
+                  const value = k(cell);
+                  return (
+                    <td
+                      key={cell}
+                      className={`text-center px-4 py-4 ${
+                        COMPARE_COLUMNS[ci] === 'colAnnual'
+                          ? 'bg-amber-50/60 dark:bg-amber-400/10'
+                          : ''
+                      }`}
+                      style={{ color: 'var(--bd-fg-muted)' }}
+                    >
+                      {value === '✅' ? (
+                        <span className="text-base" role="img" aria-label="included">
+                          ✅
+                        </span>
+                      ) : (
+                        value
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-6 bg-white/40 dark:bg-white/5 backdrop-blur-[24px] rounded-3xl border border-white/90 dark:border-white/20 px-6 py-5">
+        <p className="text-sm font-medium mb-2" style={{ color: 'var(--bd-fg)' }}>
+          {k('noteTitle')}
+        </p>
+        <ul className="space-y-1.5">
+          {COMPARE_NOTES.map((note) => (
+            <li
+              key={note}
+              className="text-xs leading-relaxed"
+              style={{ color: 'var(--bd-fg-muted)' }}
+            >
+              {k(note)}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </motion.div>
   );
 }
 

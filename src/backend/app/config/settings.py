@@ -127,11 +127,15 @@ class Settings(BaseSettings):
     # 旧商品：全程激活码（单一 SKU，已下架；配置保留供历史订单展示）
     ACTIVATION_CODE_PRICE: int = 9900  # 99 元
     ACTIVATION_CODE_TTL_DAYS: int = 180
-    # 套餐商品化（P-B，ADR-0008，金额单位：分）
-    QUARTERLY_PRICE: int = 6900  # 单人激活码 69 元
-    ANNUAL_PRICE: int = 9900  # 三人包 99 元
-    RENEWAL_QUARTERLY_PRICE: int = 2300  # 季度码延期 23 元
-    RENEWAL_ANNUAL_PRICE: int = 3300  # 年度码延期 33 元
+    # 套餐商品化（P-B，ADR-0008，金额单位：分；2026-07-28 起对外口径：季度套餐/年度套餐）
+    QUARTERLY_PRICE: int = 6900  # 季度套餐 69 元
+    ANNUAL_PRICE: int = 12800  # 年度套餐 128 元（2026-07-28 由 99 元调整）
+    # 延期激活（2026-07-28 起）：任意完整码统一 20 元 / +90 天，不分套餐
+    RENEWAL_PRICE: int = 2000  # 延期 20 元
+    RENEWAL_DAYS: int = 90  # 延期时长（天）
+    # 旧分档延期配置（已弃用，仅保留兼容历史引用，勿再用于定价）
+    RENEWAL_QUARTERLY_PRICE: int = 2300
+    RENEWAL_ANNUAL_PRICE: int = 3300
     CONSULTATION_PRICE: int = 29800  # 报告解读咨询 298 元
     QUARTERLY_DAYS: int = 90  # 季度时长（天）
     ANNUAL_DAYS: int = 365  # 年度时长（天）

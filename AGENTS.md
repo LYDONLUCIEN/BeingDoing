@@ -105,12 +105,13 @@ SMTP_USER=xxx@163.com
 SMTP_PASS=授权码
 
 # 可选：支付模块（P1 折扣券；P2a 支付宝闭环已上线，微信 P2b 预留）
-# 商品目录（ADR-0008；2026-07-25 起前端口径：单人激活码=原季度套餐、三人包=原年度套餐）
+# 商品目录（ADR-0008；2026-07-28 起对外口径改回：季度套餐 / 年度套餐，内部 SKU 仍为 quarterly_package/annual_package）
 # 套餐码「未激活」语义：交付时 expires_at=None，首次创建对话 session 才起算有效期（maybe_start_validity）
-QUARTERLY_PRICE=6900              # 单人激活码（分，90 天，1 码：有试用码原码升级/无则发新码）
-ANNUAL_PRICE=9900                 # 三人包（分，365 天，1 自用码 + 2 赠品码）
-RENEWAL_QUARTERLY_PRICE=2300      # 季度码延期（分，+90 天）
-RENEWAL_ANNUAL_PRICE=3300         # 年度码延期（分，+365 天）
+QUARTERLY_PRICE=6900              # 季度套餐（分，90 天，1 码：有试用码原码升级/无则发新码）
+ANNUAL_PRICE=12800                # 年度套餐（分，365 天，1 自用码 + 2 赠品码；2026-07-28 由 99 元调至 128 元）
+RENEWAL_PRICE=2000                # 延期激活（分；2026-07-28 起任意完整码统一 20 元，不分套餐）
+RENEWAL_DAYS=90                   # 延期时长（天，统一 +90 天）
+# RENEWAL_QUARTERLY_PRICE / RENEWAL_ANNUAL_PRICE 已弃用（旧分档延期，仅历史兼容保留）
 CONSULTATION_PRICE=29800          # 报告解读咨询（分/次）
 QUARTERLY_DAYS=90
 ANNUAL_DAYS=365
@@ -380,7 +381,7 @@ python scripts/init_db.py
 - `docs/DEPLOYMENT.md` - 部署指南
 - `docs/DOCKER.md` - Docker 使用
 - `docs/ADMIN_SANDBOX_FORK.md` - 管理员调试沙箱（Fork 正式激活码）
-- `CONTEXT.md` - 领域术语（探索流程 + 支付与商业化：试用/完整码、激活码（单人/三人包）、折扣券、报告审核、团队分析）
+- `CONTEXT.md` - 领域术语（探索流程 + 支付与商业化：试用/完整码、激活码（季度套餐/年度套餐）、折扣券、报告审核、团队分析）
 - `docs/adr/` - 架构决策记录（0005 双线支付 / 0006-0007 会员体系保留 / 0008 套餐与试用码 / 0009 报告审核自动批复 / 0010 码双角色与报告授权 / 0011 存储演进路线：SQLite 全量入库→条件触发 PG）
 - `tasks/payment-module-plan.md` - 支付模块实施计划（P1 折扣券 ✅ / P2a 支付宝 ✅ / P2b 微信待做）
 - `tasks/packages-trial-plan.md` - 套餐与试用体系实施计划（P-A~P-E 全部 ✅）

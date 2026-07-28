@@ -20,7 +20,7 @@
 | Q6 | chips 定位 | chips 只是**对话内的文字美化提示**：点击 = 把该文本作为用户消息发送，不直接写结论卡；假设经对话完善后由 AI 落卡 |
 | Q6b | 多优势 | 1 热爱 + N 优势**组合整体**生成一条字符串假设；dict 形态废弃 |
 | Q7 | 出卡双信号 | 隐藏信号 `<<CONCLUSION_READY>>` 不变；可见话术**要点化**（复述总结 + 邀请确认），必须包含锚点短语「**整理成了结论卡**」（后端兜底监测用）；旧句式「现在我为你总结了 N 个假设…」废弃 |
-| Q8 | 终选呈现 | 绿 ✓ 推荐 / 琥珀 ⚠ 未找到平衡点（悬停显示 `balance_fail_reason`）/ 灰 ？未评估（`balance_found=null`，悬停「AI 尚未完成平衡评估」）；顶部不加固定说明 |
+| Q8 | 终选呈现 | ~~绿✓/琥珀⚠/灰？三态徽章~~（2026-07-28 修订，见附录二）：卡片统一紫色主题，不渲染徽章；仅不推荐（`balance_found=false`）卡片底部琥珀 ⚠ 警告条显示 `balance_fail_reason`；顶部不加固定说明 |
 | 新1 | chips 三选项 | **[A][B][✏️自己写]**；C 展开内联输入框，提交 = 作为用户消息发送。新一组 chips 生成 → 前端替换选择器；历史消息与用户已发送内容不动；后端只记用户最新确认的假设 |
 | 新2 | chips 时机 | 凡「假设要定型」的时刻都弹：首次生成、用户不满意要求重来、用户有想法时（A=用户想法完善版、B=AI 补充另一假设） |
 | 新3 | 结论卡极简 | 前端卡面 = **hypothesis + 确认/跳过**；motivation/work_purposes/passion_mark/timing_mark/balance_found/balance_fail_reason 全部后台字段，前端不渲染 |
@@ -103,8 +103,8 @@ AI 回复末尾输出：
 ### 3.3 终选弹窗（`V4FinalSelectionModal.tsx`）
 
 - 只列 `status=concluded`（排除 user_skipped/abandoned）的卡
-- 徽章：`balance_found=true` → 绿 ✓（悬停「已通过理想与现实的平衡验证」）；`false` → 琥珀 ⚠（悬停显示 `balance_fail_reason`）；`null` → 灰 ？（悬停「AI 尚未完成平衡评估」）
-- 徽章不影响可选性
+- ~~徽章：`balance_found=true` → 绿 ✓；`false` → 琥珀 ⚠；`null` → 灰 ？~~（2026-07-28 修订，见附录二）：不渲染徽章，卡片统一紫色主题；仅 `balance_found=false` 时卡片底部琥珀 ⚠ 警告条显示 `balance_fail_reason`
+- 推荐/不推荐区分不影响可选性
 
 ### 3.4 类型
 
@@ -141,3 +141,14 @@ combo/card 类型 += `balance_found: boolean | null`、`balance_fail_reason: str
 5. **终选口径不变**:只认 `concluded` 且未跳过的卡;「再聊聊」的组合掉出终选池,重新确认后回池。
 6. 顺手修复:`set_combo_status(discussing)` 现在也清除 `user_skipped`(原 abandoned→discussing 会残留跳过标记)。
 7. **空可见回复兜底(空气泡修复)**:prompt 硬约束"每次回复必须含可见正文,隐藏块禁止单独成条";routes 在 `visible_text` 为空时按情境补兜底话术(出卡/chips/一般追问)并 `logger.warning` 记录原始回复;`build_chat_messages` 跳过空内容消息;前端 store `done` 空文本不追加、`V4ChatPanel` 不渲染空消息。前端 store 收到 `conclusion_card` 事件不再强制本地 `status='concluded'`(与"出卡不锁"对齐)。
+
+---
+
+## 附录二:2026-07-28 终选 UI 简化(统一紫色主题)
+
+> 用户反馈终选弹窗颜色过多,与领域专家确认后定案,优先级高于 Q8 / §3.3 冲突条目。
+
+1. **卡片全统一紫色主题**:删除 6 色循环 THEMES,数字标签(01/02…)、选中边框/阴影/标题、优势 tags 统一用紫色系(主色 `#553df2`,tag 底 `#f4f1ff` / 字 `#5d49ef`,与 V4ComboMatrixSelector 主按钮同族)。
+2. **移除三态徽章(BalanceBadge)**:绿 ✓ 推荐 / 琥珀 ⚠ / 灰 ? 未评估徽章全部不再渲染。
+3. **推荐 vs 不推荐唯一差异**:不推荐(`balance_found=false`)卡片底部保留琥珀 ⚠ 警告条(`balance_fail_reason`);推荐卡片无任何标记。
+4. **弹窗其余杂色一并紫化**:确认按钮渐变 `#826aff→#553df2`、已选 x/3 pill、装饰光斑、右上角勾选标记均为紫色系。

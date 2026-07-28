@@ -19,18 +19,16 @@ interface Props {
   onConfirm: () => void;
 }
 
-const THEMES = [
-  { name: 'green', color: '#00a979', tagBg: '#e8faf3', tagColor: '#02a475', icon: '♧' },
-  { name: 'purple', color: '#7047ef', tagBg: '#f0ebff', tagColor: '#774cf0', icon: '♙' },
-  { name: 'pink', color: '#ef3777', tagBg: '#ffeaf2', tagColor: '#e43a75', icon: '♡' },
-  { name: 'yellow', color: '#f3a100', tagBg: '#fff6df', tagColor: '#c98900', icon: 'ϟ' },
-  { name: 'blue', color: '#2976ed', tagBg: '#e8f2ff', tagColor: '#2f78e8', icon: '♫' },
-  { name: 'orange', color: '#ff8c18', tagBg: '#fff1df', tagColor: '#ed861b', icon: '♧' },
-];
-
-function getCardTheme(index: number) {
-  return THEMES[index % THEMES.length];
-}
+/**
+ * 终选统一主题色（rumination 主题紫）。
+ * 与 V4ComboMatrixSelector 主按钮渐变（#826aff→#553df2）同族；
+ * 全卡片统一，仅「不推荐」卡片以琥珀色警告条区分。
+ */
+const THEME_PURPLE = {
+  color: '#553df2',
+  tagBg: '#f4f1ff',
+  tagColor: '#5d49ef',
+};
 
 /** 防御：dict 形态已废弃，统一转纯字符串 */
 function hypToString(h: ConclusionCard['hypothesis']): string {
@@ -43,45 +41,6 @@ function getDirectionDesc(combo: ComboSession, card: ConclusionCard | null): str
   const t = hypToString(card?.hypothesis ?? null).trim();
   if (t) return t;
   return `基于「${combo.passion}」与「${combo.strengths.join('、')}」的探索方向。`;
-}
-
-/** 平衡点徽章：绿 ✓ 推荐 / 琥珀 ⚠ 未找到平衡点 / 灰 ？ 未评估（仅提示，不影响可选） */
-function BalanceBadge({ card }: { card: ConclusionCard | null }) {
-  const found = card?.balance_found ?? null;
-  if (found === true) {
-    return (
-      <span
-        className="grid h-[20px] w-[20px] shrink-0 place-items-center rounded-full text-[12px] font-extrabold text-white"
-        style={{ background: '#09aa7c' }}
-        title="已通过理想与现实的平衡验证"
-        aria-label="已通过理想与现实的平衡验证"
-      >
-        ✓
-      </span>
-    );
-  }
-  if (found === false) {
-    return (
-      <span
-        className="grid h-[20px] w-[20px] shrink-0 place-items-center rounded-full text-[12px] font-extrabold text-white"
-        style={{ background: '#f0a020' }}
-        title={card?.balance_fail_reason?.trim() || '未找到平衡点'}
-        aria-label="未找到平衡点"
-      >
-        ⚠
-      </span>
-    );
-  }
-  return (
-    <span
-      className="grid h-[20px] w-[20px] shrink-0 place-items-center rounded-full text-[12px] font-extrabold text-white"
-      style={{ background: '#b6c0cf' }}
-      title="AI 尚未完成平衡评估"
-      aria-label="AI 尚未完成平衡评估"
-    >
-      ？
-    </span>
-  );
 }
 
 export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Props) {
@@ -180,7 +139,7 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
                 height: 150,
                 left: -65,
                 top: -45,
-                background: 'radial-gradient(circle,#88c5ff,transparent 68%)',
+                background: 'radial-gradient(circle,#b9a8ff,transparent 68%)',
               }}
             />
             <span
@@ -190,7 +149,7 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
                 height: 150,
                 right: -60,
                 top: -55,
-                background: 'radial-gradient(circle,#ffb47d,transparent 68%)',
+                background: 'radial-gradient(circle,#8f76ff,transparent 68%)',
               }}
             />
 
@@ -219,8 +178,8 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
               <span
                 className="selected-pill mt-3 inline-flex h-[30px] items-center rounded-full px-4 text-[13px] font-extrabold"
                 style={{
-                  background: 'linear-gradient(90deg,#e6fbf8,#e5ecff)',
-                  color: '#168cc8',
+                  background: 'linear-gradient(90deg,#f4f1ff,#ece7ff)',
+                  color: '#5d49ef',
                 }}
               >
                 已选 {count} / 3
@@ -234,7 +193,6 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
               {candidates.map((combo, idx) => {
                 const card = combo.conclusion_card;
                 const selected = selectedIds.has(combo.combo_id);
-                const theme = getCardTheme(idx);
                 const desc = getDirectionDesc(combo, card);
                 // 与管理组合口径一致：标题=热爱选项，tag=优势
                 const tags = combo.strengths.slice(0, 4);
@@ -251,29 +209,29 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
                     style={{
                       minHeight: 140,
                       background: 'rgba(255,255,255,0.8)',
-                      borderColor: selected ? theme.color : '#e0e6ee',
+                      borderColor: selected ? THEME_PURPLE.color : '#e0e6ee',
                       borderWidth: selected ? '2px' : '1px',
                       padding: selected ? '15px' : '16px',
                       boxShadow: selected
-                        ? `0 8px 20px ${theme.color}20`
+                        ? `0 8px 20px ${THEME_PURPLE.color}20`
                         : 'none',
-                      color: selected ? theme.color : '#07163b',
+                      color: selected ? THEME_PURPLE.color : '#07163b',
                     }}
                   >
                     <span
                       className="direction-index absolute left-2.5 top-2.5 grid h-8 min-w-[32px] place-items-center rounded-full px-1.5 text-[13px] font-extrabold text-white"
                       style={{
-                        background: theme.color,
-                        boxShadow: `0 5px 10px ${theme.color}36`,
+                        background: THEME_PURPLE.color,
+                        boxShadow: `0 5px 10px ${THEME_PURPLE.color}36`,
                       }}
                     >
                       {String(idx + 1).padStart(2, '0')}
                     </span>
-                    {/* 圆角矩形勾选框，与圆形推荐/不推荐徽章区分 */}
+                    {/* 右上角勾选标记（仅选中时显示） */}
                     <span
                       className="direction-check absolute right-2.5 top-2.5 grid h-[22px] w-[22px] place-items-center rounded-[6px] text-white"
                       style={{
-                        background: '#09aa7c',
+                        background: THEME_PURPLE.color,
                         display: selected ? 'grid' : 'none',
                         border: '2px solid white',
                       }}
@@ -283,11 +241,10 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
                     <div className="mx-auto mb-2 mt-4 flex items-start justify-center gap-1.5">
                       <h3
                         className="line-clamp-2 text-base font-bold leading-snug"
-                        style={{ color: selected ? theme.color : '#07163b' }}
+                        style={{ color: selected ? THEME_PURPLE.color : '#07163b' }}
                       >
                         {combo.passion}
                       </h3>
-                      <BalanceBadge card={card} />
                     </div>
                     <div className="tags mb-2 flex flex-wrap justify-center gap-1">
                       {tags.map((t) => (
@@ -295,8 +252,8 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
                           key={t}
                           className="tag rounded-md px-1.5 py-1 text-[11px]"
                           style={{
-                            background: selected ? theme.tagBg : '#eef3fb',
-                            color: selected ? theme.tagColor : '#65728c',
+                            background: selected ? THEME_PURPLE.tagBg : '#eef3fb',
+                            color: selected ? THEME_PURPLE.tagColor : '#65728c',
                           }}
                         >
                           {t}
@@ -361,9 +318,9 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
                 className="confirm-btn h-12 rounded-full border-0 text-[15px] font-extrabold text-white transition-all disabled:cursor-not-allowed disabled:opacity-45"
                 style={{
                   background: canConfirm
-                    ? 'linear-gradient(90deg,#3370ff,#277cfa 45%,#17c49b)'
+                    ? 'linear-gradient(90deg,#826aff,#553df2)'
                     : 'rgba(200,200,220,0.5)',
-                  boxShadow: canConfirm ? '0 9px 20px rgba(41,113,236,0.18)' : 'none',
+                  boxShadow: canConfirm ? '0 9px 20px rgba(91,65,240,0.22)' : 'none',
                 }}
               >
                 {submitting ? '保存中…' : `确认选择（${count}/3）`}
