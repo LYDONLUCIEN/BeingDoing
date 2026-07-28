@@ -39,11 +39,11 @@ export async function getMyReportId(activationCode: string): Promise<string | nu
   return (res.data as any)?.report_id ?? null;
 }
 
-export type ReportReviewStatus = 'pending_review' | 'approved';
+export type ReportReviewStatus = 'not_started' | 'pending_review' | 'approved';
 
 export interface MyReportInfo {
   report_id: string | null;
-  /** 审核状态；存量报告无该字段，视为 approved（祖父豁免） */
+  /** 审核状态；存量报告无该字段，视为 approved（祖父豁免）；not_started = 五阶段未完成或尚未进入报告页 */
   review_status: ReportReviewStatus | null;
   /** 审核截止时间（ISO 字符串），仅 pending_review 时可能返回 */
   review_deadline: string | null;

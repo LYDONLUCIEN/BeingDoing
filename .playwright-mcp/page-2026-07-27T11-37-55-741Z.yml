@@ -1,0 +1,195 @@
+- generic [active] [ref=f11e1]:
+  - generic [ref=f11e2]:
+    - navigation [ref=f11e3]:
+      - generic [ref=f11e4]:
+        - link "寻路" [ref=f11e6] [cursor=pointer]:
+          - /url: /
+        - generic [ref=f11e7]:
+          - link "首页" [ref=f11e8] [cursor=pointer]:
+            - /url: /
+          - link "开始探索" [ref=f11e9] [cursor=pointer]:
+            - /url: /explore/intro
+          - link "社区" [ref=f11e10] [cursor=pointer]:
+            - /url: /community
+        - generic [ref=f11e11]:
+          - combobox [ref=f11e12] [cursor=pointer]:
+            - option "中文" [selected]
+            - option "EN"
+          - button "登录 / 注册" [ref=f11e13] [cursor=pointer]
+    - generic [ref=f11e16]:
+      - button [ref=f11e17] [cursor=pointer]
+      - generic [ref=f11e21]:
+        - generic [ref=f11e22]:
+          - heading "Being · Doing" [level=2] [ref=f11e23]
+          - paragraph [ref=f11e24]: 欢迎回来
+        - generic [ref=f11e25]:
+          - button "登录" [ref=f11e26] [cursor=pointer]
+          - button "注册" [ref=f11e27] [cursor=pointer]
+        - generic [ref=f11e28]:
+          - generic [ref=f11e29]:
+            - generic [ref=f11e30]: 邮箱
+            - textbox "邮箱" [ref=f11e31]:
+              - /placeholder: your@email.com
+          - generic [ref=f11e32]:
+            - generic [ref=f11e33]: 手机号（可选）
+            - textbox "手机号（可选）" [ref=f11e34]:
+              - /placeholder: "13800138000"
+          - generic [ref=f11e35]:
+            - generic [ref=f11e36]: 密码
+            - textbox "密码" [ref=f11e37]:
+              - /placeholder: 至少6位
+          - generic [ref=f11e39] [cursor=pointer]:
+            - checkbox "我已阅读并同意 隐私政策 和 服务条款" [ref=f11e40]
+            - generic [ref=f11e41]:
+              - text: 我已阅读并同意
+              - button "隐私政策" [ref=f11e42]
+              - text: 和
+              - button "服务条款" [ref=f11e43]
+          - button "登录" [ref=f11e44] [cursor=pointer]
+          - button "忘记密码？" [ref=f11e46] [cursor=pointer]
+    - main [ref=f11e47]:
+      - generic [ref=f11e49]:
+        - generic [ref=f11e50]:
+          - heading "寻路" [level=1] [ref=f11e51]
+          - paragraph [ref=f11e52]: 所有热爱,都值得成为事业。
+          - button "开始探索 →" [ref=f11e54] [cursor=pointer]:
+            - text: 开始探索
+            - generic [ref=f11e55]: →
+        - generic [ref=f11e56]:
+          - generic [ref=f11e57]:
+            - generic [ref=f11e58]:
+              - paragraph [ref=f11e59]: 第一步
+              - heading "明确你的价值观" [level=3] [ref=f11e60]
+              - paragraph [ref=f11e61]: 找出对你最重要的核心价值观。了解过去工作不满的根源，建立评估未来选择的正确标准。
+            - generic [ref=f11e62]:
+              - paragraph [ref=f11e63]: 第二步
+              - heading "发现你的优势" [level=3] [ref=f11e64]
+              - paragraph [ref=f11e65]: 揭示你独特的天赋和自然擅长的事情。看到让你有价值的独特优势。
+            - generic [ref=f11e66]:
+              - paragraph [ref=f11e67]: 第三步
+              - heading "找到你的热爱" [level=3] [ref=f11e68]
+              - paragraph [ref=f11e69]: 探索能给你带来活力的活动和话题。找到能够维持长期动力的热爱所在。
+            - generic [ref=f11e70]:
+              - paragraph [ref=f11e71]: 第四步
+              - heading "定义你的使命" [level=3] [ref=f11e72]
+              - paragraph [ref=f11e73]: 将未来的工作与更大的使命联系起来。明确你期望的工作能创造的社会价值或影响。
+          - generic [ref=f11e75]:
+            - heading "获取「四维共鸣」专属报告" [level=2] [ref=f11e76]
+            - paragraph [ref=f11e77]: 基于你的价值观、优势、热爱与使命，为你深度推演高度匹配的职业方向。
+            - button "你的方向 →" [ref=f11e78] [cursor=pointer]:
+              - text: 你的方向
+              - generic [ref=f11e79]: →
+        - generic [ref=f11e80]:
+          - generic [ref=f11e81]:
+            - generic [ref=f11e82]: 即将推出
+            - heading "下一版本" [level=2] [ref=f11e86]
+            - paragraph [ref=f11e87]: 激动人心的新功能，助力你的职业之旅
+          - generic [ref=f11e88]:
+            - generic [ref=f11e89]:
+              - heading "职业双轨" [level=3] [ref=f11e90]
+              - paragraph [ref=f11e91]: 职业不是人生的全部，但可以是人生最重要的表达。我们正在构建一套工具，帮你同时规划职业成就路径与人生意义路径。
+            - generic [ref=f11e92]:
+              - heading "光谱共振" [level=3] [ref=f11e93]
+              - paragraph [ref=f11e94]: 匹配与你四个维度相似或互补的伙伴，在共振中看见彼此、共创可能。
+            - generic [ref=f11e95]:
+              - heading "静室之我" [level=3] [ref=f11e96]
+              - paragraph [ref=f11e97]: 属于你自己的读书与思考空间。可随时记录、可空闲沉淀，亦可匿名分享给有缘人。
+        - generic [ref=f11e98]:
+          - generic [ref=f11e99]:
+            - heading "用户评价" [level=2] [ref=f11e100]
+            - paragraph [ref=f11e101]: 加入数千名找到方向的用户
+          - generic [ref=f11e102]:
+            - generic [ref=f11e103]:
+              - generic [ref=f11e105]:
+                - generic [ref=f11e106]:
+                  - generic [ref=f11e107]:
+                    - generic [ref=f11e108]: 小
+                    - generic [ref=f11e109]:
+                      - generic [ref=f11e110]: 小林
+                      - generic [ref=f11e111]: 产品经理
+                  - generic "5 星" [ref=f11e112]
+                - paragraph [ref=f11e123]: 我第一次意识到，我一直在做别人期待的事，而不是我认为重要的事。这个过程让我看清了自己。
+              - generic [ref=f11e125]:
+                - generic [ref=f11e126]:
+                  - generic [ref=f11e127]:
+                    - generic [ref=f11e128]: M
+                    - generic [ref=f11e129]:
+                      - generic [ref=f11e130]: Maggie
+                      - generic [ref=f11e131]: 市场运营
+                  - generic "5 星" [ref=f11e132]
+                - paragraph [ref=f11e143]: 原来沟通协调这件事对我来说真的是优势，不是习惯。这个区分让我第一次觉得自己有竞争力。
+              - generic [ref=f11e145]:
+                - generic [ref=f11e146]:
+                  - generic [ref=f11e147]:
+                    - generic [ref=f11e148]: 阿
+                    - generic [ref=f11e149]:
+                      - generic [ref=f11e150]: 阿文
+                      - generic [ref=f11e151]: 应届生
+                  - generic "5 星" [ref=f11e152]
+                - paragraph [ref=f11e163]: 帮助别人成长这件事，让我忘我。我以为那只是爱好，没想到可以成为职业核心。
+            - button "下一页" [ref=f11e164] [cursor=pointer]
+          - generic [ref=f11e167]:
+            - button "第1页" [ref=f11e168] [cursor=pointer]
+            - button "第2页" [ref=f11e169] [cursor=pointer]
+            - button "第3页" [ref=f11e170] [cursor=pointer]
+        - generic [ref=f11e171]:
+          - generic [ref=f11e172]:
+            - heading "定价" [level=2] [ref=f11e173]
+            - paragraph [ref=f11e174]: 选择适合你的激活码，开启完整的自我探索之旅
+          - generic [ref=f11e175]:
+            - generic [ref=f11e176]:
+              - heading "免费版" [level=3] [ref=f11e177]
+              - generic [ref=f11e178]:
+                - generic [ref=f11e179]: 免费
+                - generic [ref=f11e180]: / 10轮对话
+              - list [ref=f11e181]:
+                - listitem [ref=f11e182]: 对话额度：10轮（基于价值观话题的交互式测评）
+                - listitem [ref=f11e185]: 报告生成：不提供完整报告，仅输出对话过程中的即时反馈摘要
+                - listitem [ref=f11e188]: 人工审核：不涉及
+                - listitem [ref=f11e191]: 适用说明：用于体验产品交互形式，了解测评的基本逻辑
+              - button "开始免费体验" [ref=f11e194] [cursor=pointer]
+            - generic [ref=f11e195]:
+              - heading "单人激活码" [level=3] [ref=f11e196]
+              - generic [ref=f11e197]: ¥69
+              - list [ref=f11e199]:
+                - listitem [ref=f11e200]: 不限量对话
+                - listitem [ref=f11e203]: 全部 5 个探索阶段
+                - listitem [ref=f11e206]: 1 份专属报告 + 人工审核
+                - listitem [ref=f11e209]: 有效期 90 天（首次探索起算）
+              - button "选择单人激活码" [ref=f11e212] [cursor=pointer]
+            - generic [ref=f11e213]:
+              - generic [ref=f11e214]: 最受欢迎
+              - heading "三人包" [level=3] [ref=f11e215]
+              - generic [ref=f11e216]: ¥99
+              - list [ref=f11e218]:
+                - listitem [ref=f11e219]: 3 个激活码：1 自用 + 2 可转送朋友
+                - listitem [ref=f11e222]: 不限量对话 · 全部 5 阶段
+                - listitem [ref=f11e225]: 每码 1 份专属报告 + 人工审核
+                - listitem [ref=f11e228]: 团队分析
+                - listitem [ref=f11e231]: 每码有效期 1 年（首次探索起算）
+              - button "选择三人包" [ref=f11e234] [cursor=pointer]
+            - generic [ref=f11e235]:
+              - heading "报告解读咨询" [level=3] [ref=f11e236]
+              - generic [ref=f11e237]:
+                - generic [ref=f11e238]: ¥298
+                - generic [ref=f11e239]: / 次
+              - list [ref=f11e240]:
+                - listitem [ref=f11e241]: 一对一线上沟通 · 约60分钟
+                - listitem [ref=f11e244]: 需持有已完成的有效报告
+                - listitem [ref=f11e247]: 报告数据的场景化引申解读
+                - listitem [ref=f11e250]: 提供可执行的方向建议
+              - button "预约咨询" [ref=f11e253] [cursor=pointer]
+        - generic [ref=f11e255]:
+          - generic [ref=f11e256]:
+            - generic [ref=f11e257]:
+              - link "关于我们" [ref=f11e258] [cursor=pointer]:
+                - /url: /about
+              - link "联系我们" [ref=f11e259] [cursor=pointer]:
+                - /url: /contact
+              - button "隐私政策" [ref=f11e260] [cursor=pointer]
+              - button "服务条款" [ref=f11e261] [cursor=pointer]
+            - generic [ref=f11e262]:
+              - generic [ref=f11e263]: QR
+              - generic [ref=f11e264]: 二维码
+          - paragraph [ref=f11e265]: © 2026 寻路. 保留所有权利。
+  - alert [ref=f11e266]

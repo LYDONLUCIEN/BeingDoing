@@ -431,6 +431,8 @@ export const zh = {
       reviewPendingTitle: '报告审核中',
       reviewPendingDesc: '报告正在审核中，预计 24 小时内处理完成，结果将通过站内信通知。',
       reviewDeadlineLabel: '预计完成时间',
+      reviewNotStartedTitle: '报告尚未解锁',
+      reviewNotStartedDesc: '请先完成价值观、优势、热爱、使命与沉淀五个阶段的探索，再回来查看你的专属报告。',
       likedContentTitle: '点赞精选',
       likedContentCount: '条点赞内容',
       likedContentEmpty: '暂无点赞',

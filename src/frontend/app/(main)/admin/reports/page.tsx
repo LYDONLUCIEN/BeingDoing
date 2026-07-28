@@ -171,11 +171,14 @@ export default function AdminReportsPage() {
     }
   };
 
-  // 审核状态 badge：pending_review=黄「待审核」/ approved+manual=绿「人工已审」/ approved+auto=青「自动批复」
+  // 审核状态 badge：not_started=灰「未开始」/ pending_review=黄「待审核」/ approved+manual=绿「人工已审」/ approved+auto=青「自动批复」
   const renderReviewBadge = (item: AdminReportItem) => {
     const base =
       'inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-medium whitespace-nowrap';
     const reviewStatus = item.review_status ?? 'approved'; // 存量报告视为 approved
+    if (reviewStatus === 'not_started') {
+      return <span className={`${base} bg-gray-100 text-gray-500 border-gray-200`}>未开始</span>;
+    }
     if (reviewStatus === 'pending_review') {
       return (
         <span className={`${base} bg-amber-100 text-amber-700 border-amber-200`}>待审核</span>
@@ -238,6 +241,7 @@ export default function AdminReportsPage() {
           aria-label="审核状态筛选"
         >
           <option value="">审核状态：全部</option>
+          <option value="not_started">未开始</option>
           <option value="pending_review">待审核</option>
           <option value="approved">已审核</option>
         </select>

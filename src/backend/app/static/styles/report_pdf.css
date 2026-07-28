@@ -121,15 +121,29 @@ hr {
   margin: 30px 0;
 }
 
-/* ── 页码（@page 底部居中）── */
+/* ── 页眉页脚（@page 边距盒）──
+   页眉右上角：寻路 logo（每页）
+   页脚正中心：寻路 logo（每页）；页码移至左下角；右下角保留 AI 声明
+   __PAGE_LOGO_HEADER_URL__ / __PAGE_LOGO_FOOTER_URL__ 由后端渲染时替换为 data URI */
 @page {
   size: A4;
   margin: 2.5cm 2cm;
 
-  @bottom-center {
+  @top-right {
+    content: url("__PAGE_LOGO_HEADER_URL__");
+    vertical-align: middle;
+  }
+
+  @bottom-left {
     content: counter(page);
     font-size: 9pt;
     color: #bbb;
+    vertical-align: middle;
+  }
+
+  @bottom-center {
+    content: url("__PAGE_LOGO_FOOTER_URL__");
+    vertical-align: middle;
   }
 
   /* 每页右下角 AI 声明小字 */
@@ -137,38 +151,59 @@ hr {
     content: "AI生成，仅供参考";
     font-size: 7.5pt;
     color: #ccc;
+    vertical-align: middle;
   }
 }
 
-/* 封面页不显示页码 */
+/* 封面页保持干净：不显示页眉 logo、页脚 logo 与页码 */
 @page :first {
+  @top-right {
+    content: none;
+  }
+  @bottom-left {
+    content: none;
+  }
   @bottom-center {
     content: none;
   }
 }
 
-/* ── 水印（每页固定层，斜45度）── */
+/* ── 水印（每页固定层，上中下 3 条斜 45 度水印带，覆盖整页）── */
 .watermark-layer {
   position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%) rotate(-45deg);
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   z-index: -1;
   pointer-events: none;
-  opacity: 0.06;
-  width: 400px;
-  text-align: center;
 }
 
-.watermark-layer img {
-  width: 80px;
+.watermark-strip {
+  position: absolute;
+  left: 50%;
+  width: 1000px;
+  margin-left: -500px; /* 水平居中（WeasyPrint 不支持 translate 百分比组合） */
+  text-align: center;
+  transform: rotate(-45deg);
+  opacity: 0.055;
+  white-space: nowrap;
+}
+
+.watermark-strip.strip-1 { top: 15%; }
+.watermark-strip.strip-2 { top: 48%; }
+.watermark-strip.strip-3 { top: 81%; }
+
+.watermark-strip img {
+  width: 64px;
   height: auto;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .watermark-text {
-  font-size: 24pt;
+  font-size: 26pt;
   font-weight: bold;
   color: #333;
-  letter-spacing: 6px;
+  letter-spacing: 10px;
+  white-space: nowrap;
 }

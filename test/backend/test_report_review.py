@@ -1,12 +1,14 @@
 """
-报告阻塞式审核流测试（ADR-0009 / P-C）
+报告阻塞式审核流测试（ADR-0009 / P-C；2026-07-27 计时锚点修订）
 
 覆盖：
-- 生成钩子：ensure_report 写 review_status=pending_review + 随机 3~24h deadline
+- 生成钩子：ensure_report 写 review_status=not_started（不计时）
+- 计时起点：进入报告页（my-report-id）且五阶段完成 → pending_review + 随机 3~24h deadline
+  并后台预生成报告 markdown；五阶段未完成则保持 not_started 且阻塞 PDF 端点
 - 存量报告（无审核字段）祖父豁免视为 approved
 - 用户侧阻塞：pending → HTTP 200 返回审核中状态；approved → 放行
 - admin 人工批复：manual 字段 + 站内信触发；列表审核字段与筛选
-- 自动批复 job：过期 pending → approved + auto + 站内信；未过期/存量不动
+- 自动批复 job：过期 pending → approved + auto + 站内信；未过期/not_started/存量不动
 - 通知幂等：重复批复/重复跑 job 不重复发站内信
 """
 
@@ -23,19 +25,20 @@ from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from app.api.v1 import export as export_mod
 from app.api.v1.auth import get_current_user
 from app.main import app
 from app.models.database import Base
 from app.models.feedback import Notification
 from app.models.user import User
 from app.services import report_review_service
-from app.utils.report_registry import ReportRegistry
+from app.utils.report_registry import STEP_IDS, ReportRegistry
 from app.utils.report_review import (
     AUTO_APPROVE_MAX_HOURS,
     AUTO_APPROVE_MIN_HOURS,
     get_review_status,
-    init_review_fields,
     is_pending_review,
+    start_review,
 )
 from sqlalchemy import select, func
 
@@ -78,6 +81,33 @@ def _pending_record(report_id: str, deadline: datetime, **kw) -> dict:
     return rec
 
 
+def _not_started_record(report_id: str, complete: bool = True, **kw) -> dict:
+    """新建报告的审核初始态；complete=True 时五阶段均已选定会话（报告入口解锁）。"""
+    rec = _base_record(report_id, **kw)
+    rec.update(
+        {
+            "review_status": "not_started",
+            "review_deadline": None,
+            "review_type": None,
+            "reviewed_by": None,
+            "reviewed_at": None,
+        }
+    )
+    if complete:
+        ts = "2026-01-01T00:00:00+00:00"
+        rec["steps"] = {
+            sid: {
+                "step_id": sid,
+                "selected_session_id": f"sess-{sid}",
+                "locked": True,
+                "session_ids": [f"sess-{sid}"],
+                "updated_at": ts,
+            }
+            for sid in STEP_IDS
+        }
+    return rec
+
+
 @pytest.fixture
 def reg(tmp_path: Path) -> ReportRegistry:
     base = tmp_path / "simple"
@@ -117,32 +147,28 @@ async def _count_notifications(factory, user_id: str = "user-1") -> int:
         ).scalar_one()
 
 
-# ── 1. 生成钩子 ─────────────────────────────────────────────
+# ── 1. 生成钩子 + 计时起点 ──────────────────────────────────
 
-def test_ensure_report_writes_review_fields(reg: ReportRegistry) -> None:
-    before = datetime.now(timezone.utc)
+def test_ensure_report_marks_review_not_started(reg: ReportRegistry) -> None:
+    """新建报告仅标记 not_started，不写 deadline（审核计时从进入报告页起算）。"""
     record = reg.ensure_report(activation_code="HOOK1", user_id="user-1")
-    after = datetime.now(timezone.utc)
 
-    assert record["review_status"] == "pending_review"
+    assert record["review_status"] == "not_started"
+    assert record["review_deadline"] is None
     assert record["review_type"] is None
     assert record["reviewed_by"] is None
     assert record["reviewed_at"] is None
 
-    deadline = datetime.fromisoformat(record["review_deadline"])
-    assert deadline >= before + timedelta(hours=AUTO_APPROVE_MIN_HOURS)
-    assert deadline <= after + timedelta(hours=AUTO_APPROVE_MAX_HOURS)
-
     # 落盘一致
     on_disk = reg.get_report_by_id(record["report_id"])
-    assert on_disk["review_status"] == "pending_review"
-    assert on_disk["review_deadline"] == record["review_deadline"]
+    assert on_disk["review_status"] == "not_started"
+    assert on_disk["review_deadline"] is None
 
 
 def test_random_deadline_within_range() -> None:
     now = datetime.now(timezone.utc)
     for _ in range(100):
-        rec = init_review_fields({}, now=now)
+        rec = start_review({}, now=now)
         deadline = datetime.fromisoformat(rec["review_deadline"])
         delta_h = (deadline - now).total_seconds() / 3600
         assert AUTO_APPROVE_MIN_HOURS <= delta_h <= AUTO_APPROVE_MAX_HOURS
@@ -247,6 +273,76 @@ def test_user_side_approved_passes(reg: ReportRegistry) -> None:
         body = resp.json()
         assert body["status"] == "none"
         assert body["review_status"] == "approved"
+
+
+# ── 2b. 计时起点：进入报告页才开始审核（2026-07-27 修订） ────
+
+
+def test_review_starts_on_report_page_entry(reg: ReportRegistry) -> None:
+    """not_started + 五阶段完成 → my-report-id 即刻转 pending + 随机 deadline，并后台预生成。"""
+    rid = "rpt-start"
+    _write_record(reg.simple_base_dir, rid, _not_started_record(rid, complete=True))
+    _override_user("user-1")
+    export_mod._pdf_tasks.pop(rid, None)
+
+    async def _noop_generation(*args, **kwargs):
+        return None
+
+    p1, p2, p3 = _patch_export_access(reg.simple_base_dir)
+    with p1, p2, p3, patch.object(export_mod, "_run_pdf_generation", _noop_generation):
+        client = TestClient(app)
+        before = datetime.now(timezone.utc)
+        resp = client.get("/api/v1/export/my-report-id", params={"activation_code": "CODE1"})
+        after = datetime.now(timezone.utc)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["report_id"] == rid
+        assert body["review_status"] == "pending_review"
+        deadline = datetime.fromisoformat(body["review_deadline"])
+        assert before + timedelta(hours=AUTO_APPROVE_MIN_HOURS) <= deadline
+        assert deadline <= after + timedelta(hours=AUTO_APPROVE_MAX_HOURS)
+
+        # 审核开始即后台预生成报告 markdown（审核期间报告已在自动生成）
+        assert export_mod._pdf_tasks.get(rid, {}).get("status") == "pending"
+
+    # 落盘：pending + deadline 持久化，重复进入不重置计时
+    saved = reg.get_report_by_id(rid)
+    assert saved["review_status"] == "pending_review"
+    assert saved["review_deadline"] == body["review_deadline"]
+
+    with p1, p2, p3, patch.object(export_mod, "_run_pdf_generation", _noop_generation):
+        client = TestClient(app)
+        resp = client.get("/api/v1/export/my-report-id", params={"activation_code": "CODE1"})
+        assert resp.json()["review_deadline"] == body["review_deadline"]
+
+
+def test_review_not_started_when_phases_incomplete(reg: ReportRegistry) -> None:
+    """五阶段未完成：保持 not_started，返回 not_started，PDF 端点同样阻塞。"""
+    rid = "rpt-incomplete"
+    _write_record(reg.simple_base_dir, rid, _not_started_record(rid, complete=False))
+    _override_user("user-1")
+    export_mod._pdf_tasks.pop(rid, None)
+
+    p1, p2, p3 = _patch_export_access(reg.simple_base_dir)
+    with p1, p2, p3:
+        client = TestClient(app)
+
+        resp = client.get("/api/v1/export/my-report-id", params={"activation_code": "CODE1"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["review_status"] == "not_started"
+        assert "review_deadline" not in body
+
+        # 直连 PDF 触发端点也被阻塞（不能绕过审核计时）
+        resp = client.post(f"/api/v1/export/report-pdf/{rid}", params={"activation_code": "CODE1"})
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "not_started"
+
+    # 未开始审核就不应有生成任务、不落盘变更
+    assert rid not in export_mod._pdf_tasks
+    saved = reg.get_report_by_id(rid)
+    assert saved["review_status"] == "not_started"
 
 
 # ── 3. admin 人工批复（API） ────────────────────────────────
@@ -383,7 +479,8 @@ async def test_auto_approve_overdue(reg: ReportRegistry, db_factory) -> None:
     overdue = _pending_record("rpt-overdue", now - timedelta(hours=1))
     future = _pending_record("rpt-future", now + timedelta(hours=10), activation_code="A2")
     legacy = _base_record("rpt-legacy2", activation_code="A3")
-    for rec in (overdue, future, legacy):
+    notstarted = _not_started_record("rpt-notstarted", complete=True, activation_code="A4")
+    for rec in (overdue, future, legacy, notstarted):
         _write_record(reg.simple_base_dir, rec["report_id"], rec)
 
     count = await report_review_service.auto_approve_overdue(
@@ -399,8 +496,9 @@ async def test_auto_approve_overdue(reg: ReportRegistry, db_factory) -> None:
     assert saved["reviewed_by"] is None
     assert await _count_notifications(db_factory) == 1
 
-    # 未过期/存量不动
+    # 未过期/存量/not_started 不动
     assert reg.get_report_by_id("rpt-future")["review_status"] == "pending_review"
+    assert reg.get_report_by_id("rpt-notstarted")["review_status"] == "not_started"
     legacy_loaded = reg.get_report_by_id("rpt-legacy2")
     assert "review_status" not in legacy_loaded
     assert get_review_status(legacy_loaded) == "approved"

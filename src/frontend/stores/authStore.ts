@@ -78,12 +78,6 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'auth-storage',
       storage: typeof window !== 'undefined' ? createJSONStorage(() => localStorage) : undefined,
-      onRehydrateStorage: () => (state) => {
-        useAuthStore.getState().setHasHydrated(true);
-        if (typeof window !== 'undefined') {
-          if (state?.token) localStorage.setItem('token', state.token);
-        }
-      },
       partialize: (state) => ({
         user: state.user,
         token: state.token,
@@ -92,3 +86,23 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 );
+
+// 标记 rehydration 完成并同步 token 到 localStorage。
+// 注意：不能放在 onRehydrateStorage 回调里直接引用 useAuthStore——
+// localStorage 是同步 storage，zustand 会在 create() 期间同步执行回调，
+// 此时 useAuthStore 尚未完成初始化（TDZ 报错），导致 _hasHydrated 永远为 false。
+const markHydrated = () => {
+  useAuthStore.getState().setHasHydrated(true);
+  const token = useAuthStore.getState().token;
+  if (typeof window !== 'undefined' && token) {
+    localStorage.setItem('token', token);
+  }
+};
+if (typeof window !== 'undefined') {
+  // 仅客户端执行（SSR 端 storage 为 undefined，persist API 不会挂载）
+  if (useAuthStore.persist.hasHydrated()) {
+    markHydrated();
+  } else {
+    useAuthStore.persist.onFinishHydration(markHydrated);
+  }
+}

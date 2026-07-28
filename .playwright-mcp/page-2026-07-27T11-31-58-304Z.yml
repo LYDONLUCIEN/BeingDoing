@@ -1,0 +1,51 @@
+- generic [active] [ref=f4e1]:
+  - generic [ref=f4e2]:
+    - navigation [ref=f4e3]:
+      - generic [ref=f4e4]:
+        - link "寻路" [ref=f4e6] [cursor=pointer]:
+          - /url: /
+        - generic [ref=f4e7]:
+          - link "首页" [ref=f4e8] [cursor=pointer]:
+            - /url: /
+          - link "开始探索" [ref=f4e9] [cursor=pointer]:
+            - /url: /explore/intro
+          - link "社区" [ref=f4e10] [cursor=pointer]:
+            - /url: /community
+        - generic [ref=f4e11]:
+          - combobox [ref=f4e12] [cursor=pointer]:
+            - option "中文" [selected]
+            - option "EN"
+          - button "登录 / 注册" [ref=f4e13] [cursor=pointer]
+    - generic [ref=f4e16]:
+      - button [ref=f4e17] [cursor=pointer]
+      - generic [ref=f4e21]:
+        - generic [ref=f4e22]:
+          - heading "Being · Doing" [level=2] [ref=f4e23]
+          - paragraph [ref=f4e24]: 欢迎回来
+        - generic [ref=f4e25]:
+          - button "登录" [ref=f4e26] [cursor=pointer]
+          - button "注册" [ref=f4e27] [cursor=pointer]
+        - generic [ref=f4e28]:
+          - generic [ref=f4e29]:
+            - generic [ref=f4e30]: 邮箱
+            - textbox "邮箱" [ref=f4e31]:
+              - /placeholder: your@email.com
+          - generic [ref=f4e32]:
+            - generic [ref=f4e33]: 手机号（可选）
+            - textbox "手机号（可选）" [ref=f4e34]:
+              - /placeholder: "13800138000"
+          - generic [ref=f4e35]:
+            - generic [ref=f4e36]: 密码
+            - textbox "密码" [ref=f4e37]:
+              - /placeholder: 至少6位
+          - generic [ref=f4e39] [cursor=pointer]:
+            - checkbox "我已阅读并同意 隐私政策 和 服务条款" [checked] [ref=f4e40]
+            - generic [ref=f4e41]:
+              - text: 我已阅读并同意
+              - button "隐私政策" [ref=f4e42]
+              - text: 和
+              - button "服务条款" [ref=f4e43]
+          - button "登录" [ref=f4e44] [cursor=pointer]
+          - button "忘记密码？" [ref=f4e46] [cursor=pointer]
+    - main [ref=f4e47]
+  - alert [ref=f4e48]

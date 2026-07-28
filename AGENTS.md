@@ -406,6 +406,14 @@ import pdb; pdb.set_trace()
 - React DevTools 调试组件状态
 - Network 面板查看 API 请求
 
+## 前端登录门控（AuthGate）
+
+- **位置**: `src/frontend/components/layout/AuthGate.tsx`，挂在 `app/(main)/layout.tsx`；`app/profile/layout.tsx` 单独包一层（profile 在 (main) 组之外）。
+- **公开页白名单**: `/`、`/about`、`/community`、`/verify-email`（隐私声明/用户协议是首页弹窗组件，随首页公开；`/auth/*`、`/account-recovery` 不经过 AuthGate）。其余页面一律要求登录。
+- **未登录行为**: 直接 `router.replace('/')` 退回首页并弹全局登录框（`authModalStore`），不渲染受保护内容；API 401 且 refresh 失败时同样统一退回首页。
+- **会话校验**: 每次页面加载对已登录用户调一次 `/auth/me` 校验 token 有效性（拦截器自动尝试 refresh）。
+- **注意**: `authStore._hasHydrated` 不能放在 `onRehydrateStorage` 回调里设置——同步 localStorage 会让回调在 `create()` 期间执行，TDZ 引用 `useAuthStore` 报错；当前实现用 `persist.hasHydrated()` / `persist.onFinishHydration` 在模块加载后设置。
+
 ## 注意事项
 
 1. **环境变量冲突**: `start.sh` 会自动清理冲突的环境变量，确保只加载项目 `.env`

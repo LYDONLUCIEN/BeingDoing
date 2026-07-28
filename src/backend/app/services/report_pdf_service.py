@@ -38,10 +38,22 @@ logger = logging.getLogger(__name__)
 # 静态资源路径
 _STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 _WATERMARK_LOGO = _STATIC_DIR / "assets" / "watermark_logo.png"
+_PAGE_LOGO_HEADER = _STATIC_DIR / "assets" / "xunlulogo_header.png"  # 页眉右上角小 logo
+_PAGE_LOGO_FOOTER = _STATIC_DIR / "assets" / "xunlulogo_footer.png"  # 页脚正中心 logo
 _REPORT_CSS = _STATIC_DIR / "styles" / "report_pdf.css"
 
 # 缓存文件名
 _REPORT_MARKDOWN_FILENAME = "report_markdown.md"
+
+
+def _image_data_uri(path: Path) -> str:
+    """读取图片并返回 data URI（用于 CSS @page 边距盒 content: url(...)）；文件缺失时返回空串。"""
+    import base64
+
+    if not path.is_file():
+        logger.warning("报告页眉页脚 logo 缺失: %s", path)
+        return ""
+    return f"data:image/png;base64,{base64.b64encode(path.read_bytes()).decode('ascii')}"
 
 
 class ReportPdfService:
@@ -456,10 +468,15 @@ class ReportPdfService:
         extensions = ["extra", "nl2br"]
         html_body = md_lib.markdown(markdown_text, extensions=extensions)
 
-        # 2. 读 CSS
+        # 2. 读 CSS，注入页眉/页脚 logo（data URI 替换占位符）
         css_content = _REPORT_CSS.read_text(encoding="utf-8")
+        css_content = css_content.replace(
+            "__PAGE_LOGO_HEADER_URL__", _image_data_uri(_PAGE_LOGO_HEADER)
+        ).replace(
+            "__PAGE_LOGO_FOOTER_URL__", _image_data_uri(_PAGE_LOGO_FOOTER)
+        )
 
-        # 3. logo base64 编码（嵌入 HTML）
+        # 3. 水印 logo base64 编码（嵌入 HTML）
         logo_b64 = ""
         if _WATERMARK_LOGO.is_file():
             import base64
@@ -467,21 +484,18 @@ class ReportPdfService:
             logo_bytes = _WATERMARK_LOGO.read_bytes()
             logo_b64 = base64.b64encode(logo_bytes).decode("ascii")
 
-        # 4. 构建水印 HTML
-        watermark_html = ""
-        if logo_b64:
-            watermark_html = (
-                f'<div class="watermark-layer">'
-                f'<img src="data:image/png;base64,{logo_b64}" alt="logo" />'
-                f'<div class="watermark-text">xunlu 寻路</div>'
-                f'</div>'
-            )
-        else:
-            watermark_html = (
-                '<div class="watermark-layer">'
-                '<div class="watermark-text">xunlu 寻路</div>'
-                '</div>'
-            )
+        # 4. 构建水印 HTML（上中下 3 条斜 45 度水印带，覆盖整页）
+        strip_img = (
+            f'<img src="data:image/png;base64,{logo_b64}" alt="logo" />' if logo_b64 else ""
+        )
+        watermark_strips = "".join(
+            f'<div class="watermark-strip strip-{i}">'
+            f"{strip_img}"
+            f'<div class="watermark-text">xunlu 寻路 × xunlu 寻路</div>'
+            f"</div>"
+            for i in (1, 2, 3)
+        )
+        watermark_html = f'<div class="watermark-layer">{watermark_strips}</div>'
 
         # 5. 拼装完整 HTML
         full_html = f"""<!DOCTYPE html>

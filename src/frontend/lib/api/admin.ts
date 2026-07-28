@@ -270,7 +270,7 @@ export async function saveAsMock(payload: {
   return ((res.data as any)?.data ?? {}) as any;
 }
 
-export type AdminReportReviewStatus = 'pending_review' | 'approved';
+export type AdminReportReviewStatus = 'not_started' | 'pending_review' | 'approved';
 export type AdminReportReviewType = 'manual' | 'auto';
 
 export interface AdminReportItem {

@@ -871,7 +871,7 @@ async def list_reports(
     activation_code: Optional[str] = None,
     user_id: Optional[str] = None,
     review_status: Optional[str] = Query(
-        None, description="审核状态筛选：pending_review | approved"
+        None, description="审核状态筛选：not_started | pending_review | approved"
     ),
     current_user: Optional[dict] = Depends(get_current_user),
 ):

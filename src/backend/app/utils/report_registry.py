@@ -29,7 +29,7 @@ try:
 except ImportError:  # 精简 venv 时仍可跑通（如仅跑部分测试）
     _FileLock = None  # type: ignore[misc, assignment]
 
-from app.utils.report_review import init_review_fields
+from app.utils.report_review import mark_review_not_started
 from app.utils.simple_activation_manager import (
     ActivationRecord,
     SimpleActivationManager,
@@ -234,8 +234,9 @@ class ReportRegistry:
                 for sid in STEP_IDS
             },
         }
-        # 报告阻塞式审核（ADR-0009）：新生成的报告进入 pending_review + 随机 3~24h 时限
-        init_review_fields(record)
+        # 报告阻塞式审核（ADR-0009，2026-07-27 修订）：新建报告仅标记 not_started，
+        # 不计时；用户进入报告页且五阶段完成时才转 pending_review 开始 3~24h 倒计时
+        mark_review_not_started(record)
         return record
 
     def _load_record(self, report_id: str) -> Optional[dict]:

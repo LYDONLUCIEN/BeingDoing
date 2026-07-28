@@ -39,16 +39,6 @@ function hypToString(h: ConclusionCard['hypothesis']): string {
   return Object.values(h).filter(Boolean).join('\n');
 }
 
-function getDirectionTitle(combo: ComboSession, card: ConclusionCard | null): string {
-  const t = hypToString(card?.hypothesis ?? null).trim();
-  if (t) {
-    // 取第一句或前 18 字作为标题
-    const first = t.split(/[。；;\n]/)[0].trim();
-    return first.length > 18 ? first.slice(0, 18) + '…' : first;
-  }
-  return combo.passion;
-}
-
 function getDirectionDesc(combo: ComboSession, card: ConclusionCard | null): string {
   const t = hypToString(card?.hypothesis ?? null).trim();
   if (t) return t;
@@ -245,9 +235,9 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
                 const card = combo.conclusion_card;
                 const selected = selectedIds.has(combo.combo_id);
                 const theme = getCardTheme(idx);
-                const title = getDirectionTitle(combo, card);
                 const desc = getDirectionDesc(combo, card);
-                const tags = [combo.passion, ...combo.strengths].slice(0, 4);
+                // 与管理组合口径一致：标题=热爱选项，tag=优势
+                const tags = combo.strengths.slice(0, 4);
                 return (
                   <button
                     key={combo.combo_id}
@@ -259,7 +249,7 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
                       ${selected ? 'selected' : ''}
                     `}
                     style={{
-                      minHeight: 210,
+                      minHeight: 140,
                       background: 'rgba(255,255,255,0.8)',
                       borderColor: selected ? theme.color : '#e0e6ee',
                       borderWidth: selected ? '2px' : '1px',
@@ -279,8 +269,9 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
                     >
                       {String(idx + 1).padStart(2, '0')}
                     </span>
+                    {/* 圆角矩形勾选框，与圆形推荐/不推荐徽章区分 */}
                     <span
-                      className="direction-check absolute right-2.5 top-2.5 grid h-[22px] w-[22px] place-items-center rounded-full text-white"
+                      className="direction-check absolute right-2.5 top-2.5 grid h-[22px] w-[22px] place-items-center rounded-[6px] text-white"
                       style={{
                         background: '#09aa7c',
                         display: selected ? 'grid' : 'none',
@@ -289,21 +280,12 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
                     >
                       ✓
                     </span>
-                    <span
-                      className="direction-icon mx-auto mb-3 grid h-[54px] w-[54px] place-items-center rounded-full border text-[27px]"
-                      style={{
-                        borderColor: selected ? theme.color : 'currentColor',
-                        background: selected ? '#f8fbff' : 'transparent',
-                      }}
-                    >
-                      {theme.icon}
-                    </span>
-                    <div className="mx-auto mb-2 flex items-start justify-center gap-1.5">
+                    <div className="mx-auto mb-2 mt-4 flex items-start justify-center gap-1.5">
                       <h3
                         className="line-clamp-2 text-base font-bold leading-snug"
                         style={{ color: selected ? theme.color : '#07163b' }}
                       >
-                        {title}
+                        {combo.passion}
                       </h3>
                       <BalanceBadge card={card} />
                     </div>
@@ -321,12 +303,6 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
                         </span>
                       ))}
                     </div>
-                    <p
-                      className="line-clamp-3 flex-1 text-xs leading-relaxed"
-                      style={{ color: selected ? theme.tagColor : '#66748d' }}
-                    >
-                      {desc}
-                    </p>
                     {/* 不推荐（未找到平衡点）时直接展示理由 */}
                     {card?.balance_found === false && (
                       <p

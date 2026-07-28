@@ -435,6 +435,8 @@ export const en = {
       reviewPendingTitle: 'Report Under Review',
       reviewPendingDesc: 'Your report is being reviewed. It is expected to be processed within 24 hours, and you will be notified via in-app message.',
       reviewDeadlineLabel: 'Estimated completion time',
+      reviewNotStartedTitle: 'Report Not Unlocked Yet',
+      reviewNotStartedDesc: 'Please complete all five phases — Values, Strengths, Interests, Purpose and Reflection — then come back for your personal report.',
       likedContentTitle: 'Liked Highlights',
       likedContentCount: 'liked items',
       likedContentEmpty: 'No likes yet',

@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from typing import Dict, Optional
 from app.api.v1.auth import get_current_user
 from app.services.export_service import ExportService
-from app.utils.report_registry import ReportRegistry
+from app.utils.report_registry import ReportRegistry, _report_portal_unlocked
 from app.utils.simple_activation_manager import (
     get_activation_with_manager,
     get_effective_simple_root,
@@ -15,9 +15,12 @@ from app.utils.simple_activation_manager import (
 from app.utils.super_admin import is_super_admin_user
 from app.utils.report_review import (
     REVIEW_STATUS_APPROVED,
+    REVIEW_STATUS_NOT_STARTED,
     get_review_status,
+    is_not_started,
     is_pending_review,
     pending_review_payload,
+    start_review,
 )
 from pathlib import Path
 from urllib.parse import quote
@@ -210,6 +213,51 @@ async def _run_pdf_generation(report_id: str, user_id: str, base_dir: Optional[s
         }
 
 
+def _kick_pdf_generation(
+    report_id: str, user_id: str, base_dir: Optional[str], force: bool = False
+) -> None:
+    """若未在生成中，启动后台任务预生成报告 markdown（审核期间完成，批复后下载秒出）。"""
+    rid = (report_id or "").strip()
+    if not rid:
+        return
+    existing = _pdf_tasks.get(rid)
+    if existing and existing.get("status") == "pending":
+        return
+    _pdf_tasks[rid] = {
+        "status": "pending",
+        "error": None,
+        "created_at": asyncio.get_event_loop().time(),
+    }
+    asyncio.create_task(_run_pdf_generation(rid, user_id, base_dir, force))
+
+
+def _ensure_review_started(
+    report: dict,
+    registry: ReportRegistry,
+    base_dir: Optional[str],
+    user_id: str,
+) -> dict:
+    """
+    审核计时起点（ADR-0009，2026-07-27 修订）：
+    not_started 且五阶段均已完成（报告入口解锁）→ 转 pending_review + 随机 3~24h 时限，
+    并立即后台预生成报告 markdown（审核期间报告已在自动生成）。
+    幂等：已 pending/approved 或五阶段未完成时不动。
+    """
+    if not is_not_started(report):
+        return report
+    if not _report_portal_unlocked(report.get("steps") or {}):
+        return report
+    start_review(report)
+    registry.save_record(report)
+    logger.info(
+        "报告审核计时开始: report_id=%s review_deadline=%s",
+        report.get("report_id"),
+        report.get("review_deadline"),
+    )
+    _kick_pdf_generation(report.get("report_id") or "", user_id, base_dir)
+    return report
+
+
 @router.get("/my-report-id")
 async def get_my_report_id(
     activation_code: str = Query(..., description="激活码"),
@@ -226,6 +274,8 @@ async def get_my_report_id(
     report = registry.get_by_activation_user(code, user_id)
     if not report:
         raise HTTPException(status_code=404, detail="未找到您的报告")
+    # 进入报告页即触发审核计时起点（五阶段已完成时），并后台预生成报告
+    report = _ensure_review_started(report, registry, str(root), user_id)
     data = {"report_id": report.get("report_id"), "review_status": get_review_status(report)}
     if is_pending_review(report):
         data["review_deadline"] = report.get("review_deadline")
@@ -275,7 +325,17 @@ def _review_block_payload(
         return None
     registry = ReportRegistry(base_dir=base_dir) if base_dir else ReportRegistry()
     report = registry.get_report_by_id(report_id)
-    if not report or not is_pending_review(report):
+    if not report:
+        return None
+    if is_not_started(report):
+        # 五阶段完成则即刻开始审核计时（直连 PDF 端点、未经过 my-report-id 的兜底路径）
+        report = _ensure_review_started(
+            report, registry, base_dir, current_user.get("user_id") or ""
+        )
+        if is_not_started(report):
+            # 五阶段未完成：阻塞，提示先完成探索流程
+            return {"review_status": REVIEW_STATUS_NOT_STARTED}
+    if not is_pending_review(report):
         return None
     return pending_review_payload(report)
 
@@ -301,7 +361,7 @@ async def trigger_report_pdf(
     # 审核阻塞：pending_review 时不触发生成，HTTP 200 返回审核中状态
     blocked = _review_block_payload(report_id, base_dir, current_user)
     if blocked is not None:
-        return {"report_id": report_id, "status": "pending_review", **blocked}
+        return {"report_id": report_id, "status": blocked["review_status"], **blocked}
 
     # 检查缓存是否已有 markdown
     service = ReportPdfService(base_dir=base_dir)
@@ -310,21 +370,12 @@ async def trigger_report_pdf(
     if has_cache:
         return {"report_id": report_id, "status": "ready", "review_status": REVIEW_STATUS_APPROVED}
 
-    # 检查是否正在生成
+    # 检查是否正在生成；若上次失败则重新触发
     existing = _pdf_tasks.get(report_id)
     if existing and existing.get("status") == "pending":
         return {"report_id": report_id, "status": "generating", "review_status": REVIEW_STATUS_APPROVED}
 
-    # 如果上次失败，重新触发
-    # 启动后台任务
-    _pdf_tasks[report_id] = {
-        "status": "pending",
-        "error": None,
-        "created_at": asyncio.get_event_loop().time(),
-    }
-    asyncio.create_task(
-        _run_pdf_generation(report_id, user_id, base_dir, force)
-    )
+    _kick_pdf_generation(report_id, user_id, base_dir, force)
 
     return {"report_id": report_id, "status": "generating", "review_status": REVIEW_STATUS_APPROVED}
 
@@ -342,7 +393,7 @@ async def get_report_pdf_status(
     # 审核阻塞：pending_review 时 HTTP 200 返回审核中状态
     blocked = _review_block_payload(report_id, base_dir, current_user)
     if blocked is not None:
-        return {"report_id": report_id, "status": "pending_review", **blocked}
+        return {"report_id": report_id, "status": blocked["review_status"], **blocked}
 
     task = _pdf_tasks.get(report_id)
     if not task:

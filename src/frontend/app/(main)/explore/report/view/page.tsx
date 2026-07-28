@@ -65,6 +65,7 @@ export default function ReportViewPage() {
   const displayError = fetchError || pdfError;
 
   const isPendingReview = reportInfo?.review_status === 'pending_review';
+  const isNotStarted = reportInfo?.review_status === 'not_started';
 
   const reviewDeadlineText = useMemo(() => {
     if (!reportInfo?.review_deadline) return null;
@@ -122,6 +123,46 @@ export default function ReportViewPage() {
               <p className="text-sm font-medium text-bd-fg">{reviewDeadlineText}</p>
             </div>
           )}
+
+          <button
+            type="button"
+            onClick={() => router.push('/')}
+            className="text-sm text-bd-subtle hover:text-bd-muted transition-colors underline underline-offset-4"
+          >
+            {t('explore.report.backHome')}
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // 五阶段未完成：报告尚未解锁（完成五阶段后首次进入本页即开始审核计时）
+  if (isNotStarted) {
+    return (
+      <div className="min-h-screen bg-bd-gradient text-bd-fg flex items-center justify-center px-4 py-12">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+          className="max-w-lg w-full text-center space-y-8"
+        >
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="flex items-center gap-2 text-sm text-bd-subtle hover:text-bd-muted transition-colors"
+          >
+            <ChevronLeft size={16} />
+            {t('explore.report.back')}
+          </button>
+
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-bd-overlay-md border-2 border-bd-border">
+            <FileText className="w-7 h-7 text-bd-subtle" />
+          </div>
+
+          <div className="space-y-3">
+            <h1 className="text-3xl font-bold">{t('explore.report.reviewNotStartedTitle')}</h1>
+            <p className="text-bd-muted leading-relaxed">{t('explore.report.reviewNotStartedDesc')}</p>
+          </div>
 
           <button
             type="button"

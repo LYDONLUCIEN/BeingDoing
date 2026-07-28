@@ -124,8 +124,8 @@ class ApiClient {
           if (!isAuthRequest && typeof window !== 'undefined') {
             this.clearTokens();
             useAuthStore.getState().logout();
-            // 会话失效后重新登录：回到当前页面
-            emitAuthRequired(window.location.pathname || '/');
+            // 会话失效：退回首页重新登录（受保护页面由 AuthGate 监听登录态自动跳回首页）
+            emitAuthRequired('/');
           }
         }
         return Promise.reject(error);
