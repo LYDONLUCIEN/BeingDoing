@@ -349,11 +349,11 @@ async def admin_reply_feedback(
         raise LookupError("反馈不存在")
 
     type_label = REPLY_TYPE_LABEL.get(feedback.type, feedback.type)
-    subject = f"【寻路】关于您的「{type_label}」反馈的回复"
+    subject = f"【寻路·LifeAsk】关于您的「{type_label}」反馈的回复"
     body = (
         f"您好，\n\n"
         f"{content}\n\n"
-        f"—— 寻路团队\n\n"
+        f"—— 寻路·LifeAsk 团队\n\n"
         f"----------\n"
         f"附：您的原始反馈\n"
         f"{feedback.content[:500]}"

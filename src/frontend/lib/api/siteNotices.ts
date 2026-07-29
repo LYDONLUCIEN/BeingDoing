@@ -117,14 +117,14 @@ export interface MaintenanceStatus {
 /**
  * 按当前域名自动判断环境，决定 maintenance.sh 走 .env.dev 还是 .env.prod
  *   - career.*（career.soulhappylab.com / career.beyondego.me）→ dev
- *   - xunlu.*（xunlu.soulhappylab.com / xunlu.beyondego.me）→ prod
+ *   - lifeask.*（lifeask.soulhappylab.com / lifeask.beyondego.me）→ prod
  *   - 兜底：localhost/127/IP → dev，其他 → prod
  */
 function detectEnvFromHost(): 'dev' | 'prod' {
   if (typeof window === 'undefined') return 'prod'; // SSR 兜底
   const host = window.location.hostname;
   if (host.startsWith('career.')) return 'dev';
-  if (host.startsWith('xunlu.')) return 'prod';
+  if (host.startsWith('lifeask.')) return 'prod';
   if (host === 'localhost' || host === '127.0.0.1' || /^\d+\.\d+\.\d+\.\d+$/.test(host)) return 'dev';
   return 'prod';
 }

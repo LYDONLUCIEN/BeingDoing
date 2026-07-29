@@ -452,7 +452,7 @@ async def download_report_pdf(
         raise HTTPException(status_code=409, detail="报告缓存已失效，请重新生成")
 
     try:
-        pdf_bytes = service.markdown_to_pdf_bytes(markdown_text)
+        pdf_bytes = service.markdown_to_pdf_bytes(markdown_text, report_id=report_id)
     except Exception as e:
         logger.exception("PDF 转换失败: report_id=%s", report_id)
         raise HTTPException(status_code=500, detail=f"PDF 转换失败: {e}")

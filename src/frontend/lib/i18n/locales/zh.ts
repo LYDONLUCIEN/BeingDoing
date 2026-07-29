@@ -21,7 +21,7 @@ export const zh = {
     startExploreArrow: '开始探索 →',
   },
   nav: {
-    brand: '寻路',
+    brand: '寻路·LifeAsk',
     home: '首页',
     personalHomepage: '个人空间',
     uploadAvatar: '上传头像',
@@ -35,8 +35,8 @@ export const zh = {
     logoutUserTemplate: '退出（{name}）',
   },
   home: {
-    tagline: '寻路',
-    heroTitle: '寻路',
+    tagline: '寻路·LifeAsk',
+    heroTitle: '寻路·LifeAsk',
     heroSlogan: '所有热爱,都值得成为事业。',
     dimensionsTitle: '探索维度',
     dimensionsHeading: '向内寻找答案',
@@ -186,6 +186,7 @@ export const zh = {
       mission: '使命',
       missionQ: '你想为谁而做？',
       buyCta: '没有激活码？去购买',
+      findCodeHint: '忘记激活码？点击右上角头像，在「个人空间 → 我的激活码」中查看。',
       expiredGuide: '激活码已过期，当前仅可查看历史记录。可购买新的激活码继续探索；如需续期，请联系管理员。',
     },
     survey: {
@@ -194,7 +195,7 @@ export const zh = {
       submitLabel: '提交并开始探索',
       privacyTitle: '在开始之前，想先跟你说明',
       privacyBody:
-        '我们承诺：\n\n· 你的信息仅用于优化寻路给你的探索结果，让方向更贴合你的真实情况——不会用于商业营销，不会出售给任何第三方。\n· 所有内容仅你可见，你可以随时修改或删除。\n\n这份背景信息是选填的——你可以现在填、稍后再补，也可以直接跳过。但提供得越完整，我们越能给你更有针对性的反馈。\n\n无论如何选择，都不会影响你使用寻路。',
+        '我们承诺：\n\n· 你的信息仅用于优化寻路·LifeAsk 给你的探索结果，让方向更贴合你的真实情况——不会用于商业营销，不会出售给任何第三方。\n· 所有内容仅你可见，你可以随时修改或删除。\n\n这份背景信息是选填的——你可以现在填、稍后再补，也可以直接跳过。但提供得越完整，我们越能给你更有针对性的反馈。\n\n无论如何选择，都不会影响你使用寻路·LifeAsk。',
       privacyContinue: '我知道了，开始填写',
       privacyDontRemind: '不再提醒',
     },
@@ -722,7 +723,7 @@ export const zh = {
     termsOfService: '服务条款',
     privacyBody: privacyPolicyZh,
     termsBody: termsOfServiceZh,
-    copyright: '© {year} 寻路. 保留所有权利。',
+    copyright: '© {year} 寻路·LifeAsk. 保留所有权利。',
   },
   admin: {
     title: '管理后台',

@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import random
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,9 +39,14 @@ logger = logging.getLogger(__name__)
 # 静态资源路径
 _STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 _WATERMARK_LOGO = _STATIC_DIR / "assets" / "watermark_logo.png"
-_PAGE_LOGO_HEADER = _STATIC_DIR / "assets" / "xunlulogo_header.png"  # 页眉右上角小 logo
-_PAGE_LOGO_FOOTER = _STATIC_DIR / "assets" / "xunlulogo_footer.png"  # 页脚正中心 logo
+_PAGE_LOGO_HEADER = _STATIC_DIR / "assets" / "lifeasklogo_header.png"  # 页眉右上角小 logo
+_PAGE_LOGO_FOOTER = _STATIC_DIR / "assets" / "lifeasklogo_footer.png"  # 页脚正中心 logo
 _REPORT_CSS = _STATIC_DIR / "styles" / "report_pdf.css"
+
+# 报告落款签名（ADR-0012 品牌更名后新增）：首次生成随机分配，持久化到 record.json 的
+# report_signature 字段，保证同一报告再生成时签名不变
+_SIGNATURE_CHOICES = ("signature_1", "signature_2", "signature_3")
+_SIGNATURE_SUFFIX = ".png"
 
 # 缓存文件名
 _REPORT_MARKDOWN_FILENAME = "report_markdown.md"
@@ -91,7 +97,7 @@ class ReportPdfService:
             cached = self._load_cached_markdown(report_id)
             if cached is not None:
                 logger.info("report_pdf 缓存命中: report_id=%s", report_id)
-                return self._markdown_to_pdf(cached)
+                return self._markdown_to_pdf(cached, report_id=report_id)
 
         # 2. 收集数据
         report_md = await self._generate_report_markdown(
@@ -102,7 +108,7 @@ class ReportPdfService:
         self._save_cached_markdown(report_id, report_md)
 
         # 4. 转 PDF
-        return self._markdown_to_pdf(report_md)
+        return self._markdown_to_pdf(report_md, report_id=report_id)
 
     # ── 异步生成支持（拆分为 markdown 生成 + PDF 转换）─────────
 
@@ -141,15 +147,15 @@ class ReportPdfService:
         """读取缓存的 markdown（公开接口）。"""
         return self._load_cached_markdown(report_id)
 
-    def markdown_to_pdf_bytes(self, markdown_text: str) -> bytes:
-        """将 markdown 转为 PDF bytes（公开接口）。"""
-        return self._markdown_to_pdf(markdown_text)
+    def markdown_to_pdf_bytes(self, markdown_text: str, report_id: Optional[str] = None) -> bytes:
+        """将 markdown 转为 PDF bytes（公开接口）。report_id 用于读取/分配落款签名。"""
+        return self._markdown_to_pdf(markdown_text, report_id=report_id)
 
     def get_report_filename(self, record: dict) -> str:
         """根据 record 生成 PDF 文件名。"""
         user_id = (record.get("user_id") or "user").strip()
         date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
-        return f"寻路报告_{user_id}_{date_str}.pdf"
+        return f"寻路·LifeAsk报告_{user_id}_{date_str}.pdf"
 
     # ── 数据收集 ──────────────────────────────────────────────
 
@@ -458,9 +464,50 @@ class ReportPdfService:
     def _markdown_path(self, report_id: str) -> Path:
         return self.reports_root / report_id / _REPORT_MARKDOWN_FILENAME
 
+    # ── 落款签名 ─────────────────────────────────────────────
+
+    def _get_or_assign_signature(self, report_id: str) -> Optional[str]:
+        """读取 record.json 的 report_signature；缺失/非法时随机分配并持久化。
+
+        保证同一报告多次生成 PDF 使用同一签名。异常时返回 None（不阻塞出报告）。
+        """
+        try:
+            registry = ReportRegistry(base_dir=str(self.simple_base_dir))
+            record = registry.get_report_by_id(report_id)
+            if not record:
+                return None
+            sig = record.get("report_signature")
+            if sig not in _SIGNATURE_CHOICES:
+                sig = random.choice(_SIGNATURE_CHOICES)
+                record["report_signature"] = sig
+                registry.save_record(record)
+                logger.info("报告落款签名分配: report_id=%s signature=%s", report_id, sig)
+            return sig
+        except Exception:
+            logger.exception("报告落款签名读取/分配失败: report_id=%s", report_id)
+            return None
+
+    def _signature_block_html(self, report_id: Optional[str]) -> str:
+        """报告末尾的落款签名区块；无 report_id 或签名图缺失时返回空串。"""
+        if not report_id:
+            return ""
+        sig = self._get_or_assign_signature(report_id)
+        if not sig:
+            return ""
+        sig_path = _STATIC_DIR / "assets" / f"{sig}{_SIGNATURE_SUFFIX}"
+        data_uri = _image_data_uri(sig_path)
+        if not data_uri:
+            return ""
+        return (
+            '<div class="report-signature">'
+            '<div class="signature-label">—— 你的寻路·LifeAsk 探索引导师</div>'
+            f'<img class="signature-img" src="{data_uri}" alt="引导师签名" />'
+            "</div>"
+        )
+
     # ── PDF 生成 ─────────────────────────────────────────────
 
-    def _markdown_to_pdf(self, markdown_text: str) -> bytes:
+    def _markdown_to_pdf(self, markdown_text: str, report_id: Optional[str] = None) -> bytes:
         """markdown → HTML → PDF（含水印），返回 bytes。"""
         from weasyprint import HTML
 
@@ -485,15 +532,14 @@ class ReportPdfService:
             logo_b64 = base64.b64encode(logo_bytes).decode("ascii")
 
         # 4. 构建水印 HTML（上中下 3 条斜 45 度水印带，覆盖整页）
-        strip_img = (
-            f'<img src="data:image/png;base64,{logo_b64}" alt="logo" />' if logo_b64 else ""
+        #    水印图本身含品牌文字；图缺失时退化为纯文字水印
+        strip_content = (
+            f'<img src="data:image/png;base64,{logo_b64}" alt="logo" />'
+            if logo_b64
+            else '<div class="watermark-text">寻路·LifeAsk</div>'
         )
         watermark_strips = "".join(
-            f'<div class="watermark-strip strip-{i}">'
-            f"{strip_img}"
-            f'<div class="watermark-text">xunlu 寻路 × xunlu 寻路</div>'
-            f"</div>"
-            for i in (1, 2, 3)
+            f'<div class="watermark-strip strip-{i}">{strip_content}</div>' for i in (1, 2, 3)
         )
         watermark_html = f'<div class="watermark-layer">{watermark_strips}</div>'
 
@@ -511,9 +557,9 @@ class ReportPdfService:
 
 <!-- 封面 -->
 <div class="cover">
-  <div class="cover-title">寻路报告</div>
+  <div class="cover-title">寻路·LifeAsk 报告</div>
   <div class="cover-divider"></div>
-  <div class="cover-subtitle">XUNLU</div>
+  <div class="cover-subtitle">LIFEASK</div>
   <div class="cover-info">
     不是找到方向，而是认出自己<br/>
     <br/>
@@ -524,6 +570,7 @@ class ReportPdfService:
 <!-- 正文 -->
 <div class="content">
 {html_body}
+{self._signature_block_html(report_id)}
 </div>
 </body>
 </html>"""

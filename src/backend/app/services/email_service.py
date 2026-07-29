@@ -15,10 +15,10 @@ class EmailService:
 
     @staticmethod
     async def send_password_reset_code(to_email: str, code: str, valid_minutes: int = 5) -> None:
-        subject = "【寻路】密码重置验证码"
+        subject = "【寻路·LifeAsk】密码重置验证码"
         body = (
             f"您好，\n\n"
-            f"您正在重置寻路账号密码。\n"
+            f"您正在重置寻路·LifeAsk账号密码。\n"
             f"本次验证码为：{code}\n"
             f"有效期：{valid_minutes} 分钟。\n\n"
             f"如果这不是您的操作，请忽略本邮件。\n"
@@ -29,10 +29,10 @@ class EmailService:
     async def send_account_recovery_code(
         to_email: str, code: str, valid_minutes: int = 5
     ) -> None:
-        subject = "【寻路】账号恢复验证码"
+        subject = "【寻路·LifeAsk】账号恢复验证码"
         body = (
             f"您好，\n\n"
-            f"您正在恢复已注销的寻路账号。\n"
+            f"您正在恢复已注销的寻路·LifeAsk账号。\n"
             f"本次验证码为：{code}\n"
             f"有效期：{valid_minutes} 分钟。\n\n"
             f"如果这不是您的操作，请忽略本邮件。\n"
@@ -43,10 +43,10 @@ class EmailService:
     async def send_email_verification(to_email: str, token: str) -> None:
         base_url = settings.FRONTEND_URL.rstrip("/")
         link = f"{base_url}/verify-email?token={token}"
-        subject = "【寻路】邮箱验证"
+        subject = "【寻路·LifeAsk】邮箱验证"
         body = (
             f"您好，\n\n"
-            f"感谢您注册寻路！请点击以下链接验证您的邮箱：\n\n"
+            f"感谢您注册寻路·LifeAsk！请点击以下链接验证您的邮箱：\n\n"
             f"{link}\n\n"
             f"链接 24 小时内有效。如果这不是您的操作，请忽略本邮件。\n"
         )
@@ -54,7 +54,7 @@ class EmailService:
         body_html = (
             "<html><body style=\"font-family: sans-serif; line-height: 1.6; color: #333;\">"
             "<p>您好，</p>"
-            "<p>感谢您注册寻路！请点击下方按钮验证您的邮箱：</p>"
+            "<p>感谢您注册寻路·LifeAsk！请点击下方按钮验证您的邮箱：</p>"
             f"<p><a href=\"{link}\" style=\"display: inline-block; padding: 10px 24px; "
             "background-color: #4F46E5; color: #ffffff; text-decoration: none; "
             "border-radius: 6px;\">验证邮箱</a></p>"
@@ -82,7 +82,7 @@ class EmailService:
             raise ValueError(f"邮件服务未配置完整：缺少 {', '.join(missing)}")
 
         from_email = settings.SMTP_FROM_EMAIL or settings.SMTP_USER
-        from_name = settings.SMTP_FROM_NAME or "xunlu"
+        from_name = settings.SMTP_FROM_NAME or "LifeAsk"
 
         msg = EmailMessage()
         msg["Subject"] = subject

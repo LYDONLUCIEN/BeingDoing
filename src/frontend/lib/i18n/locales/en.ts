@@ -23,7 +23,7 @@ export const en = {
   },
 
   nav: {
-    brand: 'xunlu',
+    brand: 'LifeAsk',
     home: 'Home',
     personalHomepage: 'Dashboard',
     uploadAvatar: 'Upload Avatar',
@@ -38,8 +38,8 @@ export const en = {
   },
 
   home: {
-    tagline: 'xunlu',
-    heroTitle: 'xunlu',
+    tagline: 'LifeAsk',
+    heroTitle: 'LifeAsk',
     heroSlogan: 'All interests deserve to be careers.',
     dimensionsTitle: 'Explore Dimensions',
     dimensionsHeading: 'Look inward for answers',
@@ -191,6 +191,7 @@ export const en = {
       mission: 'Purpose',
       missionQ: 'Who do you want to serve?',
       buyCta: 'No activation code? Buy one',
+      findCodeHint: 'Forgot your code? Click your avatar at the top right and find it under "Personal Space → My Codes".',
       expiredGuide: 'This activation code has expired and only history is available. Purchase a new code to continue exploring, or contact the admin to renew.',
     },
     survey: {
@@ -199,7 +200,7 @@ export const en = {
       submitLabel: 'Submit & Start Exploring',
       privacyTitle: 'Before we begin, a quick note',
       privacyBody:
-        'Our promise:\n\n· Your information is used only to improve the results Xunlu gives you — to make the direction fit your real situation. It will never be used for marketing or sold to any third party.\n· Everything stays visible only to you. You can edit or delete it anytime.\n\nThis background info is optional — fill it in now, add more later, or skip it entirely. But the more complete it is, the more targeted our feedback can be.\n\nWhatever you choose, it will not affect your ability to use Xunlu.',
+        'Our promise:\n\n· Your information is used only to improve the results LifeAsk gives you — to make the direction fit your real situation. It will never be used for marketing or sold to any third party.\n· Everything stays visible only to you. You can edit or delete it anytime.\n\nThis background info is optional — fill it in now, add more later, or skip it entirely. But the more complete it is, the more targeted our feedback can be.\n\nWhatever you choose, it will not affect your ability to use LifeAsk.',
       privacyContinue: 'Got it, start filling in',
       privacyDontRemind: "Don't remind me again",
     },
@@ -729,7 +730,7 @@ export const en = {
     termsOfService: 'Terms of Service',
     privacyBody: privacyPolicyEn,
     termsBody: termsOfServiceEn,
-    copyright: '© {year} xunlu. All rights reserved.',
+    copyright: '© {year} LifeAsk. All rights reserved.',
   },
   admin: {
     title: 'Admin',

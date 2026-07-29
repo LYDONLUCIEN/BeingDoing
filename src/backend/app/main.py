@@ -72,7 +72,7 @@ for noisy in (
     logging.getLogger(noisy).setLevel(logging.WARNING)
 
 app = FastAPI(
-    title="寻路 - 智能引导系统",
+    title="寻路·LifeAsk - 智能引导系统",
     description="一个沉浸式的智能引导系统，帮助用户找到真正想做的事",
     version="1.0.0",
     debug=settings.DEBUG,
@@ -88,15 +88,15 @@ app.add_middleware(
         "http://60.205.194.159:3000",
         "https://career.soulhappylab.com",
         "http://career.soulhappylab.com",
-        "https://xunlu.soulhappylab.com",
-        "http://xunlu.soulhappylab.com",
+        "https://lifeask.soulhappylab.com",
+        "http://lifeask.soulhappylab.com",
         "https://admin.soulhappylab.com",
         "http://admin.soulhappylab.com",
         # 双域名并存：beyondego.me 与 soulhappylab.com 同时可用
         "https://career.beyondego.me",
         "http://career.beyondego.me",
-        "https://xunlu.beyondego.me",
-        "http://xunlu.beyondego.me",
+        "https://lifeask.beyondego.me",
+        "http://lifeask.beyondego.me",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -408,7 +408,7 @@ async def _stop_bounce_scan_scheduler():
 @app.get("/")
 async def root():
     """根路径"""
-    return {"message": "寻路 - 智能引导系统 API", "version": "1.0.0"}
+    return {"message": "寻路·LifeAsk - 智能引导系统 API", "version": "1.0.0"}
 
 
 @app.get("/health")

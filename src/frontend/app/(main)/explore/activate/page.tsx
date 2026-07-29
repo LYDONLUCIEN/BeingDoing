@@ -22,6 +22,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { fetchAdminSystemSettings } from '@/lib/api/admin';
 import { useLocale } from '@/hooks/useLocale';
 import { authApi } from '@/lib/api/auth';
+import { listMyCodes } from '@/lib/api/activation';
 import PurchaseModal from '@/components/payment/PurchaseModal';
 
 function useActivateBg() {
@@ -68,8 +69,28 @@ function ActivatePageContent() {
       return;
     }
     const last = getLastActivationCode();
-    if (last) setCode(last);
-  }, [searchParams]);
+    if (last) {
+      setCode(last);
+      return;
+    }
+    // 新注册用户：若名下已有激活码（如注册赠送的免费试用码），自动预填
+    if (!isAuthenticated) return;
+    let cancelled = false;
+    listMyCodes()
+      .then((items) => {
+        if (cancelled) return;
+        const active = items.filter((it) => it.status === 'active');
+        const preferred = active.find((it) => it.code_type === 'trial') ?? active[0];
+        if (preferred?.code) {
+          // 不覆盖用户已手动输入的内容
+          setCode((prev) => (prev.trim() ? prev : preferred.code));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, isAuthenticated]);
 
   useEffect(() => {
     const trimmed = code.trim();
@@ -270,6 +291,9 @@ function ActivatePageContent() {
               borderColor: 'var(--bd-border)',
             }}
           />
+          <p className="text-xs text-bd-subtle leading-relaxed">
+            {t('explore.activate.findCodeHint')}
+          </p>
           {error && <p className="text-sm text-bd-err">{error}</p>}
           <button
             type="button"

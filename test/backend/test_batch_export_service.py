@@ -137,7 +137,7 @@ async def test_collect_report_export_5_phases_md(
     for i, sid in enumerate(STEP_IDS, start=1):
         label = PHASE_LABEL_CN[sid]
         assert f"## {i}. {label}（{sid}）" in md_text
-    assert "# 寻路探索报告 - rpt-full-5" in md_text
+    assert "# 寻路·LifeAsk 探索报告 - rpt-full-5" in md_text
     assert "用户ID: user-test" in md_text
 
     # 找 5 个 raw json

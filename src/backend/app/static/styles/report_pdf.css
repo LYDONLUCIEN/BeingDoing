@@ -1,4 +1,4 @@
-/* 寻路 PDF 报告样式 — WeasyPrint */
+/* 寻路·LifeAsk PDF 报告样式 — WeasyPrint */
 
 /* 字体：使用系统已有的 Noto 系列 */
 body {
@@ -122,8 +122,8 @@ hr {
 }
 
 /* ── 页眉页脚（@page 边距盒）──
-   页眉右上角：寻路 logo（每页）
-   页脚正中心：寻路 logo（每页）；页码移至左下角；右下角保留 AI 声明
+   页眉右上角：寻路·LifeAsk logo（每页）
+   页脚正中心：寻路·LifeAsk logo（每页）；页码移至左下角；右下角保留 AI 声明
    __PAGE_LOGO_HEADER_URL__ / __PAGE_LOGO_FOOTER_URL__ 由后端渲染时替换为 data URI */
 @page {
   size: A4;
@@ -186,7 +186,7 @@ hr {
   margin-left: -500px; /* 水平居中（WeasyPrint 不支持 translate 百分比组合） */
   text-align: center;
   transform: rotate(-45deg);
-  opacity: 0.055;
+  opacity: 0.5; /* 水印图本身已是浅灰字，不再需要极低透明度 */
   white-space: nowrap;
 }
 
@@ -195,9 +195,8 @@ hr {
 .watermark-strip.strip-3 { top: 81%; }
 
 .watermark-strip img {
-  width: 64px;
+  width: 320px; /* 水印图为「寻路 · LifeAsk」横版文字带 */
   height: auto;
-  margin-bottom: 6px;
 }
 
 .watermark-text {
@@ -206,4 +205,22 @@ hr {
   color: #333;
   letter-spacing: 10px;
   white-space: nowrap;
+}
+
+/* ── 报告末尾落款签名 ── */
+.report-signature {
+  text-align: right;
+  margin-top: 48px;
+  padding-right: 12px;
+}
+
+.signature-label {
+  font-size: 10pt;
+  color: #999;
+  margin-bottom: 6px;
+}
+
+.signature-img {
+  width: 150px;
+  height: auto;
 }

@@ -37,3 +37,4 @@
 - 代码改动集中在：前端 i18n 四文件（`zh/en/legal.zh/legal.en.ts`）、`app/layout.tsx`、`maintenance.html`、`report_pdf_service.py`（封面/水印/文件名/logo 引用）、`batch_export_service.py`、邮件三服务（`email_service.py` / `payment_service.py` / `feedback_service.py`）、`settings.py` 默认值、`main.py`（title/CORS）、`siteNotices.ts`（prod 域名判定）、提示词（`report_system.yaml` / `rumination_v4_prompt.py`）。
 - 运维配套（1panel/nginx）：新建 lifeask 站点 + TLS、xunlu 站改 301、维护页目录迁移（`/opt/1panel/www/sites/xunlu/` → `.../lifeask/`）并同步 `.env.prod` 的 `MAINTENANCE_FLAG_PATH` / `MAINTENANCE_PAGE_DIR`、支付宝平台回调域变更。
 - 切流窗口内已发出的含旧域名链接的邮件（验证/重置类，短时有效）可能失效，可接受；激活码邮件为长效内容但链接均由 `FRONTEND_URL` 生成，切流后新发邮件即新域名。
+- 随本次更名同步上线「落款签名」（CONTEXT.md：Report Signature）：PDF 报告末尾随机分配一张引导师签名图并持久化到 `record.json` 的 `report_signature` 字段，保证同一报告再生成签名不变。
