@@ -3,7 +3,9 @@
 """
 
 import hashlib
+import logging
 import random
+import smtplib
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
@@ -17,6 +19,27 @@ from app.core.database import UserDB
 from app.models.database import AsyncSessionLocal, engine
 from app.models.refresh_token import RefreshToken
 from app.services.email_service import EmailService
+
+logger = logging.getLogger(__name__)
+
+
+def _friendly_email_send_error(exc: Exception, scene: str) -> ValueError:
+    """把 SMTP 发送异常翻译成用户可读的 ValueError（接口统一转为 400）。
+
+    550（收件人不存在/被服务器拒收）单独提示并引导联系管理员；
+    其余 SMTP/网络故障提示稍后重试。真实异常只记日志，不暴露给用户。
+    """
+    refused = isinstance(exc, smtplib.SMTPRecipientsRefused) or (
+        isinstance(exc, smtplib.SMTPResponseException) and exc.smtp_code == 550
+    )
+    if refused:
+        logger.warning("%s邮件被邮箱服务器拒收(550): %s", scene, exc)
+        return ValueError(
+            f"{scene}邮件被邮箱服务器拒收（该邮箱可能不存在或已失效），"
+            "无法通过邮箱完成操作，请联系管理员协助处理"
+        )
+    logger.exception("%s邮件发送失败: %s", scene, exc)
+    return ValueError(f"{scene}邮件发送失败，请稍后重试；若多次失败请联系管理员协助")
 
 # 密码加密上下文
 # 说明：
@@ -416,11 +439,14 @@ class AuthService:
         code = f"{random.randint(0, 999999):06d}"
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
         # 通过 SMTP 发送邮件，发送成功后再写入本次验证码记录
-        await EmailService.send_password_reset_code(
-            to_email=email,
-            code=code,
-            valid_minutes=5,
-        )
+        try:
+            await EmailService.send_password_reset_code(
+                to_email=email,
+                code=code,
+                valid_minutes=5,
+            )
+        except Exception as e:
+            raise _friendly_email_send_error(e, "密码重置") from e
         _password_reset_email_codes[email] = {
             "code": code,
             "expires_at": expires_at,
@@ -599,7 +625,10 @@ class AuthService:
         token = AuthService.create_email_verify_token(
             data={"sub": user.id, "email": email},
         )
-        await EmailService.send_email_verification(to_email=email, token=token)
+        try:
+            await EmailService.send_email_verification(to_email=email, token=token)
+        except Exception as e:
+            raise _friendly_email_send_error(e, "验证") from e
         _email_verify_cooldowns[email] = datetime.now(timezone.utc)
 
     @staticmethod
@@ -869,11 +898,14 @@ class AuthService:
         # 生成 6 位数字验证码（最新发送覆盖旧验证码），发送成功后才写入
         code = f"{random.randint(0, 999999):06d}"
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
-        await EmailService.send_account_recovery_code(
-            to_email=email,
-            code=code,
-            valid_minutes=5,
-        )
+        try:
+            await EmailService.send_account_recovery_code(
+                to_email=email,
+                code=code,
+                valid_minutes=5,
+            )
+        except Exception as e:
+            raise _friendly_email_send_error(e, "恢复") from e
         _account_recovery_codes[email] = {
             "code": code,
             "expires_at": expires_at,
@@ -901,6 +933,14 @@ class AuthService:
             user = await user_db.get_user_by_id(user_id)
             if not user or not getattr(user, "deleted_at", None):
                 raise ValueError("账户状态异常")
+            # 显式恢复期判断：超过 deletion_purge_after 即拒绝自助恢复
+            # （admin 恢复不受此限，只要 users 行未被物理清除即可兜底）
+            purge_after = getattr(user, "deletion_purge_after", None)
+            if purge_after:
+                if purge_after.tzinfo is None:
+                    purge_after = purge_after.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) > purge_after:
+                    raise ValueError("已超过账户恢复期，无法自助恢复，请联系管理员协助处理")
             email = _normalize_email(user.email)
 
         record = _account_recovery_codes.get(email)

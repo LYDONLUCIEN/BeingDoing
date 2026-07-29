@@ -8,6 +8,10 @@
 3. 恢复流程：发码 → 错误码 400 → 正确码恢复 → is_active=True、可正常访问
 4. purge：过期用户被物理清除（DB 行 + 用户目录 + activations.json 条目），
    审计 jsonl 有 purged 记录
+5. 超过 purge_after 后自助恢复被显式拒绝（提示联系管理员）
+6. admin 恢复：清注销标记 + is_active=True + 审计 by_admin + 通知邮件；
+   不受 30 天限制；PATCH status 对已注销用户启用被 400 拦截；
+   列表 deleted 筛选三态互斥
 
 使用独立 in-memory SQLite + monkeypatch 替换各模块的 AsyncSessionLocal；
 data 目录与激活码管理器指向 tmp_path，邮件 mock，不污染真实数据。
@@ -25,6 +29,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config.settings import settings
 from app.main import app
+from app.api.v1 import admin as admin_mod
 from app.models.database import Base
 from app.models.feedback import Feedback
 from app.models.refresh_token import RefreshToken
@@ -34,6 +39,7 @@ from app.services import auth_service as as_mod
 from app.services import payment_service as ps_mod
 from app.services.account_deletion_service import AccountDeletionService
 from app.services.auth_service import AuthService
+from app.services.email_service import EmailService
 from app.utils.simple_activation_manager import ActivationRecord, SimpleActivationManager
 
 # ─── 测试专用引擎 + 会话工厂 ──────────────────────────────────
@@ -370,3 +376,247 @@ async def test_purge_expired_account(_setup):
     assert len(purged_events) == 1
     assert purged_events[0]["user_id"] == purge_user_id
     assert purged_events[0]["email"] == purge_email
+
+
+# ─── 场景 5：超过 purge_after 自助恢复被显式拒绝 ────────────────
+
+
+async def test_recovery_expired_purge_after_rejected():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await _delete_account(client)
+
+        # 手动把 purge_after 改到过去（模拟 purge 任务尚未跑到的过期账户）
+        async with _TestSessionLocal() as db:
+            user = (await db.execute(select(User).where(User.id == USER_ID))).scalar_one()
+            user.deletion_purge_after = datetime.now(timezone.utc) - timedelta(days=1)
+            await db.commit()
+
+        # 登录仍可拿受限 token（login 不卡恢复期）
+        res_login = await client.post(
+            "/api/v1/auth/login",
+            json={"email": EMAIL, "password": PASSWORD},
+        )
+        restricted_token = res_login.json()["data"]["token"]
+
+        await client.post(
+            "/api/v1/auth/account/recovery/code",
+            headers=_auth_headers(restricted_token),
+        )
+        record = as_mod._account_recovery_codes.get(EMAIL)
+        assert record is not None
+
+        # 显式 30 天判断：拒绝自助恢复并提示联系管理员
+        res = await client.post(
+            "/api/v1/auth/account/recovery/confirm",
+            json={"code": record["code"]},
+            headers=_auth_headers(restricted_token),
+        )
+        assert res.status_code == 400
+        assert "已超过账户恢复期" in res.json()["detail"]
+
+        # 状态未被改动
+        user = await _get_user()
+        assert user.deleted_at is not None
+        assert user.is_active is False
+
+
+# ─── 场景 6：admin 恢复 / PATCH 拦截 / 列表筛选 ─────────────────
+
+ADMIN_ID = "admin-1"
+ADMIN_EMAIL = "admin@test.com"
+
+
+async def _make_admin(monkeypatch) -> str:
+    """创建超管用户并返回其 access token"""
+    monkeypatch.setattr(settings, "SUPER_ADMIN_USER_IDS", ADMIN_ID)
+    # admin 路由使用自己的模块级 AsyncSessionLocal
+    monkeypatch.setattr(admin_mod, "AsyncSessionLocal", _TestSessionLocal)
+    async with _TestSessionLocal() as db:
+        db.add(
+            User(
+                id=ADMIN_ID,
+                email=ADMIN_EMAIL,
+                username="admin",
+                password_hash="x",
+                is_active=True,
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+        await db.commit()
+    return AuthService.create_access_token({"sub": ADMIN_ID, "email": ADMIN_EMAIL})
+
+
+async def test_admin_restore_deletion(monkeypatch, _setup):
+    data_dir = _setup["data_dir"]
+    admin_token = await _make_admin(monkeypatch)
+    notify_mock = AsyncMock(return_value=None)
+    monkeypatch.setattr(EmailService, "send_account_restored_notice", notify_mock)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await _delete_account(client)
+
+        # 未注销状态恢复 → 400（先对正常 admin 用户验证）
+        res = await client.post(
+            f"/api/v1/admin/users/{ADMIN_ID}/restore-deletion",
+            json={"notify": False},
+            headers=_auth_headers(admin_token),
+        )
+        assert res.status_code == 400
+
+        # 非超管 → 403（用一个正常的活跃用户 token）
+        async with _TestSessionLocal() as db:
+            db.add(
+                User(
+                    id="user-normal-1",
+                    email="normal@test.com",
+                    username="normal",
+                    password_hash="x",
+                    is_active=True,
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
+            await db.commit()
+        normal_token = AuthService.create_access_token(
+            {"sub": "user-normal-1", "email": "normal@test.com"}
+        )
+        res = await client.post(
+            f"/api/v1/admin/users/{USER_ID}/restore-deletion",
+            json={"notify": True},
+            headers=_auth_headers(normal_token),
+        )
+        assert res.status_code == 403
+
+        # 超管恢复（即使 purge_after 已过期也可救回）
+        async with _TestSessionLocal() as db:
+            user = (await db.execute(select(User).where(User.id == USER_ID))).scalar_one()
+            user.deletion_purge_after = datetime.now(timezone.utc) - timedelta(days=1)
+            await db.commit()
+
+        res = await client.post(
+            f"/api/v1/admin/users/{USER_ID}/restore-deletion",
+            json={"notify": True},
+            headers=_auth_headers(admin_token),
+        )
+        assert res.status_code == 200
+        data = res.json()["data"]
+        assert data["is_active"] is True
+        assert data["notified"] is True
+        notify_mock.assert_awaited_once_with(EMAIL)
+
+        # DB 状态还原
+        user = await _get_user()
+        assert user.is_active is True
+        assert user.deleted_at is None
+        assert user.deletion_purge_after is None
+
+        # 审计含 by_admin 标记
+        audit_file = data_dir / "account_deletion_audit.jsonl"
+        events = [
+            json.loads(line)
+            for line in audit_file.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        recovered = [e for e in events if e.get("event") == "recovered"]
+        assert len(recovered) == 1
+        assert recovered[0]["detail"]["by_admin"] is True
+        assert recovered[0]["detail"]["admin_id"] == ADMIN_ID
+
+
+async def test_admin_patch_status_enable_deleted_user_400(monkeypatch):
+    admin_token = await _make_admin(monkeypatch)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await _delete_account(client)
+
+        # 对已注销用户直接「启用」→ 400 拦截引导
+        res = await client.patch(
+            f"/api/v1/admin/users/{USER_ID}/status",
+            json={"is_active": True},
+            headers=_auth_headers(admin_token),
+        )
+        assert res.status_code == 400
+        assert "恢复注销账户" in res.json()["detail"]
+
+        # 状态未被改动
+        user = await _get_user()
+        assert user.is_active is False
+        assert user.deleted_at is not None
+
+
+async def test_admin_list_users_deleted_filter(monkeypatch, _setup):
+    simple_dir = _setup["simple_dir"]
+    admin_token = await _make_admin(monkeypatch)
+    # 避免 list 端点读取真实激活码目录
+    monkeypatch.setattr(
+        admin_mod,
+        "SimpleActivationManager",
+        lambda: SimpleActivationManager(base_dir=str(simple_dir)),
+    )
+
+    # 再建一个「admin 禁用但未注销」用户
+    async with _TestSessionLocal() as db:
+        db.add(
+            User(
+                id="user-disabled-1",
+                email="disabled@test.com",
+                username="disabled",
+                password_hash="x",
+                is_active=False,
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+        await db.commit()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await _delete_account(client)
+
+        headers = _auth_headers(admin_token)
+
+        # deleted=true → 只有已注销用户
+        res = await client.get("/api/v1/admin/users?deleted=true", headers=headers)
+        assert res.status_code == 200
+        ids = {it["user_id"] for it in res.json()["data"]["items"]}
+        assert USER_ID in ids
+        assert "user-disabled-1" not in ids
+        assert ADMIN_ID not in ids
+
+        # is_active=false + deleted=false → 只有 admin 禁用用户（三态互斥）
+        res = await client.get(
+            "/api/v1/admin/users?is_active=false&deleted=false", headers=headers
+        )
+        assert res.status_code == 200
+        ids = {it["user_id"] for it in res.json()["data"]["items"]}
+        assert "user-disabled-1" in ids
+        assert USER_ID not in ids
+
+
+# ─── 场景 7：SMTP 550 拒收 → 400 友好提示（不再 500） ───────────
+
+
+async def test_recovery_code_smtp_refused_friendly_400():
+    import smtplib
+
+    # fixture 里的 mock 改为抛 550 拒收（假邮箱场景）
+    as_mod.EmailService.send_account_recovery_code.side_effect = (
+        smtplib.SMTPRecipientsRefused({EMAIL: (550, b"Mailbox not found")})
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await _delete_account(client)
+        res_login = await client.post(
+            "/api/v1/auth/login",
+            json={"email": EMAIL, "password": PASSWORD},
+        )
+        restricted_token = res_login.json()["data"]["token"]
+
+        res = await client.post(
+            "/api/v1/auth/account/recovery/code",
+            headers=_auth_headers(restricted_token),
+        )
+        assert res.status_code == 400
+        detail = res.json()["detail"]
+        assert "拒收" in detail
+        assert "联系管理员" in detail
+
+        # 未写入验证码记录（发送失败不留存）
+        assert as_mod._account_recovery_codes.get(EMAIL) is None

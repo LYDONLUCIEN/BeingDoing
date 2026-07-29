@@ -333,7 +333,7 @@ python scripts/init_db.py
 - `/api/v1/search/*` - 检索
 - `/api/v1/formula/*` - 公式
 - `/api/v1/export/*` - 导出
-- `/api/v1/admin/*` - 管理（含 `/admin/coupons` 折扣券、`/admin/payment/orders` 订单与退款、`/admin/consultations` 咨询管理）
+- `/api/v1/admin/*` - 管理（含 `/admin/coupons` 折扣券、`/admin/payment/orders` 订单与退款、`/admin/consultations` 咨询管理、`/admin/users` 用户管理：deleted 筛选 / `restore-deletion` 注销恢复 / PATCH status 对已注销用户启用会 400 拦截）
 - `/api/v1/payment/*` - 支付（用户侧：products / coupons/validate / orders；`/payment/notify/alipay` 为渠道回调，无登录鉴权）
 - `/api/v1/consultation/*` - 报告解读咨询（用户侧：my-reports / bookings / survey）
 - `/api/v1/team-analysis/*` - 团队分析（candidates / 创建 / 列表 / 详情）

@@ -6,6 +6,7 @@ import { AxiosError } from 'axios';
 import { authApi } from '@/lib/api/auth';
 import { getApiErrorMessage } from '@/lib/api/client';
 import { useAuthStore } from '@/stores/authStore';
+import { useAuthModalStore } from '@/stores/authModalStore';
 
 /** 邮箱打码：a***@b.com */
 function maskEmail(email?: string): string {
@@ -24,6 +25,7 @@ export default function AccountRecoveryPage() {
   const router = useRouter();
   const { user, token, isAuthenticated, _hasHydrated, setUser, setToken, logout } =
     useAuthStore();
+  const openAuthModal = useAuthModalStore((s) => s.openAuthModal);
 
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
@@ -33,10 +35,10 @@ export default function AccountRecoveryPage() {
   const [cooldown, setCooldown] = useState(0);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // 无受限 token（未登录/登录态已失效）→ 跳回登录页
+  // 无受限 token（未登录/登录态已失效）→ 回首页（与其他页面的未登录行为一致）
   useEffect(() => {
     if (_hasHydrated && !token) {
-      router.replace('/auth/login');
+      router.replace('/');
     }
   }, [_hasHydrated, token, router]);
 
@@ -61,8 +63,10 @@ export default function AccountRecoveryPage() {
   }, [cooldown]);
 
   const handleUnauthorized = () => {
+    // 受限 token 过期/失效：清登录态回首页并弹出登录框，引导重新登录
     logout();
-    router.replace('/auth/login');
+    router.replace('/');
+    openAuthModal('/');
   };
 
   const handleSendCode = async () => {
@@ -132,7 +136,7 @@ export default function AccountRecoveryPage() {
 
   const handleLogout = () => {
     logout();
-    router.push('/auth/login');
+    router.push('/');
   };
 
   // 等待 localStorage 恢复完成，避免闪屏/误跳转

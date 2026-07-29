@@ -40,6 +40,17 @@ class EmailService:
         await EmailService.send_email(to_email=to_email, subject=subject, body_text=body)
 
     @staticmethod
+    async def send_account_restored_notice(to_email: str) -> None:
+        subject = "【寻路·LifeAsk】账号已恢复"
+        body = (
+            f"您好，\n\n"
+            f"您的寻路·LifeAsk账号已由管理员恢复，\n"
+            f"账号数据与激活码绑定关系均已还原，现在可以正常登录使用。\n\n"
+            f"如果这不是您的预期操作，请立即联系我们。\n"
+        )
+        await EmailService.send_email(to_email=to_email, subject=subject, body_text=body)
+
+    @staticmethod
     async def send_email_verification(to_email: str, token: str) -> None:
         base_url = settings.FRONTEND_URL.rstrip("/")
         link = f"{base_url}/verify-email?token={token}"

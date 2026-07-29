@@ -8,6 +8,7 @@ import {
   patchAdminUserStatus,
   adminVerifyUserEmail,
   adminResetUserPassword,
+  adminRestoreUserDeletion,
   getUserConversationStats,
   type AdminUserItem,
   type AdminUserDetail,
@@ -16,7 +17,7 @@ import {
 import SurveyFormBd from '@/components/survey/SurveyFormBd';
 import { toDate } from '@/lib/utils/formatTime';
 
-type ActiveFilter = 'all' | 'active' | 'inactive';
+type ActiveFilter = 'all' | 'active' | 'inactive' | 'deleted';
 type ProfileFilter = 'all' | 'completed' | 'incomplete';
 
 export default function AdminUsersPage() {
@@ -43,6 +44,15 @@ export default function AdminUsersPage() {
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsUserId, setStatsUserId] = useState<string | null>(null);
 
+  // Restore deletion modal
+  const [restoreTarget, setRestoreTarget] = useState<{
+    user_id: string;
+    email?: string | null;
+    username?: string | null;
+  } | null>(null);
+  const [restoreNotify, setRestoreNotify] = useState(true);
+  const [restoreLoading, setRestoreLoading] = useState(false);
+
   const loadList = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -51,7 +61,9 @@ export default function AdminUsersPage() {
         page,
         page_size: pageSize,
         q: query || undefined,
-        is_active: activeFilter === 'all' ? null : activeFilter === 'active',
+        is_active:
+          activeFilter === 'active' ? true : activeFilter === 'inactive' ? false : null,
+        deleted: activeFilter === 'deleted' ? true : activeFilter === 'inactive' ? false : null,
         profile_completed: profileFilter === 'all' ? null : profileFilter === 'completed',
         created_after: createdAfter || undefined,
         created_before: createdBefore || undefined,
@@ -137,6 +149,30 @@ export default function AdminUsersPage() {
     }
   };
 
+  const openRestore = (u: { user_id: string; email?: string | null; username?: string | null }) => {
+    setRestoreTarget(u);
+    setRestoreNotify(true);
+  };
+
+  const confirmRestore = async () => {
+    if (!restoreTarget) return;
+    setRestoreLoading(true);
+    try {
+      const res = await adminRestoreUserDeletion(restoreTarget.user_id, restoreNotify);
+      alert(res.notified ? '账户已恢复，并已邮件通知用户' : '账户已恢复');
+      const restoredId = restoreTarget.user_id;
+      setRestoreTarget(null);
+      await loadList();
+      if (drawerUser?.user_id === restoredId) {
+        await openDrawer(restoredId);
+      }
+    } catch (e: any) {
+      alert(e?.message || '恢复失败');
+    } finally {
+      setRestoreLoading(false);
+    }
+  };
+
   const jumpToActivation = (code: string) => {
     closeDrawer();
     router.push(`/admin/activations?q=${encodeURIComponent(code)}`);
@@ -191,6 +227,19 @@ export default function AdminUsersPage() {
     }
   };
 
+  /** 冷区倒计时：距离物理清除的剩余时间 */
+  const purgeCountdown = (iso: string | null | undefined): string | null => {
+    const d = toDate(iso);
+    if (!d) return null;
+    const ms = d.getTime() - Date.now();
+    if (ms <= 0) return '已到期，即将清除';
+    const days = Math.floor(ms / 86400000);
+    if (days >= 1) return `${days} 天后永久删除`;
+    const hours = Math.floor(ms / 3600000);
+    if (hours >= 1) return `${hours} 小时后永久删除`;
+    return '1 小时内永久删除';
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -243,6 +292,7 @@ export default function AdminUsersPage() {
             <option value="all">全部状态</option>
             <option value="active">活跃</option>
             <option value="inactive">已禁用</option>
+            <option value="deleted">已注销</option>
           </select>
           <select
             value={profileFilter}
@@ -359,15 +409,34 @@ export default function AdminUsersPage() {
                   <td className="px-4 py-3" style={{ color: 'var(--bd-fg)' }}>{u.email || '-'}</td>
                   <td className="px-4 py-3" style={{ color: 'var(--bd-fg)' }}>{u.username || '-'}</td>
                   <td className="px-4 py-3">
-                    <span
-                      className="inline-block px-2 py-0.5 rounded-full text-xs font-medium"
-                      style={{
-                        background: u.is_active ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
-                        color: u.is_active ? '#16a34a' : '#dc2626',
-                      }}
-                    >
-                      {u.is_active ? '活跃' : '已禁用'}
-                    </span>
+                    {u.deleted_at ? (
+                      <div className="space-y-0.5">
+                        <span
+                          className="inline-block px-2 py-0.5 rounded-full text-xs font-medium"
+                          style={{
+                            background: 'rgba(124,58,237,0.12)',
+                            color: '#7c3aed',
+                          }}
+                        >
+                          已注销
+                        </span>
+                        {purgeCountdown(u.deletion_purge_after) && (
+                          <div className="text-xs" style={{ color: '#dc2626' }}>
+                            {purgeCountdown(u.deletion_purge_after)}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <span
+                        className="inline-block px-2 py-0.5 rounded-full text-xs font-medium"
+                        style={{
+                          background: u.is_active ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
+                          color: u.is_active ? '#16a34a' : '#dc2626',
+                        }}
+                      >
+                        {u.is_active ? '活跃' : '已禁用'}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <span
@@ -401,19 +470,35 @@ export default function AdminUsersPage() {
                     {fmtDate(u.created_at)}
                   </td>
                   <td className="px-4 py-3 flex gap-1">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleUserStatus(u.user_id, u.is_active);
-                      }}
-                      className="px-2 py-1 rounded-lg text-xs border hover:opacity-80 transition-opacity"
-                      style={{
-                        borderColor: 'var(--bd-border)',
-                        color: u.is_active ? '#dc2626' : '#16a34a',
-                      }}
-                    >
-                      {u.is_active ? '禁用' : '启用'}
-                    </button>
+                    {u.deleted_at ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openRestore(u);
+                        }}
+                        className="px-2 py-1 rounded-lg text-xs border hover:opacity-80 transition-opacity"
+                        style={{
+                          borderColor: 'var(--bd-border)',
+                          color: '#7c3aed',
+                        }}
+                      >
+                        恢复注销
+                      </button>
+                    ) : (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleUserStatus(u.user_id, u.is_active);
+                        }}
+                        className="px-2 py-1 rounded-lg text-xs border hover:opacity-80 transition-opacity"
+                        style={{
+                          borderColor: 'var(--bd-border)',
+                          color: u.is_active ? '#dc2626' : '#16a34a',
+                        }}
+                      >
+                        {u.is_active ? '禁用' : '启用'}
+                      </button>
+                    )}
                     {u.email_verified === false && (
                       <button
                         onClick={(e) => {
@@ -500,6 +585,63 @@ export default function AdminUsersPage() {
           >
             下一页
           </button>
+        </div>
+      )}
+
+      {/* Restore deletion modal */}
+      {restoreTarget && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30"
+          onClick={() => !restoreLoading && setRestoreTarget(null)}
+        >
+          <div
+            className="relative w-full max-w-md rounded-2xl border bg-bd-bg shadow-2xl p-6 space-y-4"
+            style={{ borderColor: 'var(--bd-border)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-semibold" style={{ color: 'var(--bd-fg)' }}>
+              恢复注销账户
+            </h2>
+            <p className="text-sm" style={{ color: 'var(--bd-fg)' }}>
+              确定要恢复{' '}
+              <span className="font-medium">
+                {restoreTarget.email || restoreTarget.username || restoreTarget.user_id.slice(0, 8)}
+              </span>{' '}
+              的账户吗？
+            </p>
+            <p className="text-xs" style={{ color: 'var(--bd-fg-muted)' }}>
+              恢复后账户立即转为活跃，注销标记与到期清除时间将被清除，激活码绑定关系保持原样。
+            </p>
+            <label
+              className="flex items-center gap-2 text-sm cursor-pointer"
+              style={{ color: 'var(--bd-fg)' }}
+            >
+              <input
+                type="checkbox"
+                checked={restoreNotify}
+                onChange={(e) => setRestoreNotify(e.target.checked)}
+              />
+              向用户邮箱发送「账户已恢复」通知
+            </label>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setRestoreTarget(null)}
+                disabled={restoreLoading}
+                className="px-4 py-2 rounded-lg text-sm border hover:opacity-80 transition-opacity disabled:opacity-40"
+                style={{ borderColor: 'var(--bd-border)', color: 'var(--bd-fg-muted)' }}
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmRestore}
+                disabled={restoreLoading}
+                className="px-4 py-2 rounded-lg text-sm font-medium border hover:opacity-80 transition-opacity disabled:opacity-40"
+                style={{ borderColor: '#7c3aed', color: '#7c3aed' }}
+              >
+                {restoreLoading ? '恢复中...' : '确认恢复'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -652,14 +794,28 @@ export default function AdminUsersPage() {
                       <Row label="状态">
                         <span
                           className="inline-block px-2 py-0.5 rounded-full text-xs font-medium"
-                          style={{
-                            background: drawerUser.is_active ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
-                            color: drawerUser.is_active ? '#16a34a' : '#dc2626',
-                          }}
+                          style={drawerUser.deleted_at
+                            ? { background: 'rgba(124,58,237,0.12)', color: '#7c3aed' }
+                            : {
+                                background: drawerUser.is_active ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
+                                color: drawerUser.is_active ? '#16a34a' : '#dc2626',
+                              }}
                         >
-                          {drawerUser.is_active ? '活跃' : '已禁用'}
+                          {drawerUser.deleted_at ? '已注销' : drawerUser.is_active ? '活跃' : '已禁用'}
                         </span>
                       </Row>
+                      {drawerUser.deleted_at && (
+                        <>
+                          <Row label="注销时间" value={fmtDate(drawerUser.deleted_at)} />
+                          <Row label="永久删除">
+                            <span style={{ color: '#dc2626' }}>
+                              {fmtDate(drawerUser.deletion_purge_after)}
+                              {purgeCountdown(drawerUser.deletion_purge_after) &&
+                                `（${purgeCountdown(drawerUser.deletion_purge_after)}）`}
+                            </span>
+                          </Row>
+                        </>
+                      )}
                       <Row label="Profile" value={drawerUser.profile.profile_completed ? '已填写' : '未填写'} />
                       <Row label="注册时间" value={fmtDate(drawerUser.created_at)} />
                       <Row label="最后登录" value={fmtDate(drawerUser.last_login_at)} />
@@ -668,16 +824,29 @@ export default function AdminUsersPage() {
 
                   {/* Actions */}
                   <section className="flex flex-wrap gap-2">
-                    <button
-                      onClick={() => toggleUserStatus(drawerUser.user_id, drawerUser.is_active)}
-                      className="px-4 py-2 rounded-lg text-sm font-medium border hover:opacity-80 transition-opacity"
-                      style={{
-                        borderColor: drawerUser.is_active ? '#dc2626' : '#16a34a',
-                        color: drawerUser.is_active ? '#dc2626' : '#16a34a',
-                      }}
-                    >
-                      {drawerUser.is_active ? '禁用该用户' : '启用该用户'}
-                    </button>
+                    {drawerUser.deleted_at ? (
+                      <button
+                        onClick={() => openRestore(drawerUser)}
+                        className="px-4 py-2 rounded-lg text-sm font-medium border hover:opacity-80 transition-opacity"
+                        style={{
+                          borderColor: '#7c3aed',
+                          color: '#7c3aed',
+                        }}
+                      >
+                        恢复注销账户
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => toggleUserStatus(drawerUser.user_id, drawerUser.is_active)}
+                        className="px-4 py-2 rounded-lg text-sm font-medium border hover:opacity-80 transition-opacity"
+                        style={{
+                          borderColor: drawerUser.is_active ? '#dc2626' : '#16a34a',
+                          color: drawerUser.is_active ? '#dc2626' : '#16a34a',
+                        }}
+                      >
+                        {drawerUser.is_active ? '禁用该用户' : '启用该用户'}
+                      </button>
+                    )}
                     <button
                       onClick={() =>
                         void resetUserPassword(

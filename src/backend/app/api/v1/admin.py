@@ -3,6 +3,7 @@ Admin 专用 API：数据分析仪表盘、点赞详情查看、对话明细
 仅超级管理员可访问
 """
 from typing import Optional, List, Dict, Any
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -69,6 +70,8 @@ from app.utils.admin_prompt_lab import (
     set_current_version,
 )
 from app.services.prompt_catalog import build_prompt_catalog
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -2148,12 +2151,21 @@ class AdminResetPasswordRequest(BaseModel):
     new_password: str = Field(..., min_length=6, description="新密码，至少 6 位")
 
 
+class AdminRestoreDeletionRequest(BaseModel):
+    """超级管理员恢复已注销账户"""
+
+    notify: bool = Field(default=True, description="是否向用户邮箱发送恢复通知")
+
+
 @router.get("/users")
 async def admin_list_users(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     q: Optional[str] = Query(None, description="按 email 或 username 模糊搜索"),
     is_active: Optional[bool] = Query(None, description="筛选是否活跃"),
+    deleted: Optional[bool] = Query(
+        None, description="筛选注销状态：true=已注销（冷区），false=未注销"
+    ),
     profile_completed: Optional[bool] = Query(None, description="筛选是否填完 profile"),
     created_after: Optional[str] = Query(None, description="注册时间下界（ISO 格式）"),
     created_before: Optional[str] = Query(None, description="注册时间上界（ISO 格式）"),
@@ -2191,6 +2203,7 @@ async def admin_list_users(
             page_size=page_size,
             search=q,
             is_active=is_active,
+            deleted=deleted,
             profile_completed=profile_completed,
             created_after=created_after,
             created_before=created_before,
@@ -2349,6 +2362,13 @@ async def admin_patch_user_status(
         user = await user_db.get_user_by_id(user_id)
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
+        # 已注销用户不能直接「启用」：只改 is_active 不会取消到期物理清除，
+        # 必须走 restore-deletion 清掉 deleted_at/deletion_purge_after
+        if req.is_active and getattr(user, "deleted_at", None):
+            raise HTTPException(
+                status_code=400,
+                detail="该用户已注销，请使用「恢复注销账户」功能（直接启用不会取消到期清除）",
+            )
         user = await user_db.update_user(user_id, is_active=req.is_active)
 
     return {
@@ -2410,6 +2430,64 @@ async def admin_reset_user_password(
         "code": 200,
         "message": "success",
         "data": {"user_id": user_id},
+    }
+
+
+@router.post("/users/{user_id}/restore-deletion")
+async def admin_restore_user_deletion(
+    user_id: str,
+    req: AdminRestoreDeletionRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """恢复已注销账户：清 deleted_at/deletion_purge_after、is_active=True（仅 super_admin）
+
+    不受 30 天恢复期限制——只要 users 行尚未被物理清除即可恢复；
+    激活码绑定在冷存期未动，恢复即还原。
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+
+    from app.core.database import UserDB
+    from app.services.account_deletion_service import (
+        EVENT_RECOVERED,
+        append_account_deletion_audit,
+    )
+    from app.services.email_service import EmailService
+
+    async with AsyncSessionLocal() as db:
+        user_db = UserDB(db)
+        user = await user_db.get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        if not getattr(user, "deleted_at", None):
+            raise HTTPException(status_code=400, detail="该用户未处于注销状态")
+        user = await user_db.update_user(
+            user_id,
+            deleted_at=None,
+            deletion_purge_after=None,
+            is_active=True,
+        )
+        email = user.email
+
+    append_account_deletion_audit(
+        EVENT_RECOVERED,
+        user_id,
+        email,
+        detail={"by_admin": True, "admin_id": current_user.get("user_id")},
+    )
+
+    notified = False
+    if req.notify and email:
+        try:
+            await EmailService.send_account_restored_notice(email)
+            notified = True
+        except Exception:
+            logger.exception("admin 恢复账户后发送通知邮件失败: user_id=%s", user_id)
+
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {"user_id": user_id, "is_active": True, "notified": notified},
     }
 
 

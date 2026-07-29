@@ -188,6 +188,7 @@ class UserDB:
         page_size: int = 50,
         search: Optional[str] = None,
         is_active: Optional[bool] = None,
+        deleted: Optional[bool] = None,
         profile_completed: Optional[bool] = None,
         created_after: Optional[str] = None,
         created_before: Optional[str] = None,
@@ -208,6 +209,10 @@ class UserDB:
         if is_active is not None:
             base = base.where(User.is_active == is_active)
             count_q = count_q.where(User.is_active == is_active)
+        if deleted is not None:
+            cond = User.deleted_at.isnot(None) if deleted else User.deleted_at.is_(None)
+            base = base.where(cond)
+            count_q = count_q.where(cond)
         if profile_completed is not None:
             base = base.join(UserProfile, UserProfile.user_id == User.id).where(
                 UserProfile.profile_completed == profile_completed

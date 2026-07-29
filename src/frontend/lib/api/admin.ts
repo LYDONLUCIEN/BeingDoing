@@ -1125,6 +1125,10 @@ export interface AdminUserItem {
   email_verified?: boolean;
   created_at?: string | null;
   last_login_at?: string | null;
+  /** 注销时间（非空 = 已注销，处于冷区） */
+  deleted_at?: string | null;
+  /** 到期物理清除时间 */
+  deletion_purge_after?: string | null;
   profile_completed: boolean;
   activation_count: number;
 }
@@ -1145,6 +1149,8 @@ export interface AdminUserDetail {
   phone?: string | null;
   username?: string | null;
   is_active: boolean;
+  deleted_at?: string | null;
+  deletion_purge_after?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
   last_login_at?: string | null;
@@ -1178,6 +1184,7 @@ export async function fetchAdminUsers(params?: {
   page_size?: number;
   q?: string;
   is_active?: boolean | null;
+  deleted?: boolean | null;
   profile_completed?: boolean | null;
   created_after?: string;
   created_before?: string;
@@ -1211,6 +1218,18 @@ export async function adminVerifyUserEmail(
 ): Promise<{ user_id: string; email_verified: boolean }> {
   const res = await apiClient.post(`/admin/users/${encodeURIComponent(userId)}/verify-email`);
   return (res.data?.data ?? {}) as { user_id: string; email_verified: boolean };
+}
+
+/** 超级管理员恢复已注销账户（清注销标记，可选邮件通知用户） */
+export async function adminRestoreUserDeletion(
+  userId: string,
+  notify: boolean,
+): Promise<{ user_id: string; is_active: boolean; notified: boolean }> {
+  const res = await apiClient.post(
+    `/admin/users/${encodeURIComponent(userId)}/restore-deletion`,
+    { notify },
+  );
+  return (res.data ?? {}) as { user_id: string; is_active: boolean; notified: boolean };
 }
 
 /** 超级管理员重置指定用户密码 */
