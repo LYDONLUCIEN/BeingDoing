@@ -1,5 +1,5 @@
 [Unit]
-Description=lifeask Backend (FastAPI/Uvicorn)
+Description=openlife Backend (FastAPI/Uvicorn)
 After=network-online.target
 Wants=network-online.target
 

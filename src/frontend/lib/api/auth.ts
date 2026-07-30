@@ -1,4 +1,5 @@
 import { apiClient, ApiResponse } from './client';
+import { clearLastActivationCode } from '@/lib/explore/session';
 
 export interface RegisterRequest {
   email?: string;
@@ -51,6 +52,8 @@ export const authApi = {
     const response = await apiClient.post('/auth/register', data);
     if (response.data?.token) {
       apiClient.setToken(response.data.token);
+      // 换号登录：清除残留的「上次激活码」，避免串到旧账号的报告
+      clearLastActivationCode();
     }
     return response;
   },
@@ -59,6 +62,8 @@ export const authApi = {
     const response = await apiClient.post('/auth/login', data);
     if (response.data?.token) {
       apiClient.setToken(response.data.token);
+      // 换号登录：清除残留的「上次激活码」，避免串到旧账号的报告
+      clearLastActivationCode();
     }
     return response;
   },

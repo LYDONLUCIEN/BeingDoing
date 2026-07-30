@@ -143,9 +143,12 @@ function CodeCard({
         <div className="space-y-0.5">
           <p className="text-[10px] text-bd-muted">{t('dashboard.codesPage.reportLabel')}</p>
           <p className="text-bd-fg">
-            {item.has_report
-              ? t('dashboard.codesPage.reportReady')
-              : t('dashboard.codesPage.reportNone')}
+            {/* 三态：审核中 / 已生成（approved） / 未生成；has_report 兜底旧数据 */}
+            {item.report_status === 'pending_review'
+              ? t('dashboard.codesPage.reportReviewing')
+              : item.report_status === 'approved' || (item.report_status == null && item.has_report)
+                ? t('dashboard.codesPage.reportReady')
+                : t('dashboard.codesPage.reportNone')}
           </p>
         </div>
       </div>
@@ -301,6 +304,8 @@ function PurchasedCodesSection({ t }: { t: (k: string, params?: Record<string, s
                 ) : (
                   <span className="text-amber-600">{t('dashboard.codesPage.reportNotAuthorized')}</span>
                 )
+              ) : item.report_status === 'pending_review' ? (
+                <span className="text-amber-600">{t('dashboard.codesPage.reportReviewing')}</span>
               ) : (
                 <span className="text-bd-subtle">{t('dashboard.codesPage.reportNotReady')}</span>
               )}

@@ -1,10 +1,16 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { FileText, ChevronLeft, Download, Loader2, Clock } from 'lucide-react';
-import { PHASES, getLastActivationCode } from '@/lib/explore/session';
+import {
+  PHASES,
+  clearLastActivationCode,
+  getLastActivationCode,
+  setLastActivationCode,
+} from '@/lib/explore/session';
 import LikedContentSection from '@/components/explore/LikedContentSection';
 import PurchaseModal from '@/components/payment/PurchaseModal';
 import { useLocale } from '@/hooks/useLocale';
@@ -13,33 +19,65 @@ import { fetchReportAuthorize, setReportAuthorize } from '@/lib/api/teamAnalysis
 import { useReportPdfDownload } from '@/hooks/useReportPdfDownload';
 import { Headphones, Share2 } from 'lucide-react';
 
-export default function ReportViewPage() {
+function ReportViewContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { t, locale } = useLocale();
 
-  const activationCode = useMemo(() => getLastActivationCode(), []);
+  // URL query code 优先于 localStorage；读到后写回「上次激活码」
+  const codeParam = searchParams.get('code')?.trim() ?? '';
+  const activationCode = useMemo(() => {
+    if (codeParam) {
+      setLastActivationCode(codeParam);
+      return codeParam;
+    }
+    return getLastActivationCode();
+  }, [codeParam]);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [consultOpen, setConsultOpen] = useState(false);
 
   // 报告审核状态（阻塞式审核流：pending_review 时不展示报告内容与下载入口）
   const [reportInfo, setReportInfo] = useState<MyReportInfo | null>(null);
   const [infoLoading, setInfoLoading] = useState(false);
+  /** 查询流程是否结束（有码时等接口返回，无码立即为 true） */
+  const [infoSettled, setInfoSettled] = useState(false);
+  /** 403：当前账号无权查看该码的报告 */
+  const [forbidden, setForbidden] = useState(false);
 
   const { status, error: pdfError, download } = useReportPdfDownload({ activationCode });
 
   useEffect(() => {
-    if (!activationCode) return;
+    if (!activationCode) {
+      setInfoSettled(true);
+      return;
+    }
     let cancelled = false;
     setInfoLoading(true);
+    setInfoSettled(false);
+    setForbidden(false);
+    setReportInfo(null);
     getMyReportInfo(activationCode)
       .then((info) => {
         if (!cancelled) setReportInfo(info);
       })
-      .catch(() => {
-        // 查询失败时保持原页面行为（下载按钮点击时另有错误提示）
+      .catch((e: any) => {
+        if (cancelled) return;
+        const status = e?.response?.status;
+        if (status === 404) {
+          // 该码无报告/码不存在：走「尚未解锁」分支
+          setReportInfo({ report_id: null, review_status: 'not_started', review_deadline: null });
+        } else if (status === 403) {
+          // 无权查看：清除残留的本地激活码
+          clearLastActivationCode();
+          setForbidden(true);
+        }
+        // 其它查询失败保持原页面行为（下载按钮点击时另有错误提示）
       })
       .finally(() => {
-        if (!cancelled) setInfoLoading(false);
+        if (!cancelled) {
+          setInfoLoading(false);
+          setInfoSettled(true);
+        }
       });
     return () => {
       cancelled = true;
@@ -81,10 +119,38 @@ export default function ReportViewPage() {
   }, [reportInfo?.review_deadline, locale]);
 
   // 审核状态查询中：避免先闪现报告内容再切换到占位
-  if (infoLoading && !reportInfo) {
+  if (infoLoading || !infoSettled) {
     return (
       <div className="min-h-screen bg-bd-gradient text-bd-fg flex items-center justify-center px-4 py-12">
         <Loader2 size={24} className="animate-spin text-bd-subtle" />
+      </div>
+    );
+  }
+
+  // 403：当前账号无权查看该报告，引导从个人空间重新进入
+  if (forbidden) {
+    return (
+      <div className="min-h-screen bg-bd-gradient text-bd-fg flex items-center justify-center px-4 py-12">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+          className="max-w-lg w-full text-center space-y-8"
+        >
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-bd-overlay-md border-2 border-bd-border">
+            <FileText className="w-7 h-7 text-bd-subtle" />
+          </div>
+          <div className="space-y-3">
+            <h1 className="text-3xl font-bold">{t('explore.report.forbiddenTitle')}</h1>
+            <p className="text-bd-muted leading-relaxed">{t('explore.report.forbiddenDesc')}</p>
+          </div>
+          <Link
+            href="/dashboard/report"
+            className="inline-flex items-center gap-2 rounded-xl bg-[var(--bd-ui-accent)] text-bd-ui-accent-fg px-6 py-3 text-sm font-medium hover:opacity-90 transition-opacity"
+          >
+            {t('explore.report.gotoMyReports')}
+          </Link>
+        </motion.div>
       </div>
     );
   }
@@ -171,6 +237,34 @@ export default function ReportViewPage() {
           >
             {t('explore.report.backHome')}
           </button>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // 无激活码（或查询后仍无报告信息）：引导空态，不再渲染 approved 空壳
+  if (!reportInfo) {
+    return (
+      <div className="min-h-screen bg-bd-gradient text-bd-fg flex items-center justify-center px-4 py-12">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+          className="max-w-lg w-full text-center space-y-8"
+        >
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-bd-overlay-md border-2 border-bd-border">
+            <FileText className="w-7 h-7 text-bd-subtle" />
+          </div>
+          <div className="space-y-3">
+            <h1 className="text-3xl font-bold">{t('explore.report.noCodeTitle')}</h1>
+            <p className="text-bd-muted leading-relaxed">{t('explore.report.noCodeDesc')}</p>
+          </div>
+          <Link
+            href="/dashboard/report"
+            className="inline-flex items-center gap-2 rounded-xl bg-[var(--bd-ui-accent)] text-bd-ui-accent-fg px-6 py-3 text-sm font-medium hover:opacity-90 transition-opacity"
+          >
+            {t('explore.report.gotoMyReports')}
+          </Link>
         </motion.div>
       </div>
     );
@@ -361,5 +455,19 @@ function ReportAuthorizeCard({ activationCode }: { activationCode: string }) {
         {t('explore.report.authDesc', { purchaser: state.purchaser_email ?? '' })}
       </p>
     </div>
+  );
+}
+
+export default function ReportViewPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-bd-gradient text-bd-fg flex items-center justify-center px-4 py-12">
+          <Loader2 size={24} className="animate-spin text-bd-subtle" />
+        </div>
+      }
+    >
+      <ReportViewContent />
+    </Suspense>
   );
 }

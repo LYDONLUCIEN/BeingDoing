@@ -639,33 +639,33 @@ class PaymentService:
                     "",
                     "请妥善保管本邮件；也可在「个人空间 - 我的订单」中随时查看。",
                     "",
-                    "—— 寻路·LifeAsk",
+                    "—— 寻路·OpenLife",
                 ]
-                subject = "【寻路·LifeAsk】您的激活码"
+                subject = "【寻路·OpenLife】您的激活码"
                 body = "\n".join(lines)
             elif product_type == PRODUCT_RENEWAL:
-                subject = "【寻路·LifeAsk】延期激活成功"
+                subject = "【寻路·OpenLife】延期激活成功"
                 body = (
                     "您好，\n\n"
                     f"您的激活码 {delivered_code} 已成功延期 "
                     f"{(meta or {}).get('added_days', '')} 天。\n"
                     "可在「个人空间 - 我的激活码」中查看新的有效期。\n\n"
-                    "—— 寻路·LifeAsk"
+                    "—— 寻路·OpenLife"
                 )
             elif product_type == PRODUCT_CONSULTATION:
                 booking_id = (meta or {}).get("booking_id", "")
-                subject = "【寻路·LifeAsk】报告解读咨询购买成功"
+                subject = "【寻路·OpenLife】报告解读咨询购买成功"
                 body = (
                     "您好，\n\n"
                     "感谢您的购买。请前往填写预约问卷（想探讨的主题、方便的时间段、联系方式），"
                     "我们会尽快与您确认咨询时间：\n\n"
                     f"{frontend}/dashboard/consultation/{booking_id}\n\n"
-                    "—— 寻路·LifeAsk"
+                    "—— 寻路·OpenLife"
                 )
             else:  # 旧 SKU 历史订单
                 ttl_days = settings.ACTIVATION_CODE_TTL_DAYS
                 activate_url = f"{frontend}/explore/activate?code={delivered_code}"
-                subject = "【寻路·LifeAsk】您的全程激活码"
+                subject = "【寻路·OpenLife】您的全程激活码"
                 body = (
                     "您好，\n\n"
                     "感谢您的购买，您的全程激活码如下：\n\n"
@@ -673,7 +673,7 @@ class PaymentService:
                     f"有效期：{ttl_days} 天（自发放之日起）\n"
                     f"激活入口：{activate_url}\n\n"
                     "请妥善保管本邮件；也可在「个人空间 - 我的订单」中随时查看。\n\n"
-                    "—— 寻路·LifeAsk"
+                    "—— 寻路·OpenLife"
                 )
 
             await EmailService.send_email(to_email=email, subject=subject, body_text=body)

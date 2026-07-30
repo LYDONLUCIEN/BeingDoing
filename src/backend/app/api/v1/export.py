@@ -9,8 +9,11 @@ from app.api.v1.auth import get_current_user
 from app.services.export_service import ExportService
 from app.utils.report_registry import ReportRegistry, _report_portal_unlocked
 from app.utils.simple_activation_manager import (
+    SimpleActivationManager,
     get_activation_with_manager,
     get_effective_simple_root,
+    get_simple_base_dir,
+    get_simple_test_base_dir,
 )
 from app.utils.super_admin import is_super_admin_user
 from app.utils.report_review import (
@@ -280,6 +283,65 @@ async def get_my_report_id(
     if is_pending_review(report):
         data["review_deadline"] = report.get("review_deadline")
     return data
+
+
+@router.get("/my-reports")
+async def list_my_reports(
+    current_user: dict = Depends(get_current_user),
+):
+    """用户端：列出当前用户（作为激活人）名下的全部报告。
+
+    纯只读：不触发审核计时（不调 _ensure_review_started），也不创建报告（不调 ensure_report）。
+    review_status 应用祖父豁免口径（存量缺字段视为 approved）。
+    """
+    user_id = (current_user.get("user_id") or "").strip()
+    email = (current_user.get("email") or "").strip()
+    if not user_id and not email:
+        return {"items": []}
+
+    # 合并生产 + 测试/沙箱索引（取码逻辑与 simple-auth/my-codes 一致）
+    merged: Dict[str, object] = {}  # code -> ActivationRecord
+    for base_dir in (get_simple_base_dir(), get_simple_test_base_dir()):
+        mgr = SimpleActivationManager(base_dir=str(base_dir))
+        for code, rec in mgr.list_activations().items():
+            norm = (code or "").strip().upper()
+            if norm:
+                merged[norm] = rec
+
+    items = []
+    seen: set = set()
+    for _norm, rec in merged.items():
+        owner_uid = (getattr(rec, "owner_user_id", None) or "").strip()
+        owner_email = (getattr(rec, "owner_email", None) or "").strip()
+        is_mine = (user_id and owner_uid == user_id) or (email and owner_email == email)
+        if not is_mine:
+            continue
+        try:
+            root = get_effective_simple_root(rec)
+            registry = ReportRegistry(base_dir=str(root))
+            report = registry.get_by_activation_user(rec.code, user_id) if user_id else None
+            if not report and email:
+                report = registry.get_by_activation_user(rec.code, email)
+        except Exception:
+            logger.exception("查询报告失败: code=%s", rec.code)
+            continue
+        if not report:
+            continue
+        report_id = (report.get("report_id") or "").strip()
+        if not report_id or report_id in seen:
+            continue
+        seen.add(report_id)
+        items.append({
+            "report_id": report_id,
+            "activation_code": report.get("activation_code") or rec.code,
+            "review_status": get_review_status(report),
+            "review_deadline": report.get("review_deadline"),
+            "created_at": report.get("created_at"),
+            "code_type": getattr(rec, "code_type", None),
+        })
+
+    items.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+    return {"items": items}
 
 
 def _verify_report_access(

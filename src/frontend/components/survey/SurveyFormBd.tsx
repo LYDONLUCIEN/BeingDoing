@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   GENDER_OPTIONS,
   AGE_OPTIONS,
@@ -33,11 +33,14 @@ interface SurveyFormBdProps {
   initialData?: Partial<SurveyData>;
   /** 编辑模式下提交回调;readOnly=true 时可不传 */
   onSubmit?: (data: SurveyData) => void | Promise<void>;
-  onSkip?: () => void;
+  /** 跳过回调（携带当前表单数据，便于保存必填的昵称） */
+  onSkip?: (data: SurveyData) => void;
   loading?: boolean;
   saving?: boolean;
   submitLabel?: string;
   showSkip?: boolean;
+  /** 昵称必填（最终报告需要署名）；开启后提交/跳过前都会校验 */
+  nicknameRequired?: boolean;
   /** 只读模式:字段以纯展示形态呈现,空值字段不渲染,数组字段以 chip 排列 */
   readOnly?: boolean;
 }
@@ -50,6 +53,7 @@ export default function SurveyFormBd({
   saving = false,
   submitLabel = '保存',
   showSkip = false,
+  nicknameRequired = false,
   readOnly = false,
 }: SurveyFormBdProps) {
   const [formData, setFormData] = useState<SurveyData>({
@@ -107,10 +111,36 @@ export default function SurveyFormBd({
     }
   };
 
+  const [nicknameError, setNicknameError] = useState<string | null>(null);
+  const [nicknameShaking, setNicknameShaking] = useState(false);
+  const nicknameInputRef = useRef<HTMLInputElement>(null);
+
+  // 昵称为空时：滚动到昵称框 + 抖动 + 聚焦（用户在表单底部点提交时看不到顶部报错）
+  const validateNickname = () => {
+    if (nicknameRequired && !(formData.nickname ?? '').trim()) {
+      setNicknameError('昵称必填：最终会写进你的专属报告，请先填写');
+      setNicknameShaking(true);
+      setTimeout(() => setNicknameShaking(false), 450);
+      nicknameInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      nicknameInputRef.current?.focus({ preventScroll: true });
+      return false;
+    }
+    setNicknameError(null);
+    return true;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (readOnly || !onSubmit) return;
+    if (!validateNickname()) return;
     await onSubmit(formData);
+  };
+
+  const handleSkip = () => {
+    if (!onSkip) return;
+    // 跳过也必须先填昵称（报告署名需要）
+    if (!validateNickname()) return;
+    onSkip(formData);
   };
 
   const hasOther = formData.core_needs?.includes('其他') ?? false;
@@ -250,8 +280,24 @@ export default function SurveyFormBd({
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div>
-        <label className={labelCls}>昵称</label>
-        <input type="text" value={formData.nickname} onChange={(e) => setFormData({ ...formData, nickname: e.target.value })} placeholder="选填" className={inputCls} />
+        <label className={labelCls}>
+          昵称
+          {nicknameRequired && <span className="text-red-500 ml-0.5">*</span>}
+        </label>
+        <input
+          ref={nicknameInputRef}
+          type="text"
+          value={formData.nickname}
+          onChange={(e) => { setFormData({ ...formData, nickname: e.target.value }); if (nicknameError) setNicknameError(null); }}
+          placeholder={nicknameRequired ? '必填，将用于最终报告署名' : '选填'}
+          className={`${inputCls}${nicknameError ? ' border-red-500' : ''}${nicknameShaking ? ' bd-field-shake' : ''}`}
+        />
+        {nicknameRequired && !nicknameError && (
+          <p className="mt-1 text-xs text-bd-subtle">必填：最后生成的报告需要署名，昵称不能为空，也无法跳过</p>
+        )}
+        {nicknameError && (
+          <p className="mt-1 text-xs text-red-500">{nicknameError}</p>
+        )}
       </div>
       <div>
         <label className={labelCls}>性别</label>
@@ -389,7 +435,7 @@ export default function SurveyFormBd({
           {loading ? '提交中…' : saving ? '保存中…' : submitLabel}
         </button>
         {showSkip && onSkip && (
-          <button type="button" onClick={onSkip} disabled={disabled} className="rounded-xl border border-bd-border px-6 py-2.5 text-sm font-medium text-bd-muted hover:bg-bd-overlay transition-colors">
+          <button type="button" onClick={handleSkip} disabled={disabled} className="rounded-xl border border-bd-border px-6 py-2.5 text-sm font-medium text-bd-muted hover:bg-bd-overlay transition-colors">
             暂时跳过
           </button>
         )}

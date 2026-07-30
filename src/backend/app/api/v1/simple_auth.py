@@ -38,6 +38,7 @@ from app.utils.trial_codes import (
     ensure_trial_code_for_user,
     is_trial_code,
 )
+from app.utils.report_review import REVIEW_STATUS_APPROVED, get_review_status
 
 
 router = APIRouter(prefix="/simple-auth", tags=["简单模式认证"])
@@ -57,6 +58,31 @@ def _derive_code_status(rec) -> str:
     ):
         return "inactive"
     return status_out
+
+
+def _report_status(rec, user_id: str, email: str) -> Optional[str]:
+    """报告三态口径（ADR-0009）：无 record → None；有 record →
+    not_started / pending_review / approved。
+
+    存量 record 缺 review_status 字段时祖父豁免视为 approved（与 export.py 同口径，
+    复用 report_review.get_review_status）。纯只读，不触发审核计时。
+    """
+    try:
+        root = get_effective_simple_root(rec)
+        registry = ReportRegistry(base_dir=str(root))
+        record = None
+        if user_id:
+            record = registry.get_by_activation_user(rec.code, user_id)
+        if not record and email:
+            record = registry.get_by_activation_user(rec.code, email)
+        if record:
+            return get_review_status(record)
+    except Exception:
+        pass
+    # 兜底：registry 查不到但激活记录上挂了 report_id，按存量 approved 处理（保持旧口径）
+    if getattr(rec, "report_id", None):
+        return REVIEW_STATUS_APPROVED
+    return None
 
 
 def _client_ip(request) -> str:
@@ -357,20 +383,6 @@ async def list_my_codes(
             if norm:
                 merged[norm] = rec
 
-    def _has_report(rec) -> bool:
-        if getattr(rec, "report_id", None):
-            return True
-        try:
-            root = get_effective_simple_root(rec)
-            registry = ReportRegistry(base_dir=str(root))
-            if user_id and registry.get_by_activation_user(rec.code, user_id):
-                return True
-            if email and registry.get_by_activation_user(rec.code, email):
-                return True
-        except Exception:
-            pass
-        return False
-
     items = []
     for _norm, rec in merged.items():
         owner_uid = (getattr(rec, "owner_user_id", None) or "").strip()
@@ -384,6 +396,7 @@ async def list_my_codes(
             source = "试用赠送"
         else:
             source = (getattr(rec, "source", None) or "").strip() or "admin"
+        report_status = _report_status(rec, user_id, email)
         items.append({
             "code": rec.code,
             "code_type": getattr(rec, "code_type", None) or "full",
@@ -392,7 +405,9 @@ async def list_my_codes(
             "created_at": rec.created_at,
             "source": source,
             "session_id": rec.session_id,
-            "has_report": _has_report(rec),
+            # has_report 语义：报告已生成 = 审核通过（与 my-purchased-codes 口径拉齐）
+            "has_report": report_status == REVIEW_STATUS_APPROVED,
+            "report_status": report_status,
         })
 
     # 按创建时间倒序
@@ -430,14 +445,19 @@ async def list_my_purchased_codes(
         local, domain = email.split("@", 1)
         return f"{local[:1]}***@{domain}"
 
-    # report 就绪索引（审核通过/存量豁免）
+    # report 状态索引（审核通过/存量豁免 → approved；祖父豁免由 get_review_status 封装）
     approved_codes: set[str] = set()
+    report_status_by_code: dict[str, str] = {}
     try:
         registry = ReportRegistry()
         for record in registry.list_reports():
-            review_status = record.get("review_status") or "approved"
-            if review_status == "approved":
-                approved_codes.add((record.get("activation_code") or "").strip().upper())
+            code = (record.get("activation_code") or "").strip().upper()
+            if not code:
+                continue
+            review_status = get_review_status(record)
+            report_status_by_code.setdefault(code, review_status)
+            if review_status == REVIEW_STATUS_APPROVED:
+                approved_codes.add(code)
     except Exception:
         pass
 
@@ -461,6 +481,7 @@ async def list_my_purchased_codes(
                 "activated_by": _mask_email(rec.owner_email or "") or None,
                 "activated_by_self": rec.owner_user_id == user_id,
                 "has_report": norm in approved_codes,
+                "report_status": report_status_by_code.get(norm),
                 "report_authorized": bool(getattr(rec, "report_authorized", False)),
             })
 

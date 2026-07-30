@@ -7,6 +7,8 @@ import SurveyFormBd from '@/components/survey/SurveyFormBd';
 import { surveyApi } from '@/lib/api/survey';
 import { getApiErrorMessage } from '@/lib/api/client';
 import { loadSession, saveSession, getLastActivationCode, setUserSurveyCompleted, getUserPrivacyAck, setUserPrivacyAck } from '@/lib/explore/session';
+import { applyExploreResumeToSession } from '@/lib/explore/session';
+import { fetchExploreResumeFromJourneys } from '@/lib/explore/journeyResume';
 import type { SurveyData } from '@/lib/survey/schema';
 import { useAuthStore } from '@/stores/authStore';
 import { useLocale } from '@/hooks/useLocale';
@@ -62,17 +64,31 @@ export default function SurveyPage() {
     setPrivacyOpen(false);
   };
 
+  /** 提交/跳过后跳到「最新一步」：merge 后端 resume，避免硬编码回 values（回访用户应续上进度） */
+  const gotoLatestPhase = async (code: string) => {
+    let session = { ...loadSession(code), surveyCompleted: true };
+    saveSession(session);
+    try {
+      const resume = await fetchExploreResumeFromJourneys(code);
+      if (resume) {
+        session = applyExploreResumeToSession(session, resume);
+        saveSession(session);
+      }
+    } catch {
+      /* resume 拉取失败则用本地 session 进度 */
+    }
+    router.push(`/explore/chat/${session.currentPhase}`);
+  };
+
   const handleSubmit = async (data: SurveyData) => {
     if (!activationCode) return;
     setLoading(true);
     setError(null);
     try {
       await surveyApi.saveForActivation(activationCode, data);
-      const session = loadSession(activationCode);
-      saveSession({ ...session, surveyCompleted: true });
       // 用户维度持久化：切换激活码或清缓存后仍可恢复
       setUserSurveyCompleted(user?.user_id ?? '', true);
-      router.push(`/explore/chat/values`);
+      await gotoLatestPhase(activationCode);
     } catch (e: unknown) {
       const msg = getApiErrorMessage(e, '保存失败，请重试');
       if (msg.includes('激活码已过期')) {
@@ -85,15 +101,14 @@ export default function SurveyPage() {
     }
   };
 
-  const handleSkip = async () => {
+  const handleSkip = async (data: SurveyData) => {
     if (!activationCode) return;
     setLoading(true);
     setError(null);
     let saved = false;
     try {
-      await surveyApi.saveForActivation(activationCode, {});
-      const session = loadSession(activationCode);
-      saveSession({ ...session, surveyCompleted: true });
+      // 跳过时仍保存昵称（最终报告署名必填，前端已校验非空）
+      await surveyApi.saveForActivation(activationCode, { nickname: (data.nickname ?? '').trim() });
       // 用户维度持久化
       setUserSurveyCompleted(user?.user_id ?? '', true);
       saved = true;
@@ -108,7 +123,7 @@ export default function SurveyPage() {
       setLoading(false);
     }
     if (saved) {
-      router.push(`/explore/chat/values`);
+      await gotoLatestPhase(activationCode);
     }
   };
 
@@ -143,7 +158,9 @@ export default function SurveyPage() {
             <p className="text-xs tracking-[0.25em] uppercase text-bd-primary font-medium">在正式开始之前</p>
             <h1 className="text-3xl sm:text-4xl font-semibold text-bd-fg tracking-tight">了解你</h1>
             <p className="text-bd-muted text-sm sm:text-base leading-relaxed max-w-lg">
-              这份问卷帮助我们更了解你的背景，让对话更有针对性。所有问题均为选填，你也可以直接跳过开始探索。
+              这份问卷帮助我们更了解你的背景，让对话更有针对性。
+              <span className="text-bd-fg font-medium">昵称为必填项</span>
+              —— 最后生成的报告需要署名，不填写无法跳过；其余问题均为选填。
             </p>
           </header>
 
@@ -160,6 +177,7 @@ export default function SurveyPage() {
               saving={loading}
               submitLabel="提交并开始第一步 →"
               showSkip
+              nicknameRequired
               onSubmit={handleSubmit}
               onSkip={handleSkip}
             />

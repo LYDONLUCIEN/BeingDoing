@@ -46,6 +46,7 @@ from app.utils.simple_activation_manager import (
     get_activation_manager_for_code,
     get_effective_simple_root,
 )
+from app.utils.report_registry import ReportRegistry
 from app.utils.rumination_ops import extract_dimension_lists_for_rumination_table
 from app.utils.survey_storage import (
     format_conclusion_prior_block,
@@ -165,6 +166,26 @@ def _resolve_v4_ctx_with_rec(activation_code: str, current_user: dict):
 
 # 前四阶段结论卡按此顺序注入用户背景
 _DIMENSION_PHASE_ORDER = ("values", "strengths", "interests", "purpose")
+
+
+def _assert_rumination_editable(reports_root: Path, rid: str, current_user: dict, rec) -> None:
+    """报告定稿（终选提交）后 rumination 锁定：v4 写端点统一拦截。
+
+    豁免口径与 simple_chat 一致：管理员调试工作区（fork/resident）可绕过。
+    锁定时机：final-selection/submit（V4）或 step7 定稿（V3）时 lock_step("rumination")。
+    """
+    from app.api.v1.simple_chat_routes import _can_bypass_flow_limits  # 延迟导入避免循环依赖
+
+    if _can_bypass_flow_limits(current_user, rec):
+        return
+    registry = ReportRegistry(base_dir=str(reports_root))
+    record = registry.get_report_by_id(rid) or {}
+    step = ((record.get("steps") or {}).get("rumination")) or {}
+    if step.get("locked"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="最终选择已提交并锁定，报告已生成，不能再修改",
+        )
 
 
 def _build_user_context(
@@ -315,7 +336,8 @@ async def create_and_start_endpoint(req: CreateComboReq, current_user: dict = De
         raise HTTPException(status_code=400, detail="passion 不可为空")
     if not req.strengths or not all(isinstance(s, str) and s.strip() for s in req.strengths):
         raise HTTPException(status_code=400, detail="strengths 不可为空")
-    reports_root, rid = _resolve_v4_ctx(req.activation_code, current_user)
+    reports_root, rid, rec = _resolve_v4_ctx_with_rec(req.activation_code, current_user)
+    _assert_rumination_editable(reports_root, rid, current_user, rec)
     try:
         state, combo, opening = svc_create_and_start(
             reports_root, rid, req.passion.strip(), [s.strip() for s in req.strengths]
@@ -339,7 +361,8 @@ async def create_and_start_endpoint(req: CreateComboReq, current_user: dict = De
 @router.post("/start-discussion")
 async def start_discussion_endpoint(req: StartDiscussionReq, current_user: dict = Depends(get_current_user)):
     """标记开始讨论(组合固定),返回初始 AI 开场消息(同步,非流式)。"""
-    reports_root, rid = _resolve_v4_ctx(req.activation_code, current_user)
+    reports_root, rid, rec = _resolve_v4_ctx_with_rec(req.activation_code, current_user)
+    _assert_rumination_editable(reports_root, rid, current_user, rec)
     state = load_v4_state(reports_root, rid)
     combo = find_combo(state, req.combo_id)
     if not combo:
@@ -376,6 +399,7 @@ async def combo_chat_endpoint(req: ComboChatReq, current_user: dict = Depends(ge
     实施口径 §2.3:回复完成后解析 chips 隐藏块并推 hyp_candidates 事件;
     <<CONCLUSION_READY>> / tool 块 / [STEP3_HYP_JSON] 块均剥离后再入库/推送。"""
     reports_root, rid, rec = _resolve_v4_ctx_with_rec(req.activation_code, current_user)
+    _assert_rumination_editable(reports_root, rid, current_user, rec)
     state = load_v4_state(reports_root, rid)
     combo = find_combo(state, req.combo_id)
     if not combo:
@@ -523,7 +547,8 @@ def _parse_and_clean(text: str):
 @router.delete("/combos/{combo_id}")
 async def delete_combo_endpoint(combo_id: str, activation_code: str, current_user: dict = Depends(get_current_user)):
     """硬删除 combo_session(含 messages),仅审计日志保留。"""
-    reports_root, rid = _resolve_v4_ctx(activation_code, current_user)
+    reports_root, rid, rec = _resolve_v4_ctx_with_rec(activation_code, current_user)
+    _assert_rumination_editable(reports_root, rid, current_user, rec)
     try:
         state = svc_delete_combo(reports_root, rid, combo_id)
     except ValueError as e:
@@ -538,7 +563,8 @@ async def patch_conclusion_card_endpoint(
     combo_id: str, req: PatchConclusionReq, current_user: dict = Depends(get_current_user)
 ):
     """用户直接编辑结论卡文本(不绕道 LLM)。"""
-    reports_root, rid = _resolve_v4_ctx(req.activation_code, current_user)
+    reports_root, rid, rec = _resolve_v4_ctx_with_rec(req.activation_code, current_user)
+    _assert_rumination_editable(reports_root, rid, current_user, rec)
     fields = {k: v for k, v in req.model_dump().items() if k != "activation_code" and v is not None}
     try:
         state, card = svc_patch_card(reports_root, rid, combo_id, fields)
@@ -554,7 +580,8 @@ async def set_combo_status_endpoint(
     combo_id: str, req: SetStatusReq, current_user: dict = Depends(get_current_user)
 ):
     """用户确认或放弃 combo_session。"""
-    reports_root, rid = _resolve_v4_ctx(req.activation_code, current_user)
+    reports_root, rid, rec = _resolve_v4_ctx_with_rec(req.activation_code, current_user)
+    _assert_rumination_editable(reports_root, rid, current_user, rec)
     try:
         state = set_combo_status(reports_root, rid, combo_id, req.status)
     except ValueError as e:
@@ -567,7 +594,8 @@ async def set_combo_status_endpoint(
 @router.post("/final-selection")
 async def final_selection_endpoint(req: FinalSelectionReq, current_user: dict = Depends(get_current_user)):
     """第 8 步:更新选定的 1-3 个 combo_id。"""
-    reports_root, rid = _resolve_v4_ctx(req.activation_code, current_user)
+    reports_root, rid, rec = _resolve_v4_ctx_with_rec(req.activation_code, current_user)
+    _assert_rumination_editable(reports_root, rid, current_user, rec)
     try:
         state = update_final_selection(reports_root, rid, req.selected_combo_ids)
     except ValueError as e:
@@ -579,11 +607,15 @@ async def final_selection_endpoint(req: FinalSelectionReq, current_user: dict = 
 @router.post("/final-selection/submit")
 async def submit_final_selection_endpoint(req: SubmitFinalReq, current_user: dict = Depends(get_current_user)):
     """第 8 步最终提交(锁定)。"""
-    reports_root, rid = _resolve_v4_ctx(req.activation_code, current_user)
+    reports_root, rid, rec = _resolve_v4_ctx_with_rec(req.activation_code, current_user)
+    _assert_rumination_editable(reports_root, rid, current_user, rec)
     try:
         state = submit_final_selection(reports_root, rid)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    # 终选提交即锁定 rumination（与其它四阶段「进入下一阶段锁上一阶段」口径对称；
+    # rumination 是最后一步，无后续阶段触发锁定，需在此显式锁定）
+    ReportRegistry(base_dir=str(reports_root)).lock_step(rid, "rumination")
     _audit_log("rumination_v4_final_submitted", current_user, req.activation_code, {"selected": state.get("final_selection", {}).get("selected_combo_ids")})
     return {"code": 200, "message": "success", "data": {"final_selection": state.get("final_selection"), "main_section": state.get("main_section")}}
 

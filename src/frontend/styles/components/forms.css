@@ -64,3 +64,16 @@
   background: var(--bd-bg-overlay-md);
   color: var(--bd-fg);
 }
+
+/* 表单校验失败抖动提示（如昵称必填未填时滚动到字段并抖动） */
+@keyframes bd-field-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+.bd-field-shake {
+  animation: bd-field-shake 0.4s ease-in-out;
+}

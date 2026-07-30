@@ -609,6 +609,10 @@ def update_final_selection(
 ) -> Dict[str, Any]:
     """第 8 步:更新选定的 1-3 个 combo_id(后端校验数量与 status)。"""
     state = load_v4_state(reports_root, report_id)
+    fs = state.setdefault("final_selection", {})
+    # 防御层：已最终提交的终选不可再改（路由层另有 locked 断言，双保险）
+    if fs.get("submitted"):
+        raise ValueError("最终选择已提交并锁定，不能再修改")
     if not isinstance(selected_combo_ids, list):
         raise ValueError("selected_combo_ids 必须是数组")
     if len(selected_combo_ids) < 1 or len(selected_combo_ids) > 3:

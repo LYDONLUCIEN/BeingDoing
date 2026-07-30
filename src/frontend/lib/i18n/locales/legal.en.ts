@@ -6,7 +6,7 @@
 
 export const privacyPolicyEn = `Last updated: 2026-07-16
 
-Welcome to LifeAsk. This policy explains in plain language what we collect, why, how we store it, for how long, and what choices you have.
+Welcome to OpenLife. This policy explains in plain language what we collect, why, how we store it, for how long, and what choices you have.
 
 1. Information We Collect
 1.1 Registration: email or phone, username (optional), and a hashed password.
@@ -54,10 +54,10 @@ For any questions about this policy, reach us via the "Contact Us" entry in the 
 
 export const termsOfServiceEn = `Last updated: 2026-07-16
 
-Welcome to LifeAsk. These Terms govern your use of the service. Please read them carefully, especially the bolded parts.
+Welcome to OpenLife. These Terms govern your use of the service. Please read them carefully, especially the bolded parts.
 
 1. Nature of the Service
-1.1 LifeAsk is an AI-based self-exploration assistant. All outputs (including but not limited to conversations, reports, and suggestions) are AI-generated and for reference only.
+1.1 OpenLife is an AI-based self-exploration assistant. All outputs (including but not limited to conversations, reports, and suggestions) are AI-generated and for reference only.
 1.2 The service does not constitute professional advice of any kind (including career, psychological, medical, legal, or investment advice). For important decisions, consult a licensed professional.
 1.3 AI output may be biased, incorrect, or not applicable to your situation. You should decide independently using your own judgment.
 
@@ -76,7 +76,7 @@ You agree not to use the service to:
 4. Content Ownership
 4.1 Content you submit (answers, notes, etc.) belongs to you.
 4.2 To the extent permitted by law, you grant us the rights necessary to provide and improve the service.
-4.3 The interface, copy, algorithms, and trademarks of LifeAsk belong to us or our licensors and may not be copied or commercialized without written permission.
+4.3 The interface, copy, algorithms, and trademarks of OpenLife belong to us or our licensors and may not be copied or commercialized without written permission.
 
 5. Service Changes and Termination
 5.1 We reserve the right to add, modify, or discontinue any feature or the service as a whole at any time.

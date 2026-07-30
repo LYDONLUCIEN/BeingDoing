@@ -50,6 +50,8 @@ export interface PurchasedCodeItem {
   activated_by_self: boolean;
   has_report: boolean;
   report_authorized: boolean;
+  /** 报告审核状态：not_started / pending_review / approved；无报告或旧数据为 null */
+  report_status: string | null;
 }
 
 export interface ReportAuthorizeState {

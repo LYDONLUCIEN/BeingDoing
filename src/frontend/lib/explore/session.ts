@@ -203,6 +203,12 @@ export function setLastActivationCode(code: string): void {
   localStorage.setItem('explore_last_code', code);
 }
 
+/** 清除「上次激活码」（换号/登出/码归属失效时调用，避免残留到其他账号） */
+export function clearLastActivationCode(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem('explore_last_code');
+}
+
 // ──────────────────────────────────────────────
 // 用户维度问卷完成状态（不随激活码变化，切换激活码仍然有效）
 // 按用户 ID 隔离，支持多账号切换

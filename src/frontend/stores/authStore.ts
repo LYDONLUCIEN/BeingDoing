@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import { clearLastActivationCode } from '@/lib/explore/session';
 
 interface User {
   user_id: string;
@@ -50,6 +51,8 @@ export const useAuthStore = create<AuthState>()(
       logout: () => {
         if (typeof window !== 'undefined') {
           localStorage.removeItem('token');
+          // 换号残留清理：上次激活码不能带到下一个账号
+          clearLastActivationCode();
           // 多账号切换：清除所有用户的问卷完成状态 + 隐私声明知晓状态
           const keysToRemove: string[] = [];
           for (let i = 0; i < localStorage.length; i++) {
@@ -64,8 +67,7 @@ export const useAuthStore = create<AuthState>()(
               key?.startsWith('explore_active_thread_') ||
               key?.startsWith('explore_threads_sync_ts_') ||
               key?.startsWith('explore_session_') ||
-              key?.startsWith('bd_rumination_step_idx_') ||
-              key === 'explore_last_code'
+              key?.startsWith('bd_rumination_step_idx_')
             ) {
               keysToRemove.push(key);
             }

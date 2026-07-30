@@ -47,6 +47,8 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
   const { state, selectFinal, submitFinal, comboCache } = useRuminationV4Store();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
+  /** 已最终提交：终选锁定只读，不可再改（后端同时有 locked 断言） */
+  const locked = !!state?.final_selection?.submitted;
 
   // 只展示已确认（concluded）且有结论卡的 combo；用户跳过（user_skipped/abandoned）的不进终选
   const candidates = useMemo(() => {
@@ -80,6 +82,7 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
   }, [open, onClose]);
 
   const toggle = (id: string) => {
+    if (locked) return; // 已锁定：禁止改选
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -97,7 +100,7 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
   const canConfirm = count >= 1 && count <= 3;
 
   const handleConfirm = async () => {
-    if (!canConfirm) return;
+    if (locked || !canConfirm) return;
     setSubmitting(true);
     try {
       await selectFinal(Array.from(selectedIds));
@@ -173,7 +176,9 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
                 最终选择 1–3 个方向
               </h2>
               <p className="mx-auto mt-2 max-w-md text-sm text-[#61708b]">
-                从已创建的组合中，选择你最想继续深入探索的方向
+                {locked
+                  ? '最终选择已提交并锁定，报告已生成，不可再修改'
+                  : '从已创建的组合中，选择你最想继续深入探索的方向'}
               </p>
               <span
                 className="selected-pill mt-3 inline-flex h-[30px] items-center rounded-full px-4 text-[13px] font-extrabold"
@@ -201,6 +206,7 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
                     key={combo.combo_id}
                     type="button"
                     onClick={() => toggle(combo.combo_id)}
+                    disabled={locked}
                     title={desc} // 悬停任意位置可见完整假设（推荐/不推荐均生效）
                     className={`
                       direction-card relative flex flex-col rounded-[15px] border p-4 text-center transition-all duration-200
@@ -297,11 +303,11 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
               >
                 i
               </span>
-              <span>你可以稍后继续调整组合</span>
+              <span>{locked ? '报告已生成，最终选择不可再修改' : '你可以稍后继续调整组合'}</span>
               <span className="h-px flex-1 bg-[#dce2eb]" />
             </div>
 
-            <div className="modal-actions relative z-[1] grid grid-cols-[1fr_1.45fr] gap-5">
+            <div className={`modal-actions relative z-[1] grid gap-5 ${locked ? 'grid-cols-1' : 'grid-cols-[1fr_1.45fr]'}`}>
               <button
                 type="button"
                 onClick={onClose}
@@ -309,22 +315,24 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
                 className="back-btn h-12 rounded-full border bg-white text-[15px] font-extrabold text-[#485671] transition-colors hover:bg-[#f6f8fb] disabled:opacity-50"
                 style={{ borderColor: '#d9e0e9' }}
               >
-                返回调整
+                {locked ? '关闭' : '返回调整'}
               </button>
-              <button
-                type="button"
-                disabled={!canConfirm || submitting}
-                onClick={handleConfirm}
-                className="confirm-btn h-12 rounded-full border-0 text-[15px] font-extrabold text-white transition-all disabled:cursor-not-allowed disabled:opacity-45"
-                style={{
-                  background: canConfirm
-                    ? 'linear-gradient(90deg,#826aff,#553df2)'
-                    : 'rgba(200,200,220,0.5)',
-                  boxShadow: canConfirm ? '0 9px 20px rgba(91,65,240,0.22)' : 'none',
-                }}
-              >
-                {submitting ? '保存中…' : `确认选择（${count}/3）`}
-              </button>
+              {!locked && (
+                <button
+                  type="button"
+                  disabled={!canConfirm || submitting}
+                  onClick={handleConfirm}
+                  className="confirm-btn h-12 rounded-full border-0 text-[15px] font-extrabold text-white transition-all disabled:cursor-not-allowed disabled:opacity-45"
+                  style={{
+                    background: canConfirm
+                      ? 'linear-gradient(90deg,#826aff,#553df2)'
+                      : 'rgba(200,200,220,0.5)',
+                    boxShadow: canConfirm ? '0 9px 20px rgba(91,65,240,0.22)' : 'none',
+                  }}
+                >
+                  {submitting ? '保存中…' : `确认选择（${count}/3）`}
+                </button>
+              )}
             </div>
           </motion.section>
         </motion.div>

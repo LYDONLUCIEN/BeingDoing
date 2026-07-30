@@ -3,10 +3,11 @@
 
 流程：
 1. 收集5个phase的结论数据（4维 dimension_conclusions + rumination_v4 最终结论卡）
-2. 可选拼接用户 profile
-3. Jinja2 渲染提示词 → LLM 生成 markdown 报告
-4. 缓存 markdown 到文件系统（record.json 存时间戳）
-5. WeasyPrint: markdown → HTML → PDF（含水印）
+2. 收集五个阶段的完整对话全文（与 admin 批量导出的 report_<id>.md 同源口径）
+3. 解析用户昵称（basic_info nickname → User.username → 探索者）+ 可选拼接用户 profile
+4. Jinja2 渲染提示词（202607 版八章框架）→ LLM 生成 markdown 报告
+5. 缓存 markdown 到文件系统（record.json 存时间戳）
+6. WeasyPrint: markdown → HTML → PDF（含水印）
 
 缓存策略：
 - record.json 增加 report_markdown_generated_at 字段
@@ -30,7 +31,7 @@ import markdown as md_lib
 
 from app.core.llmapi import LLMMessage, get_default_llm_provider
 from app.domain.prompts.loader import _get_loader
-from app.utils.report_registry import ReportRegistry
+from app.utils.report_registry import STEP_IDS, ReportRegistry
 from app.utils.simple_activation_manager import get_simple_base_dir
 from app.utils.survey_storage import load_dimension_conclusions
 
@@ -39,8 +40,8 @@ logger = logging.getLogger(__name__)
 # 静态资源路径
 _STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 _WATERMARK_LOGO = _STATIC_DIR / "assets" / "watermark_logo.png"
-_PAGE_LOGO_HEADER = _STATIC_DIR / "assets" / "lifeasklogo_header.png"  # 页眉右上角小 logo
-_PAGE_LOGO_FOOTER = _STATIC_DIR / "assets" / "lifeasklogo_footer.png"  # 页脚正中心 logo
+_PAGE_LOGO_HEADER = _STATIC_DIR / "assets" / "openlifelogo_header.png"  # 页眉右上角小 logo
+_PAGE_LOGO_FOOTER = _STATIC_DIR / "assets" / "openlifelogo_footer.png"  # 页脚正中心 logo
 _REPORT_CSS = _STATIC_DIR / "styles" / "report_pdf.css"
 
 # 报告落款签名（ADR-0012 品牌更名后新增）：首次生成随机分配，持久化到 record.json 的
@@ -50,6 +51,22 @@ _SIGNATURE_SUFFIX = ".png"
 
 # 缓存文件名
 _REPORT_MARKDOWN_FILENAME = "report_markdown.md"
+
+# 对话全文注入配置（conversation_block）：与批量导出 md 同口径，只保留 user/assistant
+_CONVERSATION_ROLES_KEEP = {"user", "assistant"}
+_CONVERSATION_ROLE_CN = {"user": "用户", "assistant": "助手"}
+_PHASE_LABEL_CN = {
+    "values": "价值观",
+    "strengths": "优势",
+    "interests": "热爱",
+    "purpose": "使命",
+    "rumination": "沉淀",
+}
+# 单阶段对话注入上限（字符）；超出时保留开头 + 结尾，中间省略，防止 prompt 超长
+_CONVERSATION_PHASE_CHAR_LIMIT = 20000
+_CONVERSATION_PHASE_HEAD_CHARS = 6000
+# 昵称兜底
+_DEFAULT_NICKNAME = "探索者"
 
 
 def _image_data_uri(path: Path) -> str:
@@ -155,7 +172,7 @@ class ReportPdfService:
         """根据 record 生成 PDF 文件名。"""
         user_id = (record.get("user_id") or "user").strip()
         date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
-        return f"寻路·LifeAsk报告_{user_id}_{date_str}.pdf"
+        return f"寻路·OpenLife报告_{user_id}_{date_str}.pdf"
 
     # ── 数据收集 ──────────────────────────────────────────────
 
@@ -272,6 +289,121 @@ class ReportPdfService:
 
         return "\n".join(lines)
 
+    # ── 昵称与对话全文收集 ──────────────────────────────────
+
+    async def _collect_nickname(
+        self, report_id: str, user_id: Optional[str] = None
+    ) -> str:
+        """解析用户昵称：basic_info nickname → User.username → 探索者。"""
+        uid = (user_id or "").strip()
+        if not uid:
+            try:
+                registry = ReportRegistry(base_dir=str(self.simple_base_dir))
+                record = registry.get_report_by_id(report_id) or {}
+                uid = (record.get("user_id") or "").strip()
+            except Exception:
+                uid = ""
+        if not uid:
+            return _DEFAULT_NICKNAME
+
+        # 1. basic_info 问卷昵称（对话中 AI 称呼用户用的就是它）
+        try:
+            from app.utils.survey_storage import load_basic_info_by_user
+
+            info = load_basic_info_by_user(uid) or {}
+            nickname = (info.get("nickname") or "").strip()
+            if nickname:
+                return nickname
+        except Exception as e:
+            logger.warning("读取 basic_info 昵称失败: user_id=%s err=%s", uid, e)
+
+        # 2. 注册用户名
+        try:
+            from app.models.database import AsyncSessionLocal
+            from app.models.user import User
+            from sqlalchemy import select
+
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(select(User).where(User.id == uid))
+                user = result.scalar_one_or_none()
+                if user and user.username:
+                    return str(user.username).strip()
+        except Exception as e:
+            logger.warning("读取用户 username 失败: user_id=%s err=%s", uid, e)
+
+        return _DEFAULT_NICKNAME
+
+    def _collect_conversation_block(self, report_id: str) -> str:
+        """收集五个阶段的完整对话全文，渲染成文本块（conversation_block）。
+
+        口径与 admin 批量导出的 report_<id>.md 一致：
+        - 遍历 STEP_IDS，每阶段选会话优先级 selected_session_id > session_ids 最后一个
+        - 只保留 user/assistant 消息，过滤 system/tool/conclusion_card 等噪音
+        - 单阶段超长时保留开头 + 结尾，中间省略
+        """
+        try:
+            registry = ReportRegistry(base_dir=str(self.simple_base_dir))
+            record = registry.get_report_by_id(report_id)
+        except Exception as e:
+            logger.warning("加载 report record 失败: report_id=%s err=%s", report_id, e)
+            return "（暂无对话记录）"
+        if not record:
+            return "（暂无对话记录）"
+
+        blocks: List[str] = []
+        for step_id in STEP_IDS:
+            step = (record.get("steps") or {}).get(step_id) or {}
+            session_ids = step.get("session_ids") or []
+            chosen = step.get("selected_session_id") or (session_ids[-1] if session_ids else None)
+            if not chosen:
+                continue
+
+            label = _PHASE_LABEL_CN.get(step_id, step_id)
+            file_path = registry.get_step_session_file(report_id, step_id, chosen)
+            if not file_path.is_file():
+                blocks.append(f"### {label}阶段\n\n> （该阶段对话源文件缺失）")
+                continue
+            try:
+                raw = json.loads(file_path.read_text(encoding="utf-8") or "{}")
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warning("对话源文件解析失败: %s err=%s", file_path, e)
+                blocks.append(f"### {label}阶段\n\n> （该阶段对话源文件解析失败）")
+                continue
+
+            dialogue = self._render_dialogue_text(raw.get("messages") or [])
+            if not dialogue:
+                dialogue = "（本阶段无对话记录）"
+            blocks.append(f"### {label}阶段\n\n{dialogue}")
+
+        if not blocks:
+            return "（暂无对话记录）"
+        return "\n\n".join(blocks)
+
+    def _render_dialogue_text(self, messages: list) -> str:
+        """把消息列表渲染为「**用户**：xxx」对话文本，超长时头尾保留、中间省略。"""
+        lines: List[str] = []
+        for m in messages:
+            if not isinstance(m, dict):
+                continue
+            role = m.get("role") or ""
+            if role not in _CONVERSATION_ROLES_KEEP:
+                continue
+            content = m.get("content")
+            if not isinstance(content, str):
+                content = json.dumps(content, ensure_ascii=False) if content else ""
+            text = content.strip()
+            if not text:
+                continue
+            speaker = _CONVERSATION_ROLE_CN.get(role, role)
+            lines.append(f"**{speaker}**：{text}")
+
+        dialogue = "\n\n".join(lines)
+        if len(dialogue) <= _CONVERSATION_PHASE_CHAR_LIMIT:
+            return dialogue
+        head = dialogue[:_CONVERSATION_PHASE_HEAD_CHARS]
+        tail = dialogue[_CONVERSATION_PHASE_HEAD_CHARS - _CONVERSATION_PHASE_CHAR_LIMIT:]
+        return f"{head}\n\n> ……（中间对话省略）……\n\n{tail}"
+
     # ── LLM 生成 ─────────────────────────────────────────────
 
     async def _generate_report_markdown(
@@ -283,11 +415,15 @@ class ReportPdfService:
         profile_block = ""
         if user_id:
             profile_block = await self._collect_profile_async(user_id)
+        nickname = await self._collect_nickname(report_id, user_id)
+        conversation_block = self._collect_conversation_block(report_id)
 
         # 2. 渲染提示词
         context = {
             **phase_data,
             "profile_block": profile_block,
+            "user_nickname": nickname,
+            "conversation_block": conversation_block,
         }
         system_prompt = _get_loader().render("report_system", context)
 
@@ -307,7 +443,7 @@ class ReportPdfService:
         response = await llm.chat(
             messages=messages,
             temperature=0.7,
-            max_tokens=4000,
+            max_tokens=8000,
         )
         return response.content.strip()
 
@@ -500,7 +636,7 @@ class ReportPdfService:
             return ""
         return (
             '<div class="report-signature">'
-            '<div class="signature-label">—— 你的寻路·LifeAsk 探索引导师</div>'
+            '<div class="signature-label">—— 你的寻路·OpenLife 探索引导师</div>'
             f'<img class="signature-img" src="{data_uri}" alt="引导师签名" />'
             "</div>"
         )
@@ -536,7 +672,7 @@ class ReportPdfService:
         strip_content = (
             f'<img src="data:image/png;base64,{logo_b64}" alt="logo" />'
             if logo_b64
-            else '<div class="watermark-text">寻路·LifeAsk</div>'
+            else '<div class="watermark-text">寻路·OpenLife</div>'
         )
         watermark_strips = "".join(
             f'<div class="watermark-strip strip-{i}">{strip_content}</div>' for i in (1, 2, 3)
@@ -557,9 +693,9 @@ class ReportPdfService:
 
 <!-- 封面 -->
 <div class="cover">
-  <div class="cover-title">寻路·LifeAsk 报告</div>
+  <div class="cover-title">寻路·OpenLife 报告</div>
   <div class="cover-divider"></div>
-  <div class="cover-subtitle">LIFEASK</div>
+  <div class="cover-subtitle">OPENLIFE</div>
   <div class="cover-info">
     不是找到方向，而是认出自己<br/>
     <br/>

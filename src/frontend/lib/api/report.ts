@@ -67,6 +67,27 @@ export async function getMyReportInfo(activationCode: string): Promise<MyReportI
   };
 }
 
+export interface MyReportListItem {
+  report_id: string;
+  activation_code: string;
+  review_status: ReportReviewStatus;
+  review_deadline: string | null;
+  created_at: string | null;
+  code_type: string | null;
+}
+
+/**
+ * 用户端：我的报告列表（只读）。
+ * 契约：GET /export/my-reports → { items: [...] }（裸 JSON）。
+ * review_status 三态（后端已做存量豁免）：not_started / pending_review / approved。
+ */
+export async function getMyReports(): Promise<MyReportListItem[]> {
+  const res = await apiClient.raw.get('/export/my-reports');
+  const body = res.data as any;
+  const data = body?.data ?? body;
+  return (data?.items ?? []) as MyReportListItem[];
+}
+
 /**
  * 触发 PDF 报告生成。
  * 返回 status: 'generating' | 'ready'
@@ -124,7 +145,7 @@ export async function downloadReportPdfFile(
   );
 
   const blob = res.data as Blob;
-  const filename = pickFilenameFromHeaders(res.headers, `寻路·LifeAsk报告_${reportId}.pdf`);
+  const filename = pickFilenameFromHeaders(res.headers, `寻路·OpenLife报告_${reportId}.pdf`);
   triggerBlobDownload(blob, filename);
 }
 

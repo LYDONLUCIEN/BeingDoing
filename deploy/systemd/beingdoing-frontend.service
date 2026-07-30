@@ -1,5 +1,5 @@
 [Unit]
-Description=lifeask Frontend (Next.js)
+Description=openlife Frontend (Next.js)
 After=network-online.target
 Wants=network-online.target
 

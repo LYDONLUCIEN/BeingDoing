@@ -1,12 +1,12 @@
-# 寻路·LifeAsk (lifeask) — 领域术语
+# 寻路·OpenLife (openlife) — 领域术语
 
 > 面向产品、运营与开发共用的语言。不含实现细节。
 
 ## 品牌
 
 **品牌名 (Brand Name)**  
-中文语境书写为「寻路·LifeAsk」（间隔号连接），英文/域名/代码语境书写为 `LifeAsk` / `lifeask`（小写用于域名、文件名、配置值）。生产域名为 `lifeask.beyondego.me`。旧称「寻路 (xunlu)」已废弃，新文案不得再使用。
-_Avoid_: 寻路LifeAsk（无间隔号连写）、xunlu、Xunlu、XUNLU
+中文语境书写为「寻路·OpenLife」（间隔号连接），英文/域名/代码语境书写为 `OpenLife` / `openlife`（小写用于域名、文件名、配置值）。生产域名为 `openlife.beyondego.me`。旧称「寻路 (xunlu)」已废弃，新文案不得再使用。
+_Avoid_: 寻路OpenLife（无间隔号连写）、xunlu、Xunlu、XUNLU
 
 **落款签名 (Report Signature)**  
 PDF 报告末尾的引导师手写签名图。每位引导师一张签名图（当前 3 张：`signature_1/2/3.png`），报告首次生成 PDF 时随机分配一位，并持久化到 report 的 `record.json` 的 `report_signature` 字段；同一报告之后任何次再生成必须使用同一签名，不得重新随机。

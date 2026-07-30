@@ -23,7 +23,7 @@ export const en = {
   },
 
   nav: {
-    brand: 'LifeAsk',
+    brand: 'OpenLife',
     home: 'Home',
     personalHomepage: 'Dashboard',
     uploadAvatar: 'Upload Avatar',
@@ -38,8 +38,8 @@ export const en = {
   },
 
   home: {
-    tagline: 'LifeAsk',
-    heroTitle: 'LifeAsk',
+    tagline: 'OpenLife',
+    heroTitle: 'OpenLife',
     heroSlogan: 'All interests deserve to be careers.',
     dimensionsTitle: 'Explore Dimensions',
     dimensionsHeading: 'Look inward for answers',
@@ -196,11 +196,11 @@ export const en = {
     },
     survey: {
       header: 'Basic Info',
-      hint: 'This helps us tailor the conversation. All questions are optional — you can skip and start exploring.',
+      hint: 'This helps us tailor the conversation. Nickname is required (used as the signature on your final report; you cannot skip without it) — all other questions are optional.',
       submitLabel: 'Submit & Start Exploring',
       privacyTitle: 'Before we begin, a quick note',
       privacyBody:
-        'Our promise:\n\n· Your information is used only to improve the results LifeAsk gives you — to make the direction fit your real situation. It will never be used for marketing or sold to any third party.\n· Everything stays visible only to you. You can edit or delete it anytime.\n\nThis background info is optional — fill it in now, add more later, or skip it entirely. But the more complete it is, the more targeted our feedback can be.\n\nWhatever you choose, it will not affect your ability to use LifeAsk.',
+        'Our promise:\n\n· Your information is used only to improve the results OpenLife gives you — to make the direction fit your real situation. It will never be used for marketing or sold to any third party.\n· Everything stays visible only to you. You can edit or delete it anytime.\n\nThis background info is optional — fill it in now, add more later, or skip it entirely. But the more complete it is, the more targeted our feedback can be.\n\nWhatever you choose, it will not affect your ability to use OpenLife.',
       privacyContinue: 'Got it, start filling in',
       privacyDontRemind: "Don't remind me again",
     },
@@ -483,6 +483,11 @@ export const en = {
       consultTitle: 'Report Consultation',
       consultDesc: 'One-on-one online session (~60 min): in-depth interpretation of your report in real scenarios, with actionable direction advice for personal growth or team management.',
       consultCta: 'Book a Session',
+      noCodeTitle: 'No Report Selected',
+      noCodeDesc: 'Open "Dashboard · Report" to pick a report, or finish your exploration to generate one.',
+      forbiddenTitle: 'Report Unavailable',
+      forbiddenDesc: 'This account cannot view the report for that activation code. Please re-enter from your dashboard.',
+      gotoMyReports: 'Go to My Reports',
       authTitle: 'Share Report with the Giver',
       authDesc: 'When enabled, the user who gifted you this code ({purchaser}) can include your report in team analysis. Only the report is shared — your conversations are never shared.',
     },
@@ -557,6 +562,21 @@ export const en = {
     },
     myCodes: 'My Codes',
     teamAnalysis: 'Team Analysis',
+    reportPage: {
+      loadFailed: 'Failed to load reports',
+      codeLabel: 'Activation Code',
+      createdAt: 'Created',
+      viewReport: 'View Report',
+      statusPending: 'Under review',
+      statusApproved: 'Ready',
+      deadlineLabel: 'Estimated completion',
+      emptyLockedTitle: 'Report Not Unlocked Yet',
+      emptyLockedDesc: 'Complete all five exploration phases to generate your personal report.',
+      emptyLockedCta: 'Continue Exploring',
+      emptyNoneTitle: 'No Reports Yet',
+      emptyNoneDesc: 'Activate or purchase a full code and finish the exploration to generate your report.',
+      emptyNoneCta: 'View My Codes',
+    },
     codeType: {
       trial: 'Trial',
       full: 'Full',
@@ -577,6 +597,7 @@ export const en = {
       reportLabel: 'Report',
       reportReady: 'Ready',
       reportNone: 'Not yet',
+      reportReviewing: 'Under review',
       type: {
         trial: 'Trial',
         full: 'Full',
@@ -654,6 +675,12 @@ export const en = {
       finalNote: 'The actual amount due will be shown after the order is created',
       submit: 'Renew Now',
     },
+    consultation: {
+      title: 'Report Consultation',
+      name: 'Report Consultation',
+      period: 'session',
+      desc: 'After payment you will be guided to fill in a booking questionnaire — the topics you want to discuss, your available time slots, and your contact details.',
+    },
     coupon: {
       placeholder: 'Coupon code (optional)',
       apply: 'Apply',
@@ -730,7 +757,7 @@ export const en = {
     termsOfService: 'Terms of Service',
     privacyBody: privacyPolicyEn,
     termsBody: termsOfServiceEn,
-    copyright: '© {year} LifeAsk. All rights reserved.',
+    copyright: '© {year} OpenLife. All rights reserved.',
   },
   admin: {
     title: 'Admin',

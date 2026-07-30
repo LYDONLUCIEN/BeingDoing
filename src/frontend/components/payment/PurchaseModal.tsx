@@ -64,6 +64,12 @@ const FALLBACK_PRODUCTS: ProductItem[] = [
     duration_days: 365,
     popular: true,
   },
+  {
+    product_type: 'consultation',
+    name: '报告解读咨询',
+    description: '一对一线上沟通（约 60 分钟）',
+    price: 29800,
+  },
 ];
 
 /**
@@ -84,6 +90,8 @@ export default function PurchaseModal({
   const { t } = useLocale();
 
   const renewalMode = Boolean(renewalTargetCode);
+  /** 咨询专属模式：跳过套餐选择，直接展示咨询卡片下单（修复 F3：兜底错选季度套餐导致界面价与实际收款不符） */
+  const consultationMode = !renewalMode && defaultProductType === 'consultation';
 
   const [view, setView] = useState<ViewState>('order');
   const [products, setProducts] = useState<ProductItem[]>(FALLBACK_PRODUCTS);
@@ -107,8 +115,12 @@ export default function PurchaseModal({
 
   const selectedProduct =
     products.find((p) => p.product_type === selectedType) ?? products[0] ?? FALLBACK_PRODUCTS[0];
+  /** 咨询模式单独定价：优先接口价，兜底 ¥298 */
+  const consultationProduct =
+    products.find((p) => p.product_type === 'consultation') ?? FALLBACK_PRODUCTS[2];
+  const priceProduct = consultationMode ? consultationProduct : selectedProduct;
   // 延期模式价格由后端按码类型定价，前端下单前不展示确定金额
-  const finalAmount = Math.max(0, selectedProduct.price - (appliedCoupon?.amount ?? 0));
+  const finalAmount = Math.max(0, priceProduct.price - (appliedCoupon?.amount ?? 0));
 
   /** 套餐特性文案（i18n 缺失的键自动跳过） */
   const planFeatures = (type: ProductType): string[] =>
@@ -208,8 +220,12 @@ export default function PurchaseModal({
 
     getProducts()
       .then((res) => {
-        const packages = res.items.filter((it) => PACKAGE_TYPES.includes(it.product_type));
-        if (packages.length > 0) setProducts(packages);
+        const items = [...res.items];
+        // 接口未返回咨询商品时补兜底（¥298），保证咨询模式可下单
+        if (!items.some((it) => it.product_type === 'consultation')) {
+          items.push(FALLBACK_PRODUCTS[2]);
+        }
+        if (items.some((it) => PACKAGE_TYPES.includes(it.product_type))) setProducts(items);
       })
       .catch(() => {
         /* 使用兜底商品信息 */
@@ -266,11 +282,17 @@ export default function PurchaseModal({
               coupon_code: appliedCoupon?.code,
               target_code: renewalTargetCode,
             }
-          : {
-              product_type: selectedType,
-              channel,
-              coupon_code: appliedCoupon?.code,
-            },
+          : consultationMode
+            ? {
+                product_type: 'consultation',
+                channel,
+                coupon_code: appliedCoupon?.code,
+              }
+            : {
+                product_type: selectedType,
+                channel,
+                coupon_code: appliedCoupon?.code,
+              },
       );
       if (!res.payment || res.order.status === 'granted') {
         // 0 元单：直接发放
@@ -325,7 +347,11 @@ export default function PurchaseModal({
     router.push(bookingId ? `/dashboard/consultation/${bookingId}` : '/dashboard/orders');
   };
 
-  const orderTitle = renewalMode ? t('payment.renewal.title') : t('payment.title');
+  const orderTitle = renewalMode
+    ? t('payment.renewal.title')
+    : consultationMode
+      ? t('payment.consultation.title')
+      : t('payment.title');
   const giftCodes = order?.meta?.gift_codes ?? [];
 
   return (
@@ -388,10 +414,30 @@ export default function PurchaseModal({
                         {t('payment.renewal.priceHint')}
                       </p>
                     </div>
+                  ) : consultationMode ? (
+                    /* 报告解读咨询：专属卡片，跳过套餐选择 */
+                    <div className="rounded-xl border border-stone-200/80 bg-stone-50/60 px-4 py-4">
+                      <p className="text-[15px] font-semibold text-stone-800">
+                        {t('payment.consultation.name') !== 'payment.consultation.name'
+                          ? t('payment.consultation.name')
+                          : consultationProduct.name}
+                      </p>
+                      <p className="mt-1.5">
+                        <span className="text-xl font-bold text-stone-900">
+                          ¥{fenToYuan(consultationProduct.price)}
+                        </span>
+                        <span className="ml-1 text-xs text-stone-500">
+                          / {t('payment.consultation.period')}
+                        </span>
+                      </p>
+                      <p className="mt-2.5 text-xs leading-relaxed text-stone-500">
+                        {t('payment.consultation.desc')}
+                      </p>
+                    </div>
                   ) : (
                     /* 套餐选择：季度套餐 / 年度套餐 */
                     <div className="grid grid-cols-2 gap-3">
-                      {products.map((p) => {
+                      {products.filter((p) => PACKAGE_TYPES.includes(p.product_type)).map((p) => {
                         const selected = p.product_type === selectedType;
                         const features = planFeatures(p.product_type);
                         return (
@@ -514,7 +560,7 @@ export default function PurchaseModal({
                       <>
                         <div className="flex items-center justify-between text-sm text-stone-500">
                           <span>{t('payment.price.original')}</span>
-                          <span>¥{fenToYuan(selectedProduct.price)}</span>
+                          <span>¥{fenToYuan(priceProduct.price)}</span>
                         </div>
                         {appliedCoupon && (
                           <div className="flex items-center justify-between text-sm text-emerald-600">

@@ -419,7 +419,7 @@ class BatchExportService:
         """生成纯净 Markdown：报告头 + 每个 phase 的「结论 + 对话」。"""
         now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S") + " UTC"
         lines: List[str] = []
-        lines.append(f"# 寻路·LifeAsk 探索报告 - {report_id}")
+        lines.append(f"# 寻路·OpenLife 探索报告 - {report_id}")
         lines.append("")
         lines.append(f"- 用户ID: {record.get('user_id') or ''}")
         lines.append(f"- 激活码: {record.get('activation_code') or ''}")

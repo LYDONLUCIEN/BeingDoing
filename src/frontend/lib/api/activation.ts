@@ -24,7 +24,10 @@ export interface MyCodeItem {
   created_at?: string | null;
   source?: CodeSource | null;
   session_id?: string | null;
+  /** approved 才算 true（审核中不算） */
   has_report?: boolean;
+  /** 报告审核状态：not_started / pending_review / approved；无报告或旧数据为 null */
+  report_status?: string | null;
 }
 
 // ─── 我的激活码 ──────────────────────────────────────────

@@ -381,6 +381,32 @@
 **Query参数**:
 - `export_id`: 导出ID
 
+### GET /export/my-reports
+列出当前用户（作为激活人）名下的全部报告（纯只读，不触发审核计时）
+
+**认证**: 需要登录（Bearer Token）
+
+**响应**（裸 dict，不包 `{code,message,data}`）:
+```json
+{
+  "items": [
+    {
+      "report_id": "rpt_xxx",
+      "activation_code": "ABCD-1234",
+      "review_status": "approved",
+      "review_deadline": null,
+      "created_at": "2026-07-29T10:00:00+08:00",
+      "code_type": "trial"
+    }
+  ]
+}
+```
+
+**字段说明**:
+- `review_status`: `not_started` / `pending_review` / `approved`（存量报告缺字段祖父豁免视为 `approved`）
+- `review_deadline`: 审核截止时间（仅 `pending_review` 时有值）
+- `code_type`: `trial` / `full`，激活记录取不到时为 `null`
+
 ## ⚙️ 配置API
 
 ### GET /config/architecture

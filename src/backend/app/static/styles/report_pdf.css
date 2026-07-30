@@ -1,4 +1,4 @@
-/* 寻路·LifeAsk PDF 报告样式 — WeasyPrint */
+/* 寻路·OpenLife PDF 报告样式 — WeasyPrint */
 
 /* 字体：使用系统已有的 Noto 系列 */
 body {
@@ -122,8 +122,8 @@ hr {
 }
 
 /* ── 页眉页脚（@page 边距盒）──
-   页眉右上角：寻路·LifeAsk logo（每页）
-   页脚正中心：寻路·LifeAsk logo（每页）；页码移至左下角；右下角保留 AI 声明
+   页眉右上角：寻路·OpenLife logo（每页）
+   页脚正中心：寻路·OpenLife logo（每页）；页码移至左下角；右下角保留 AI 声明
    __PAGE_LOGO_HEADER_URL__ / __PAGE_LOGO_FOOTER_URL__ 由后端渲染时替换为 data URI */
 @page {
   size: A4;
@@ -195,7 +195,7 @@ hr {
 .watermark-strip.strip-3 { top: 81%; }
 
 .watermark-strip img {
-  width: 320px; /* 水印图为「寻路 · LifeAsk」横版文字带 */
+  width: 320px; /* 水印图为「寻路 · OpenLife」横版文字带 */
   height: auto;
 }
 

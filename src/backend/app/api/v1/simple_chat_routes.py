@@ -2470,6 +2470,14 @@ async def rumination_table_submit(
             (current_user or {}).get("user_id", ""),
             bind_session_id_for_ensure_report(rec),
         )
+        # 报告定稿后 rumination 锁定：终选（n选3）不可再改
+        _assert_step_editable(
+            registry=registry,
+            report_id=report.get("report_id") or "",
+            phase_step="rumination",
+            current_user=current_user,
+            rec=rec,
+        )
     except HTTPException:
         raise
     except ValueError as e:
@@ -3099,6 +3107,9 @@ async def rumination_table_submit(
                 filter_early_terminated=False,
                 filter_terminate_reason=None,
             )
+            # 终步定稿即锁定 rumination（与其它四阶段「进入下一阶段锁上一阶段」口径对称；
+            # rumination 是最后一步，无后续阶段触发锁定，需在此显式锁定）
+            registry.lock_step(report_id, "rumination")
             next_table = None
             next_step_val = 7
             rumination_submit_next_action = "rumination_finalize_transition"
