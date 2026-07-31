@@ -210,8 +210,14 @@ hr {
 /* ── 报告末尾落款签名 ── */
 .report-signature {
   text-align: right;
-  margin-top: 48px;
+  margin-top: 24px;
   padding-right: 12px;
+  /* 签名块内部禁止跨页拆分（标签+签名图始终完整同框）；
+     并尽量避免与上文之间断页，极尽可能跟在末尾文案下方 */
+  page-break-inside: avoid;
+  break-inside: avoid;
+  page-break-before: avoid;
+  break-before: avoid;
 }
 
 .signature-label {

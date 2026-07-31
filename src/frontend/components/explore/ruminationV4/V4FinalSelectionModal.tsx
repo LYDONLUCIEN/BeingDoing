@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 import { useRuminationV4Store } from '@/stores/ruminationV4Store';
@@ -44,7 +45,8 @@ function getDirectionDesc(combo: ComboSession, card: ConclusionCard | null): str
 }
 
 export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Props) {
-  const { state, selectFinal, submitFinal, comboCache } = useRuminationV4Store();
+  const { state, selectFinal, submitFinal, comboCache, activationCode } = useRuminationV4Store();
+  const router = useRouter();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   /** 已最终提交：终选锁定只读，不可再改（后端同时有 locked 断言） */
@@ -307,7 +309,7 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
               <span className="h-px flex-1 bg-[#dce2eb]" />
             </div>
 
-            <div className={`modal-actions relative z-[1] grid gap-5 ${locked ? 'grid-cols-1' : 'grid-cols-[1fr_1.45fr]'}`}>
+            <div className="modal-actions relative z-[1] grid grid-cols-[1fr_1.45fr] gap-5">
               <button
                 type="button"
                 onClick={onClose}
@@ -317,7 +319,26 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
               >
                 {locked ? '关闭' : '返回调整'}
               </button>
-              {!locked && (
+              {locked ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                        onClose();
+                        router.push(
+                          activationCode
+                            ? `/explore/report?code=${encodeURIComponent(activationCode)}`
+                            : '/explore/report'
+                        );
+                      }}
+                  className="confirm-btn h-12 rounded-full border-0 text-[15px] font-extrabold text-white transition-all"
+                  style={{
+                    background: 'linear-gradient(90deg,#826aff,#553df2)',
+                    boxShadow: '0 9px 20px rgba(91,65,240,0.22)',
+                  }}
+                >
+                  查看报告
+                </button>
+              ) : (
                 <button
                   type="button"
                   disabled={!canConfirm || submitting}

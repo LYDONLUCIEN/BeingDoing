@@ -10,6 +10,7 @@
 
 import { useEffect, useState, type CSSProperties } from 'react';
 import dynamic from 'next/dynamic';
+import { useRouter } from 'next/navigation';
 import { FileText } from 'lucide-react';
 import { useRuminationV4Store } from '@/stores/ruminationV4Store';
 import V4ChatPanel from './V4ChatPanel';
@@ -54,6 +55,13 @@ export default function RuminationV4Page({
 }: Props) {
   const { state, init } = useRuminationV4Store();
   const [finalModalOpen, setFinalModalOpen] = useState(false);
+  const router = useRouter();
+
+  /** 终选已提交：顶栏按钮变为「查看报告」直达报告页（报告下载页除个人空间外的另一入口） */
+  const finalSubmitted = !!state?.final_selection?.submitted;
+  const gotoReport = () => {
+    router.push(`/explore/report?code=${encodeURIComponent(activationCode)}`);
+  };
 
   useEffect(() => {
     if (activationCode) {
@@ -109,9 +117,9 @@ export default function RuminationV4Page({
               {onCompleteAndContinue && (
                 <button
                   type="button"
-                  onClick={() => setFinalModalOpen(true)}
-                  disabled={!v4CanContinue}
-                  title={continueDisabledHint || undefined}
+                  onClick={() => (finalSubmitted ? gotoReport() : setFinalModalOpen(true))}
+                  disabled={!finalSubmitted && !v4CanContinue}
+                  title={finalSubmitted ? '查看我的报告' : continueDisabledHint || undefined}
                   className="complete-btn flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-bold text-white transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40 sm:px-5 sm:py-3 sm:text-base"
                   style={{
                     background: 'linear-gradient(180deg,#121f3f,#07132f)',
@@ -119,7 +127,9 @@ export default function RuminationV4Page({
                   }}
                 >
                   <FileText size={18} strokeWidth={2} className="hidden shrink-0 sm:inline" />
-                  <span className="max-w-[7.5rem] truncate sm:max-w-none">完成并继续</span>
+                  <span className="max-w-[7.5rem] truncate sm:max-w-none">
+                    {finalSubmitted ? '查看报告' : '完成并继续'}
+                  </span>
                 </button>
               )}
             </div>

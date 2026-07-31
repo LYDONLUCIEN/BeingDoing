@@ -104,11 +104,20 @@ _SESSION_ID_CROSS_REPORT_EXEMPT = frozenset({"admin_mock"})
 
 
 def _report_portal_unlocked(steps: dict) -> bool:
-    """五阶段均已选定会话时，报告入口对个人空间/仪表盘开放（与 transition 收口一致）。"""
+    """五阶段均已选定会话时，报告入口对个人空间/仪表盘开放（与 transition 收口一致）。
+
+    rumination 特例：v4 无 thread 概念，终选提交（final-selection/submit）只 lock_step
+    不写 selected_session_id，故 rumination 接受 locked 作为完成信号；
+    v3 口径不受影响（step7 定稿先 select_session 后 lock，locked 蕴含已完成）。
+    """
     for sid in STEP_IDS:
-        sel = (steps.get(sid) or {}).get("selected_session_id") or ""
-        if not str(sel).strip():
-            return False
+        st = steps.get(sid) or {}
+        sel = str(st.get("selected_session_id") or "").strip()
+        if sel:
+            continue
+        if sid == "rumination" and st.get("locked"):
+            continue
+        return False
     return True
 
 

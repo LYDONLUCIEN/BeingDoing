@@ -14,7 +14,7 @@ import {
 import LikedContentSection from '@/components/explore/LikedContentSection';
 import PurchaseModal from '@/components/payment/PurchaseModal';
 import { useLocale } from '@/hooks/useLocale';
-import { getMyReportId, getMyReportInfo, type MyReportInfo } from '@/lib/api/report';
+import { getMyReportInfo, type MyReportInfo } from '@/lib/api/report';
 import { fetchReportAuthorize, setReportAuthorize } from '@/lib/api/teamAnalysis';
 import { useReportPdfDownload } from '@/hooks/useReportPdfDownload';
 import { Headphones, Share2 } from 'lucide-react';
@@ -44,7 +44,23 @@ function ReportViewContent() {
   /** 403：当前账号无权查看该码的报告 */
   const [forbidden, setForbidden] = useState(false);
 
-  const { status, error: pdfError, download } = useReportPdfDownload({ activationCode });
+  const { status, error: pdfError, check, prepare, saveNow } = useReportPdfDownload({ activationCode });
+
+  // 报告页加载后（approved）先查一次生成状态：
+  // - 已有缓存（含审核期后台预生成完成）→ 直接显示「下载 PDF 报告」，不重新生成
+  // - 未生成 → 显示「生成报告」
+  const reportId = reportInfo?.report_id ?? null;
+  const isApproved = reportInfo?.review_status === 'approved';
+  useEffect(() => {
+    if (isApproved && reportId) {
+      void check(reportId).then((s) => {
+        // 后台正在生成（如审核期预生成未完成）：接管轮询，完成后自动变为「下载」按钮；
+        // trigger 幂等（任务进行中不会重启），不会重复生成
+        if (s === 'generating') void prepare(reportId);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isApproved, reportId]);
 
   useEffect(() => {
     if (!activationCode) {
@@ -84,19 +100,22 @@ function ReportViewContent() {
     };
   }, [activationCode]);
 
-  const handleDownloadPdf = async () => {
-    if (!activationCode || status === 'generating') return;
+  const handleGenerate = async () => {
+    if (!reportId || status === 'generating') return;
     setFetchError(null);
-    try {
-      const reportId = await getMyReportId(activationCode);
-      if (!reportId) {
-        setFetchError('未找到您的报告，请先完成探索流程。');
-        return;
-      }
-      await download(reportId);
-    } catch (e: any) {
-      setFetchError('获取报告信息失败，请稍后重试。');
-    }
+    await prepare(reportId);
+  };
+
+  const handleRegenerate = async () => {
+    if (!reportId || status === 'generating') return;
+    setFetchError(null);
+    await prepare(reportId, { force: true });
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!reportId) return;
+    setFetchError(null);
+    await saveNow(reportId);
   };
 
   const isGenerating = status === 'generating';
@@ -301,30 +320,51 @@ function ReportViewContent() {
           </p>
         </div>
 
-        {/* PDF 下载按钮 */}
-        {activationCode && (
+        {/* 报告生成 / 下载按钮区：生成与下载分离，避免 Chrome 拦截异步自动下载 */}
+        {activationCode && reportId && (
           <div className="space-y-2">
-            <button
-              type="button"
-              onClick={handleDownloadPdf}
-              disabled={isGenerating}
-              className="inline-flex items-center gap-2 rounded-xl bg-[var(--bd-ui-accent)] text-bd-ui-accent-fg px-6 py-3 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-60"
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 size={16} className="animate-spin" />
-                  报告生成中，请勿关闭页面...
-                </>
-              ) : (
-                <>
+            {status === 'ready' ? (
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleDownloadPdf}
+                  className="inline-flex items-center gap-2 rounded-xl bg-[var(--bd-ui-accent)] text-bd-ui-accent-fg px-6 py-3 text-sm font-medium hover:opacity-90 transition-opacity"
+                >
                   <Download size={16} />
                   下载 PDF 报告
-                </>
-              )}
-            </button>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRegenerate}
+                  title="重新生成报告（会覆盖现有内容）"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-bd-border bg-bd-card px-4 py-3 text-xs font-medium text-bd-muted hover:bg-bd-overlay-md transition-colors"
+                >
+                  重新生成
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={isGenerating}
+                className="inline-flex items-center gap-2 rounded-xl bg-[var(--bd-ui-accent)] text-bd-ui-accent-fg px-6 py-3 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-60"
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    报告生成中…
+                  </>
+                ) : (
+                  <>
+                    <FileText size={16} />
+                    生成报告
+                  </>
+                )}
+              </button>
+            )}
             {isGenerating && (
               <p className="text-xs text-bd-subtle animate-pulse">
-                AI 正在为您撰写专属报告，通常需要 10-30 秒
+                AI 正在为您撰写专属报告，通常需要 1-5 分钟，完成后此处会出现「下载 PDF 报告」按钮
               </p>
             )}
             {displayError && (

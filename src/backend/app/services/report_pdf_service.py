@@ -427,7 +427,7 @@ class ReportPdfService:
         }
         system_prompt = _get_loader().render("report_system", context)
 
-        # 3. 调 LLM
+        # 3. 调 LLM（流式收集：首 token 快速到达，避免长报告非流式请求整体超时）
         llm = get_default_llm_provider(vip_level=vip_level)
         messages = [
             LLMMessage(
@@ -439,13 +439,26 @@ class ReportPdfService:
                 content="请开始撰写报告。",
             ),
         ]
+        return await self._chat_collect_via_stream(llm, messages)
 
-        response = await llm.chat(
+    async def _chat_collect_via_stream(self, llm, messages: List[LLMMessage]) -> str:
+        """流式调用并拼接完整回复。
+
+        - 非流式 chat 要求整个响应在 HTTP 超时内返回，长报告必然超时；
+          流式下超时只约束「相邻 chunk 间隔」，第一个字返回后就不再整体超时。
+        - max_tokens 不传会被 DeepSeek 默认值 4096 截断，这里给模型允许范围内
+          足够大的值（65536），等于不做实际输出限制。
+        - 思维链模型（deepseek-v4-pro）会 yield dict 控制消息，只拼接 str 正式内容。
+        """
+        parts: List[str] = []
+        async for chunk in llm.chat_stream(
             messages=messages,
             temperature=0.7,
-            max_tokens=8000,
-        )
-        return response.content.strip()
+            max_tokens=65536,
+        ):
+            if isinstance(chunk, str):
+                parts.append(chunk)
+        return "".join(parts).strip()
 
     async def _collect_profile_async(self, user_id: str) -> str:
         """异步获取用户 profile 文本块。"""
@@ -636,7 +649,7 @@ class ReportPdfService:
             return ""
         return (
             '<div class="report-signature">'
-            '<div class="signature-label">—— 你的寻路·OpenLife 探索引导师</div>'
+            '<div class="signature-label">—— 你的寻路探索引导师</div>'
             f'<img class="signature-img" src="{data_uri}" alt="引导师签名" />'
             "</div>"
         )
@@ -650,6 +663,15 @@ class ReportPdfService:
         # 1. markdown → HTML
         extensions = ["extra", "nl2br"]
         html_body = md_lib.markdown(markdown_text, extensions=extensions)
+
+        # 1.5 剥掉正文末尾的分页符：新模板要求每章末尾插 page-break 分页符，
+        #     若最后一章/信件末尾也带了，会把落款签名单独挤到一张空页上
+        html_body = re.sub(
+            r"(?:<div[^>]*page-break-after\s*:\s*always[^>]*>\s*</div>\s*)+$",
+            "",
+            html_body.rstrip(),
+            flags=re.IGNORECASE,
+        )
 
         # 2. 读 CSS，注入页眉/页脚 logo（data URI 替换占位符）
         css_content = _REPORT_CSS.read_text(encoding="utf-8")

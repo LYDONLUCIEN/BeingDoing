@@ -26,7 +26,8 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  setTimeout(() => window.URL.revokeObjectURL(url), 100);
+  // 延长回收时间：100ms 在部分浏览器/大文件下会导致下载中断
+  setTimeout(() => window.URL.revokeObjectURL(url), 10_000);
 }
 
 /**
