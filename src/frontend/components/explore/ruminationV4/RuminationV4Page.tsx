@@ -110,7 +110,7 @@ export default function RuminationV4Page({
                 </span>
               </h1>
               <p className="mx-auto mt-2 max-w-[520px] text-[13px] font-[500] leading-relaxed text-[#657198] sm:text-[16px]">
-                把热爱与优势组成方向，和 AI 深入聊一聊，留下你的假设结论
+                把热爱与优势组成方向，和我深入聊一聊，留下你的假设结论
               </p>
             </div>
             <div className="flex justify-end pr-1">

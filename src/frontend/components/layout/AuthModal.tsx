@@ -314,7 +314,7 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
         <div className="px-6 pt-8 pb-6">
           {/* Title */}
           <div className="text-center mb-6">
-            <h2 className="text-2xl font-bold text-bd-fg">Being · Doing</h2>
+            <h2 className="text-2xl font-bold text-bd-fg">寻路 · OpenLife</h2>
             <p className="text-bd-muted mt-1 text-sm">
               {mode === 'login' ? '欢迎回来' : mode === 'register' ? '开始你的探索之旅' : '通过账号注册邮箱重置密码'}
             </p>

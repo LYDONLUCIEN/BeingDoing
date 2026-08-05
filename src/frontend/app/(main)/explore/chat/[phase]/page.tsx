@@ -4430,7 +4430,7 @@ export default function ChatPhasePage() {
                         <p className="mt-0.5 text-xs text-neutral-500">
                           {isStep3MatrixMode
                             ? matrixModeSelectedComboId
-                              ? '与 AI 探讨这个组合的假设方向'
+                              ? '与我探讨这个组合的假设方向'
                               : '请从左侧选择一个组合开始探索'
                             : ruminationNegExploringPinned &&
                                 (ruminationProgressState?.rumination_neg_state?.progress_header_zh || '').trim()

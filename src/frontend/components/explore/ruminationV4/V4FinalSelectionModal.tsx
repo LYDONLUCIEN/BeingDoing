@@ -290,7 +290,7 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
               <div className="relative z-[1] my-8 text-center text-sm text-[#9ca3af]">
                 还没有已确认结论的组合，
                 <br />
-                请先在右侧与 AI 探讨并生成结论卡
+                请先在右侧与我探讨并生成结论卡
               </div>
             )}
 

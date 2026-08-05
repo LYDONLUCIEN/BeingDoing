@@ -387,6 +387,7 @@ python scripts/init_db.py
 - `tasks/packages-trial-plan.md` - 套餐与试用体系实施计划（P-A~P-E 全部 ✅）
 - `wiki/开发文档/0720-支付模块.md` - 支付配置操作手册（支付宝平台/.env/沙箱联调）
 - `wiki/开发文档/0726-激活码schema迁移脚本说明.md` - 存量激活码字段补全迁移（影响/风险/执行 SOP/回滚）
+- `wiki/开发文档/0731-迁移计划.md` - 新生产服务器迁移计划（v1.5.1→HEAD 变化总览 + openlife.beyondego.me 切流步骤）
 
 ## 调试技巧
 
