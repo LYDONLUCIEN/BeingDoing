@@ -19,18 +19,22 @@ import {
 } from '@/lib/api/payment';
 import { useLocale } from '@/hooks/useLocale';
 import { CopyableCode } from '@/components/payment/CopyableCode';
+import UpgradeTrialModal from '@/components/payment/UpgradeTrialModal';
+import { getUpgradeContext } from '@/lib/api/activation';
 
 export type PurchaseModalProps = {
   open: boolean;
   onClose: () => void;
-  /** 支付成功（含 0 元单直接发放）时回调交付的激活码（renewal/consultation 无新码则不触发） */
-  onSuccess?: (code: string) => void;
+  /** 支付成功（含 0 元单直接发放）时回调交付的激活码与订单（renewal/consultation 无新码则不触发） */
+  onSuccess?: (code: string, order: OrderItem) => void;
   /** 「继续支付」：打开即拉取该订单并直接进入支付视图 */
   resumeOrderId?: string;
   /** 下单视图默认选中的商品（如 dashboard 购买卡默认年度套餐） */
   defaultProductType?: ProductType;
   /** 传入即进入「延期激活」模式：跳过商品选择，直接渠道 + 券码下单 */
   renewalTargetCode?: string;
+  /** 订单意图（ADR-0014）：试用拦截点直购升级——支付成功后后端自动消耗 1 码升级试用码 */
+  intent?: 'upgrade_trial';
 };
 
 type ViewState = 'order' | 'waiting' | 'success';
@@ -59,8 +63,8 @@ const FALLBACK_PRODUCTS: ProductItem[] = [
   {
     product_type: 'annual_package',
     name: '年度套餐',
-    description: '3 份完整报告 · 2 个赠品码 · 团队分析 · 人工审核',
-    price: 12800,
+    description: '3 份完整报告 · 3 个激活码（可自用可转赠） · 团队分析 · 人工审核',
+    price: 15900,
     duration_days: 365,
     popular: true,
   },
@@ -85,6 +89,7 @@ export default function PurchaseModal({
   resumeOrderId,
   defaultProductType,
   renewalTargetCode,
+  intent,
 }: PurchaseModalProps) {
   const router = useRouter();
   const { t } = useLocale();
@@ -110,6 +115,10 @@ export default function PurchaseModal({
   /** 等待支付视图：收银台 URL（「如果没有弹出，请点击这里」重开用） */
   const [payUrl, setPayUrl] = useState<string | null>(null);
   const [waitStatus, setWaitStatus] = useState<WaitStatus>('polling');
+  /** 消耗升级弹窗（ADR-0014）：套餐成功交付且有已开聊试用码时弹出 */
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  /** 消耗升级完成（本弹窗内或后端直购自动升级）：成功视图切换为「已升级」态 */
+  const [trialUpgraded, setTrialUpgraded] = useState(false);
 
   const successFiredRef = useRef(false);
 
@@ -137,9 +146,24 @@ export default function PurchaseModal({
     (ord: OrderItem) => {
       setOrder(ord);
       setView('success');
+      if (ord.meta?.auto_upgraded) setTrialUpgraded(true);
       if (!successFiredRef.current) {
         successFiredRef.current = true;
-        if (ord.delivered_code) onSuccess?.(ord.delivered_code);
+        if (ord.delivered_code) onSuccess?.(ord.delivered_code, ord);
+      }
+      // ADR-0014：套餐交付后，若有已开聊试用码且未「不再提醒」，弹消耗升级
+      const isPackage =
+        ord.product_type === 'quarterly_package' || ord.product_type === 'annual_package';
+      if (isPackage && !ord.meta?.auto_upgraded) {
+        getUpgradeContext()
+          .then((ctx) => {
+            if (ctx.has_started_trial && !ctx.dont_remind && (ctx.unbound_codes ?? []).length > 0) {
+              setUpgradeOpen(true);
+            }
+          })
+          .catch(() => {
+            /* 上下文拉取失败静默，不弹 */
+          });
       }
     },
     [onSuccess],
@@ -155,6 +179,8 @@ export default function PurchaseModal({
     setError(null);
     setPayUrl(null);
     setWaitStatus('polling');
+    setUpgradeOpen(false);
+    setTrialUpgraded(false);
     successFiredRef.current = false;
   }, []);
 
@@ -292,6 +318,7 @@ export default function PurchaseModal({
                 product_type: selectedType,
                 channel,
                 coupon_code: appliedCoupon?.code,
+                intent,
               },
       );
       if (!res.payment || res.order.status === 'granted') {
@@ -352,10 +379,13 @@ export default function PurchaseModal({
     : consultationMode
       ? t('payment.consultation.title')
       : t('payment.title');
-  const giftCodes = order?.meta?.gift_codes ?? [];
+  const giftCodes = order?.meta?.codes
+    ? order.meta.codes.filter((c) => c !== order.delivered_code)
+    : (order?.meta?.gift_codes ?? []);
 
   return (
-    <AnimatePresence>
+    <>
+      <AnimatePresence>
       {open ? (
         <motion.div
           className="fixed inset-0 z-[210] flex items-center justify-center px-5"
@@ -697,8 +727,41 @@ export default function PurchaseModal({
                         {t('payment.success.consultationCta')}
                       </button>
                     </>
+                  ) : trialUpgraded ? (
+                    /* 试用码已升级为完整版（直购自动升级 / 弹窗消耗升级） */
+                    <>
+                      <p className="text-sm font-medium leading-relaxed text-emerald-600">
+                        {t('payment.success.autoUpgradedNote')}
+                      </p>
+                      {giftCodes.length > 0 && (
+                        <div className="w-full space-y-2 rounded-xl border border-amber-200/80 bg-amber-50/60 px-4 py-3.5 text-left">
+                          <p className="text-xs font-medium text-stone-700">
+                            {t('payment.success.giftCodesLabel')}
+                          </p>
+                          {giftCodes.map((code) => (
+                            <CopyableCode
+                              key={code}
+                              code={code}
+                              copiedCode={copiedCode}
+                              onCopy={(c) => void handleCopyCode(c)}
+                              t={t}
+                            />
+                          ))}
+                          <p className="text-[11px] leading-relaxed text-stone-500">
+                            {t('payment.success.giftNote')}
+                          </p>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={onClose}
+                        className="w-full rounded-xl bg-stone-900 px-4 py-3.5 text-base font-semibold text-white transition hover:bg-stone-800"
+                      >
+                        {t('payment.success.continueExplore')}
+                      </button>
+                    </>
                   ) : (
-                    /* 套餐购买成功：自己的码 + 年度单赠品码 */
+                    /* 套餐购买成功：交付码（未绑定）+ 年度单其余码 */
                     <>
                       <div className="space-y-1">
                         <p className="text-xs text-stone-500">{t('payment.success.codeLabel')}</p>
@@ -761,6 +824,17 @@ export default function PurchaseModal({
           </motion.div>
         </motion.div>
       ) : null}
-    </AnimatePresence>
+      </AnimatePresence>
+      <UpgradeTrialModal
+        open={upgradeOpen}
+        onClose={() => setUpgradeOpen(false)}
+        onUpgraded={() => {
+          setUpgradeOpen(false);
+          setTrialUpgraded(true);
+        }}
+        preferredCodes={order?.meta?.codes}
+        showDontRemind
+      />
+    </>
   );
 }

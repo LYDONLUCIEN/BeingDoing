@@ -7,6 +7,7 @@ import {
   type AdminAnalyticsDashboard,
 } from '@/lib/api/admin';
 import { formatLocalDateTime } from '@/lib/utils/formatTime';
+import FunnelStatsPanel from '@/components/admin/FunnelStatsPanel';
 
 export default function AdminAnalyticsPage() {
   const [dashboard, setDashboard] = useState<AdminAnalyticsDashboard | null>(null);
@@ -83,6 +84,8 @@ export default function AdminAnalyticsPage() {
           统计来源于后端埋点表（analytics_chat_turn）与历史日志聚合。Token 以 API 返回 usage 落库数据为主。
         </p>
       </header>
+
+      <FunnelStatsPanel />
 
       {error && (
         <section className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-xs">

@@ -7,7 +7,8 @@
    0 元单不调渠道，直接走支付成功交付（status granted）。旧 SKU activation_code 已下架
 3. handle_alipay_notify：验签 → 查单 → 校验金额 → 幂等交付（TRADE_SUCCESS / TRADE_FINISHED）
 4. cancel_order / close_timeout_orders：关单（尝试渠道 close_order，失败仅记日志）+ 释放券
-5. admin_refund：套餐/延期 granted 后不可退（交付即已用）；咨询仅未预约可退（退款取消预约单）；
+5. admin_refund：套餐订单任一码被激活/消耗则整单不可退，全部未动可退并作废全部码（ADR-0014）；
+   延期交付即已用不可退；咨询仅未预约可退（退款取消预约单）；
    历史 activation_code 订单维持原规则（码未被 claim 可退，成功作废码）
 
 设计要点：
@@ -68,6 +69,9 @@ _VALID_PRODUCT_TYPES = {
     PRODUCT_RENEWAL,
     PRODUCT_CONSULTATION,
 }
+
+# 订单意图（ADR-0014）：试用拦截点直购升级——交付后发码并自动消耗升级试用码
+INTENT_UPGRADE_TRIAL = "upgrade_trial"
 
 # 套餐时长（天）：package_type → settings 字段
 _PACKAGE_DAYS = {
@@ -145,8 +149,8 @@ class PaymentService:
                     "price": settings.QUARTERLY_PRICE,
                     "duration_days": settings.QUARTERLY_DAYS,
                     "description": (
-                        "1 个激活码：已有试用码将直接升级为完整版（探索记录保留），"
-                        "无试用码则发新码；自首次开始探索起算，有效期 3 个月"
+                        "1 个激活码（未绑定）：可用于升级你的试用码（探索记录保留）、"
+                        "自己激活使用或转送朋友；自首次开始探索起算，有效期 3 个月"
                     ),
                     "features": [
                         "不限量对话",
@@ -163,7 +167,7 @@ class PaymentService:
                     "duration_days": settings.ANNUAL_DAYS,
                     "popular": True,
                     "description": (
-                        "3 个激活码：1 个自用（有试用码直接升级）+ 2 个赠品码可转送朋友；"
+                        "3 个激活码（均未绑定）：可自用、转送朋友，或用 1 个升级你的试用码；"
                         "可用于 3 个不同账号，或同一账号分阶段对比；每码有效期 1 年"
                     ),
                     "features": [
@@ -172,7 +176,7 @@ class PaymentService:
                         "3 份完整报告（单份 30+ 页 / 7+ 主题）",
                         "团队匹配度分析 + 团队角色投射",
                         "报告 24 小时内人工审核后交付",
-                        "3 个激活码（1 自用 + 2 可转送）",
+                        "3 个激活码（可自用可转送）",
                         "每码有效期 1 年（首次探索起算）",
                     ],
                 },
@@ -274,6 +278,7 @@ class PaymentService:
         channel: str,
         coupon_code: Optional[str] = None,
         target_code: Optional[str] = None,
+        intent: Optional[str] = None,
     ) -> Tuple[PaymentOrder, Optional[Dict[str, str]]]:
         """创建支付订单
 
@@ -294,6 +299,14 @@ class PaymentService:
         if channel != "alipay":
             raise ValueError(f"不支持的支付渠道：{channel}")
 
+        # 订单意图（ADR-0014）：仅套餐支持 upgrade_trial（试用拦截点直购升级）
+        intent = (intent or "").strip()
+        if intent:
+            if intent != INTENT_UPGRADE_TRIAL:
+                raise ValueError(f"不支持的订单意图：{intent}")
+            if product_type not in (PRODUCT_QUARTERLY, PRODUCT_ANNUAL):
+                raise ValueError("仅套餐订单支持升级试用码意图")
+
         # renewal：目标码归属/类型校验 + 统一定价（不分套餐，2026-07-28 起）
         original_price: Optional[int] = None
         order_meta: Optional[Dict[str, Any]] = None
@@ -308,6 +321,10 @@ class PaymentService:
 
             if not ConsultationService.user_has_completed_report(user_id):
                 raise ValueError("报告解读咨询需至少持有一份已完成的报告，请先完成探索流程")
+
+        if intent:
+            order_meta = dict(order_meta or {})
+            order_meta["intent"] = intent
 
         async with AsyncSessionLocal() as db:
             user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
@@ -494,10 +511,14 @@ class PaymentService:
     def _deliver_package(
         cls, order: PaymentOrder, meta: Dict[str, Any], user_email: Optional[str]
     ) -> Tuple[Optional[str], Dict[str, Any]]:
-        """季度套餐/年度套餐交付：升级试用码（无则发新码并绑定）；年度套餐另发 2 赠品码
+        """季度/年度套餐交付（ADR-0014）：一律发未绑定完整码（季度 1 个 / 年度 3 个）
 
-        所有套餐码有效期均自首次开始探索起算（交付时 expires_at=None，
-        首次对话时由 maybe_start_validity 落地）。
+        - 不再自动升级试用码、不再自动绑定购买者；码全部未绑定，用户自行
+          激活自用 / 转赠 / 消耗升级试用码（POST /simple-auth/codes/apply-to-trial）
+        - intent=upgrade_trial（试用拦截点直购，用户主动发起）且用户有 active
+          试用码：发码后立即消耗 1 个码原地升级试用码（同一代码路径，审计完整）
+        - 所有套餐码有效期均自首次开始探索起算（交付时 expires_at=None，
+          首次对话时由 maybe_start_validity 落地）
         """
         package_type = "quarterly" if order.product_type == PRODUCT_QUARTERLY else "annual"
         days = _package_days(package_type)
@@ -505,28 +526,9 @@ class PaymentService:
         user_id = order.user_id
         meta = dict(meta or {})
 
-        # 找用户名下可用试用码（每人至多一个）
-        trial_code: Optional[str] = None
-        for code, rec in mgr.list_activations().items():
-            if (
-                rec.owner_user_id == user_id
-                and (getattr(rec, "code_type", "full") or "full") == "trial"
-                and rec.status == "active"
-            ):
-                trial_code = code
-                break
-
-        if trial_code:
-            rec = mgr.upgrade_to_full(
-                trial_code,
-                package_type,
-                days,
-                source_order_id=order.id,
-                purchaser_user_id=user_id,
-                actor={"user_id": user_id},
-            )
-            meta["upgraded"] = True
-        else:
+        count = 1 if order.product_type == PRODUCT_QUARTERLY else 3
+        codes: List[str] = []
+        for _ in range(count):
             rec = mgr.create_activation(
                 mode="combined",
                 no_expiry=True,  # 未激活：首次开始探索时起算有效期
@@ -534,32 +536,40 @@ class PaymentService:
                 vip_level=2,
                 package_type=package_type,
             )
-            rec = mgr.claim_owner(rec.code, {"user_id": user_id, "email": user_email})
             mgr.set_purchase_source(
                 rec.code, source_order_id=order.id, purchaser_user_id=user_id
             )
-            meta["upgraded"] = False
-        own_code = rec.code
+            codes.append(rec.code)
+        meta["codes"] = codes
+        logger.info("套餐未绑定码已生成：order=%s codes=%s", order.order_no, codes)
 
-        # 年度套餐：2 个赠品完整码（未绑定、首次开始探索起算有效期）
-        if order.product_type == PRODUCT_ANNUAL:
-            gift_codes: List[str] = []
-            for _ in range(2):
-                gift = mgr.create_activation(
-                    mode="combined",
-                    code_type="full",
-                    vip_level=2,
-                    package_type="annual",
-                    no_expiry=True,
-                )
-                mgr.set_purchase_source(
-                    gift.code, source_order_id=order.id, purchaser_user_id=user_id
-                )
-                gift_codes.append(gift.code)
-            meta["gift_codes"] = gift_codes
-            logger.info("年度套餐赠品码已生成：order=%s gifts=%s", order.order_no, gift_codes)
+        # 直购升级（试用拦截点用户主动发起）：发码后立即消耗 1 个码升级试用码
+        if (meta.get("intent") or "").strip() == INTENT_UPGRADE_TRIAL:
+            from app.utils.trial_codes import get_active_trial_code_for_user
 
-        return own_code, meta
+            trial = get_active_trial_code_for_user(user_id)
+            if trial is not None:
+                consumed_code = codes[0]
+                mgr.consume_for_trial_upgrade(
+                    consumed_code, trial.code, actor={"user_id": user_id}
+                )
+                mgr.upgrade_to_full(
+                    trial.code,
+                    package_type,
+                    days,
+                    source_order_id=order.id,
+                    purchaser_user_id=user_id,
+                    actor={"user_id": user_id},
+                )
+                meta["auto_upgraded"] = True
+                logger.info(
+                    "直购升级完成：order=%s consumed=%s trial=%s",
+                    order.order_no,
+                    consumed_code,
+                    trial.code,
+                )
+
+        return codes[0], meta
 
     @classmethod
     def _deliver_renewal(
@@ -618,23 +628,32 @@ class PaymentService:
                 days = _package_days(
                     "quarterly" if product_type == PRODUCT_QUARTERLY else "annual"
                 )
-                activate_url = f"{frontend}/explore/activate?code={delivered_code}"
+                codes = list((meta or {}).get("codes") or [])
+                if not codes and delivered_code:
+                    codes = [delivered_code] + list((meta or {}).get("gift_codes") or [])
+                auto_upgraded = bool((meta or {}).get("auto_upgraded"))
                 lines = [
                     "您好，",
                     "",
                     "感谢您的购买，您的激活码已就绪：",
                     "",
-                    f"您的激活码：{delivered_code}",
-                    f"有效期：{days} 天（自首次开始探索起算）",
-                    f"激活入口：{activate_url}",
                 ]
-                gift_codes = (meta or {}).get("gift_codes") or []
-                if gift_codes:
+                if auto_upgraded:
+                    lines += [
+                        "您的试用码已升级为完整版（对话记录完整保留，继续使用原激活码即可）。",
+                    ]
+                    remaining = codes[1:]
+                    if remaining:
+                        lines += ["", "其余激活码（未绑定，可自行激活或转送朋友）："]
+                        lines += [f"  - {c}" for c in remaining]
+                else:
+                    lines += ["激活码（未绑定，可自行激活、转送朋友，或用于升级您的试用码）："]
+                    lines += [f"  - {c}" for c in codes]
                     lines += [
                         "",
-                        "赠品激活码（可转送朋友，每码自对方首次开始探索起算）：",
+                        f"每码有效期：{days} 天（自首次开始探索起算）",
+                        f"激活入口：{frontend}/explore/activate",
                     ]
-                    lines += [f"  - {c}" for c in gift_codes]
                 lines += [
                     "",
                     "请妥善保管本邮件；也可在「个人空间 - 我的订单」中随时查看。",
@@ -1101,7 +1120,7 @@ class PaymentService:
             for order, coupon_code, user_email in rows:
                 item = cls._order_to_dict(order, coupon_code)
                 item["user_email"] = user_email
-                item["code_refundable"] = cls._code_refundable(order.delivered_code)
+                item["code_refundable"] = cls._order_refundable(order)
                 items.append(item)
             return items, total
 
@@ -1126,8 +1145,51 @@ class PaymentService:
             order, coupon_code, user_email = row
             item = cls._order_to_dict(order, coupon_code)
             item["user_email"] = user_email
-            item["code_refundable"] = cls._code_refundable(order.delivered_code)
+            item["code_refundable"] = cls._order_refundable(order)
             return {"order": item}
+
+    @staticmethod
+    def _package_order_codes(order: PaymentOrder) -> List[str]:
+        """收集套餐订单交付的全部码（新 meta.codes + 兼容旧 gift_codes/delivered_code，去重）"""
+        meta = PaymentService._parse_meta(order.meta)
+        codes: List[str] = []
+        for raw in list(meta.get("codes") or []) + list(meta.get("gift_codes") or []):
+            code = (raw or "").strip().upper()
+            if code and code not in codes:
+                codes.append(code)
+        delivered = (order.delivered_code or "").strip().upper()
+        if delivered and delivered not in codes:
+            codes.append(delivered)
+        return codes
+
+    @classmethod
+    def _package_codes_untouched(cls, order: PaymentOrder) -> bool:
+        """套餐订单全部交付码是否未被使用（ADR-0014：未被 claim 且未被消耗升级）"""
+        meta = cls._parse_meta(order.meta)
+        # 旧订单：已自动升级试用码，不可逆，视为已使用
+        if meta.get("upgraded") or meta.get("auto_upgraded"):
+            return False
+        codes = cls._package_order_codes(order)
+        if not codes:
+            return False
+        for code in codes:
+            try:
+                _, rec = get_activation_with_manager(code)
+            except Exception as e:
+                logger.warning("查询交付码状态失败：code=%s err=%s", code, e)
+                return False
+            if rec is None:
+                return False
+            if rec.owner_user_id or rec.status != "active":
+                return False
+        return True
+
+    @classmethod
+    def _order_refundable(cls, order: PaymentOrder) -> bool:
+        """订单交付码是否可退（admin 列表/详情展示用）"""
+        if order.product_type in (PRODUCT_QUARTERLY, PRODUCT_ANNUAL):
+            return cls._package_codes_untouched(order)
+        return cls._code_refundable(order.delivered_code)
 
     @staticmethod
     def _code_refundable(delivered_code: Optional[str]) -> bool:
@@ -1147,7 +1209,9 @@ class PaymentService:
     async def admin_refund(cls, order_id: str, actor: Optional[dict] = None) -> PaymentOrder:
         """Admin 发起退款（按商品类型守卫）
 
-        - 套餐/延期（quarterly/annual/renewal）：交付即已用，一律拒绝
+        - 套餐（quarterly/annual，ADR-0014）：任一交付码被激活（claim）或消耗升级 → 整单不可退；
+          全部码未动 → 可退，退款成功作废全部码
+        - 延期（renewal）：交付即已用，一律拒绝
         - 咨询（consultation）：仅未预约（pending_survey/submitted）可退，退款后预约单取消
         - 旧 SKU（activation_code）：仅交付码未被 claim 可退，退款成功作废码
 
@@ -1160,6 +1224,7 @@ class PaymentService:
         booking = None
         legacy_code: Optional[str] = None
         legacy_mgr = None
+        package_codes: List[str] = []
 
         async with AsyncSessionLocal() as db:
             order = await cls._get_order_or_raise(db, order_id)
@@ -1167,10 +1232,17 @@ class PaymentService:
                 raise ValueError("仅已交付（granted）订单可退款")
             product_type = order.product_type
 
-            if product_type in (PRODUCT_QUARTERLY, PRODUCT_ANNUAL, PRODUCT_RENEWAL):
-                raise ValueError("套餐/延期订单交付后即已使用，不可退款（请走线下协商）")
+            if product_type == PRODUCT_RENEWAL:
+                raise ValueError("延期订单交付后即已使用，不可退款（请走线下协商）")
 
-            if product_type == PRODUCT_CONSULTATION:
+            if product_type in (PRODUCT_QUARTERLY, PRODUCT_ANNUAL):
+                # ADR-0014：一单多码时任一码被激活/消耗 → 整单不可退
+                if not cls._package_codes_untouched(order):
+                    raise ValueError(
+                        "订单内激活码已被使用或消耗，不可退款（请走线下协商）"
+                    )
+                package_codes = cls._package_order_codes(order)
+            elif product_type == PRODUCT_CONSULTATION:
                 booking = (
                     await db.execute(
                         select(ConsultationBooking).where(
@@ -1214,6 +1286,16 @@ class PaymentService:
             changed = legacy_mgr.update_status([legacy_code], "revoked", actor=actor)
             if changed:
                 logger.info("退款完成，激活码已作废：order_id=%s code=%s", order_id, legacy_code)
+        # 套餐：全部未动码作废
+        for code in package_codes:
+            try:
+                mgr, _rec = get_activation_with_manager(code)
+                if mgr:
+                    mgr.update_status([code], "revoked", actor=actor)
+            except Exception as e:
+                logger.error("退款作废套餐码失败（需人工核查）：code=%s err=%s", code, e)
+        if package_codes:
+            logger.info("退款完成，套餐码已全部作废：order_id=%s codes=%s", order_id, package_codes)
         return order
 
     # ─── 序列化 ─────────────────────────────────────────────────

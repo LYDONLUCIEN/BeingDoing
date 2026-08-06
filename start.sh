@@ -8,10 +8,12 @@
 #   ./start.sh start dev    开发环境：clean build + start（默认）
 #   ./start.sh start prod   生产环境：clean build + start（默认）
 #   ./start.sh start test   测试环境：clean build + start（默认）
+#   ./start.sh dev|prod|test        同 start dev|prod|test（便捷写法）
 #   ./start.sh start dev --hot    开发环境：热更新模式 (npm run dev)
 #   ./start.sh start prod --hot  生产环境：热更新模式
 #   ./start.sh start-dev    同 start dev（向后兼容）
 #   ./start.sh start-run    同 start prod（向后兼容）
+#   注：start 时选择的环境会记录在 .start_env，restart 自动沿用同一套环境配置
 #   ./start.sh stop         关闭所有窗口并销毁 tmux session
 #   ./start.sh restart      重启所有服务
 #   ./start.sh restart backend   仅重启 backend
@@ -33,19 +35,15 @@ REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 # ── 解析命令与环境参数 ───────────────────────────────────
 COMMAND="${1:-start}"
 TARGET="${2:-}"
-# 任意参数里包含 --maintenance → 启动前先切维护页
+# 任意参数里包含 --maintenance → 启动前先切维护页；--hot → 前端热更新模式 (npm run dev)
 MAINTENANCE_FIRST=false
+HOT_MODE=false
 for _arg in "$@"; do
   case "$_arg" in
     --maintenance) MAINTENANCE_FIRST=true ;;
-    --hot) ;;
+    --hot) HOT_MODE=true ;;
   esac
 done
-# 第三个参数：--hot 表示前端使用热更新模式 (npm run dev)
-HOT_MODE=false
-if [ "${3:-}" = "--hot" ]; then
-  HOT_MODE=true
-fi
 
 # 向后兼容：start-dev → dev, start-run → prod
 if [ "$COMMAND" = "start-dev" ]; then
@@ -54,22 +52,42 @@ elif [ "$COMMAND" = "start-run" ]; then
   TARGET="prod"; COMMAND="start"
 fi
 
-# 确定环境文件（dev / prod / test / 空）：仅在 start 命令时解析
+# 便捷写法：./start.sh dev|prod|test 等同 ./start.sh start dev|prod|test
+case "$COMMAND" in
+  dev|prod|test) TARGET="$COMMAND"; COMMAND="start" ;;
+esac
+
+# 确定环境文件（dev / prod / test / 空）
+# - start：由命令行参数指定，并记录到 .start_env
+# - restart：未显式指定时沿用 .start_env 记录的上次环境，避免重启后丢失 .env.<env> 覆盖配置
+#   （否则 start prod 之后 restart backend 会退回裸 .env，FRONTEND_URL 等被改回 base 值）
+ENV_STATE_FILE="$REPO_ROOT/.start_env"
+ENV_TARGET=""
+if [ "$COMMAND" = "start" ]; then
+  ENV_TARGET="$TARGET"
+elif [ "$COMMAND" = "restart" ] && [ -f "$ENV_STATE_FILE" ]; then
+  ENV_TARGET="$(cat "$ENV_STATE_FILE" 2>/dev/null || true)"
+fi
+
 ENV_FILE=""
 ENV_LABEL=""
-if [ "$COMMAND" = "start" ] && [ -n "$TARGET" ]; then
-  case "$TARGET" in
+if [ -n "$ENV_TARGET" ]; then
+  case "$ENV_TARGET" in
     dev|prod|test)
-      ENV_FILE="$REPO_ROOT/.env.$TARGET"
-      ENV_LABEL="$TARGET"
+      ENV_FILE="$REPO_ROOT/.env.$ENV_TARGET"
+      ENV_LABEL="$ENV_TARGET"
       if [ ! -f "$ENV_FILE" ]; then
         echo "[start.sh] 错误: $ENV_FILE 不存在"
         exit 1
       fi
       ;;
     *)
-      echo "用法: ./start.sh start [dev|prod|test]"
-      exit 1
+      if [ "$COMMAND" = "start" ]; then
+        echo "用法: ./start.sh start [dev|prod|test]"
+        exit 1
+      fi
+      # restart 时状态文件内容异常：忽略，仅加载 base .env
+      ENV_TARGET=""
       ;;
   esac
 fi
@@ -201,6 +219,9 @@ cmd_start() {
 
   start_frontend
 
+  # 记录本次启动环境，供 restart 沿用（放在启动成功后，避免 session 已存在时误覆盖）
+  echo "$ENV_TARGET" > "$ENV_STATE_FILE"
+
   # 默认选中 backend 窗口
   tmux select-window -t "$SESSION:backend"
 
@@ -224,6 +245,7 @@ cmd_stop() {
   if session_exists; then
     info "停止并销毁 session '$SESSION'…"
     tmux kill-session -t "$SESSION"
+    rm -f "$ENV_STATE_FILE"
     ok "已停止。"
   else
     warn "session '$SESSION' 不存在，无需停止。"
@@ -298,6 +320,7 @@ case "$COMMAND" in
       *) echo "用法: ./start.sh restart [backend|frontend|all]"; exit 1 ;;
     esac
     ;;
+
   attach)
     cmd_attach ;;
   maintenance)
@@ -313,6 +336,6 @@ case "$COMMAND" in
     [ "$DEFAULT_ENV" = "production" ] && DEFAULT_ENV="prod"
     exec "$REPO_ROOT/scripts/maintenance.sh" "$shift_arg" --env "$DEFAULT_ENV" "${@:3}" ;;
   *)
-    echo "用法: ./start.sh [start [dev|prod|test] [--hot]] | start-dev | start-run | stop | restart [backend|frontend|all] | attach"
+    echo "用法: ./start.sh [start] [dev|prod|test] [--hot] | start-dev | start-run | stop | restart [backend|frontend|all] | attach"
     exit 1 ;;
 esac

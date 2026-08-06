@@ -20,6 +20,8 @@ from app.utils.simple_activation_manager import (
     bind_session_id_for_ensure_report,
     get_effective_simple_root,
     get_activation_with_manager,
+    get_simple_base_dir,
+    get_simple_test_base_dir,
 )
 from app.utils.sandbox_fork import assert_sandbox_not_expired
 from app.api.v1.auth import get_current_user
@@ -195,6 +197,11 @@ async def activate(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="激活码不可用",
+        )
+    if rec.status == ActivationStatus.CONSUMED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="该激活码已用于升级试用码，不可再次使用",
         )
 
     # 邮箱验证门控：未验证邮箱的用户不能使用激活码
@@ -560,3 +567,215 @@ async def set_report_authorize(
         data={"code": updated.code, "authorized": bool(updated.report_authorized)},
     )
 
+
+
+# ─── 消耗升级（ADR-0014）───────────────────────────────────────
+
+
+class ApplyToTrialRequest(BaseModel):
+    """消耗升级请求：将一个未绑定完整码作废，升级当前用户的试用码"""
+
+    code: str
+
+
+@router.post("/codes/apply-to-trial", response_model=ActivationResponse)
+async def apply_code_to_trial(
+    payload: ApplyToTrialRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """消耗升级（ADR-0014）：作废一个未绑定完整码，把当前用户的试用码原地升级为完整码。
+
+    - 码须 status=active、code_type=full、未绑定（owner 为空）；自购或被赠的码均可
+    - 升级后试用码的码字符串/对话记录/session 全部保留
+    - 用被赠的码升级时，试用码所属人记为原购买者（upgrade_to_full 已有值不覆盖）
+    """
+    from app.config.settings import settings
+    from app.utils.trial_codes import get_active_trial_code_for_user
+
+    user_id = (current_user or {}).get("user_id", "")
+    email = (current_user or {}).get("email", "")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="未登录")
+
+    trial = get_active_trial_code_for_user(user_id)
+    if trial is None:
+        raise HTTPException(status_code=400, detail="当前账号没有可升级的试用码")
+
+    mgr, rec = get_activation_with_manager(payload.code)
+    if rec is None:
+        raise HTTPException(status_code=400, detail="激活码不存在")
+
+    # 消耗（内部校验 status/code_type/未绑定/未消耗）
+    try:
+        mgr.consume_for_trial_upgrade(rec.code, trial.code, actor=current_user)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # 原地升级试用码（时长按被消耗码的套餐类型；缺省按季度）
+    package_type = (getattr(rec, "package_type", None) or "").strip().lower()
+    if package_type not in ("quarterly", "annual"):
+        package_type = "quarterly"
+    days = settings.ANNUAL_DAYS if package_type == "annual" else settings.QUARTERLY_DAYS
+    trial_mgr, _ = get_activation_with_manager(trial.code)
+    upgraded = (trial_mgr or mgr).upgrade_to_full(
+        trial.code,
+        package_type,
+        days,
+        source_order_id=getattr(rec, "source_order_id", None),
+        purchaser_user_id=getattr(rec, "purchaser_user_id", None) or user_id,
+        actor=current_user,
+    )
+    logger.info(
+        "消耗升级完成: user=%s consumed=%s trial=%s package=%s",
+        user_id,
+        rec.code,
+        trial.code,
+        package_type,
+    )
+    return ActivationResponse(
+        code=200,
+        message="success",
+        data={
+            "trial_code": upgraded.code,
+            "consumed_code": rec.code,
+            "package_type": package_type,
+            "code_type": upgraded.code_type,
+        },
+    )
+
+
+@router.get("/upgrade-context", response_model=ActivationResponse)
+async def get_upgrade_context(
+    current_user: dict = Depends(get_current_user),
+):
+    """升级试用码弹窗上下文（ADR-0014）：
+
+    - has_started_trial / trial_code：是否有已开聊（≥1 条用户消息）的试用码
+    - unbound_codes：我购买的未绑定未消耗完整码（可用于消耗升级/转赠/自激活）
+    - dont_remind：支付结果页升级弹窗「不再提醒」偏好
+    """
+    from app.utils.trial_codes import get_started_trial_code
+
+    user_id = (current_user or {}).get("user_id", "")
+    if not user_id:
+        return ActivationResponse(
+            code=200,
+            message="success",
+            data={
+                "has_started_trial": False,
+                "trial_code": None,
+                "unbound_codes": [],
+                "dont_remind": False,
+            },
+        )
+
+    trial = get_started_trial_code(user_id)
+
+    unbound_codes = []
+    for base_dir in (get_simple_base_dir(), get_simple_test_base_dir()):
+        mgr = SimpleActivationManager(base_dir=str(base_dir))
+        for code, rec in mgr.list_activations().items():
+            if (getattr(rec, "purchaser_user_id", None) or "") != user_id:
+                continue
+            if rec.owner_user_id:
+                continue
+            if rec.status != ActivationStatus.ACTIVE.value:
+                continue
+            if (getattr(rec, "code_type", "full") or "full") != "full":
+                continue
+            unbound_codes.append(
+                {
+                    "code": rec.code,
+                    "package_type": getattr(rec, "package_type", None),
+                    "created_at": rec.created_at,
+                    "source_order_id": getattr(rec, "source_order_id", None),
+                }
+            )
+    unbound_codes.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+
+    prefs = await _read_user_preferences(user_id)
+    return ActivationResponse(
+        code=200,
+        message="success",
+        data={
+            "has_started_trial": trial is not None,
+            "trial_code": trial.code if trial else None,
+            "unbound_codes": unbound_codes,
+            "dont_remind": bool(prefs.get("upgrade_modal_dont_remind")),
+        },
+    )
+
+
+# ─── 用户偏好（ADR-0014：升级弹窗「不再提醒」跨设备生效）─────────
+
+
+async def _read_user_preferences(user_id: str) -> dict:
+    """读 users.preferences（JSON 字符串）；异常/为空返回 {}"""
+    import json as _json
+
+    from sqlalchemy import select as _select
+
+    from app.models.database import AsyncSessionLocal
+    from app.models.user import User
+
+    try:
+        async with AsyncSessionLocal() as db:
+            raw = (
+                await db.execute(_select(User.preferences).where(User.id == user_id))
+            ).scalar_one_or_none()
+    except Exception:
+        return {}
+    if not raw:
+        return {}
+    try:
+        data = _json.loads(raw)
+        return data if isinstance(data, dict) else {}
+    except (ValueError, TypeError):
+        return {}
+
+
+class PreferencesUpdateRequest(BaseModel):
+    """用户偏好更新（仅支持白名单 key）"""
+
+    upgrade_modal_dont_remind: Optional[bool] = None
+
+
+@router.get("/preferences", response_model=ActivationResponse)
+async def get_preferences(
+    current_user: dict = Depends(get_current_user),
+):
+    """读当前用户偏好"""
+    user_id = (current_user or {}).get("user_id", "")
+    prefs = await _read_user_preferences(user_id) if user_id else {}
+    return ActivationResponse(code=200, message="success", data={"preferences": prefs})
+
+
+@router.patch("/preferences", response_model=ActivationResponse)
+async def update_preferences(
+    payload: PreferencesUpdateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """更新当前用户偏好（白名单 key 合入，不传的不动）"""
+    import json as _json
+
+    from sqlalchemy import select as _select
+
+    from app.models.database import AsyncSessionLocal
+    from app.models.user import User
+
+    user_id = (current_user or {}).get("user_id", "")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="未登录")
+
+    async with AsyncSessionLocal() as db:
+        user = (
+            await db.execute(_select(User).where(User.id == user_id))
+        ).scalar_one_or_none()
+        if user is None:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        prefs = await _read_user_preferences(user_id)
+        if payload.upgrade_modal_dont_remind is not None:
+            prefs["upgrade_modal_dont_remind"] = bool(payload.upgrade_modal_dont_remind)
+        user.preferences = _json.dumps(prefs, ensure_ascii=False)
+        await db.commit()
+    return ActivationResponse(code=200, message="success", data={"preferences": prefs})

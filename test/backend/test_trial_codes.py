@@ -457,3 +457,71 @@ async def test_full_code_unrestricted_by_phase_lock(patched_roots, manager, monk
     )
     resp = await scr.simple_chat_stream(req, dict(USER))
     assert resp.status_code == 200  # full 码无阶段锁
+
+
+# ──────────────────────────────────────────────────────────────────
+# 消耗升级（ADR-0014）
+# ──────────────────────────────────────────────────────────────────
+
+from app.utils.trial_codes import (  # noqa: E402
+    get_active_trial_code_for_user,
+    get_started_trial_code,
+)
+
+
+def test_get_active_trial_code_for_user(patched_roots, manager):
+    rec, _, _ = _make_bound_code(manager, USER, code_type="trial")
+    found = get_active_trial_code_for_user(USER["user_id"])
+    assert found is not None and found.code == rec.code
+    assert get_active_trial_code_for_user("nobody") is None
+
+
+def test_get_active_trial_code_ignores_full_code(patched_roots, manager):
+    _make_bound_code(manager, USER, code_type="full")
+    assert get_active_trial_code_for_user(USER["user_id"]) is None
+
+
+def test_get_started_trial_code_requires_messages(patched_roots, manager):
+    """已开聊判定：0 条消息 → None；≥1 条 → 返回试用码"""
+    rec, registry, rid = _make_bound_code(manager, USER, code_type="trial")
+    assert get_started_trial_code(USER["user_id"]) is None
+
+    _write_values_thread(registry, rid, "t_1", 1)
+    found = get_started_trial_code(USER["user_id"])
+    assert found is not None and found.code == rec.code
+
+
+def test_consume_for_trial_upgrade_success(patched_roots, manager):
+    """消耗成功：码 status=consumed、consumed_into 指向试用码"""
+    trial, _, _ = _make_bound_code(manager, USER, code_type="trial")
+    full = manager.create_activation(mode="combined", code_type="full", vip_level=2)
+
+    consumed = manager.consume_for_trial_upgrade(full.code, trial.code, actor=USER)
+    assert consumed.status == "consumed"
+    assert consumed.consumed_into == trial.code
+
+    # 二次消耗拒绝
+    import pytest as _pt
+
+    with _pt.raises(ValueError, match="已被消耗"):
+        manager.consume_for_trial_upgrade(full.code, trial.code, actor=USER)
+
+
+def test_consume_for_trial_upgrade_rejects_claimed(patched_roots, manager):
+    """已绑定的码不可消耗"""
+    import pytest as _pt
+
+    trial, _, _ = _make_bound_code(manager, USER, code_type="trial")
+    other, _, _ = _make_bound_code(manager, {"user_id": "u2", "email": "b@x.com"}, code_type="full")
+    with _pt.raises(ValueError, match="已绑定"):
+        manager.consume_for_trial_upgrade(other.code, trial.code, actor=USER)
+
+
+def test_consume_for_trial_upgrade_rejects_trial_as_source(patched_roots, manager):
+    """试用码不能作为被消耗码"""
+    import pytest as _pt
+
+    trial, _, _ = _make_bound_code(manager, USER, code_type="trial")
+    another_trial = manager.create_activation(mode="combined", code_type="trial", vip_level=1)
+    with _pt.raises(ValueError, match="仅完整码"):
+        manager.consume_for_trial_upgrade(another_trial.code, trial.code, actor=USER)

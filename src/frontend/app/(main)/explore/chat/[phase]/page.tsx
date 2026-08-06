@@ -21,6 +21,7 @@ import DimensionConclusionCard, { type DimensionConclusionData } from '@/compone
 import PhaseCompleteWarmModal from '@/components/explore/PhaseCompleteWarmModal';
 import PhaseWelcomeModal from '@/components/explore/PhaseWelcomeModal';
 import TrialLimitModal from '@/components/explore/TrialLimitModal';
+import UpgradeTrialModal from '@/components/payment/UpgradeTrialModal';
 import PurchaseModal from '@/components/payment/PurchaseModal';
 import ChatPhaseBackground from '@/components/explore/ChatPhaseBackground';
 import ExploreLandingMeshLayers from '@/components/explore/ExploreLandingMeshLayers';
@@ -388,6 +389,8 @@ export default function ChatPhasePage() {
   const [trialBlock, setTrialBlock] = useState<TrialBlockKind | null>(null);
   /** 购买引导：试用拦截弹层点「去购买」后打开现有 PurchaseModal */
   const [trialPurchaseOpen, setTrialPurchaseOpen] = useState(false);
+  /** 消耗升级弹窗（ADR-0014）：拦截点「使用已有激活码升级」入口 */
+  const [trialUpgradeOpen, setTrialUpgradeOpen] = useState(false);
   /** 完成弹窗"已专注 N 分钟"——由 handleConfirmConclusion 在打开弹窗前计算；null 时使用通用文案 */
   const [fatigueMinutes, setFatigueMinutes] = useState<number | null>(null);
   /** 进入新 phase 的时间预估欢迎卡（首次进入且未 dismiss 时弹出） */
@@ -5268,6 +5271,11 @@ export default function ChatPhasePage() {
         }
         primaryLabel={t('explore.trial.buy')}
         secondaryLabel={t('explore.trial.later')}
+        extraLabel={t('explore.trial.useExisting')}
+        onExtra={() => {
+          setTrialBlock(null);
+          setTrialUpgradeOpen(true);
+        }}
         onPrimary={() => {
           setTrialBlock(null);
           setTrialPurchaseOpen(true);
@@ -5277,11 +5285,19 @@ export default function ChatPhasePage() {
       <PurchaseModal
         open={trialPurchaseOpen}
         onClose={() => setTrialPurchaseOpen(false)}
-        onSuccess={(code) => {
-          // 支付成功：提示用户去激活页使用新码（激活页从 query 预填）
+        intent="upgrade_trial"
+        onSuccess={(code, order) => {
           setTrialPurchaseOpen(false);
+          // 直购升级：后端已自动消耗升级试用码，留在当前对话即可
+          if (order.meta?.auto_upgraded) return;
+          // 支付成功：提示用户去激活页使用新码（激活页从 query 预填）
           router.push(`/explore/activate?code=${encodeURIComponent(code)}`);
         }}
+      />
+      <UpgradeTrialModal
+        open={trialUpgradeOpen}
+        onClose={() => setTrialUpgradeOpen(false)}
+        onUpgraded={() => setTrialUpgradeOpen(false)}
       />
       <PhaseWelcomeModal
         open={phaseWelcomeOpen}

@@ -39,6 +39,8 @@ class ActivationStatus(str, Enum):
     EXPIRED = "expired"
     REVOKED = "revoked"
     DELETED = "deleted"
+    # 已消耗（ADR-0014）：未绑定码被用于「消耗升级」试用码后作废，不可再用不可退
+    CONSUMED = "consumed"
 
 
 # 允许执行「软删/回收站永久删」等破坏探索数据的调用方角色（默认走 admin，兼容历史脚本）
@@ -99,6 +101,8 @@ class ActivationRecord:
     source_order_id: Optional[str] = None  # 交付来源订单（赠品码/升级追溯）
     purchaser_user_id: Optional[str] = None  # 所属人（购买者）；激活人看 owner_user_id
     report_authorized: bool = False  # 激活人一键授权报告给所属人
+    # 消耗升级（ADR-0014）：status=consumed 时指向升级受益的试用码
+    consumed_into: Optional[str] = None
 
 
 @dataclass
@@ -267,6 +271,8 @@ class SimpleActivationManager:
                 data.setdefault("source_order_id", None)
                 data.setdefault("purchaser_user_id", None)
                 data.setdefault("report_authorized", False)
+                # 消耗升级（ADR-0014）
+                data.setdefault("consumed_into", None)
                 records[code] = ActivationRecord(**data)
             except (TypeError, ValueError):
                 continue
@@ -601,6 +607,62 @@ class SimpleActivationManager:
             },
         )
         logger.info("激活码付费升级为完整码: code=%s package=%s days=%d", norm, package_type, days)
+        return rec
+
+    def consume_for_trial_upgrade(
+        self,
+        code: str,
+        trial_code: str,
+        *,
+        actor: Optional[dict] = None,
+    ) -> ActivationRecord:
+        """消耗升级（ADR-0014）：把一个未绑定完整码作废，用于升级指定试用码
+
+        - 校验：码存在、status=active、code_type=full、未绑定（owner 为空）、未被消耗
+        - 置 status=consumed、consumed_into=trial_code，写审计日志
+        - 试用码本身的升级由调用方走 upgrade_to_full（本方法只负责消耗）
+        """
+        norm = (code or "").strip().upper()
+        trial_norm = (trial_code or "").strip().upper()
+        if not trial_norm:
+            raise ValueError("缺少升级目标试用码")
+
+        records = self._load_all()
+        rec = records.get(norm)
+        if not rec:
+            raise ValueError("激活码不存在")
+        if rec.status == ActivationStatus.CONSUMED.value:
+            raise ValueError("激活码已被消耗，不可重复使用")
+        if rec.status != ActivationStatus.ACTIVE.value:
+            raise ValueError("激活码状态不可用（已作废/删除/过期）")
+        if (getattr(rec, "code_type", "full") or "full") != "full":
+            raise ValueError("仅完整码可用于消耗升级")
+        if rec.owner_user_id:
+            raise ValueError("激活码已绑定用户，不可用于消耗升级")
+        trial_rec = records.get(trial_norm)
+        if not trial_rec:
+            raise ValueError("目标试用码不存在")
+
+        rec.status = ActivationStatus.CONSUMED.value
+        rec.consumed_into = trial_norm
+        rec.last_activity_at = datetime.now(timezone.utc).isoformat()
+        records[norm] = rec
+        self._save_all(records)
+
+        from app.utils.activation_audit import append_activation_audit
+
+        append_activation_audit(
+            "consumed_for_trial_upgrade",
+            norm,
+            actor_user_id=(actor or {}).get("user_id"),
+            actor_email=(actor or {}).get("email"),
+            detail={
+                "consumed_into": trial_norm,
+                "package_type": getattr(rec, "package_type", None),
+                "source_order_id": getattr(rec, "source_order_id", None),
+            },
+        )
+        logger.info("激活码已消耗用于升级试用码: code=%s into=%s", norm, trial_norm)
         return rec
 
     def extend_validity(

@@ -9,6 +9,9 @@ export type TrialLimitModalProps = {
   body: string;
   primaryLabel: string;
   secondaryLabel?: string;
+  /** 额外操作（ADR-0014：「使用已有激活码升级」），位于主按钮与次按钮之间 */
+  extraLabel?: string;
+  onExtra?: () => void;
   /** 主按钮：进入购买引导 */
   onPrimary: () => void;
   /** 遮罩 / 次按钮关闭 */
@@ -25,6 +28,8 @@ export default function TrialLimitModal({
   body,
   primaryLabel,
   secondaryLabel,
+  extraLabel,
+  onExtra,
   onPrimary,
   onClose,
 }: TrialLimitModalProps) {
@@ -81,6 +86,15 @@ export default function TrialLimitModal({
               >
                 {primaryLabel}
               </button>
+              {extraLabel && onExtra ? (
+                <button
+                  type="button"
+                  onClick={onExtra}
+                  className="w-full rounded-xl border border-stone-300 py-3 text-sm font-medium text-stone-700 transition hover:bg-stone-50"
+                >
+                  {extraLabel}
+                </button>
+              ) : null}
               {secondaryLabel ? (
                 <button
                   type="button"

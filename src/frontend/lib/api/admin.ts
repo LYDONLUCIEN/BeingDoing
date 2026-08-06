@@ -459,6 +459,52 @@ export async function fetchAdminAnalyticsDashboard(): Promise<AdminAnalyticsDash
   return (res.data ?? {}) as AdminAnalyticsDashboard;
 }
 
+/** 漏斗级统计看板（ADR-0013，事件时间口径） */
+export interface AdminFunnelStats {
+  range: { start: string; end: string; granularity: 'day' | 'month' };
+  funnel: {
+    pv: number;
+    uv: number;
+    registrations: number;
+    trial_started: number;
+    values_10_completed: number;
+    paid_users: number;
+    report_approved_users: number;
+  };
+  daily_active: { total_events: number; unique_users: number };
+  activation_codes: { total: number; trial: number; full: number; new_in_range: number };
+  consultation_users: number;
+  revenue: {
+    actual_cents: number;
+    theoretical_cents: number;
+    by_product: Record<string, { orders: number; actual_cents: number; theoretical_cents: number }>;
+  };
+  trends: Array<{
+    date: string;
+    pv: number;
+    uv: number;
+    registrations: number;
+    active_events: number;
+    active_users: number;
+    trial_started: number;
+    values_10_completed: number;
+    paid_users: number;
+    consultation_users: number;
+    report_approved_users: number;
+    actual_cents: number;
+    theoretical_cents: number;
+  }>;
+}
+
+export async function fetchAdminFunnelStats(params?: {
+  start?: string;
+  end?: string;
+  granularity?: 'day' | 'month';
+}): Promise<AdminFunnelStats> {
+  const res = await apiClient.get('/admin/analytics/funnel', { params });
+  return (res.data ?? {}) as AdminFunnelStats;
+}
+
 /** Admin 调试沙箱（从正式激活码 Fork，独立目录） */
 export interface AdminSandboxItem {
   activation_code: string;

@@ -3,13 +3,12 @@
 
 测试场景：
 1. 商品目录：新目录（季度套餐/年度套餐/咨询），旧 SKU 下架拒绝
-2. 季度套餐交付：有试用码→升级（code_type/vip/来源；有效期 None 待首次探索起算）；
-   无试用码→发新码并绑定
-3. 年度套餐交付：1 升级 + 2 赠品码（字段/所属人追溯；有效期 None）
+2. 季度套餐交付（ADR-0014）：一律发 1 个未绑定码，不自动升级试用码、不自动绑定
+3. 年度套餐交付（ADR-0014）：3 个未绑定码（字段/所属人追溯；有效期 None）
 4. 首次使用起算：maybe_start_validity 落 90/365 天；试用码/已有有效期码不受影响
 5. 延期激活：校验（非本人/试用码/无套餐类型拒绝）+ 延期数学（未过期累加/已过期从此刻）
 6. 咨询交付：生成 pending_survey 预约单 + meta.booking_id
-7. 退款守卫：套餐/延期拒退；咨询未预约可退（booking 取消）、已预约拒退
+7. 退款守卫：套餐码全未动可退、任一动用拒退（ADR-0014）；延期拒退；咨询未预约可退、已预约拒退
 
 fixture 风格同 test_payment_service.py：in-memory SQLite + monkeypatch。
 """
@@ -163,7 +162,8 @@ async def test_legacy_sku_rejected():
 
 
 @pytest.mark.asyncio
-async def test_quarterly_upgrades_trial_code(_setup_db):
+async def test_quarterly_delivers_unbound_code(_setup_db):
+    """季度套餐交付（ADR-0014）：发 1 个未绑定码，不自动升级试用码"""
     mgr = _setup_db
     trial = _make_trial(mgr)
     coupon = await _big_coupon()
@@ -177,30 +177,37 @@ async def test_quarterly_upgrades_trial_code(_setup_db):
 
     assert payment is None  # 0 元单直接交付
     assert order.status == "granted"
-    assert order.delivered_code == trial.code  # 升级的是同一个码
+    meta = PaymentService._parse_meta(order.meta)
+    codes = meta.get("codes") or []
+    assert len(codes) == 1
+    assert order.delivered_code == codes[0]
+    assert "upgraded" not in meta
 
-    rec = mgr.get_activation(trial.code)
+    rec = mgr.get_activation(codes[0])
     assert rec.code_type == "full"
     assert rec.package_type == "quarterly"
     assert rec.vip_level == 2
+    assert rec.owner_user_id is None  # 未绑定，不自动绑购买者
     assert rec.purchaser_user_id == "u1"
     assert rec.source_order_id == order.id
-    # 交付时不落有效期（未激活）；首次开始探索时起算
-    assert rec.expires_at is None
+    assert rec.expires_at is None  # 未激活，首次开始探索起算
+
+    # 试用码不被自动升级
+    trial_rec = mgr.get_activation(trial.code)
+    assert trial_rec.code_type == "trial"
+    assert trial_rec.vip_level == 1
 
     # 首次使用 → 有效期 ≈ now + 90 天
-    mgr.maybe_start_validity(trial.code)
-    rec = mgr.get_activation(trial.code)
+    mgr.maybe_start_validity(codes[0])
+    rec = mgr.get_activation(codes[0])
     expires = datetime.fromisoformat(rec.expires_at)
     expected = datetime.now(timezone.utc) + timedelta(days=settings.QUARTERLY_DAYS)
     assert abs((expires - expected).total_seconds()) < 120
 
-    meta = PaymentService._parse_meta(order.meta)
-    assert meta["upgraded"] is True
-
 
 @pytest.mark.asyncio
-async def test_quarterly_issues_new_code_without_trial(_setup_db):
+async def test_quarterly_issues_unbound_code_without_trial(_setup_db):
+    """无试用码时同样发 1 个未绑定码（ADR-0014）"""
     mgr = _setup_db
     coupon = await _big_coupon()
 
@@ -215,18 +222,19 @@ async def test_quarterly_issues_new_code_without_trial(_setup_db):
     rec = mgr.get_activation(order.delivered_code)
     assert rec.code_type == "full"
     assert rec.package_type == "quarterly"
-    assert rec.owner_user_id == "u1"  # 自动绑定购买者
+    assert rec.owner_user_id is None  # 未绑定
+    assert rec.purchaser_user_id == "u1"
     assert rec.vip_level == 2
     assert rec.expires_at is None  # 未激活，首次开始探索起算
     meta = PaymentService._parse_meta(order.meta)
-    assert meta["upgraded"] is False
+    assert meta.get("codes") == [order.delivered_code]
 
 
-# ─── 3. 年度套餐交付（1 升级 + 2 赠品）──────────────────────────
+# ─── 3. 年度套餐交付（3 个未绑定码，ADR-0014）──────────────────────
 
 
 @pytest.mark.asyncio
-async def test_annual_delivers_upgrade_plus_gifts(_setup_db):
+async def test_annual_delivers_three_unbound_codes(_setup_db):
     mgr = _setup_db
     trial = _make_trial(mgr)
     coupon = await _big_coupon()
@@ -239,21 +247,22 @@ async def test_annual_delivers_upgrade_plus_gifts(_setup_db):
     )
 
     assert order.status == "granted"
-    assert order.delivered_code == trial.code
     meta = PaymentService._parse_meta(order.meta)
-    gifts = meta.get("gift_codes")
-    assert gifts and len(gifts) == 2
+    codes = meta.get("codes")
+    assert codes and len(codes) == 3
+    assert len(set(codes)) == 3
+    assert order.delivered_code == codes[0]
 
-    own = mgr.get_activation(trial.code)
-    assert own.package_type == "annual"
+    # 试用码不被自动升级
+    assert mgr.get_activation(trial.code).code_type == "trial"
 
-    for code in gifts:
+    for code in codes:
         rec = mgr.get_activation(code)
         assert rec.code_type == "full"
         assert rec.package_type == "annual"
         assert rec.vip_level == 2
         assert rec.expires_at is None  # 首次开始探索才落有效期
-        assert rec.owner_user_id is None  # 未绑定，可转送
+        assert rec.owner_user_id is None  # 未绑定，可转送/自用/消耗升级
         assert rec.purchaser_user_id == "u1"  # 所属人追溯
         assert rec.source_order_id == order.id
 
@@ -268,7 +277,7 @@ async def test_gift_code_first_use_lands_expiry(_setup_db):
         channel="alipay",
         coupon_code=coupon,
     )
-    gift = PaymentService._parse_meta(order.meta)["gift_codes"][0]
+    gift = PaymentService._parse_meta(order.meta)["codes"][0]
 
     # 另一个人绑定赠品码 → 仍不落有效期（claim 不再起算）
     claimed = mgr.claim_owner(gift, {"user_id": "u2", "email": "bob@test.com"})
@@ -423,7 +432,9 @@ async def test_consultation_creates_booking(_setup_db):
 
 
 @pytest.mark.asyncio
-async def test_refund_rejected_for_packages(_setup_db):
+async def test_refund_allowed_when_package_codes_untouched(_setup_db, fake_channel):
+    """套餐退款（ADR-0014）：全部码未动 → 可退，全部码作废；任一动用 → 拒退"""
+    mgr = _setup_db
     for product_type in ("quarterly_package", "annual_package"):
         coupon = await _big_coupon()
         order, _ = await PaymentService.create_order(
@@ -432,8 +443,23 @@ async def test_refund_rejected_for_packages(_setup_db):
             channel="alipay",
             coupon_code=coupon,
         )
-        with pytest.raises(ValueError, match="不可退款"):
-            await PaymentService.admin_refund(order.id)
+        refunded = await PaymentService.admin_refund(order.id)
+        assert refunded.status == "refunded"
+        for code in PaymentService._parse_meta(refunded.meta)["codes"]:
+            assert mgr.get_activation(code).status == "revoked"
+
+    # 任一码被 claim → 整单拒退
+    coupon = await _big_coupon()
+    order, _ = await PaymentService.create_order(
+        user_id="u1",
+        product_type="annual_package",
+        channel="alipay",
+        coupon_code=coupon,
+    )
+    codes = PaymentService._parse_meta(order.meta)["codes"]
+    mgr.claim_owner(codes[0], {"user_id": "u2", "email": "bob@test.com"})
+    with pytest.raises(ValueError, match="不可退款"):
+        await PaymentService.admin_refund(order.id)
 
 
 @pytest.mark.asyncio

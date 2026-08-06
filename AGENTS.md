@@ -107,8 +107,10 @@ SMTP_PASS=授权码
 # 可选：支付模块（P1 折扣券；P2a 支付宝闭环已上线，微信 P2b 预留）
 # 商品目录（ADR-0008；2026-07-28 起对外口径改回：季度套餐 / 年度套餐，内部 SKU 仍为 quarterly_package/annual_package）
 # 套餐码「未激活」语义：交付时 expires_at=None，首次创建对话 session 才起算有效期（maybe_start_validity）
-QUARTERLY_PRICE=6900              # 季度套餐（分，90 天，1 码：有试用码原码升级/无则发新码）
-ANNUAL_PRICE=12800                # 年度套餐（分，365 天，1 自用码 + 2 赠品码；2026-07-28 由 99 元调至 128 元）
+QUARTERLY_PRICE=6900              # 季度套餐（分，90 天，1 个未绑定码）
+ANNUAL_PRICE=15900                # 年度套餐（分，365 天，3 个未绑定码；99→128→159，2026-08-05 起）
+# 交付口径（ADR-0014，2026-08-05 起）：套餐一律发未绑定码，不再自动升级试用码/自动绑定；
+# 用户可消耗 1 个未绑定码把试用码原地升级为完整码（POST /simple-auth/codes/apply-to-trial）
 RENEWAL_PRICE=2000                # 延期激活（分；2026-07-28 起任意完整码统一 20 元，不分套餐）
 RENEWAL_DAYS=90                   # 延期时长（天，统一 +90 天）
 # RENEWAL_QUARTERLY_PRICE / RENEWAL_ANNUAL_PRICE 已弃用（旧分档延期，仅历史兼容保留）
@@ -143,18 +145,21 @@ MEMBERSHIP_ENABLED=False        # 会员开关（P3 预留）
 使用 `start.sh` 脚本（基于 tmux）：
 
 ```bash
-# 启动后端 + 前端（默认生产模式）
+# 启动后端 + 前端（默认，仅加载 .env）
 ./start.sh
 
-# 开发模式启动
-./start.sh start-dev
+# 开发环境（加载 .env → .env.dev，clean build + start）
+./start.sh dev            # 等同 ./start.sh start dev（start-dev 为旧兼容写法）
 
-# 生产模式（清理构建缓存）
-./start.sh start-run
+# 生产环境（加载 .env → .env.prod，clean build + start）
+./start.sh prod           # 等同 ./start.sh start prod（start-run 为旧兼容写法）
+
+# 热更新模式（npm run dev）
+./start.sh dev --hot
 
 # 其他命令
 ./start.sh stop           # 停止服务
-./start.sh restart        # 重启全部
+./start.sh restart        # 重启全部（自动沿用 .start_env 记录的上次 start 环境，不会丢 .env.<env> 覆盖）
 ./start.sh restart backend    # 仅重启后端
 ./start.sh attach         # 附加到 tmux session 查看日志
 ```
@@ -267,8 +272,10 @@ python scripts/init_db.py
 
 - **试用码（trial）**：注册即送、自动绑定、不过期（`expires_at=None`）、`vip_level=1`；老用户 0 码时在 `GET /simple-auth/journeys` 懒补发。仅限 values 阶段问答 10 轮（轮=用户消息条数，排除 `internal` 消息；第 11 条起拦截）。
 - **完整码（full）**：全阶段解锁。存量码一律 `code_type=full`（`_load_all` setdefault 兼容）。
+- **消耗升级（ADR-0014）**：购买套餐不再自动升级试用码——季度发 1 个、年度发 3 个**未绑定**完整码（可自用/转赠）；用户可消耗 1 个未绑定码（自购或被赠均可）把已开聊试用码**原地升级**为完整码：被消耗码置 `status=consumed`（+`consumed_into` 审计），试用码走 `upgrade_to_full`（码字符串/对话记录/session 全保留）。入口：支付结果页弹窗（可「不再提醒」，存 `users.preferences`）、两种 402 拦截点（双选项：直购 intent=upgrade_trial 支付后自动消耗升级 / 用已有码升级）、我的激活码页。
 - **试用门控**：写端点非 values → HTTP 402 `{"type":"trial_phase_locked"}`；values 超 10 轮 → HTTP 402 `{"type":"trial_limit_reached","used":N,"limit":10}`（detail 为 JSON 字符串）。只读 GET 不拦；admin/沙箱走 `_can_bypass_flow_limits` 豁免。
-- **关键文件**：`app/utils/trial_codes.py`（发放/补发/计数）、`app/api/v1/simple_chat_routes.py`（`_assert_trial_phase_allowed` / `_assert_trial_message_allowed` / `_peek_trial_phase_lock`）、`GET /simple-auth/my-codes`（我的激活码列表）。
+- **退款口径（ADR-0014）**：套餐订单任一码被 claim/consumed → 整单不可退；全部码未动 → 可退并 revoke 全部码；延期维持不可退。
+- **关键文件**：`app/utils/trial_codes.py`（发放/补发/计数/`get_started_trial_code`）、`app/utils/simple_activation_manager.py`（`consume_for_trial_upgrade`/`upgrade_to_full`）、`app/api/v1/simple_chat_routes.py`（`_assert_trial_phase_allowed` / `_assert_trial_message_allowed` / `_peek_trial_phase_lock`）、`GET /simple-auth/my-codes`（我的激活码列表）、`POST /simple-auth/codes/apply-to-trial` + `GET /simple-auth/upgrade-context`（消耗升级）、`GET/PATCH /simple-auth/preferences`（用户偏好）。
 
 ## 智能体架构
 
@@ -335,6 +342,7 @@ python scripts/init_db.py
 - `/api/v1/export/*` - 导出
 - `/api/v1/admin/*` - 管理（含 `/admin/coupons` 折扣券、`/admin/payment/orders` 订单与退款、`/admin/consultations` 咨询管理、`/admin/users` 用户管理：deleted 筛选 / `restore-deletion` 注销恢复 / PATCH status 对已注销用户启用会 400 拦截）
 - `/api/v1/payment/*` - 支付（用户侧：products / coupons/validate / orders；`/payment/notify/alipay` 为渠道回调，无登录鉴权）
+- `/api/v1/analytics/*` - 埋点（点赞、报告生成、`POST /analytics/event` 通用事件上报：PV 不依赖登录，auth_active 仅服务端内部写；漏斗统计 `GET /admin/analytics/funnel`，ADR-0013）
 - `/api/v1/consultation/*` - 报告解读咨询（用户侧：my-reports / bookings / survey）
 - `/api/v1/team-analysis/*` - 团队分析（candidates / 创建 / 列表 / 详情）
 
@@ -382,7 +390,7 @@ python scripts/init_db.py
 - `docs/DOCKER.md` - Docker 使用
 - `docs/ADMIN_SANDBOX_FORK.md` - 管理员调试沙箱（Fork 正式激活码）
 - `CONTEXT.md` - 领域术语（探索流程 + 支付与商业化：试用/完整码、激活码（季度套餐/年度套餐）、折扣券、报告审核、团队分析）
-- `docs/adr/` - 架构决策记录（0005 双线支付 / 0006-0007 会员体系保留 / 0008 套餐与试用码 / 0009 报告审核自动批复 / 0010 码双角色与报告授权 / 0011 存储演进路线：SQLite 全量入库→条件触发 PG）
+- `docs/adr/` - 架构决策记录（0005 双线支付 / 0006-0007 会员体系保留 / 0008 套餐与试用码 / 0009 报告审核自动批复 / 0010 码双角色与报告授权 / 0011 存储演进路线：SQLite 全量入库→条件触发 PG / 0012 品牌更名 OpenLife / 0013 统计看板：事件时间口径漏斗 + 埋点业务同库 / 0014 套餐全量未绑定码交付 + 消耗升级 + 年度 ¥159）
 - `tasks/payment-module-plan.md` - 支付模块实施计划（P1 折扣券 ✅ / P2a 支付宝 ✅ / P2b 微信待做）
 - `tasks/packages-trial-plan.md` - 套餐与试用体系实施计划（P-A~P-E 全部 ✅）
 - `wiki/开发文档/0720-支付模块.md` - 支付配置操作手册（支付宝平台/.env/沙箱联调）

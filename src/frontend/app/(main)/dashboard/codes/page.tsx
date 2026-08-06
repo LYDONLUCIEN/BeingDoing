@@ -9,14 +9,16 @@ import { setLastActivationCode } from '@/lib/explore/session';
 import { fetchMyPurchasedCodes, type PurchasedCodeItem } from '@/lib/api/teamAnalysis';
 import { formatLocalDateTime, toDate } from '@/lib/utils/formatTime';
 import PurchaseModal from '@/components/payment/PurchaseModal';
+import UpgradeTrialModal from '@/components/payment/UpgradeTrialModal';
 import { useLocale } from '@/hooks/useLocale';
 
-/** 状态 badge 配色：active 绿 / inactive 橙 / expired 灰 / revoked 红 / 其他 灰 */
+/** 状态 badge 配色：active 绿 / inactive 橙 / expired 灰 / revoked 红 / consumed 灰 / 其他 灰 */
 const STATUS_COLOR: Record<string, string> = {
   active: 'bg-emerald-100 text-emerald-700 border-emerald-200',
   inactive: 'bg-orange-100 text-orange-700 border-orange-200',
   expired: 'bg-neutral-200 text-neutral-600 border-neutral-300',
   revoked: 'bg-red-100 text-red-700 border-red-200',
+  consumed: 'bg-neutral-200 text-neutral-600 border-neutral-300',
 };
 
 /** 类型 badge 配色：trial 蓝 / full 金 */
@@ -31,6 +33,7 @@ function CodeCard({
   onCopy,
   onUse,
   onRenew,
+  onUpgrade,
   t,
 }: {
   item: MyCodeItem;
@@ -38,6 +41,7 @@ function CodeCard({
   onCopy: (text: string) => void;
   onUse: (code: string) => void;
   onRenew: (code: string) => void;
+  onUpgrade: () => void;
   t: (k: string, params?: Record<string, string>) => string;
 }) {
   const codeType: CodeType = item.code_type === 'trial' ? 'trial' : 'full';
@@ -106,6 +110,15 @@ function CodeCard({
             {t('dashboard.codesPage.renew')}
           </button>
         )}
+        {codeType === 'trial' && item.status === 'active' && (
+          <button
+            type="button"
+            onClick={onUpgrade}
+            className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 transition hover:bg-amber-50"
+          >
+            {t('dashboard.codesPage.upgradeTrial')}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => onUse(item.code)}
@@ -166,6 +179,8 @@ export default function DashboardCodesPage() {
   const [copiedText, setCopiedText] = useState<string | null>(null);
   /** 延期激活目标码：非 null 时打开 PurchaseModal 延期模式 */
   const [renewalTarget, setRenewalTarget] = useState<string | null>(null);
+  /** 消耗升级弹窗（ADR-0014）：试用码卡片「升级完整版」入口 */
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   const loadCodes = useCallback(async () => {
     setLoading(true);
@@ -238,6 +253,7 @@ export default function DashboardCodesPage() {
               onCopy={(text) => void copyText(text)}
               onUse={handleUse}
               onRenew={(code) => setRenewalTarget(code)}
+              onUpgrade={() => setUpgradeOpen(true)}
               t={t}
             />
           ))}
@@ -255,6 +271,16 @@ export default function DashboardCodesPage() {
           void loadCodes();
         }}
         renewalTargetCode={renewalTarget ?? undefined}
+      />
+
+      {/* 消耗升级：作废 1 个未绑定码，试用码原地升级（ADR-0014） */}
+      <UpgradeTrialModal
+        open={upgradeOpen}
+        onClose={() => setUpgradeOpen(false)}
+        onUpgraded={() => {
+          setUpgradeOpen(false);
+          void loadCodes();
+        }}
       />
     </div>
   );

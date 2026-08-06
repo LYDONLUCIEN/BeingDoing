@@ -4,6 +4,7 @@ import ThemeProvider from './ThemeProvider';
 import PhaseColorInjector from './PhaseColorInjector';
 import DesignEffectsInjector from './DesignEffectsInjector';
 import ChunkErrorRecovery from './ChunkErrorRecovery';
+import PageViewTracker from './PageViewTracker';
 
 /**
  * Single client boundary wrapper.
@@ -18,6 +19,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <>
       <ChunkErrorRecovery />
+      <PageViewTracker />
       <ThemeProvider />
       <PhaseColorInjector />
       <DesignEffectsInjector />

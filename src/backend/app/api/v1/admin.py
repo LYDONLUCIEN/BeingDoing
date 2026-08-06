@@ -19,7 +19,8 @@ from app.utils.simple_activation_manager import (
 )
 import json
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from app.services.analytics_funnel_service import SH_TZ
 from sqlalchemy import select
 from app.models.database import AsyncSessionLocal
 from app.models.analytics import AnalyticsReport
@@ -301,6 +302,33 @@ async def sync_dashboard_overview(current_user: Optional[dict] = Depends(get_cur
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     data = await AnalyticsService.sync_dashboard_overview_to_static()
+    return {"code": 200, "message": "success", "data": data}
+
+
+@router.get("/analytics/funnel")
+async def get_analytics_funnel(
+    start: Optional[str] = Query(None, description="开始日期 YYYY-MM-DD（Asia/Shanghai），默认近 30 天"),
+    end: Optional[str] = Query(None, description="结束日期 YYYY-MM-DD（含当天），默认今天"),
+    granularity: str = Query("day", description="分组粒度 day / month"),
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """漏斗级统计看板（ADR-0013，事件时间口径，仅 super_admin）"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    from app.services.analytics_funnel_service import AnalyticsFunnelService
+
+    today = datetime.now(SH_TZ).date()
+    try:
+        end_date = date.fromisoformat(end) if end else today
+        start_date = date.fromisoformat(start) if start else today - timedelta(days=29)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="日期格式须为 YYYY-MM-DD")
+    try:
+        data = await AnalyticsFunnelService.get_funnel_stats(
+            start=start_date, end=end_date, granularity=granularity
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return {"code": 200, "message": "success", "data": data}
 
 

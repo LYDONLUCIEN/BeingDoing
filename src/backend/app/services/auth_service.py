@@ -23,6 +23,16 @@ from app.services.email_service import EmailService
 logger = logging.getLogger(__name__)
 
 
+async def _record_auth_active(user_id: str) -> None:
+    """日活跃埋点（ADR-0013）：登录/刷新成功时写 auth_active 事件。失败不影响主流程。"""
+    try:
+        from app.services.analytics_service import AnalyticsService
+
+        await AnalyticsService.record_event("auth_active", user_id=user_id)
+    except Exception:
+        logger.exception("auth_active 埋点失败: user_id=%s", user_id)
+
+
 def _friendly_email_send_error(exc: Exception, scene: str) -> ValueError:
     """把 SMTP 发送异常翻译成用户可读的 ValueError（接口统一转为 400）。
 
@@ -313,6 +323,7 @@ class AuthService:
                     )
                 )
                 await db.commit()
+                await _record_auth_active(user.id)
                 return {
                     "token": access_token,
                     "refresh_token": new_refresh_token,
@@ -321,6 +332,7 @@ class AuthService:
                 }
 
             await db.commit()
+            await _record_auth_active(user.id)
             return {
                 "token": access_token,
                 "refresh_token": token,
@@ -710,6 +722,7 @@ class AuthService:
                 await user_db.update_user(user.id, email_verified=False)
 
             token_pair = await AuthService._issue_token_pair(user)
+            await _record_auth_active(user.id)
             return {
                 "user_id": user.id,
                 "email": user.email,

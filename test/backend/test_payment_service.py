@@ -17,6 +17,7 @@
 """
 
 from datetime import datetime, timedelta, timezone
+import json
 from unittest.mock import AsyncMock
 
 import pytest
@@ -191,7 +192,7 @@ async def test_compute_amounts_no_coupon():
     """无券普通用户：原价支付，无抵扣"""
     user = await _get_user("u1")
     original, discount, paid = PaymentService.compute_amounts(user, coupon_amount=0)
-    assert (original, discount, paid) == (settings.ANNUAL_PRICE, 0, 12800)
+    assert (original, discount, paid) == (settings.ANNUAL_PRICE, 0, settings.ANNUAL_PRICE)
 
 
 @pytest.mark.asyncio
@@ -199,7 +200,7 @@ async def test_compute_amounts_with_coupon():
     """有券：实付 = 原价 - 券面额，抵扣 = 券面额"""
     user = await _get_user("u1")
     original, discount, paid = PaymentService.compute_amounts(user, coupon_amount=5000)
-    assert (original, discount, paid) == (12800, 5000, 7800)
+    assert (original, discount, paid) == (settings.ANNUAL_PRICE, 5000, settings.ANNUAL_PRICE - 5000)
 
 
 @pytest.mark.asyncio
@@ -207,21 +208,26 @@ async def test_compute_amounts_coupon_exceeds_price():
     """券面额 > 原价：实付下限 0 元，抵扣 = 原价"""
     user = await _get_user("u1")
     original, discount, paid = PaymentService.compute_amounts(user, coupon_amount=20000)
-    assert (original, discount, paid) == (12800, 12800, 0)
+    assert (original, discount, paid) == (
+        settings.ANNUAL_PRICE,
+        settings.ANNUAL_PRICE,
+        0,
+    )
 
 
 @pytest.mark.asyncio
 async def test_compute_amounts_member_then_coupon():
     """会员价叠加券：先折（原价×0.85 四舍五入）后券"""
     user = await _get_user("u2")  # 生效会员
-    # 会员价：round(12800*85/100)=10880
+    annual = settings.ANNUAL_PRICE
+    member_price = round(annual * settings.MEMBER_DISCOUNT_PERCENT / 100)
     _, discount, paid = PaymentService.compute_amounts(user, coupon_amount=0)
-    assert paid == 10880
-    assert discount == 12800 - 10880
-    # 叠加 5000 券：10880-5000=5880
+    assert paid == member_price
+    assert discount == annual - member_price
+    # 叠加 5000 券
     _, discount2, paid2 = PaymentService.compute_amounts(user, coupon_amount=5000)
-    assert paid2 == 5880
-    assert discount2 == 12800 - 5880
+    assert paid2 == member_price - 5000
+    assert discount2 == annual - (member_price - 5000)
 
 
 @pytest.mark.asyncio
@@ -229,7 +235,7 @@ async def test_compute_amounts_expired_member_no_discount():
     """过期会员：不享会员价"""
     user = await _get_user("u3")  # 会员已过期
     _, discount, paid = PaymentService.compute_amounts(user, coupon_amount=0)
-    assert (discount, paid) == (0, 12800)
+    assert (discount, paid) == (0, settings.ANNUAL_PRICE)
 
 
 # ─── 下单 ──────────────────────────────────────────────────────
@@ -726,3 +732,189 @@ async def test_get_order_by_no():
     # 不存在的订单号 → 404
     with pytest.raises(OrderNotFoundError):
         await PaymentService.get_order_by_no("u1", "X_NOT_EXIST")
+
+
+# ─── 套餐交付（ADR-0014：全量未绑定码 + 消耗升级）───────────────
+
+
+@pytest.mark.asyncio
+async def test_deliver_quarterly_one_unbound_code(fake_channel, tmp_path):
+    """季度套餐交付：1 个未绑定码，不自动绑定、不升级试用码"""
+    order, _ = await PaymentService.create_order("u1", "quarterly_package", "alipay", None)
+    await PaymentService.handle_alipay_notify(_notify_form(order))
+
+    final = await _get_order(order.id)
+    assert final.status == "granted"
+    meta = ps_mod.PaymentService._parse_meta(final.meta)
+    codes = meta.get("codes") or []
+    assert len(codes) == 1
+    assert final.delivered_code == codes[0]
+    assert "upgraded" not in meta
+
+    mgr = SimpleActivationManager(base_dir=str(tmp_path / "simple"))
+    rec = mgr.get_activation(codes[0])
+    assert rec is not None
+    assert rec.owner_user_id is None  # 未绑定
+    assert rec.status == "active"
+    assert rec.code_type == "full"
+    assert rec.package_type == "quarterly"
+    assert rec.purchaser_user_id == "u1"
+    assert rec.source_order_id == order.id
+
+
+@pytest.mark.asyncio
+async def test_deliver_annual_three_unbound_codes(fake_channel, tmp_path):
+    """年度套餐交付：3 个未绑定码，全部可自用/转赠"""
+    order, _ = await PaymentService.create_order("u1", "annual_package", "alipay", None)
+    await PaymentService.handle_alipay_notify(_notify_form(order))
+
+    final = await _get_order(order.id)
+    meta = ps_mod.PaymentService._parse_meta(final.meta)
+    codes = meta.get("codes") or []
+    assert len(codes) == 3
+    assert len(set(codes)) == 3  # 码不重复
+
+    mgr = SimpleActivationManager(base_dir=str(tmp_path / "simple"))
+    for code in codes:
+        rec = mgr.get_activation(code)
+        assert rec is not None and rec.owner_user_id is None
+        assert rec.package_type == "annual"
+        assert rec.purchaser_user_id == "u1"
+
+
+@pytest.mark.asyncio
+async def test_intent_upgrade_trial_auto_consumes(fake_channel, tmp_path, monkeypatch):
+    """直购升级（intent=upgrade_trial）：发码后自动消耗 1 码升级试用码"""
+    mgr = SimpleActivationManager(base_dir=str(tmp_path / "simple"))
+    trial = mgr.create_activation(mode="combined", code_type="trial", vip_level=1)
+    mgr.claim_owner(trial.code, {"user_id": "u1", "email": "alice@test.com"})
+    monkeypatch.setattr(
+        "app.utils.trial_codes.get_active_trial_code_for_user",
+        lambda user_id: mgr.get_activation(trial.code),
+    )
+
+    order, _ = await PaymentService.create_order(
+        "u1", "quarterly_package", "alipay", None, None, "upgrade_trial"
+    )
+    await PaymentService.handle_alipay_notify(_notify_form(order))
+
+    final = await _get_order(order.id)
+    meta = ps_mod.PaymentService._parse_meta(final.meta)
+    assert meta.get("auto_upgraded") is True
+    codes = meta.get("codes") or []
+    assert len(codes) == 1
+
+    # 购买码已消耗，指向试用码
+    consumed = mgr.get_activation(codes[0])
+    assert consumed.status == "consumed"
+    assert consumed.consumed_into == trial.code
+
+    # 试用码原地升级（同码字符串）
+    upgraded = mgr.get_activation(trial.code)
+    assert upgraded.code_type == "full"
+    assert upgraded.vip_level == 2
+    assert upgraded.package_type == "quarterly"
+    assert upgraded.purchaser_user_id == "u1"
+
+
+@pytest.mark.asyncio
+async def test_intent_upgrade_trial_without_trial_falls_back(fake_channel, tmp_path, monkeypatch):
+    """直购升级但用户无试用码：退化为普通未绑定交付"""
+    monkeypatch.setattr(
+        "app.utils.trial_codes.get_active_trial_code_for_user", lambda user_id: None
+    )
+    order, _ = await PaymentService.create_order(
+        "u1", "quarterly_package", "alipay", None, None, "upgrade_trial"
+    )
+    await PaymentService.handle_alipay_notify(_notify_form(order))
+
+    final = await _get_order(order.id)
+    meta = ps_mod.PaymentService._parse_meta(final.meta)
+    assert meta.get("auto_upgraded") is not True
+    mgr = SimpleActivationManager(base_dir=str(tmp_path / "simple"))
+    rec = mgr.get_activation((meta.get("codes") or [""])[0])
+    assert rec is not None and rec.status == "active" and rec.owner_user_id is None
+
+
+@pytest.mark.asyncio
+async def test_create_order_rejects_invalid_intent():
+    """非法 intent / 非套餐商品带 intent → 400"""
+    with pytest.raises(ValueError, match="不支持的订单意图"):
+        await PaymentService.create_order("u1", "quarterly_package", "alipay", None, None, "xxx")
+    with pytest.raises(ValueError, match="仅套餐订单支持"):
+        await PaymentService.create_order(
+            "u1", "consultation", "alipay", None, None, "upgrade_trial"
+        )
+
+
+async def _make_granted_annual_order(tmp_path) -> PaymentOrder:
+    """造一笔已交付的年度套餐订单（3 个未绑定码）"""
+    order, _ = await PaymentService.create_order("u1", "annual_package", "alipay", None)
+    await PaymentService.handle_alipay_notify(_notify_form(order))
+    return await _get_order(order.id)
+
+
+@pytest.mark.asyncio
+async def test_refund_package_untouched_success(fake_channel, tmp_path):
+    """套餐退款：全部码未动 → 可退，退款成功全部码作废"""
+    order = await _make_granted_annual_order(tmp_path)
+    meta = ps_mod.PaymentService._parse_meta(order.meta)
+    codes = meta["codes"]
+
+    refunded = await PaymentService.admin_refund(order.id, actor={"user_id": "admin"})
+    assert refunded.status == "refunded"
+    assert fake_channel.refunds == [(order.order_no, order.amount_paid, order.order_no + "R")]
+
+    mgr = SimpleActivationManager(base_dir=str(tmp_path / "simple"))
+    for code in codes:
+        assert mgr.get_activation(code).status == "revoked"
+
+
+@pytest.mark.asyncio
+async def test_refund_package_rejected_when_code_claimed(fake_channel, tmp_path):
+    """套餐退款：任一码被 claim → 整单不可退"""
+    order = await _make_granted_annual_order(tmp_path)
+    meta = ps_mod.PaymentService._parse_meta(order.meta)
+    mgr = SimpleActivationManager(base_dir=str(tmp_path / "simple"))
+    mgr.claim_owner(meta["codes"][1], {"user_id": "u9", "email": "x@test.com"})
+
+    with pytest.raises(ValueError, match="不可退款"):
+        await PaymentService.admin_refund(order.id, actor={"user_id": "admin"})
+    assert fake_channel.refunds == []
+    assert (await _get_order(order.id)).status == "granted"
+
+
+@pytest.mark.asyncio
+async def test_refund_package_rejected_when_code_consumed(fake_channel, tmp_path):
+    """套餐退款：任一码被消耗升级 → 整单不可退"""
+    order = await _make_granted_annual_order(tmp_path)
+    meta = ps_mod.PaymentService._parse_meta(order.meta)
+    mgr = SimpleActivationManager(base_dir=str(tmp_path / "simple"))
+    trial = mgr.create_activation(mode="combined", code_type="trial", vip_level=1)
+    mgr.claim_owner(trial.code, {"user_id": "u1", "email": "alice@test.com"})
+    mgr.consume_for_trial_upgrade(meta["codes"][0], trial.code, actor={"user_id": "u1"})
+
+    with pytest.raises(ValueError, match="不可退款"):
+        await PaymentService.admin_refund(order.id, actor={"user_id": "admin"})
+    assert fake_channel.refunds == []
+
+
+@pytest.mark.asyncio
+async def test_refund_package_rejected_legacy_upgraded(fake_channel, tmp_path):
+    """旧订单（meta.upgraded=True，已自动升级试用码）→ 不可退"""
+    order = await _make_granted_annual_order(tmp_path)
+    async with _TestSessionLocal() as db:
+        row = await cls_get(db, order.id)
+        meta = ps_mod.PaymentService._parse_meta(row.meta)
+        meta["upgraded"] = True
+        row.meta = json.dumps(meta, ensure_ascii=False)
+        await db.commit()
+
+    with pytest.raises(ValueError, match="不可退款"):
+        await PaymentService.admin_refund(order.id, actor={"user_id": "admin"})
+
+
+async def cls_get(db, order_id):
+    return (
+        await db.execute(select(PaymentOrder).where(PaymentOrder.id == order_id))
+    ).scalar_one()

@@ -6,8 +6,10 @@ import type { AxiosError } from 'axios';
 import { Check, Copy, Loader2, XCircle } from 'lucide-react';
 import { getApiErrorMessage } from '@/lib/api/client';
 import { getOrderByNo, type OrderItem } from '@/lib/api/payment';
+import { getUpgradeContext } from '@/lib/api/activation';
 import { useLocale } from '@/hooks/useLocale';
 import { CopyableCode } from '@/components/payment/CopyableCode';
+import UpgradeTrialModal from '@/components/payment/UpgradeTrialModal';
 
 const POLL_INTERVAL_MS = 2000;
 const CONFIRM_TIMEOUT_MS = 30 * 60 * 1000;
@@ -36,6 +38,10 @@ function PaymentResultContent() {
   const [order, setOrder] = useState<OrderItem | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  /** 消耗升级弹窗（ADR-0014）：套餐交付且有已开聊试用码时弹出 */
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [trialUpgraded, setTrialUpgraded] = useState(false);
+  const upgradeCheckedRef = useRef(false);
 
   const deadlineRef = useRef<number>(0);
 
@@ -44,6 +50,22 @@ function PaymentResultContent() {
     setOrder(ord);
     if (ord.status === 'granted') {
       setView('granted');
+      if (ord.meta?.auto_upgraded) setTrialUpgraded(true);
+      // ADR-0014：套餐交付后，有已开聊试用码且未「不再提醒」→ 弹消耗升级（每单只判一次）
+      const isPackage =
+        ord.product_type === 'quarterly_package' || ord.product_type === 'annual_package';
+      if (isPackage && !ord.meta?.auto_upgraded && !upgradeCheckedRef.current) {
+        upgradeCheckedRef.current = true;
+        getUpgradeContext()
+          .then((ctx) => {
+            if (ctx.has_started_trial && !ctx.dont_remind && (ctx.unbound_codes ?? []).length > 0) {
+              setUpgradeOpen(true);
+            }
+          })
+          .catch(() => {
+            /* 上下文拉取失败静默，不弹 */
+          });
+      }
       return true;
     }
     if (ord.status === 'closed' || ord.status === 'cancelled' || ord.status === 'refunded') {
@@ -117,7 +139,9 @@ function PaymentResultContent() {
     router.push(bookingId ? `/dashboard/consultation/${bookingId}` : '/dashboard/orders');
   };
 
-  const giftCodes = order?.meta?.gift_codes ?? [];
+  const giftCodes = order?.meta?.codes
+    ? order.meta.codes.filter((c) => c !== order?.delivered_code)
+    : (order?.meta?.gift_codes ?? []);
 
   return (
     <div className="mx-auto max-w-md px-5 py-16">
@@ -175,8 +199,41 @@ function PaymentResultContent() {
                   {t('payment.success.consultationCta')}
                 </button>
               </>
+            ) : trialUpgraded ? (
+              /* 试用码已升级为完整版（直购自动升级 / 弹窗消耗升级） */
+              <>
+                <p className="text-sm font-medium leading-relaxed text-emerald-600">
+                  {t('payment.success.autoUpgradedNote')}
+                </p>
+                {giftCodes.length > 0 && (
+                  <div className="w-full space-y-2 rounded-xl border border-amber-200/80 bg-amber-50/60 px-4 py-3.5 text-left">
+                    <p className="text-xs font-medium text-bd-fg">
+                      {t('payment.success.giftCodesLabel')}
+                    </p>
+                    {giftCodes.map((code) => (
+                      <CopyableCode
+                        key={code}
+                        code={code}
+                        copiedCode={copiedCode}
+                        onCopy={(c) => void handleCopyCode(c)}
+                        t={t}
+                      />
+                    ))}
+                    <p className="text-[11px] leading-relaxed text-bd-muted">
+                      {t('payment.success.giftNote')}
+                    </p>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => router.push('/explore')}
+                  className="w-full rounded-xl px-4 py-3.5 text-base font-semibold bg-bd-ui-accent text-bd-ui-accent-fg transition hover:opacity-90"
+                >
+                  {t('payment.success.continueExplore')}
+                </button>
+              </>
             ) : (
-              /* 套餐购买成功：自己的码 + 年度单赠品码 */
+              /* 套餐购买成功：交付码（未绑定）+ 年度单其余码 */
               <>
                 <div className="space-y-1">
                   <p className="text-xs text-bd-muted">{t('payment.success.codeLabel')}</p>
@@ -266,6 +323,16 @@ function PaymentResultContent() {
           </div>
         )}
       </div>
+      <UpgradeTrialModal
+        open={upgradeOpen}
+        onClose={() => setUpgradeOpen(false)}
+        onUpgraded={() => {
+          setUpgradeOpen(false);
+          setTrialUpgraded(true);
+        }}
+        preferredCodes={order?.meta?.codes}
+        showDontRemind
+      />
     </div>
   );
 }

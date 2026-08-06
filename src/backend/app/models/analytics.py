@@ -39,6 +39,25 @@ class AnalyticsReport(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class AnalyticsEvent(Base):
+    """通用事件埋点（ADR-0013）：页面浏览 PV / 登录活跃 auth_active
+
+    - page_view：前端埋点上报，不依赖登录；visitor_id 为匿名访客 cookie（兼算 UV）
+    - auth_active：仅服务端内部写（登录成功 + token 刷新成功），不开放外部上报
+    - 统计口径：事件时间口径，按 Asia/Shanghai 日历日分桶（见 analytics_funnel_service）
+    """
+
+    __tablename__ = "analytics_events"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    event_type = Column(String(32), nullable=False, index=True)  # page_view / auth_active
+    user_id = Column(String(36), nullable=True, index=True)  # 登录用户；PV 未登录为空
+    visitor_id = Column(String(64), nullable=True, index=True)  # 匿名访客 cookie
+    path = Column(String(255), nullable=True)  # page_view 路径
+    meta = Column(Text, nullable=True)  # JSON：referrer / ua 摘要等
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+
 class AnalyticsLike(Base):
     """用户点赞：支持按 message_id + user_id 去重，快照留存原文"""
 

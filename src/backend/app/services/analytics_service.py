@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from sqlalchemy import delete, distinct, func, select
 
-from app.models.analytics import AnalyticsChatTurn, AnalyticsLike, AnalyticsReport
+from app.models.analytics import AnalyticsChatTurn, AnalyticsEvent, AnalyticsLike, AnalyticsReport
 from app.models.database import AsyncSessionLocal
 from app.models.session import Session
 from app.models.user import User
@@ -58,6 +58,30 @@ class AnalyticsService:
             async with AsyncSessionLocal() as db:
                 r = AnalyticsReport(session_id=session_id, activation_code=activation_code)
                 db.add(r)
+                await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+
+    @staticmethod
+    async def record_event(
+        event_type: str,
+        user_id: Optional[str] = None,
+        visitor_id: Optional[str] = None,
+        path: Optional[str] = None,
+        meta: Optional[str] = None,
+    ) -> None:
+        """记录通用事件（ADR-0013）：page_view / auth_active"""
+        try:
+            async with AsyncSessionLocal() as db:
+                ev = AnalyticsEvent(
+                    event_type=event_type[:32],
+                    user_id=(user_id or None),
+                    visitor_id=(visitor_id or None),
+                    path=(path or None),
+                    meta=(meta or None),
+                )
+                db.add(ev)
                 await db.commit()
         except Exception:
             await db.rollback()

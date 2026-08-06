@@ -41,6 +41,9 @@ class User(Base):
     deleted_at = Column(DateTime, nullable=True)
     deletion_purge_after = Column(DateTime, nullable=True)
 
+    # 用户偏好（JSON 字符串；如 upgrade_modal_dont_remind，ADR-0014）
+    preferences = Column(Text, nullable=True)
+
     # 关系
     profile = relationship(
         "UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan"

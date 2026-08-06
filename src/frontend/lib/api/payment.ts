@@ -157,8 +157,14 @@ export interface OrderItem {
 }
 
 export interface OrderMeta {
-  /** 年度单交付的赠品码（可转送朋友） */
+  /** 套餐订单交付的全部激活码（ADR-0014，未绑定） */
+  codes?: string[];
+  /** 年度单交付的赠品码（旧订单兼容字段） */
   gift_codes?: string[];
+  /** 直购升级订单：交付时已自动消耗 1 码升级试用码 */
+  auto_upgraded?: boolean;
+  /** 订单意图（upgrade_trial=试用拦截点直购升级） */
+  intent?: string;
   /** 延期目标码 */
   target_code?: string;
   /** 延期追加天数 */
@@ -205,6 +211,8 @@ export async function createOrder(payload: {
   coupon_code?: string;
   /** renewal 必传：延期目标激活码 */
   target_code?: string;
+  /** 订单意图（ADR-0014）：upgrade_trial=试用拦截点直购升级（仅套餐） */
+  intent?: 'upgrade_trial';
 }): Promise<CreateOrderResult> {
   const res = await apiClient.post('/payment/orders', payload);
   return res.data as CreateOrderResult;

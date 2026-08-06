@@ -59,6 +59,7 @@ logs/
 htmlcov/
 .pytest_cache/
 .tox/
+.playwright-mcp/
 
 # 临时文件
 *.tmp
@@ -86,3 +87,4 @@ uidesign/
 uidesign/font/*.zip
 # 支付渠道密钥证书（支付宝/微信，勿入库）
 src/backend/certs/
+.start_env

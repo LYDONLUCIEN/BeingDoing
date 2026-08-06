@@ -111,6 +111,48 @@ def ensure_trial_code_for_user(user: dict) -> Optional[ActivationRecord]:
     return mgr.get_activation(rec.code)
 
 
+def get_active_trial_code_for_user(user_id: str) -> Optional[ActivationRecord]:
+    """找用户名下 active 试用码（每人至多一个；ADR-0014 消耗升级的目标）。"""
+    user_id = (user_id or "").strip()
+    if not user_id:
+        return None
+    for base_dir in (get_simple_base_dir(), get_simple_test_base_dir()):
+        mgr = SimpleActivationManager(base_dir=str(base_dir))
+        for _code, rec in mgr.list_activations().items():
+            if rec.owner_user_id != user_id:
+                continue
+            if not is_trial_code(rec):
+                continue
+            if rec.status != ActivationStatus.ACTIVE.value:
+                continue
+            return rec
+    return None
+
+
+def get_started_trial_code(user_id: str) -> Optional[ActivationRecord]:
+    """找用户名下「已开聊」（values 用户消息 ≥1 条）的 active 试用码（ADR-0014 弹窗触发条件）。"""
+    from app.utils.report_registry import ReportRegistry
+
+    user_id = (user_id or "").strip()
+    if not user_id:
+        return None
+    for base_dir in (get_simple_base_dir(), get_simple_test_base_dir()):
+        mgr = SimpleActivationManager(base_dir=str(base_dir))
+        for code, rec in mgr.list_activations().items():
+            if rec.owner_user_id != user_id:
+                continue
+            if not is_trial_code(rec):
+                continue
+            if rec.status != ActivationStatus.ACTIVE.value:
+                continue
+            registry = ReportRegistry(base_dir=str(base_dir))
+            report = registry.get_by_activation_user(code, user_id) or {}
+            report_id = (report.get("report_id") or "").strip()
+            if report_id and count_values_user_messages(registry, report_id) >= 1:
+                return rec
+    return None
+
+
 def count_values_user_messages(registry, report_id: str) -> int:
     """
     统计该 report 全部 values 线程的用户消息总数（排除 internal 协议消息）。

@@ -1,6 +1,8 @@
 """
-埋点 API：点赞（增删查）、报告生成等（前端调用记录）
+埋点 API：点赞（增删查）、报告生成、通用事件上报等（前端调用记录）
 """
+import json
+import time
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -43,6 +45,34 @@ class UnlikeRequest(BaseModel):
 class ReportGeneratedRequest(BaseModel):
     session_id: str
     activation_code: Optional[str] = None
+
+
+class EventRequest(BaseModel):
+    """通用事件上报（ADR-0013）。当前仅开放 page_view；auth_active 由服务端内部写。"""
+    event_type: str = Field(..., max_length=32)
+    visitor_id: Optional[str] = Field(None, max_length=64)
+    path: Optional[str] = Field(None, max_length=255)
+    meta: Optional[dict] = None
+
+
+# 同 visitor_id+path 5 秒内存去重（防双击/重试刷量；单实例足够，多实例仅降低精度不伤正确性）
+_EVENT_DEDUP_WINDOW_SEC = 5.0
+_event_dedup: dict = {}
+_EVENT_TYPES_OPEN = {"page_view"}
+
+
+def _event_dedup_hit(key: str) -> bool:
+    now = time.monotonic()
+    # 惰性清理过期键，防内存膨胀
+    if len(_event_dedup) > 10000:
+        expired = [k for k, ts in _event_dedup.items() if now - ts > _EVENT_DEDUP_WINDOW_SEC]
+        for k in expired:
+            _event_dedup.pop(k, None)
+    ts = _event_dedup.get(key)
+    if ts is not None and now - ts < _EVENT_DEDUP_WINDOW_SEC:
+        return True
+    _event_dedup[key] = now
+    return False
 
 
 # ──────────────── 点赞接口 ────────────────
@@ -139,6 +169,32 @@ async def record_like_legacy(req: LegacyLikeRequest):
         log_index=req.log_index,
         content_preview=req.content_preview,
         dimension=req.dimension,
+    )
+    return {"code": 200, "message": "success", "data": {"recorded": True}}
+
+
+# ──────────────── 通用事件上报 ────────────────
+
+@router.post("/event")
+async def record_event(req: EventRequest, current_user: Optional[dict] = Depends(get_current_user_optional)):
+    """
+    通用事件上报（ADR-0013）：当前仅开放 page_view（不依赖登录）。
+    auth_active 不开放外部上报，仅服务端在登录/刷新成功时内部写入。
+    """
+    if req.event_type not in _EVENT_TYPES_OPEN:
+        raise HTTPException(status_code=400, detail="不支持的 event_type")
+    user_id = None
+    if current_user:
+        user_id = current_user.get("user_id")
+    dedup_key = f"{req.event_type}|{req.visitor_id or user_id or 'anon'}|{req.path or ''}"
+    if _event_dedup_hit(dedup_key):
+        return {"code": 200, "message": "success", "data": {"recorded": False, "deduped": True}}
+    await AnalyticsService.record_event(
+        event_type=req.event_type,
+        user_id=user_id,
+        visitor_id=req.visitor_id,
+        path=(req.path or "")[:255] or None,
+        meta=json.dumps(req.meta, ensure_ascii=False)[:2000] if req.meta else None,
     )
     return {"code": 200, "message": "success", "data": {"recorded": True}}
 

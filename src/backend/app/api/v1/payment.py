@@ -62,6 +62,9 @@ class OrderCreateRequest(BaseModel):
     channel: str = Field(..., description="支付渠道（alipay；wechat 即将上线）")
     coupon_code: Optional[str] = Field(None, description="折扣券码（可选）")
     target_code: Optional[str] = Field(None, description="延期激活目标码（renewal 必传）")
+    intent: Optional[str] = Field(
+        None, description="订单意图（可选；upgrade_trial=试用拦截点直购升级，仅套餐）"
+    )
 
 
 # ===================== 路由 =====================
@@ -104,6 +107,7 @@ async def create_order(
             channel=payload.channel,
             coupon_code=payload.coupon_code,
             target_code=payload.target_code,
+            intent=payload.intent,
         )
     except (ValueError, RuntimeError, PaymentChannelError) as e:
         _raise_for_service_error(e)
