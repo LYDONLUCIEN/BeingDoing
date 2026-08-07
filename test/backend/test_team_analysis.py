@@ -7,6 +7,7 @@
 3. 生成：mock pdf/LLM → done 存 markdown；异常 → failed 存 error
 4. 查询：本人隔离；列表不含正文、详情含正文
 5. 报告授权：set_report_authorized 开关与审计
+6. 授权端点：转赠码激活人可见赠送者/可操作；自购码不暴露 purchaser_email 且 POST 400
 """
 
 import json
@@ -241,3 +242,75 @@ def test_set_report_authorized(_setup_db):
     # 撤销
     rec2 = mgr.set_report_authorized("GIFTCODE12", False)
     assert rec2.report_authorized is False
+
+
+# ─── 6. 报告授权端点：自购码不渲染/不可操作开关 ───────────────
+
+
+def _patch_report_authorize_endpoint(monkeypatch, mgr):
+    """把端点的码查询与 DB 会话指向测试实例。"""
+    monkeypatch.setattr(
+        "app.api.v1.simple_auth.get_activation_with_manager",
+        lambda code: (mgr, mgr.get_activation(code)),
+    )
+    monkeypatch.setattr("app.models.database.AsyncSessionLocal", _TestSessionLocal)
+
+
+@pytest.mark.asyncio
+async def test_report_authorize_gifted_code_shows_purchaser(_setup_db, monkeypatch):
+    """转赠码（所属人≠激活人）：激活人可看到脱敏赠送者邮箱（前端据此渲染开关）。"""
+    from app.api.v1 import simple_auth as sa
+
+    _patch_report_authorize_endpoint(monkeypatch, _setup_db)
+    resp = await sa.get_report_authorize("GIFTCODE12", current_user={"user_id": "u2"})
+    assert resp.data["is_activator"] is True
+    assert resp.data["purchaser_email"] == "a***@test.com"
+    assert resp.data["authorized"] is False
+
+
+@pytest.mark.asyncio
+async def test_report_authorize_self_purchase_hides_purchaser(_setup_db, monkeypatch):
+    """自购自用码（所属人=激活人）：不暴露 purchaser_email（前端据此不渲染开关）。"""
+    from app.api.v1 import simple_auth as sa
+
+    mgr = _setup_db
+    mgr.set_purchase_source("OWNCODE123", source_order_id="order-self", purchaser_user_id="u1")
+    _patch_report_authorize_endpoint(monkeypatch, mgr)
+    resp = await sa.get_report_authorize("OWNCODE123", current_user={"user_id": "u1"})
+    assert resp.data["is_activator"] is True
+    assert resp.data["purchaser_email"] is None
+
+
+@pytest.mark.asyncio
+async def test_set_report_authorize_rejects_self_purchase(_setup_db, monkeypatch):
+    """自购码 POST 授权 → 400（授权语义仅存在于转赠/团队场景）。"""
+    from fastapi import HTTPException
+
+    from app.api.v1 import simple_auth as sa
+
+    mgr = _setup_db
+    mgr.set_purchase_source("OWNCODE123", source_order_id="order-self", purchaser_user_id="u1")
+    _patch_report_authorize_endpoint(monkeypatch, mgr)
+    with pytest.raises(HTTPException) as exc:
+        await sa.set_report_authorize(
+            "OWNCODE123",
+            sa.ReportAuthorizeRequest(authorized=True),
+            current_user={"user_id": "u1"},
+        )
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_set_report_authorize_gifted_code_ok(_setup_db, monkeypatch):
+    """转赠码：激活人可正常授权/撤销。"""
+    from app.api.v1 import simple_auth as sa
+
+    mgr = _setup_db
+    _patch_report_authorize_endpoint(monkeypatch, mgr)
+    resp = await sa.set_report_authorize(
+        "GIFTCODE12",
+        sa.ReportAuthorizeRequest(authorized=True),
+        current_user={"user_id": "u2"},
+    )
+    assert resp.data["authorized"] is True
+    assert mgr.get_activation("GIFTCODE12").report_authorized is True

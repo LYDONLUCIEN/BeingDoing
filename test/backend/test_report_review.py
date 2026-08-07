@@ -68,7 +68,19 @@ def _base_record(report_id: str, activation_code: str = "CODE1", user_id: str = 
 
 
 def _pending_record(report_id: str, deadline: datetime, **kw) -> dict:
+    """审核中报告。审核计时起点的前提是五阶段已完成，故 steps 按完成态构造。"""
     rec = _base_record(report_id, **kw)
+    ts = "2026-01-01T00:00:00+00:00"
+    rec["steps"] = {
+        sid: {
+            "step_id": sid,
+            "selected_session_id": f"sess-{sid}",
+            "locked": True,
+            "session_ids": [f"sess-{sid}"],
+            "updated_at": ts,
+        }
+        for sid in STEP_IDS
+    }
     rec.update(
         {
             "review_status": "pending_review",
@@ -334,10 +346,10 @@ def test_review_not_started_when_phases_incomplete(reg: ReportRegistry) -> None:
         assert body["review_status"] == "not_started"
         assert "review_deadline" not in body
 
-        # 直连 PDF 触发端点也被阻塞（不能绕过审核计时）
+        # 直连 PDF 触发端点：五阶段未完成一律 409（2026-08-07 完成度门控，admin 也不例外）
         resp = client.post(f"/api/v1/export/report-pdf/{rid}", params={"activation_code": "CODE1"})
-        assert resp.status_code == 200
-        assert resp.json()["status"] == "not_started"
+        assert resp.status_code == 409
+        assert "尚未完成" in resp.json()["detail"]
 
     # 未开始审核就不应有生成任务、不落盘变更
     assert rid not in export_mod._pdf_tasks
@@ -469,6 +481,119 @@ def test_admin_report_list_review_fields_and_filter(reg: ReportRegistry) -> None
         resp = client.get("/api/v1/admin/reports", params={"review_status": "approved"})
         items = resp.json()["data"]["items"]
         assert [i["report_id"] for i in items] == ["rpt-legacy"]
+
+
+# ── 6. 完成度门控：未完成五阶段不可生成 PDF（2026-08-07） ─────
+
+
+def _v4_complete_record(report_id: str, **kw) -> dict:
+    """v4 口径完成态：前 4 阶段有 session，rumination 仅 locked（终选提交不写 session）。"""
+    rec = _not_started_record(report_id, complete=False, **kw)
+    ts = "2026-01-01T00:00:00+00:00"
+    steps = {}
+    for sid in STEP_IDS:
+        if sid == "rumination":
+            steps[sid] = {
+                "step_id": sid,
+                "selected_session_id": None,
+                "locked": True,
+                "session_ids": [],
+                "updated_at": ts,
+            }
+        else:
+            steps[sid] = {
+                "step_id": sid,
+                "selected_session_id": f"sess-{sid}",
+                "locked": True,
+                "session_ids": [f"sess-{sid}"],
+                "updated_at": ts,
+            }
+    rec["steps"] = steps
+    return rec
+
+
+def _patch_admin_export(reg: ReportRegistry):
+    """patch export 模块为 admin 访问 + tmp 注册表。"""
+    return (
+        patch("app.api.v1.export.is_super_admin_user", return_value=True),
+        patch("app.api.v1.export.ReportRegistry", lambda *a, **k: reg),
+    )
+
+
+def test_admin_pdf_blocked_when_phases_incomplete(reg: ReportRegistry) -> None:
+    """admin 不再豁免「流程未完成」：未完成的报告触发生成返回 409，不启动生成任务。"""
+    rid = "rpt-admin-incomplete"
+    _write_record(reg.simple_base_dir, rid, _not_started_record(rid, complete=False))
+    _override_admin()
+    export_mod._pdf_tasks.pop(rid, None)
+
+    p1, p2 = _patch_admin_export(reg)
+    with p1, p2:
+        client = TestClient(app)
+        resp = client.post(f"/api/v1/export/report-pdf/{rid}")
+        assert resp.status_code == 409
+        assert "尚未完成" in resp.json()["detail"]
+
+    assert rid not in export_mod._pdf_tasks
+
+
+def test_admin_pdf_allowed_when_v4_rumination_locked(reg: ReportRegistry) -> None:
+    """v4 口径完成（rumination 仅 locked 无 session）→ admin 可正常触发生成。"""
+    rid = "rpt-admin-v4"
+    _write_record(reg.simple_base_dir, rid, _v4_complete_record(rid))
+    _override_admin()
+    export_mod._pdf_tasks.pop(rid, None)
+
+    async def _noop_generation(*args, **kwargs):
+        return None
+
+    p1, p2 = _patch_admin_export(reg)
+    with (
+        p1,
+        p2,
+        patch.object(export_mod, "_run_pdf_generation", _noop_generation),
+        patch(
+            "app.services.report_pdf_service.ReportPdfService.has_cached_markdown",
+            return_value=False,
+        ),
+    ):
+        client = TestClient(app)
+        resp = client.post(f"/api/v1/export/report-pdf/{rid}")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "generating"
+        assert export_mod._pdf_tasks.get(rid, {}).get("status") == "pending"
+
+    export_mod._pdf_tasks.pop(rid, None)
+
+
+def test_admin_report_list_report_unlocked(reg: ReportRegistry) -> None:
+    """列表返回 report_unlocked；completed_steps 把 rumination locked 计入（v4 口径）。"""
+    _write_record(
+        reg.simple_base_dir, "rpt-v4", _v4_complete_record("rpt-v4", activation_code="V4CODE")
+    )
+    _write_record(
+        reg.simple_base_dir,
+        "rpt-inc",
+        _not_started_record("rpt-inc", complete=False, activation_code="INCCODE"),
+    )
+    _override_admin()
+
+    with (
+        patch("app.api.v1.admin._is_super_admin", return_value=True),
+        patch("app.api.v1.admin.ReportRegistry", lambda: reg),
+    ):
+        client = TestClient(app)
+        resp = client.get("/api/v1/admin/reports")
+        assert resp.status_code == 200
+        by_id = {i["report_id"]: i for i in resp.json()["data"]["items"]}
+
+        v4 = by_id["rpt-v4"]
+        assert v4["report_unlocked"] is True
+        assert v4["completed_steps"] == 5  # rumination locked 计入
+
+        inc = by_id["rpt-inc"]
+        assert inc["report_unlocked"] is False
+        assert inc["completed_steps"] == 0
 
 
 # ── 4. 自动批复 job ─────────────────────────────────────────

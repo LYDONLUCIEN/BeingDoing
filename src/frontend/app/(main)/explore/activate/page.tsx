@@ -73,14 +73,16 @@ function ActivatePageContent() {
       setCode(last);
       return;
     }
-    // 新注册用户：若名下已有激活码（如注册赠送的免费试用码），自动预填
+    // 新注册用户：若名下已有激活码，自动预填。
+    // 只预填「已绑定可用」（status=active）的码——绝不预填未绑定/未激活码；
+    // 优先完整码（用户主身份），其次试用码
     if (!isAuthenticated) return;
     let cancelled = false;
     listMyCodes()
       .then((items) => {
         if (cancelled) return;
         const active = items.filter((it) => it.status === 'active');
-        const preferred = active.find((it) => it.code_type === 'trial') ?? active[0];
+        const preferred = active.find((it) => it.code_type === 'full') ?? active[0];
         if (preferred?.code) {
           // 不覆盖用户已手动输入的内容
           setCode((prev) => (prev.trim() ? prev : preferred.code));
@@ -315,14 +317,24 @@ function ActivatePageContent() {
         </div>
         )}
 
-        {/* 购买入口：无激活码时可在线购买 */}
-        <button
-          type="button"
-          onClick={() => setPurchaseOpen(true)}
-          className="w-full text-center text-sm text-bd-subtle hover:text-bd-fg transition-colors underline-offset-4 hover:underline"
-        >
-          {t('explore.activate.buyCta')}
-        </button>
+        {/* 购买入口 + 我的激活码 */}
+        <div className="flex items-center justify-center gap-4 text-sm">
+          <button
+            type="button"
+            onClick={() => setPurchaseOpen(true)}
+            className="text-bd-subtle hover:text-bd-fg transition-colors underline-offset-4 hover:underline"
+          >
+            {t('explore.activate.buyCta')}
+          </button>
+          <span className="text-bd-subtle/40">·</span>
+          <button
+            type="button"
+            onClick={() => router.push('/dashboard/codes')}
+            className="text-bd-subtle hover:text-bd-fg transition-colors underline-offset-4 hover:underline"
+          >
+            {t('explore.activate.viewAllCodes')}
+          </button>
+        </div>
 
         <PurchaseModal
           open={purchaseOpen}

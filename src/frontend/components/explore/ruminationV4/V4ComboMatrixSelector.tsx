@@ -156,7 +156,6 @@ export default function V4ComboMatrixSelector({
         <div className="cards-row strength-cards grid grid-cols-5 gap-4">
           {strengthOpts.map((s) => {
             const isActive = activeStrengths.includes(s.name);
-            const glyph = s.glyph || '✦';
             return (
               <button
                 key={s.name}
@@ -191,14 +190,7 @@ export default function V4ComboMatrixSelector({
                   </span>
                 )}
                 <span
-                  className={`round-icon flex h-[37px] w-[37px] items-center justify-center rounded-full bg-transparent text-[25px] ${
-                    isActive ? 'text-[#00a979]' : 'text-[#39517b]'
-                  }`}
-                >
-                  {glyph}
-                </span>
-                <span
-                  className="label line-clamp-2 px-0.5 text-[12px] leading-snug"
+                  className="label line-clamp-2 px-0.5 text-base leading-snug"
                   dangerouslySetInnerHTML={{
                     __html: s.name.replace(/\n/g, '<br>'),
                   }}

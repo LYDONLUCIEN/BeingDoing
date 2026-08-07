@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import { Copy, MessageSquare, Trash2 } from 'lucide-react';
+import { MessageSquare, Trash2 } from 'lucide-react';
 import type { ChatThread, DimensionConclusionData } from '@/lib/explore/threads';
 import { useLocale } from '@/hooks/useLocale';
 
@@ -121,7 +121,6 @@ export default function ChatPhaseSidebar({
   onNewChat,
   onDeleteThread,
   canNewChat,
-  phaseTitle,
   phaseInteractionLocked = false,
   careeringMatte = false,
   showAutoSaveHint = true,
@@ -130,7 +129,6 @@ export default function ChatPhaseSidebar({
 }: ChatPhaseSidebarProps) {
   const { t } = useLocale();
   const [deleteTarget, setDeleteTarget] = useState<ChatThread | null>(null);
-  const [copyHint, setCopyHint] = useState(false);
   const [openSwipeId, setOpenSwipeId] = useState<string | null>(null);
   const [, setSwipeRenderTick] = useState(0);
   const dragRef = useRef<{
@@ -221,21 +219,6 @@ export default function ChatPhaseSidebar({
     [bumpSwipe, onSelectThread, phaseInteractionLocked]
   );
 
-  const handleCopyClick = useCallback(
-    async (e: React.MouseEvent, thread: ChatThread) => {
-      e.stopPropagation();
-      const md = buildThreadMarkdownExport(thread, phaseTitle);
-      try {
-        await navigator.clipboard.writeText(md);
-        setCopyHint(true);
-        window.setTimeout(() => setCopyHint(false), 2200);
-      } catch {
-        window.prompt(t('explore.chat.sidebarCopyFallback'), md);
-      }
-    },
-    [phaseTitle, t]
-  );
-
   const handleDeleteFromSwipe = useCallback((e: React.MouseEvent, thread: ChatThread) => {
     e.stopPropagation();
     setDeleteTarget(thread);
@@ -281,11 +264,6 @@ export default function ChatPhaseSidebar({
         >
           + {t('explore.chat.sidebarNewChat')}
         </button>
-        {copyHint && (
-          <p className="mt-2 text-center text-[11px] font-medium text-emerald-600" role="status">
-            {t('explore.chat.sidebarCopyOk')}
-          </p>
-        )}
         {phaseInteractionLocked ? (
           <p className="mt-1.5 text-[10px] leading-snug text-[var(--flow-text-muted)]">
             {t('explore.chat.sidebarPhaseLockedHint')}
@@ -380,16 +358,6 @@ export default function ChatPhaseSidebar({
                       >
                         {summary}
                       </p>
-                      <button
-                        type="button"
-                        onClick={(e) => handleCopyClick(e, thread)}
-                        onPointerDown={(e) => e.stopPropagation()}
-                        className="flex-shrink-0 rounded-lg p-1 text-neutral-500 opacity-80 transition-all hover:bg-neutral-100 hover:text-neutral-800 hover:opacity-100"
-                        title={t('explore.chat.sidebarCopyThread')}
-                        aria-label={t('explore.chat.sidebarCopyThread')}
-                      >
-                        <Copy size={14} />
-                      </button>
                     </div>
                     <div className="mt-1.5 flex items-center justify-between gap-2 pl-3.5">
                       <span className="text-[10px] text-[var(--flow-text-muted)]">

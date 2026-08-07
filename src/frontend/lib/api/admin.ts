@@ -282,6 +282,8 @@ export interface AdminReportItem {
   updated_at: string;
   step_stats: Record<string, number>;
   completed_steps: number;
+  /** 五阶段是否全部完成（报告入口解锁口径）；未完成时不可生成/下载 PDF */
+  report_unlocked?: boolean;
   /** 审核状态；存量报告无该字段，视为 approved */
   review_status?: AdminReportReviewStatus | null;
   /** 批复类型：manual=人工确认 / auto=超时自动批复；pending 或未批复时为 null */

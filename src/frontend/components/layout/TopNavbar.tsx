@@ -102,7 +102,8 @@ export default function TopNavbar() {
     setMobileOpen(false);
   };
 
-  const handleLoginClick = () => { openAuthModal('/explore/intro'); };
+  // 主动登录无明确意图：登录后留在首页（与 AuthGate 口径一致），不再强制跳引导页
+  const handleLoginClick = () => { openAuthModal('/'); };
   const handleAuthModalClose = () => { closeAuthModal(); };
   const handleLogout = async () => {
     try {

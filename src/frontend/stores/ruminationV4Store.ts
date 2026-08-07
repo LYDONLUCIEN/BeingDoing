@@ -42,6 +42,10 @@ interface RuminationV4Store {
   /** 当前激活 combo 的流式回复(对话面板用) */
   streamingText: string;
   isStreaming: boolean;
+  /** 思考流式中(对话面板思考占位动画用,对齐前四 phase) */
+  thinkStreaming: boolean;
+  /** 思考过程实时片段(单行预览) */
+  thinkChunkContent: string | undefined;
   activationCode: string | null;
 
   // ── 动作 ────────────────────────────────────────────────
@@ -173,6 +177,8 @@ export const useRuminationV4Store = create<RuminationV4Store>((set, get) => {
     comboCache: {},
     streamingText: '',
     isStreaming: false,
+    thinkStreaming: false,
+    thinkChunkContent: undefined,
     activationCode: null,
 
     init: async (activationCode) => {
@@ -355,7 +361,13 @@ export const useRuminationV4Store = create<RuminationV4Store>((set, get) => {
         set({ error: '正在分析中，请稍后再聊' });
         return;
       }
-      set({ isStreaming: true, streamingText: '', error: null });
+      set({
+        isStreaming: true,
+        streamingText: '',
+        thinkStreaming: false,
+        thinkChunkContent: undefined,
+        error: null,
+      });
       // 先把用户消息加入缓存(乐观);新对话作废旧判定(聊即作废,与后端一致)
       const userMsg = { role: 'user' as const, content: message, ts: new Date().toISOString() };
       updateCombo(comboId, (c) => ({
@@ -375,6 +387,17 @@ export const useRuminationV4Store = create<RuminationV4Store>((set, get) => {
       chatHandle = handle;
       let full = '';
       handle.subscribe(async (evt: ComboChatEvent) => {
+        // 思考事件:对齐前四 phase 的思考占位动画(后端已透传 think_*)
+        if (evt.think_start) {
+          set({ thinkStreaming: true, thinkChunkContent: '' });
+        }
+        if (evt.think_chunk) {
+          const chunk = typeof evt.think_chunk === 'string' ? evt.think_chunk : '';
+          if (chunk) set({ thinkChunkContent: chunk });
+        }
+        if (evt.think_end != null) {
+          set({ thinkStreaming: false, thinkChunkContent: undefined });
+        }
         if (evt.chunk) {
           full += evt.chunk;
           set({ streamingText: full });
@@ -383,15 +406,21 @@ export const useRuminationV4Store = create<RuminationV4Store>((set, get) => {
         if (evt.done) {
           // 空回复不追加,避免空气泡(后端已有兜底话术,这里是双保险)
           if (!full.trim()) {
-            set({ isStreaming: false, streamingText: '' });
+            set({ isStreaming: false, streamingText: '', thinkStreaming: false, thinkChunkContent: undefined });
             return;
           }
           const assistantMsg = { role: 'assistant' as const, content: full, ts: new Date().toISOString() };
           updateCombo(comboId, (c) => ({ ...c, messages: [...c.messages, assistantMsg] }));
-          set({ isStreaming: false, streamingText: '' });
+          set({ isStreaming: false, streamingText: '', thinkStreaming: false, thinkChunkContent: undefined });
         }
         if (evt.error) {
-          set({ error: evt.error, isStreaming: false, streamingText: '' });
+          set({
+            error: evt.error,
+            isStreaming: false,
+            streamingText: '',
+            thinkStreaming: false,
+            thinkChunkContent: undefined,
+          });
         }
       });
       await handle.done;
@@ -401,7 +430,7 @@ export const useRuminationV4Store = create<RuminationV4Store>((set, get) => {
     abortChat: () => {
       chatHandle?.abort();
       chatHandle = null;
-      set({ isStreaming: false, streamingText: '' });
+      set({ isStreaming: false, streamingText: '', thinkStreaming: false, thinkChunkContent: undefined });
     },
 
     patchCard: async (comboId, hypothesis) => {

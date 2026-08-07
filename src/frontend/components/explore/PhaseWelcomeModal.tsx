@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export type PhaseWelcomeModalProps = {
@@ -17,10 +16,8 @@ export type PhaseWelcomeModalProps = {
   reassuranceHint: string;
   /** 主按钮文案 */
   startLabel: string;
-  /** 可选「不再提醒」勾选文案 */
-  dontRemindLabel?: string;
-  /** 关闭回调，参数 dontRemind 表示用户是否勾选了「不再提醒」 */
-  onClose: (dontRemind?: boolean) => void;
+  /** 关闭回调（关闭即视为已读，由父组件按 激活码+phase 持久化，每个 phase 只显示一次） */
+  onClose: () => void;
 };
 
 /**
@@ -28,6 +25,7 @@ export type PhaseWelcomeModalProps = {
  * 告知本轮预计耗时 + 进度自动保存 + 可中途离开，
  * 让用户安心开始、知道可以休息。结构与 PhaseCompleteWarmModal 解耦，
  * z-index 同为 z-[210]，但触发条件天然互斥（仅 !phaseInteractionLocked 时弹）。
+ * 每个激活码+phase 只显示一次：首次进入弹出，关闭后父组件自动持久化，之后不再出现。
  */
 export default function PhaseWelcomeModal({
   open,
@@ -37,14 +35,10 @@ export default function PhaseWelcomeModal({
   autoSaveHint,
   reassuranceHint,
   startLabel,
-  dontRemindLabel,
   onClose,
 }: PhaseWelcomeModalProps) {
-  const [dontRemind, setDontRemind] = useState(false);
-
   const handleClose = () => {
-    onClose(dontRemind);
-    setDontRemind(false);
+    onClose();
   };
 
   return (
@@ -125,17 +119,6 @@ export default function PhaseWelcomeModal({
               </li>
             </ul>
 
-            {dontRemindLabel && (
-              <label className="mb-6 flex cursor-pointer items-center gap-2 text-sm text-stone-500">
-                <input
-                  type="checkbox"
-                  checked={dontRemind}
-                  onChange={(e) => setDontRemind(e.target.checked)}
-                  className="h-4 w-4 rounded border-neutral-300 accent-stone-700"
-                />
-                {dontRemindLabel}
-              </label>
-            )}
             <button
               type="button"
               onClick={handleClose}

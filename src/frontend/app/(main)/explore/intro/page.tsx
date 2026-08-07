@@ -7,12 +7,14 @@ import { useLocale } from '@/hooks/useLocale';
 import { getByPath } from '@/lib/i18n';
 import { useAuthStore } from '@/stores/authStore';
 import { useAuthModalStore } from '@/stores/authModalStore';
+import { listMyCodes } from '@/lib/api/activation';
 
 const STEPS = [
   { key: 'step1', cls: 'blue' as const },
   { key: 'step2', cls: 'green' as const },
   { key: 'step3', cls: 'red' as const },
   { key: 'step4', cls: 'yellow' as const },
+  { key: 'step5', cls: 'purple' as const },
 ];
 
 /** 模拟 guide8 的 token 显示：elapsed 秒后各 token 依次出现，或点击加速全部显示 */
@@ -35,13 +37,44 @@ export default function ExploreIntroPage() {
   const isZh = locale === 'zh';
   const [accelerated, setAccelerated] = useState(false);
   const isRevealed = useIntroReveal(accelerated);
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, _hasHydrated } = useAuthStore();
   const { openAuthModal } = useAuthModalStore();
+  /** full 码分流判定中：不渲染卡片，避免引导内容闪现 */
+  const [checkingFullCode, setCheckingFullCode] = useState(true);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-explore-intro', 'true');
     return () => document.documentElement.removeAttribute('data-explore-intro');
   }, []);
+
+  // 统一分流：有「已绑定」的完整码（active；expired 也跳过——activate 页有续期引导）
+  // 的用户不再看引导页，直达激活页续聊；trial / 无码 / full 全未绑定则正常展示
+  useEffect(() => {
+    if (!_hasHydrated) return;
+    if (!isAuthenticated) {
+      setCheckingFullCode(false);
+      return;
+    }
+    let cancelled = false;
+    listMyCodes()
+      .then((items) => {
+        if (cancelled) return;
+        const hasBoundFull = items.some(
+          (it) => it.code_type === 'full' && (it.status === 'active' || it.status === 'expired')
+        );
+        if (hasBoundFull) {
+          router.replace('/explore/activate');
+        } else {
+          setCheckingFullCode(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCheckingFullCode(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [_hasHydrated, isAuthenticated, router]);
 
   const handleAccelerate = useCallback(() => {
     if (accelerated) return;
@@ -80,6 +113,7 @@ export default function ExploreIntroPage() {
         <div className="landing-mesh-blob landing-mesh-blob-4" />
       </div>
       <div className="landing-mesh-noise fixed inset-0 z-[1]" aria-hidden />
+      {!checkingFullCode && (
       <div className="relative z-[2] w-full max-w-[460px] flex flex-col items-center">
         {/* 返回 */}
         <motion.button
@@ -178,10 +212,11 @@ export default function ExploreIntroPage() {
           </IntroToken>
         </motion.div>
       </div>
+      )}
 
       {/* 点击提示 */}
       <AnimatePresence>
-        {!accelerated && (
+        {!accelerated && !checkingFullCode && (
           <motion.div
             className="bd-intro-click-hint"
             initial={{ opacity: 0 }}

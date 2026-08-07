@@ -2359,7 +2359,7 @@ export default function ChatPhasePage() {
   /**
    * 进入新 phase 的时间预估欢迎卡：
    * 仅在 (a) 已有 activationCode/phase，(b) 初始化完成（!initLoading），
-   * (c) 阶段未锁定（!phaseInteractionLocked），(d) 未勾选"不再提醒" 时弹出。
+   * (c) 阶段未锁定（!phaseInteractionLocked），(d) 该 phase 尚未显示过欢迎卡（每个激活码+phase 只显示一次）时弹出。
    * 与 phaseLockNotice（z-57, locked 时弹）和 PhaseCompleteModal（确认结论卡触发）天然互斥。
    */
   useEffect(() => {
@@ -2371,15 +2371,13 @@ export default function ChatPhasePage() {
     setPhaseWelcomeOpen(true);
   }, [activationCode, phase, initLoading, phaseInteractionLocked]);
 
-  const handlePhaseWelcomeClose = useCallback(
-    (dontRemind?: boolean) => {
-      if (activationCode && phase && dontRemind) {
-        setPhaseWelcomeDismissed(activationCode, phase, true);
-      }
-      setPhaseWelcomeOpen(false);
-    },
-    [activationCode, phase]
-  );
+  /** 关闭欢迎卡即按 激活码+phase 持久化已读，之后重新进入该 phase 不再弹出 */
+  const handlePhaseWelcomeClose = useCallback(() => {
+    if (activationCode && phase) {
+      setPhaseWelcomeDismissed(activationCode, phase, true);
+    }
+    setPhaseWelcomeOpen(false);
+  }, [activationCode, phase]);
 
   /** 终步表格在弹窗确认后提交，并进过渡页（无结论卡） */
   const handleRuminationStep7FinalizeConfirmed = useCallback(async () => {
@@ -5307,7 +5305,6 @@ export default function ChatPhasePage() {
         autoSaveHint={t('explore.phaseWelcome.autoSaveHint')}
         reassuranceHint={t('explore.phaseWelcome.reassuranceHint')}
         startLabel={t('explore.phaseWelcome.start')}
-        dontRemindLabel={t('explore.phaseWelcome.dontRemind')}
         onClose={handlePhaseWelcomeClose}
       />
     </div>

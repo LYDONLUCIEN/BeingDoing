@@ -166,10 +166,12 @@ html:not([data-color-scheme="dark"]) .activate-page-wrap {
 .bd-intro-step.green  { border-left-color: #b4c8bc; }
 .bd-intro-step.red    { border-left-color: #d8bfbb; }
 .bd-intro-step.yellow { border-left-color: #d8cba8; }
+.bd-intro-step.purple { border-left-color: #c7bcdc; }
 .bd-intro-step.blue:hover   { background: rgba(184,205,216,0.12); }
 .bd-intro-step.green:hover  { background: rgba(180,200,188,0.12); }
 .bd-intro-step.red:hover    { background: rgba(216,191,187,0.12); }
 .bd-intro-step.yellow:hover { background: rgba(216,203,168,0.12); }
+.bd-intro-step.purple:hover { background: rgba(199,188,220,0.12); }
 .bd-intro-step-num {
   font-size: 10px;
   font-weight: 400;
@@ -219,6 +221,7 @@ html:not([data-color-scheme="dark"]) .activate-page-wrap {
     #d8bfbb,
     #b8cdd8,
     #b4c8bc,
+    #c7bcdc,
     #d8cba8,
     #d8bfbb,
     #b8cdd8

@@ -43,7 +43,8 @@ export function getApiErrorMessage(error: unknown, fallback = '请求失败，�
 const AUTH_REQUIRED_EVENT = 'auth:required';
 
 export function onAuthRequired(callback: (redirectTo: string) => void): () => void {
-  const handler = (e: Event) => callback((e as CustomEvent).detail?.redirectTo || '/explore/intro');
+  // 401 兜底：重新登录后回首页（不再默认跳引导页；引导页本身会按 full 码自动分流）
+  const handler = (e: Event) => callback((e as CustomEvent).detail?.redirectTo || '/');
   window.addEventListener(AUTH_REQUIRED_EVENT, handler);
   return () => window.removeEventListener(AUTH_REQUIRED_EVENT, handler);
 }

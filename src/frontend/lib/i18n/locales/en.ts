@@ -170,6 +170,7 @@ export const en = {
       step2: { cn: 'Strengths', en: 'Strengths' },
       step3: { cn: 'Interests', en: 'Interests' },
       step4: { cn: 'Purpose', en: 'Purpose' },
+      step5: { cn: 'Rumination', en: 'Rumination' },
       soul: 'No need for perfection—\njust capture the truest flow of the moment.',
       cta: 'Begin',
       clickHint: 'Click anywhere to speed up',
@@ -191,6 +192,7 @@ export const en = {
       mission: 'Purpose',
       missionQ: 'Who do you want to serve?',
       buyCta: 'No activation code? Buy one',
+      viewAllCodes: 'View all my codes →',
       findCodeHint: 'Forgot your code? Click your avatar at the top right and find it under "Personal Space → My Codes".',
       expiredGuide: 'This activation code has expired and only history is available. Purchase a new code to continue exploring, or contact the admin to renew.',
     },
@@ -231,7 +233,6 @@ export const en = {
       autoSaveHint: 'Your progress is auto-saved — you can step away and return anytime.',
       reassuranceHint: "Tired? Rest. You don't have to finish in one sitting — go at your own pace.",
       start: 'Start exploring',
-      dontRemind: "Don't remind me again",
     },
     trial: {
       limitTitle: 'Trial questions used up',

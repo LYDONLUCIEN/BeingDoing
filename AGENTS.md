@@ -339,8 +339,8 @@ python scripts/init_db.py
 - `/api/v1/chat/*` - 对话
 - `/api/v1/search/*` - 检索
 - `/api/v1/formula/*` - 公式
-- `/api/v1/export/*` - 导出
-- `/api/v1/admin/*` - 管理（含 `/admin/coupons` 折扣券、`/admin/payment/orders` 订单与退款、`/admin/consultations` 咨询管理、`/admin/users` 用户管理：deleted 筛选 / `restore-deletion` 注销恢复 / PATCH status 对已注销用户启用会 400 拦截）
+- `/api/v1/export/*` - 导出（`POST /export/report-pdf/{id}` 有完成度门控：五阶段未完成一律 409，admin 也不例外，2026-08-07 起；admin 豁免仅限审核状态阻塞）
+- `/api/v1/admin/*` - 管理（含 `/admin/coupons` 折扣券、`/admin/payment/orders` 订单与退款、`/admin/consultations` 咨询管理、`/admin/users` 用户管理：deleted 筛选 / `restore-deletion` 注销恢复 / PATCH status 对已注销用户启用会 400 拦截；`/admin/reports` 列表含 `report_unlocked` 字段，`completed_steps` 已修 v4 口径：rumination locked 计入）
 - `/api/v1/payment/*` - 支付（用户侧：products / coupons/validate / orders；`/payment/notify/alipay` 为渠道回调，无登录鉴权）
 - `/api/v1/analytics/*` - 埋点（点赞、报告生成、`POST /analytics/event` 通用事件上报：PV 不依赖登录，auth_active 仅服务端内部写；漏斗统计 `GET /admin/analytics/funnel`，ADR-0013）
 - `/api/v1/consultation/*` - 报告解读咨询（用户侧：my-reports / bookings / survey）

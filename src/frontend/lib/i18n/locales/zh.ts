@@ -165,6 +165,7 @@ export const zh = {
       step2: { cn: '优势', en: 'Strengths' },
       step3: { cn: '热爱', en: 'Interests' },
       step4: { cn: '使命', en: 'Purpose' },
+      step5: { cn: '沉淀', en: 'Rumination' },
       soul: '不必追求完美，\n只需捕捉当下最真实的流动。',
       cta: '开启探索',
       clickHint: '点击任意处加速',
@@ -186,6 +187,7 @@ export const zh = {
       mission: '使命',
       missionQ: '你想为谁而做？',
       buyCta: '没有激活码？去购买',
+      viewAllCodes: '查看我的全部激活码 →',
       findCodeHint: '忘记激活码？点击右上角头像，在「个人空间 → 我的激活码」中查看。',
       expiredGuide: '激活码已过期，当前仅可查看历史记录。可购买新的激活码继续探索；如需续期，请联系管理员。',
     },
@@ -226,7 +228,6 @@ export const zh = {
       autoSaveHint: '进度自动保存，可随时离开，下次回来继续。',
       reassuranceHint: '累了就歇——不必一口气做完，按你自己的节奏来。',
       start: '开始探索',
-      dontRemind: '不再提醒',
     },
     trial: {
       limitTitle: '试用问答已用完',

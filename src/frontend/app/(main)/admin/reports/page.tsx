@@ -373,16 +373,29 @@ export default function AdminReportsPage() {
                         >
                           下载完整数据
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDownloadPdf(item.report_id)}
-                          disabled={pdfStatus === 'generating' && activeReportId === item.report_id}
-                          className="px-2 py-1 rounded border border-bd-border hover:bg-bd-overlay-md whitespace-nowrap disabled:opacity-60"
+                        {/* disabled 按钮不触发 hover，tooltip 需包一层 span */}
+                        <span
+                          title={
+                            item.report_unlocked === false
+                              ? '用户尚未完成全部探索阶段，暂不可下载'
+                              : undefined
+                          }
+                          className="inline-block"
                         >
-                          {pdfStatus === 'generating' && activeReportId === item.report_id
-                            ? '生成中...'
-                            : '下载PDF'}
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadPdf(item.report_id)}
+                            disabled={
+                              item.report_unlocked === false ||
+                              (pdfStatus === 'generating' && activeReportId === item.report_id)
+                            }
+                            className="px-2 py-1 rounded border border-bd-border hover:bg-bd-overlay-md whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                          >
+                            {pdfStatus === 'generating' && activeReportId === item.report_id
+                              ? '生成中...'
+                              : '下载PDF'}
+                          </button>
+                        </span>
                       </div>
                     </td>
                   </tr>

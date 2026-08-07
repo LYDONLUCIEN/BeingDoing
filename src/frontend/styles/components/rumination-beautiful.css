@@ -112,6 +112,25 @@ html[data-rumination-mesh-page='true']:not([data-color-scheme='dark'])
   -webkit-mask-size: 100% 100%;
 }
 
+/* 右侧对话滚动条：与结论卡(.rumination-hyp-preview-scroll)一致，细但清晰可见 */
+.rumination-beautiful-root .rumination-beautiful-chat-panel .rumination-chat-body-fade {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+}
+.rumination-beautiful-root .rumination-beautiful-chat-panel .rumination-chat-body-fade::-webkit-scrollbar {
+  width: 4px;
+}
+.rumination-beautiful-root .rumination-beautiful-chat-panel .rumination-chat-body-fade::-webkit-scrollbar-track {
+  background: transparent;
+}
+.rumination-beautiful-root .rumination-beautiful-chat-panel .rumination-chat-body-fade::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 10px;
+}
+.rumination-beautiful-root .rumination-beautiful-chat-panel .rumination-chat-body-fade::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.7);
+}
+
 /*
  * 沉淀右栏对话：对齐 v3 careering-matte 排布。
  * AI 与用户均保留舒适内边距；用户整列不超展示区宽度的 2/3，超长自动换行。

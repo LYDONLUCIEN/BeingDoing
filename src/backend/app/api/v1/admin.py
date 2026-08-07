@@ -24,7 +24,7 @@ from app.services.analytics_funnel_service import SH_TZ
 from sqlalchemy import select
 from app.models.database import AsyncSessionLocal
 from app.models.analytics import AnalyticsReport
-from app.utils.report_registry import ReportRegistry
+from app.utils.report_registry import ReportRegistry, _report_portal_unlocked
 from app.utils.report_review import get_review_status
 from app.config.settings import settings
 from app.utils.super_admin import is_super_admin_user
@@ -932,10 +932,12 @@ async def list_reports(
         step_stats = {}
         completed = 0
         for step_id in ["values", "strengths", "interests", "purpose", "rumination"]:
-            sessions = ((steps.get(step_id) or {}).get("session_ids")) or []
+            st = steps.get(step_id) or {}
+            sessions = st.get("session_ids") or []
             cnt = len(sessions)
             step_stats[step_id] = cnt
-            if cnt > 0:
+            # rumination 特例：v4 终选提交只 lock_step 不写 session，locked 即完成
+            if cnt > 0 or (step_id == "rumination" and st.get("locked")):
                 completed += 1
         items.append(
             {
@@ -947,6 +949,7 @@ async def list_reports(
                 "updated_at": report.get("updated_at"),
                 "step_stats": step_stats,
                 "completed_steps": completed,
+                "report_unlocked": _report_portal_unlocked(steps),
                 "review_status": rs,
                 "review_type": report.get("review_type"),
                 "review_deadline": report.get("review_deadline"),

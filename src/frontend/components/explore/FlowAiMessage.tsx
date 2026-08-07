@@ -27,6 +27,8 @@ interface FlowAiMessageProps {
   variant?: 'default' | 'ruminationWorkbench' | 'careeringMatte';
   /** careeringMatte 时 AI 身份文案，如「AI 职业教练」 */
   careeringAiRoleLabel?: string;
+  /** 非 careeringMatte 变体也显示 AI 头像 meta 行（v4 复用前四 phase 的头像样式） */
+  showCareeringAiMeta?: boolean;
   /** 是否流式输出中 */
   streaming?: boolean;
   /** 正文展示：markdown（默认）| plain_line（单行等宽，用于确认稿 JSON 流式预览） */
@@ -84,6 +86,7 @@ export default function FlowAiMessage({
   phase,
   variant = 'default',
   careeringAiRoleLabel = 'AI',
+  showCareeringAiMeta = false,
   streaming = false,
   contentMode = 'markdown',
   thinkStreaming = false,
@@ -165,7 +168,7 @@ export default function FlowAiMessage({
       ? 'flow-msg-ai-wrap flow-msg-ai-wrap--rumination-wb'
       : 'flow-msg-ai-wrap';
 
-  const showCareeringMeta = variant === 'careeringMatte';
+  const showCareeringMeta = variant === 'careeringMatte' || showCareeringAiMeta;
 
   return (
     <div className={wrapClass}>

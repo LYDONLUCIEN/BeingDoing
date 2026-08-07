@@ -420,6 +420,17 @@ async def trigger_report_pdf(
 
     base_dir, user_id = _verify_report_access(report_id, current_user, activation_code)
 
+    # 完成度门控（2026-08-07）：五阶段未完成一律 409，admin 也不例外。
+    # admin 的豁免仅限审核状态阻塞（_review_block_payload，审核需要查看报告内容），
+    # 不豁免「流程未完成」——未完成的报告生成出来只有占位文案，无意义且易误导。
+    registry = ReportRegistry(base_dir=base_dir) if base_dir else ReportRegistry()
+    report = registry.get_report_by_id(report_id)
+    if not _report_portal_unlocked((report or {}).get("steps") or {}):
+        raise HTTPException(
+            status_code=409,
+            detail="用户尚未完成全部探索阶段，暂不可生成报告 PDF",
+        )
+
     # 审核阻塞：pending_review 时不触发生成，HTTP 200 返回审核中状态
     blocked = _review_block_payload(report_id, base_dir, current_user)
     if blocked is not None:

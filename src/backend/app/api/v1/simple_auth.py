@@ -514,7 +514,9 @@ async def get_report_authorize(
 
     purchaser_email = None
     purchaser_user_id = getattr(rec, "purchaser_user_id", None)
-    if purchaser_user_id:
+    # 自购自用（所属人=激活人）没有"赠送者"，不暴露 purchaser_email，
+    # 前端据此不渲染授权开关（授权语义仅存在于转赠/团队场景）
+    if purchaser_user_id and purchaser_user_id != rec.owner_user_id:
         try:
             from app.models.database import AsyncSessionLocal
             from app.models.user import User
@@ -559,6 +561,9 @@ async def set_report_authorize(
         raise HTTPException(status_code=404, detail="激活码不存在")
     if rec.owner_user_id != user_id:
         raise HTTPException(status_code=403, detail="仅该激活码的使用人可授权")
+    # 自购自用码不存在赠送者，授权无意义（自己的报告在团队分析中本就可选）
+    if getattr(rec, "purchaser_user_id", None) in (None, user_id):
+        raise HTTPException(status_code=400, detail="自购激活码无需授权，仅转赠码可授权给购买者")
 
     updated = mgr.set_report_authorized(code, payload.authorized, actor=current_user)
     return ActivationResponse(

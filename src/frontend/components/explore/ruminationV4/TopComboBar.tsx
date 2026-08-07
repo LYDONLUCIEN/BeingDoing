@@ -9,8 +9,8 @@
  * - 至少保留一个组合
  */
 
-import { useRef, useState, useCallback, useMemo, type WheelEvent } from 'react';
-import { Plus, Trash2, X } from 'lucide-react';
+import { useRef, useState, useCallback, useMemo, useEffect, type WheelEvent } from 'react';
+import { ChevronLeft, ChevronRight, Plus, Trash2, X } from 'lucide-react';
 import { useRuminationV4Store } from '@/stores/ruminationV4Store';
 
 const MAX_COMBOS = 10;
@@ -26,6 +26,9 @@ export default function TopComboBar({ onManageChange }: TopComboBarProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [confirmSingleId, setConfirmSingleId] = useState<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  /** 左右换页按钮是否可用（仅在对应方向可滚动时显示） */
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
 
   const combos = useMemo(() => state?.combo_sessions || [], [state]);
   const activeId = state?.active_combo_id ?? null;
@@ -40,6 +43,23 @@ export default function TopComboBar({ onManageChange }: TopComboBarProps) {
     },
     [onManageChange]
   );
+
+  /** 同步左右可滚动状态（hooks 须在 `if (!state) return null` 之前） */
+  const updateScrollState = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 1);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+  }, []);
+
+  useEffect(() => {
+    updateScrollState();
+    const el = scrollerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(updateScrollState);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [combos.length, updateScrollState]);
 
   if (!state) return null;
 
@@ -95,6 +115,11 @@ export default function TopComboBar({ onManageChange }: TopComboBarProps) {
     el.scrollLeft += e.deltaY;
   };
 
+  /** 换页按钮：每次固定滚动约 2 个 tab 的距离 */
+  const scrollByFixed = (dir: 1 | -1) => {
+    scrollerRef.current?.scrollBy({ left: dir * 480, behavior: 'smooth' });
+  };
+
   const allSelected = combos.length > 0 && combos.every((c) => selectedIds.has(c.combo_id));
 
   return (
@@ -107,15 +132,29 @@ export default function TopComboBar({ onManageChange }: TopComboBarProps) {
         backdropFilter: 'blur(14px)',
       }}
     >
-      <div
-        ref={scrollerRef}
-        onWheel={onWheel}
-        className="tabs flex min-w-0 flex-1 items-center gap-3 overflow-x-auto overflow-y-hidden"
-        style={{
-          scrollbarWidth: 'none',
-          WebkitOverflowScrolling: 'touch',
-        }}
-      >
+      <div className="tabs-wrap group/tabs relative flex min-w-0 flex-1 items-center">
+        {/* hover 出现的左右换页按钮（仅在对应方向可滚动时渲染） */}
+        {canScrollLeft && (
+          <button
+            type="button"
+            aria-label="向左翻页"
+            title="向左翻页"
+            onClick={() => scrollByFixed(-1)}
+            className="absolute -left-2 z-10 flex h-7 w-7 items-center justify-center rounded-full border border-[#e1e6ef] bg-white/95 text-[#45536f] opacity-0 shadow-[0_4px_12px_rgba(19,38,76,0.14)] transition-opacity duration-200 hover:bg-white group-hover/tabs:opacity-100"
+          >
+            <ChevronLeft size={15} strokeWidth={2.5} />
+          </button>
+        )}
+        <div
+          ref={scrollerRef}
+          onWheel={onWheel}
+          onScroll={updateScrollState}
+          className="tabs flex min-w-0 flex-1 items-center gap-3 overflow-x-auto overflow-y-hidden"
+          style={{
+            scrollbarWidth: 'none',
+            WebkitOverflowScrolling: 'touch',
+          }}
+        >
         {combos.length === 0 && (
           <div className="flex shrink-0 items-center px-2 text-[12px] text-[#9ca3af]">
             还没有组合，选完后点「开始探索」
@@ -147,8 +186,7 @@ export default function TopComboBar({ onManageChange }: TopComboBarProps) {
                 ${managing ? 'managing' : ''}
               `}
               style={{
-                minWidth: '180px',
-                maxWidth: '240px',
+                width: '232px',
                 fontSize: '14px',
                 fontWeight: 650,
                 color: isActive ? '#078bd8' : isSelected ? '#ef5163' : '#45536f',
@@ -184,7 +222,7 @@ export default function TopComboBar({ onManageChange }: TopComboBarProps) {
               >
                 {String(idx + 1).padStart(2, '0')}
               </span>
-              <span className="tab-label flex-1 truncate">{c.passion}</span>
+              <span className="tab-label flex-1 truncate">{`${c.passion} × ${c.strengths.join('、')}`}</span>
 
               {/* hover 删除按钮 */}
               {!managing && (
@@ -248,6 +286,18 @@ export default function TopComboBar({ onManageChange }: TopComboBarProps) {
             </button>
           );
         })}
+        </div>
+        {canScrollRight && (
+          <button
+            type="button"
+            aria-label="向右翻页"
+            title="向右翻页"
+            onClick={() => scrollByFixed(1)}
+            className="absolute -right-2 z-10 flex h-7 w-7 items-center justify-center rounded-full border border-[#e1e6ef] bg-white/95 text-[#45536f] opacity-0 shadow-[0_4px_12px_rgba(19,38,76,0.14)] transition-opacity duration-200 hover:bg-white group-hover/tabs:opacity-100"
+          >
+            <ChevronRight size={15} strokeWidth={2.5} />
+          </button>
+        )}
       </div>
 
       {/* 操作按钮区 */}

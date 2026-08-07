@@ -306,8 +306,9 @@ export function clearPhaseEnterTimestamp(code: string, phase: PhaseKey): void {
 }
 
 // ──────────────────────────────────────────────
-// Phase 欢迎卡（时间预估提示）"不再提醒"持久化
-// 按 activationCode + phase 隔离，仅 localStorage，不写后端
+// Phase 欢迎卡（时间预估提示）"只显示一次"持久化
+// 按 activationCode + phase 隔离，仅 localStorage，不写后端；
+// 关闭欢迎卡即自动标记，之后重新进入该 phase 不再弹出
 // ──────────────────────────────────────────────
 
 const PHASE_WELCOME_DISMISS_PREFIX = 'explore_phase_welcome_dismiss_';
@@ -315,13 +316,13 @@ const PHASE_WELCOME_DISMISS_PREFIX = 'explore_phase_welcome_dismiss_';
 const phaseWelcomeDismissKey = (code: string, phase: PhaseKey) =>
   `${PHASE_WELCOME_DISMISS_PREFIX}${code}_${phase}`;
 
-/** 读取指定 phase 的欢迎卡是否已被用户 dismiss（勾选"不再提醒"）。 */
+/** 读取指定 phase 的欢迎卡是否已显示过（关闭即标记，每个 激活码+phase 只显示一次）。 */
 export function isPhaseWelcomeDismissed(code: string, phase: PhaseKey): boolean {
   if (typeof window === 'undefined') return false;
   return localStorage.getItem(phaseWelcomeDismissKey(code, phase)) === '1';
 }
 
-/** 标记/取消标记指定 phase 欢迎卡的 dismiss 状态。 */
+/** 标记/取消标记指定 phase 欢迎卡的已显示状态。 */
 export function setPhaseWelcomeDismissed(
   code: string,
   phase: PhaseKey,

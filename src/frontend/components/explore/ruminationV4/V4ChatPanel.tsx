@@ -5,7 +5,7 @@
  *
  * 复用 v3 风格：
  * - 用户消息：头像 + 名称 + 时间 + 复制工具栏
- * - AI 消息：FlowAiMessage（时间 + 复制/点赞/保存工具栏）
+ * - AI 消息：FlowAiMessage（✨ 头像 meta + 思考占位动画 + 复制/点赞/保存工具栏，复用前四 phase）
  * - 输入区：白色胶囊 + 发送/停止按钮
  * - 草稿态：整区模糊锁定
  * - 分析中(ADR-0015)：输入锁定,提示「正在分析中」
@@ -40,6 +40,8 @@ export default function V4ChatPanel({ comboId }: Props) {
     abortChat,
     isStreaming,
     streamingText,
+    thinkStreaming,
+    thinkChunkContent,
     error,
     init,
     clearError,
@@ -50,6 +52,8 @@ export default function V4ChatPanel({ comboId }: Props) {
   const [input, setInput] = useState('');
   const bodyRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  /** 记录上一帧是否在流式中，用于流式结束后把光标放回输入框 */
+  const wasStreamingRef = useRef(false);
 
   const userInitials = useMemo(
     () => (user?.username || user?.email || 'U').slice(0, 2).toUpperCase(),
@@ -82,7 +86,15 @@ export default function V4ChatPanel({ comboId }: Props) {
     if (bodyRef.current) {
       bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
     }
-  }, [enrichedMessages.length, streamingText]);
+  }, [enrichedMessages.length, streamingText, thinkStreaming]);
+
+  // 流式结束（含中止）后 textarea 重新可用时，自动聚焦，用户可直接继续输入
+  useEffect(() => {
+    if (wasStreamingRef.current && !isStreaming) {
+      inputRef.current?.focus();
+    }
+    wasStreamingRef.current = isStreaming;
+  }, [isStreaming]);
 
   const handleStart = async () => {
     if (!comboId) return;
@@ -102,6 +114,8 @@ export default function V4ChatPanel({ comboId }: Props) {
     if (!text) return;
     setInput('');
     await sendText(text);
+    // 发送未进入流式（如分析中被拦）时，聚焦由这里保证；流式结束由上面的 effect 保证
+    inputRef.current?.focus();
   };
 
   const canInput = !!comboId && hasOpening && !isStreaming && !isReadOnly && !isDraft && !isAnalyzing;
@@ -200,17 +214,20 @@ export default function V4ChatPanel({ comboId }: Props) {
                       />
                     ))}
 
-                    {isStreaming && streamingText && (
+                    {isStreaming && (
                       <FlowAiMessage
                         content={streamingText}
                         phase="rumination"
                         variant="ruminationWorkbench"
+                        showCareeringAiMeta
                         contentMode="markdown"
                         streaming
                         careeringAiRoleLabel="AI 助手"
                         toolbarCopyTitle="复制"
                         toolbarLikeTitle="点赞"
                         toolbarSavepointTitle="保存"
+                        thinkStreaming={thinkStreaming}
+                        thinkChunkContent={thinkChunkContent}
                         thinkPlaceholders={['正在思考…', '整理思路中…', '组织回复…']}
                         timestamp={Date.now()}
                         sessionId={activationCode ?? undefined}
@@ -245,15 +262,6 @@ export default function V4ChatPanel({ comboId }: Props) {
                       !canInput && !isStreaming ? ' opacity-40 pointer-events-none' : ''
                     }`}
                   >
-                    {isStreaming && (
-                      <p
-                        className="w-full shrink-0 px-1 text-left text-xs leading-snug text-neutral-500"
-                        role="status"
-                        aria-live="polite"
-                      >
-                        AI 正在回复…
-                      </p>
-                    )}
                     <div className="flex w-full min-w-0 items-end gap-2.5">
                       <textarea
                         ref={inputRef}
@@ -402,6 +410,7 @@ function MessageRow({
       content={msg.content}
       phase="rumination"
       variant="ruminationWorkbench"
+      showCareeringAiMeta
       contentMode="markdown"
       streaming={isStreaming && isLast}
       careeringAiRoleLabel="AI 助手"
