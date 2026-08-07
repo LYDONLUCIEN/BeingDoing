@@ -1,20 +1,19 @@
 """
-Rumination v4 e2e 集成测试(用 Mock LLM,跑完整流程)
+Rumination v4 e2e 集成测试（2026-08-06 版，ADR-0015；Mock LLM 跑完整流程）
 
 覆盖场景:
-1. 完整成功路径:矩阵 → 创建 → 讨论 → 出卡(双信号都全)→ 确认 → 第 8 步选择 → 提交
-2. 兜底路径:LLM 忘了输出 <<CONCLUSION_READY>>(只有 visible 话术)→ 触发 fallback
+1. 完整成功路径:创建 → 讨论(纯对话,无隐藏协议) → 用户填卡 → 确认+判定(done) → 终选 → 提交
+2. 判定失败 → failed → 重试成功
 3. 跳过路径:用户手动跳过,卡保留(可逆),不进终选
-4. 多优势 hypothesis 分字典形态
-5. 30 轮摘要触发(用 mock 计数)
+4. 聊/改即作废:再聊聊 / 修改卡 → 旧判定作废,需重新确认
+5. 完成门槛:判定未完成 → 终选/提交被拦
+6. 30 轮摘要触发(用 mock 计数)
 
-见 wiki/开发文档/0707-tag1.6.0.md
+见 docs/adr/0015-user-driven-card-async-balance-judge.md
 """
-import json
 import pytest
 from pathlib import Path
 from typing import AsyncIterator, List
-from unittest.mock import AsyncMock, MagicMock
 
 from app.core.llmapi import LLMMessage, LLMResponse
 from app.services import rumination_v4_service as svc
@@ -23,6 +22,7 @@ from app.services import rumination_v4_service as svc
 # ── Mock LLM Provider ──────────────────────────────────────────────────
 class MockLLMProvider:
     """可编程的 mock LLM:按预设的回复序列返回。"""
+
     def __init__(self, responses: List[str]):
         self.model = "mock-model"
         self.responses = list(responses)
@@ -40,7 +40,6 @@ class MockLLMProvider:
         idx = min(self.call_count, len(self.responses) - 1)
         content = self.responses[idx]
         self.call_count += 1
-        # 简单按字 chunk
         for i in range(0, len(content), 20):
             yield content[i:i + 20]
 
@@ -55,258 +54,144 @@ def rid() -> str:
     return "e2e_report"
 
 
-# ── 场景 1:完整成功路径(双信号齐全)──────────────────────────────────
+async def _confirm_and_judge(tmp_reports, rid, combo_id, llm):
+    """确认 + 跑判定,返回最终 balance_analysis。"""
+    _s, _c, started_at = svc.confirm_conclusion_card(tmp_reports, rid, combo_id)
+    return await svc.run_balance_judge(tmp_reports, rid, combo_id, llm, started_at)
+
+
+# ── 场景 1:完整成功路径 ────────────────────────────────────────────────
 @pytest.mark.asyncio
-async def test_full_happy_path_with_dual_signals(tmp_reports, rid, monkeypatch):
-    """LLM 完整输出双信号 → 正常出卡 → 用户确认 → 第 8 步。"""
-    # 创建 combo
+async def test_full_happy_path_user_driven_card(tmp_reports, rid):
+    """讨论 → 用户自己填卡 → 确认触发后台判定 → done → 终选 → 提交。"""
     state, combo = svc.create_combo(tmp_reports, rid, "音乐", ["创造表达", "解决问题"])
     combo_id = combo["combo_id"]
 
-    # Mock LLM 第一轮:收集 motivation
-    llm = MockLLMProvider([
-        # 第一轮回复:更新 motivation
-        "能告诉我具体是什么吸引你吗?\n```tool\n"
-        '{"tool":"update_field","field":"motivation","value":"我喜欢舞台的光"}\n```',
-        # 第二轮回复:出结论卡(双信号齐全)
-        "太好了!结合你说的,\n<<CONCLUSION_READY>>\n"
-        "```tool\n"
-        '{"tool":"save_conclusion_card","fields":{"hypothesis":"音乐+创造能让我成为独特创作者","motivation":"我喜欢舞台的光","work_purposes":["发现","成长"],"passion_mark":"忍不住想做","timing_mark":"现在","balance_found":true}}\n```\n'
-        "- 方向:音乐+创造,成为独特创作者\n- 它与你的热爱和优势都搭\n我已经把这次探索整理成了结论卡,你看看有没有要调整的",
-    ])
-
-    # 模拟用户第一轮
+    # 模拟几轮纯文本对话(无任何隐藏块)
     state = svc.load_v4_state(tmp_reports, rid)
     svc.append_message(state, combo_id, "user", "我喜欢舞台")
+    svc.append_message(state, combo_id, "assistant", "舞台最吸引你的是什么?")
+    svc.append_message(state, combo_id, "user", "灯光亮起的那一刻,我觉得自己在创造价值")
     svc.save_v4_state(tmp_reports, rid, state)
 
-    msgs, _ = svc.build_chat_messages(find_combo(state, combo_id), "我喜欢舞台")
-    resp = await llm.chat(msgs)
-    visible, tools = svc.parse_tool_blocks(resp.content)
-    signals = svc.detect_conclusion_signals(resp.content)
-    for tc in tools:
-        svc.apply_tool_call(state, combo_id, tc)
-    svc.append_message(state, combo_id, "assistant", visible)
-    svc.save_v4_state(tmp_reports, rid, state)
+    # AI 收尾引导填卡后,用户自己把结论写进卡(PATCH,不绕道 LLM)
+    state, card = svc.patch_conclusion_card(tmp_reports, rid, combo_id,
+        "成为一名面向都市青年的现场音乐策划人,用小型演出帮人重新连接现场")
+    assert card["hypothesis"].startswith("成为一名")
+    assert svc.find_combo(state, combo_id)["status"] == "discussing"  # 填写 ≠ 确认
 
-    # 第一轮后:motivation 已收集,未出卡
-    c1 = find_combo(state, combo_id)
-    assert c1["fields_collected"]["motivation"] == "我喜欢舞台的光"
-    assert c1["conclusion_card"] is None
+    # 用户点「确认」→ concluded + analyzing → 后台判定 done
+    judge_llm = MockLLMProvider(['{"balance_found": true, "balance_fail_reason": null}'])
+    analysis = await _confirm_and_judge(tmp_reports, rid, combo_id, judge_llm)
+    assert analysis["status"] == "done"
+    assert analysis["balance_found"] is True
+    # 判定输入包含组合 + hypothesis + 对话
+    prompt_text = judge_llm.last_messages[0].content
+    assert "音乐" in prompt_text and "创造表达" in prompt_text
+    assert "现场音乐策划人" in prompt_text
+    assert "灯光亮起的那一刻" in prompt_text
 
-    # 模拟用户第二轮
-    svc.append_message(state, combo_id, "user", "是的")
-    svc.save_v4_state(tmp_reports, rid, state)
-    msgs, _ = svc.build_chat_messages(find_combo(state, combo_id), "是的")
-    resp = await llm.chat(msgs)
-    visible, tools = svc.parse_tool_blocks(resp.content)
-    signals = svc.detect_conclusion_signals(resp.content)
-    card_event = None
-    for tc in tools:
-        card, err = svc.apply_tool_call(state, combo_id, tc)
-        if card:
-            card_event = card
-    svc.append_message(state, combo_id, "assistant", visible)
-    svc.save_v4_state(tmp_reports, rid, state)
+    state = svc.load_v4_state(tmp_reports, rid)
+    combo = svc.find_combo(state, combo_id)
+    assert combo["status"] == "concluded"
+    assert combo["conclusion_card"]["balance_found"] is True
+    assert svc.pending_judged_combo_ids(state) == []
 
-    # 第二轮后:出卡(草案,不锁定),双信号齐全,无 fallback
-    assert signals["hidden"] is True
-    assert signals["visible"] is True
-    assert card_event is not None
-    assert card_event["hypothesis"] == "音乐+创造能让我成为独特创作者"
-    assert card_event["balance_found"] is True
-    c2 = find_combo(state, combo_id)
-    # 2026-07-27 交互口径:出卡不锁,用户确认才置 concluded
-    assert c2["status"] == "discussing"
-    assert c2["conclusion_card"]["hypothesis"].startswith("音乐+创造")
-
-    # 用户确认 → concluded 进终选
-    state = svc.set_combo_status(tmp_reports, rid, combo_id, "concluded")
-    assert find_combo(state, combo_id)["status"] == "concluded"
-    # 第 8 步选择 + 提交
-    state = svc.update_final_selection(tmp_reports, rid, [combo_id])
+    # 终选 + 提交
+    svc.update_final_selection(tmp_reports, rid, [combo_id])
     state = svc.submit_final_selection(tmp_reports, rid)
     assert state["final_selection"]["submitted"] is True
-    assert state["main_section"] == "end"
 
 
-# ── 场景 2:兜底(LLM 忘了 <<CONCLUSION_READY>>)───────────────────────
+# ── 场景 2:判定失败 → 重试 ─────────────────────────────────────────────
 @pytest.mark.asyncio
-async def test_fallback_when_llm_forgets_hidden_marker(tmp_reports, rid):
-    """LLM 输出了 visible 话术但忘了 hidden 标记 → fallback 生成结论卡。"""
-    state, combo = svc.create_combo(tmp_reports, rid, "写作", ["掌控全局"])
-    combo_id = combo["combo_id"]
+async def test_judge_failure_then_retry(tmp_reports, rid):
+    svc.create_combo(tmp_reports, rid, "写作", ["掌控全局"])
+    svc.patch_conclusion_card(tmp_reports, rid, "combo_1", "成为深度报道自由撰稿人")
 
-    # 主 LLM:只输出了 visible,没输出 hidden
-    main_llm = MockLLMProvider([
-        "好的,我们继续。\n```tool\n"
-        '{"tool":"update_field","field":"hypothesis","value":"我假设写作能让我表达自己"}\n```',
-        "很好,我已经把这次探索整理成了结论卡,你确认一下",  # 注意:无 <<CONCLUSION_READY>>
-    ])
-    # 兜底 LLM(独立 conclusion prompt):返回 JSON(含 balance 字段)
-    fallback_llm = MockLLMProvider([
-        '{"hypothesis":"我假设写作+掌控能让我成为有影响力的作者","motivation":"表达欲","work_purposes":["成长"],"passion_mark":"忍不住想做","timing_mark":"未来","balance_found":false,"balance_fail_reason":"当下投入难启动"}'
-    ])
+    bad_llm = MockLLMProvider(["不是JSON", "还不是JSON"])
+    analysis = await _confirm_and_judge(tmp_reports, rid, "combo_1", bad_llm)
+    assert analysis["status"] == "failed"
 
-    # 第一轮:收集 hypothesis
-    svc.append_message(state, combo_id, "user", "我想写作")
-    svc.save_v4_state(tmp_reports, rid, state)
-    msgs, _ = svc.build_chat_messages(find_combo(state, combo_id), "我想写作")
-    resp = await main_llm.chat(msgs)
-    visible, tools = svc.parse_tool_blocks(resp.content)
-    for tc in tools:
-        svc.apply_tool_call(state, combo_id, tc)
-    svc.append_message(state, combo_id, "assistant", visible)
-    svc.save_v4_state(tmp_reports, rid, state)
-
-    # 第二轮:有 visible 话术,无 hidden 标记
-    svc.append_message(state, combo_id, "user", "继续")
-    svc.save_v4_state(tmp_reports, rid, state)
-    msgs, _ = svc.build_chat_messages(find_combo(state, combo_id), "继续")
-    resp = await main_llm.chat(msgs)
-    signals = svc.detect_conclusion_signals(resp.content)
-    visible, tools = svc.parse_tool_blocks(resp.content)
-    for tc in tools:
-        svc.apply_tool_call(state, combo_id, tc)
-    svc.append_message(state, combo_id, "assistant", visible)
-    svc.save_v4_state(tmp_reports, rid, state)
-
-    # 触发兜底(主对话无 save_conclusion_card tool call)
-    assert signals["visible"] is True
-    assert signals["hidden"] is False
-    assert not tools  # 没 save tool
-    # 检查主对话确实没出卡
-    assert find_combo(state, combo_id)["conclusion_card"] is None
-
-    # 调兜底
-    fallback_card = await svc.fallback_generate_conclusion(
-        find_combo(state, combo_id), fallback_llm
-    )
-    assert fallback_card is not None
-    assert fallback_card["hypothesis"].startswith("我假设写作")
-    assert fallback_card["balance_found"] is False
-    assert fallback_card["balance_fail_reason"] == "当下投入难启动"
-    # 写入
-    apply_tc = {"tool": "save_conclusion_card", "fields": {
-        "hypothesis": fallback_card["hypothesis"],
-    }}
-    card, err = svc.apply_tool_call(state, combo_id, apply_tc)
-    assert err is None
-    assert card["hypothesis"].startswith("我假设写作")
+    # 重试 = 再走一次 confirm + judge
+    good_llm = MockLLMProvider(['{"balance_found": false, "balance_fail_reason": "收入路径不清晰"}'])
+    analysis = await _confirm_and_judge(tmp_reports, rid, "combo_1", good_llm)
+    assert analysis["status"] == "done"
+    assert analysis["balance_found"] is False
+    assert analysis["balance_fail_reason"] == "收入路径不清晰"
 
 
-# ── 场景 3:用户跳过(卡保留+可逆)──────────────────────────────────────
-def test_user_skips_keeps_card(tmp_reports, rid):
-    """实施口径 §1-新4:跳过不清卡,置 user_skipped;跳过的卡不进终选。"""
-    state, combo = svc.create_combo(tmp_reports, rid, "教学", ["解决问题"])
-    combo_id = combo["combo_id"]
-    # 先出一张卡再跳过
-    svc.apply_tool_call(state, combo_id, {
-        "tool": "save_conclusion_card", "fields": {"hypothesis": "我假设教学能让我影响更多人"}
-    })
-    svc.save_v4_state(tmp_reports, rid, state)
-    # 跳过
-    state = svc.set_combo_status(tmp_reports, rid, combo_id, "abandoned")
-    c = find_combo(state, combo_id)
-    assert c["status"] == "abandoned"
-    assert c["user_skipped"] is True
-    assert c["conclusion_card"] is not None  # 卡内容保留
-    # abandoned 不能进 final_selection
+# ── 场景 3:跳过路径(卡保留、可逆、不进终选)────────────────────────────
+@pytest.mark.asyncio
+async def test_skip_keeps_card_and_excluded_from_final(tmp_reports, rid):
+    svc.create_combo(tmp_reports, rid, "音乐", ["创造表达"])
+    svc.patch_conclusion_card(tmp_reports, rid, "combo_1", "成为独立音乐人")
+    judge_llm = MockLLMProvider(['{"balance_found": true}'])
+    await _confirm_and_judge(tmp_reports, rid, "combo_1", judge_llm)
+
+    state = svc.set_combo_status(tmp_reports, rid, "combo_1", "abandoned")
+    combo = svc.find_combo(state, "combo_1")
+    assert combo["user_skipped"] is True
+    assert combo["conclusion_card"]["hypothesis"] == "成为独立音乐人"
     with pytest.raises(ValueError):
-        svc.update_final_selection(tmp_reports, rid, [combo_id])
-    # 跳过可逆:恢复 concluded 后可进终选
-    state = svc.set_combo_status(tmp_reports, rid, combo_id, "concluded")
-    assert find_combo(state, combo_id)["user_skipped"] is False
-    state = svc.update_final_selection(tmp_reports, rid, [combo_id])
-    assert state["final_selection"]["selected_combo_ids"] == [combo_id]
+        svc.update_final_selection(tmp_reports, rid, ["combo_1"])
+
+    # 可逆:跳过卡可重新确认(confirm 端点清除 user_skipped 并重判)
+    state, combo, _started = svc.confirm_conclusion_card(tmp_reports, rid, "combo_1")
+    assert combo["user_skipped"] is False
+    assert combo["status"] == "concluded"
 
 
-# ── 场景 4:多优势 hypothesis 分字典 ────────────────────────────────────
-def test_multi_strength_dict_hypothesis(tmp_reports, rid):
-    state, combo = svc.create_combo(tmp_reports, rid, "音乐", ["创造表达", "解决问题", "掌控全局"])
-    combo_id = combo["combo_id"]
-    hyp_dict = {
-        "创造表达": "让我成为创作者",
-        "解决问题": "让我成为修复者",
-        "掌控全局": "让我成为领导者",
-    }
-    card, err = svc.apply_tool_call(state, combo_id, {
-        "tool": "save_conclusion_card", "fields": {"hypothesis": hyp_dict}
-    })
-    assert err is None
-    assert isinstance(card["hypothesis"], dict)
-    assert card["hypothesis"]["创造表达"] == "让我成为创作者"
-
-
-# ── 场景 5:30 轮摘要触发 ──────────────────────────────────────────────
+# ── 场景 4:聊/改即作废 ─────────────────────────────────────────────────
 @pytest.mark.asyncio
-async def test_summary_triggered_at_30_rounds(tmp_reports, rid):
-    from app.services.rumination_v4_service import SUMMARIZE_EVERY_N_ROUNDS
-    state, combo = svc.create_combo(tmp_reports, rid, "音乐", ["创造表达"])
-    combo_id = combo["combo_id"]
-    # 塞 30 条 user 消息
+async def test_chat_or_edit_invalidates_judgement(tmp_reports, rid):
+    svc.create_combo(tmp_reports, rid, "音乐", ["创造表达"])
+    svc.patch_conclusion_card(tmp_reports, rid, "combo_1", "成为独立音乐人")
+    judge_llm = MockLLMProvider(['{"balance_found": true}'])
+    await _confirm_and_judge(tmp_reports, rid, "combo_1", judge_llm)
+
+    # 4a. 再聊聊 → 判定作废 + reopen_feedback
+    state = svc.set_combo_status(tmp_reports, rid, "combo_1", "discussing")
+    combo = svc.find_combo(state, "combo_1")
+    assert combo["balance_analysis"] is None
+    assert combo["conclusion_card"]["balance_found"] is None
+    assert combo.get("reopen_feedback")
+
+    # 4b. 改卡 → 判定作废;若已确认还会退回 discussing
+    judge_llm2 = MockLLMProvider(['{"balance_found": true}'])
+    await _confirm_and_judge(tmp_reports, rid, "combo_1", judge_llm2)
+    state, card = svc.patch_conclusion_card(tmp_reports, rid, "combo_1", "成为音乐教育者")
+    combo = svc.find_combo(state, "combo_1")
+    assert combo["balance_analysis"] is None
+    assert combo["status"] == "discussing"
+    # 作废后已退回 discussing,不再满足「已确认」条件,终选被拦
+    with pytest.raises(ValueError, match="未确认结论卡"):
+        svc.update_final_selection(tmp_reports, rid, ["combo_1"])
+
+
+# ── 场景 5:完成门槛 ────────────────────────────────────────────────────
+def test_final_gate_blocks_unjudged_concluded(tmp_reports, rid):
+    svc.create_combo(tmp_reports, rid, "音乐", ["创造表达"])
+    svc.patch_conclusion_card(tmp_reports, rid, "combo_1", "成为独立音乐人")
+    # 确认后判定还在 analyzing
+    state, combo, _ = svc.confirm_conclusion_card(tmp_reports, rid, "combo_1")
+    assert svc.pending_judged_combo_ids(state) == ["combo_1"]
+    with pytest.raises(ValueError, match="分析中"):
+        svc.update_final_selection(tmp_reports, rid, ["combo_1"])
+    with pytest.raises(ValueError, match="分析中"):
+        svc.submit_final_selection(tmp_reports, rid)
+
+
+# ── 场景 6:30 轮滚动摘要 ───────────────────────────────────────────────
+@pytest.mark.asyncio
+async def test_summary_triggered_every_30_rounds(tmp_reports, rid, monkeypatch):
+    monkeypatch.setattr(svc, "SUMMARIZE_EVERY_N_ROUNDS", 2)  # 加速触发
+    svc.create_combo(tmp_reports, rid, "音乐", ["创造表达"])
     state = svc.load_v4_state(tmp_reports, rid)
-    for i in range(SUMMARIZE_EVERY_N_ROUNDS):
-        svc.append_message(state, combo_id, "user", f"第 {i+1} 轮用户输入")
-        svc.append_message(state, combo_id, "assistant", f"第 {i+1} 轮回复")
-    svc.save_v4_state(tmp_reports, rid, state)
-
-    summarizer_llm = MockLLMProvider(["这是用户与引导师关于音乐+创造的对话摘要。用户多次提到舞台与表达欲。"])
-
-    state = svc.load_v4_state(tmp_reports, rid)
-    new_summary = await svc.maybe_summarize_combo(state, combo_id, summarizer_llm)
-    assert new_summary is not None
-    assert "舞台" in new_summary or "音乐" in new_summary
-    combo_obj = find_combo(state, combo_id)
-    assert combo_obj["summary"] == new_summary
-    assert combo_obj["summary_last_round"] == SUMMARIZE_EVERY_N_ROUNDS
-
-
-# ── 场景 6:SSE 流式隐藏块过滤(回归:标记/tool 块泄漏到聊天气泡)────────
-def test_stream_hidden_blocks_never_leak_across_chunks():
-    """combo-chat SSE 流式阶段:<<CONCLUSION_READY>> / ```tool 块 / [STEP3_HYP_JSON] 块
-    即使被流式 chunk 任意拆开,也不得出现在推给前端的 chunk 增量里。"""
-    from app.services.rumination_v4_service import STREAM_HIDDEN_BLOCK_MARKERS
-    # 直接按文件路径加载,避免触发 simple_chat 包 __init__ 的连锁导入
-    import importlib.util
-    _spec = importlib.util.spec_from_file_location(
-        "stream_utils",
-        Path(__file__).resolve().parents[2] / "src/backend/app/api/v1/simple_chat/stream_utils.py",
-    )
-    _su = importlib.util.module_from_spec(_spec)
-    _spec.loader.exec_module(_su)
-    build_stream_hidden_block_filter = _su.build_stream_hidden_block_filter
-
-    visible_head = "我明白了。这件事的核心回报是自我成长和认知突破。\n\n"
-    visible_tail = "我已经把这次探索整理成了结论卡,你可以看看有没有需要调整的地方。"
-    hidden = (
-        "<<CONCLUSION_READY>>\n```tool\n"
-        '{"tool":"save_conclusion_card","fields":{"hypothesis":"做一个持续性的深度人物观察项目","balance_found":true}}\n```'
-    )
-    full = visible_head + visible_tail + "\n\n" + hidden
-
-    # 多种切块粒度都必须零泄漏(1 字符粒度最苛刻,模拟标记被拆散)
-    for step in (1, 3, 5, 20):
-        f = build_stream_hidden_block_filter(block_markers=STREAM_HIDDEN_BLOCK_MARKERS)
-        out = ""
-        for i in range(0, len(full), step):
-            out += f(full[: i + step])
-        assert "<<CONCLUSION_READY>>" not in out
-        assert "save_conclusion_card" not in out
-        assert "```tool" not in out
-        assert out == visible_head + visible_tail + "\n\n"
-
-    # chips 隐藏块同样不泄漏
-    t = "选一个方向:\n[STEP3_HYP_JSON]{" + '"candidates":["abc"]' + "}[/STEP3_HYP_JSON]"
-    f = build_stream_hidden_block_filter(block_markers=STREAM_HIDDEN_BLOCK_MARKERS)
-    out = ""
-    for i in range(0, len(t), 2):
-        out += f(t[: i + 2])
-    assert "STEP3_HYP_JSON" not in out
-    assert "candidates" not in out
-    assert out.startswith("选一个方向:")
-
-
-# ── 辅助 ───────────────────────────────────────────────────────────────
-def find_combo(state, cid):
-    return svc.find_combo(state, cid)
+    for i in range(2):
+        svc.append_message(state, "combo_1", "user", f"第{i+1}轮用户输入")
+        svc.append_message(state, "combo_1", "assistant", f"第{i+1}轮回复")
+    llm = MockLLMProvider(["这是一份摘要:用户喜欢舞台"])
+    new_summary = await svc.maybe_summarize_combo(state, "combo_1", llm)
+    assert new_summary == "这是一份摘要:用户喜欢舞台"
+    assert state["combo_sessions"][0]["summary_last_round"] == 2

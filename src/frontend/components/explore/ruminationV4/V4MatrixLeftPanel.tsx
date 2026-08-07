@@ -110,28 +110,14 @@ export default function V4MatrixLeftPanel() {
             <div className="flex flex-1 items-center justify-center px-4 py-6 text-center text-[13px] font-[700] text-[#9ca3af]">
               选择热爱与优势后，点击「开始探索」
             </div>
-          ) : !conclusionCard ? (
-            <div className="flex flex-col items-center justify-center py-6 text-center">
-              <div
-                className="mb-2 flex h-[48px] w-[48px] items-center justify-center rounded-full text-white opacity-50"
-                style={{
-                  background: 'linear-gradient(135deg, #c0c8d4, #d0d4dc, #e0e4ec)',
-                }}
-              >
-                ✦
-              </div>
-              <p className="mb-1 text-[13px] font-[700] text-[#9ca3af]">结论卡待生成</p>
-              <p className="text-[11px] font-[500] leading-relaxed text-[#b0b8c4]">
-                在右侧与 AI 深度对话后，结论卡会自动生成
-              </p>
-            </div>
           ) : (
+            // ADR-0015:结论卡常驻左栏,一开始就是空卡槽,由用户手填
             <ConclusionCardEditable
               comboId={activeCombo.combo_id}
               card={conclusionCard}
+              analysis={activeCombo.balance_analysis || null}
               strengths={activeCombo.strengths}
               userSkipped={!!activeCombo.user_skipped || activeCombo.status === 'abandoned'}
-              confirmed={activeCombo.status === 'concluded' && !activeCombo.user_skipped}
             />
           )}
         </div>

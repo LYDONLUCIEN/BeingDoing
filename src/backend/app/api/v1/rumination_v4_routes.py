@@ -1,21 +1,27 @@
 """
-Rumination v4 API 路由
+Rumination v4 API 路由（2026-08-06 版，ADR-0015：用户主导结论卡 + 独立后台平衡点判定）
 
 路由前缀: /api/v1/simple-chat/rumination-v4/...
 (挂在 simple_chat.router 下,避免改动 main.py 注册)
 
-端点(见 wiki/开发文档/0707-tag1.6.0.md 第六节):
-- POST /create-combo
-- POST /start-discussion
-- POST /combo-chat            (SSE 流式)
+端点:
+- GET  /version                          v3/v4 分组判定
+- GET  /state
 - GET  /combos
 - GET  /combos/{combo_id}
+- POST /create-and-start
+- POST /start-discussion
+- POST /combo-chat                       (SSE 流式;纯对话,无任何隐藏协议)
 - DELETE /combos/{combo_id}
-- PATCH /combos/{combo_id}/conclusion-card
+- PATCH /combos/{combo_id}/conclusion-card           (用户手填/修改 hypothesis)
+- POST /combos/{combo_id}/conclusion-card/confirm    (SSE:确认+平衡点判定,兼重试)
+- POST /combos/{combo_id}/analysis/stream            (SSE:判定结果补拉/附着)
+- POST /combos/{combo_id}/status         (跳过 abandoned / 再聊聊 discussing)
 - POST /final-selection
-- GET  /state
+- POST /final-selection/submit
+- POST /active
 
-数据模型与决策见 wiki/开发文档/0707-tag1.6.0.md
+数据模型与决策见 wiki/开发文档/0707-tag1.6.0.md + docs/adr/0015
 """
 from __future__ import annotations
 
@@ -39,9 +45,6 @@ from app.api.v1.simple_chat.context_resolver import (
 from app.api.v1.simple_chat.llm_providers import (
     get_dialogue_llm_provider as _get_dialogue_llm_provider,
 )
-from app.api.v1.simple_chat.stream_utils import (
-    build_stream_hidden_block_filter as _build_stream_hidden_block_filter,
-)
 from app.utils.simple_activation_manager import (
     get_activation_manager_for_code,
     get_effective_simple_root,
@@ -53,27 +56,27 @@ from app.utils.survey_storage import (
     load_dimension_conclusions,
 )
 from app.services.rumination_v4_service import (
-    CONCLUSION_READY_MARKER,
-    apply_tool_call,
     append_message,
     build_chat_messages,
+    confirm_conclusion_card,
     create_and_start as svc_create_and_start,
     delete_combo as svc_delete_combo,
-    detect_conclusion_signals,
-    extract_hyp_candidates,
-    HYP_JSON_END,
-    HYP_JSON_START,
-    fallback_generate_conclusion,
     find_combo,
+    get_live_analysis_task,
+    invalidate_balance_analysis,
+    is_analyzing,
     list_combos,
     load_v4_state,
     maybe_summarize_combo,
     patch_conclusion_card as svc_patch_card,
+    register_analysis_task,
+    run_balance_judge,
     save_v4_state,
     set_active_combo,
     set_combo_status,
     submit_final_selection,
-    STREAM_HIDDEN_BLOCK_MARKERS,
+    sweep_orphan_analysis,
+    unregister_analysis_task,
     update_final_selection,
 )
 from app.utils.activation_audit import append_activation_audit  # 复用项目审计日志
@@ -89,11 +92,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/rumination-v4", tags=["Rumination v4"])
 
 
+def _sse(obj: Dict[str, Any]) -> str:
+    return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
+
+
 # ── 请求/响应模型 ───────────────────────────────────────────────────────
-class _ActivationReq(BaseModel):
-    activation_code: str
-
-
 class CreateComboReq(BaseModel):
     activation_code: str
     passion: str
@@ -113,16 +116,12 @@ class ComboChatReq(BaseModel):
 
 class PatchConclusionReq(BaseModel):
     activation_code: str
-    hypothesis: Optional[Any] = None
-    motivation: Optional[str] = None
-    work_purposes: Optional[List[str]] = None
-    passion_mark: Optional[str] = None
-    timing_mark: Optional[str] = None
+    hypothesis: str  # 2026-08-06(ADR-0015):卡仅 hypothesis 一字段
 
 
 class SetStatusReq(BaseModel):
     activation_code: str
-    status: str  # concluded | abandoned
+    status: str  # abandoned | discussing(concluded 走 confirm 端点)
 
 
 class FinalSelectionReq(BaseModel):
@@ -131,6 +130,10 @@ class FinalSelectionReq(BaseModel):
 
 
 class SubmitFinalReq(BaseModel):
+    activation_code: str
+
+
+class ConfirmReq(BaseModel):
     activation_code: str
 
 
@@ -188,10 +191,27 @@ def _assert_rumination_editable(reports_root: Path, rid: str, current_user: dict
         )
 
 
+def _assert_not_analyzing(combo: Dict[str, Any]) -> None:
+    """分析中锁(ADR-0015):该 combo 的对话输入与结论卡编辑一并锁定。"""
+    if is_analyzing(combo):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="正在分析中，请稍后",
+        )
+
+
+def _load_state_swept(reports_root: Path, rid: str) -> Dict[str, Any]:
+    """载 state 并自愈孤儿判定(analyzing 但无存活任务 → failed,可重试)。"""
+    state = load_v4_state(reports_root, rid)
+    if sweep_orphan_analysis(state, rid):
+        save_v4_state(reports_root, rid, state)
+    return state
+
+
 def _build_user_context(
     reports_root: Path, rid: str, rec, activation_code: str
 ) -> Tuple[str, Optional[List[str]]]:
-    """装配 combo-chat 的用户上下文(实施口径 §1-Q5 / §2.3)。
+    """装配 combo-chat 的用户上下文。
 
     - basic_info: 复用 simple_chat 的激活码维度拼装(format_basic_info_for_prompt)
     - 前四阶段结论卡: load_dimension_conclusions,逐阶段 keywords + summary 全量不截断
@@ -283,7 +303,7 @@ async def get_state(activation_code: str, current_user: dict = Depends(get_curre
     reports_root = Path(storage_root) / "reports"
     rid = report["report_id"]
 
-    state = load_v4_state(reports_root, rid)
+    state = _load_state_swept(reports_root, rid)
     snap = state.get("matrix_snapshot") or {}
     needs_fill = not snap.get("passions") or not snap.get("strengths")
     if needs_fill:
@@ -311,7 +331,7 @@ async def get_state(activation_code: str, current_user: dict = Depends(get_curre
 async def get_combos(activation_code: str, current_user: dict = Depends(get_current_user)):
     """列出所有 combo_session 元信息(tag 条用)。"""
     reports_root, rid = _resolve_v4_ctx(activation_code, current_user)
-    state = load_v4_state(reports_root, rid)
+    state = _load_state_swept(reports_root, rid)
     return {"code": 200, "message": "success", "data": {"combos": list_combos(state), "active_combo_id": state.get("active_combo_id")}}
 
 
@@ -320,7 +340,7 @@ async def get_combos(activation_code: str, current_user: dict = Depends(get_curr
 async def get_combo_detail(combo_id: str, activation_code: str, current_user: dict = Depends(get_current_user)):
     """获取单个 combo_session 详情(含 messages)。"""
     reports_root, rid = _resolve_v4_ctx(activation_code, current_user)
-    state = load_v4_state(reports_root, rid)
+    state = _load_state_swept(reports_root, rid)
     combo = find_combo(state, combo_id)
     if not combo:
         raise HTTPException(status_code=404, detail="combo_id 不存在")
@@ -376,11 +396,8 @@ async def start_discussion_endpoint(req: StartDiscussionReq, current_user: dict 
     if existing_opening:
         return {"code": 200, "message": "success", "data": {"opening": existing_opening}}
     # 生成开场(非 LLM,固定话术 + 引导问)
-    passion = combo.get("passion")
-    strengths = combo.get("strengths") or []
-    strengths_str = "、".join(strengths)
     opening_text = (
-        f"好的,我们就来聊聊「{passion}」+「{strengths_str}」这个组合。\n\n"
+        f"好的,我们就来聊聊「{combo.get('passion')}」+「{'、'.join(combo.get('strengths') or [])}」这个组合。\n\n"
         f"在正式展开之前,我想先听听你 —— 是什么吸引你把这个热爱和这几个优势放在一起?"
         f"可以告诉我一个具体的场景,或者一个让你心动的瞬间吗?"
     )
@@ -395,9 +412,11 @@ async def start_discussion_endpoint(req: StartDiscussionReq, current_user: dict 
 # ── 端点 6:POST /combo-chat(SSE 流式)─────────────────────────────────
 @router.post("/combo-chat")
 async def combo_chat_endpoint(req: ComboChatReq, current_user: dict = Depends(get_current_user)):
-    """主对话端点(SSE 流式)。LLM 自主调 tool,后端解析隐藏 JSON 块 + 双信号兜底。
-    实施口径 §2.3:回复完成后解析 chips 隐藏块并推 hyp_candidates 事件;
-    <<CONCLUSION_READY>> / tool 块 / [STEP3_HYP_JSON] 块均剥离后再入库/推送。"""
+    """主对话端点(SSE 流式)。
+
+    2026-08-06(ADR-0015):纯对话,无任何隐藏协议(chips/tool/双信号已删除);
+    分析中的 combo 拒绝新消息(锁输入);新对话作废旧判定(聊即作废)。
+    """
     reports_root, rid, rec = _resolve_v4_ctx_with_rec(req.activation_code, current_user)
     _assert_rumination_editable(reports_root, rid, current_user, rec)
     state = load_v4_state(reports_root, rid)
@@ -406,10 +425,14 @@ async def combo_chat_endpoint(req: ComboChatReq, current_user: dict = Depends(ge
         raise HTTPException(status_code=404, detail="combo_id 不存在")
     if combo.get("status") in ("concluded", "abandoned"):
         raise HTTPException(status_code=400, detail=f"该组合已 {combo.get('status')},不可继续对话")
+    _assert_not_analyzing(combo)
 
     user_msg = (req.message or "").strip()
     if not user_msg:
         raise HTTPException(status_code=400, detail="message 不可为空")
+
+    # 新对话作废旧判定(ADR-0015:聊即作废,灯灭,需重新确认)
+    invalidate_balance_analysis(combo)
 
     # 先把用户消息落盘(事务性:消息进来就存,即使流式中断也不丢用户输入)
     append_message(state, req.combo_id, "user", user_msg)
@@ -431,122 +454,52 @@ async def combo_chat_endpoint(req: ComboChatReq, current_user: dict = Depends(ge
         )
         llm = _get_dialogue_llm_provider(vip_level=vip_level)
 
-        # 流式隐藏块过滤(跨 chunk 安全,复用 v3 同款):
-        # ```tool 块 / [STEP3_HYP_JSON] 块 / <<CONCLUSION_READY>> 标记均不推给前端,
-        # 避免标记被切块拆开或 tool JSON 原样泄漏到聊天气泡。
-        stream_hidden_filter = _build_stream_hidden_block_filter(
-            block_markers=STREAM_HIDDEN_BLOCK_MARKERS
-        )
-
         full_reply = ""
         async for piece in llm.chat_stream(llm_messages, temperature=0.7, max_tokens=800):
             if isinstance(piece, dict):
                 # 项目内 think_chunk 等特殊信号,透传
                 t = piece.get("_t")
                 if t == "think_start":
-                    yield f"data: {json.dumps({'think_start': True}, ensure_ascii=False)}\n\n"
+                    yield _sse({"think_start": True})
                 elif t == "think_chunk":
-                    yield f"data: {json.dumps({'think_chunk': piece.get('content') or ''}, ensure_ascii=False)}\n\n"
+                    yield _sse({"think_chunk": piece.get("content") or ""})
                 elif t == "think_end":
-                    yield f"data: {json.dumps({'think_end': piece.get('content')}, ensure_ascii=False)}\n\n"
+                    yield _sse({"think_end": piece.get("content")})
                 continue
             if piece:
                 full_reply += piece
-                # 基于累计文本计算可见增量,隐藏块跨 chunk 也不会泄漏
-                safe = stream_hidden_filter(full_reply)
-                if safe:
-                    yield f"data: {json.dumps({'chunk': safe}, ensure_ascii=False)}\n\n"
+                yield _sse({"chunk": piece})
 
-        # 流式结束,解析完整回复:剥离 tool 块 → chips 隐藏块 → 隐藏标记
-        visible_text, tool_calls = _parse_and_clean(full_reply)
-        visible_text, hyp_candidates = extract_hyp_candidates(visible_text)
-        visible_text = visible_text.replace(CONCLUSION_READY_MARKER, "").strip()
-        signals = detect_conclusion_signals(full_reply)
+        visible_text = full_reply.strip()
 
-        # 执行所有 tool call(透明 + 校验)
-        conclusion_card_event: Optional[Dict[str, Any]] = None
-        tool_errors: List[str] = []
-        for tc in tool_calls:
-            card, err = apply_tool_call(latest_state, req.combo_id, tc)
-            if err:
-                tool_errors.append(err)
-            if card:
-                conclusion_card_event = card
+        # 空可见回复兜底:避免「空气泡」
+        if not visible_text:
+            logger.warning("combo-chat 空可见回复 combo_id=%s", req.combo_id)
+            visible_text = "嗯,我记下了。这个想法里,最吸引你的是哪一点?可以多跟我说说。"
+            yield _sse({"chunk": visible_text})
 
-        # 兜底机制:有 visible 信号但无 hidden 标记 → 重新生成结论
-        if signals.get("visible") and not signals.get("hidden") and not conclusion_card_event:
-            yield f"data: {json.dumps({'fallback': True}, ensure_ascii=False)}\n\n"
-            card = await fallback_generate_conclusion(combo_obj, llm, values_keywords)
-            if card:
-                # 直接写 conclusion_card(含 balance 两字段)
-                apply_tc = {"tool": "save_conclusion_card", "fields": {
-                    "hypothesis": card.get("hypothesis"),
-                    "motivation": card.get("motivation"),
-                    "work_purposes": card.get("work_purposes"),
-                    "passion_mark": card.get("passion_mark"),
-                    "timing_mark": card.get("timing_mark"),
-                    "balance_found": card.get("balance_found"),
-                    "balance_fail_reason": card.get("balance_fail_reason"),
-                }}
-                c2, _e = apply_tool_call(latest_state, req.combo_id, apply_tc)
-                if c2:
-                    conclusion_card_event = c2
-
-        # 空可见回复兜底:LLM 整轮只输出隐藏块(或 tool 校验失败)时 visible_text 为空,
-        # 直接落库/渲染会出现「空气泡」。补一句与情境相符的兜底话术并记日志。
-        if not visible_text.strip():
-            logger.warning(
-                "combo-chat 空可见回复 combo_id=%s tool_errors=%s raw=%.300s",
-                req.combo_id, tool_errors, full_reply,
-            )
-            if conclusion_card_event:
-                visible_text = "我已经把最新的共识更新到结论卡了,你看看这版是否更贴合?有想调整的随时告诉我。"
-            elif hyp_candidates:
-                visible_text = "基于你的想法,我整理了两条候选方向,点一条我们继续细聊。"
-            else:
-                visible_text = "嗯,我记下了。这个想法里,最吸引你的是哪一点?可以多跟我说说。"
-            # 流式阶段一个 chunk 都没推过,补推兜底话术让前端即时可见
-            yield f"data: {json.dumps({'chunk': visible_text}, ensure_ascii=False)}\n\n"
-
-        # 把 LLM 的可见回复追加到 messages(注意:存的是过滤后的可见文本)
+        # 把 LLM 的可见回复追加到 messages
         append_message(latest_state, req.combo_id, "assistant", visible_text)
 
         # 后台摘要(异步,不阻塞流)
         try:
-            new_summary = await maybe_summarize_combo(latest_state, req.combo_id, llm)
+            await maybe_summarize_combo(latest_state, req.combo_id, llm)
         except Exception as e:
             logger.warning("maybe_summarize_combo 异常: %s", e)
 
         # 持久化
         save_v4_state(reports_root, rid, latest_state)
 
-        # 推送结论卡事件(若有)
-        if conclusion_card_event:
-            yield f"data: {json.dumps({'conclusion_card': conclusion_card_event}, ensure_ascii=False)}\n\n"
-
-        # 推送 chips 候选事件(无候选不推;前端收到即替换选择器)
-        if hyp_candidates:
-            yield f"data: {json.dumps({'type': 'hyp_candidates', 'hyp_candidates': hyp_candidates}, ensure_ascii=False)}\n\n"
-
-        # 推送 tool 错误(若有,仅调试用)
-        if tool_errors:
-            yield f"data: {json.dumps({'tool_errors': tool_errors}, ensure_ascii=False)}\n\n"
-
-        yield f"data: {json.dumps({'done': True}, ensure_ascii=False)}\n\n"
+        yield _sse({"done": True})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
-
-
-def _parse_and_clean(text: str):
-    """复用 service 的 parse_tool_blocks(返回 visible, tools)。"""
-    from app.services.rumination_v4_service import parse_tool_blocks
-    return parse_tool_blocks(text)
 
 
 # ── 端点 7:DELETE /combos/{combo_id} ───────────────────────────────────
 @router.delete("/combos/{combo_id}")
 async def delete_combo_endpoint(combo_id: str, activation_code: str, current_user: dict = Depends(get_current_user)):
-    """硬删除 combo_session(含 messages),仅审计日志保留。"""
+    """硬删除 combo_session(含 messages),仅审计日志保留。
+    分析中删除:允许;判定任务写盘前发现 combo 不存在会丢弃结果。"""
     reports_root, rid, rec = _resolve_v4_ctx_with_rec(activation_code, current_user)
     _assert_rumination_editable(reports_root, rid, current_user, rec)
     try:
@@ -562,24 +515,186 @@ async def delete_combo_endpoint(combo_id: str, activation_code: str, current_use
 async def patch_conclusion_card_endpoint(
     combo_id: str, req: PatchConclusionReq, current_user: dict = Depends(get_current_user)
 ):
-    """用户直接编辑结论卡文本(不绕道 LLM)。"""
+    """用户手填/修改结论卡 hypothesis(不绕道 LLM)。
+
+    2026-08-06(ADR-0015):hypothesis 变更即作废旧判定;已确认卡被修改后退回
+    discussing(未确认态),需重新点「确认」触发重判。分析中拒绝编辑(409)。
+    """
     reports_root, rid, rec = _resolve_v4_ctx_with_rec(req.activation_code, current_user)
     _assert_rumination_editable(reports_root, rid, current_user, rec)
-    fields = {k: v for k, v in req.model_dump().items() if k != "activation_code" and v is not None}
+    state = load_v4_state(reports_root, rid)
+    combo = find_combo(state, combo_id)
+    if not combo:
+        raise HTTPException(status_code=404, detail="combo_id 不存在")
+    _assert_not_analyzing(combo)
     try:
-        state, card = svc_patch_card(reports_root, rid, combo_id, fields)
+        state, card = svc_patch_card(reports_root, rid, combo_id, req.hypothesis)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     _audit_log("rumination_v4_card_patched", current_user, req.activation_code, {"combo_id": combo_id})
-    return {"code": 200, "message": "success", "data": {"conclusion_card": card}}
+    return {"code": 200, "message": "success", "data": {"conclusion_card": card, "combo": find_combo(state, combo_id)}}
 
 
-# ── 端点 9:POST /combos/{combo_id}/status(确认/放弃)──────────────────
+# ── 端点 9:POST /combos/{combo_id}/conclusion-card/confirm(SSE)────────
+@router.post("/combos/{combo_id}/conclusion-card/confirm")
+async def confirm_conclusion_card_endpoint(
+    combo_id: str, req: ConfirmReq, current_user: dict = Depends(get_current_user)
+):
+    """用户点「确认」(ADR-0015):置 concluded + analyzing,流内执行平衡点判定。
+
+    SSE 事件:
+    - {analysis_status: 'analyzing'}        —— 已进入判定
+    - {analysis_done: {balance_found, balance_fail_reason}} —— 判定完成
+    - {analysis_failed: {error}}            —— 判定失败(可重新调本端点重试)
+    - {done: true}                          —— 流结束
+    """
+    reports_root, rid, rec = _resolve_v4_ctx_with_rec(req.activation_code, current_user)
+    _assert_rumination_editable(reports_root, rid, current_user, rec)
+    try:
+        _state, combo, started_at = confirm_conclusion_card(reports_root, rid, combo_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit_log(
+        "rumination_v4_card_confirmed",
+        current_user,
+        req.activation_code,
+        {"combo_id": combo_id},
+    )
+    llm = _get_dialogue_llm_provider(vip_level=1)
+
+    async def event_stream() -> AsyncIterator[str]:
+        yield _sse({"analysis_status": "analyzing"})
+        task = asyncio.create_task(run_balance_judge(reports_root, rid, combo_id, llm, started_at))
+        register_analysis_task(rid, combo_id, task)
+        try:
+            analysis = await task
+        except asyncio.CancelledError:
+            # 客户端断连:任务一并取消,analyzing 态由 sweep 自愈为 failed
+            task.cancel()
+            raise
+        finally:
+            unregister_analysis_task(rid, combo_id, task)
+        if analysis.get("status") == "done":
+            yield _sse(
+                {
+                    "analysis_done": {
+                        "balance_found": analysis.get("balance_found"),
+                        "balance_fail_reason": analysis.get("balance_fail_reason"),
+                    }
+                }
+            )
+        else:
+            yield _sse({"analysis_failed": {"error": analysis.get("error") or "判定失败"}})
+        yield _sse({"done": True})
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# ── 端点 10:POST /combos/{combo_id}/analysis/stream(SSE 补拉)───────────
+@router.post("/combos/{combo_id}/analysis/stream")
+async def analysis_stream_endpoint(
+    combo_id: str, req: ConfirmReq, current_user: dict = Depends(get_current_user)
+):
+    """判定结果补拉/附着(ADR-0015:刷新/重进页面时前端自动调本端点)。
+
+    - done/failed           → 直接回放当前结果
+    - analyzing 且任务存活  → 附着(await 存活任务后推结果)
+    - analyzing 但任务孤儿  → 视同重试,本流内重跑判定
+    - 无判定记录            → 推 {analysis_status: 'none'}(前端应回到草稿态)
+    """
+    reports_root, rid, rec = _resolve_v4_ctx_with_rec(req.activation_code, current_user)
+    _assert_rumination_editable(reports_root, rid, current_user, rec)
+    state = _load_state_swept(reports_root, rid)
+    combo = find_combo(state, combo_id)
+    if not combo:
+        raise HTTPException(status_code=404, detail="combo_id 不存在")
+    llm = _get_dialogue_llm_provider(vip_level=1)
+
+    def _result_events(analysis: Dict[str, Any]) -> List[str]:
+        if analysis.get("status") == "done":
+            return [
+                _sse(
+                    {
+                        "analysis_done": {
+                            "balance_found": analysis.get("balance_found"),
+                            "balance_fail_reason": analysis.get("balance_fail_reason"),
+                        }
+                    }
+                )
+            ]
+        if analysis.get("status") == "failed":
+            return [_sse({"analysis_failed": {"error": analysis.get("error") or "判定失败"}})]
+        return [_sse({"analysis_status": analysis.get("status") or "none"})]
+
+    async def event_stream() -> AsyncIterator[str]:
+        # 读取最新状态(可能在 sweep 后已变 failed)
+        cur_state = load_v4_state(reports_root, rid)
+        cur_combo = find_combo(cur_state, combo_id)
+        analysis = (cur_combo or {}).get("balance_analysis") or {}
+        status_now = analysis.get("status")
+
+        if status_now in ("done", "failed"):
+            for e in _result_events(analysis):
+                yield e
+            yield _sse({"done": True})
+            return
+
+        if status_now == "analyzing":
+            live = get_live_analysis_task(rid, combo_id)
+            if live is not None and not live.done():
+                # 附着存活任务
+                yield _sse({"analysis_status": "analyzing"})
+                try:
+                    result = await asyncio.shield(live)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    yield _sse({"analysis_failed": {"error": str(e)}})
+                    yield _sse({"done": True})
+                    return
+                for e in _result_events(result or {}):
+                    yield e
+                yield _sse({"done": True})
+                return
+            # 孤儿 analyzing(sweep 未及时介入的竞态):本流内重跑
+            try:
+                _s, _c, started_at = confirm_conclusion_card(reports_root, rid, combo_id)
+            except ValueError as e:
+                yield _sse({"analysis_failed": {"error": str(e)}})
+                yield _sse({"done": True})
+                return
+            yield _sse({"analysis_status": "analyzing"})
+            task = asyncio.create_task(run_balance_judge(reports_root, rid, combo_id, llm, started_at))
+            register_analysis_task(rid, combo_id, task)
+            try:
+                result = await task
+            except asyncio.CancelledError:
+                task.cancel()
+                raise
+            finally:
+                unregister_analysis_task(rid, combo_id, task)
+            for e in _result_events(result or {}):
+                yield e
+            yield _sse({"done": True})
+            return
+
+        # 无判定记录
+        yield _sse({"analysis_status": "none"})
+        yield _sse({"done": True})
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# ── 端点 11:POST /combos/{combo_id}/status(跳过/再聊聊)─────────────────
 @router.post("/combos/{combo_id}/status")
 async def set_combo_status_endpoint(
     combo_id: str, req: SetStatusReq, current_user: dict = Depends(get_current_user)
 ):
-    """用户确认或放弃 combo_session。"""
+    """跳过(abandoned)/再聊聊(discussing)。
+
+    2026-08-06(ADR-0015):确认(concluded)统一走 conclusion-card/confirm 端点(含判定),
+    本端点的 concluded 请求会被 service 层拒绝(双保险)。
+    """
     reports_root, rid, rec = _resolve_v4_ctx_with_rec(req.activation_code, current_user)
     _assert_rumination_editable(reports_root, rid, current_user, rec)
     try:
@@ -590,10 +705,11 @@ async def set_combo_status_endpoint(
     return {"code": 200, "message": "success", "data": {"combo": find_combo(state, combo_id)}}
 
 
-# ── 端点 10:POST /final-selection ─────────────────────────────────────
+# ── 端点 12:POST /final-selection ─────────────────────────────────────
 @router.post("/final-selection")
 async def final_selection_endpoint(req: FinalSelectionReq, current_user: dict = Depends(get_current_user)):
-    """第 8 步:更新选定的 1-3 个 combo_id。"""
+    """第 8 步:更新选定的 1-3 个 combo_id。
+    ADR-0015 门槛:所有已确认卡必须判定完成,否则 400「有结论卡正在分析中,请稍后」。"""
     reports_root, rid, rec = _resolve_v4_ctx_with_rec(req.activation_code, current_user)
     _assert_rumination_editable(reports_root, rid, current_user, rec)
     try:
@@ -603,10 +719,10 @@ async def final_selection_endpoint(req: FinalSelectionReq, current_user: dict = 
     return {"code": 200, "message": "success", "data": {"final_selection": state.get("final_selection")}}
 
 
-# ── 端点 11:POST /final-selection/submit ──────────────────────────────
+# ── 端点 13:POST /final-selection/submit ──────────────────────────────
 @router.post("/final-selection/submit")
 async def submit_final_selection_endpoint(req: SubmitFinalReq, current_user: dict = Depends(get_current_user)):
-    """第 8 步最终提交(锁定)。"""
+    """第 8 步最终提交(锁定)。ADR-0015:所有已确认卡必须判定完成。"""
     reports_root, rid, rec = _resolve_v4_ctx_with_rec(req.activation_code, current_user)
     _assert_rumination_editable(reports_root, rid, current_user, rec)
     try:
@@ -620,7 +736,7 @@ async def submit_final_selection_endpoint(req: SubmitFinalReq, current_user: dic
     return {"code": 200, "message": "success", "data": {"final_selection": state.get("final_selection"), "main_section": state.get("main_section")}}
 
 
-# ── 端点 12:POST /active(切换 active combo)──────────────────────────
+# ── 端点 14:POST /active(切换 active combo)──────────────────────────
 class SetActiveReq(BaseModel):
     activation_code: str
     combo_id: str

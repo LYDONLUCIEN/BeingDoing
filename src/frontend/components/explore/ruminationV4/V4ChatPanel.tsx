@@ -8,6 +8,7 @@
  * - AI 消息：FlowAiMessage（时间 + 复制/点赞/保存工具栏）
  * - 输入区：白色胶囊 + 发送/停止按钮
  * - 草稿态：整区模糊锁定
+ * - 分析中(ADR-0015)：输入锁定,提示「正在分析中」
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -17,7 +18,6 @@ import { useRuminationV4Store } from '@/stores/ruminationV4Store';
 import { useAuthStore } from '@/stores/authStore';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import type { ComboMessage } from '@/lib/explore/ruminationV4Api';
-import V4HypChipsSelector from './V4HypChipsSelector';
 
 const FlowAiMessage = dynamic(() => import('@/components/explore/FlowAiMessage'), {
   ssr: false,
@@ -40,8 +40,6 @@ export default function V4ChatPanel({ comboId }: Props) {
     abortChat,
     isStreaming,
     streamingText,
-    fallbackActive,
-    latestHypCandidates,
     error,
     init,
     clearError,
@@ -63,6 +61,8 @@ export default function V4ChatPanel({ comboId }: Props) {
   const messages = useMemo(() => combo?.messages || [], [combo?.messages]);
   const hasOpening = messages.some((m) => m.role === 'assistant');
   const isReadOnly = combo?.status === 'concluded' || combo?.status === 'abandoned';
+  // ADR-0015:判定分析中锁对话输入(锁是 combo 级的,可切换/新建其他组合)
+  const isAnalyzing = combo?.balance_analysis?.status === 'analyzing';
 
   // 为每条消息补充稳定 id / 时间，用于 key、时间戳、埋点
   // 过滤空内容消息(历史 tool-only 轮次可能落盘过空 assistant 消息,避免空气泡)
@@ -94,7 +94,7 @@ export default function V4ChatPanel({ comboId }: Props) {
     if (!text || isStreaming) return;
     const token =
       typeof window !== 'undefined' ? localStorage.getItem('token') || undefined : undefined;
-    await sendChat(comboId, text, undefined, undefined, token);
+    await sendChat(comboId, text, undefined, token);
   };
 
   const handleSend = async () => {
@@ -104,7 +104,7 @@ export default function V4ChatPanel({ comboId }: Props) {
     await sendText(text);
   };
 
-  const canInput = !!comboId && hasOpening && !isStreaming && !isReadOnly && !isDraft;
+  const canInput = !!comboId && hasOpening && !isStreaming && !isReadOnly && !isDraft && !isAnalyzing;
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -120,13 +120,15 @@ export default function V4ChatPanel({ comboId }: Props) {
                 {isDraft
                   ? '请先在左侧选点并点击「开始探索」'
                   : combo
-                    ? isReadOnly
-                      ? combo.status === 'concluded'
-                        ? '结论已确认，点左侧结论卡上的「再聊聊」可继续探讨'
-                        : '该组合已跳过，点左侧结论卡可恢复'
-                      : hasOpening
-                        ? '与我探讨这个组合的假设方向'
-                        : '点击下方开始讨论'
+                    ? isAnalyzing
+                      ? '结论卡分析中，完成后可继续探讨'
+                      : isReadOnly
+                        ? combo.status === 'concluded'
+                          ? '结论已确认，点左侧结论卡上的「再聊聊」可继续探讨'
+                          : '该组合已跳过，点左侧结论卡可恢复'
+                        : hasOpening
+                          ? '与我探讨这个组合的假设方向'
+                          : '点击下方开始讨论'
                     : '请从左侧选择或创建一个组合开始探索'}
               </p>
             </div>
@@ -218,9 +220,9 @@ export default function V4ChatPanel({ comboId }: Props) {
                         activationCode={activationCode ?? undefined}
                       />
                     )}
-                    {fallbackActive && (
-                      <p className="py-2 text-center text-xs text-orange-500">
-                        结论卡生成中，请稍候…
+                    {isAnalyzing && (
+                      <p className="py-2 text-center text-xs text-[#b57908]">
+                        结论卡正在分析中，请稍后…
                       </p>
                     )}
                   </>
@@ -252,14 +254,6 @@ export default function V4ChatPanel({ comboId }: Props) {
                         AI 正在回复…
                       </p>
                     )}
-                    {/* 假设候选 chips 选择器（输入区上方） */}
-                    {latestHypCandidates && latestHypCandidates.length > 0 && !isReadOnly && (
-                      <V4HypChipsSelector
-                        candidates={latestHypCandidates}
-                        disabled={isStreaming || !hasOpening}
-                        onSend={(text) => void sendText(text)}
-                      />
-                    )}
                     <div className="flex w-full min-w-0 items-end gap-2.5">
                       <textarea
                         ref={inputRef}
@@ -276,11 +270,13 @@ export default function V4ChatPanel({ comboId }: Props) {
                             ? '请先点击「开始探索」'
                             : !hasOpening
                               ? '点击「开始讨论」'
-                              : isReadOnly
-                                ? combo.status === 'concluded'
-                                  ? '已确认，点左侧结论卡「再聊聊」继续探讨'
-                                  : '已跳过，点左侧结论卡可恢复'
-                                : '输入你的想法...'
+                              : isAnalyzing
+                                ? '正在分析中，请稍后…'
+                                : isReadOnly
+                                  ? combo.status === 'concluded'
+                                    ? '已确认，点左侧结论卡「再聊聊」继续探讨'
+                                    : '已跳过，点左侧结论卡可恢复'
+                                  : '输入你的想法...'
                         }
                         rows={1}
                         disabled={!canInput}

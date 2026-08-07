@@ -53,8 +53,9 @@ export default function RuminationV4Page({
   canContinue = true,
   continueDisabledHint = '',
 }: Props) {
-  const { state, init } = useRuminationV4Store();
+  const { state, init, hasPendingAnalysis } = useRuminationV4Store();
   const [finalModalOpen, setFinalModalOpen] = useState(false);
+  const [gateHint, setGateHint] = useState('');
   const router = useRouter();
 
   /** 终选已提交：顶栏按钮变为「查看报告」直达报告页（报告下载页除个人空间外的另一入口） */
@@ -75,12 +76,33 @@ export default function RuminationV4Page({
     }
   }, [state?.active_combo_id]);
 
+  // 门槛提示 4 秒后自动消失
+  useEffect(() => {
+    if (!gateHint) return;
+    const t = setTimeout(() => setGateHint(''), 4000);
+    return () => clearTimeout(t);
+  }, [gateHint]);
+
   const v4CanContinue =
     canContinue ||
     !!state?.final_selection?.submitted ||
     (state?.combo_sessions || []).some(
       (c) => !!c.conclusion_card || c.status === 'concluded'
     );
+
+  /** ADR-0015 完成门槛:有已确认但判定未完成(分析中/失败/已作废)的卡 → 提示不开弹窗 */
+  const handleCompleteClick = () => {
+    if (finalSubmitted) {
+      gotoReport();
+      return;
+    }
+    if (hasPendingAnalysis()) {
+      setGateHint('正在分析中，请稍后');
+      return;
+    }
+    setGateHint('');
+    setFinalModalOpen(true);
+  };
 
   if (!state) {
     return (
@@ -117,7 +139,7 @@ export default function RuminationV4Page({
               {onCompleteAndContinue && (
                 <button
                   type="button"
-                  onClick={() => (finalSubmitted ? gotoReport() : setFinalModalOpen(true))}
+                  onClick={handleCompleteClick}
                   disabled={!finalSubmitted && !v4CanContinue}
                   title={finalSubmitted ? '查看我的报告' : continueDisabledHint || undefined}
                   className="complete-btn flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-bold text-white transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40 sm:px-5 sm:py-3 sm:text-base"
@@ -131,6 +153,11 @@ export default function RuminationV4Page({
                     {finalSubmitted ? '查看报告' : '完成并继续'}
                   </span>
                 </button>
+              )}
+              {gateHint && !finalSubmitted && (
+                <p className="mt-1.5 text-right text-[12px] font-[600] text-[#b57908]" role="status">
+                  {gateHint}
+                </p>
               )}
             </div>
           </header>
