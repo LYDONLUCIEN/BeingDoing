@@ -23,7 +23,7 @@ function isUnauthorized(err: unknown): boolean {
 
 export default function AccountRecoveryPage() {
   const router = useRouter();
-  const { user, token, isAuthenticated, _hasHydrated, setUser, setToken, logout } =
+  const { user, token, isAuthenticated, _hasHydrated, setUser, setToken, setRecoveryMode, logout } =
     useAuthStore();
   const openAuthModal = useAuthModalStore((s) => s.openAuthModal);
 
@@ -34,6 +34,7 @@ export default function AccountRecoveryPage() {
   const [confirming, setConfirming] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoSentRef = useRef(false);
 
   // 无受限 token（未登录/登录态已失效）→ 回首页（与其他页面的未登录行为一致）
   useEffect(() => {
@@ -89,6 +90,14 @@ export default function AccountRecoveryPage() {
     }
   };
 
+  // 进入恢复页自动发送一次验证码（登录跳转而来时用户无需再手动点击）
+  useEffect(() => {
+    if (!_hasHydrated || !token || autoSentRef.current) return;
+    autoSentRef.current = true;
+    void handleSendCode();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [_hasHydrated, token]);
+
   const handleConfirmRecovery = async () => {
     if (confirming || code.length !== 6) return;
     setError('');
@@ -98,7 +107,8 @@ export default function AccountRecoveryPage() {
       const response = await authApi.confirmAccountRecovery(code);
       const resData = response?.data;
       if (response?.code === 200 && resData?.token) {
-        // 与登录成功一致：写入正式 token，再拉取完整用户信息
+        // 恢复成功：退出恢复会话，写入正式 token，再拉取完整用户信息
+        setRecoveryMode(false);
         setToken(resData.token);
         try {
           const me = await authApi.getCurrentUser();

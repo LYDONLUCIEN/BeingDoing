@@ -104,6 +104,11 @@ class ApiClient {
       (response) => response,
       async (error: AxiosError) => {
         if (error.response?.status === 401) {
+          // 账户恢复会话（受限 token）：不做 refresh/logout/弹登录框，
+          // 由 /account-recovery 页面自行处理 401（引导重新登录）
+          if (useAuthStore.getState().recoveryMode) {
+            return Promise.reject(error);
+          }
           const requestUrl = error.config?.url ?? '';
           const isAuthRequest =
             typeof requestUrl === 'string' &&

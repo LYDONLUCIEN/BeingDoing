@@ -422,6 +422,7 @@ import pdb; pdb.set_trace()
 - **公开页白名单**: `/`、`/about`、`/community`、`/verify-email`（隐私声明/用户协议是首页弹窗组件，随首页公开；`/auth/*`、`/account-recovery` 不经过 AuthGate）。其余页面一律要求登录。
 - **未登录行为**: 直接 `router.replace('/')` 退回首页并弹全局登录框（`authModalStore`），不渲染受保护内容；API 401 且 refresh 失败时同样统一退回首页。
 - **会话校验**: 每次页面加载对已登录用户调一次 `/auth/me` 校验 token 有效性（拦截器自动尝试 refresh）。
+- **账户恢复会话（recoveryMode）**: 已注销账户登录得到受限 token（`deleted_recovery`，30 分钟），登录时在 `authStore` 置 `recoveryMode=true`（持久化）。此期间：AuthGate 跳过 `/auth/me` 校验并把用户导向 `/account-recovery`（唯一可停留页面）；axios 401 拦截器不做 refresh/logout/弹登录框（由恢复页自行处理 401）；恢复页加载时自动发送一次邮箱验证码。恢复成功（`POST /auth/account/recovery/confirm`）或 logout 时清回 `false`。
 - **注意**: `authStore._hasHydrated` 不能放在 `onRehydrateStorage` 回调里设置——同步 localStorage 会让回调在 `create()` 期间执行，TDZ 引用 `useAuthStore` 报错；当前实现用 `persist.hasHydrated()` / `persist.onFinishHydration` 在模块加载后设置。
 
 ## 注意事项

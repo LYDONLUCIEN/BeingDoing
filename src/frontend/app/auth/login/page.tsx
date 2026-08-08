@@ -30,7 +30,7 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get('redirect') || '/explore';
-  const { setUser, setToken } = useAuthStore();
+  const { setUser, setToken, setRecoveryMode } = useAuthStore();
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(false);
 
@@ -63,6 +63,8 @@ function LoginForm() {
         // 已注销账户：保存受限 token 后跳转恢复页（受限 token 无法调用 /auth/me，直接用登录响应数据）
         if (response.data.account_status === 'deleted') {
           setToken(response.data.token);
+          // 标记恢复会话：AuthGate/401 拦截器据此跳过会话校验与强制登出
+          setRecoveryMode(true);
           setUser({
             user_id: response.data.user_id,
             email: response.data.email,

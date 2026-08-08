@@ -16,11 +16,18 @@ interface AuthState {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
+  /**
+   * 账户恢复会话：已注销账户登录后持有受限 token（deleted_recovery，30 分钟）。
+   * 此期间不能调 /auth/me，也不能走 401 拦截器的 logout/refresh 逻辑，
+   * 只允许停留在 /account-recovery 完成邮箱验证。
+   */
+  recoveryMode: boolean;
   /** 仅客户端：localStorage 恢复完成后为 true，避免未恢复就重定向导致闪屏/空白 */
   _hasHydrated: boolean;
   setUser: (user: User | null) => void;
   setToken: (token: string | null) => void;
   setTokens: (token: string | null) => void;
+  setRecoveryMode: (v: boolean) => void;
   setHasHydrated: (v: boolean) => void;
   logout: () => void;
 }
@@ -31,6 +38,7 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       token: null,
       isAuthenticated: false,
+      recoveryMode: false,
       _hasHydrated: false,
       setUser: (user) => set({ user, isAuthenticated: !!user }),
       setToken: (token) => {
@@ -47,6 +55,7 @@ export const useAuthStore = create<AuthState>()(
         }
         set({ token });
       },
+      setRecoveryMode: (v) => set({ recoveryMode: v }),
       setHasHydrated: (v) => set({ _hasHydrated: v }),
       logout: () => {
         if (typeof window !== 'undefined') {
@@ -74,7 +83,7 @@ export const useAuthStore = create<AuthState>()(
           }
           keysToRemove.forEach((k) => localStorage.removeItem(k));
         }
-        set({ user: null, token: null, isAuthenticated: false });
+        set({ user: null, token: null, isAuthenticated: false, recoveryMode: false });
       },
     }),
     {
@@ -84,6 +93,7 @@ export const useAuthStore = create<AuthState>()(
         user: state.user,
         token: state.token,
         isAuthenticated: state.isAuthenticated,
+        recoveryMode: state.recoveryMode,
       }),
     }
   )

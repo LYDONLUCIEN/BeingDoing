@@ -61,7 +61,7 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [resetCooldown, setResetCooldown] = useState(0);
-  const { setUser, setToken } = useAuthStore();
+  const { setUser, setToken, setRecoveryMode } = useAuthStore();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -117,6 +117,8 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
         // 已注销账户：保存受限 token 后跳转恢复页（受限 token 无法调用 /auth/me，直接用登录响应数据）
         if (resData.account_status === 'deleted') {
           setToken(resData.token);
+          // 标记恢复会话：AuthGate/401 拦截器据此跳过会话校验与强制登出
+          setRecoveryMode(true);
           setUser({
             user_id: resData.user_id,
             email: resData.email,
@@ -125,7 +127,7 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
             is_super_admin: false,
             email_verified: resData.email_verified,
           });
-          setSuccessMsg('账户已注销，请完成邮箱验证以恢复');
+          setSuccessMsg('账户已注销，即将前往恢复页并发送邮箱验证码');
           setTimeout(() => {
             setLoading(false);
             onClose();
