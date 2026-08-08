@@ -1,0 +1,270 @@
+{
+  "schema_version": 4,
+  "matrix_snapshot": {
+    "passions": [],
+    "strengths": []
+  },
+  "combo_sessions": [
+    {
+      "combo_id": "00",
+      "passion": "疗愈性自由绘画",
+      "strengths": [
+        "将抽象需求转化为具体创意方案"
+      ],
+      "created_at": "2026-06-30T08:20:35.478082Z",
+      "updated_at": "2026-06-30T08:20:35.478082Z",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "加入一家运营艺术疗愈空间或社区创意中心的机构，作为工坊策划师，洞察年轻群体的情绪表达需求，将模糊感受转化为系列绘画体验方案，在固定空间内带领活动、迭代内容，确保每位参与者都能带走一份有能量感的实物作品并愿意再次回来。",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-06-30T08:20:35.478082Z",
+        "updated_at": "2026-06-30T08:20:35.478082Z"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    },
+    {
+      "combo_id": "03",
+      "passion": "疗愈性自由绘画",
+      "strengths": [
+        "将突发灵感即兴转化为趣味性互动"
+      ],
+      "created_at": "2026-06-30T08:20:35.478082Z",
+      "updated_at": "2026-06-30T08:20:35.478082Z",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "加入一家以青年艺术疗愈或创造力发展为核心使命的团队，面向都市青年设计和带领融合自由绘画与即兴互动的工作坊，在无评判的创作中帮助他们释放情绪、碰触真实的自己。",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-06-30T08:20:35.478082Z",
+        "updated_at": "2026-06-30T08:20:35.478082Z"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    },
+    {
+      "combo_id": "04",
+      "passion": "疗愈性自由绘画",
+      "strengths": [
+        "快速扎根于新环境并展开探索"
+      ],
+      "created_at": "2026-06-30T08:20:35.478082Z",
+      "updated_at": "2026-06-30T08:20:35.478082Z",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "加入一家关注青年心理健康的艺术疗愈机构，担任城市探索与表达性绘画引导师，带领在新环境中缺乏归属感的成员先以文字和涂鸦安放内心困惑，再走进街区公园进行感知练习并完成个人叙事创作",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-06-30T08:20:35.478082Z",
+        "updated_at": "2026-06-30T08:20:35.478082Z"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    },
+    {
+      "combo_id": "10",
+      "passion": "社会现象与人性探究",
+      "strengths": [
+        "将抽象需求转化为具体创意方案"
+      ],
+      "created_at": "2026-06-30T08:20:35.478082Z",
+      "updated_at": "2026-06-30T08:20:35.478082Z",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "作为独立内容策划人，与独立书店或在地社区空间合作，定期主持“社会观察与人性对话”主题沙龙，将参与者的困惑与好奇转化为有深度的集体讨论和创意体验",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-06-30T08:20:35.478082Z",
+        "updated_at": "2026-06-30T08:20:35.478082Z"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    },
+    {
+      "combo_id": "11",
+      "passion": "社会现象与人性探究",
+      "strengths": [
+        "敏锐地发现并主动肯定他人的潜在价值"
+      ],
+      "created_at": "2026-06-30T08:20:35.478082Z",
+      "updated_at": "2026-06-30T08:20:35.478082Z",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "创办一间每月只邀请几位朋友的私密会客厅，围绕社会现象设计人性洞察对话，引导朋友在深度交流中重新发现自己的潜能并结成行动小组",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-06-30T08:20:35.478082Z",
+        "updated_at": "2026-06-30T08:20:35.478082Z"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    },
+    {
+      "combo_id": "12",
+      "passion": "社会现象与人性探究",
+      "strengths": [
+        "在高质量思维碰撞中汲取和创造新能量"
+      ],
+      "created_at": "2026-06-30T08:20:35.478082Z",
+      "updated_at": "2026-06-30T08:20:35.478082Z",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "创办一个名为“现象切片”的独立工作室，定期邀请不同职业背景的素人围绕一个社会争议话题进行结构化辩论，并将现场交锋制成沉浸式音频记录，旨在让听众通过具体的人性视角重新理解复杂社会议题。",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-06-30T08:20:35.478082Z",
+        "updated_at": "2026-06-30T08:20:35.478082Z"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    },
+    {
+      "combo_id": "13",
+      "passion": "社会现象与人性探究",
+      "strengths": [
+        "将突发灵感即兴转化为趣味性互动"
+      ],
+      "created_at": "2026-06-30T08:20:35.478082Z",
+      "updated_at": "2026-06-30T08:20:35.478082Z",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "在都市里开设一间面向“有故事却从未被认真倾听”的普通人的小型叙事访谈工作室，通过一对一引导式对话，帮助来访者挖掘并重新理解自己的生命片段，并将对话转化为可留存的声音记录或文字肖像。",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-06-30T08:20:35.478082Z",
+        "updated_at": "2026-06-30T08:20:35.478082Z"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    },
+    {
+      "combo_id": "21",
+      "passion": "深度对话与思维激荡",
+      "strengths": [
+        "敏锐地发现并主动肯定他人的潜在价值"
+      ],
+      "created_at": "2026-06-30T08:20:35.478082Z",
+      "updated_at": "2026-06-30T08:20:35.478082Z",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "成为一个独立经营的“人生叙事梳理师”，专门面向处在转型期或自我怀疑阶段的年轻人，通过一对一的深度对话，帮助他们从碎片化经历中识别出被自己忽视的闪光点与核心韧性，最终形成一份属于他们的个人价值叙事记录，让他们带着更清晰的自我认知前行。",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-06-30T08:20:35.478082Z",
+        "updated_at": "2026-06-30T08:20:35.478082Z"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    },
+    {
+      "combo_id": "22",
+      "passion": "深度对话与思维激荡",
+      "strengths": [
+        "在高质量思维碰撞中汲取和创造新能量"
+      ],
+      "created_at": "2026-06-30T08:20:35.478082Z",
+      "updated_at": "2026-06-30T08:20:35.478082Z",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "进入一家注重人文内容的书店文化空间或生活品牌，担任内容策划与社群主理，持续策划并主持观后谈读后谈等深度对话活动，为会员营造有智识激荡和情感联结的精神社区",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-06-30T08:20:35.478082Z",
+        "updated_at": "2026-06-30T08:20:35.478082Z"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    },
+    {
+      "combo_id": "23",
+      "passion": "深度对话与思维激荡",
+      "strengths": [
+        "将突发灵感即兴转化为趣味性互动"
+      ],
+      "created_at": "2026-06-30T08:20:35.478082Z",
+      "updated_at": "2026-06-30T08:20:35.478082Z",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "作为独立对话主持人，面向渴望被深度理解的都市年轻人，开设一对一的「充电对谈」体验，针对他们带来的困惑或憧憬，即兴编织一场充满启发的对话，让双方在结束时都感到能量焕新、轻盈前行",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-06-30T08:20:35.478082Z",
+        "updated_at": "2026-06-30T08:20:35.478082Z"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    },
+    {
+      "combo_id": "24",
+      "passion": "深度对话与思维激荡",
+      "strengths": [
+        "快速扎根于新环境并展开探索"
+      ],
+      "created_at": "2026-06-30T08:20:35.478082Z",
+      "updated_at": "2026-06-30T08:20:35.478082Z",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "加入一家专注于非虚构叙事的内容平台或人文杂志，担任城市特约采编，定期被派往陌生城市去挖掘和书写普通人的真实经历，用文字和影像让那些一闪而过的光芒沉淀为可留存的作品。",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-06-30T08:20:35.478082Z",
+        "updated_at": "2026-06-30T08:20:35.478082Z"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    }
+  ],
+  "active_combo_id": null,
+  "final_selection": {
+    "selected_combo_ids": [
+      "00",
+      "03",
+      "04",
+      "10",
+      "11",
+      "12",
+      "13",
+      "21",
+      "22",
+      "23",
+      "24"
+    ],
+    "submitted": true,
+    "submitted_at": "2026-06-30T08:20:35.478082Z"
+  },
+  "main_section": "end"
+}

@@ -1,0 +1,56 @@
+{
+  "report_id": "8b85e8b2-8559-4075-89ae-ef9d4653f038",
+  "activation_code": "7CR1GQ1VMD",
+  "user_id": "a107ec44-d95e-4db0-92b9-a8f215cc0933",
+  "created_at": "2026-06-23T12:55:11.009161Z",
+  "updated_at": "2026-07-21T09:19:29.207603+00:00",
+  "status": "in_progress",
+  "final_conclusion": null,
+  "steps": {
+    "interests": {
+      "step_id": "interests",
+      "selected_session_id": "t_7441473d179c4cba91bc666fa5741197",
+      "locked": true,
+      "session_ids": [
+        "t_7441473d179c4cba91bc666fa5741197"
+      ],
+      "updated_at": "2026-07-21T09:19:29.207603+00:00"
+    },
+    "purpose": {
+      "step_id": "purpose",
+      "selected_session_id": "t_a55e24a376b54159b34767f0c77ffa9d",
+      "locked": true,
+      "session_ids": [
+        "t_a55e24a376b54159b34767f0c77ffa9d"
+      ],
+      "updated_at": "2026-07-21T09:19:29.207603+00:00"
+    },
+    "rumination": {
+      "step_id": "rumination",
+      "selected_session_id": "t_1d328518ed1e4860b44c807d1b8dea27",
+      "locked": true,
+      "session_ids": [
+        "t_1d328518ed1e4860b44c807d1b8dea27"
+      ],
+      "updated_at": "2026-07-21T09:19:29.207603+00:00"
+    },
+    "strengths": {
+      "step_id": "strengths",
+      "selected_session_id": "t_46eb3e8d8ad54627bccfff8dac721b12",
+      "locked": true,
+      "session_ids": [
+        "t_46eb3e8d8ad54627bccfff8dac721b12"
+      ],
+      "updated_at": "2026-07-21T09:19:29.207603+00:00"
+    },
+    "values": {
+      "step_id": "values",
+      "selected_session_id": "t_dac03a75f19a44f094b90784fc50f968",
+      "locked": true,
+      "session_ids": [
+        "t_dac03a75f19a44f094b90784fc50f968"
+      ],
+      "updated_at": "2026-07-21T09:19:29.207603+00:00"
+    }
+  }
+}

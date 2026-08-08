@@ -1,0 +1,75 @@
+{
+  "report_id": "e6d23073-a397-406f-b683-9bf7174dba0e",
+  "prerequisites": {
+    "values": [
+      "财务安稳",
+      "自由/出国自由",
+      "真实",
+      "喜不喜欢",
+      "被尊重"
+    ],
+    "strengths": [
+      "共情并寻求解法",
+      "借助文字从容表达并追求美感",
+      "在压力下，聚焦于问题解决",
+      "在协作中，本能地厘清利益与责任分担框架",
+      "本能地深度剖析自我，获取内在清醒觉知"
+    ],
+    "interests": [
+      "悲观现世下的共鸣与生存参照",
+      "审美的能力",
+      "美学的个人捕捉与再诠释"
+    ],
+    "purpose": [
+      "包容",
+      "真实",
+      "喜不喜欢"
+    ]
+  },
+  "steps": {
+    "1": {
+      "status": "not_reached",
+      "row_count": 0,
+      "columns": [],
+      "rows": []
+    },
+    "2": {
+      "status": "not_reached",
+      "row_count": 0,
+      "columns": [],
+      "rows": []
+    },
+    "3": {
+      "status": "not_reached",
+      "row_count": 0,
+      "columns": [],
+      "rows": []
+    },
+    "4": {
+      "status": "not_reached",
+      "row_count": 0,
+      "columns": [],
+      "rows": []
+    },
+    "5": {
+      "status": "not_reached",
+      "row_count": 0,
+      "columns": [],
+      "rows": []
+    },
+    "6": {
+      "status": "not_reached",
+      "row_count": 0,
+      "columns": [],
+      "rows": []
+    },
+    "7": {
+      "status": "not_reached",
+      "row_count": 0,
+      "columns": [],
+      "rows": []
+    }
+  },
+  "combo_matrix": null,
+  "combo_conclusions": null
+}

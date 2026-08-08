@@ -1,0 +1,155 @@
+{
+  "schema_version": 4,
+  "matrix_snapshot": {
+    "passions": [],
+    "strengths": []
+  },
+  "combo_sessions": [
+    {
+      "combo_id": "00",
+      "passion": "深度对话",
+      "strengths": [
+        "从消极中挖掘积极意义"
+      ],
+      "created_at": "2026-07-24T08:15:11.562821+00:00",
+      "updated_at": "2026-07-24T08:15:11.562821+00:00",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "驾驶一辆改装的生活工作一体式房车，开启以自我探索为主的长途慢旅行，沿途主动结识那些让你发自内心欣赏的人——比如独立手艺人、在地文化守护者或选择非主流生活方式的个体——以朋友般平等的深度对话，挖掘并记录他们生命里原本就闪耀的积极面向，最终汇成一部持续更新的、融合人文摄影与人物叙事的纪实作品集。",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-07-24T08:15:11.562821+00:00",
+        "updated_at": "2026-07-24T08:15:11.562821+00:00"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    },
+    {
+      "combo_id": "03",
+      "passion": "深度对话",
+      "strengths": [
+        "主动觉察并回应细微需求"
+      ],
+      "created_at": "2026-07-24T08:15:11.562821+00:00",
+      "updated_at": "2026-07-24T08:15:11.562821+00:00",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "以独立创作者身份，驾驶房车旅居各地，用镜头和文字记录途中遇见的人的独特故事，并整理成图文影像作品在自媒体平台持续发布与分享",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-07-24T08:15:11.562821+00:00",
+        "updated_at": "2026-07-24T08:15:11.562821+00:00"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    },
+    {
+      "combo_id": "12",
+      "passion": "摄影",
+      "strengths": [
+        "直觉性感知审美秩序"
+      ],
+      "created_at": "2026-07-24T08:15:11.562821+00:00",
+      "updated_at": "2026-07-24T08:15:11.562821+00:00",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "加入专注于人文地理或生态纪录的影像团队，担任专题摄影师，在编辑规划下深入不同文化聚落或自然生境，系统性地拍摄生命与环境共同塑造的视觉故事，在持续的任务中打磨观察深度与叙事完整度，为未来独立创作积累扎实的作品系列与行业认可。",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-07-24T08:15:11.562821+00:00",
+        "updated_at": "2026-07-24T08:15:11.562821+00:00"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    },
+    {
+      "combo_id": "20",
+      "passion": "生命体验与能量交流",
+      "strengths": [
+        "从消极中挖掘积极意义"
+      ],
+      "created_at": "2026-07-24T08:15:11.562821+00:00",
+      "updated_at": "2026-07-24T08:15:11.562821+00:00",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "作为独立创作者建立个人线上创作空间，以影像为主，文字为辅，持续记录自己人生体验等身心实践的过程，将每次练习中身体的苏醒与能量的流动转化为一系列短小、诗意的视觉日记，通过作品集、订阅、商业合作来获得可持续的支持",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-07-24T08:15:11.562821+00:00",
+        "updated_at": "2026-07-24T08:15:11.562821+00:00"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    },
+    {
+      "combo_id": "22",
+      "passion": "生命体验与能量交流",
+      "strengths": [
+        "直觉性感知审美秩序"
+      ],
+      "created_at": "2026-07-24T08:15:11.562821+00:00",
+      "updated_at": "2026-07-24T08:15:11.562821+00:00",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "以个人品牌的方式运营一个体验策展平台，亲自探访各地运动、中医、手作、动植物保护、文化保护等各行业从业者，将他们设计的深度体验以影像和文字引荐给追求内在成长的人群，并作为共同参与者促成体验活动的发生与传播。",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-07-24T08:15:11.562821+00:00",
+        "updated_at": "2026-07-24T08:15:11.562821+00:00"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    },
+    {
+      "combo_id": "23",
+      "passion": "生命体验与能量交流",
+      "strengths": [
+        "主动觉察并回应细微需求"
+      ],
+      "created_at": "2026-07-24T08:15:11.562821+00:00",
+      "updated_at": "2026-07-24T08:15:11.562821+00:00",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "以线上或城市客厅为据点，独立运营一个面向寻求身心平衡者的「共煮·共谈」小社群。通过定期组织时令美食手作与深度对话活动，让参与者在切菜熬汤的过程中放松下来，自然地交流生活感悟，带走一份被美食和朋友共同治愈的温暖体验。",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-07-24T08:15:11.562821+00:00",
+        "updated_at": "2026-07-24T08:15:11.562821+00:00"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    }
+  ],
+  "active_combo_id": null,
+  "final_selection": {
+    "selected_combo_ids": [
+      "00",
+      "03",
+      "12",
+      "20",
+      "22",
+      "23"
+    ],
+    "submitted": true,
+    "submitted_at": "2026-07-24T08:15:11.562821+00:00"
+  },
+  "main_section": "end"
+}

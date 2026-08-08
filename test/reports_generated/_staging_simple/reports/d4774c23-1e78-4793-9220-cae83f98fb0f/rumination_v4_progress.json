@@ -1,0 +1,224 @@
+{
+  "schema_version": 4,
+  "matrix_snapshot": {
+    "passions": [],
+    "strengths": []
+  },
+  "combo_sessions": [
+    {
+      "combo_id": "00",
+      "passion": "自我展示与被认可",
+      "strengths": [
+        "展现亲和力"
+      ],
+      "created_at": "2026-07-15T02:12:07.040136+00:00",
+      "updated_at": "2026-07-15T02:12:07.040136+00:00",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "创办一个属于自己的小型心灵疗愈空间，专注于一对一深度陪伴，用柔和的对话和引导，帮助那些感到焦虑的人重拾内心的安定与自我价值。",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-07-15T02:12:07.040136+00:00",
+        "updated_at": "2026-07-15T02:12:07.040136+00:00"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    },
+    {
+      "combo_id": "01",
+      "passion": "自我展示与被认可",
+      "strengths": [
+        "心怀稚趣"
+      ],
+      "created_at": "2026-07-15T02:12:07.040136+00:00",
+      "updated_at": "2026-07-15T02:12:07.040136+00:00",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "为那些被日常压得喘不过气的成年人，经营一个以“大人世界里的童稚瞬间”为主题的图文创作专栏，每周发布一组“摄影+微散文”作品，让读者在几分钟里找回片刻的柔软和会心一笑。",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-07-15T02:12:07.040136+00:00",
+        "updated_at": "2026-07-15T02:12:07.040136+00:00"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    },
+    {
+      "combo_id": "02",
+      "passion": "自我展示与被认可",
+      "strengths": [
+        "在交互中快速厘清与执行"
+      ],
+      "created_at": "2026-07-15T02:12:07.040136+00:00",
+      "updated_at": "2026-07-15T02:12:07.040136+00:00",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "以个人主理人身份，为都市年轻人定期举办小型生活美学工坊，围绕旧物改造与餐桌布置等主题，在亲手操作和轻松交谈中帮助参与者把日常过出仪式感",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-07-15T02:12:07.040136+00:00",
+        "updated_at": "2026-07-15T02:12:07.040136+00:00"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    },
+    {
+      "combo_id": "03",
+      "passion": "自我展示与被认可",
+      "strengths": [
+        "体感敏锐精准辨识问题点"
+      ],
+      "created_at": "2026-07-15T02:12:07.040136+00:00",
+      "updated_at": "2026-07-15T02:12:07.040136+00:00",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "作为独立剧本诊断顾问，面向编剧群体接收初稿，通过逐场精准标注和调整建议，帮助作品在早期变得稳固扎实，以单次计酬方式合作",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-07-15T02:12:07.040136+00:00",
+        "updated_at": "2026-07-15T02:12:07.040136+00:00"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    },
+    {
+      "combo_id": "12",
+      "passion": "实现与作品化",
+      "strengths": [
+        "在交互中快速厘清与执行"
+      ],
+      "created_at": "2026-07-15T02:12:07.040136+00:00",
+      "updated_at": "2026-07-15T02:12:07.040136+00:00",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "以独立婚礼策划师的身份，为追求温馨质感的新人定制全程婚礼方案，从初次对谈到收尾都亲自跟进，让每场婚礼安稳而独特地发生",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-07-15T02:12:07.040136+00:00",
+        "updated_at": "2026-07-15T02:12:07.040136+00:00"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    },
+    {
+      "combo_id": "13",
+      "passion": "实现与作品化",
+      "strengths": [
+        "体感敏锐精准辨识问题点"
+      ],
+      "created_at": "2026-07-15T02:12:07.040136+00:00",
+      "updated_at": "2026-07-15T02:12:07.040136+00:00",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "以独立剧本顾问的身份，为网络小说改编剧或原创短剧项目提供分集诊断报告和修改建议，帮创作者把故事节奏和人物动机理得更通顺可信",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-07-15T02:12:07.040136+00:00",
+        "updated_at": "2026-07-15T02:12:07.040136+00:00"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    },
+    {
+      "combo_id": "20",
+      "passion": "群体共处",
+      "strengths": [
+        "展现亲和力"
+      ],
+      "created_at": "2026-07-15T02:12:07.040136+00:00",
+      "updated_at": "2026-07-15T02:12:07.040136+00:00",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "以独立策划人的身份，运营面向渴望温暖连接的小团体旅行项目，在精选的风景地为旅人设计充满心意的小环节，用镜头捕捉欢笑，并在篝火等集体活动中创造共同回忆",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-07-15T02:12:07.040136+00:00",
+        "updated_at": "2026-07-15T02:12:07.040136+00:00"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    },
+    {
+      "combo_id": "21",
+      "passion": "群体共处",
+      "strengths": [
+        "心怀稚趣"
+      ],
+      "created_at": "2026-07-15T02:12:07.040136+00:00",
+      "updated_at": "2026-07-15T02:12:07.040136+00:00",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "创办一个面向成年人的“童年避难所”周末体验活动品牌，在城市的隐秘角落设计优质剧本游戏与感官工坊，带领小群体经历纯粹玩耍的一天，最终在拥抱或泪水中，让他们确认“做个孩子”的通道从未对自己关闭。",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-07-15T02:12:07.040136+00:00",
+        "updated_at": "2026-07-15T02:12:07.040136+00:00"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    },
+    {
+      "combo_id": "23",
+      "passion": "群体共处",
+      "strengths": [
+        "体感敏锐精准辨识问题点"
+      ],
+      "created_at": "2026-07-15T02:12:07.040136+00:00",
+      "updated_at": "2026-07-15T02:12:07.040136+00:00",
+      "status": "concluded",
+      "messages": [],
+      "summary": null,
+      "summary_last_round": 0,
+      "conclusion_card": {
+        "hypothesis": "作为独立私人旅行体验策划师，为追求深度体验的旅行者设计并全程陪伴充满细腻关怀与惊喜的在地文化之旅，提前洞察并消除他们旅途中的潜在不便，创造独一无二的安心回忆。",
+        "balance_found": null,
+        "balance_fail_reason": null,
+        "created_at": "2026-07-15T02:12:07.040136+00:00",
+        "updated_at": "2026-07-15T02:12:07.040136+00:00"
+      },
+      "balance_analysis": null,
+      "user_skipped": false
+    }
+  ],
+  "active_combo_id": null,
+  "final_selection": {
+    "selected_combo_ids": [
+      "00",
+      "01",
+      "02",
+      "03",
+      "12",
+      "13",
+      "20",
+      "21",
+      "23"
+    ],
+    "submitted": true,
+    "submitted_at": "2026-07-15T02:12:07.040136+00:00"
+  },
+  "main_section": "end"
+}

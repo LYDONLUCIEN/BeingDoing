@@ -169,10 +169,10 @@ class ReportPdfService:
         return self._markdown_to_pdf(markdown_text, report_id=report_id)
 
     def get_report_filename(self, record: dict) -> str:
-        """根据 record 生成 PDF 文件名。"""
-        user_id = (record.get("user_id") or "user").strip()
-        date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
-        return f"寻路·OpenLife报告_{user_id}_{date_str}.pdf"
+        """根据 record 生成 PDF 文件名：统一前缀 + 激活码 + report_id（2026-08-07 起）。"""
+        code = (record.get("activation_code") or "").strip() or "NOCODE"
+        rid = (record.get("report_id") or "").strip() or "report"
+        return f"寻路·OpenLife报告_{code}_{rid}.pdf"
 
     # ── 数据收集 ──────────────────────────────────────────────
 

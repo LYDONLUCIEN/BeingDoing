@@ -1,0 +1,174 @@
+{
+  "report_id": "6a4f8c38-6e24-4b3e-9772-8ff7673553c4",
+  "user_id": "966ac41d-4ef4-4350-8ddb-a16064b738a0",
+  "activation_code": "OGML1V47JA",
+  "report_status": "in_progress",
+  "report_created_at": "2026-06-24T14:51:17.568642Z",
+  "report_updated_at": "2026-06-30T08:20:35.478082Z",
+  "report_final_conclusion": null,
+  "exported_at": "2026-08-07T08:12:50.813050+00:00",
+  "summary": {
+    "total_phases_exported": 5,
+    "completed_phases": 5,
+    "total_messages": 266,
+    "total_ai_chars": 34027,
+    "total_user_chars": 3512,
+    "total_dialogue_chars": 37539,
+    "total_duration_seconds": 14218,
+    "total_duration_human": "237.0 min",
+    "total_token_usage": {
+      "prompt_tokens": 414191,
+      "completion_tokens": 66714,
+      "total_tokens": 480905,
+      "prompt_cache_hit_tokens": 327040,
+      "prompt_cache_miss_tokens": 87151
+    }
+  },
+  "phases": [
+    {
+      "step_id": "values",
+      "step_label_cn": "价值观",
+      "session_id": "t_1ba3e2f965e44473a87b2f069e728e27",
+      "is_selected_session": true,
+      "is_completed": true,
+      "message_count": 50,
+      "message_count_by_role": {
+        "assistant": 25,
+        "user": 24,
+        "conclusion_card": 1
+      },
+      "ai_chars": 7626,
+      "user_chars": 425,
+      "total_dialogue_chars": 8051,
+      "duration_seconds": 1615,
+      "duration_human": "26.9 min",
+      "first_message_at": "2026-06-24T15:13:10.121431Z",
+      "last_message_at": "2026-06-24T15:40:05.146463Z",
+      "token_usage": {
+        "prompt_tokens": 89336,
+        "completion_tokens": 13383,
+        "total_tokens": 102719,
+        "prompt_cache_hit_tokens": 78080,
+        "prompt_cache_miss_tokens": 11256
+      },
+      "conclusion_state": "confirmed",
+      "has_conclusion_final": true
+    },
+    {
+      "step_id": "strengths",
+      "step_label_cn": "优势",
+      "session_id": "t_aa03549596b24bbcb502eaf59b7bcd12",
+      "is_selected_session": true,
+      "is_completed": true,
+      "message_count": 30,
+      "message_count_by_role": {
+        "assistant": 15,
+        "user": 14,
+        "conclusion_card": 1
+      },
+      "ai_chars": 4064,
+      "user_chars": 694,
+      "total_dialogue_chars": 4758,
+      "duration_seconds": 2079,
+      "duration_human": "34.6 min",
+      "first_message_at": "2026-06-25T09:03:08.875216Z",
+      "last_message_at": "2026-06-26T03:04:14.133454Z",
+      "token_usage": {
+        "prompt_tokens": 44979,
+        "completion_tokens": 7013,
+        "total_tokens": 51992,
+        "prompt_cache_hit_tokens": 39552,
+        "prompt_cache_miss_tokens": 5427
+      },
+      "conclusion_state": "confirmed",
+      "has_conclusion_final": true
+    },
+    {
+      "step_id": "interests",
+      "step_label_cn": "热爱",
+      "session_id": "t_458f057bcd5b4338807e55d92908e02d",
+      "is_selected_session": true,
+      "is_completed": true,
+      "message_count": 47,
+      "message_count_by_role": {
+        "assistant": 23,
+        "user": 23,
+        "conclusion_card": 1
+      },
+      "ai_chars": 5121,
+      "user_chars": 633,
+      "total_dialogue_chars": 5754,
+      "duration_seconds": 2292,
+      "duration_human": "38.2 min",
+      "first_message_at": "2026-06-26T03:04:37.870318Z",
+      "last_message_at": "2026-06-26T03:42:50.701409Z",
+      "token_usage": {
+        "prompt_tokens": 93301,
+        "completion_tokens": 11898,
+        "total_tokens": 105199,
+        "prompt_cache_hit_tokens": 82048,
+        "prompt_cache_miss_tokens": 11253
+      },
+      "conclusion_state": "confirmed",
+      "has_conclusion_final": true
+    },
+    {
+      "step_id": "purpose",
+      "step_label_cn": "使命",
+      "session_id": "t_ce7d96e86ef8486a9d660f125a5f1621",
+      "is_selected_session": true,
+      "is_completed": true,
+      "message_count": 34,
+      "message_count_by_role": {
+        "assistant": 17,
+        "user": 16,
+        "conclusion_card": 1
+      },
+      "ai_chars": 4379,
+      "user_chars": 947,
+      "total_dialogue_chars": 5326,
+      "duration_seconds": 1047,
+      "duration_human": "17.4 min",
+      "first_message_at": "2026-06-26T03:43:09.349729Z",
+      "last_message_at": "2026-06-26T06:45:14.077619Z",
+      "token_usage": {
+        "prompt_tokens": 80219,
+        "completion_tokens": 8626,
+        "total_tokens": 88845,
+        "prompt_cache_hit_tokens": 73088,
+        "prompt_cache_miss_tokens": 7131
+      },
+      "conclusion_state": "confirmed",
+      "has_conclusion_final": true
+    },
+    {
+      "step_id": "rumination",
+      "step_label_cn": "沉淀",
+      "session_id": "t_afa6d34163b04ae9b8bc783aba4fc2b8",
+      "is_selected_session": true,
+      "is_completed": true,
+      "message_count": 105,
+      "message_count_by_role": {
+        "assistant": 62,
+        "user": 40,
+        "system": 3
+      },
+      "ai_chars": 12837,
+      "user_chars": 813,
+      "total_dialogue_chars": 13650,
+      "duration_seconds": 7185,
+      "duration_human": "119.8 min",
+      "first_message_at": "2026-06-26T06:45:34.233694Z",
+      "last_message_at": "2026-06-26T10:21:52.703812Z",
+      "token_usage": {
+        "prompt_tokens": 106356,
+        "completion_tokens": 25794,
+        "total_tokens": 132150,
+        "prompt_cache_hit_tokens": 54272,
+        "prompt_cache_miss_tokens": 52084
+      },
+      "conclusion_state": "confirmed",
+      "has_conclusion_final": false
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "report_id": "084ce3ba-a587-4abb-8f71-ee4c3438734c",
+  "activation_code": "RIBPLQRL2X",
+  "user_id": "1f460478-aa6e-4375-9ff2-45d4489165d0",
+  "created_at": "2026-06-22T05:00:12.493339Z",
+  "updated_at": "2026-08-07T10:20:03.275699+00:00",
+  "status": "in_progress",
+  "final_conclusion": null,
+  "steps": {
+    "interests": {
+      "step_id": "interests",
+      "selected_session_id": "t_0d50368113c44ed88d079533105b6596",
+      "locked": true,
+      "session_ids": [
+        "t_0d50368113c44ed88d079533105b6596"
+      ],
+      "updated_at": "2026-07-24T08:15:11.562821+00:00"
+    },
+    "purpose": {
+      "step_id": "purpose",
+      "selected_session_id": "t_4d999933a402435395e4816c6024138f",
+      "locked": true,
+      "session_ids": [
+        "t_4d999933a402435395e4816c6024138f"
+      ],
+      "updated_at": "2026-07-24T08:15:11.562821+00:00"
+    },
+    "rumination": {
+      "step_id": "rumination",
+      "selected_session_id": "t_e078f34d2cec4aa7b4c02eaff3d33223",
+      "locked": true,
+      "session_ids": [
+        "t_e078f34d2cec4aa7b4c02eaff3d33223"
+      ],
+      "updated_at": "2026-07-24T08:15:11.562821+00:00"
+    },
+    "strengths": {
+      "step_id": "strengths",
+      "selected_session_id": "t_67fdcab5f4f04002a39f57990cf58edb",
+      "locked": true,
+      "session_ids": [
+        "t_67fdcab5f4f04002a39f57990cf58edb"
+      ],
+      "updated_at": "2026-07-24T08:15:11.562821+00:00"
+    },
+    "values": {
+      "step_id": "values",
+      "selected_session_id": "t_d51bc0ffc2d54ddc9bfef6502a238f75",
+      "locked": true,
+      "session_ids": [
+        "t_d51bc0ffc2d54ddc9bfef6502a238f75"
+      ],
+      "updated_at": "2026-07-24T08:15:11.562821+00:00"
+    }
+  },
+  "review_type": null,
+  "reviewed_by": null,
+  "reviewed_at": null,
+  "report_markdown_generated_at": "2026-08-07T10:20:02.512370+00:00",
+  "report_signature": "signature_1"
+}

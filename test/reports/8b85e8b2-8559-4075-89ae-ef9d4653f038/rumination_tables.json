@@ -1,0 +1,77 @@
+{
+  "report_id": "8b85e8b2-8559-4075-89ae-ef9d4653f038",
+  "prerequisites": {
+    "values": [
+      "创造",
+      "创新",
+      "细腻",
+      "联结",
+      "侠气"
+    ],
+    "strengths": [
+      "在特定情境下快速响应",
+      "准确感知与理解多方立场中的合理情感",
+      "将信息在脑海中自动转化为清晰的意象或场景",
+      "对可视化细节进行精雕细琢，以精准传递情绪与审美",
+      "自然散发正向感染力，激发他人积极情绪与行动"
+    ],
+    "interests": [
+      "活动体验设计",
+      "自我认知与行为探究",
+      "亲密关系与人的联结"
+    ],
+    "purpose": [
+      "创造",
+      "创新",
+      "细腻",
+      "联结",
+      "侠气"
+    ]
+  },
+  "steps": {
+    "1": {
+      "status": "skipped",
+      "row_count": 0,
+      "columns": [],
+      "rows": []
+    },
+    "2": {
+      "status": "not_reached",
+      "row_count": 0,
+      "columns": [],
+      "rows": []
+    },
+    "3": {
+      "status": "not_reached",
+      "row_count": 0,
+      "columns": [],
+      "rows": []
+    },
+    "4": {
+      "status": "not_reached",
+      "row_count": 0,
+      "columns": [],
+      "rows": []
+    },
+    "5": {
+      "status": "not_reached",
+      "row_count": 0,
+      "columns": [],
+      "rows": []
+    },
+    "6": {
+      "status": "not_reached",
+      "row_count": 0,
+      "columns": [],
+      "rows": []
+    },
+    "7": {
+      "status": "not_reached",
+      "row_count": 0,
+      "columns": [],
+      "rows": []
+    }
+  },
+  "combo_matrix": null,
+  "combo_conclusions": null
+}

@@ -1,0 +1,36 @@
+{
+  "report_id": "8b85e8b2-8559-4075-89ae-ef9d4653f038",
+  "category": "rumination__t_1d328518ed1e4860b44c807d1b8dea27",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "北北，我们终于来到了这一步——最后一轮的梳理。走到这里不容易，你已经对自己有了很深的看见。\n\n今天我们要做的，就是一起把这段日子探索到的所有线索收拢，帮你最终锁定三个可以真实去尝试的方向。它们会像三盏小灯，为接下来的路打上一束确定的光。\n\n准备好了吗？当你觉得可以，就告诉我，我们一起来点亮它们。",
+      "thread_id": "t_1d328518ed1e4860b44c807d1b8dea27",
+      "activation_session_id": "e0182eeb-b7ee-400f-b66a-54382e7407e3",
+      "step_id": "rumination",
+      "agent_id": "coach",
+      "event": "init_rumination_intro",
+      "token_usage": {
+        "prompt_tokens": 1177,
+        "completion_tokens": 118,
+        "total_tokens": 1295,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 1177
+      },
+      "created_at": "2026-06-26T12:45:03.012214Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-06-26T12:45:03.013124Z",
+    "updated_at": "2026-06-26T12:45:03.013167Z",
+    "total_messages": 1
+  },
+  "report_activation_code": "7CR1GQ1VMD",
+  "report_user_id": "a107ec44-d95e-4db0-92b9-a8f215cc0933",
+  "report_anchor_summary": null,
+  "report_final_conclusion": null,
+  "report_step_is_selected": false,
+  "report_step_locked": false
+}

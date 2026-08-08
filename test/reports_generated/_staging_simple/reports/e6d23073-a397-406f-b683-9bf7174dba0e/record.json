@@ -1,0 +1,47 @@
+{
+  "report_id": "e6d23073-a397-406f-b683-9bf7174dba0e",
+  "activation_code": "AKPD3A4QSE",
+  "user_id": "9c3e1391-4c75-446a-bd32-140d5beef9c0",
+  "created_at": "2026-06-25T11:58:25.063042Z",
+  "updated_at": "2026-06-25T17:23:37.606277Z",
+  "status": "in_progress",
+  "final_conclusion": null,
+  "steps": {
+    "interests": {
+      "step_id": "interests",
+      "selected_session_id": "t_e606b878c72d4b4883cc7ceaa214c3c4",
+      "locked": true,
+      "session_ids": [
+        "t_e606b878c72d4b4883cc7ceaa214c3c4"
+      ],
+      "updated_at": "2026-06-25T17:23:37.606277Z"
+    },
+    "purpose": {
+      "step_id": "purpose",
+      "selected_session_id": "t_c61cfe7e560347868a0269c334250e5f",
+      "locked": true,
+      "session_ids": [
+        "t_c61cfe7e560347868a0269c334250e5f"
+      ],
+      "updated_at": "2026-06-25T17:23:37.606277Z"
+    },
+    "strengths": {
+      "step_id": "strengths",
+      "selected_session_id": "t_fd6593ebe3bc4aacbb94f83df06ec5fe",
+      "locked": true,
+      "session_ids": [
+        "t_fd6593ebe3bc4aacbb94f83df06ec5fe"
+      ],
+      "updated_at": "2026-06-25T17:23:37.606277Z"
+    },
+    "values": {
+      "step_id": "values",
+      "selected_session_id": "t_39930491da9a4898830177a57110dfc5",
+      "locked": true,
+      "session_ids": [
+        "t_39930491da9a4898830177a57110dfc5"
+      ],
+      "updated_at": "2026-06-25T17:23:37.606277Z"
+    }
+  }
+}
