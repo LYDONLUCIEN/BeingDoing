@@ -119,6 +119,8 @@ export default function PurchaseModal({
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   /** 消耗升级完成（本弹窗内或后端直购自动升级）：成功视图切换为「已升级」态 */
   const [trialUpgraded, setTrialUpgraded] = useState(false);
+  /** 弹窗消耗升级实际用掉的付费码（从展示列表排除） */
+  const [consumedCode, setConsumedCode] = useState<string | null>(null);
 
   const successFiredRef = useRef(false);
 
@@ -379,9 +381,14 @@ export default function PurchaseModal({
     : consultationMode
       ? t('payment.consultation.title')
       : t('payment.title');
-  const giftCodes = order?.meta?.codes
-    ? order.meta.codes.filter((c) => c !== order.delivered_code)
-    : (order?.meta?.gift_codes ?? []);
+  // 套餐交付的全部码（等价、不区分用途）；弹窗升级后排除已消耗的那枚
+  const allDeliveredCodes: string[] = order?.meta?.codes?.length
+    ? order.meta.codes
+    : [order?.delivered_code, ...(order?.meta?.gift_codes ?? [])].filter(
+        (c): c is string => !!c,
+      );
+  const availableCodes = allDeliveredCodes.filter((c) => c && c !== consumedCode);
+  const giftCodes = availableCodes.filter((c) => c !== order?.delivered_code);
 
   return (
     <>
@@ -733,12 +740,14 @@ export default function PurchaseModal({
                       <p className="text-sm font-medium leading-relaxed text-emerald-600">
                         {t('payment.success.autoUpgradedNote')}
                       </p>
-                      {giftCodes.length > 0 && (
+                      {availableCodes.length > 0 && (
                         <div className="w-full space-y-2 rounded-xl border border-amber-200/80 bg-amber-50/60 px-4 py-3.5 text-left">
                           <p className="text-xs font-medium text-stone-700">
-                            {t('payment.success.giftCodesLabel')}
+                            {t('payment.success.codesLabel', {
+                              count: String(availableCodes.length),
+                            })}
                           </p>
-                          {giftCodes.map((code) => (
+                          {availableCodes.map((code) => (
                             <CopyableCode
                               key={code}
                               code={code}
@@ -760,8 +769,40 @@ export default function PurchaseModal({
                         {t('payment.success.continueExplore')}
                       </button>
                     </>
+                  ) : availableCodes.length > 1 ? (
+                    /* 多码套餐：全部码平级展示，不指定「哪枚自用/哪枚转赠」（码是等价的） */
+                    <>
+                      <div className="w-full space-y-2 rounded-xl border border-amber-200/80 bg-amber-50/60 px-4 py-3.5 text-left">
+                        <p className="text-xs font-medium text-stone-700">
+                          {t('payment.success.codesLabel', {
+                            count: String(availableCodes.length),
+                          })}
+                        </p>
+                        {availableCodes.map((code) => (
+                          <CopyableCode
+                            key={code}
+                            code={code}
+                            copiedCode={copiedCode}
+                            onCopy={(c) => void handleCopyCode(c)}
+                            t={t}
+                          />
+                        ))}
+                        <p className="text-[11px] leading-relaxed text-stone-500">
+                          {t('payment.success.giftNote')}
+                        </p>
+                      </div>
+                      <p className="text-xs text-stone-400">{t('payment.success.emailNote')}</p>
+                      <button
+                        type="button"
+                        onClick={() => order.delivered_code && handleGoActivate(order.delivered_code)}
+                        disabled={!order.delivered_code}
+                        className="w-full rounded-xl bg-stone-900 px-4 py-3.5 text-base font-semibold text-white transition hover:bg-stone-800 disabled:opacity-40"
+                      >
+                        {t('payment.success.activate')}
+                      </button>
+                    </>
                   ) : (
-                    /* 套餐购买成功：交付码（未绑定）+ 年度单其余码 */
+                    /* 单码订单（季度套餐/旧 SKU）：交付码（未绑定） */
                     <>
                       <div className="space-y-1">
                         <p className="text-xs text-stone-500">{t('payment.success.codeLabel')}</p>
@@ -828,9 +869,10 @@ export default function PurchaseModal({
       <UpgradeTrialModal
         open={upgradeOpen}
         onClose={() => setUpgradeOpen(false)}
-        onUpgraded={() => {
+        onUpgraded={(_trialCode, consumed) => {
           setUpgradeOpen(false);
           setTrialUpgraded(true);
+          setConsumedCode(consumed ?? null);
         }}
         preferredCodes={order?.meta?.codes}
         showDontRemind

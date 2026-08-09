@@ -257,10 +257,32 @@ export async function cancelOrder(id: string): Promise<{ order: OrderItem }> {
 
 // ─── P2a Admin 订单管理 ─────────────────────────────────
 
+/** Admin 订单详情的交付码去向（ADR-0014；码值/邮箱不脱敏，仅超管可见） */
+export interface AdminDeliveredCode {
+  code: string;
+  /** 激活码记录当前状态；记录不存在为 null */
+  status?: string | null;
+  destination_type:
+    | 'unbound'
+    | 'bound_self'
+    | 'bound_other'
+    | 'consumed_for_upgrade'
+    | 'revoked'
+    | 'deleted'
+    | 'expired'
+    | 'unknown';
+  /** bound_* 为激活人邮箱；consumed_for_upgrade 为受益试用码完整码值；其余为 null */
+  destination_detail?: string | null;
+  /** 消耗升级反向溯源（一般为 null） */
+  upgraded_from_code?: string | null;
+}
+
 export interface AdminOrderItem extends OrderItem {
   user_email?: string | null;
   /** 交付的激活码是否可退（未使用才可退） */
   code_refundable?: boolean;
+  /** 订单交付码列表 + 去向（仅详情接口返回） */
+  delivered_codes?: AdminDeliveredCode[];
 }
 
 export interface AdminOrderListResult {

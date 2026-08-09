@@ -50,6 +50,7 @@ EVENT_SYNC_FROM_DB = "sync_from_db"  # 从数据库同步
 EVENT_ACCESS = "activation_access"  # 激活码访问（activate 端点）
 EVENT_EXTENDED = "extended_and_activated"  # 延期并自动激活
 EVENT_OWNER_TRANSFERRED = "owner_transferred"  # 管理员迁移归属
+EVENT_FREE_RENEWAL_CLAIMED = "free_renewal_claimed"  # 领取 7 天免费续期（ADR-0015）
 
 
 def _now_iso() -> str:

@@ -21,7 +21,7 @@
 3. **支付宝回调**：`ALIPAY_NOTIFY_URL` / `ALIPAY_RETURN_URL` 从 `career.beyondego.me` 迁至 `openlife.beyondego.me`（需在支付宝开放平台同步修改授权回调域）。**这是本次唯一触碰的 career 项**——借此统一生产域名口径。
 4. **品牌图片**：PDF 报告用 4 张图（主 logo / 页眉 / 页脚 / 水印）由产品侧重制，图内文字「寻路·OpenLife」，文件重命名为 `openlifelogo.png` / `openlifelogo_header.png` / `openlifelogo_footer.png` / `watermark_logo.png`，代码同步改引用。
 5. **不改的部分**：
-   - 联系邮箱 `xunlu.lab@outlook.com`（隐私政策/用户协议 ×2）——真实邮箱账号，暂不随品牌变更；
+   - 联系邮箱 `soulhappylab@163.com`（隐私政策/用户协议 ×2）——真实邮箱账号，暂不随品牌变更；
    - 内部不可见命名：`beingdoing-*` systemd 服务名、`bd-` localStorage 前缀、tmux session 名——改动无收益且有风险；
    - 历史遗留：`report/` KATE 品牌工具、`career-guide-frontend` 包名、docker `career_guide` 库名、`scripts/maintenance.sh` 的 zhiyinapp 旧路径——career 系列为生产在用的 dev 站/依赖项，不动；
    - `wiki/`、`kimi/`、`docs/` 下历史文档保持原样（它们记录的是历史状态），仅更新 `AGENTS.md` / `CLAUDE.md` / `CONTEXT.md` 三份主文档。

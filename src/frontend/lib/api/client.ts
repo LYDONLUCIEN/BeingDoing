@@ -26,6 +26,15 @@ export interface ApiResponse<T = any> {
   data: T;
 }
 
+/** 判断是否为页面刷新/导航/组件卸载导致的请求取消（不应作为错误展示给用户） */
+export function isRequestCanceled(error: unknown): boolean {
+  if (axios.isCancel(error)) return true;
+  const err = error as AxiosError;
+  if (err?.code === 'ERR_CANCELED') return true;
+  const msg = (err?.message || '').toLowerCase();
+  return msg.includes('canceled') || msg.includes('aborted');
+}
+
 export function getApiErrorMessage(error: unknown, fallback = '请求失败，请稍后重试'): string {
   const err = error as AxiosError<{ detail?: string; message?: string }>;
   const detail = err?.response?.data?.detail;

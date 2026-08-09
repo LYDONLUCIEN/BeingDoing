@@ -297,3 +297,46 @@ def test_end_user_cannot_soft_delete(tmp_path: Path) -> None:
         m.soft_delete_to_recycle_bin(["ANY"], caller_role="end_user")
     with pytest.raises(PermissionError):
         m.permanent_delete_from_recycle_bin(["ANY"], caller_role="end_user")
+
+
+def test_init_self_heals_reports_suffix_base_dir(tmp_path: Path) -> None:
+    """误传已含 /reports 的 base_dir 时自动回退一层（2026-08-09 v4 终选锁定 bug 回归）。"""
+    simple = tmp_path / "simple"
+    bogus = simple / "reports"
+    bogus.mkdir(parents=True, exist_ok=True)
+    reg = ReportRegistry(base_dir=str(bogus))
+    assert reg.simple_base_dir == simple
+    assert reg.reports_root == simple / "reports"
+    # 不应拼出双层 reports
+    assert not (simple / "reports" / "reports").exists() or reg.reports_root.name == "reports"
+
+
+def test_lock_step_with_reports_suffix_base_dir_still_locks(tmp_path: Path) -> None:
+    """v4 submit 曾把 reports_root 当 base_dir 传入导致锁定静默落空；自愈后应正常锁定。"""
+    simple = tmp_path / "simple"
+    record = {
+        "report_id": "rid-1",
+        "activation_code": "CODE1",
+        "user_id": "u1",
+        "created_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-01-01T00:00:00Z",
+        "status": "in_progress",
+        "final_conclusion": None,
+        "steps": {sid: {"step_id": sid, "session_ids": [], "locked": False} for sid in
+                  ("values", "strengths", "interests", "purpose", "rumination")},
+    }
+    _write_record(simple, "rid-1", record)
+    reg = ReportRegistry(base_dir=str(simple / "reports"))
+    got = reg.lock_step("rid-1", "rumination")
+    assert got is not None
+    assert got["steps"]["rumination"]["locked"] is True
+
+
+def test_lock_step_missing_record_logs_error(reg: ReportRegistry, caplog: pytest.LogCaptureFixture) -> None:
+    """record 不存在时返回 None 且记 error（不再静默失败）。"""
+    import logging
+
+    with caplog.at_level(logging.ERROR, logger="app.utils.report_registry"):
+        got = reg.lock_step("no-such-report", "rumination")
+    assert got is None
+    assert any("lock_step 找不到 record" in r.message for r in caplog.records)

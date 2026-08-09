@@ -103,6 +103,11 @@ class ActivationRecord:
     report_authorized: bool = False  # 激活人一键授权报告给所属人
     # 消耗升级（ADR-0014）：status=consumed 时指向升级受益的试用码
     consumed_into: Optional[str] = None
+    # 消耗升级反向溯源（仅试用码记录）：本试用码是被哪个付费码消耗升级而来的
+    upgraded_from_code: Optional[str] = None
+    # 7 天免费续期（ADR-0015）：每个完整码首次过期通知一次、可免费领取一次
+    free_renewal_offered_at: Optional[str] = None  # 已发过期通知时间（幂等标记）
+    free_renewal_claimed_at: Optional[str] = None  # 已领取免费续期时间
 
 
 @dataclass
@@ -273,6 +278,10 @@ class SimpleActivationManager:
                 data.setdefault("report_authorized", False)
                 # 消耗升级（ADR-0014）
                 data.setdefault("consumed_into", None)
+                data.setdefault("upgraded_from_code", None)
+                # 7 天免费续期（ADR-0015）
+                data.setdefault("free_renewal_offered_at", None)
+                data.setdefault("free_renewal_claimed_at", None)
                 records[code] = ActivationRecord(**data)
             except (TypeError, ValueError):
                 continue
@@ -647,6 +656,10 @@ class SimpleActivationManager:
         rec.consumed_into = trial_norm
         rec.last_activity_at = datetime.now(timezone.utc).isoformat()
         records[norm] = rec
+        # 反向溯源：在试用码记录上记录来源付费码（已有值不覆盖，保持幂等）
+        if not getattr(trial_rec, "upgraded_from_code", None):
+            trial_rec.upgraded_from_code = norm
+            records[trial_norm] = trial_rec
         self._save_all(records)
 
         from app.utils.activation_audit import append_activation_audit
@@ -716,6 +729,111 @@ class SimpleActivationManager:
             },
         )
         logger.info("激活码延期激活: code=%s days=%d new_expires=%s", norm, days, rec.expires_at)
+        return rec
+
+    def mark_expired_and_list_pending_free_renewal(self) -> List[ActivationRecord]:
+        """扫描懒过期 + 返回待发「7 天免费续期」通知的记录（ADR-0015）
+
+        1) 把所有 status=active 且 expires_at 已过的记录就地置 expired（与
+           get_activation 的懒过期判定一致），落盘；
+        2) 返回当前 expired 且 code_type=full 且 package_type∈{quarterly,annual}
+           且非沙箱且 free_renewal_offered_at 为空的记录——首次过期的新码与存量
+           老码都会被覆盖（存量补发口径）。
+        """
+        records = self._load_all()
+        now = datetime.now(timezone.utc)
+        changed = False
+        for rec in records.values():
+            if not rec.expires_at or rec.status != ActivationStatus.ACTIVE.value:
+                continue
+            try:
+                expires_dt = self._parse_dt(rec.expires_at)
+            except (ValueError, TypeError):
+                continue
+            if now > expires_dt:
+                rec.status = ActivationStatus.EXPIRED.value
+                changed = True
+        if changed:
+            self._save_all(records)
+
+        pending: List[ActivationRecord] = []
+        for rec in records.values():
+            if rec.status != ActivationStatus.EXPIRED.value:
+                continue
+            if (getattr(rec, "code_type", "full") or "full") != "full":
+                continue
+            pkg = (getattr(rec, "package_type", None) or "").strip().lower()
+            if pkg not in {"quarterly", "annual"}:
+                continue
+            if getattr(rec, "is_sandbox", False):
+                continue
+            if getattr(rec, "free_renewal_offered_at", None):
+                continue
+            pending.append(rec)
+        return pending
+
+    def mark_free_renewal_offered(self, code: str) -> None:
+        """标记「过期免费续期通知已发」（幂等标记，ADR-0015）"""
+        records = self._load_all()
+        norm = (code or "").strip().upper()
+        rec = records.get(norm)
+        if not rec:
+            return
+        rec.free_renewal_offered_at = datetime.now(timezone.utc).isoformat()
+        records[norm] = rec
+        self._save_all(records)
+
+    def claim_free_renewal(
+        self,
+        code: str,
+        *,
+        user_id: str,
+        actor: Optional[dict] = None,
+    ) -> ActivationRecord:
+        """领取「7 天免费续期」（ADR-0015）：每码一次，仅 owner 可领，领取后 +7 天
+
+        Raises:
+            ValueError: 码不存在/非完整码/未过期/未发通知/已领取/非 owner
+        """
+        norm = (code or "").strip().upper()
+        records = self._load_all()
+        rec = records.get(norm)
+        if not rec:
+            raise ValueError("激活码不存在")
+        if (getattr(rec, "code_type", "full") or "full") != "full":
+            raise ValueError("仅完整码可领取免费续期")
+        if user_id != rec.owner_user_id:
+            raise ValueError("仅该激活码的激活人可领取免费续期")
+        if not getattr(rec, "free_renewal_offered_at", None):
+            raise ValueError("该激活码暂无免费续期可领")
+        if getattr(rec, "free_renewal_claimed_at", None):
+            raise ValueError("该激活码的免费续期已领取过")
+        # extend_validity 会重新加载并落盘，这里先释放 records 引用
+        del records
+
+        from app.config.settings import settings as _settings
+
+        rec = self.extend_validity(norm, _settings.FREE_RENEWAL_DAYS, actor=actor)
+
+        records = self._load_all()
+        rec = records[norm]
+        rec.free_renewal_claimed_at = datetime.now(timezone.utc).isoformat()
+        records[norm] = rec
+        self._save_all(records)
+
+        from app.utils.activation_audit import (
+            EVENT_FREE_RENEWAL_CLAIMED,
+            append_activation_audit,
+        )
+
+        append_activation_audit(
+            EVENT_FREE_RENEWAL_CLAIMED,
+            norm,
+            actor_user_id=(actor or {}).get("user_id"),
+            actor_email=(actor or {}).get("email"),
+            detail={"new_expires_at": rec.expires_at},
+        )
+        logger.info("激活码领取 7 天免费续期: code=%s new_expires=%s", norm, rec.expires_at)
         return rec
 
     def maybe_start_validity(self, code: str) -> None:

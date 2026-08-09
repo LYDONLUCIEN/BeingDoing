@@ -52,6 +52,20 @@ export interface PurchasedCodeItem {
   report_authorized: boolean;
   /** 报告审核状态：not_started / pending_review / approved；无报告或旧数据为 null */
   report_status: string | null;
+  // ── 消耗去向展示（ADR-0014）──
+  /** 交付来源订单 ID；无来源（存量/赠品）为 null */
+  source_order_id?: string | null;
+  /** 消耗升级受益的试用码；未消耗为 null */
+  consumed_into?: string | null;
+  /** 本码被哪个付费码消耗升级而来；一般为 null */
+  upgraded_from_code?: string | null;
+  /** 订单联查（无订单为 null）：订单号 / 下单时间 / 商品名 / 金额（分） */
+  order_no?: string | null;
+  order_created_at?: string | null;
+  product_name?: string | null;
+  amount_paid?: number | null;
+  amount_original?: number | null;
+  amount_discount?: number | null;
 }
 
 export interface ReportAuthorizeState {

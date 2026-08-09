@@ -848,8 +848,32 @@ def _trial_error_detail(payload: dict) -> str:
     return json.dumps(payload, ensure_ascii=False)
 
 
+def _assert_email_verified_for_explore(rec, current_user: Optional[dict]) -> None:
+    """
+    邮箱验证门控：绑定了邮箱但未验证的用户禁止一切探索写操作（403 email_not_verified）。
+
+    背景：注册即送试用码（自动绑定）后，未验证用户可绕过激活页的验证提示直接开聊，
+    这里在写端点统一封堵；只读 GET 不拦。
+    豁免：无邮箱用户（手机号注册）、admin 调试工作区（_can_bypass_flow_limits）。
+    """
+    if not current_user:
+        return
+    if not (current_user.get("email") or "").strip():
+        return  # 手机号注册，无邮箱可验证
+    if current_user.get("email_verified", True):
+        return
+    if rec is not None and _can_bypass_flow_limits(current_user, rec):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=_trial_error_detail({"type": "email_not_verified"}),
+    )
+
+
 def _assert_trial_phase_allowed(rec, current_user: Optional[dict], phase_step: str) -> None:
     """试用码阶段锁：非 values 写请求一律 402。full 码与豁免场景直接放行。"""
+    # 邮箱验证门控挂在所有探索写端点的统一入口（本函数被全部写端点直接或间接调用）
+    _assert_email_verified_for_explore(rec, current_user)
     if not _is_trial_code(rec):
         return
     if _can_bypass_flow_limits(current_user, rec):
@@ -1571,6 +1595,16 @@ def _assert_step_editable(
         )
 
 
+def _survey_data_with_nickname_default(request, current_user: Optional[dict]) -> dict:
+    """问卷数据落库前补默认昵称：未填写时回填注册时的 username，保证两处昵称同源。"""
+    survey_data = dict(getattr(request, "survey_data", None) or {})
+    if not str(survey_data.get("nickname") or "").strip():
+        username = ((current_user or {}).get("username") or "").strip()
+        if username:
+            survey_data["nickname"] = username
+    return survey_data
+
+
 @router.get("/user-survey-status")
 def get_user_survey_status(
     current_user: dict = Depends(get_current_user),
@@ -1608,7 +1642,7 @@ async def save_user_survey(
     user_id = (current_user or {}).get("user_id") or (current_user or {}).get("email") or ""
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="请先登录")
-    await save_basic_info_by_user(user_id, request.survey_data or {})
+    await save_basic_info_by_user(user_id, _survey_data_with_nickname_default(request, current_user))
     return SimpleChatResponse(code=200, message="success", data={})
 
 
@@ -1692,10 +1726,12 @@ async def save_survey(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="激活码已过期",
         )
+    # 邮箱未验证不允许提交问卷（探索流程的第一步写操作）
+    _assert_email_verified_for_explore(rec, current_user)
     user_id = (current_user or {}).get("user_id") or (current_user or {}).get("email") or ""
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="请先登录")
-    await save_basic_info_by_user(user_id, request.survey_data or {})
+    await save_basic_info_by_user(user_id, _survey_data_with_nickname_default(request, current_user))
     return SimpleChatResponse(code=200, message="success", data={})
 
 

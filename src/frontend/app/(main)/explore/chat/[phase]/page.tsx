@@ -173,6 +173,19 @@ function parseTrialBlockKind(detail: unknown): TrialBlockKind | null {
   return null;
 }
 
+/** 解析 403 邮箱未验证拦截（detail 兼容 JSON 字符串 / 已解析对象） */
+function isEmailNotVerifiedBlock(detail: unknown): boolean {
+  let obj: unknown = detail;
+  if (typeof detail === 'string') {
+    try {
+      obj = JSON.parse(detail);
+    } catch {
+      return false;
+    }
+  }
+  return (obj as { type?: unknown } | null)?.type === 'email_not_verified';
+}
+
 /** 待确认结论仅存 metadata、无 conclusion_card 消息行时，从历史 meta 补一条卡，避免必须刷新才看见 */
 function mergePendingDraftIntoMessagesFromMeta(
   msgs: ThreadMessage[],
@@ -424,6 +437,13 @@ export default function ChatPhasePage() {
   const flushRuminationStep3TableRef = useRef<(() => Promise<void>) | null>(null);
   const { user, setTokens } = useAuthStore();
   const userChatAvatarInitials = (user?.username || user?.email || 'U').slice(0, 2).toUpperCase();
+
+  // 邮箱未验证：禁止进入探索对话（后端写端点统一 403 email_not_verified），回问卷页做验证引导
+  useEffect(() => {
+    if (user?.email && user.email_verified === false) {
+      router.replace('/explore/survey');
+    }
+  }, [user, router]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatBodyRef = useRef<HTMLDivElement>(null);
@@ -1898,6 +1918,11 @@ export default function ChatPhasePage() {
             return;
           }
         }
+        // 邮箱未验证拦截（403）：回问卷页做验证引导
+        if (res.status === 403 && isEmailNotVerifiedBlock(detail)) {
+          router.replace('/explore/survey');
+          return;
+        }
         const detailMsg = typeof detail === 'string' ? detail : '';
         throw new Error(detailMsg || `请求失败（${res.status}）`);
       }
@@ -1921,6 +1946,8 @@ export default function ChatPhasePage() {
               const blockKind = parseTrialBlockKind(payload);
               if (blockKind) {
                 setTrialBlock(blockKind);
+              } else if (isEmailNotVerifiedBlock(payload)) {
+                router.replace('/explore/survey');
               } else {
                 setChatError(String(payload.error));
               }

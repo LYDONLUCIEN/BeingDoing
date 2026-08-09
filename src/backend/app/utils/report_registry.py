@@ -165,6 +165,15 @@ STEP_ALIASES = {
 class ReportRegistry:
     def __init__(self, base_dir: Optional[str] = None):
         self.simple_base_dir = Path(base_dir) if base_dir else get_simple_base_dir()
+        # 自愈防御（2026-08-09）：调用方误传已含 /reports 的路径时回退一层，
+        # 避免拼出 reports/reports 导致读写静默落空（v4 终选锁定曾因此失效）。
+        if self.simple_base_dir.name == "reports":
+            logger.warning(
+                "ReportRegistry base_dir 疑似误传 reports 目录：%s，已自动回退到 %s",
+                self.simple_base_dir,
+                self.simple_base_dir.parent,
+            )
+            self.simple_base_dir = self.simple_base_dir.parent
         self.simple_base_dir.mkdir(parents=True, exist_ok=True)
         self.reports_root = self.simple_base_dir / "reports"
         self.reports_root.mkdir(parents=True, exist_ok=True)
@@ -633,6 +642,11 @@ class ReportRegistry:
         sid = self.normalize_step_id(step_id)
         record = self._load_record(report_id)
         if not record:
+            logger.error(
+                "lock_step 找不到 record（report_id=%s, step=%s），锁定未生效",
+                report_id,
+                sid,
+            )
             return None
         step = record["steps"][sid]
         step["locked"] = True

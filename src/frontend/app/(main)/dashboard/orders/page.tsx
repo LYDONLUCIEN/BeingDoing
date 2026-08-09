@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Check, Copy, Receipt } from 'lucide-react';
-import { getApiErrorMessage } from '@/lib/api/client';
+import { getApiErrorMessage, isRequestCanceled } from '@/lib/api/client';
 import {
   cancelOrder,
   fenToYuan,
@@ -55,6 +55,8 @@ export default function DashboardOrdersPage() {
         setPage(res.page || p);
         setError(null);
       } catch (e: unknown) {
+        // 页面刷新/导航导致的请求取消不是错误，静默忽略
+        if (isRequestCanceled(e)) return;
         setError(getApiErrorMessage(e, t('dashboard.ordersPage.loadFailed')));
       } finally {
         setLoading(false);
@@ -228,30 +230,74 @@ export default function DashboardOrdersPage() {
                 </div>
               )}
 
-              {order.status === 'granted' && order.delivered_code && (
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <span className="text-xs text-bd-muted">{t('payment.success.codeLabel')}</span>
-                  <button
-                    type="button"
-                    onClick={() => void copyText(order.delivered_code!)}
-                    title={t('payment.copy')}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-bd-border bg-bd-overlay px-2 py-1 font-mono text-sm text-bd-fg hover:bg-bd-overlay-md"
-                  >
-                    {order.delivered_code}
-                    {copiedText === order.delivered_code ? (
-                      <Check className="w-3.5 h-3.5 text-emerald-500" />
-                    ) : (
-                      <Copy className="w-3.5 h-3.5 opacity-50" />
-                    )}
-                  </button>
-                  <Link
-                    href={`/explore/activate?code=${encodeURIComponent(order.delivered_code)}`}
-                    className="px-4 py-2 rounded-lg text-sm font-medium bg-bd-ui-accent text-bd-ui-accent-fg hover:opacity-90"
-                  >
-                    {t('dashboard.ordersPage.goActivate')}
-                  </Link>
-                </div>
-              )}
+              {order.status === 'granted' &&
+                order.delivered_code &&
+                (() => {
+                  // 套餐订单可交付多枚码：全部平级展示，不指定「哪枚自用/哪枚转赠」
+                  // （码是等价的，用户升级/赠送时不一定会用哪一枚）
+                  const metaCodes = Array.isArray(order.meta?.codes)
+                    ? (order.meta!.codes as string[])
+                    : [];
+                  const giftCodes = Array.isArray(order.meta?.gift_codes)
+                    ? (order.meta!.gift_codes as string[])
+                    : [];
+                  const allCodes = [order.delivered_code!, ...metaCodes, ...giftCodes]
+                    .filter((c): c is string => !!c)
+                    .filter((c, i, arr) => arr.indexOf(c) === i);
+                  const renderCopyBtn = (code: string) => (
+                    <button
+                      key={code}
+                      type="button"
+                      onClick={() => void copyText(code)}
+                      title={t('payment.copy')}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-bd-border bg-bd-overlay px-2 py-1 font-mono text-sm text-bd-fg hover:bg-bd-overlay-md"
+                    >
+                      {code}
+                      {copiedText === code ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-500" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5 opacity-50" />
+                      )}
+                    </button>
+                  );
+                  if (allCodes.length <= 1) {
+                    return (
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <span className="text-xs text-bd-muted">
+                          {t('payment.success.codeLabel')}
+                        </span>
+                        {renderCopyBtn(order.delivered_code!)}
+                        <Link
+                          href={`/explore/activate?code=${encodeURIComponent(order.delivered_code!)}`}
+                          className="px-4 py-2 rounded-lg text-sm font-medium bg-bd-ui-accent text-bd-ui-accent-fg hover:opacity-90"
+                        >
+                          {t('dashboard.ordersPage.goActivate')}
+                        </Link>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="space-y-2 pt-1">
+                      <p className="text-xs text-bd-muted">
+                        {t('dashboard.ordersPage.deliveredCodesLabel', {
+                          count: String(allCodes.length),
+                        })}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {allCodes.map(renderCopyBtn)}
+                      </div>
+                      <p className="text-[11px] text-bd-subtle">
+                        {t('dashboard.ordersPage.codesFungibleHint')}
+                        <Link
+                          href="/dashboard/codes"
+                          className="ml-1 text-bd-ui-accent hover:underline"
+                        >
+                          {t('dashboard.ordersPage.viewCodesLink')}
+                        </Link>
+                      </p>
+                    </div>
+                  );
+                })()}
 
               {/* 咨询订单：预约问卷入口 */}
               {order.status === 'granted' &&

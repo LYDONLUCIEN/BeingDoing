@@ -41,6 +41,8 @@ function PaymentResultContent() {
   /** 消耗升级弹窗（ADR-0014）：套餐交付且有已开聊试用码时弹出 */
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [trialUpgraded, setTrialUpgraded] = useState(false);
+  /** 弹窗消耗升级实际用掉的付费码（从展示列表排除，避免把已消耗码当可转赠码展示） */
+  const [consumedCode, setConsumedCode] = useState<string | null>(null);
   const upgradeCheckedRef = useRef(false);
 
   const deadlineRef = useRef<number>(0);
@@ -139,9 +141,14 @@ function PaymentResultContent() {
     router.push(bookingId ? `/dashboard/consultation/${bookingId}` : '/dashboard/orders');
   };
 
-  const giftCodes = order?.meta?.codes
-    ? order.meta.codes.filter((c) => c !== order?.delivered_code)
-    : (order?.meta?.gift_codes ?? []);
+  // 套餐交付的全部码（等价、不区分用途）；弹窗升级后排除已消耗的那枚
+  const allDeliveredCodes: string[] = order?.meta?.codes?.length
+    ? order.meta.codes
+    : [order?.delivered_code, ...(order?.meta?.gift_codes ?? [])].filter(
+        (c): c is string => !!c,
+      );
+  const availableCodes = allDeliveredCodes.filter((c) => c && c !== consumedCode);
+  const giftCodes = availableCodes.filter((c) => c !== order?.delivered_code);
 
   return (
     <div className="mx-auto max-w-md px-5 py-16">
@@ -205,12 +212,14 @@ function PaymentResultContent() {
                 <p className="text-sm font-medium leading-relaxed text-emerald-600">
                   {t('payment.success.autoUpgradedNote')}
                 </p>
-                {giftCodes.length > 0 && (
+                {availableCodes.length > 0 && (
                   <div className="w-full space-y-2 rounded-xl border border-amber-200/80 bg-amber-50/60 px-4 py-3.5 text-left">
                     <p className="text-xs font-medium text-bd-fg">
-                      {t('payment.success.giftCodesLabel')}
+                      {t('payment.success.codesLabel', {
+                        count: String(availableCodes.length),
+                      })}
                     </p>
-                    {giftCodes.map((code) => (
+                    {availableCodes.map((code) => (
                       <CopyableCode
                         key={code}
                         code={code}
@@ -232,8 +241,41 @@ function PaymentResultContent() {
                   {t('payment.success.continueExplore')}
                 </button>
               </>
+            ) : availableCodes.length > 1 ? (
+              /* 多码套餐：全部码平级展示，不指定「哪枚自用/哪枚转赠」（码是等价的） */
+              <>
+                <div className="w-full space-y-2 rounded-xl border border-amber-200/80 bg-amber-50/60 px-4 py-3.5 text-left">
+                  <p className="text-xs font-medium text-bd-fg">
+                    {t('payment.success.codesLabel', { count: String(availableCodes.length) })}
+                  </p>
+                  {availableCodes.map((code) => (
+                    <CopyableCode
+                      key={code}
+                      code={code}
+                      copiedCode={copiedCode}
+                      onCopy={(c) => void handleCopyCode(c)}
+                      t={t}
+                    />
+                  ))}
+                  <p className="text-[11px] leading-relaxed text-bd-muted">
+                    {t('payment.success.giftNote')}
+                  </p>
+                </div>
+                <p className="text-xs text-bd-subtle">{t('payment.success.emailNote')}</p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    order.delivered_code &&
+                    router.push(`/explore/activate?code=${encodeURIComponent(order.delivered_code)}`)
+                  }
+                  disabled={!order.delivered_code}
+                  className="w-full rounded-xl px-4 py-3.5 text-base font-semibold bg-bd-ui-accent text-bd-ui-accent-fg transition hover:opacity-90 disabled:opacity-40"
+                >
+                  {t('payment.success.activate')}
+                </button>
+              </>
             ) : (
-              /* 套餐购买成功：交付码（未绑定）+ 年度单其余码 */
+              /* 单码订单（季度套餐/旧 SKU）：交付码（未绑定） */
               <>
                 <div className="space-y-1">
                   <p className="text-xs text-bd-muted">{t('payment.success.codeLabel')}</p>
@@ -326,9 +368,10 @@ function PaymentResultContent() {
       <UpgradeTrialModal
         open={upgradeOpen}
         onClose={() => setUpgradeOpen(false)}
-        onUpgraded={() => {
+        onUpgraded={(_trialCode, consumed) => {
           setUpgradeOpen(false);
           setTrialUpgraded(true);
+          setConsumedCode(consumed ?? null);
         }}
         preferredCodes={order?.meta?.codes}
         showDontRemind

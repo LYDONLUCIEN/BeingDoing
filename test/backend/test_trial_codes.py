@@ -525,3 +525,214 @@ def test_consume_for_trial_upgrade_rejects_trial_as_source(patched_roots, manage
     another_trial = manager.create_activation(mode="combined", code_type="trial", vip_level=1)
     with _pt.raises(ValueError, match="仅完整码"):
         manager.consume_for_trial_upgrade(another_trial.code, trial.code, actor=USER)
+
+
+# ──────────────────────────────────────────────────────────────────
+# my-codes / my-purchased-codes 溯源字段与订单联查（消耗去向展示改造，ADR-0014）
+# ──────────────────────────────────────────────────────────────────
+
+from datetime import datetime, timezone  # noqa: E402
+
+import app.models.database as db_module  # noqa: E402
+from app.models.payment import PaymentOrder  # noqa: E402
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
+
+
+@pytest.fixture
+async def order_session_local(monkeypatch):
+    """内存 SQLite（仅 PaymentOrder 表），替换 simple_auth 内联引用的 AsyncSessionLocal。"""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    async with engine.begin() as conn:
+        await conn.run_sync(PaymentOrder.__table__.create)
+    session_local = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(db_module, "AsyncSessionLocal", session_local)
+    yield session_local
+    await engine.dispose()
+
+
+async def test_my_codes_returns_upgraded_from_code(patched_roots, manager):
+    """consume 升级后，my-codes 返回的试用码带正确 upgraded_from_code；未升级码为 None"""
+    trial = create_trial_activation_for_user(USER, manager=manager)
+    full = manager.create_activation(mode="combined", code_type="full", vip_level=2)
+    manager.consume_for_trial_upgrade(full.code, trial.code, actor=USER)
+    plain = manager.create_activation(mode="combined", code_type="full")
+    manager.claim_owner(plain.code, USER)
+
+    out = await simple_auth_module.list_my_codes(current_user=dict(USER))
+    items = {i["code"]: i for i in out.data["items"]}
+    assert items[trial.code]["upgraded_from_code"] == full.code
+    assert items[plain.code]["upgraded_from_code"] is None
+    assert full.code not in items  # 被消耗码无 owner，不出现在 my-codes
+
+
+async def test_my_purchased_codes_new_fields_and_order_lookup(
+    patched_roots, manager, order_session_local
+):
+    """my-purchased-codes：source_order_id / consumed_into 透传 + 订单金额联查"""
+    trial = create_trial_activation_for_user(USER, manager=manager)
+    # 已消耗码：带订单来源（季度套餐）
+    consumed = manager.create_activation(
+        mode="combined",
+        code_type="full",
+        vip_level=2,
+        package_type="quarterly",
+        no_expiry=True,
+    )
+    manager.set_purchase_source(
+        consumed.code, source_order_id="order-1", purchaser_user_id=USER["user_id"]
+    )
+    manager.consume_for_trial_upgrade(consumed.code, trial.code, actor=USER)
+    # 未消耗码：无订单来源（存量"其他来源"兜底分组）
+    gift = manager.create_activation(
+        mode="combined", code_type="full", vip_level=2, package_type="annual", no_expiry=True
+    )
+    manager.set_purchase_source(gift.code, purchaser_user_id=USER["user_id"])
+
+    async with order_session_local() as db:
+        db.add(
+            PaymentOrder(
+                id="order-1",
+                order_no="Q20260801120000ABCD",
+                user_id=USER["user_id"],
+                product_type="quarterly_package",
+                quantity=1,
+                amount_original=6900,
+                amount_discount=500,
+                amount_paid=6400,
+                channel="alipay",
+                status="granted",
+                created_at=datetime(2026, 8, 1, 12, 0, 0, tzinfo=timezone.utc),
+            )
+        )
+        await db.commit()
+
+    out = await simple_auth_module.list_my_purchased_codes(current_user=dict(USER))
+    items = {i["code"]: i for i in out.data["items"]}
+
+    consumed_item = items[consumed.code]
+    assert consumed_item["source_order_id"] == "order-1"
+    assert consumed_item["consumed_into"] == trial.code
+    assert consumed_item["upgraded_from_code"] is None  # 来源码本身无反向溯源
+    assert consumed_item["order_no"] == "Q20260801120000ABCD"
+    # sqlite DateTime 读回为 naive datetime，只断言到分钟
+    assert consumed_item["order_created_at"].startswith("2026-08-01T12:00")
+    assert consumed_item["product_name"] == "季度套餐"
+    assert consumed_item["amount_original"] == 6900
+    assert consumed_item["amount_discount"] == 500
+    assert consumed_item["amount_paid"] == 6400
+
+    gift_item = items[gift.code]
+    assert gift_item["source_order_id"] is None
+    assert gift_item["consumed_into"] is None
+    assert gift_item["order_no"] is None
+    assert gift_item["order_created_at"] is None
+    assert gift_item["product_name"] is None
+    assert gift_item["amount_paid"] is None
+    assert gift_item["amount_original"] is None
+    assert gift_item["amount_discount"] is None
+    # 既有字段保留
+    assert gift_item["activated"] is False
+    assert "report_authorized" in gift_item
+
+
+# ──────────────────────────────────────────────────────────────────
+# 11. 邮箱验证门控（403 email_not_verified）
+# ──────────────────────────────────────────────────────────────────
+
+UNVERIFIED_USER = {
+    "user_id": "u-unverified-1",
+    "email": "unv@example.com",
+    "email_verified": False,
+}
+VERIFIED_USER = {
+    "user_id": "u-verified-1",
+    "email": "v@example.com",
+    "email_verified": True,
+}
+PHONE_ONLY_USER = {"user_id": "u-phone-1", "phone": "13800000000"}  # 无邮箱
+
+
+async def test_unverified_email_blocked_on_stream(patched_roots, manager, monkeypatch):
+    """邮箱未验证：试用码 values 阶段发消息也被 403 拦截（优先于试用门控）。"""
+    rec, registry, rid = _make_bound_code(manager, UNVERIFIED_USER, n_values_msgs=1)
+    _patch_manager_lookup(monkeypatch, manager)
+    req = scr.SimpleChatStreamRequest(
+        activation_code=rec.code, message="你好", phase="values", thread_id="t_1"
+    )
+    with pytest.raises(HTTPException) as exc:
+        await scr.simple_chat_stream(req, dict(UNVERIFIED_USER))
+    assert exc.value.status_code == 403
+    assert json.loads(exc.value.detail) == {"type": "email_not_verified"}
+
+
+async def test_unverified_email_blocked_on_init(patched_roots, manager, monkeypatch):
+    rec, registry, rid = _make_bound_code(manager, UNVERIFIED_USER, n_values_msgs=1)
+    _patch_manager_lookup(monkeypatch, manager)
+    req = scr.SimpleInitRequest(activation_code=rec.code, phase="values", thread_id="t_9")
+    with pytest.raises(HTTPException) as exc:
+        await scr.simple_init(req, dict(UNVERIFIED_USER))
+    assert exc.value.status_code == 403
+    assert json.loads(exc.value.detail) == {"type": "email_not_verified"}
+
+
+async def test_unverified_email_blocked_on_full_code(patched_roots, manager, monkeypatch):
+    """门控与码类型无关：full 码用户邮箱未验证同样拦截。"""
+    rec, registry, rid = _make_bound_code(manager, UNVERIFIED_USER, code_type="full", n_values_msgs=1)
+    _patch_manager_lookup(monkeypatch, manager)
+    req = scr.SimpleChatStreamRequest(
+        activation_code=rec.code, message="你好", phase="values", thread_id="t_1"
+    )
+    with pytest.raises(HTTPException) as exc:
+        await scr.simple_chat_stream(req, dict(UNVERIFIED_USER))
+    assert exc.value.status_code == 403
+    assert json.loads(exc.value.detail) == {"type": "email_not_verified"}
+
+
+async def test_verified_email_passes_gate(patched_roots, manager, monkeypatch):
+    rec, registry, rid = _make_bound_code(manager, VERIFIED_USER, n_values_msgs=1)
+    _patch_manager_lookup(monkeypatch, manager)
+    req = scr.SimpleChatStreamRequest(
+        activation_code=rec.code, message="你好", phase="values", thread_id="t_1"
+    )
+    resp = await scr.simple_chat_stream(req, dict(VERIFIED_USER))
+    assert resp.status_code == 200
+
+
+async def test_phone_only_user_passes_gate(patched_roots, manager, monkeypatch):
+    """手机号注册（无邮箱）用户不受邮箱门控影响。"""
+    rec, registry, rid = _make_bound_code(manager, PHONE_ONLY_USER, n_values_msgs=1)
+    _patch_manager_lookup(monkeypatch, manager)
+    req = scr.SimpleChatStreamRequest(
+        activation_code=rec.code, message="你好", phase="values", thread_id="t_1"
+    )
+    resp = await scr.simple_chat_stream(req, dict(PHONE_ONLY_USER))
+    assert resp.status_code == 200
+
+
+# ──────────────────────────────────────────────────────────────────
+# 12. 问卷昵称默认回填注册 username
+# ──────────────────────────────────────────────────────────────────
+
+
+class _FakeSurveyRequest:
+    def __init__(self, survey_data):
+        self.survey_data = survey_data
+
+
+def test_survey_nickname_default_from_username():
+    req = _FakeSurveyRequest({"age": "25"})
+    out = scr._survey_data_with_nickname_default(req, {"username": " 小明 "})
+    assert out["nickname"] == "小明"
+    assert out["age"] == "25"
+
+
+def test_survey_nickname_explicit_wins():
+    req = _FakeSurveyRequest({"nickname": "自定义昵称"})
+    out = scr._survey_data_with_nickname_default(req, {"username": "小明"})
+    assert out["nickname"] == "自定义昵称"
+
+
+def test_survey_nickname_no_username_no_fill():
+    req = _FakeSurveyRequest({})
+    out = scr._survey_data_with_nickname_default(req, {"user_id": "u1"})
+    assert "nickname" not in out

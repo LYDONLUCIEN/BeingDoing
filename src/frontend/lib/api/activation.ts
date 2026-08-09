@@ -28,6 +28,10 @@ export interface MyCodeItem {
   has_report?: boolean;
   /** 报告审核状态：not_started / pending_review / approved；无报告或旧数据为 null */
   report_status?: string | null;
+  /** 消耗升级溯源（ADR-0014）：本试用码被哪个付费码消耗升级而来；无则 null */
+  upgraded_from_code?: string | null;
+  /** 7 天免费续期（ADR-0015）：已过期 + 已发通知 + 未领取 => true */
+  free_renewal_available?: boolean;
 }
 
 // ─── 我的激活码 ──────────────────────────────────────────
@@ -74,6 +78,19 @@ export async function getUpgradeContext(): Promise<UpgradeContext> {
 export async function applyToTrial(code: string): Promise<ApplyToTrialResult> {
   const res = await apiClient.post('/simple-auth/codes/apply-to-trial', { code });
   return (res.data ?? {}) as ApplyToTrialResult;
+}
+
+// ─── 7 天免费续期（ADR-0015）──────────────────────────────
+
+export interface FreeRenewalClaimResult {
+  code: string;
+  new_expires_at?: string | null;
+}
+
+/** 领取「7 天免费续期」：每个完整码首次过期可领一次，仅激活人可领 */
+export async function claimFreeRenewal(code: string): Promise<FreeRenewalClaimResult> {
+  const res = await apiClient.post('/simple-auth/codes/free-renewal/claim', { code });
+  return (res.data ?? {}) as FreeRenewalClaimResult;
 }
 
 // ─── 用户偏好 ────────────────────────────────────────────

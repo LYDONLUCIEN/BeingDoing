@@ -514,6 +514,8 @@ const COMPARE_ROWS = [
   { label: 'r3', cells: ['r3Free', 'r3Quarterly', 'r3Annual', 'r3Consult'] },
   { label: 'r4', cells: ['r4Free', 'r4Quarterly', 'r4Annual', 'r4Consult'] },
   { label: 'r5', cells: ['r5Free', 'r5Quarterly', 'r5Annual', 'r5Consult'] },
+  { label: 'r6', cells: ['r6Free', 'r6Quarterly', 'r6Annual', 'r6Consult'] },
+  { label: 'r7', cells: ['r7Free', 'r7Quarterly', 'r7Annual', 'r7Consult'] },
 ] as const;
 const COMPARE_NOTES = ['note1', 'note2', 'note3'] as const;
 

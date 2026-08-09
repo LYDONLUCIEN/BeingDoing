@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import SurveyFormBd from '@/components/survey/SurveyFormBd';
 import { surveyApi } from '@/lib/api/survey';
-import { getApiErrorMessage } from '@/lib/api/client';
+import { apiClient, getApiErrorMessage } from '@/lib/api/client';
 import { loadSession, saveSession, getLastActivationCode, setUserSurveyCompleted, getUserPrivacyAck, setUserPrivacyAck } from '@/lib/explore/session';
 import { applyExploreResumeToSession } from '@/lib/explore/session';
 import { fetchExploreResumeFromJourneys } from '@/lib/explore/journeyResume';
@@ -24,6 +24,25 @@ export default function SurveyPage() {
   const { user } = useAuthStore();
   const { t } = useLocale();
   const [privacyOpen, setPrivacyOpen] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendMsg, setResendMsg] = useState('');
+
+  // 邮箱未验证：禁止进入探索（问卷是探索流程的第一个写操作，在此拦截并引导验证）
+  const emailUnverified = !!(user?.email && user.email_verified === false);
+
+  const handleResendVerify = async () => {
+    if (!user?.email || resending) return;
+    setResending(true);
+    setResendMsg('');
+    try {
+      await apiClient.post('/auth/email-verify/request', { email: user.email });
+      setResendMsg('验证邮件已发送，请查收（如未收到请检查垃圾邮件）');
+    } catch (e: unknown) {
+      setResendMsg(getApiErrorMessage(e, '发送失败，请稍后重试'));
+    } finally {
+      setResending(false);
+    }
+  };
 
   useEffect(() => {
     const code = getLastActivationCode();
@@ -52,12 +71,12 @@ export default function SurveyPage() {
 
   // 隐私声明弹窗：等激活码与预加载完成后，若用户未勾选"不再提醒"则弹出
   useEffect(() => {
-    if (activationCode && preloadDone) {
+    if (activationCode && preloadDone && !emailUnverified) {
       if (!getUserPrivacyAck(user?.user_id)) {
         setPrivacyOpen(true);
       }
     }
-  }, [activationCode, preloadDone, user?.user_id]);
+  }, [activationCode, preloadDone, user?.user_id, emailUnverified]);
 
   const handlePrivacyContinue = (dontRemind?: boolean) => {
     if (dontRemind) setUserPrivacyAck(user?.user_id ?? '', true);
@@ -129,6 +148,12 @@ export default function SurveyPage() {
 
   if (!activationCode || !preloadDone) return null;
 
+  // 问卷昵称默认与注册昵称（users.username）同源：已保存的问卷昵称优先，否则回填注册昵称
+  const mergedInitialData: SurveyData = { ...initialData };
+  if (!(typeof mergedInitialData.nickname === 'string' && mergedInitialData.nickname.trim()) && user?.username?.trim()) {
+    mergedInitialData.nickname = user.username.trim();
+  }
+
   return (
     <div className="min-h-screen bg-bd-gradient text-bd-fg">
       <div className="max-w-2xl mx-auto px-4 pt-24 pb-20">
@@ -170,9 +195,29 @@ export default function SurveyPage() {
             </div>
           )}
 
+          {emailUnverified ? (
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-6 sm:p-8 space-y-4">
+              <h2 className="text-lg font-semibold text-bd-fg">请先验证邮箱</h2>
+              <p className="text-sm text-bd-muted leading-relaxed">
+                开始探索前需要先验证邮箱（{user?.email}）。点击下方按钮发送验证邮件（链接 24 小时有效），
+                如未收到请留意垃圾邮件文件夹。
+              </p>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleResendVerify}
+                  disabled={resending}
+                  className="rounded-xl px-5 py-2.5 text-sm font-medium text-white transition-all bd-btn-black disabled:opacity-50"
+                >
+                  {resending ? '发送中…' : '发送验证邮件'}
+                </button>
+              </div>
+              {resendMsg && <p className="text-xs text-bd-muted">{resendMsg}</p>}
+            </div>
+          ) : (
           <div className="rounded-2xl border border-bd-border bg-bd-card/80 backdrop-blur-lg p-6 sm:p-8 shadow-[0_4px_24px_rgba(0,0,0,0.06)]">
             <SurveyFormBd
-              initialData={initialData}
+              initialData={mergedInitialData}
               loading={loading}
               saving={loading}
               submitLabel="提交并开始第一步 →"
@@ -182,6 +227,7 @@ export default function SurveyPage() {
               onSkip={handleSkip}
             />
           </div>
+          )}
         </motion.div>
       </div>
     </div>

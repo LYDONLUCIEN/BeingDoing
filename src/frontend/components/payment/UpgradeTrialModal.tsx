@@ -16,8 +16,8 @@ export type UpgradeTrialModalProps = {
   open: boolean;
   /** 关闭（含「暂不升级」）；内部会在勾选时持久化「不再提醒」 */
   onClose: () => void;
-  /** 升级成功回调：参数为升级后的试用码（码字符串不变） */
-  onUpgraded?: (trialCode: string) => void;
+  /** 升级成功回调：参数为升级后的试用码（码字符串不变）与被消耗的付费码 */
+  onUpgraded?: (trialCode: string, consumedCode?: string) => void;
   /** 优先展示的码（如刚交付的订单码），排在列表前 */
   preferredCodes?: string[];
   /** 是否展示「不再提醒」勾选（支付结果页/购买成功场景；拦截点不传） */
@@ -44,6 +44,8 @@ export default function UpgradeTrialModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [upgradedCode, setUpgradedCode] = useState<string | null>(null);
+  /** 本次升级实际消耗的付费码（成功后供父组件从展示列表排除） */
+  const [consumedCode, setConsumedCode] = useState<string | null>(null);
   const [dontRemind, setDontRemind] = useState(false);
 
   useEffect(() => {
@@ -52,6 +54,7 @@ export default function UpgradeTrialModal({
     setSelected(null);
     setError(null);
     setUpgradedCode(null);
+    setConsumedCode(null);
     setDontRemind(false);
     setLoading(true);
     getUpgradeContext()
@@ -86,6 +89,7 @@ export default function UpgradeTrialModal({
     try {
       const res = await applyToTrial(selected);
       setUpgradedCode(res.trial_code);
+      setConsumedCode(selected);
     } catch (e: unknown) {
       setError(getApiErrorMessage(e, t('payment.upgrade.failed')));
     } finally {
@@ -94,7 +98,7 @@ export default function UpgradeTrialModal({
   };
 
   const handleDone = () => {
-    if (upgradedCode) onUpgraded?.(upgradedCode);
+    if (upgradedCode) onUpgraded?.(upgradedCode, consumedCode ?? undefined);
     onClose();
   };
 

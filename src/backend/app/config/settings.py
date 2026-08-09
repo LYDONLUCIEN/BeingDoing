@@ -123,6 +123,10 @@ class Settings(BaseSettings):
     # 扫描 due_at 已过且未完结的反馈，站内信提醒所有 super_admin（当天幂等）
     FEEDBACK_OVERDUE_SCAN_CRON: str = "0 9 * * *"  # 默认每日 09:00
 
+    # 激活码过期扫描 cron（ADR-0015，本地时间，5 字段）
+    # 扫描已过期完整码，给激活人发「免费领取 7 天续期」邮件+站内信（每码一次，幂等）
+    ACTIVATION_EXPIRY_SCAN_CRON: str = "0 10 * * *"  # 默认每日 10:00
+
     # ========== 支付模块（计划见 tasks/payment-module-plan.md）==========
     # 旧商品：全程激活码（单一 SKU，已下架；配置保留供历史订单展示）
     ACTIVATION_CODE_PRICE: int = 9900  # 99 元
@@ -130,9 +134,12 @@ class Settings(BaseSettings):
     # 套餐商品化（P-B，ADR-0008，金额单位：分；2026-07-28 起对外口径：季度套餐/年度套餐）
     QUARTERLY_PRICE: int = 6900  # 季度套餐 69 元
     ANNUAL_PRICE: int = 12800  # 年度套餐 128 元（2026-07-28 由 99 元调整）
-    # 延期激活（2026-07-28 起）：任意完整码统一 20 元 / +90 天，不分套餐
-    RENEWAL_PRICE: int = 2000  # 延期 20 元
-    RENEWAL_DAYS: int = 90  # 延期时长（天）
+    # 延期激活（ADR-0015，2026-08-08 起）：任意完整码统一 9.9 元 / +7 天，不分套餐
+    # （旧口径 20 元 / 90 天已下线，仅历史订单展示用）
+    RENEWAL_PRICE: int = 990  # 延期 9.9 元
+    RENEWAL_DAYS: int = 7  # 延期时长（天）
+    # 7 天免费续期（ADR-0015）：每个完整码首次过期可免费领取一次
+    FREE_RENEWAL_DAYS: int = 7
     # 旧分档延期配置（已弃用，仅保留兼容历史引用，勿再用于定价）
     RENEWAL_QUARTERLY_PRICE: int = 2300
     RENEWAL_ANNUAL_PRICE: int = 3300

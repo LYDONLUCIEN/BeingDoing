@@ -1,15 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Check, Copy, Ticket } from 'lucide-react';
-import { getApiErrorMessage } from '@/lib/api/client';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Check, Copy, Gift, Ticket } from 'lucide-react';
+import { getApiErrorMessage, isRequestCanceled } from '@/lib/api/client';
 import { listMyCodes, type CodeType, type MyCodeItem } from '@/lib/api/activation';
 import { setLastActivationCode } from '@/lib/explore/session';
 import { fetchMyPurchasedCodes, type PurchasedCodeItem } from '@/lib/api/teamAnalysis';
 import { formatLocalDateTime, toDate } from '@/lib/utils/formatTime';
 import PurchaseModal from '@/components/payment/PurchaseModal';
 import UpgradeTrialModal from '@/components/payment/UpgradeTrialModal';
+import FreeRenewalClaimModal from '@/components/payment/FreeRenewalClaimModal';
 import { useLocale } from '@/hooks/useLocale';
 
 /** 状态 badge 配色：active 绿 / inactive 橙 / expired 灰 / revoked 红 / consumed 灰 / 其他 灰 */
@@ -34,6 +35,7 @@ function CodeCard({
   onUse,
   onRenew,
   onUpgrade,
+  onClaimFree,
   t,
 }: {
   item: MyCodeItem;
@@ -42,8 +44,11 @@ function CodeCard({
   onUse: (code: string) => void;
   onRenew: (code: string) => void;
   onUpgrade: () => void;
+  onClaimFree: (code: string) => void;
   t: (k: string, params?: Record<string, string>) => string;
 }) {
+  // 「付费升级」溯源：默认折叠，点击展开才显示来源付费码完整码值
+  const [showSourceCode, setShowSourceCode] = useState(false);
   const codeType: CodeType = item.code_type === 'trial' ? 'trial' : 'full';
   const statusKey = `dashboard.codesPage.status.${item.status}`;
   const statusLabel = t(statusKey) === statusKey ? item.status : t(statusKey);
@@ -101,11 +106,26 @@ function CodeCard({
         >
           {statusLabel}
         </span>
+        {item.upgraded_from_code && (
+          <span className="rounded-full border px-2 py-0.5 text-[11px] font-medium bg-amber-500 text-white border-amber-500">
+            {t('dashboard.codesPage.paidUpgradeBadge')}
+          </span>
+        )}
+        {item.free_renewal_available && (
+          <button
+            type="button"
+            onClick={() => onClaimFree(item.code)}
+            className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50"
+          >
+            <Gift className="h-3 w-3" />
+            {t('dashboard.codesPage.claimFreeRenewal')}
+          </button>
+        )}
         {codeType === 'full' && (
           <button
             type="button"
             onClick={() => onRenew(item.code)}
-            className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-bd-border px-3 py-1.5 text-xs font-medium text-bd-muted transition hover:bg-bd-overlay-md hover:text-bd-fg"
+            className={`${item.free_renewal_available ? '' : 'ml-auto '}inline-flex items-center gap-1.5 rounded-lg border border-bd-border px-3 py-1.5 text-xs font-medium text-bd-muted transition hover:bg-bd-overlay-md hover:text-bd-fg`}
           >
             {t('dashboard.codesPage.renew')}
           </button>
@@ -127,6 +147,25 @@ function CodeCard({
           {t('dashboard.codesPage.goUse')}
         </button>
       </div>
+
+      {item.upgraded_from_code && (
+        <div className="mb-3 text-xs">
+          <button
+            type="button"
+            onClick={() => setShowSourceCode((v) => !v)}
+            className="text-amber-700 transition hover:underline"
+          >
+            {showSourceCode
+              ? t('dashboard.codesPage.hideSourceCode')
+              : t('dashboard.codesPage.viewSourceCode')}
+          </button>
+          {showSourceCode && (
+            <span className="ml-2 font-mono tracking-wider text-bd-fg">
+              {item.upgraded_from_code}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
         <div className="space-y-0.5">
@@ -172,6 +211,7 @@ function CodeCard({
 export default function DashboardCodesPage() {
   const { t } = useLocale();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [codes, setCodes] = useState<MyCodeItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -179,8 +219,12 @@ export default function DashboardCodesPage() {
   const [copiedText, setCopiedText] = useState<string | null>(null);
   /** 延期激活目标码：非 null 时打开 PurchaseModal 延期模式 */
   const [renewalTarget, setRenewalTarget] = useState<string | null>(null);
+  /** 7 天免费续期领取目标码（ADR-0015）：非 null 时打开领取弹窗 */
+  const [freeRenewalTarget, setFreeRenewalTarget] = useState<string | null>(null);
   /** 消耗升级弹窗（ADR-0014）：试用码卡片「升级完整版」入口 */
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+  /** 购买记录区刷新信号：升级/延期后递增，触发 PurchasedCodesSection 重新拉取 */
+  const [purchasedRefreshKey, setPurchasedRefreshKey] = useState(0);
 
   const loadCodes = useCallback(async () => {
     setLoading(true);
@@ -189,6 +233,8 @@ export default function DashboardCodesPage() {
       setCodes(items);
       setError(null);
     } catch (e: unknown) {
+      // 页面刷新/导航导致的请求取消不是错误，静默忽略（保留已有数据）
+      if (isRequestCanceled(e)) return;
       setError(getApiErrorMessage(e, t('dashboard.codesPage.loadFailed')));
     } finally {
       setLoading(false);
@@ -198,6 +244,18 @@ export default function DashboardCodesPage() {
   useEffect(() => {
     void loadCodes();
   }, [loadCodes]);
+
+  // 过期通知邮件/站内信链接入口（ADR-0015）：?free_renewal=<code> 自动弹领取窗
+  useEffect(() => {
+    const code = (searchParams.get('free_renewal') || '').trim().toUpperCase();
+    if (!code || loading) return;
+    if (codes.some((c) => c.code === code)) {
+      setFreeRenewalTarget(code);
+    }
+    // 无论码是否命中都清掉 query，避免刷新后反复弹窗
+    router.replace('/dashboard/codes');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, loading]);
 
   const copyText = async (text: string) => {
     try {
@@ -254,14 +312,21 @@ export default function DashboardCodesPage() {
               onUse={handleUse}
               onRenew={(code) => setRenewalTarget(code)}
               onUpgrade={() => setUpgradeOpen(true)}
+              onClaimFree={(code) => setFreeRenewalTarget(code)}
               t={t}
             />
           ))}
         </div>
       )}
 
-      {/* 所属人视角（P-E）：我购买的码（含送出的赠品码） */}
-      <PurchasedCodesSection t={t} />
+      {/* 所属人视角（P-E）：我购买的码（含送出的赠品码），按订单分组展示去向 */}
+      <PurchasedCodesSection
+        t={t}
+        copiedText={copiedText}
+        onCopy={(text) => void copyText(text)}
+        onUse={handleUse}
+        refreshKey={purchasedRefreshKey}
+      />
 
       {/* 延期激活：关闭后刷新列表（有效期可能已追加） */}
       <PurchaseModal
@@ -269,8 +334,20 @@ export default function DashboardCodesPage() {
         onClose={() => {
           setRenewalTarget(null);
           void loadCodes();
+          setPurchasedRefreshKey((k) => k + 1);
         }}
         renewalTargetCode={renewalTarget ?? undefined}
+      />
+
+      {/* 7 天免费续期领取（ADR-0015）：链接入口/卡片按钮触发 */}
+      <FreeRenewalClaimModal
+        open={freeRenewalTarget !== null}
+        code={freeRenewalTarget}
+        onClose={() => setFreeRenewalTarget(null)}
+        onClaimed={() => {
+          void loadCodes();
+          setPurchasedRefreshKey((k) => k + 1);
+        }}
       />
 
       {/* 消耗升级：作废 1 个未绑定码，试用码原地升级（ADR-0014） */}
@@ -280,25 +357,153 @@ export default function DashboardCodesPage() {
         onUpgraded={() => {
           setUpgradeOpen(false);
           void loadCodes();
+          setPurchasedRefreshKey((k) => k + 1);
         }}
       />
     </div>
   );
 }
 
-/** 所属人视角（P-E，ADR-0010）：我购买的码——被谁激活、报告就绪/授权状态 */
-function PurchasedCodesSection({ t }: { t: (k: string, params?: Record<string, string>) => string }) {
+/** 分转元：整元不带小数 */
+function formatYuan(fen: number): string {
+  const yuan = fen / 100;
+  return Number.isInteger(yuan) ? String(yuan) : yuan.toFixed(2);
+}
+
+/** 所属人视角（P-E，ADR-0010/0014）：我购买的码，按订单分组 + 每码「去向」备注。
+ *
+ * 订单头：商品名 / 订单号 / 下单日期 / 实付金额（+优惠）；
+ * 无 source_order_id 的存量码归入末尾「其他来源」分组（不显示金额/订单号）。
+ */
+function PurchasedCodesSection({
+  t,
+  copiedText,
+  onCopy,
+  onUse,
+  refreshKey = 0,
+}: {
+  t: (k: string, params?: Record<string, string>) => string;
+  copiedText: string | null;
+  onCopy: (text: string) => void;
+  onUse: (code: string) => void;
+  /** 递增触发重新拉取（升级/延期后码去向会变） */
+  refreshKey?: number;
+}) {
   const [items, setItems] = useState<PurchasedCodeItem[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     fetchMyPurchasedCodes()
       .then(setItems)
-      .catch(() => setItems([]))
+      .catch((e: unknown) => {
+        // 请求取消：保留已有数据；其余错误仅首次置空
+        if (isRequestCanceled(e)) return;
+        setItems([]);
+      })
       .finally(() => setLoaded(true));
-  }, []);
+  }, [refreshKey]);
 
   if (!loaded || items.length === 0) return null;
+
+  // 按 source_order_id 分组；无来源的归入「其他来源」
+  const byOrder = new Map<string, PurchasedCodeItem[]>();
+  const others: PurchasedCodeItem[] = [];
+  for (const item of items) {
+    if (item.source_order_id) {
+      const arr = byOrder.get(item.source_order_id);
+      if (arr) arr.push(item);
+      else byOrder.set(item.source_order_id, [item]);
+    } else {
+      others.push(item);
+    }
+  }
+  const orderGroups = Array.from(byOrder.entries()).map(([orderId, codes]) => ({
+    orderId,
+    codes,
+    orderNo: codes.find((c) => c.order_no)?.order_no ?? null,
+    createdAt: codes.find((c) => c.order_created_at)?.order_created_at ?? null,
+    productName: codes.find((c) => c.product_name)?.product_name ?? null,
+    amountPaid: codes.find((c) => c.amount_paid != null)?.amount_paid ?? null,
+    amountDiscount: codes.find((c) => (c.amount_discount ?? 0) > 0)?.amount_discount ?? null,
+  }));
+  // 订单按下单时间倒序；「其他来源」永远最后
+  orderGroups.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+
+  /** 单个码一行：码值 + 状态 badge + 去向备注（合并激活情况） + 报告状态；未绑定码保留复制/去使用 */
+  const renderCodeRow = (item: PurchasedCodeItem) => {
+    const isConsumed = item.status === 'consumed';
+    const isRevoked = item.status === 'revoked';
+    const unbound = !item.activated && !isConsumed && !isRevoked;
+    return (
+      <div key={item.code} className="p-4 flex flex-wrap items-center gap-3">
+        <span className="font-mono text-sm text-bd-fg">{item.code}</span>
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs ${STATUS_COLOR[item.status] || 'bg-neutral-100 text-neutral-500 border-neutral-200'}`}>
+          {t(`dashboard.codesPage.status.${item.status}`)}
+        </span>
+        <span className="text-xs text-bd-muted">
+          {isConsumed ? (
+            <>
+              {t('dashboard.codesPage.destination.consumedForUpgrade')}
+              {item.consumed_into && (
+                <span className="ml-1 font-mono tracking-wider text-bd-fg">
+                  {item.consumed_into}
+                </span>
+              )}
+            </>
+          ) : isRevoked ? (
+            t('dashboard.codesPage.destination.revoked')
+          ) : item.activated ? (
+            item.activated_by_self
+              ? t('dashboard.codesPage.destination.boundSelf')
+              : t('dashboard.codesPage.destination.boundOther', { email: item.activated_by ?? '' })
+          ) : (
+            t('dashboard.codesPage.destination.unbound')
+          )}
+        </span>
+        {unbound && (
+          <>
+            <button
+              type="button"
+              onClick={() => onCopy(item.code)}
+              className="inline-flex items-center gap-1 rounded-lg border border-bd-border px-2 py-1 text-[11px] text-bd-muted transition hover:bg-bd-overlay-md hover:text-bd-fg"
+            >
+              {copiedText === item.code ? (
+                <>
+                  <Check className="h-3 w-3 text-emerald-500" />
+                  {t('dashboard.codesPage.copied')}
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3 w-3" />
+                  {t('dashboard.codesPage.copy')}
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => onUse(item.code)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-bd-ui-accent px-3 py-1.5 text-xs font-medium text-bd-ui-accent-fg transition hover:opacity-90"
+            >
+              {t('dashboard.codesPage.goUse')}
+            </button>
+          </>
+        )}
+        <span className="ml-auto text-xs">
+          {item.has_report ? (
+            item.report_authorized ? (
+              <span className="text-emerald-600">{t('dashboard.codesPage.reportAuthorized')}</span>
+            ) : (
+              <span className="text-amber-600">{t('dashboard.codesPage.reportNotAuthorized')}</span>
+            )
+          ) : item.report_status === 'pending_review' ? (
+            <span className="text-amber-600">{t('dashboard.codesPage.reportReviewing')}</span>
+          ) : (
+            <span className="text-bd-subtle">{t('dashboard.codesPage.reportNotReady')}</span>
+          )}
+        </span>
+      </div>
+    );
+  };
 
   return (
     <section className="mt-10 space-y-4">
@@ -307,37 +512,46 @@ function PurchasedCodesSection({ t }: { t: (k: string, params?: Record<string, s
         <p className="text-xs text-bd-muted mt-1">{t('dashboard.codesPage.purchasedDesc')}</p>
       </div>
       <div className="space-y-3">
-        {items.map((item) => (
+        {orderGroups.map((g) => (
           <div
-            key={item.code}
-            className="bg-bd-card/80 backdrop-blur-lg border border-bd-border rounded-2xl shadow-sm p-4 flex flex-wrap items-center gap-3"
+            key={g.orderId}
+            className="bg-bd-card/80 backdrop-blur-lg border border-bd-border rounded-2xl shadow-sm overflow-hidden"
           >
-            <span className="font-mono text-sm text-bd-fg">{item.code}</span>
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs ${STATUS_COLOR[item.status] || 'bg-neutral-100 text-neutral-500 border-neutral-200'}`}>
-              {t(`dashboard.codesPage.status.${item.status}`)}
-            </span>
-            <span className="text-xs text-bd-muted">
-              {item.activated
-                ? item.activated_by_self
-                  ? t('dashboard.codesPage.activatedBySelf')
-                  : t('dashboard.codesPage.activatedBy', { email: item.activated_by ?? '' })
-                : t('dashboard.codesPage.notActivated')}
-            </span>
-            <span className="ml-auto text-xs">
-              {item.has_report ? (
-                item.report_authorized ? (
-                  <span className="text-emerald-600">{t('dashboard.codesPage.reportAuthorized')}</span>
-                ) : (
-                  <span className="text-amber-600">{t('dashboard.codesPage.reportNotAuthorized')}</span>
-                )
-              ) : item.report_status === 'pending_review' ? (
-                <span className="text-amber-600">{t('dashboard.codesPage.reportReviewing')}</span>
-              ) : (
-                <span className="text-bd-subtle">{t('dashboard.codesPage.reportNotReady')}</span>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 border-b border-bd-border text-xs">
+              <span className="font-medium text-bd-fg">
+                {g.productName ?? t('dashboard.codesPage.fallbackProduct')}
+              </span>
+              <span className="text-bd-muted">
+                {t('dashboard.codesPage.orderNoLabel')}
+                <span className="ml-1 font-mono">{g.orderNo ?? g.orderId.slice(-8)}</span>
+              </span>
+              {g.createdAt && (
+                <span className="text-bd-muted">{formatLocalDateTime(g.createdAt)}</span>
               )}
-            </span>
+              {g.amountPaid != null && (
+                <span className="ml-auto text-bd-fg">
+                  {t('dashboard.codesPage.paidAmount', { amount: formatYuan(g.amountPaid) })}
+                  {g.amountDiscount != null && g.amountDiscount > 0 && (
+                    <span className="ml-2 text-emerald-600">
+                      {t('dashboard.codesPage.discountSaved', {
+                        amount: formatYuan(g.amountDiscount),
+                      })}
+                    </span>
+                  )}
+                </span>
+              )}
+            </div>
+            <div className="divide-y divide-bd-border">{g.codes.map(renderCodeRow)}</div>
           </div>
         ))}
+        {others.length > 0 && (
+          <div className="bg-bd-card/80 backdrop-blur-lg border border-bd-border rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-bd-border text-xs font-medium text-bd-fg">
+              {t('dashboard.codesPage.otherSourceGroup')}
+            </div>
+            <div className="divide-y divide-bd-border">{others.map(renderCodeRow)}</div>
+          </div>
+        )}
       </div>
     </section>
   );

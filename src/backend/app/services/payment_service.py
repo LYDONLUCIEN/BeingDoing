@@ -1146,6 +1146,8 @@ class PaymentService:
             item = cls._order_to_dict(order, coupon_code)
             item["user_email"] = user_email
             item["code_refundable"] = cls._order_refundable(order)
+            # 交付码去向（ADR-0014 消耗去向展示；码值/邮箱不脱敏，仅供 admin 排查）
+            item["delivered_codes"] = cls._delivered_codes_with_destination(order)
             return {"order": item}
 
     @staticmethod
@@ -1161,6 +1163,60 @@ class PaymentService:
         if delivered and delivered not in codes:
             codes.append(delivered)
         return codes
+
+    @classmethod
+    def _delivered_codes_with_destination(cls, order: PaymentOrder) -> List[Dict[str, Any]]:
+        """订单交付码列表 + 去向（admin 订单详情用；码值与邮箱不脱敏）
+
+        destination_type 取值：
+        - unknown              激活码记录不存在（含查询异常兜底）
+        - revoked / deleted    已作废（退款）/ 已删除，detail 为 None
+        - consumed_for_upgrade 已消耗升级试用码，detail=受益试用码完整码值
+        - bound_self / bound_other 已绑定（owner==订单购买人 / 他人），detail=激活人邮箱
+        - expired              未绑定但已过期
+        - unbound              未绑定可用
+        """
+        result: List[Dict[str, Any]] = []
+        for code in cls._package_order_codes(order):
+            rec = None
+            try:
+                _, rec = get_activation_with_manager(code)
+            except Exception as e:
+                logger.warning("查询交付码去向失败：code=%s err=%s", code, e)
+            destination_type = "unknown"
+            destination_detail: Optional[str] = None
+            rec_status: Optional[str] = None
+            upgraded_from_code: Optional[str] = None
+            if rec is not None:
+                rec_status = rec.status
+                upgraded_from_code = getattr(rec, "upgraded_from_code", None)
+                owner_uid = getattr(rec, "owner_user_id", None)
+                if rec_status == "revoked":
+                    destination_type = "revoked"
+                elif rec_status == "deleted":
+                    destination_type = "deleted"
+                elif rec_status == "consumed":
+                    destination_type = "consumed_for_upgrade"
+                    destination_detail = getattr(rec, "consumed_into", None)
+                elif owner_uid:
+                    destination_type = (
+                        "bound_self" if owner_uid == order.user_id else "bound_other"
+                    )
+                    destination_detail = getattr(rec, "owner_email", None)
+                elif rec_status == "expired":
+                    destination_type = "expired"
+                else:
+                    destination_type = "unbound"
+            result.append(
+                {
+                    "code": code,
+                    "status": rec_status,
+                    "destination_type": destination_type,
+                    "destination_detail": destination_detail,
+                    "upgraded_from_code": upgraded_from_code,
+                }
+            )
+        return result
 
     @classmethod
     def _package_codes_untouched(cls, order: PaymentOrder) -> bool:

@@ -415,6 +415,14 @@ async def list_my_codes(
             # has_report 语义：报告已生成 = 审核通过（与 my-purchased-codes 口径拉齐）
             "has_report": report_status == REVIEW_STATUS_APPROVED,
             "report_status": report_status,
+            # 消耗升级溯源（ADR-0014）：本试用码是被哪个付费码消耗升级而来，无则 None
+            "upgraded_from_code": getattr(rec, "upgraded_from_code", None),
+            # 7 天免费续期（ADR-0015）：已过期 + 已发通知 + 未领取 => 可领取
+            "free_renewal_available": bool(
+                rec.status == ActivationStatus.EXPIRED
+                and getattr(rec, "free_renewal_offered_at", None)
+                and not getattr(rec, "free_renewal_claimed_at", None)
+            ),
         })
 
     # 按创建时间倒序
@@ -424,6 +432,43 @@ async def list_my_codes(
         code=200,
         message="success",
         data={"items": items},
+    )
+
+
+class FreeRenewalClaimRequest(BaseModel):
+    code: str
+
+
+@router.post("/codes/free-renewal/claim", response_model=ActivationResponse)
+async def claim_free_renewal(
+    payload: FreeRenewalClaimRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """领取「7 天免费续期」（ADR-0015）：每个完整码首次过期可领一次，仅激活人可领。
+
+    领取后从当天起 +7 天（extend_validity 的 max(原到期, now) 口径）。
+    """
+    user_id = (current_user or {}).get("user_id", "")
+    email = (current_user or {}).get("email", "")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="未登录")
+
+    mgr, rec = get_activation_with_manager(payload.code)
+    if rec is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="激活码不存在")
+    try:
+        rec = mgr.claim_free_renewal(
+            payload.code,
+            user_id=user_id,
+            actor={"user_id": user_id, "email": email},
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    return ActivationResponse(
+        code=200,
+        message="success",
+        data={"code": rec.code, "new_expires_at": rec.expires_at},
     )
 
 
@@ -469,6 +514,7 @@ async def list_my_purchased_codes(
         pass
 
     items = []
+    order_ids: set[str] = set()
     for base_dir in (get_simple_base_dir(), get_simple_test_base_dir()):
         mgr = SimpleActivationManager(base_dir=str(base_dir))
         for code, rec in mgr.list_activations().items():
@@ -477,6 +523,9 @@ async def list_my_purchased_codes(
             if rec.status == ActivationStatus.DELETED:
                 continue
             norm = (rec.code or "").strip().upper()
+            source_order_id = getattr(rec, "source_order_id", None)
+            if source_order_id:
+                order_ids.add(source_order_id)
             items.append({
                 "code": rec.code,
                 "code_type": getattr(rec, "code_type", None) or "full",
@@ -490,7 +539,46 @@ async def list_my_purchased_codes(
                 "has_report": norm in approved_codes,
                 "report_status": report_status_by_code.get(norm),
                 "report_authorized": bool(getattr(rec, "report_authorized", False)),
+                # 去向溯源（ADR-0014）：交付来源订单 / 消耗升级的受益试用码 / 反向溯源
+                "source_order_id": source_order_id,
+                "consumed_into": getattr(rec, "consumed_into", None),
+                "upgraded_from_code": getattr(rec, "upgraded_from_code", None),
             })
+
+    # 订单联查：按 source_order_id 一次性批量查询，构建 id→order 映射（避免 N+1）；
+    # 查不到或 DB 异常时订单字段一律 None，不影响码列表本身
+    orders_by_id: dict[str, object] = {}
+    product_name_of = {}
+    if order_ids:
+        try:
+            from sqlalchemy import select as _select
+
+            from app.models.database import AsyncSessionLocal
+            from app.models.payment import PaymentOrder
+            from app.services.payment_service import _product_name
+
+            async with AsyncSessionLocal() as db:
+                rows = (
+                    await db.execute(
+                        _select(PaymentOrder).where(PaymentOrder.id.in_(sorted(order_ids)))
+                    )
+                ).scalars().all()
+            orders_by_id = {o.id: o for o in rows}
+            product_name_of = {o.id: _product_name(o.product_type) for o in rows}
+        except Exception:
+            orders_by_id = {}
+            product_name_of = {}
+
+    for item in items:
+        order = orders_by_id.get(item["source_order_id"] or "")
+        item["order_no"] = order.order_no if order else None
+        item["order_created_at"] = (
+            order.created_at.isoformat() if order and order.created_at else None
+        )
+        item["product_name"] = product_name_of.get(item["source_order_id"] or "")
+        item["amount_paid"] = order.amount_paid if order else None
+        item["amount_original"] = order.amount_original if order else None
+        item["amount_discount"] = order.amount_discount if order else None
 
     items.sort(key=lambda x: x.get("created_at") or "", reverse=True)
     return ActivationResponse(code=200, message="success", data={"items": items})

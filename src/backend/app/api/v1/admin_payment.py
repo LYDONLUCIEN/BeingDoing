@@ -7,7 +7,7 @@ Admin 支付管理 API（P1：折扣券管理；P2a：订单管理与退款）
 - PATCH  /admin/coupons/{id}     调整面额（仅 unused）
 - DELETE /admin/coupons/{id}     作废（仅 unused）
 - GET    /admin/payment/orders           订单分页列表（status/channel 筛选，含 user_email + code_refundable）
-- GET    /admin/payment/orders/{id}      订单详情（完整字段 + user_email + code_refundable）
+- GET    /admin/payment/orders/{id}      订单详情（完整字段 + user_email + code_refundable + delivered_codes 去向）
 - POST   /admin/payment/orders/{id}/refund  退款（仅 granted 且码未被 claim；成功作废码）
 
 全部 is_super_admin_user 门控，统一响应 {code, message, data}。
@@ -145,7 +145,7 @@ async def get_payment_order(
     order_id: str,
     current_user: Optional[dict] = Depends(get_current_user),
 ) -> Dict[str, Any]:
-    """订单详情（完整字段 + user_email + code_refundable）"""
+    """订单详情（完整字段 + user_email + code_refundable + delivered_codes 去向）"""
     _require_super_admin(current_user)
     try:
         data = await PaymentService.admin_get_order(order_id)

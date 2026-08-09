@@ -367,6 +367,27 @@ def _start_bounce_scheduler() -> None:
             max_instances=1,
             misfire_grace_time=3600,
         )
+        # 激活码过期扫描（ADR-0015，每日）：给首次过期的完整码激活人发
+        # 「免费领取 7 天续期」邮件+站内信（每码一次，offered 标记幂等）
+        from app.services.activation_expiry_scan import scan_expired_activations
+
+        async def _activation_expiry_scan_safe() -> None:
+            try:
+                await scan_expired_activations()
+            except Exception as job_err:
+                logging.getLogger(__name__).error(
+                    "activation expiry scan job failed: %s", job_err
+                )
+
+        sched.add_job(
+            _activation_expiry_scan_safe,
+            CronTrigger.from_crontab(settings.ACTIVATION_EXPIRY_SCAN_CRON),
+            id="activation_expiry_scan",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=3600,
+        )
         sched.start()
         _bounce_scheduler = sched
         logging.getLogger(__name__).info(
@@ -383,6 +404,10 @@ def _start_bounce_scheduler() -> None:
         logging.getLogger(__name__).info(
             "feedback overdue scan scheduler started, cron='%s'",
             settings.FEEDBACK_OVERDUE_SCAN_CRON,
+        )
+        logging.getLogger(__name__).info(
+            "activation expiry scan scheduler started, cron='%s'",
+            settings.ACTIVATION_EXPIRY_SCAN_CRON,
         )
     except Exception as e:
         # APScheduler 不可用不能阻断启动，只警告

@@ -29,7 +29,8 @@ def _get_function_body(content: str, func_name: str) -> str | None:
     else:
         end_pattern = re.compile(r'\n\S', re.MULTILINE)
     end_match = end_pattern.search(content, start + 1)
-    end = start + end_match.start() + 1 if end_match else len(content)
+    # 注意：search 返回的是绝对位置，不能再加 start（否则会多算一截，把后续无关函数吞进来）
+    end = end_match.start() + 1 if end_match else len(content)
     return content[start:end]
 
 

@@ -51,6 +51,30 @@ const PRODUCT_LABEL: Record<string, string> = {
   membership_lifetime: '会员（永久）',
 };
 
+/** 交付码去向文案（ADR-0014；admin 直接中文，与同组件其余文案一致） */
+const DEST_LABEL: Record<string, string> = {
+  unbound: '未绑定',
+  bound_self: '已绑定（本人）',
+  bound_other: '已绑定（他人）',
+  consumed_for_upgrade: '已用于升级试用码',
+  revoked: '已作废（退款）',
+  deleted: '已删除',
+  expired: '已过期',
+  unknown: '记录不存在',
+};
+
+/** 去向 badge 配色：unbound 绿 / bound_* 青 / consumed 金 / revoked 红 / 其余灰 */
+const DEST_COLOR: Record<string, string> = {
+  unbound: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  bound_self: 'bg-cyan-100 text-cyan-700 border-cyan-200',
+  bound_other: 'bg-cyan-100 text-cyan-700 border-cyan-200',
+  consumed_for_upgrade: 'bg-amber-100 text-amber-700 border-amber-200',
+  revoked: 'bg-red-100 text-red-700 border-red-200',
+  deleted: 'bg-neutral-200 text-neutral-600 border-neutral-300',
+  expired: 'bg-neutral-200 text-neutral-600 border-neutral-300',
+  unknown: 'bg-neutral-200 text-neutral-600 border-neutral-300',
+};
+
 /**
  * 支付管理 · 订单管理 tab（P2a）
  * 风格与折扣券 tab 一致：原生 table、本地 toast、二次确认、点击订单号展开详情行。
@@ -65,6 +89,8 @@ export default function PaymentOrdersTab() {
 
   // 展开详情 / 退款确认
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  /** 展开行缓存的订单详情（含 delivered_codes 去向） */
+  const [detailById, setDetailById] = useState<Record<string, AdminOrderItem>>({});
   const [refundTarget, setRefundTarget] = useState<AdminOrderItem | null>(null);
   const [refundWorking, setRefundWorking] = useState(false);
 
@@ -120,6 +146,22 @@ export default function PaymentOrdersTab() {
       setTimeout(() => setCopiedCode(null), 1500);
     } catch {
       setToast({ type: 'error', msg: '复制失败，请手动复制' });
+    }
+  };
+
+  /** 展开/收起详情行：展开时拉取详情（含交付码去向）并缓存 */
+  const toggleExpand = async (id: string) => {
+    if (expandedId === id) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(id);
+    if (detailById[id]) return;
+    try {
+      const res = await adminGetOrder(id);
+      setDetailById((m) => ({ ...m, [id]: res.order }));
+    } catch {
+      /* 详情拉取失败时沿用列表数据 */
     }
   };
 
@@ -222,7 +264,7 @@ export default function PaymentOrdersTab() {
                       <td className="px-2 py-2">
                         <button
                           type="button"
-                          onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
+                          onClick={() => void toggleExpand(item.id)}
                           title="点击展开详情"
                           className="font-mono text-[11px] hover:underline"
                           style={{ color: 'var(--bd-fg)' }}
@@ -311,6 +353,40 @@ export default function PaymentOrdersTab() {
                             <p>关闭时间：{formatTime(item.closed_at)}</p>
                             <p>退款时间：{formatTime(item.refunded_at)}</p>
                           </div>
+                          {/* 交付码去向（ADR-0014；码值/邮箱不脱敏） */}
+                          {(detailById[item.id]?.delivered_codes?.length ?? 0) > 0 && (
+                            <div className="mt-2 px-2">
+                              <p className="text-[11px] text-bd-subtle mb-1">交付码去向：</p>
+                              <div className="space-y-1">
+                                {detailById[item.id].delivered_codes!.map((dc) => (
+                                  <p
+                                    key={dc.code}
+                                    className="flex flex-wrap items-center gap-2 text-[11px] text-bd-muted"
+                                  >
+                                    <span className="font-mono" style={{ color: 'var(--bd-fg)' }}>
+                                      {dc.code}
+                                    </span>
+                                    <span
+                                      className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-medium ${
+                                        DEST_COLOR[dc.destination_type] || DEST_COLOR.unknown
+                                      }`}
+                                    >
+                                      {DEST_LABEL[dc.destination_type] || dc.destination_type}
+                                    </span>
+                                    {dc.destination_detail && (
+                                      <span className="font-mono">{dc.destination_detail}</span>
+                                    )}
+                                    {dc.upgraded_from_code && (
+                                      <span className="text-bd-subtle">
+                                        来源码：
+                                        <span className="font-mono">{dc.upgraded_from_code}</span>
+                                      </span>
+                                    )}
+                                  </p>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     )}

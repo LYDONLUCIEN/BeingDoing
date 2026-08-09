@@ -181,7 +181,8 @@ def _assert_rumination_editable(reports_root: Path, rid: str, current_user: dict
 
     if _can_bypass_flow_limits(current_user, rec):
         return
-    registry = ReportRegistry(base_dir=str(reports_root))
+    # ReportRegistry 的 base_dir 是 simple 根（内部再拼 /reports），不能传 reports_root
+    registry = ReportRegistry(base_dir=str(reports_root.parent))
     record = registry.get_report_by_id(rid) or {}
     step = ((record.get("steps") or {}).get("rumination")) or {}
     if step.get("locked"):
@@ -731,7 +732,7 @@ async def submit_final_selection_endpoint(req: SubmitFinalReq, current_user: dic
         raise HTTPException(status_code=400, detail=str(e))
     # 终选提交即锁定 rumination（与其它四阶段「进入下一阶段锁上一阶段」口径对称；
     # rumination 是最后一步，无后续阶段触发锁定，需在此显式锁定）
-    ReportRegistry(base_dir=str(reports_root)).lock_step(rid, "rumination")
+    ReportRegistry(base_dir=str(reports_root.parent)).lock_step(rid, "rumination")
     _audit_log("rumination_v4_final_submitted", current_user, req.activation_code, {"selected": state.get("final_selection", {}).get("selected_combo_ids")})
     return {"code": 200, "message": "success", "data": {"final_selection": state.get("final_selection"), "main_section": state.get("main_section")}}
 

@@ -918,3 +918,93 @@ async def cls_get(db, order_id):
     return (
         await db.execute(select(PaymentOrder).where(PaymentOrder.id == order_id))
     ).scalar_one()
+
+
+# ─── Admin 订单详情：交付码去向（ADR-0014 消耗去向展示）──────────
+
+
+@pytest.mark.asyncio
+async def test_admin_order_detail_delivered_codes_destinations(fake_channel, tmp_path):
+    """详情 delivered_codes：unbound / bound_self / bound_other 三态与 detail"""
+    order, _ = await PaymentService.create_order("u1", "annual_package", "alipay", None)
+    await PaymentService.handle_alipay_notify(_notify_form(order))
+
+    mgr = SimpleActivationManager(base_dir=str(tmp_path / "simple"))
+    meta = ps_mod.PaymentService._parse_meta((await _get_order(order.id)).meta)
+    codes = meta["codes"]
+    assert len(codes) == 3
+    # codes[0] 保持未绑定；codes[1] 本人绑定；codes[2] 他人绑定
+    mgr.claim_owner(codes[1], {"user_id": "u1", "email": "alice@test.com"})
+    mgr.claim_owner(codes[2], {"user_id": "u9", "email": "other@test.com"})
+
+    detail = await PaymentService.admin_get_order(order.id)
+    delivered = {d["code"]: d for d in detail["order"]["delivered_codes"]}
+    assert set(delivered) == set(codes)
+
+    d0 = delivered[codes[0]]
+    assert d0["destination_type"] == "unbound"
+    assert d0["destination_detail"] is None
+    assert d0["status"] == "active"
+    assert d0["upgraded_from_code"] is None
+
+    d1 = delivered[codes[1]]
+    assert d1["destination_type"] == "bound_self"
+    assert d1["destination_detail"] == "alice@test.com"  # admin 不脱敏
+
+    d2 = delivered[codes[2]]
+    assert d2["destination_type"] == "bound_other"
+    assert d2["destination_detail"] == "other@test.com"
+
+
+@pytest.mark.asyncio
+async def test_admin_order_detail_destination_consumed_revoked_unknown(fake_channel, tmp_path):
+    """详情 delivered_codes：consumed_for_upgrade / revoked / unknown 三态"""
+    mgr = SimpleActivationManager(base_dir=str(tmp_path / "simple"))
+
+    # consumed_for_upgrade：季度单交付码被消耗升级试用码
+    order_a, _ = await PaymentService.create_order("u1", "quarterly_package", "alipay", None)
+    await PaymentService.handle_alipay_notify(_notify_form(order_a))
+    meta_a = ps_mod.PaymentService._parse_meta((await _get_order(order_a.id)).meta)
+    consumed_code = meta_a["codes"][0]
+    trial = mgr.create_activation(mode="combined", code_type="trial", vip_level=1)
+    mgr.claim_owner(trial.code, {"user_id": "u2", "email": "bob@test.com"})
+    mgr.consume_for_trial_upgrade(consumed_code, trial.code, actor={"user_id": "u2"})
+
+    # revoked：另一季度单全部码未动 → 退款成功作废码
+    order_b, _ = await PaymentService.create_order("u1", "quarterly_package", "alipay", None)
+    await PaymentService.handle_alipay_notify(_notify_form(order_b))
+    meta_b = ps_mod.PaymentService._parse_meta((await _get_order(order_b.id)).meta)
+    revoked_code = meta_b["codes"][0]
+    refunded = await PaymentService.admin_refund(order_b.id, actor={"user_id": "admin"})
+    assert refunded.status == "refunded"
+
+    detail_a = await PaymentService.admin_get_order(order_a.id)
+    d = detail_a["order"]["delivered_codes"][0]
+    assert d["code"] == consumed_code
+    assert d["destination_type"] == "consumed_for_upgrade"
+    assert d["destination_detail"] == trial.code  # 受益试用码完整码值
+    assert d["status"] == "consumed"
+    assert d["upgraded_from_code"] is None  # 来源码本身无反向溯源
+    # 试用码记录上的反向溯源已写入（顺带验证）
+    assert mgr.get_activation(trial.code).upgraded_from_code == consumed_code
+
+    detail_b = await PaymentService.admin_get_order(order_b.id)
+    d_b = detail_b["order"]["delivered_codes"][0]
+    assert d_b["code"] == revoked_code
+    assert d_b["destination_type"] == "revoked"
+    assert d_b["destination_detail"] is None
+
+    # unknown：meta.codes 里的码在索引中不存在
+    async with _TestSessionLocal() as db:
+        row = (
+            await db.execute(select(PaymentOrder).where(PaymentOrder.id == order_b.id))
+        ).scalar_one()
+        meta = ps_mod.PaymentService._parse_meta(row.meta)
+        meta["codes"] = list(meta["codes"]) + ["ZZZUNKNOWN1"]
+        row.meta = json.dumps(meta, ensure_ascii=False)
+        await db.commit()
+    detail_b2 = await PaymentService.admin_get_order(order_b.id)
+    d_unknown = detail_b2["order"]["delivered_codes"][1]
+    assert d_unknown["code"] == "ZZZUNKNOWN1"
+    assert d_unknown["destination_type"] == "unknown"
+    assert d_unknown["status"] is None
