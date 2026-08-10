@@ -6,7 +6,7 @@
 规则口径：
 - 购买前置：用户须至少持有一份「已完成且审核通过」的报告
 - 问卷：pending_survey 时可提交一次（report_id/topics/time_slots/contact/note）→ submitted
-- admin：submitted → scheduled（填实际时间+备注）→ completed
+- admin：submitted → scheduled（填实际时间+备注，发站内信通知用户）→ completed
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy import func, select
 
 from app.models.database import AsyncSessionLocal
+from app.models.feedback import Notification
 from app.models.payment import ConsultationBooking
 from app.models.user import User
 
@@ -30,6 +31,20 @@ STATUS_SUBMITTED = "submitted"
 STATUS_SCHEDULED = "scheduled"
 STATUS_COMPLETED = "completed"
 STATUS_CANCELLED = "cancelled"
+
+# 站内信（notifications 表）
+NOTIFY_TYPE_SCHEDULED = "consultation_scheduled"
+NOTIFY_TITLE_SCHEDULED = "咨询时间已确认"
+
+
+def _build_scheduled_notification_content(booking_id: str, scheduled_dt: datetime) -> str:
+    """预约确认站内信文案（时间 + 详情页入口；admin_note 为内部备注不透出）。"""
+    time_str = scheduled_dt.strftime("%Y-%m-%d %H:%M")
+    return (
+        f"您的报告解读咨询时间已确认：{time_str}。\n"
+        "请提前安排好时间，顾问将通过您预留的联系方式与您沟通。\n"
+        f"查看详情：/dashboard/consultation/{booking_id}"
+    )
 
 
 class BookingNotFoundError(Exception):
@@ -254,6 +269,17 @@ class ConsultationService:
             booking.scheduled_at = scheduled_dt
             booking.admin_note = (admin_note or "").strip() or None
             booking.updated_at = _utcnow()
+            # 站内信通知用户咨询时间已确认
+            db.add(
+                Notification(
+                    user_id=booking.user_id,
+                    type=NOTIFY_TYPE_SCHEDULED,
+                    title=NOTIFY_TITLE_SCHEDULED,
+                    content=_build_scheduled_notification_content(booking_id, scheduled_dt),
+                    read_at=None,
+                    related_feedback_id=None,
+                )
+            )
             await db.commit()
             await db.refresh(booking)
             logger.info(

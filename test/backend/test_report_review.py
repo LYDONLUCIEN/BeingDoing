@@ -10,6 +10,8 @@
 - admin 人工批复：manual 字段 + 站内信触发；列表审核字段与筛选
 - 自动批复 job：过期 pending → approved + auto + 站内信；未过期/not_started/存量不动
 - 通知幂等：重复批复/重复跑 job 不重复发站内信
+- 批复后自动生成：approve_report 批复瞬间 kick 后台生成报告 markdown（五阶段未完成跳过；
+  幂等批复不重复 kick）；kick 函数本身在无事件循环的同步上下文安全跳过
 """
 
 from __future__ import annotations
@@ -125,6 +127,15 @@ def reg(tmp_path: Path) -> ReportRegistry:
     base = tmp_path / "simple"
     base.mkdir(parents=True, exist_ok=True)
     return ReportRegistry(base_dir=str(base))
+
+
+@pytest.fixture(autouse=True)
+def _mock_gen_kick():
+    """批复后自动生成报告的后台任务收口为 mock：避免测试触发真实 LLM 生成。"""
+    real = report_review_service.kick_report_generation
+    with patch.object(report_review_service, "kick_report_generation") as m:
+        m._real = real  # 个别测试需调真实函数（同步上下文安全性）
+        yield m
 
 
 @pytest_asyncio.fixture
@@ -668,3 +679,73 @@ async def test_approve_report_service_idempotent(reg: ReportRegistry, db_factory
         await db.commit()
         assert rec2["review_status"] == "approved"
     assert await _count_notifications(db_factory) == 1
+
+
+# ── 6. 批复后自动生成报告 ────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_approve_kicks_report_generation(
+    reg: ReportRegistry, db_factory, _mock_gen_kick
+) -> None:
+    """批复通过瞬间触发后台生成；幂等重复批复不重复触发。"""
+    rid = "rpt-kick"
+    _write_record(
+        reg.simple_base_dir, rid,
+        _pending_record(rid, datetime.now(timezone.utc) + timedelta(hours=2)),
+    )
+    async with db_factory() as db:
+        await report_review_service.approve_report(
+            reg, rid, review_type="manual", reviewed_by="admin-1", db=db
+        )
+        await db.commit()
+    assert _mock_gen_kick.call_count == 1
+    args = _mock_gen_kick.call_args.args
+    assert args[0] == rid
+    assert args[1] == "user-1"  # record 的 user_id
+    assert args[2] == str(reg.simple_base_dir)  # base_dir 来自 registry
+
+    # 幂等：已 approved 再次批复不再 kick
+    async with db_factory() as db:
+        await report_review_service.approve_report(
+            reg, rid, review_type="manual", reviewed_by="admin-1", db=db
+        )
+        await db.commit()
+    assert _mock_gen_kick.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_approve_skips_generation_when_phases_incomplete(
+    reg: ReportRegistry, db_factory, _mock_gen_kick
+) -> None:
+    """五阶段未完成时不触发生成（与 export 完成度门控同口径）。"""
+    rid = "rpt-incomplete"
+    rec = _pending_record(rid, datetime.now(timezone.utc) + timedelta(hours=2))
+    rec["steps"] = {}
+    _write_record(reg.simple_base_dir, rid, rec)
+    async with db_factory() as db:
+        await report_review_service.approve_report(
+            reg, rid, review_type="manual", reviewed_by="admin-1", db=db
+        )
+        await db.commit()
+    assert _mock_gen_kick.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_auto_approve_kicks_generation(
+    reg: ReportRegistry, db_factory, _mock_gen_kick
+) -> None:
+    """超时自动批复同样触发后台生成。"""
+    overdue = _pending_record(
+        "rpt-kick-auto", datetime.now(timezone.utc) - timedelta(hours=1)
+    )
+    _write_record(reg.simple_base_dir, overdue["report_id"], overdue)
+    count = await report_review_service.auto_approve_overdue(
+        base_dir=str(reg.simple_base_dir), session_factory=db_factory
+    )
+    assert count == 1
+    assert _mock_gen_kick.call_count == 1
+
+
+def test_kick_generation_safe_without_running_loop(_mock_gen_kick) -> None:
+    """同步上下文（无事件循环）调用 kick 安全跳过，不抛异常。"""
+    assert _mock_gen_kick._real("rpt-x") is False

@@ -346,11 +346,11 @@ python scripts/init_db.py
 - `/api/v1/chat/*` - 对话
 - `/api/v1/search/*` - 检索
 - `/api/v1/formula/*` - 公式
-- `/api/v1/export/*` - 导出（`POST /export/report-pdf/{id}` 有完成度门控：五阶段未完成一律 409，admin 也不例外，2026-08-07 起；admin 豁免仅限审核状态阻塞）
+- `/api/v1/export/*` - 导出（`POST /export/report-pdf/{id}` 有完成度门控：五阶段未完成一律 409，admin 也不例外，2026-08-07 起；admin 豁免仅限审核状态阻塞。报告批复通过瞬间——人工 `POST /admin/reports/{id}/approve` 或超时自动批复 job——后台自动生成报告 markdown（`report_review_service.kick_report_generation`，2026-08-10 起），用户页「生成报告」按钮仅为兜底）
 - `/api/v1/admin/*` - 管理（含 `/admin/coupons` 折扣券、`/admin/payment/orders` 订单与退款、`/admin/consultations` 咨询管理、`/admin/users` 用户管理：deleted 筛选 / `restore-deletion` 注销恢复 / PATCH status 对已注销用户启用会 400 拦截；`/admin/reports` 列表含 `report_unlocked` 字段，`completed_steps` 已修 v4 口径：rumination locked 计入）
 - `/api/v1/payment/*` - 支付（用户侧：products / coupons/validate / orders；`/payment/notify/alipay` 为渠道回调，无登录鉴权）
 - `/api/v1/analytics/*` - 埋点（点赞、报告生成、`POST /analytics/event` 通用事件上报：PV 不依赖登录，auth_active 仅服务端内部写；漏斗统计 `GET /admin/analytics/funnel`，ADR-0013）
-- `/api/v1/consultation/*` - 报告解读咨询（用户侧：my-reports / bookings / survey）
+- `/api/v1/consultation/*` - 报告解读咨询（用户侧：my-reports / bookings / survey；admin `POST /admin/consultations/{id}/schedule` 确定时间后发站内信 `consultation_scheduled` 通知用户，admin_note 为内部备注不透出，2026-08-10 起）
 - `/api/v1/team-analysis/*` - 团队分析（candidates / 创建 / 列表 / 详情）
 
 启动后端后访问 Swagger UI: http://localhost:8000/docs

@@ -4,6 +4,8 @@
 - approve_report：人工/自动批复共用入口（幂等：已 approved 不重复写、不重复通知）
 - notify_report_approved：站内信通知（复用 notifications 表，幂等）
 - auto_approve_overdue：APScheduler 周期任务，超时 pending → auto 批复
+- kick_report_generation：批复通过瞬间后台自动生成报告 markdown
+  （用户报告页「生成报告」按钮仅为兜底机制；生成失败不影响批复主流程）
 
 文案注意：auto 批复的用户侧文案与人工一致（「您的报告已审核通过」），
 不暴露自动事实——这是 ADR-0009 的刻意决策，勿当 bug 修复。
@@ -11,6 +13,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Optional
@@ -19,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.feedback import Notification
-from app.utils.report_registry import ReportRegistry
+from app.utils.report_registry import ReportRegistry, _report_portal_unlocked
 from app.utils.report_review import (
     REVIEW_STATUS_APPROVED,
     REVIEW_TYPE_AUTO,
@@ -89,6 +92,63 @@ async def notify_report_approved(
     return True
 
 
+# ── 批复后自动生成报告（后台任务）─────────────────────────────
+
+# 进行中的生成任务（强引用防 GC + 按 report_id 去重）
+_gen_tasks: set[asyncio.Task] = set()
+_gen_inflight: set[str] = set()
+
+
+async def _run_report_generation(
+    report_id: str, user_id: Optional[str], base_dir: Optional[str]
+) -> None:
+    """后台生成并缓存报告 markdown（PDF 由下载时即时转换）。"""
+    from app.services.report_pdf_service import ReportPdfService
+
+    try:
+        service = ReportPdfService(base_dir=base_dir)
+        await service.generate_markdown_only(report_id=report_id, user_id=user_id)
+        logger.info("批复后报告自动生成完成: report_id=%s", report_id)
+    except Exception as e:
+        # 生成失败不影响批复主流程——用户报告页「生成报告」按钮为完全体兜底
+        logger.exception(
+            "批复后报告自动生成失败（用户页生成按钮兜底）: report_id=%s error=%s",
+            report_id,
+            e,
+        )
+    finally:
+        _gen_inflight.discard(report_id)
+
+
+def kick_report_generation(
+    report_id: str,
+    user_id: Optional[str] = None,
+    base_dir: Optional[str] = None,
+) -> bool:
+    """批复通过瞬间后台触发生成报告 markdown（fire-and-forget）。
+
+    - 缓存已存在时 generate_markdown_only 秒回，无副作用
+    - 同一 report_id 生成中不重复触发
+    - 无运行中的事件循环（同步上下文）时跳过并告警，不抛异常
+    Returns: True = 已触发；False = 跳过。
+    """
+    rid = (report_id or "").strip()
+    if not rid or rid in _gen_inflight:
+        return False
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        logger.warning(
+            "批复后自动生成跳过（无运行中的事件循环）: report_id=%s", rid
+        )
+        return False
+    _gen_inflight.add(rid)
+    task = asyncio.create_task(_run_report_generation(rid, user_id, base_dir))
+    _gen_tasks.add(task)
+    task.add_done_callback(_gen_tasks.discard)
+    return True
+
+
 async def approve_report(
     registry: ReportRegistry,
     report_id: str,
@@ -117,6 +177,18 @@ async def approve_report(
 
     if db is not None:
         await notify_report_approved(db, record.get("user_id") or "", report_id)
+
+    # 批复通过瞬间后台自动生成报告 markdown（用户页「生成报告」按钮仅为兜底）。
+    # 五阶段未完成时跳过（未完成的报告生成出来只有占位文案，与 export 完成度门控同口径）。
+    if _report_portal_unlocked(record.get("steps") or {}):
+        base_dir = getattr(registry, "simple_base_dir", None)
+        kick_report_generation(
+            report_id,
+            record.get("user_id") or None,
+            str(base_dir) if base_dir else None,
+        )
+    else:
+        logger.info("批复后自动生成跳过（五阶段未完成）: report_id=%s", report_id)
     return record
 
 
@@ -128,7 +200,8 @@ async def auto_approve_overdue(
     自动批复任务（APScheduler 每 REVIEW_SCAN_INTERVAL_MINUTES 分钟调用）：
 
     扫描全部 record.json，pending_review 且已过 deadline → approved + review_type=auto，
-    并触发站内信（与人工批复同一通知函数、同一文案）。单条失败不影响其余。
+    并触发站内信（与人工批复同一通知函数、同一文案）+ 后台自动生成报告 markdown。
+    单条失败不影响其余。
 
     Returns: 本次批复的报告数。
     """

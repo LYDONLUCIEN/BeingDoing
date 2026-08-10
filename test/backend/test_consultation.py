@@ -5,7 +5,7 @@
 1. 购买前置：无报告用户买咨询被拒；有报告（approved/存量无字段）放行
 2. 问卷提交：字段校验（缺主题/时间段/联系方式/报告不在名下）+ 成功提交状态流转
 3. 问卷守卫：非本人 404；非 pending_survey 重复提交 400
-4. Admin 状态机：schedule（仅 submitted）→ complete（仅 scheduled）；非法流转 400
+4. Admin 状态机：schedule（仅 submitted，发站内信通知用户）→ complete（仅 scheduled）；非法流转 400
 5. 列表/详情：user_email 联查、状态筛选、本人隔离
 
 fixture 风格同 test_payment_service.py；报告注册表 stub 为内存 dict。
@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from app.models.database import Base
+from app.models.feedback import Notification
 from app.models.payment import ConsultationBooking
 from app.models.user import User
 from app.services import consultation_service as cs_mod
@@ -202,6 +203,22 @@ async def test_admin_schedule_and_complete():
     assert scheduled["status"] == "scheduled"
     assert scheduled["scheduled_at"] is not None
     assert scheduled["admin_note"] == "已微信确认"
+
+    # 站内信通知用户：时间 + 详情页入口；admin_note 为内部备注不透出
+    async with _TestSessionLocal() as db:
+        notifs = (
+            (await db.execute(select(Notification).where(Notification.user_id == "u1")))
+            .scalars()
+            .all()
+        )
+    assert len(notifs) == 1
+    notif = notifs[0]
+    assert notif.type == "consultation_scheduled"
+    assert notif.title == "咨询时间已确认"
+    assert "2026-07-25 20:00" in notif.content
+    assert f"/dashboard/consultation/{booking.id}" in notif.content
+    assert "已微信确认" not in notif.content
+    assert notif.read_at is None
 
     completed = await ConsultationService.admin_complete(booking.id, actor={"user_id": "admin"})
     assert completed["status"] == "completed"
