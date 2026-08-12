@@ -20,6 +20,7 @@ import {
 import { useLocale } from '@/hooks/useLocale';
 import { CopyableCode } from '@/components/payment/CopyableCode';
 import UpgradeTrialModal from '@/components/payment/UpgradeTrialModal';
+import { TeamAnalysisNoticeBox } from '@/components/payment/TeamAnalysisNoticeModal';
 import { getUpgradeContext } from '@/lib/api/activation';
 
 export type PurchaseModalProps = {
@@ -761,6 +762,7 @@ export default function PurchaseModal({
                           </p>
                         </div>
                       )}
+                      {order.product_type === 'annual_package' && <TeamAnalysisNoticeBox />}
                       <button
                         type="button"
                         onClick={onClose}
@@ -791,6 +793,7 @@ export default function PurchaseModal({
                           {t('payment.success.giftNote')}
                         </p>
                       </div>
+                      {order.product_type === 'annual_package' && <TeamAnalysisNoticeBox />}
                       <p className="text-xs text-stone-400">{t('payment.success.emailNote')}</p>
                       <button
                         type="button"

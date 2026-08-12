@@ -370,8 +370,8 @@ type PricingPlan = {
 
 const PRICING_PLANS: PricingPlan[] = [
   { key: 'free', action: 'free' },
-  { key: 'quarterly', action: 'purchase', productType: 'quarterly_package' },
-  { key: 'annual', action: 'purchase', productType: 'annual_package', popular: true },
+  { key: 'quarterly', action: 'purchase', productType: 'quarterly_package', popular: true },
+  { key: 'annual', action: 'purchase', productType: 'annual_package' },
   { key: 'consult', action: 'consult' },
 ];
 
@@ -506,7 +506,7 @@ function PricingSection() {
   );
 }
 
-// ── 方案对比表（定价卡下方；✅=包含，留空=不包含）──
+// ── 方案对比表（定价卡下方；✅=包含，-=不包含）──
 const COMPARE_COLUMNS = ['colFree', 'colQuarterly', 'colAnnual', 'colConsult'] as const;
 const COMPARE_ROWS = [
   { label: 'r1', cells: ['r1Free', 'r1Quarterly', 'r1Annual', 'r1Consult'] },
@@ -514,6 +514,7 @@ const COMPARE_ROWS = [
   { label: 'r3', cells: ['r3Free', 'r3Quarterly', 'r3Annual', 'r3Consult'] },
   { label: 'r4', cells: ['r4Free', 'r4Quarterly', 'r4Annual', 'r4Consult'] },
   { label: 'r5', cells: ['r5Free', 'r5Quarterly', 'r5Annual', 'r5Consult'] },
+  { label: 'r8', cells: ['r8Free', 'r8Quarterly', 'r8Annual', 'r8Consult'] },
   { label: 'r6', cells: ['r6Free', 'r6Quarterly', 'r6Annual', 'r6Consult'] },
   { label: 'r7', cells: ['r7Free', 'r7Quarterly', 'r7Annual', 'r7Consult'] },
 ] as const;
@@ -552,7 +553,7 @@ function PricingCompareTable() {
                 <th
                   key={col}
                   className={`text-center font-medium px-4 py-4 ${
-                    col === 'colAnnual' ? 'bg-amber-50/60 dark:bg-amber-400/10' : ''
+                    col === 'colQuarterly' ? 'bg-amber-50/60 dark:bg-amber-400/10' : ''
                   }`}
                   style={{ color: 'var(--bd-fg)' }}
                 >
@@ -580,7 +581,7 @@ function PricingCompareTable() {
                     <td
                       key={cell}
                       className={`text-center px-4 py-4 ${
-                        COMPARE_COLUMNS[ci] === 'colAnnual'
+                        COMPARE_COLUMNS[ci] === 'colQuarterly'
                           ? 'bg-amber-50/60 dark:bg-amber-400/10'
                           : ''
                       }`}
@@ -591,7 +592,7 @@ function PricingCompareTable() {
                           ✅
                         </span>
                       ) : (
-                        value
+                        value || '-'
                       )}
                     </td>
                   );

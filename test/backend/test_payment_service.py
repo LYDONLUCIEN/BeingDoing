@@ -24,6 +24,7 @@ import pytest
 from app.config.settings import settings
 from app.core.payment.base import NotifyResult
 from app.models.database import Base
+from app.models.feedback import Notification
 from app.models.payment import Coupon, PaymentOrder
 from app.models.user import User
 from app.services import coupon_service as cs_mod
@@ -31,7 +32,7 @@ from app.services import payment_service as ps_mod
 from app.services.coupon_service import CouponService
 from app.services.payment_service import OrderNotFoundError, PaymentService
 from app.utils.simple_activation_manager import SimpleActivationManager
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 # ─── 测试专用引擎 + 会话工厂 ──────────────────────────────────
@@ -780,6 +781,57 @@ async def test_deliver_annual_three_unbound_codes(fake_channel, tmp_path):
         assert rec is not None and rec.owner_user_id is None
         assert rec.package_type == "annual"
         assert rec.purchaser_user_id == "u1"
+
+
+@pytest.mark.asyncio
+async def test_deliver_annual_team_analysis_notice(fake_channel, tmp_path):
+    """年度套餐（3 人团队码）交付：发团队分析报告站内信 + 交付邮件附文案；重复回调不重复发"""
+    order, _ = await PaymentService.create_order("u1", "annual_package", "alipay", None)
+    await PaymentService.handle_alipay_notify(_notify_form(order))
+
+    # 站内信：团队分析报告申请方式
+    async with _TestSessionLocal() as db:
+        rows = (
+            (await db.execute(select(Notification).where(Notification.user_id == "u1")))
+            .scalars()
+            .all()
+        )
+    assert len(rows) == 1
+    assert rows[0].type == "team_analysis_notice"
+    assert rows[0].read_at is None
+    assert "xunlu.lab@outlook.com" in rows[0].content
+
+    # 交付邮件附同一文案
+    kwargs = ps_mod.EmailService.send_email.await_args.kwargs
+    assert "xunlu.lab@outlook.com" in kwargs["body_text"]
+
+    # 重复回调幂等：不重复发站内信
+    await PaymentService.handle_alipay_notify(_notify_form(order))
+    async with _TestSessionLocal() as db:
+        cnt = (
+            await db.execute(
+                select(func.count()).select_from(Notification).where(Notification.user_id == "u1")
+            )
+        ).scalar_one()
+    assert cnt == 1
+
+
+@pytest.mark.asyncio
+async def test_deliver_quarterly_no_team_analysis_notice(fake_channel, tmp_path):
+    """季度套餐交付：不发团队分析报告站内信，邮件也不含该文案"""
+    order, _ = await PaymentService.create_order("u1", "quarterly_package", "alipay", None)
+    await PaymentService.handle_alipay_notify(_notify_form(order))
+
+    async with _TestSessionLocal() as db:
+        cnt = (
+            await db.execute(
+                select(func.count()).select_from(Notification).where(Notification.user_id == "u1")
+            )
+        ).scalar_one()
+    assert cnt == 0
+
+    kwargs = ps_mod.EmailService.send_email.await_args.kwargs
+    assert "xunlu.lab@outlook.com" not in kwargs["body_text"]
 
 
 @pytest.mark.asyncio

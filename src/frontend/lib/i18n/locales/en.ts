@@ -143,6 +143,11 @@ export const en = {
         r5Quarterly: '',
         r5Annual: '',
         r5Consult: '1 session (60 min)',
+        r8: '7-day free renewal',
+        r8Free: '',
+        r8Quarterly: '✅',
+        r8Annual: '✅',
+        r8Consult: '',
         r6: 'Validity period',
         r6Free: '',
         r6Quarterly: '3 months; after expiry you can still view reports, but cannot edit or view conversations',
@@ -773,6 +778,10 @@ export const en = {
       continueExplore: 'Continue Exploring',
       consultationNote: 'Purchase successful! Please fill in the booking questionnaire to schedule your consultation.',
       consultationCta: 'View My Orders',
+      teamNoticeTitle: 'Team Analysis Report',
+      teamNoticeBody:
+        'Thank you for your purchase! If you need a team analysis report, please email us at xunlu.lab@outlook.com with the three activation codes you want analyzed. Our consultant will send the report to your email within 5 business days — please check your inbox.',
+      teamNoticeOk: 'Got it',
     },
     upgrade: {
       title: 'Upgrade Your Trial Code',

@@ -8,14 +8,16 @@
  * → 左选择器/结论 + 右对话（内部分区）
  */
 
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { FileText } from 'lucide-react';
 import { useRuminationV4Store } from '@/stores/ruminationV4Store';
+import { markV4IntroShown } from '@/lib/explore/ruminationV4Api';
 import V4ChatPanel from './V4ChatPanel';
 import TopComboBar from './TopComboBar';
 import V4FinalSelectionModal from './V4FinalSelectionModal';
+import V4IntroModal from './V4IntroModal';
 
 const ExploreLandingMeshLayers = dynamic(
   () => import('@/components/explore/ExploreLandingMeshLayers'),
@@ -56,6 +58,8 @@ export default function RuminationV4Page({
   const { state, init, hasPendingAnalysis } = useRuminationV4Store();
   const [finalModalOpen, setFinalModalOpen] = useState(false);
   const [gateHint, setGateHint] = useState('');
+  const [introOpen, setIntroOpen] = useState(false);
+  const introCheckedRef = useRef(false);
   const router = useRouter();
 
   /** 终选已提交：顶栏按钮变为「查看报告」直达报告页（报告下载页除个人空间外的另一入口） */
@@ -75,6 +79,23 @@ export default function RuminationV4Page({
       useRuminationV4Store.getState().loadCombo(state.active_combo_id);
     }
   }, [state?.active_combo_id]);
+
+  // 开场弹窗：每个激活码的 report 首次进入 v4 页面时弹一次（后端 intro_shown 持久化）
+  useEffect(() => {
+    if (!state || introCheckedRef.current) return;
+    introCheckedRef.current = true;
+    if (!state.intro_shown) setIntroOpen(true);
+  }, [state]);
+
+  const handleIntroConfirm = () => {
+    setIntroOpen(false);
+    // 本地先落标记，避免同一会话内因 state 刷新重弹；后端标记失败也静默
+    const s = useRuminationV4Store.getState().state;
+    if (s) {
+      useRuminationV4Store.setState({ state: { ...s, intro_shown: true } });
+    }
+    markV4IntroShown(activationCode).catch(() => { /* 静默忽略 */ });
+  };
 
   // 门槛提示 4 秒后自动消失
   useEffect(() => {
@@ -181,6 +202,8 @@ export default function RuminationV4Page({
           </div>
         </div>
       </div>
+
+      <V4IntroModal open={introOpen} onConfirm={handleIntroConfirm} />
 
       <V4FinalSelectionModal
         open={finalModalOpen}

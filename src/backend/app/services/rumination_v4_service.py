@@ -63,6 +63,8 @@ def default_state(matrix_snapshot: Optional[Dict[str, Any]] = None) -> Dict[str,
             "submitted_at": None,
         },
         "main_section": "matrix",
+        # 开场弹窗是否已展示(2026-08-10:每激活码的 rumination report 首次进入 v4 页面弹一次)
+        "intro_shown": False,
     }
 
 
@@ -174,6 +176,14 @@ def _normalize_v4_state(data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # ── combo_session 操作 ─────────────────────────────────────────────────
+def mark_intro_shown(reports_root: Path, report_id: str) -> Dict[str, Any]:
+    """标记 v4 开场弹窗已展示(纯 UI 标记,幂等)。"""
+    state = load_v4_state(reports_root, report_id)
+    state["intro_shown"] = True
+    save_v4_state(reports_root, report_id, state)
+    return state
+
+
 def list_combos(state: Dict[str, Any]) -> List[Dict[str, Any]]:
     """列出所有 combo_session 的元信息(不含 messages)。"""
     out = []

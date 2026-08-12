@@ -85,6 +85,8 @@ export interface RuminationV4State {
   active_combo_id: string | null;
   final_selection: FinalSelection;
   main_section: MainSection;
+  /** 开场弹窗是否已展示(2026-08-10:每激活码首次进入 v4 页面弹一次) */
+  intro_shown?: boolean;
 }
 
 // ── API 调用 ──────────────────────────────────────────────────────────
@@ -186,6 +188,14 @@ export async function updateFinalSelection(activationCode: string, selectedCombo
 export async function submitFinalSelection(activationCode: string) {
   return apiClient.post<{ final_selection: FinalSelection; main_section: MainSection }>(
     `${PREFIX}/final-selection/submit`,
+    { activation_code: activationCode }
+  );
+}
+
+/** 标记 v4 开场弹窗已展示(每激活码仅首次进入弹一次,纯 UI 标记) */
+export async function markV4IntroShown(activationCode: string) {
+  return apiClient.post<{ intro_shown: boolean }>(
+    `${PREFIX}/intro-shown`,
     { activation_code: activationCode }
   );
 }

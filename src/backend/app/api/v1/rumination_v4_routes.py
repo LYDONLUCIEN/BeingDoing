@@ -67,6 +67,7 @@ from app.services.rumination_v4_service import (
     is_analyzing,
     list_combos,
     load_v4_state,
+    mark_intro_shown,
     maybe_summarize_combo,
     patch_conclusion_card as svc_patch_card,
     register_analysis_task,
@@ -752,3 +753,19 @@ async def set_active_endpoint(req: SetActiveReq, current_user: dict = Depends(ge
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return {"code": 200, "message": "success", "data": {"active_combo_id": state.get("active_combo_id")}}
+
+
+# ── 端点 15:POST /intro-shown(开场弹窗已读标记)────────────────────────
+class IntroShownReq(BaseModel):
+    activation_code: str
+
+
+@router.post("/intro-shown")
+async def intro_shown_endpoint(req: IntroShownReq, current_user: dict = Depends(get_current_user)):
+    """标记 v4 开场弹窗已展示（每个激活码的 rumination report 首次进入 v4 页面弹一次）。
+
+    纯 UI 标记，不做 editable 锁检查（报告定稿后回看页面也允许落标记）。
+    """
+    reports_root, rid = _resolve_v4_ctx(req.activation_code, current_user)
+    state = mark_intro_shown(reports_root, rid)
+    return {"code": 200, "message": "success", "data": {"intro_shown": state.get("intro_shown")}}

@@ -10,6 +10,7 @@ import { getUpgradeContext } from '@/lib/api/activation';
 import { useLocale } from '@/hooks/useLocale';
 import { CopyableCode } from '@/components/payment/CopyableCode';
 import UpgradeTrialModal from '@/components/payment/UpgradeTrialModal';
+import TeamAnalysisNoticeModal from '@/components/payment/TeamAnalysisNoticeModal';
 
 const POLL_INTERVAL_MS = 2000;
 const CONFIRM_TIMEOUT_MS = 30 * 60 * 1000;
@@ -44,6 +45,11 @@ function PaymentResultContent() {
   /** 弹窗消耗升级实际用掉的付费码（从展示列表排除，避免把已消耗码当可转赠码展示） */
   const [consumedCode, setConsumedCode] = useState<string | null>(null);
   const upgradeCheckedRef = useRef(false);
+  /** 团队分析报告提示弹窗（年度套餐 3 码交付后弹出，每单只弹一次） */
+  const [teamNoticeOpen, setTeamNoticeOpen] = useState(false);
+  const teamNoticeCheckedRef = useRef(false);
+  /** 团队提示弹窗关闭后再弹的消耗升级（避免两个弹窗叠加） */
+  const pendingUpgradeRef = useRef(false);
 
   const deadlineRef = useRef<number>(0);
 
@@ -56,12 +62,20 @@ function PaymentResultContent() {
       // ADR-0014：套餐交付后，有已开聊试用码且未「不再提醒」→ 弹消耗升级（每单只判一次）
       const isPackage =
         ord.product_type === 'quarterly_package' || ord.product_type === 'annual_package';
+      const isAnnual = ord.product_type === 'annual_package';
+      // 年度套餐（3 人团队码）：弹团队分析报告提示（每单只弹一次）
+      if (isAnnual && !teamNoticeCheckedRef.current) {
+        teamNoticeCheckedRef.current = true;
+        setTeamNoticeOpen(true);
+      }
       if (isPackage && !ord.meta?.auto_upgraded && !upgradeCheckedRef.current) {
         upgradeCheckedRef.current = true;
         getUpgradeContext()
           .then((ctx) => {
             if (ctx.has_started_trial && !ctx.dont_remind && (ctx.unbound_codes ?? []).length > 0) {
-              setUpgradeOpen(true);
+              // 年度套餐先展示团队提示，关闭后再弹消耗升级
+              if (isAnnual) pendingUpgradeRef.current = true;
+              else setUpgradeOpen(true);
             }
           })
           .catch(() => {
@@ -365,6 +379,16 @@ function PaymentResultContent() {
           </div>
         )}
       </div>
+      <TeamAnalysisNoticeModal
+        open={teamNoticeOpen}
+        onClose={() => {
+          setTeamNoticeOpen(false);
+          if (pendingUpgradeRef.current) {
+            pendingUpgradeRef.current = false;
+            setUpgradeOpen(true);
+          }
+        }}
+      />
       <UpgradeTrialModal
         open={upgradeOpen}
         onClose={() => setUpgradeOpen(false)}

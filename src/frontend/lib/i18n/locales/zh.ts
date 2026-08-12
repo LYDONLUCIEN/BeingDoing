@@ -140,6 +140,11 @@ export const zh = {
         r5Quarterly: '',
         r5Annual: '',
         r5Consult: '1 次（60 分钟）',
+        r8: '7 天免费延期',
+        r8Free: '',
+        r8Quarterly: '✅',
+        r8Annual: '✅',
+        r8Consult: '',
         r6: '适用时间',
         r6Free: '',
         r6Quarterly: '3 个月；到期后仍可查看报告，但不可编辑和查看对话',
@@ -767,6 +772,10 @@ export const zh = {
       continueExplore: '继续探索',
       consultationNote: '购买成功！请前往填写预约问卷，完成咨询预约。',
       consultationCta: '查看我的订单',
+      teamNoticeTitle: '团队分析报告',
+      teamNoticeBody:
+        '感谢购买！如您需要团队分析报告，请发送至我们的邮箱：xunlu.lab@outlook.com。邮箱内容需包含您需要分析的三个激活码，咨询师会在5个工作日内发送报告至您的邮箱，请注意查收。',
+      teamNoticeOk: '我知道了',
     },
     upgrade: {
       title: '升级你的试用码',

@@ -33,6 +33,7 @@ from app.config.settings import settings
 from app.core.payment import get_channel
 from app.core.payment.base import NotifyResult  # noqa: F401（供测试/调用方引用）
 from app.models.database import AsyncSessionLocal
+from app.models.feedback import Notification
 from app.models.payment import ConsultationBooking, Coupon, PaymentOrder
 from app.models.user import User
 from app.services.coupon_service import CouponService
@@ -72,6 +73,15 @@ _VALID_PRODUCT_TYPES = {
 
 # 订单意图（ADR-0014）：试用拦截点直购升级——交付后发码并自动消耗升级试用码
 INTENT_UPGRADE_TRIAL = "upgrade_trial"
+
+# 团队分析报告提示（年度套餐 3 码交付后：交付邮件附文案 + 站内信 + 前端弹窗）
+TEAM_ANALYSIS_EMAIL = "xunlu.lab@outlook.com"
+NOTIFY_TYPE_TEAM_ANALYSIS = "team_analysis_notice"
+NOTIFY_TITLE_TEAM_ANALYSIS = "团队分析报告"
+TEAM_ANALYSIS_NOTICE = (
+    "感谢购买！如您需要团队分析报告，请发送至我们的邮箱：xunlu.lab@outlook.com。"
+    "邮箱内容需包含您需要分析的三个激活码，咨询师会在5个工作日内发送报告至您的邮箱，请注意查收。"
+)
 
 # 套餐时长（天）：package_type → settings 字段
 _PACKAGE_DAYS = {
@@ -469,6 +479,18 @@ class PaymentService:
             order.delivered_code = delivered_code
             if meta:
                 order.meta = json.dumps(meta, ensure_ascii=False)
+            # 年度套餐（3 码）：站内信提示团队分析报告申请方式（随订单提交，交付幂等故仅一次）
+            if product_type == PRODUCT_ANNUAL:
+                db.add(
+                    Notification(
+                        user_id=user_id,
+                        type=NOTIFY_TYPE_TEAM_ANALYSIS,
+                        title=NOTIFY_TITLE_TEAM_ANALYSIS,
+                        content=TEAM_ANALYSIS_NOTICE,
+                        read_at=None,
+                        related_feedback_id=None,
+                    )
+                )
             order.status = "granted"
             order.paid_at = paid_at or _utcnow()
             if channel_transaction_id and not order.channel_transaction_id:
@@ -657,6 +679,10 @@ class PaymentService:
                 lines += [
                     "",
                     "请妥善保管本邮件；也可在「个人空间 - 我的订单」中随时查看。",
+                ]
+                if product_type == PRODUCT_ANNUAL:
+                    lines += ["", TEAM_ANALYSIS_NOTICE]
+                lines += [
                     "",
                     "—— 寻路·OpenLife",
                 ]
