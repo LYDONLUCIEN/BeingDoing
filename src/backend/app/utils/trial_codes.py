@@ -129,6 +129,33 @@ def get_active_trial_code_for_user(user_id: str) -> Optional[ActivationRecord]:
     return None
 
 
+def list_unbound_full_codes_purchased_by(user_id: str) -> List[ActivationRecord]:
+    """用户自购的未绑定 active 完整码（ADR-0014 消耗升级/转赠/自激活可用口径）。
+
+    口径：purchaser_user_id == 本人 且 未绑定（owner 为空）且 status=active 且 code_type=full。
+    注意：被赠送的码（purchaser 是别人）不在此列——持有者可手动输入码走 apply-to-trial。
+    按 created_at 倒序。
+    """
+    user_id = (user_id or "").strip()
+    if not user_id:
+        return []
+    result: List[ActivationRecord] = []
+    for base_dir in (get_simple_base_dir(), get_simple_test_base_dir()):
+        mgr = SimpleActivationManager(base_dir=str(base_dir))
+        for _code, rec in mgr.list_activations().items():
+            if (getattr(rec, "purchaser_user_id", None) or "") != user_id:
+                continue
+            if rec.owner_user_id:
+                continue
+            if rec.status != ActivationStatus.ACTIVE.value:
+                continue
+            if (getattr(rec, "code_type", None) or FULL_CODE_TYPE) != FULL_CODE_TYPE:
+                continue
+            result.append(rec)
+    result.sort(key=lambda r: getattr(r, "created_at", None) or "", reverse=True)
+    return result
+
+
 def get_started_trial_code(user_id: str) -> Optional[ActivationRecord]:
     """找用户名下「已开聊」（values 用户消息 ≥1 条）的 active 试用码（ADR-0014 弹窗触发条件）。"""
     from app.utils.report_registry import ReportRegistry

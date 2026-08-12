@@ -154,11 +154,14 @@ function lastDimensionConclusionMessage<T extends { type?: string }>(msgs: T[]):
 /** 试用拦截类型：limit=试用 10 轮用完；locked=试用码进非价值观阶段 */
 type TrialBlockKind = 'limit' | 'locked';
 
+/** 402 试用拦截信息：kind + 是否有可用来消耗升级的自购未绑定码（后端随 detail 下发） */
+type TrialBlock = { kind: TrialBlockKind; hasUpgradeCodes: boolean };
+
 /**
  * 解析 402 试用拦截错误。detail 可能是 JSON 字符串也可能是已解析对象，两种都兼容；
- * 非试用拦截返回 null。
+ * 非试用拦截返回 null。has_upgrade_codes 缺省（旧后端）按 false 处理，只引导购买。
  */
-function parseTrialBlockKind(detail: unknown): TrialBlockKind | null {
+function parseTrialBlock(detail: unknown): TrialBlock | null {
   let obj: unknown = detail;
   if (typeof detail === 'string') {
     try {
@@ -167,10 +170,11 @@ function parseTrialBlockKind(detail: unknown): TrialBlockKind | null {
       return null;
     }
   }
-  const type = (obj as { type?: unknown } | null)?.type;
-  if (type === 'trial_limit_reached') return 'limit';
-  if (type === 'trial_phase_locked') return 'locked';
-  return null;
+  const rec = obj as { type?: unknown; has_upgrade_codes?: unknown } | null;
+  const kind =
+    rec?.type === 'trial_limit_reached' ? 'limit' : rec?.type === 'trial_phase_locked' ? 'locked' : null;
+  if (!kind) return null;
+  return { kind, hasUpgradeCodes: rec?.has_upgrade_codes === true };
 }
 
 /** 解析 403 邮箱未验证拦截（detail 兼容 JSON 字符串 / 已解析对象） */
@@ -399,7 +403,7 @@ export default function ChatPhasePage() {
   const [phaseCelebrateSignal, setPhaseCelebrateSignal] = useState(0);
   const [phaseCompleteModalOpen, setPhaseCompleteModalOpen] = useState(false);
   /** 试用拦截弹层（402 trial_limit_reached / trial_phase_locked），非 null 时展示 */
-  const [trialBlock, setTrialBlock] = useState<TrialBlockKind | null>(null);
+  const [trialBlock, setTrialBlock] = useState<TrialBlock | null>(null);
   /** 购买引导：试用拦截弹层点「去购买」后打开现有 PurchaseModal */
   const [trialPurchaseOpen, setTrialPurchaseOpen] = useState(false);
   /** 消耗升级弹窗（ADR-0014）：拦截点「使用已有激活码升级」入口 */
@@ -1912,9 +1916,9 @@ export default function ChatPhasePage() {
         } catch {}
         // 试用拦截（402）：不落地错误气泡，直接弹购买引导层，终止本次发送
         if (res.status === 402) {
-          const blockKind = parseTrialBlockKind(detail);
-          if (blockKind) {
-            setTrialBlock(blockKind);
+          const block = parseTrialBlock(detail);
+          if (block) {
+            setTrialBlock(block);
             return;
           }
         }
@@ -1943,9 +1947,9 @@ export default function ChatPhasePage() {
             const payload = JSON.parse(line.slice(6));
             if (payload.error) {
               // SSE 内嵌试用拦截（防御：后端也可能以流内 error + type 下发）
-              const blockKind = parseTrialBlockKind(payload);
-              if (blockKind) {
-                setTrialBlock(blockKind);
+              const block = parseTrialBlock(payload);
+              if (block) {
+                setTrialBlock(block);
               } else if (isEmailNotVerifiedBlock(payload)) {
                 router.replace('/explore/survey');
               } else {
@@ -5287,23 +5291,34 @@ export default function ChatPhasePage() {
       <TrialLimitModal
         open={trialBlock !== null}
         title={
-          trialBlock === 'locked'
+          trialBlock?.kind === 'locked'
             ? t('explore.trial.lockedTitle')
             : t('explore.trial.limitTitle')
         }
         body={
-          trialBlock === 'locked' ? t('explore.trial.lockedBody') : t('explore.trial.limitBody')
+          trialBlock?.kind === 'locked' ? t('explore.trial.lockedBody') : t('explore.trial.limitBody')
         }
-        primaryLabel={t('explore.trial.buy')}
+        primaryLabel={
+          trialBlock?.hasUpgradeCodes ? t('explore.trial.useExisting') : t('explore.trial.buy')
+        }
         secondaryLabel={t('explore.trial.later')}
-        extraLabel={t('explore.trial.useExisting')}
-        onExtra={() => {
-          setTrialBlock(null);
-          setTrialUpgradeOpen(true);
-        }}
+        extraLabel={trialBlock?.hasUpgradeCodes ? t('explore.trial.buy') : undefined}
+        onExtra={
+          trialBlock?.hasUpgradeCodes
+            ? () => {
+                setTrialBlock(null);
+                setTrialPurchaseOpen(true);
+              }
+            : undefined
+        }
         onPrimary={() => {
+          const hasCodes = trialBlock?.hasUpgradeCodes;
           setTrialBlock(null);
-          setTrialPurchaseOpen(true);
+          if (hasCodes) {
+            setTrialUpgradeOpen(true);
+          } else {
+            setTrialPurchaseOpen(true);
+          }
         }}
         onClose={() => setTrialBlock(null)}
       />

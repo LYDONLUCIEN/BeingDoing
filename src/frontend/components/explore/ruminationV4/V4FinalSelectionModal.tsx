@@ -12,36 +12,12 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 import { useRuminationV4Store } from '@/stores/ruminationV4Store';
-import type { ComboSession, ConclusionCard } from '@/lib/explore/ruminationV4Api';
+import V4FinalSelectionCard from './V4FinalSelectionCard';
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onConfirm: () => void;
-}
-
-/**
- * 终选统一主题色（rumination 主题紫）。
- * 与 V4ComboMatrixSelector 主按钮渐变（#826aff→#553df2）同族；
- * 全卡片统一，仅「不推荐」卡片以琥珀色警告条区分。
- */
-const THEME_PURPLE = {
-  color: '#553df2',
-  tagBg: '#f4f1ff',
-  tagColor: '#5d49ef',
-};
-
-/** 防御：dict 形态已废弃，统一转纯字符串 */
-function hypToString(h: ConclusionCard['hypothesis']): string {
-  if (!h) return '';
-  if (typeof h === 'string') return h;
-  return Object.values(h).filter(Boolean).join('\n');
-}
-
-function getDirectionDesc(combo: ComboSession, card: ConclusionCard | null): string {
-  const t = hypToString(card?.hypothesis ?? null).trim();
-  if (t) return t;
-  return `基于「${combo.passion}」与「${combo.strengths.join('、')}」的探索方向。`;
 }
 
 export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Props) {
@@ -193,97 +169,22 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
               </span>
             </header>
 
+            {/* 2 列大卡网格（设计稿 uidesign/beautiful/nto3.png） */}
             <div
-              className="direction-grid relative z-[1] mt-5 grid gap-4 overflow-y-auto pr-1"
-              style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}
+              className="direction-grid relative z-[1] mt-5 grid gap-5 overflow-y-auto pr-1"
+              style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}
             >
-              {candidates.map((combo, idx) => {
-                const card = combo.conclusion_card;
-                const selected = selectedIds.has(combo.combo_id);
-                const desc = getDirectionDesc(combo, card);
-                // 与管理组合口径一致：标题=热爱选项，tag=优势
-                const tags = combo.strengths.slice(0, 4);
-                return (
-                  <button
-                    key={combo.combo_id}
-                    type="button"
-                    onClick={() => toggle(combo.combo_id)}
-                    disabled={locked}
-                    title={desc} // 悬停任意位置可见完整假设（推荐/不推荐均生效）
-                    className={`
-                      direction-card relative flex flex-col rounded-[15px] border p-4 text-center transition-all duration-200
-                      ${selected ? 'selected' : ''}
-                    `}
-                    style={{
-                      minHeight: 140,
-                      background: 'rgba(255,255,255,0.8)',
-                      borderColor: selected ? THEME_PURPLE.color : '#e0e6ee',
-                      borderWidth: selected ? '2px' : '1px',
-                      padding: selected ? '15px' : '16px',
-                      boxShadow: selected
-                        ? `0 8px 20px ${THEME_PURPLE.color}20`
-                        : 'none',
-                      color: selected ? THEME_PURPLE.color : '#07163b',
-                    }}
-                  >
-                    <span
-                      className="direction-index absolute left-2.5 top-2.5 grid h-8 min-w-[32px] place-items-center rounded-full px-1.5 text-[13px] font-extrabold text-white"
-                      style={{
-                        background: THEME_PURPLE.color,
-                        boxShadow: `0 5px 10px ${THEME_PURPLE.color}36`,
-                      }}
-                    >
-                      {String(idx + 1).padStart(2, '0')}
-                    </span>
-                    {/* 右上角勾选标记（仅选中时显示） */}
-                    <span
-                      className="direction-check absolute right-2.5 top-2.5 grid h-[22px] w-[22px] place-items-center rounded-[6px] text-white"
-                      style={{
-                        background: THEME_PURPLE.color,
-                        display: selected ? 'grid' : 'none',
-                        border: '2px solid white',
-                      }}
-                    >
-                      ✓
-                    </span>
-                    <div className="mx-auto mb-2 mt-4 flex items-start justify-center gap-1.5">
-                      <h3
-                        className="line-clamp-2 text-base font-bold leading-snug"
-                        style={{ color: selected ? THEME_PURPLE.color : '#07163b' }}
-                      >
-                        {combo.passion}
-                      </h3>
-                    </div>
-                    <div className="tags mb-2 flex flex-wrap justify-center gap-1">
-                      {tags.map((t) => (
-                        <span
-                          key={t}
-                          className="tag rounded-md px-1.5 py-1 text-[11px]"
-                          style={{
-                            background: selected ? THEME_PURPLE.tagBg : '#eef3fb',
-                            color: selected ? THEME_PURPLE.tagColor : '#65728c',
-                          }}
-                        >
-                          {t}
-                        </span>
-                      ))}
-                    </div>
-                    {/* 不推荐（未找到平衡点）时直接展示理由 */}
-                    {card?.balance_found === false && (
-                      <p
-                        className="mt-1.5 line-clamp-2 rounded-md px-1.5 py-1 text-left text-[11px] leading-snug"
-                        style={{
-                          background: '#fff6e5',
-                          color: '#b57908',
-                        }}
-                        title={card.balance_fail_reason?.trim() || '未找到平衡点'}
-                      >
-                        ⚠ 不推荐：{card.balance_fail_reason?.trim() || '未找到平衡点'}
-                      </p>
-                    )}
-                  </button>
-                );
-              })}
+              {candidates.map((combo, idx) => (
+                <V4FinalSelectionCard
+                  key={combo.combo_id}
+                  index={idx}
+                  combo={combo}
+                  card={combo.conclusion_card}
+                  selected={selectedIds.has(combo.combo_id)}
+                  locked={locked}
+                  onToggle={toggle}
+                />
+              ))}
             </div>
 
             {candidates.length === 0 && (

@@ -376,7 +376,22 @@ async def test_trial_phase_lock_on_stream(patched_roots, manager, monkeypatch):
     with pytest.raises(HTTPException) as exc:
         await scr.simple_chat_stream(req, dict(USER))
     assert exc.value.status_code == 402
-    assert json.loads(exc.value.detail) == {"type": "trial_phase_locked"}
+    assert json.loads(exc.value.detail) == {"type": "trial_phase_locked", "has_upgrade_codes": False}
+
+
+async def test_trial_phase_lock_has_upgrade_codes(patched_roots, manager, monkeypatch):
+    """402 detail 带 has_upgrade_codes：有自购未绑定完整码时为 True（前端据此显示升级入口）。"""
+    rec, registry, rid = _make_bound_code(manager, USER, n_values_msgs=3)
+    paid = manager.create_activation(mode="combined", code_type="full", no_expiry=True)
+    manager.set_purchase_source(paid.code, purchaser_user_id=USER["user_id"])
+    _patch_manager_lookup(monkeypatch, manager)
+    req = scr.SimpleChatStreamRequest(
+        activation_code=rec.code, message="开始优势阶段", phase="strengths", thread_id="t_9"
+    )
+    with pytest.raises(HTTPException) as exc:
+        await scr.simple_chat_stream(req, dict(USER))
+    assert exc.value.status_code == 402
+    assert json.loads(exc.value.detail) == {"type": "trial_phase_locked", "has_upgrade_codes": True}
 
 
 async def test_trial_phase_lock_on_init(patched_roots, manager, monkeypatch):
@@ -388,7 +403,7 @@ async def test_trial_phase_lock_on_init(patched_roots, manager, monkeypatch):
     with pytest.raises(HTTPException) as exc:
         await scr.simple_init(req, dict(USER))
     assert exc.value.status_code == 402
-    assert json.loads(exc.value.detail) == {"type": "trial_phase_locked"}
+    assert json.loads(exc.value.detail) == {"type": "trial_phase_locked", "has_upgrade_codes": False}
 
 
 async def test_trial_phase_lock_on_thread_complete(patched_roots, manager, monkeypatch):
@@ -400,7 +415,7 @@ async def test_trial_phase_lock_on_thread_complete(patched_roots, manager, monke
     with pytest.raises(HTTPException) as exc:
         await scr.mark_thread_complete(req, dict(USER))
     assert exc.value.status_code == 402
-    assert json.loads(exc.value.detail) == {"type": "trial_phase_locked"}
+    assert json.loads(exc.value.detail) == {"type": "trial_phase_locked", "has_upgrade_codes": False}
 
 
 async def test_trial_phase_lock_on_rumination_submit(patched_roots, manager, monkeypatch):
@@ -410,7 +425,7 @@ async def test_trial_phase_lock_on_rumination_submit(patched_roots, manager, mon
     with pytest.raises(HTTPException) as exc:
         await scr.rumination_table_submit(req, dict(USER))
     assert exc.value.status_code == 402
-    assert json.loads(exc.value.detail) == {"type": "trial_phase_locked"}
+    assert json.loads(exc.value.detail) == {"type": "trial_phase_locked", "has_upgrade_codes": False}
 
 
 # ──────────────────────────────────────────────────────────────────

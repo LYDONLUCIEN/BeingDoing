@@ -274,8 +274,8 @@ python scripts/init_db.py
 
 - **试用码（trial）**：注册即送、自动绑定、不过期（`expires_at=None`）、`vip_level=1`；老用户 0 码时在 `GET /simple-auth/journeys` 懒补发。仅限 values 阶段问答 10 轮（轮=用户消息条数，排除 `internal` 消息；第 11 条起拦截）。
 - **完整码（full）**：全阶段解锁。存量码一律 `code_type=full`（`_load_all` setdefault 兼容）。
-- **消耗升级（ADR-0014）**：购买套餐不再自动升级试用码——季度发 1 个、年度发 3 个**未绑定**完整码（可自用/转赠）；用户可消耗 1 个未绑定码（自购或被赠均可）把已开聊试用码**原地升级**为完整码：被消耗码置 `status=consumed`（+`consumed_into` 审计），试用码走 `upgrade_to_full`（码字符串/对话记录/session 全保留）。入口：支付结果页弹窗（可「不再提醒」，存 `users.preferences`）、两种 402 拦截点（双选项：直购 intent=upgrade_trial 支付后自动消耗升级 / 用已有码升级）、我的激活码页。
-- **试用门控**：写端点非 values → HTTP 402 `{"type":"trial_phase_locked"}`；values 超 10 轮 → HTTP 402 `{"type":"trial_limit_reached","used":N,"limit":10}`（detail 为 JSON 字符串）。只读 GET 不拦；admin/沙箱走 `_can_bypass_flow_limits` 豁免。
+- **消耗升级（ADR-0014）**：购买套餐不再自动升级试用码——季度发 1 个、年度发 3 个**未绑定**完整码（可自用/转赠）；用户可消耗 1 个未绑定码（自购或被赠均可）把已开聊试用码**原地升级**为完整码：被消耗码置 `status=consumed`（+`consumed_into` 审计），试用码走 `upgrade_to_full`（码字符串/对话记录/session 全保留）。入口：支付结果页弹窗（可「不再提醒」，存 `users.preferences`）、两种 402 拦截点（直购 intent=upgrade_trial 支付后自动消耗升级 / 用已有码升级，按 `has_upgrade_codes` 分级显示）、我的激活码页（「升级完整版」按钮始终可见，作为手动输入常驻入口）。UpgradeTrialModal 空态（无自购未绑定码）提供「手动输入激活码」（覆盖被赠码：purchaser 非本人的码不进 unbound_codes 列表，但 apply-to-trial 实际允许消耗）；`has_started_trial=false` 时弹窗提示「建议直接用新码开始」并可跳激活页，保留仍要升级兼底。
+- **试用门控**：写端点非 values → HTTP 402 `{"type":"trial_phase_locked"}`；values 超 10 轮 → HTTP 402 `{"type":"trial_limit_reached","used":N,"limit":10}`（detail 为 JSON 字符串）。两种 402 detail 均带 `has_upgrade_codes`（`_has_upgrade_codes`，口径=自购+未绑定+active+full，与 upgrade-context 共用 `list_unbound_full_codes_purchased_by`）：前端 chat 页据此做引导分级——无码时仅「购买升级」单选项；有码时「使用已有激活码升级」升为主按钮、购买降为次按钮。只读 GET 不拦；admin/沙箱走 `_can_bypass_flow_limits` 豁免。
 - **邮箱验证门控（2026-08-08 起）**：绑定了邮箱但 `email_verified=False` 的用户禁止一切探索写操作——`_assert_email_verified_for_explore` 挂在 `_assert_trial_phase_allowed` 统一入口（覆盖 init/message/stream/thread/rumination/prior-context 全部写端点）+ `POST /simple-chat/survey`，返回 HTTP 403 `{"type":"email_not_verified"}`。只读 GET 不拦；无邮箱（手机注册）与 `_can_bypass_flow_limits` 豁免。前端：`/explore/survey` 对未验证用户显示验证引导卡（替代问卷表单，可重发验证邮件），chat 页检测未验证主动跳回问卷页。背景：注册即送试用码自动绑定后，未验证用户曾可绕过激活页验证提示直接开聊。
 - **问卷昵称同源（2026-08-08 起）**：调研问卷 `nickname` 与注册昵称 `users.username` 同源——前端 `/explore/survey` 未保存过昵称时预填 username；后端 `/simple-chat/survey` 与 `/user-survey` 保存时昵称空白自动回填 username（`_survey_data_with_nickname_default`）。
 - **退款口径（ADR-0014）**：套餐订单任一码被 claim/consumed → 整单不可退；全部码未动 → 可退并 revoke 全部码；延期维持不可退。
@@ -398,12 +398,13 @@ python scripts/init_db.py
 - `docs/DOCKER.md` - Docker 使用
 - `docs/ADMIN_SANDBOX_FORK.md` - 管理员调试沙箱（Fork 正式激活码）
 - `CONTEXT.md` - 领域术语（探索流程 + 支付与商业化：试用/完整码、激活码（季度套餐/年度套餐）、折扣券、报告审核、团队分析）
-- `docs/adr/` - 架构决策记录（0005 双线支付 / 0006-0007 会员体系保留 / 0008 套餐与试用码 / 0009 报告审核自动批复 / 0010 码双角色与报告授权 / 0011 存储演进路线：SQLite 全量入库→条件触发 PG / 0012 品牌更名 OpenLife / 0013 统计看板：事件时间口径漏斗 + 埋点业务同库 / 0014 套餐全量未绑定码交付 + 消耗升级 + 年度 ¥159 / 0016 延期改版：首过免费送 7 天 + 付费 9.9 元/7 天）
+- `docs/adr/` - 架构决策记录（0005 双线支付 / 0006-0007 会员体系保留 / 0008 套餐与试用码 / 0009 报告审核自动批复 / 0010 码双角色与报告授权 / 0011 存储演进路线：SQLite 全量入库→条件触发 PG / 0012 品牌更名 OpenLife / 0013 统计看板：事件时间口径漏斗 + 埋点业务同库 / 0014 套餐全量未绑定码交付 + 消耗升级 + 年度 ¥159 / 0016 延期改版：首过免费送 7 天 + 付费 9.9 元/7 天 / 0017 报告后处理修正管线：一次生成 + 按章节分步修正）
 - `tasks/payment-module-plan.md` - 支付模块实施计划（P1 折扣券 ✅ / P2a 支付宝 ✅ / P2b 微信待做）
 - `tasks/packages-trial-plan.md` - 套餐与试用体系实施计划（P-A~P-E 全部 ✅）
 - `wiki/开发文档/0720-支付模块.md` - 支付配置操作手册（支付宝平台/.env/沙箱联调）
 - `wiki/开发文档/0726-激活码schema迁移脚本说明.md` - 存量激活码字段补全迁移（影响/风险/执行 SOP/回滚）
 - `wiki/开发文档/0731-迁移计划.md` - 新生产服务器迁移计划（v1.5.1→HEAD 变化总览 + openlife.beyondego.me 切流步骤）
+- `wiki/开发文档/0812-报告配色配置说明.md` - 报告 PDF 配色配置（只改 `app/static/styles/report_theme.json` + 重启后端；PDF 下载时即时渲染故无需重生成报告）
 
 ## 调试技巧
 

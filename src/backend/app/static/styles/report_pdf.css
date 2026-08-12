@@ -1,11 +1,14 @@
-/* 寻路·OpenLife PDF 报告样式 — WeasyPrint */
+/* 寻路·OpenLife PDF 报告样式 — WeasyPrint
+   配色说明：所有 {{token}} 占位符在渲染时由
+   app/static/styles/report_theme.json 替换，改配色请改该文件。
+   详见 wiki/开发文档/0812-报告配色配置说明.md */
 
 /* 字体：使用系统已有的 Noto 系列 */
 body {
   font-family: "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
   font-size: 11pt;
   line-height: 1.8;
-  color: #2a2a2a;
+  color: {{text_body}};
   margin: 0;
   padding: 0;
 }
@@ -20,28 +23,28 @@ body {
 .cover-title {
   font-size: 36pt;
   font-weight: bold;
-  color: #1a1a1a;
+  color: {{text_heading}};
   letter-spacing: 8px;
   margin-bottom: 10px;
 }
 
 .cover-subtitle {
   font-size: 14pt;
-  color: #888;
+  color: {{text_muted}};
   letter-spacing: 4px;
   margin-bottom: 60px;
 }
 
 .cover-info {
   font-size: 12pt;
-  color: #666;
+  color: {{text_cover_info}};
   line-height: 2.2;
 }
 
 .cover-divider {
   width: 60px;
   height: 3px;
-  background: #c9a96e;
+  background: {{accent}};
   margin: 30px auto;
 }
 
@@ -53,8 +56,8 @@ body {
 h1 {
   font-size: 22pt;
   font-weight: bold;
-  color: #1a1a1a;
-  border-bottom: 2px solid #c9a96e;
+  color: {{text_heading}};
+  border-bottom: 2px solid {{accent}};
   padding-bottom: 8px;
   margin-top: 30px;
   margin-bottom: 20px;
@@ -63,19 +66,35 @@ h1 {
 h2 {
   font-size: 16pt;
   font-weight: bold;
-  color: #333;
+  color: {{text_h2}};
   margin-top: 28px;
   margin-bottom: 12px;
-  border-left: 4px solid #c9a96e;
+  border-left: 4px solid {{accent}};
   padding-left: 12px;
 }
 
 h3 {
   font-size: 13pt;
   font-weight: bold;
-  color: #555;
+  color: {{text_h3}};
   margin-top: 20px;
   margin-bottom: 8px;
+}
+
+h4 {
+  font-size: 12pt;
+  font-weight: bold;
+  color: {{text_h4}};
+  margin-top: 16px;
+  margin-bottom: 6px;
+}
+
+h5 {
+  font-size: 11pt;
+  font-weight: bold;
+  color: {{text_h4}};
+  margin-top: 14px;
+  margin-bottom: 6px;
 }
 
 p {
@@ -85,13 +104,13 @@ p {
 
 /* 强调 */
 strong {
-  color: #1a1a1a;
+  color: {{text_heading}};
   font-weight: bold;
 }
 
 em {
   font-style: italic;
-  color: #555;
+  color: {{text_h3}};
 }
 
 /* 列表 */
@@ -106,19 +125,51 @@ li {
 
 /* 引用块 */
 blockquote {
-  border-left: 3px solid #c9a96e;
+  border-left: 3px solid {{accent}};
   margin: 15px 0;
   padding: 8px 16px;
-  background: #faf8f5;
-  color: #666;
+  background: {{quote_bg}};
+  color: {{quote_text}};
   font-style: italic;
 }
 
 /* 分隔线 */
 hr {
   border: none;
-  border-top: 1px solid #e0e0e0;
+  border-top: 1px solid {{divider}};
   margin: 30px 0;
+}
+
+/* ── 正文表格（简洁全框线：细灰框 + 表头浅底色）──
+   注意：作用域限定 .content，预览页/封面的布局表格不受影响 */
+.content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0 20px 0;
+  font-size: 10pt;
+  line-height: 1.6;
+}
+
+.content th, .content td {
+  border: 1px solid {{table_border}};
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.content th {
+  background: {{table_header_bg}};
+  color: {{table_header_text}};
+  font-weight: bold;
+}
+
+.content tr:nth-child(even) td {
+  background: {{table_stripe_bg}};
+}
+
+/* ── 分页符（后处理管线将 <<<PAGEBREAK>>> 统一替换为 <div class="pb">）── */
+.pb {
+  page-break-after: always;
 }
 
 /* ── 页眉页脚（@page 边距盒）──
@@ -229,4 +280,169 @@ hr {
 .signature-img {
   width: 150px;
   height: auto;
+}
+
+/* ── 通用：强制前分页（后处理管线使用，如信件独占一页）── */
+.page-break-before {
+  page-break-before: always;
+}
+
+/* ── 报告总览页（预览页，插在封面与扉页之间）──
+   设计来源：uidesign/beautiful/report（Figma Make 稿「报告模块总览」），
+   已适配 WeasyPrint（表格布局替代 grid/flex 多列，配色走主题 token） */
+.overview {
+  page-break-after: always;
+  background: {{overview_page_bg}};
+  padding: 8px 6px;
+}
+
+.overview-toprule {
+  border-top: 3px solid {{overview_accent}};
+  margin-bottom: 18px;
+}
+
+.overview-header {
+  width: 100%;
+  margin-bottom: 22px;
+}
+
+.overview-header td {
+  border: none;
+  padding: 0;
+  vertical-align: top;
+  background: transparent;
+}
+
+.overview-kicker {
+  font-size: 8pt;
+  letter-spacing: 3px;
+  color: {{overview_kicker}};
+  margin-bottom: 8px;
+  text-align: left;
+}
+
+.overview-title {
+  font-size: 22pt;
+  font-weight: bold;
+  color: {{overview_title}};
+  line-height: 1.2;
+  margin-bottom: 8px;
+  text-align: left;
+}
+
+.overview-desc {
+  font-size: 9pt;
+  color: {{overview_desc}};
+  line-height: 1.7;
+  text-align: left;
+}
+
+.overview-meta {
+  font-size: 8pt;
+  color: {{overview_meta}};
+  line-height: 1.9;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.overview-divider {
+  border-bottom: 1px solid {{overview_divider}};
+  margin-bottom: 20px;
+}
+
+/* 小节标签：左侧色条 + 大写字距文本 */
+.overview-section {
+  margin-bottom: 14px;
+}
+
+.overview-section-bar {
+  display: inline-block;
+  width: 3px;
+  height: 12px;
+  background: {{overview_accent}};
+  margin-right: 8px;
+}
+
+.overview-section-label {
+  display: inline-block;
+  font-size: 8.5pt;
+  font-weight: bold;
+  letter-spacing: 2px;
+  color: {{overview_accent}};
+}
+
+/* 模块卡 2 列网格（表格实现，WeasyPrint 兼容） */
+.overview-grid {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 8px 10px;
+  margin: 0 -8px 18px -8px;
+}
+
+.overview-grid td {
+  border: none;
+  padding: 0;
+  width: 50%;
+  vertical-align: top;
+  background: transparent;
+}
+
+.ov-card-head {
+  padding: 8px 12px;
+}
+
+.ov-card-num {
+  font-size: 8pt;
+  font-weight: bold;
+  letter-spacing: 2px;
+  color: rgba(255, 255, 255, 0.6);
+  margin-right: 8px;
+}
+
+.ov-card-title {
+  font-size: 11pt;
+  color: #ffffff;
+}
+
+.ov-card-tag {
+  float: right;
+  font-size: 7pt;
+  letter-spacing: 2px;
+  color: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 1px 6px;
+}
+
+.ov-card-sub {
+  background: {{overview_card_subtitle_bg}};
+  border: 1px solid {{overview_card_border}};
+  border-top: none;
+  padding: 8px 12px;
+}
+
+.ov-card-subtitle {
+  font-size: 7.5pt;
+  letter-spacing: 1.5px;
+  color: {{overview_card_subtitle_text}};
+  margin: 0;
+  text-align: left;
+}
+
+.overview-footer {
+  border-top: 1px solid {{overview_divider}};
+  padding-top: 10px;
+  margin-top: 6px;
+}
+
+.overview-footer-text {
+  font-size: 7.5pt;
+  letter-spacing: 1px;
+  color: {{overview_footer_text}};
+  text-align: left;
+  margin: 0;
+}
+
+.overview-bottomrule {
+  border-bottom: 2px solid {{overview_accent}};
+  margin-top: 10px;
 }

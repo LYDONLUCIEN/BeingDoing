@@ -235,6 +235,7 @@ from app.utils.super_admin import is_super_admin_user
 from app.utils.trial_codes import (
     TRIAL_VALUES_USER_MESSAGE_LIMIT,
     count_values_user_messages as _count_values_user_messages,
+    list_unbound_full_codes_purchased_by,
 )
 from app.utils.trial_codes import is_trial_code as _is_trial_code
 from app.utils.survey_storage import (
@@ -848,6 +849,22 @@ def _trial_error_detail(payload: dict) -> str:
     return json.dumps(payload, ensure_ascii=False)
 
 
+def _has_upgrade_codes(current_user: Optional[dict]) -> bool:
+    """402 弹窗引导检测（ADR-0014）：用户是否有可用于消耗升级的自购未绑定完整码。
+
+    前端据此决定 402 弹窗是否展示「使用已有激活码升级」入口及其优先级。
+    检测失败不阻塞 402 主流程，退化为仅购买引导。
+    """
+    user_id = (current_user or {}).get("user_id", "")
+    if not user_id:
+        return False
+    try:
+        return bool(list_unbound_full_codes_purchased_by(user_id))
+    except Exception:
+        logger.warning("has_upgrade_codes 检测失败，退化为仅购买引导", exc_info=True)
+        return False
+
+
 def _assert_email_verified_for_explore(rec, current_user: Optional[dict]) -> None:
     """
     邮箱验证门控：绑定了邮箱但未验证的用户禁止一切探索写操作（403 email_not_verified）。
@@ -881,7 +898,12 @@ def _assert_trial_phase_allowed(rec, current_user: Optional[dict], phase_step: s
     if (phase_step or "").strip().lower() != "values":
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail=_trial_error_detail({"type": "trial_phase_locked"}),
+            detail=_trial_error_detail(
+                {
+                    "type": "trial_phase_locked",
+                    "has_upgrade_codes": _has_upgrade_codes(current_user),
+                }
+            ),
         )
 
 
@@ -928,6 +950,7 @@ def _assert_trial_message_allowed(
                     "type": "trial_limit_reached",
                     "used": used,
                     "limit": TRIAL_VALUES_USER_MESSAGE_LIMIT,
+                    "has_upgrade_codes": _has_upgrade_codes(current_user),
                 }
             ),
         )

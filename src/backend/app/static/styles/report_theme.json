@@ -1,0 +1,36 @@
+{
+  "_说明": "寻路·OpenLife PDF 报告配色主题。所有颜色为十六进制值；report_pdf.css 中的 {{token}} 占位符在渲染时由本文件替换。修改说明见 wiki/开发文档/0812-报告配色配置说明.md",
+
+  "accent": "#c9a96e",
+  "text_body": "#2a2a2a",
+  "text_heading": "#1a1a1a",
+  "text_h2": "#333333",
+  "text_h3": "#555555",
+  "text_h4": "#555555",
+  "text_muted": "#888888",
+  "text_cover_info": "#666666",
+  "quote_bg": "#faf8f5",
+  "quote_text": "#666666",
+  "divider": "#e0e0e0",
+
+  "table_border": "#d8d2c4",
+  "table_header_bg": "#f5f1e8",
+  "table_header_text": "#1a1a1a",
+  "table_stripe_bg": "#faf8f4",
+
+  "overview_page_bg": "#fffdf9",
+  "overview_accent": "#8B4513",
+  "overview_title": "#1a1410",
+  "overview_kicker": "#9a8a78",
+  "overview_meta": "#bfb0a0",
+  "overview_desc": "#7a6a58",
+  "overview_divider": "#ddd5c5",
+  "overview_card_subtitle_bg": "#faf7f3",
+  "overview_card_border": "#e8e0d4",
+  "overview_card_subtitle_text": "#c0b0a0",
+  "overview_footer_text": "#bfb0a0",
+  "overview_card_color_1": "#8B4513",
+  "overview_card_color_2": "#6B3A2A",
+  "overview_card_color_3": "#5C4033",
+  "overview_card_color_4": "#7A5C3A"
+}

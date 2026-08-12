@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, Loader2 } from 'lucide-react';
 import { getApiErrorMessage } from '@/lib/api/client';
@@ -37,10 +38,13 @@ export default function UpgradeTrialModal({
   showDontRemind = false,
 }: UpgradeTrialModalProps) {
   const { t } = useLocale();
+  const router = useRouter();
 
   const [ctx, setCtx] = useState<UpgradeContext | null>(null);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
+  /** 空态（无可用未绑定码）时的手动输入码：覆盖被赠码等系统不可见的场景 */
+  const [manualCode, setManualCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [upgradedCode, setUpgradedCode] = useState<string | null>(null);
@@ -52,6 +56,7 @@ export default function UpgradeTrialModal({
     if (!open) return;
     setCtx(null);
     setSelected(null);
+    setManualCode('');
     setError(null);
     setUpgradedCode(null);
     setConsumedCode(null);
@@ -83,13 +88,15 @@ export default function UpgradeTrialModal({
   }, [showDontRemind, dontRemind, onClose]);
 
   const handleConfirm = async () => {
-    if (!selected || submitting) return;
+    // 列表选择优先；空态时用手动输入的码（后端校验 active/full/未绑定，错误透传）
+    const codeToConsume = selected ?? manualCode.trim().toUpperCase();
+    if (!codeToConsume || submitting) return;
     setSubmitting(true);
     setError(null);
     try {
-      const res = await applyToTrial(selected);
+      const res = await applyToTrial(codeToConsume);
       setUpgradedCode(res.trial_code);
-      setConsumedCode(selected);
+      setConsumedCode(codeToConsume);
     } catch (e: unknown) {
       setError(getApiErrorMessage(e, t('payment.upgrade.failed')));
     } finally {
@@ -187,9 +194,19 @@ export default function UpgradeTrialModal({
                     <Loader2 className="h-6 w-6 animate-spin text-stone-400" />
                   </div>
                 ) : orderedCodes.length === 0 ? (
-                  <p className="mb-5 rounded-xl border border-stone-200/80 bg-stone-50/80 px-4 py-3 text-sm text-stone-500">
-                    {t('payment.upgrade.noCodes')}
-                  </p>
+                  /* 空态：无自购未绑定码 → 手动输入（覆盖被赠码等系统不可见的场景） */
+                  <div className="mb-5 space-y-2">
+                    <p className="rounded-xl border border-stone-200/80 bg-stone-50/80 px-4 py-3 text-sm text-stone-500">
+                      {t('payment.upgrade.noCodes')}
+                    </p>
+                    <input
+                      type="text"
+                      value={manualCode}
+                      onChange={(e) => setManualCode(e.target.value.toUpperCase())}
+                      placeholder={t('payment.upgrade.manualPlaceholder')}
+                      className="w-full rounded-xl border border-stone-200 bg-white px-4 py-3 font-mono text-sm tracking-widest text-stone-800 placeholder:font-sans placeholder:tracking-normal placeholder:text-stone-400 focus:border-stone-900 focus:outline-none"
+                    />
+                  </div>
                 ) : (
                   <div className="mb-5 space-y-2">
                     <p className="text-xs font-medium text-stone-500">
@@ -219,6 +236,31 @@ export default function UpgradeTrialModal({
                   </div>
                 )}
 
+                {/* 试用码未开聊：建议直接用新码开始，保留仍要升级兼底 */}
+                {!loading && ctx && !ctx.has_started_trial && !upgradedCode && (
+                  <div className="mb-5 rounded-xl border border-amber-200/70 bg-amber-50/70 px-4 py-3">
+                    <p className="text-sm leading-relaxed text-amber-800">
+                      {t('payment.upgrade.notStartedNotice')}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const code =
+                          (preferredCodes ?? [])[0] ?? ctx.unbound_codes?.[0]?.code ?? '';
+                        onClose();
+                        router.push(
+                          code
+                            ? `/explore/activate?code=${encodeURIComponent(code)}`
+                            : '/explore/activate',
+                        );
+                      }}
+                      className="mt-2 text-sm font-medium text-amber-900 underline underline-offset-2 hover:text-amber-700"
+                    >
+                      {t('payment.upgrade.notStartedGo')}
+                    </button>
+                  </div>
+                )}
+
                 {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
 
                 {showDontRemind && (
@@ -237,7 +279,7 @@ export default function UpgradeTrialModal({
                   <button
                     type="button"
                     onClick={() => void handleConfirm()}
-                    disabled={!selected || submitting || orderedCodes.length === 0}
+                    disabled={(!selected && !manualCode.trim()) || submitting}
                     className="w-full rounded-xl bg-stone-900 py-3.5 text-sm font-medium text-white shadow-sm transition hover:bg-stone-800 disabled:opacity-40"
                   >
                     {submitting ? t('payment.upgrade.upgrading') : t('payment.upgrade.confirm')}

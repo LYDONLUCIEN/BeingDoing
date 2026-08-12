@@ -747,7 +747,10 @@ async def get_upgrade_context(
     - unbound_codes：我购买的未绑定未消耗完整码（可用于消耗升级/转赠/自激活）
     - dont_remind：支付结果页升级弹窗「不再提醒」偏好
     """
-    from app.utils.trial_codes import get_started_trial_code
+    from app.utils.trial_codes import (
+        get_started_trial_code,
+        list_unbound_full_codes_purchased_by,
+    )
 
     user_id = (current_user or {}).get("user_id", "")
     if not user_id:
@@ -764,27 +767,15 @@ async def get_upgrade_context(
 
     trial = get_started_trial_code(user_id)
 
-    unbound_codes = []
-    for base_dir in (get_simple_base_dir(), get_simple_test_base_dir()):
-        mgr = SimpleActivationManager(base_dir=str(base_dir))
-        for code, rec in mgr.list_activations().items():
-            if (getattr(rec, "purchaser_user_id", None) or "") != user_id:
-                continue
-            if rec.owner_user_id:
-                continue
-            if rec.status != ActivationStatus.ACTIVE.value:
-                continue
-            if (getattr(rec, "code_type", "full") or "full") != "full":
-                continue
-            unbound_codes.append(
-                {
-                    "code": rec.code,
-                    "package_type": getattr(rec, "package_type", None),
-                    "created_at": rec.created_at,
-                    "source_order_id": getattr(rec, "source_order_id", None),
-                }
-            )
-    unbound_codes.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+    unbound_codes = [
+        {
+            "code": rec.code,
+            "package_type": getattr(rec, "package_type", None),
+            "created_at": rec.created_at,
+            "source_order_id": getattr(rec, "source_order_id", None),
+        }
+        for rec in list_unbound_full_codes_purchased_by(user_id)
+    ]
 
     prefs = await _read_user_preferences(user_id)
     return ActivationResponse(
