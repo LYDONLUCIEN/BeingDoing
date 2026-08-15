@@ -368,6 +368,8 @@ export default function ChatPhasePage() {
   const [adminPolicyLoaded, setAdminPolicyLoaded] = useState(false);
   /** 已从 /simple-auth/journeys 拉取并对齐 localStorage 后，才用 unlockedPhases 做路由校验，避免刷新时先用陈旧缓存误跳转 */
   const [exploreResumeSynced, setExploreResumeSynced] = useState(false);
+  /** 报告已解锁（explore_resume.report_unlocked）：整页只读回看历史，顶部提示条引导查看报告 */
+  const [reportUnlocked, setReportUnlocked] = useState(false);
   const [stepLocked, setStepLocked] = useState(false);
   /** 报告里该 step 的 selected_session_id（与 /threads 里 selected: true 对齐），用于已锁定阶段下限制「完成并继续」 */
   const [reportSelectedThreadId, setReportSelectedThreadId] = useState<string | null>(null);
@@ -1142,6 +1144,8 @@ export default function ChatPhasePage() {
   );
 
   const isReadOnly =
+    // 报告已解锁：探索收口，整页只读（顶部提示条引导查看报告）
+    reportUnlocked ||
     // step3（matrix 或 discussion）需要与 AI 交互，即使 thread 历史被标 completed 也不锁。
     (isSelectedCompleted && !(isStep3MatrixMode || isStep3DiscussionMode)) ||
     (stepLocked && !adminDebugBypass) || // 阶段已锁定，普通用户只读
@@ -1328,6 +1332,8 @@ export default function ChatPhasePage() {
       setPhaseLockNoticeDontRemind(false);
       return;
     }
+    // 报告已解锁走只读提示条，不再弹「阶段已提交」说明窗
+    if (reportUnlocked) return;
     if (user?.is_super_admin) return;
     if (!activationCode || !threadsFetched || initLoading) return;
     if (typeof window === 'undefined') return;
@@ -1342,7 +1348,7 @@ export default function ChatPhasePage() {
     if (phaseLockNoticeShownKeyRef.current === key) return;
     phaseLockNoticeShownKeyRef.current = key;
     setPhaseLockNoticeOpen(true);
-  }, [phaseInteractionLocked, activationCode, phase, threadsFetched, initLoading, user?.is_super_admin]);
+  }, [phaseInteractionLocked, reportUnlocked, activationCode, phase, threadsFetched, initLoading, user?.is_super_admin]);
 
   const dismissPhaseLockNotice = useCallback(
     (dontRemind: boolean, navigateNext: boolean) => {
@@ -1400,11 +1406,13 @@ export default function ChatPhasePage() {
 
     let cancelled = false;
     setExploreResumeSynced(false);
+    setReportUnlocked(false);
 
     void (async () => {
       try {
         const resume = await fetchExploreResumeFromJourneys(activationCode);
         if (cancelled) return;
+        setReportUnlocked(Boolean(resume?.report_unlocked));
         // 始终用后端 resume 覆盖本地阶段（清缓存后本地为默认值 values）
         const s = loadSession(activationCode);
         const next = resume?.resume_phase
@@ -4252,6 +4260,28 @@ export default function ChatPhasePage() {
                 </div>
               )}
             </>
+          )}
+          {/* 报告已解锁：只读历史模式提示条 + 查看报告入口 */}
+          {reportUnlocked && activationCode && (
+            <div
+              className="shrink-0 border-y border-emerald-200/70 bg-emerald-50/80 px-4 py-2.5 sm:px-8"
+              role="status"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs leading-relaxed text-emerald-800 sm:text-sm">
+                  {t('explore.chat.reportDoneBanner')}
+                </p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    router.push(`/explore/report?code=${encodeURIComponent(activationCode)}`)
+                  }
+                  className="shrink-0 rounded-full bg-bd-ui-accent px-3 py-1.5 text-xs font-medium text-bd-ui-accent-fg transition hover:opacity-90 sm:text-sm"
+                >
+                  {t('explore.chat.reportDoneViewReport')}
+                </button>
+              </div>
+            </div>
           )}
           {/* 3b discussion: back-to-matrix banner */}
           {phase === 'rumination' && ruminationViewStep === 3 && ruminationProgressState?.filter_sub_step === 'discussion' && (

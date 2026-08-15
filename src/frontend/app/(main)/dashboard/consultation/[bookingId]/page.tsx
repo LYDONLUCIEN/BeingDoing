@@ -123,7 +123,7 @@ export default function ConsultationBookingPage() {
     <div className="max-w-2xl mx-auto space-y-6">
       <button
         type="button"
-        onClick={() => router.push('/dashboard/orders')}
+        onClick={() => router.push('/dashboard/codes?tab=orders')}
         className="flex items-center gap-2 text-sm text-bd-subtle hover:text-bd-muted transition-colors"
       >
         <ChevronLeft size={16} />

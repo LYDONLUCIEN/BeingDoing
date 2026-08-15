@@ -148,11 +148,11 @@ function PaymentResultContent() {
     }
   };
 
-  const handleGoOrders = () => router.push('/dashboard/orders');
+  const handleGoOrders = () => router.push('/dashboard/codes?tab=orders');
 
   const handleGoConsultation = () => {
     const bookingId = order?.meta?.booking_id;
-    router.push(bookingId ? `/dashboard/consultation/${bookingId}` : '/dashboard/orders');
+    router.push(bookingId ? `/dashboard/consultation/${bookingId}` : '/dashboard/codes?tab=orders');
   };
 
   // 套餐交付的全部码（等价、不区分用途）；弹窗升级后排除已消耗的那枚

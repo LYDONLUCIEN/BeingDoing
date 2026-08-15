@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X } from 'lucide-react';
+import { Loader2, X } from 'lucide-react';
 import { useRuminationV4Store } from '@/stores/ruminationV4Store';
 import V4FinalSelectionCard from './V4FinalSelectionCard';
 
@@ -21,7 +21,8 @@ interface Props {
 }
 
 export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Props) {
-  const { state, selectFinal, submitFinal, comboCache, activationCode } = useRuminationV4Store();
+  const { state, selectFinal, submitFinal, comboCache, activationCode, attachAnalysis } =
+    useRuminationV4Store();
   const router = useRouter();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
@@ -42,6 +43,40 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
       });
   }, [state, comboCache]);
 
+  /**
+   * 判定未完成的卡（已确认但平衡点检测 ≠ done）：弹窗照开但网格模糊、不可预选。
+   * 分态：analyzing/无记录 → 检测中；failed → 引导回页面结论卡点「点击重试」。
+   * （与 store.hasPendingAnalysis / 后端 pending_judged_combo_ids 同口径）
+   */
+  const pendingCombos = useMemo(
+    () =>
+      (state?.combo_sessions || []).filter(
+        (c) =>
+          c.status === 'concluded' &&
+          !c.user_skipped &&
+          c.balance_analysis?.status !== 'done'
+      ),
+    [state?.combo_sessions]
+  );
+  const analyzingCount = pendingCombos.filter(
+    (c) => c.balance_analysis?.status !== 'failed'
+  ).length;
+  const failedCount = pendingCombos.length - analyzingCount;
+  const pending = !locked && pendingCombos.length > 0;
+
+  // 打开时对检测中的组合补挂分析流（断连/刷新自愈；store 内部去重）
+  const analyzingIds = pendingCombos
+    .filter((c) => c.balance_analysis?.status !== 'failed')
+    .map((c) => c.combo_id)
+    .join(',');
+  useEffect(() => {
+    if (!open || locked || !analyzingIds) return;
+    const token = localStorage.getItem('token') || undefined;
+    for (const id of analyzingIds.split(',')) {
+      void attachAnalysis(id, token);
+    }
+  }, [open, locked, analyzingIds, attachAnalysis]);
+
   // 打开时同步后端已选
   useEffect(() => {
     if (open && state?.final_selection?.selected_combo_ids) {
@@ -60,7 +95,7 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
   }, [open, onClose]);
 
   const toggle = (id: string) => {
-    if (locked) return; // 已锁定：禁止改选
+    if (locked || pending) return; // 已锁定 / 判定未完成：禁止改选
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -75,7 +110,7 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
   };
 
   const count = selectedIds.size;
-  const canConfirm = count >= 1 && count <= 3;
+  const canConfirm = count >= 1 && count <= 3 && !pending;
 
   const handleConfirm = async () => {
     if (locked || !canConfirm) return;
@@ -169,25 +204,68 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
               </span>
             </header>
 
-            {/* 2 列大卡网格（设计稿 uidesign/beautiful/nto3.png） */}
-            <div
-              className="direction-grid relative z-[1] mt-5 grid gap-5 overflow-y-auto pr-1"
-              style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}
-            >
-              {candidates.map((combo, idx) => (
-                <V4FinalSelectionCard
-                  key={combo.combo_id}
-                  index={idx}
-                  combo={combo}
-                  card={combo.conclusion_card}
-                  selected={selectedIds.has(combo.combo_id)}
-                  locked={locked}
-                  onToggle={toggle}
-                />
-              ))}
+            {/* 2 列大卡网格（设计稿 uidesign/beautiful/nto3.png）；判定未完成时整体模糊 + 浮层 */}
+            <div className="relative z-[1] mt-5 flex min-h-[160px] flex-col">
+              <div
+                className={`direction-grid grid gap-5 overflow-y-auto pr-1 transition-[filter,opacity] duration-300 ${
+                  pending ? 'pointer-events-none select-none opacity-50 blur-[3px]' : ''
+                }`}
+                style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}
+                aria-disabled={pending}
+              >
+                {candidates.map((combo, idx) => (
+                  <V4FinalSelectionCard
+                    key={combo.combo_id}
+                    index={idx}
+                    combo={combo}
+                    card={combo.conclusion_card}
+                    selected={selectedIds.has(combo.combo_id)}
+                    locked={locked || pending}
+                    onToggle={toggle}
+                  />
+                ))}
+              </div>
+
+              {pending && (
+                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-6">
+                  <div
+                    className="rounded-2xl px-6 py-4 text-center"
+                    style={{
+                      background: 'rgba(255,255,255,0.92)',
+                      border: '1px solid rgba(255,255,255,0.75)',
+                      boxShadow: '0 12px 32px rgba(33,48,79,0.12)',
+                      backdropFilter: 'blur(8px)',
+                    }}
+                    role="status"
+                  >
+                    {analyzingCount > 0 ? (
+                      <>
+                        <p className="flex items-center justify-center gap-2 text-[14px] font-[750] text-[#5d49ef]">
+                          <Loader2 size={16} className="animate-spin" />
+                          正在检测结论…（剩余 {analyzingCount} 个方向）
+                        </p>
+                        <p className="mt-1.5 text-[12px] font-[500] text-[#8a93a6]">
+                          检测完成后即可进行选择，请稍候
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-[14px] font-[750] text-[#b57908]">
+                          ⚠ {failedCount} 个方向检测失败
+                        </p>
+                        <p className="mt-1.5 text-[12px] font-[500] leading-relaxed text-[#8a93a6]">
+                          请返回页面，在结论卡上点击「点击重试」
+                          <br />
+                          重新生成后再提交最终选择
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {candidates.length === 0 && (
+            {candidates.length === 0 && !pending && (
               <div className="relative z-[1] my-8 text-center text-sm text-[#9ca3af]">
                 还没有已确认结论的组合，
                 <br />
@@ -252,7 +330,13 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
                     boxShadow: canConfirm ? '0 9px 20px rgba(91,65,240,0.22)' : 'none',
                   }}
                 >
-                  {submitting ? '保存中…' : `确认选择（${count}/3）`}
+                  {submitting
+                    ? '保存中…'
+                    : pending
+                      ? analyzingCount > 0
+                        ? '等待检测完成…'
+                        : '请先重试失败项'
+                      : `确认选择（${count}/3）`}
                 </button>
               )}
             </div>

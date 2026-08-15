@@ -11,7 +11,7 @@
  *   避免 Chrome 将脱离用户手势的异步 blob 下载判定为「自动下载」而弹权限提示。
  */
 
-import { useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   triggerReportPdf,
   pollReportPdfStatus,
@@ -30,10 +30,12 @@ interface UseReportPdfReturn {
   status: PdfGenStatus | 'idle';
   /** 错误信息 */
   error: string | null;
+  /** 重新生成剩余次数（null=不限 admin；undefined=未知/旧后端） */
+  regenRemaining: number | null | undefined;
   /** 正在处理的 report_id */
   activeReportId: string | null;
-  /** 触发下载流程（生成+轮询+自动下载，Admin 用） */
-  download: (reportId: string) => Promise<void>;
+  /** 触发下载流程（生成+轮询+自动下载，Admin 用）；force=true 强制重新生成后下载（Admin 不限次） */
+  download: (reportId: string, opts?: { force?: boolean }) => Promise<void>;
   /** 只查询当前状态（不触发生成）：none=未生成 / generating=生成中 / ready=可下载 */
   check: (reportId: string) => Promise<PdfGenStatus>;
   /** 生成+轮询，完成后停在 ready 状态，不自动下载（用户报告页用） */
@@ -49,7 +51,16 @@ export function useReportPdfDownload(options?: UseReportPdfOptions): UseReportPd
   const [status, setStatus] = useState<PdfGenStatus | 'idle'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [activeReportId, setActiveReportId] = useState<string | null>(null);
+  const [regenRemaining, setRegenRemaining] = useState<number | null | undefined>(undefined);
   const pollingRef = useRef(false);
+  // 组件卸载即停止轮询（之前无取消机制，卸载后空跑到超时）
+  const cancelledRef = useRef(false);
+  useEffect(() => {
+    cancelledRef.current = false;
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, []);
 
   /** 轮询直到 ready/error/超时。返回最终状态。 */
   const pollUntilDone = useCallback(
@@ -58,11 +69,15 @@ export function useReportPdfDownload(options?: UseReportPdfOptions): UseReportPd
       try {
         for (let i = 0; i < POLL_MAX_ATTEMPTS; i++) {
           await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+          if (cancelledRef.current) return 'none';
 
-          const { status: pollStatus, error: pollError } = await pollReportPdfStatus(
-            reportId,
-            { activationCode: options?.activationCode },
-          );
+          const { status: pollStatus, error: pollError, regenRemaining: rr } =
+            await pollReportPdfStatus(
+              reportId,
+              { activationCode: options?.activationCode },
+            );
+          if (cancelledRef.current) return 'none';
+          if (rr !== undefined) setRegenRemaining(rr);
 
           if (pollStatus === 'ready') return 'ready';
           if (pollStatus === 'error') {
@@ -81,7 +96,7 @@ export function useReportPdfDownload(options?: UseReportPdfOptions): UseReportPd
   );
 
   const download = useCallback(
-    async (reportId: string) => {
+    async (reportId: string, opts?: { force?: boolean }) => {
       if (pollingRef.current) return;
 
       setError(null);
@@ -92,6 +107,7 @@ export function useReportPdfDownload(options?: UseReportPdfOptions): UseReportPd
         setStatus('generating');
         const triggerStatus = await triggerReportPdf(reportId, {
           activationCode: options?.activationCode,
+          force: opts?.force,
         });
 
         // 如果缓存命中，直接下载
@@ -128,9 +144,10 @@ export function useReportPdfDownload(options?: UseReportPdfOptions): UseReportPd
   const check = useCallback(
     async (reportId: string): Promise<PdfGenStatus> => {
       try {
-        const { status: s } = await pollReportPdfStatus(reportId, {
+        const { status: s, regenRemaining: rr } = await pollReportPdfStatus(reportId, {
           activationCode: options?.activationCode,
         });
+        if (rr !== undefined) setRegenRemaining(rr);
         setActiveReportId(reportId);
         setStatus(s);
         return s;
@@ -191,5 +208,5 @@ export function useReportPdfDownload(options?: UseReportPdfOptions): UseReportPd
     [options?.activationCode, check],
   );
 
-  return { status, error, activeReportId, download, check, prepare, saveNow };
+  return { status, error, activeReportId, regenRemaining, download, check, prepare, saveNow };
 }

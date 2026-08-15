@@ -367,14 +367,14 @@ export default function PurchaseModal({
 
   const handleGoOrders = () => {
     onClose();
-    router.push('/dashboard/orders');
+    router.push('/dashboard/codes?tab=orders');
   };
 
   /** 咨询购买成功：跳预约问卷页（无 booking_id 时兜底我的订单） */
   const handleGoConsultation = () => {
     onClose();
     const bookingId = order?.meta?.booking_id;
-    router.push(bookingId ? `/dashboard/consultation/${bookingId}` : '/dashboard/orders');
+    router.push(bookingId ? `/dashboard/consultation/${bookingId}` : '/dashboard/codes?tab=orders');
   };
 
   const orderTitle = renewalMode

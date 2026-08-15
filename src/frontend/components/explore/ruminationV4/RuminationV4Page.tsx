@@ -55,9 +55,8 @@ export default function RuminationV4Page({
   canContinue = true,
   continueDisabledHint = '',
 }: Props) {
-  const { state, init, hasPendingAnalysis } = useRuminationV4Store();
+  const { state, init } = useRuminationV4Store();
   const [finalModalOpen, setFinalModalOpen] = useState(false);
-  const [gateHint, setGateHint] = useState('');
   const [introOpen, setIntroOpen] = useState(false);
   const introCheckedRef = useRef(false);
   const router = useRouter();
@@ -97,13 +96,6 @@ export default function RuminationV4Page({
     markV4IntroShown(activationCode).catch(() => { /* 静默忽略 */ });
   };
 
-  // 门槛提示 4 秒后自动消失
-  useEffect(() => {
-    if (!gateHint) return;
-    const t = setTimeout(() => setGateHint(''), 4000);
-    return () => clearTimeout(t);
-  }, [gateHint]);
-
   const v4CanContinue =
     canContinue ||
     !!state?.final_selection?.submitted ||
@@ -111,17 +103,15 @@ export default function RuminationV4Page({
       (c) => !!c.conclusion_card || c.status === 'concluded'
     );
 
-  /** ADR-0015 完成门槛:有已确认但判定未完成(分析中/失败/已作废)的卡 → 提示不开弹窗 */
+  /**
+   * 点击「完成并继续」：已提交 → 直达报告页；否则始终开终选弹窗。
+   * 判定未完成的卡点不再在页级拦截，改由弹窗内模糊浮层处理（含 failed 引导重试）。
+   */
   const handleCompleteClick = () => {
     if (finalSubmitted) {
       gotoReport();
       return;
     }
-    if (hasPendingAnalysis()) {
-      setGateHint('正在分析中，请稍后');
-      return;
-    }
-    setGateHint('');
     setFinalModalOpen(true);
   };
 
@@ -174,11 +164,6 @@ export default function RuminationV4Page({
                     {finalSubmitted ? '查看报告' : '完成并继续'}
                   </span>
                 </button>
-              )}
-              {gateHint && !finalSubmitted && (
-                <p className="mt-1.5 text-right text-[12px] font-[600] text-[#b57908]" role="status">
-                  {gateHint}
-                </p>
               )}
             </div>
           </header>

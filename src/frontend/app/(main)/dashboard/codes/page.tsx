@@ -375,6 +375,9 @@ export default function DashboardCodesPage() {
         </>
       )}
 
+      {/* 购买激活码：标题右侧「购买激活码」按钮入口 */}
+      <PurchaseModal open={purchaseOpen} onClose={() => setPurchaseOpen(false)} />
+
       {/* 延期激活：关闭后刷新列表（有效期可能已追加） */}
       <PurchaseModal
         open={renewalTarget !== null}

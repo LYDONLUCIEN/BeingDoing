@@ -44,7 +44,7 @@ function ReportViewContent() {
   /** 403：当前账号无权查看该码的报告 */
   const [forbidden, setForbidden] = useState(false);
 
-  const { status, error: pdfError, check, prepare, saveNow } = useReportPdfDownload({ activationCode });
+  const { status, error: pdfError, regenRemaining, check, prepare, saveNow } = useReportPdfDownload({ activationCode });
 
   // 报告页加载后（approved）先查一次生成状态：
   // - 已有缓存（含审核期后台预生成完成）→ 直接显示「下载 PDF 报告」，不重新生成
@@ -106,8 +106,11 @@ function ReportViewContent() {
     await prepare(reportId);
   };
 
+  // 普通用户每份报告限 2 次重新生成（成功才计数）；null=不限（admin）
+  const regenExhausted = regenRemaining === 0;
+
   const handleRegenerate = async () => {
-    if (!reportId || status === 'generating') return;
+    if (!reportId || status === 'generating' || regenExhausted) return;
     setFetchError(null);
     await prepare(reportId, { force: true });
   };
@@ -164,7 +167,7 @@ function ReportViewContent() {
             <p className="text-bd-muted leading-relaxed">{t('explore.report.forbiddenDesc')}</p>
           </div>
           <Link
-            href="/dashboard/report"
+            href="/dashboard"
             className="inline-flex items-center gap-2 rounded-xl bg-[var(--bd-ui-accent)] text-bd-ui-accent-fg px-6 py-3 text-sm font-medium hover:opacity-90 transition-opacity"
           >
             {t('explore.report.gotoMyReports')}
@@ -279,7 +282,7 @@ function ReportViewContent() {
             <p className="text-bd-muted leading-relaxed">{t('explore.report.noCodeDesc')}</p>
           </div>
           <Link
-            href="/dashboard/report"
+            href="/dashboard"
             className="inline-flex items-center gap-2 rounded-xl bg-[var(--bd-ui-accent)] text-bd-ui-accent-fg px-6 py-3 text-sm font-medium hover:opacity-90 transition-opacity"
           >
             {t('explore.report.gotoMyReports')}
@@ -336,10 +339,15 @@ function ReportViewContent() {
                 <button
                   type="button"
                   onClick={handleRegenerate}
-                  title="重新生成报告（会覆盖现有内容）"
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-bd-border bg-bd-card px-4 py-3 text-xs font-medium text-bd-muted hover:bg-bd-overlay-md transition-colors"
+                  disabled={regenExhausted}
+                  title={
+                    regenExhausted
+                      ? '重新生成次数已用完（每份报告限 2 次），如有问题请联系客服'
+                      : `重新生成报告（会覆盖现有内容，还可重新生成 ${regenRemaining ?? 2} 次）`
+                  }
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-bd-border bg-bd-card px-4 py-3 text-xs font-medium text-bd-muted hover:bg-bd-overlay-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-bd-card"
                 >
-                  重新生成
+                  重新生成{regenRemaining != null && regenRemaining < 2 ? `（剩 ${regenRemaining} 次）` : ''}
                 </button>
               </div>
             ) : (

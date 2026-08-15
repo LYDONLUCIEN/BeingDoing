@@ -96,6 +96,30 @@ _CONVERSATION_PHASE_HEAD_CHARS = 6000
 # 昵称兜底
 _DEFAULT_NICKNAME = "探索者"
 
+# ── 报告生成单轨锁（2026-08-15）────────────────────────────────────
+# 三条触发路径（审核预生成 / 批复自动生成 / 用户手动生成）统一登记，
+# 消灭 export._pdf_tasks 与 review_service._gen_inflight 双轨锁
+# 互不知晓导致的同一报告并发重复生成（双份 LLM token）窗口。
+# 进程内内存表：进程重启即清空，状态查询有缓存先存性检查兜底。
+_generation_inflight: set = set()
+
+
+def try_acquire_generation(report_id: str) -> bool:
+    """尝试登记生成任务；已在生成中返回 False（不并发起第二个任务）。"""
+    rid = (report_id or "").strip()
+    if not rid or rid in _generation_inflight:
+        return False
+    _generation_inflight.add(rid)
+    return True
+
+
+def release_generation(report_id: str) -> None:
+    _generation_inflight.discard((report_id or "").strip())
+
+
+def is_generation_inflight(report_id: str) -> bool:
+    return (report_id or "").strip() in _generation_inflight
+
 
 def _image_data_uri(path: Path) -> str:
     """读取图片并返回 data URI（用于 CSS @page 边距盒 content: url(...)）；文件缺失时返回空串。"""

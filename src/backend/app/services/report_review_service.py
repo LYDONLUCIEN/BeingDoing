@@ -94,9 +94,10 @@ async def notify_report_approved(
 
 # ── 批复后自动生成报告（后台任务）─────────────────────────────
 
-# 进行中的生成任务（强引用防 GC + 按 report_id 去重）
+# 进行中的生成任务（强引用防 GC）
+# 去重走 report_pdf_service 的单轨锁（try_acquire_generation），
+# 与 export 侧审核预生成/用户手动生成共用一份登记（2026-08-15 合并）
 _gen_tasks: set[asyncio.Task] = set()
-_gen_inflight: set[str] = set()
 
 
 async def _run_report_generation(
@@ -104,6 +105,8 @@ async def _run_report_generation(
 ) -> None:
     """后台生成并缓存报告 markdown（PDF 由下载时即时转换）。"""
     from app.services.report_pdf_service import ReportPdfService
+
+    from app.services.report_pdf_service import release_generation
 
     try:
         service = ReportPdfService(base_dir=base_dir)
@@ -117,7 +120,7 @@ async def _run_report_generation(
             e,
         )
     finally:
-        _gen_inflight.discard(report_id)
+        release_generation(report_id)
 
 
 def kick_report_generation(
@@ -132,8 +135,10 @@ def kick_report_generation(
     - 无运行中的事件循环（同步上下文）时跳过并告警，不抛异常
     Returns: True = 已触发；False = 跳过。
     """
+    from app.services.report_pdf_service import try_acquire_generation
+
     rid = (report_id or "").strip()
-    if not rid or rid in _gen_inflight:
+    if not rid:
         return False
     try:
         asyncio.get_running_loop()
@@ -142,7 +147,8 @@ def kick_report_generation(
             "批复后自动生成跳过（无运行中的事件循环）: report_id=%s", rid
         )
         return False
-    _gen_inflight.add(rid)
+    if not try_acquire_generation(rid):
+        return False
     task = asyncio.create_task(_run_report_generation(rid, user_id, base_dir))
     _gen_tasks.add(task)
     task.add_done_callback(_gen_tasks.discard)

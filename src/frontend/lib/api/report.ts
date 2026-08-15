@@ -118,7 +118,7 @@ export async function triggerReportPdf(
 export async function pollReportPdfStatus(
   reportId: string,
   options?: { activationCode?: string },
-): Promise<{ status: PdfGenStatus; error?: string }> {
+): Promise<{ status: PdfGenStatus; error?: string; regenRemaining?: number | null }> {
   const params: Record<string, any> = {};
   if (options?.activationCode) params.activation_code = options.activationCode;
 
@@ -127,7 +127,12 @@ export async function pollReportPdfStatus(
     { params },
   );
   const data = res.data as any;
-  return { status: data?.status ?? 'none', error: data?.error };
+  return {
+    status: data?.status ?? 'none',
+    error: data?.error,
+    // null = 不限（admin）；undefined = 后端未返回（旧版本兼容）
+    regenRemaining: data?.regen_remaining,
+  };
 }
 
 /**

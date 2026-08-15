@@ -187,10 +187,23 @@ import uuid
 # 状态: {"status": "pending"|"done"|"error", "error": str|None, "created_at": float}
 _pdf_tasks: Dict[str, dict] = {}
 
+# 普通用户每份报告的重新生成（force）次数上限；admin 不限且不计数
+_MAX_USER_REGEN = 2
 
-async def _run_pdf_generation(report_id: str, user_id: str, base_dir: Optional[str], force: bool):
-    """后台异步生成报告 markdown（PDF 由下载时即时转换）。"""
-    from app.services.report_pdf_service import ReportPdfService
+
+async def _run_pdf_generation(
+    report_id: str,
+    user_id: str,
+    base_dir: Optional[str],
+    force: bool,
+    count_regen: bool = False,
+):
+    """后台异步生成报告 markdown（PDF 由下载时即时转换）。
+
+    count_regen=True（普通用户 force 重新生成）时，仅在生成成功后
+    将 record.json 的 report_regen_count +1（失败不扣次数）。
+    """
+    from app.services.report_pdf_service import ReportPdfService, release_generation
 
     try:
         service = ReportPdfService(base_dir=base_dir)
@@ -206,6 +219,12 @@ async def _run_pdf_generation(report_id: str, user_id: str, base_dir: Optional[s
             "error": None,
             "created_at": _pdf_tasks.get(report_id, {}).get("created_at", asyncio.get_event_loop().time()),
         }
+        if count_regen:
+            registry = ReportRegistry(base_dir=base_dir) if base_dir else ReportRegistry()
+            record = registry.get_report_by_id(report_id)
+            if record is not None:
+                record["report_regen_count"] = int(record.get("report_regen_count") or 0) + 1
+                registry.save_record(record)
         logger.info("PDF 报告 markdown 生成完成: report_id=%s", report_id)
     except Exception as e:
         logger.exception("PDF 报告生成失败: report_id=%s", report_id)
@@ -214,24 +233,46 @@ async def _run_pdf_generation(report_id: str, user_id: str, base_dir: Optional[s
             "error": str(e),
             "created_at": _pdf_tasks.get(report_id, {}).get("created_at", asyncio.get_event_loop().time()),
         }
+    finally:
+        release_generation(report_id)
 
 
 def _kick_pdf_generation(
-    report_id: str, user_id: str, base_dir: Optional[str], force: bool = False
+    report_id: str,
+    user_id: str,
+    base_dir: Optional[str],
+    force: bool = False,
+    count_regen: bool = False,
 ) -> None:
-    """若未在生成中，启动后台任务预生成报告 markdown（审核期间完成，批复后下载秒出）。"""
+    """若未在生成中，启动后台任务预生成报告 markdown（审核期间完成，批复后下载秒出）。
+
+    单轨锁（report_pdf_service._generation_inflight）：三条触发路径统一登记，
+    生成中任何路径再触发都直接返回（force 也不并发起第二个任务）。
+    """
+    from app.services.report_pdf_service import is_generation_inflight, try_acquire_generation
+
     rid = (report_id or "").strip()
     if not rid:
         return
     existing = _pdf_tasks.get(rid)
     if existing and existing.get("status") == "pending":
         return
+    if is_generation_inflight(rid):
+        # 另一路径（如批复自动生成）正在生成：状态表标记 pending，本轮复用其结果
+        _pdf_tasks[rid] = {
+            "status": "pending",
+            "error": None,
+            "created_at": asyncio.get_event_loop().time(),
+        }
+        return
+    if not try_acquire_generation(rid):
+        return
     _pdf_tasks[rid] = {
         "status": "pending",
         "error": None,
         "created_at": asyncio.get_event_loop().time(),
     }
-    asyncio.create_task(_run_pdf_generation(rid, user_id, base_dir, force))
+    asyncio.create_task(_run_pdf_generation(rid, user_id, base_dir, force, count_regen))
 
 
 def _ensure_review_started(
@@ -436,6 +477,17 @@ async def trigger_report_pdf(
     if blocked is not None:
         return {"report_id": report_id, "status": blocked["review_status"], **blocked}
 
+    # 限量重新生成（2026-08-15）：普通用户 force 重新生成每份报告限
+    # _MAX_USER_REGEN 次（成功才计数，见 _run_pdf_generation）；admin 不限不计数
+    is_admin = is_super_admin_user(current_user)
+    if force and not is_admin:
+        used = int((report or {}).get("report_regen_count") or 0)
+        if used >= _MAX_USER_REGEN:
+            raise HTTPException(
+                status_code=403,
+                detail="重新生成次数已用完（每份报告限 2 次），如有问题请联系客服",
+            )
+
     # 检查缓存是否已有 markdown
     service = ReportPdfService(base_dir=base_dir)
     has_cache = service.has_cached_markdown(report_id) and not force
@@ -443,12 +495,16 @@ async def trigger_report_pdf(
     if has_cache:
         return {"report_id": report_id, "status": "ready", "review_status": REVIEW_STATUS_APPROVED}
 
-    # 检查是否正在生成；若上次失败则重新触发
+    # 检查是否正在生成（单轨锁：含审核预生成/批复自动生成路径）；若上次失败则重新触发
+    from app.services.report_pdf_service import is_generation_inflight
+
     existing = _pdf_tasks.get(report_id)
-    if existing and existing.get("status") == "pending":
+    if (existing and existing.get("status") == "pending") or is_generation_inflight(report_id):
         return {"report_id": report_id, "status": "generating", "review_status": REVIEW_STATUS_APPROVED}
 
-    _kick_pdf_generation(report_id, user_id, base_dir, force)
+    _kick_pdf_generation(
+        report_id, user_id, base_dir, force, count_regen=force and not is_admin
+    )
 
     return {"report_id": report_id, "status": "generating", "review_status": REVIEW_STATUS_APPROVED}
 
@@ -468,28 +524,53 @@ async def get_report_pdf_status(
     if blocked is not None:
         return {"report_id": report_id, "status": blocked["review_status"], **blocked}
 
+    from app.services.report_pdf_service import (
+        ReportPdfService,
+        is_generation_inflight,
+    )
+
+    # 重新生成剩余次数（普通用户限量；admin 返回 null 表示不限）
+    registry = ReportRegistry(base_dir=base_dir) if base_dir else ReportRegistry()
+    report = registry.get_report_by_id(report_id) or {}
+    used = int(report.get("report_regen_count") or 0)
+    regen_remaining = (
+        None if is_super_admin_user(current_user) else max(0, _MAX_USER_REGEN - used)
+    )
+
     task = _pdf_tasks.get(report_id)
-    if not task:
-        # 没有任务记录，检查是否有缓存
-        from app.services.report_pdf_service import ReportPdfService
-
-        service = ReportPdfService(base_dir=base_dir)
-        if service.has_cached_markdown(report_id):
-            return {"report_id": report_id, "status": "ready", "review_status": REVIEW_STATUS_APPROVED}
-        return {"report_id": report_id, "status": "none", "review_status": REVIEW_STATUS_APPROVED}
-
-    status = task.get("status")
-    if status == "done":
-        return {"report_id": report_id, "status": "ready", "review_status": REVIEW_STATUS_APPROVED}
-    elif status == "error":
+    # pending 以单轨锁为准：任务表 pending 但锁已释放 = 另一路径的任务已结束
+    # （批复路径不写本表），此时落到缓存检查，避免状态永远卡在 generating
+    if task and task.get("status") == "pending" and is_generation_inflight(report_id):
+        return {
+            "report_id": report_id,
+            "status": "generating",
+            "review_status": REVIEW_STATUS_APPROVED,
+            "regen_remaining": regen_remaining,
+        }
+    if task and task.get("status") == "error":
         return {
             "report_id": report_id,
             "status": "error",
             "error": task.get("error", "生成失败"),
             "review_status": REVIEW_STATUS_APPROVED,
+            "regen_remaining": regen_remaining,
         }
-    else:
-        return {"report_id": report_id, "status": "generating", "review_status": REVIEW_STATUS_APPROVED}
+
+    # done / 无任务记录 / 残留 pending：以缓存为准
+    service = ReportPdfService(base_dir=base_dir)
+    if service.has_cached_markdown(report_id):
+        return {
+            "report_id": report_id,
+            "status": "ready",
+            "review_status": REVIEW_STATUS_APPROVED,
+            "regen_remaining": regen_remaining,
+        }
+    return {
+        "report_id": report_id,
+        "status": "none",
+        "review_status": REVIEW_STATUS_APPROVED,
+        "regen_remaining": regen_remaining,
+    }
 
 
 @router.get("/report-pdf-download/{report_id}")

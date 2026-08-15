@@ -200,15 +200,18 @@ function JourneyCard({
   journey,
   featured,
   onNavigate,
+  onViewReport,
   t,
 }: {
   journey: JourneyItem;
   featured?: boolean;
   onNavigate: (code: string, phase: string) => void;
+  onViewReport: (code: string) => void;
   t: (k: string) => string;
 }) {
   const nodes = buildNodes(journey.explore_resume);
   const resumePhase = effectiveResumeForNodes(journey.explore_resume).resume_phase;
+  const reportUnlocked = Boolean(journey.explore_resume?.report_unlocked);
   const nodePx = featured ? 52 : 40;
   const half = nodePx / 2;
 
@@ -366,8 +369,17 @@ function JourneyCard({
         </div>
       </div>
 
-      {featured && (
-        <div className="mt-6 flex gap-3">
+      {/* 主按钮：所有旅程卡常驻；报告已解锁时变为「查看报告」 */}
+      <div className={`flex gap-3 ${featured ? 'mt-6' : 'mt-4'}`}>
+        {reportUnlocked ? (
+          <button
+            type="button"
+            onClick={() => onViewReport(journey.activation_code)}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-bd-ui-accent text-bd-ui-accent-fg hover:opacity-90"
+          >
+            {t('dashboard.viewReport')} →
+          </button>
+        ) : (
           <button
             type="button"
             onClick={() => onNavigate(journey.activation_code, resumePhase)}
@@ -375,8 +387,8 @@ function JourneyCard({
           >
             继续探索 →
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -524,6 +536,12 @@ export default function DashboardCurrentProgressPage() {
     router.push(`/explore/chat/${phase}`);
   };
 
+  /** 查看报告：写入「上次激活码」并走 /explore/report 中枢页（保留其埋点与状态检查） */
+  const handleViewReport = (code: string) => {
+    setLastActivationCode(code);
+    router.push(`/explore/report?code=${encodeURIComponent(code)}`);
+  };
+
   const featured = journeys[0]; // 最近使用的排第一
   const others = journeys.slice(1);
 
@@ -541,9 +559,9 @@ export default function DashboardCurrentProgressPage() {
           {userSurvey && userSurvey.completed && (
             <UserSurveyCard survey={userSurvey} t={t} />
           )}
-          <JourneyCard journey={featured} featured onNavigate={handleNavigate} t={t} />
+          <JourneyCard journey={featured} featured onNavigate={handleNavigate} onViewReport={handleViewReport} t={t} />
           {others.map((j) => (
-            <JourneyCard key={j.activation_code} journey={j} onNavigate={handleNavigate} t={t} />
+            <JourneyCard key={j.activation_code} journey={j} onNavigate={handleNavigate} onViewReport={handleViewReport} t={t} />
           ))}
         </div>
       ) : fetchError ? (
