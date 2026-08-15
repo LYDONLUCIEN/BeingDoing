@@ -42,6 +42,10 @@ function getToken(): string | undefined {
 
 export default function ConclusionCardEditable({ comboId, card, analysis, strengths, userSkipped }: Props) {
   const { patchCard, confirmCard, setStatus } = useRuminationV4Store();
+  /** 终选已提交：整页回看模式，结论卡只读、操作按钮全部隐藏 */
+  const finalSubmitted = useRuminationV4Store(
+    (s) => !!s.state?.final_selection?.submitted
+  );
   const [localHypothesis, setLocalHypothesis] = useState<string>(hypToString(card?.hypothesis));
   const [saving, setSaving] = useState(false);
   /** 已判定态下点「重新编辑」进入的编辑模式 */
@@ -136,8 +140,8 @@ export default function ConclusionCardEditable({ comboId, card, analysis, streng
     );
   };
 
-  const editing = !isJudged || reediting; // 草稿/跳过/重新编辑 = textarea 可编辑
-  const locked = isAnalyzing;
+  const editing = !finalSubmitted && (!isJudged || reediting); // 草稿/跳过/重新编辑 = textarea 可编辑；提交后只读
+  const locked = isAnalyzing || finalSubmitted;
 
   return (
     <article
@@ -271,9 +275,9 @@ export default function ConclusionCardEditable({ comboId, card, analysis, streng
           </span>
         )}
 
-        {/* 右:动作按钮 */}
+        {/* 右:动作按钮（提交后回看模式全部隐藏） */}
         <div className="flex items-center gap-2">
-          {isAnalyzing ? null : isFailed ? (
+          {finalSubmitted ? null : isAnalyzing ? null : isFailed ? (
             <button
               type="button"
               onClick={handleRetry}

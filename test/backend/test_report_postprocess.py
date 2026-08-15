@@ -21,6 +21,7 @@ _spec.loader.exec_module(_rp)
 
 PAGEBREAK_DIV = _rp.PAGEBREAK_DIV
 _count_chars = _rp._count_chars
+_normalize_headings = _rp._normalize_headings
 _find_letter_section = _rp._find_letter_section
 _normalize_lists = _rp._normalize_lists
 _normalize_pagebreaks = _rp._normalize_pagebreaks
@@ -119,6 +120,33 @@ def test_compress_llm_exception_keeps_original():
     md = "前文\n\n## 致小明的一封信\n\n" + "长" * 1200
     out = asyncio.run(apply_report_postprocess(md, fake_llm))
     assert "长" * 1200 in out
+
+
+def test_heading_h5_promoted_to_h4():
+    md = "## 第一章 价值观分析\n\n##### 1. 自我实现\n\n正文"
+    out = _normalize_headings(md)
+    assert "#### 1. 自我实现" in out
+    assert "#####" not in out
+
+
+def test_heading_cjk_h4_promoted_to_h3():
+    md = "#### 一、逐项价值观解析"
+    assert _normalize_headings(md) == "### 一、逐项价值观解析"
+
+
+def test_heading_english_h4_kept():
+    md = "#### The Gentle Narrative Builder"
+    assert _normalize_headings(md) == "#### The Gentle Narrative Builder"
+
+
+def test_heading_chapter_h2_untouched():
+    md = "## 第三章 热爱分析"
+    assert _normalize_headings(md) == "## 第三章 热爱分析"
+
+
+def test_heading_skip_code_block():
+    md = "```\n##### 代码里的标题不动\n```"
+    assert "##### 代码里的标题不动" in _normalize_headings(md)
 
 
 def test_count_chars_ignores_markdown_symbols():

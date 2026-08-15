@@ -45,6 +45,7 @@ _PAGE_LOGO_HEADER = _STATIC_DIR / "assets" / "openlifelogo_header.png"  # 页眉
 _PAGE_LOGO_FOOTER = _STATIC_DIR / "assets" / "openlifelogo_footer.png"  # 页脚正中心 logo
 _REPORT_CSS = _STATIC_DIR / "styles" / "report_pdf.css"
 _REPORT_THEME = _STATIC_DIR / "styles" / "report_theme.json"
+_FONT_DIR = _STATIC_DIR / "fonts"  # 随仓库打包的 Noto Sans SC（@font-face 内嵌）
 
 # 报告落款签名（ADR-0012 品牌更名后新增）：首次生成随机分配，持久化到 record.json 的
 # report_signature 字段，保证同一报告再生成时签名不变
@@ -780,10 +781,12 @@ class ReportPdfService:
             flags=re.IGNORECASE,
         )
 
-        # 2. 读 CSS，注入配色主题 token + 页眉/页脚 logo（data URI 替换占位符）
+        # 2. 读 CSS，注入配色主题 token + 字体 URI + 页眉/页脚 logo（data URI 替换占位符）
         theme = _load_report_theme()
         css_content = _apply_theme(_REPORT_CSS.read_text(encoding="utf-8"), theme)
         css_content = css_content.replace(
+            "__FONT_DIR_URL__", _FONT_DIR.as_uri()
+        ).replace(
             "__PAGE_LOGO_HEADER_URL__", _image_data_uri(_PAGE_LOGO_HEADER)
         ).replace(
             "__PAGE_LOGO_FOOTER_URL__", _image_data_uri(_PAGE_LOGO_FOOTER)
@@ -809,7 +812,22 @@ class ReportPdfService:
         )
         watermark_html = f'<div class="watermark-layer">{watermark_strips}</div>'
 
-        # 5. 拼装完整 HTML
+        # 2.5 信件容器包裹：从「致 xxx 的一封信」标题到文末包进 <div class="letter">，
+        #     落款签名一并纳入容器（CSS 收紧排版 + page-break-inside:avoid，
+        #     保证信+签名稳定一页内）。找不到信件标题时签名维持文末追加。
+        signature_html = self._signature_block_html(report_id)
+        letter_m = re.search(r"<h[1-6][^>]*>\s*致.{0,30}一封信\s*</h[1-6]>", html_body)
+        if letter_m:
+            html_body = (
+                html_body[: letter_m.start()]
+                + '<div class="letter">'
+                + html_body[letter_m.start():]
+                + signature_html
+                + "</div>"
+            )
+            signature_html = ""
+
+        # 3. 拼装完整 HTML
         full_html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -839,7 +857,7 @@ class ReportPdfService:
 <!-- 正文 -->
 <div class="content">
 {html_body}
-{self._signature_block_html(report_id)}
+{signature_html}
 </div>
 </body>
 </html>"""

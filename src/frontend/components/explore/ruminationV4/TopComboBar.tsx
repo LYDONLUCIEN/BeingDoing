@@ -33,6 +33,12 @@ export default function TopComboBar({ onManageChange }: TopComboBarProps) {
   const combos = useMemo(() => state?.combo_sessions || [], [state]);
   const activeId = state?.active_combo_id ?? null;
   const atLimit = combos.length >= MAX_COMBOS;
+  /** 终选已提交：整页回看模式，新建/管理/删除全部禁用，入选 tab 加轻量标记 */
+  const finalSubmitted = !!state?.final_selection?.submitted;
+  const finalSelectedIds = useMemo(
+    () => new Set(state?.final_selection?.selected_combo_ids || []),
+    [state?.final_selection?.selected_combo_ids]
+  );
 
   const toggleManaging = useCallback(
     (next: boolean) => {
@@ -164,6 +170,8 @@ export default function TopComboBar({ onManageChange }: TopComboBarProps) {
           const isActive = c.combo_id === activeId && !managing;
           const isSelected = selectedIds.has(c.combo_id);
           const isConfirming = confirmSingleId === c.combo_id;
+          /** 提交后入选组合的轻量「被选中」感：紫色描边环，不动布局 */
+          const isFinalSelected = finalSubmitted && finalSelectedIds.has(c.combo_id);
           return (
             <button
               key={c.combo_id}
@@ -195,14 +203,22 @@ export default function TopComboBar({ onManageChange }: TopComboBarProps) {
                   : isSelected
                     ? 'rgba(255,240,240,0.85)'
                     : 'rgba(255,255,255,0.55)',
-                borderColor: isActive
-                  ? '#e1e6ef'
-                  : isSelected
-                    ? '#ffccd0'
-                    : '#e1e6ef',
-                boxShadow: '0 4px 15px rgba(19,38,76,0.06)',
+                borderColor: isFinalSelected
+                  ? '#8b7bf5'
+                  : isActive
+                    ? '#e1e6ef'
+                    : isSelected
+                      ? '#ffccd0'
+                      : '#e1e6ef',
+                boxShadow: isFinalSelected
+                  ? '0 0 0 1.5px rgba(122,100,255,0.55), 0 4px 15px rgba(19,38,76,0.06)'
+                  : '0 4px 15px rgba(19,38,76,0.06)',
               }}
-              title={managing ? '点击选择/取消选择' : `${c.passion} + ${c.strengths.join('、')}`}
+              title={
+                managing
+                  ? '点击选择/取消选择'
+                  : `${c.passion} + ${c.strengths.join('、')}${isFinalSelected ? '（已入选）' : ''}`
+              }
             >
               {managing && (
                 <span
@@ -224,8 +240,8 @@ export default function TopComboBar({ onManageChange }: TopComboBarProps) {
               </span>
               <span className="tab-label flex-1 truncate">{`${c.passion} × ${c.strengths.join('、')}`}</span>
 
-              {/* hover 删除按钮 */}
-              {!managing && (
+              {/* hover 删除按钮（提交后回看模式不渲染） */}
+              {!managing && !finalSubmitted && (
                 <span
                   role="button"
                   tabIndex={0}
@@ -350,26 +366,34 @@ export default function TopComboBar({ onManageChange }: TopComboBarProps) {
           </>
         ) : (
           <>
+            {!finalSubmitted && (
+              <button
+                type="button"
+                onClick={() => toggleManaging(true)}
+                className="ghost-btn flex h-9 items-center gap-2 rounded-full px-3.5 text-[12px] font-semibold text-[#485671] transition-colors hover:bg-[#f6f8fb]"
+              >
+                <span>♜</span>
+                <span>管理组合</span>
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => toggleManaging(true)}
-              className="ghost-btn flex h-9 items-center gap-2 rounded-full px-3.5 text-[12px] font-semibold text-[#485671] transition-colors hover:bg-[#f6f8fb]"
-            >
-              <span>♜</span>
-              <span>管理组合</span>
-            </button>
-            <button
-              type="button"
-              disabled={atLimit}
+              disabled={atLimit || finalSubmitted}
               onClick={enterDraft}
-              className="new-btn flex h-9 items-center gap-2 rounded-full border bg-white px-3.5 text-[12px] font-semibold transition-all"
+              className="new-btn flex h-9 items-center gap-2 rounded-full border bg-white px-3.5 text-[12px] font-semibold transition-all disabled:opacity-50"
               style={{
                 borderColor: '#e7eaf0',
-                color: atLimit ? '#b0b8c4' : '#008ea7',
+                color: atLimit || finalSubmitted ? '#b0b8c4' : '#008ea7',
                 boxShadow: '0 6px 16px rgba(21,47,88,0.06)',
-                cursor: atLimit ? 'not-allowed' : 'pointer',
+                cursor: atLimit || finalSubmitted ? 'not-allowed' : 'pointer',
               }}
-              title={atLimit ? `已达上限(${MAX_COMBOS}个)` : '新建组合'}
+              title={
+                finalSubmitted
+                  ? '最终选择已提交，组合已锁定'
+                  : atLimit
+                    ? `已达上限(${MAX_COMBOS}个)`
+                    : '新建组合'
+              }
             >
               <Plus size={16} strokeWidth={2.5} />
               新建组合

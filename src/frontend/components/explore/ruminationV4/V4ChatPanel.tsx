@@ -46,6 +46,7 @@ export default function V4ChatPanel({ comboId }: Props) {
     init,
     clearError,
     activationCode,
+    state,
   } = useRuminationV4Store();
   const { user } = useAuthStore();
 
@@ -67,6 +68,8 @@ export default function V4ChatPanel({ comboId }: Props) {
   const isReadOnly = combo?.status === 'concluded' || combo?.status === 'abandoned';
   // ADR-0015:判定分析中锁对话输入(锁是 combo 级的,可切换/新建其他组合)
   const isAnalyzing = combo?.balance_analysis?.status === 'analyzing';
+  /** 终选已提交：整页回看模式，对话输入与「开始讨论」全部禁用 */
+  const finalSubmitted = !!state?.final_selection?.submitted;
 
   // 为每条消息补充稳定 id / 时间，用于 key、时间戳、埋点
   // 过滤空内容消息(历史 tool-only 轮次可能落盘过空 assistant 消息,避免空气泡)
@@ -118,7 +121,14 @@ export default function V4ChatPanel({ comboId }: Props) {
     inputRef.current?.focus();
   };
 
-  const canInput = !!comboId && hasOpening && !isStreaming && !isReadOnly && !isDraft && !isAnalyzing;
+  const canInput =
+    !!comboId &&
+    hasOpening &&
+    !isStreaming &&
+    !isReadOnly &&
+    !isDraft &&
+    !isAnalyzing &&
+    !finalSubmitted;
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -134,7 +144,9 @@ export default function V4ChatPanel({ comboId }: Props) {
                 {isDraft
                   ? '请先在左侧选点并点击「开始探索」'
                   : combo
-                    ? isAnalyzing
+                    ? finalSubmitted
+                      ? '最终选择已提交，内容已锁定，仅供回看'
+                      : isAnalyzing
                       ? '结论卡分析中，完成后可继续探讨'
                       : isReadOnly
                         ? combo.status === 'concluded'
@@ -185,15 +197,19 @@ export default function V4ChatPanel({ comboId }: Props) {
                 ) : !error && !hasOpening && !isStreaming ? (
                   <div className="flex flex-col items-center justify-center py-12 text-center">
                     <p className="mb-4 text-sm text-neutral-500">
-                      组合已锁定。准备好开始深度对话了吗？
+                      {finalSubmitted
+                        ? '最终选择已提交，内容已锁定，仅供回看。'
+                        : '组合已锁定。准备好开始深度对话了吗？'}
                     </p>
-                    <button
-                      type="button"
-                      onClick={handleStart}
-                      className="bd-btn-black rounded-full px-5 py-2.5 text-sm font-semibold text-white"
-                    >
-                      开始讨论
-                    </button>
+                    {!finalSubmitted && (
+                      <button
+                        type="button"
+                        onClick={handleStart}
+                        className="bd-btn-black rounded-full px-5 py-2.5 text-sm font-semibold text-white"
+                      >
+                        开始讨论
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <>
@@ -274,9 +290,11 @@ export default function V4ChatPanel({ comboId }: Props) {
                           }
                         }}
                         placeholder={
-                          isDraft
-                            ? '请先点击「开始探索」'
-                            : !hasOpening
+                          finalSubmitted
+                            ? '已提交锁定，仅供回看'
+                            : isDraft
+                              ? '请先点击「开始探索」'
+                              : !hasOpening
                               ? '点击「开始讨论」'
                               : isAnalyzing
                                 ? '正在分析中，请稍后…'

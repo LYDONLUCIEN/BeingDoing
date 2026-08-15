@@ -11,7 +11,10 @@ import { formatLocalDateTime, toDate } from '@/lib/utils/formatTime';
 import PurchaseModal from '@/components/payment/PurchaseModal';
 import UpgradeTrialModal from '@/components/payment/UpgradeTrialModal';
 import FreeRenewalClaimModal from '@/components/payment/FreeRenewalClaimModal';
+import OrdersSection from '@/components/dashboard/OrdersSection';
 import { useLocale } from '@/hooks/useLocale';
+
+type CodesTab = 'codes' | 'orders';
 
 /** 状态 badge 配色：active 绿 / inactive 橙 / expired 灰 / revoked 红 / consumed 灰 / 其他 灰 */
 const STATUS_COLOR: Record<string, string> = {
@@ -225,6 +228,10 @@ export default function DashboardCodesPage() {
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   /** 购买记录区刷新信号：升级/延期后递增，触发 PurchasedCodesSection 重新拉取 */
   const [purchasedRefreshKey, setPurchasedRefreshKey] = useState(0);
+  /** 页签：激活码 / 订单记录（?tab=orders 定位到订单 tab） */
+  const [activeTab, setActiveTab] = useState<CodesTab>('codes');
+  /** 购买激活码弹窗（页面标题右侧入口） */
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
 
   const loadCodes = useCallback(async () => {
     setLoading(true);
@@ -244,6 +251,11 @@ export default function DashboardCodesPage() {
   useEffect(() => {
     void loadCodes();
   }, [loadCodes]);
+
+  // ?tab=orders 定位到订单 tab（默认激活码 tab）
+  useEffect(() => {
+    if (searchParams.get('tab') === 'orders') setActiveTab('orders');
+  }, [searchParams]);
 
   // 过期通知邮件/站内信链接入口（ADR-0015）：?free_renewal=<code> 自动弹领取窗
   useEffect(() => {
@@ -267,6 +279,11 @@ export default function DashboardCodesPage() {
     }
   };
 
+  const switchTab = (tab: CodesTab) => {
+    setActiveTab(tab);
+    router.replace(tab === 'orders' ? '/dashboard/codes?tab=orders' : '/dashboard/codes');
+  };
+
   /** 去使用：写入「上次激活码」并跳激活页（code 由激活页从 query 预填） */
   const handleUse = (code: string) => {
     setLastActivationCode(code);
@@ -275,11 +292,37 @@ export default function DashboardCodesPage() {
 
   return (
     <div className="max-w-4xl">
-      <div className="mb-8 flex items-center justify-between gap-4">
+      <div className="mb-6 flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold text-bd-fg">{t('dashboard.myCodes')}</h1>
+        <button
+          type="button"
+          onClick={() => setPurchaseOpen(true)}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-bd-ui-accent text-bd-ui-accent-fg hover:opacity-90"
+        >
+          {t('dashboard.ordersPage.buy')}
+        </button>
       </div>
 
-      {loading ? (
+      {/* 页签：激活码 / 订单记录（样式与 AuthModal tab 一致） */}
+      <div className="mb-6 flex bg-bd-overlay rounded-lg p-1 max-w-xs">
+        {(['codes', 'orders'] as const).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => switchTab(tab)}
+            className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
+              activeTab === tab
+                ? 'bg-bd-primary text-bd-primary-fg shadow-sm'
+                : 'text-bd-muted hover:text-bd-fg'
+            }`}
+          >
+            {t(`dashboard.codesPage.tabs.${tab}`)}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'codes' ? (
+        loading ? (
         <div className="bg-bd-card/80 backdrop-blur-lg border border-bd-border rounded-2xl p-8 text-center">
           <p className="text-bd-muted">{t('common.loading')}</p>
         </div>
@@ -317,16 +360,20 @@ export default function DashboardCodesPage() {
             />
           ))}
         </div>
+      )
+      ) : (
+        <>
+          {/* 订单记录 tab：订单列表 + 购买记录按订单分组（去向 5 态） */}
+          <OrdersSection />
+          <PurchasedCodesSection
+            t={t}
+            copiedText={copiedText}
+            onCopy={(text) => void copyText(text)}
+            onUse={handleUse}
+            refreshKey={purchasedRefreshKey}
+          />
+        </>
       )}
-
-      {/* 所属人视角（P-E）：我购买的码（含送出的赠品码），按订单分组展示去向 */}
-      <PurchasedCodesSection
-        t={t}
-        copiedText={copiedText}
-        onCopy={(text) => void copyText(text)}
-        onUse={handleUse}
-        refreshKey={purchasedRefreshKey}
-      />
 
       {/* 延期激活：关闭后刷新列表（有效期可能已追加） */}
       <PurchaseModal

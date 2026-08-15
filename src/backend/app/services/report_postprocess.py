@@ -7,11 +7,14 @@
    <<<PAGEBREAK>>> 统一为 <div class="pb"></div>（样式在 report_pdf.css 的 .pb）。
 2. 列表规范化：行首 * 统一为 -；列表块与前/后普通文本之间补空行，
    避免列表未被 markdown 解析、PDF 里出现字面 "- xxx"。
+3. 标题层级归一化：提示词要求最多 #### 但 LLM 常输出 h5（与正文同字号、
+   视觉上消失）。规则：h5/h6 → h4；含中文的 h4（章内小节）→ h3；
+   纯英文 h4（职业角色英文名副标题）保持 h4。
 
 LLM 修正器（针对特定章节，各自独立 prompt，可插拔扩展）：
-3. 信件压缩器：「给读者的一封信」超过 ~900 字时，用专用 prompt 重写至
-   750-850 字；同时保证信件标题前必有分页符（信 + 签名独占一页）。
-   校验失败 / 调用失败兜底保留原文，不阻塞报告产出。
+4. 信件压缩器：「给读者的一封信」超过 ~700 字时，用专用 prompt 重写至
+   550-650 字（信件区 CSS 收紧排版后，该字数 + 签名图可稳定一页内）；
+   同时保证信件标题前必有分页符。校验失败 / 调用失败兜底保留原文。
 """
 
 from __future__ import annotations
@@ -26,19 +29,21 @@ logger = logging.getLogger(__name__)
 PAGEBREAK_TOKEN = "<<<PAGEBREAK>>>"
 PAGEBREAK_DIV = '<div class="pb"></div>'
 
-# 信件字数控制
-_LETTER_COMPRESS_THRESHOLD = 900  # 超过该字数触发压缩
-_LETTER_TARGET_MIN = 750
-_LETTER_TARGET_MAX = 850
+# 信件字数控制（letter CSS 收紧排版后，~650 字 + 签名图可稳定一页内）
+_LETTER_COMPRESS_THRESHOLD = 700  # 超过该字数触发压缩
+_LETTER_TARGET_MIN = 550
+_LETTER_TARGET_MAX = 650
 # 压缩结果验收区间（过短说明压坏了，过长说明没压住，都回退原文）
-_LETTER_ACCEPT_MIN = 600
-_LETTER_ACCEPT_MAX = 1000
+_LETTER_ACCEPT_MIN = 450
+_LETTER_ACCEPT_MAX = 750
 
 _LEGACY_PB_RE = re.compile(
     r"<div[^>]*page-break-after\s*:\s*always[^>]*>\s*</div>", re.IGNORECASE
 )
 _LIST_ITEM_RE = re.compile(r"^(\s*)[-*]\s+")
 _STAR_LIST_RE = re.compile(r"^(\s*)\*\s+")
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 _LETTER_HEADING_RE = re.compile(r"^(#{1,6})\s*致.{0,30}一封信\s*$", re.MULTILINE)
 
 
@@ -92,6 +97,32 @@ def _normalize_lists(text: str) -> str:
         if not is_item and line.strip() and prev_is_item:
             out.append("")
         out.append(normalized)
+    return "\n".join(out)
+
+
+def _normalize_headings(text: str) -> str:
+    """标题层级归一化（跳过代码块）：h5/h6→h4；含中文的 h4→h3；纯英文 h4 保持。"""
+    lines = text.split("\n")
+    out: List[str] = []
+    in_code = False
+    for line in lines:
+        if line.strip().startswith("```"):
+            in_code = not in_code
+            out.append(line)
+            continue
+        if in_code:
+            out.append(line)
+            continue
+        m = _HEADING_RE.match(line)
+        if not m:
+            out.append(line)
+            continue
+        level, title = len(m.group(1)), m.group(2)
+        if level >= 5:
+            level = 4
+        elif level == 4 and _CJK_RE.search(title):
+            level = 3
+        out.append("#" * level + " " + title)
     return "\n".join(out)
 
 
@@ -176,6 +207,7 @@ async def apply_report_postprocess(
     """
     text = _normalize_pagebreaks(markdown_text)
     text = _normalize_lists(text)
+    text = _normalize_headings(text)
 
     section = _find_letter_section(text)
     if section:

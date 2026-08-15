@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import { FileText } from 'lucide-react';
+import { FileText, Lock } from 'lucide-react';
 import { useRuminationV4Store } from '@/stores/ruminationV4Store';
 import { markV4IntroShown } from '@/lib/explore/ruminationV4Api';
 import V4ChatPanel from './V4ChatPanel';
@@ -187,6 +187,21 @@ export default function RuminationV4Page({
           <div className="rumination-toolbar-wrap mb-2.5 min-w-0 shrink-0">
             <TopComboBar />
           </div>
+
+          {/* 提交后回看模式：轻量锁定说明条 */}
+          {finalSubmitted && (
+            <div
+              className="mb-2.5 flex shrink-0 items-center gap-2 rounded-[14px] px-4 py-2 text-[12px] font-[650] text-[#5d5a8f]"
+              style={{
+                background: 'rgba(244,240,255,0.72)',
+                border: '1px solid rgba(122,100,255,0.16)',
+              }}
+              role="status"
+            >
+              <Lock size={13} strokeWidth={2.2} className="shrink-0" />
+              最终选择已提交，内容已锁定，仅供回看
+            </div>
+          )}
 
           {/* 左选择器 / 右对话 */}
           <div className="rumination-workbench flex min-h-0 flex-1 gap-3 overflow-hidden">

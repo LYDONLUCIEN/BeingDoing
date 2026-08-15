@@ -1,6 +1,7 @@
 {
   "_说明": "寻路·OpenLife PDF 报告配色主题。所有颜色为十六进制值；report_pdf.css 中的 {{token}} 占位符在渲染时由本文件替换。修改说明见 wiki/开发文档/0812-报告配色配置说明.md",
 
+  "page_bg": "#fffdf9",
   "accent": "#c9a96e",
   "text_body": "#2a2a2a",
   "text_heading": "#1a1a1a",

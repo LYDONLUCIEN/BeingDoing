@@ -3,9 +3,29 @@
    app/static/styles/report_theme.json 替换，改配色请改该文件。
    详见 wiki/开发文档/0812-报告配色配置说明.md */
 
-/* 字体：使用系统已有的 Noto 系列 */
+/* 字体：随仓库打包 Noto Sans SC（OFL），@font-face 内嵌，不依赖服务器字体环境。
+   __FONT_DIR_URL__ 由后端渲染时替换为 app/static/fonts 的 file:// URI。
+   背景：生产服务器缺 CJK 字体时 PDF 出现方框乱码（2026-08-15 事故） */
+@font-face {
+  font-family: "ReportSans";
+  src: url("__FONT_DIR_URL__/NotoSansSC-Regular.ttf");
+  font-weight: normal;
+}
+
+@font-face {
+  font-family: "ReportSans";
+  src: url("__FONT_DIR_URL__/NotoSansSC-Bold.ttf");
+  font-weight: bold;
+}
+
+@font-face {
+  font-family: "ReportSans";
+  src: url("__FONT_DIR_URL__/NotoSansSC-Medium.ttf");
+  font-weight: 500;
+}
+
 body {
-  font-family: "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  font-family: "ReportSans", "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
   font-size: 11pt;
   line-height: 1.8;
   color: {{text_body}};
@@ -179,6 +199,8 @@ hr {
 @page {
   size: A4;
   margin: 2.5cm 2cm;
+  /* 整份报告统一暖白纸色（含边距满出血），预览页不再有色纸嵌入感 */
+  background: {{page_bg}};
 
   @top-right {
     content: url("__PAGE_LOGO_HEADER_URL__");
@@ -287,12 +309,36 @@ hr {
   page-break-before: always;
 }
 
+/* ── 致用户信：收紧排版 + 签名块纳入同一容器，保证信+签名稳定一页内 ──
+   .letter 容器由 _markdown_to_pdf 在 HTML 层包裹（信件标题到文末） */
+.letter {
+  page-break-before: always;
+  page-break-inside: avoid;
+}
+
+.letter h2 {
+  margin-top: 0;
+}
+
+.letter p {
+  font-size: 10.5pt;
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+
+.letter .report-signature {
+  margin-top: 12px;
+}
+
+.letter .signature-img {
+  width: 120px;
+}
+
 /* ── 报告总览页（预览页，插在封面与扉页之间）──
    设计来源：uidesign/beautiful/report（Figma Make 稿「报告模块总览」），
    已适配 WeasyPrint（表格布局替代 grid/flex 多列，配色走主题 token） */
 .overview {
   page-break-after: always;
-  background: {{overview_page_bg}};
   padding: 8px 6px;
 }
 
