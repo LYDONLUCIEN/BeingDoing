@@ -1,13 +1,30 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users } from 'lucide-react';
 import { useLocale } from '@/hooks/useLocale';
+import { getTeamAnalysisEmail, TEAM_ANALYSIS_EMAIL_FALLBACK } from '@/lib/api/payment';
 
 export type TeamAnalysisNoticeModalProps = {
   open: boolean;
   onClose: () => void;
 };
+
+/** 团队分析报告联系邮箱（后端 TEAM_ANALYSIS_EMAIL 经 /payment/products 下发；失败用兜底值） */
+function useTeamAnalysisEmail(): string {
+  const [email, setEmail] = useState(TEAM_ANALYSIS_EMAIL_FALLBACK);
+  useEffect(() => {
+    let cancelled = false;
+    getTeamAnalysisEmail().then((v) => {
+      if (!cancelled) setEmail(v);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return email;
+}
 
 /**
  * 团队分析报告内联提示框（年度套餐 3 码交付后展示）。
@@ -15,14 +32,15 @@ export type TeamAnalysisNoticeModalProps = {
  */
 export function TeamAnalysisNoticeBox() {
   const { t } = useLocale();
+  const email = useTeamAnalysisEmail();
   return (
     <div className="w-full space-y-1.5 rounded-xl border border-sky-200/80 bg-sky-50/60 px-4 py-3.5 text-left">
       <p className="flex items-center gap-1.5 text-xs font-medium text-stone-700">
         <Users className="h-3.5 w-3.5 text-sky-600" />
         {t('payment.success.teamNoticeTitle')}
       </p>
-      <p className="text-[11px] leading-relaxed text-stone-500">
-        {t('payment.success.teamNoticeBody')}
+      <p className="whitespace-pre-line text-[11px] leading-relaxed text-stone-500">
+        {t('payment.success.teamNoticeBody', { email })}
       </p>
     </div>
   );
@@ -35,6 +53,7 @@ export function TeamAnalysisNoticeBox() {
  */
 export default function TeamAnalysisNoticeModal({ open, onClose }: TeamAnalysisNoticeModalProps) {
   const { t } = useLocale();
+  const email = useTeamAnalysisEmail();
 
   return (
     <AnimatePresence>
@@ -74,7 +93,7 @@ export default function TeamAnalysisNoticeModal({ open, onClose }: TeamAnalysisN
               </h2>
             </div>
             <p className="mb-6 whitespace-pre-line text-[15px] leading-relaxed text-stone-600">
-              {t('payment.success.teamNoticeBody')}
+              {t('payment.success.teamNoticeBody', { email })}
             </p>
             <button
               type="button"

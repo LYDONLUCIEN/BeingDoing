@@ -187,6 +187,21 @@ hr {
   background: {{table_stripe_bg}};
 }
 
+/* 行级分页保护（2026-08-16）：同一行不可拦腰跨页——
+   break-inside 默认 auto 时 WeasyPrint 会在行内部断页，
+   出现左格留在上一页、右格被推到下一页的割裂 */
+.content tr,
+.content th,
+.content td {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* 标题不被孤立在页尾（与其后内容同页） */
+.content h1, .content h2, .content h3, .content h4 {
+  page-break-after: avoid;
+}
+
 /* ── 分页符（后处理管线将 <<<PAGEBREAK>>> 统一替换为 <div class="pb">）── */
 .pb {
   page-break-after: always;
@@ -334,7 +349,7 @@ hr {
   width: 120px;
 }
 
-/* ── 报告总览页（预览页，插在封面与扉页之间）──
+/* ── 报告总览页（预览页，插在扉页/阅读指南之后，2026-08-16 起）──
    设计来源：uidesign/beautiful/report（Figma Make 稿「报告模块总览」），
    已适配 WeasyPrint（表格布局替代 grid/flex 多列，配色走主题 token） */
 .overview {

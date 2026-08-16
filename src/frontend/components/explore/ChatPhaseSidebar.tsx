@@ -82,7 +82,7 @@ export function buildThreadMarkdownExport(thread: ChatThread, phaseTitle: string
     if (m.role === 'user') {
       lines.push(`## 用户`, ts ? `*${ts}*` : '', ``, m.content.trim(), ``, `---`, ``);
     } else if (m.role === 'assistant') {
-      const parts: string[] = [`## 助手`, ts ? `*${ts}*` : '', ``];
+      const parts: string[] = [`## 路路`, ts ? `*${ts}*` : '', ``];
       if (m.thinkContent?.trim()) {
         parts.push(`### 思考过程`, ``, m.thinkContent.trim(), ``);
       }

@@ -210,7 +210,7 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
                 className={`direction-grid grid gap-5 overflow-y-auto pr-1 transition-[filter,opacity] duration-300 ${
                   pending ? 'pointer-events-none select-none opacity-50 blur-[3px]' : ''
                 }`}
-                style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}
+                style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}
                 aria-disabled={pending}
               >
                 {candidates.map((combo, idx) => (

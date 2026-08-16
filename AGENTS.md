@@ -103,10 +103,12 @@ SMTP_HOST=smtp.163.com
 SMTP_PORT=465
 SMTP_USER=xxx@163.com
 SMTP_PASS=授权码
+TEAM_ANALYSIS_EMAIL=soulhappylab@163.com  # 团队分析报告联系邮箱（前后端共用，ADR-0018）
 
 # 可选：支付模块（P1 折扣券；P2a 支付宝闭环已上线，微信 P2b 预留）
 # 商品目录（ADR-0008；2026-07-28 起对外口径改回：季度套餐 / 年度套餐，内部 SKU 仍为 quarterly_package/annual_package）
-# 套餐码「未激活」语义：交付时 expires_at=None，首次创建对话 session 才起算有效期（maybe_start_validity）
+# 套餐码有效期（ADR-0018，2026-08-16 起）：支付成功（交付）即起算，交付时 expires_at = now + 套餐天数；
+# 存量未激活码（expires_at=None）不溯及既往，仍由 maybe_start_validity 首次创建对话 session 时起算
 QUARTERLY_PRICE=6900              # 季度套餐（分，90 天，1 个未绑定码）
 ANNUAL_PRICE=15900                # 年度套餐（分，365 天，3 个未绑定码；99→128→159，2026-08-05 起）
 # 交付口径（ADR-0014，2026-08-05 起）：套餐一律发未绑定码，不再自动升级试用码/自动绑定；
@@ -274,7 +276,7 @@ python scripts/init_db.py
 
 - **试用码（trial）**：注册即送、自动绑定、不过期（`expires_at=None`）、`vip_level=1`；老用户 0 码时在 `GET /simple-auth/journeys` 懒补发。仅限 values 阶段问答 10 轮（轮=用户消息条数，排除 `internal` 消息；第 11 条起拦截）。
 - **完整码（full）**：全阶段解锁。存量码一律 `code_type=full`（`_load_all` setdefault 兼容）。
-- **消耗升级（ADR-0014）**：购买套餐不再自动升级试用码——季度发 1 个、年度发 3 个**未绑定**完整码（可自用/转赠）；用户可消耗 1 个未绑定码（自购或被赠均可）把已开聊试用码**原地升级**为完整码：被消耗码置 `status=consumed`（+`consumed_into` 审计），试用码走 `upgrade_to_full`（码字符串/对话记录/session 全保留）。入口：支付结果页弹窗（可「不再提醒」，存 `users.preferences`）、两种 402 拦截点（直购 intent=upgrade_trial 支付后自动消耗升级 / 用已有码升级，按 `has_upgrade_codes` 分级显示）、我的激活码页（「升级完整版」按钮始终可见，作为手动输入常驻入口）。UpgradeTrialModal 空态（无自购未绑定码）提供「手动输入激活码」（覆盖被赠码：purchaser 非本人的码不进 unbound_codes 列表，但 apply-to-trial 实际允许消耗）；`has_started_trial=false` 时弹窗提示「建议直接用新码开始」并可跳激活页，保留仍要升级兼底。
+- **消耗升级（ADR-0014）**：购买套餐不再自动升级试用码——季度发 1 个、年度发 3 个**未绑定**完整码（可自用/转赠）；用户可消耗 1 个未绑定码（自购或被赠均可）把已开聊试用码**原地升级**为完整码：被消耗码置 `status=consumed`（+`consumed_into` 审计），试用码走 `upgrade_to_full`（码字符串/对话记录/session 全保留，ADR-0018 起**继承被消耗码的剩余有效期**——`upgrade_to_full(expires_at=...)`；存量未激活码未传入则保持首次使用起算老口径）。入口：支付结果页弹窗（可「不再提醒」，存 `users.preferences`）、两种 402 拦截点（直购 intent=upgrade_trial 支付后自动消耗升级 / 用已有码升级，按 `has_upgrade_codes` 分级显示）、我的激活码页（「升级完整版」按钮始终可见，作为手动输入常驻入口）。UpgradeTrialModal 空态（无自购未绑定码）提供「手动输入激活码」（覆盖被赠码：purchaser 非本人的码不进 unbound_codes 列表，但 apply-to-trial 实际允许消耗）；`has_started_trial=false` 时弹窗提示「建议直接用新码开始」并可跳激活页，保留仍要升级兼底。
 - **试用门控**：写端点非 values → HTTP 402 `{"type":"trial_phase_locked"}`；values 超 10 轮 → HTTP 402 `{"type":"trial_limit_reached","used":N,"limit":10}`（detail 为 JSON 字符串）。两种 402 detail 均带 `has_upgrade_codes`（`_has_upgrade_codes`，口径=自购+未绑定+active+full，与 upgrade-context 共用 `list_unbound_full_codes_purchased_by`）：前端 chat 页据此做引导分级——无码时仅「购买升级」单选项；有码时「使用已有激活码升级」升为主按钮、购买降为次按钮。只读 GET 不拦；admin/沙箱走 `_can_bypass_flow_limits` 豁免。
 - **邮箱验证门控（2026-08-08 起）**：绑定了邮箱但 `email_verified=False` 的用户禁止一切探索写操作——`_assert_email_verified_for_explore` 挂在 `_assert_trial_phase_allowed` 统一入口（覆盖 init/message/stream/thread/rumination/prior-context 全部写端点）+ `POST /simple-chat/survey`，返回 HTTP 403 `{"type":"email_not_verified"}`。只读 GET 不拦；无邮箱（手机注册）与 `_can_bypass_flow_limits` 豁免。前端：`/explore/survey` 对未验证用户显示验证引导卡（替代问卷表单，可重发验证邮件），chat 页检测未验证主动跳回问卷页。背景：注册即送试用码自动绑定后，未验证用户曾可绕过激活页验证提示直接开聊。
 - **问卷昵称同源（2026-08-08 起）**：调研问卷 `nickname` 与注册昵称 `users.username` 同源——前端 `/explore/survey` 未保存过昵称时预填 username；后端 `/simple-chat/survey` 与 `/user-survey` 保存时昵称空白自动回填 username（`_survey_data_with_nickname_default`）。
@@ -283,7 +285,8 @@ python scripts/init_db.py
 - **消耗升级溯源与去向展示（2026-08-08 起）**：试用码记录新增 `upgraded_from_code` 字段（consume 升级时由 `consume_for_trial_upgrade` 写入，存量数据用 `scripts/backfill_upgraded_from_code.py --dry-run` 预演后回填）。`/dashboard/codes` 页为双 tab 结构（2026-08-15 起，支持 `?tab=orders` 定位）：tab「激活码」= owner 视角激活码模块（被消耗码无 owner 天然不出现），对升级来的码显示「付费升级」badge（点击展开才显示来源付费码），标题右侧有「购买激活码」按钮；tab「订单记录」= 订单列表（`components/dashboard/OrdersSection.tsx`，原 `/dashboard/orders` 页主体，`/dashboard/orders` 已改为重定向）+ **按订单分组**的购买记录视图（订单号/商品/实付金额 + 每码去向 5 态：未绑定/已绑定自己/已绑定他人/已用于升级试用码 XXXX/已作废退款），`my-purchased-codes` 接口透传 `source_order_id`/`consumed_into` 并联查订单金额。Admin 订单详情（`GET /admin/payment/orders/{id}`）新增 `delivered_codes[].destination_type/destination_detail`（去向判定，admin 不脱敏）。计划文档：`tasks/consumed-code-destination-plan.md`。
 - **延期体系（ADR-0016，2026-08-08 起）**：完整码首次过期当天，每日扫描 job（`activation_expiry_scan`，默认 10:00）给激活人发邮件+站内信送**免费 7 天续期**（每码一次，`free_renewal_offered_at`/`free_renewal_claimed_at` 幂等；存量已过期码首次扫描全量补发）；链接 → `/dashboard/codes?free_renewal=<code>` 弹窗手动领取，不限时、领取后从当天起 +7 天。付费续期统一 **9.9 元 / 7 天**（`RENEWAL_PRICE=990`/`RENEWAL_DAYS=7`，旧 20 元/90 天下线仅历史订单展示），与免费解耦、不限次、active/expired 均可买、不可退。关键文件：`app/services/activation_expiry_scan.py`、`POST /simple-auth/codes/free-renewal/claim`、前端 `FreeRenewalClaimModal`。
 - **多码展示口径（2026-08-08 起）**：交付码等价、不区分用途——订单页（`dashboard/orders`）、支付结果页、PurchaseModal 成功视图对多码套餐一律平级列出全部码（`激活码（共 N 个）`，meta.codes 并集 delivered_code/gift_codes 去重），单码订单才保留「你的激活码」单独展示；弹窗消耗升级后通过 `onUpgraded(trialCode, consumedCode)` 把已消耗码从展示列表排除。前端请求被取消（页面刷新/导航，`isRequestCanceled`，含 axios ERR_CANCELED/“Request aborted”）一律静默忽略，不作为错误展示。
-- **团队分析报告提示（2026-08-10 起）**：年度套餐（3 人团队码）交付时引导用户邮件申请团队分析报告——后端 `_deliver_order` 随单发站内信（`type=team_analysis_notice`，交付幂等故仅一次）并在交付邮件附同一文案（常量 `payment_service.TEAM_ANALYSIS_NOTICE`，邮箱 xunlu.lab@outlook.com，3 个激活码，咨询师 5 个工作日内回邮报告）；前端支付结果页交付后弹 `TeamAnalysisNoticeModal`（每单一次，关闭后再弹消耗升级避免叠加），PurchaseModal 成功视图内嵌 `TeamAnalysisNoticeBox`。
+- **团队分析报告提示（2026-08-10 起）**：年度套餐（3 人团队码）交付时引导用户邮件申请团队分析报告——后端 `_deliver_order` 随单发站内信（`type=team_analysis_notice`，交付幂等故仅一次）并在交付邮件附同一文案（`payment_service._team_analysis_notice()` 动态生成，邮箱独占一行避免纯文本邮件误识别链接）；前端支付结果页交付后弹 `TeamAnalysisNoticeModal`（每单一次，关闭后再弹消耗升级避免叠加），PurchaseModal 成功视图内嵌 `TeamAnalysisNoticeBox`。
+- **团队分析联系邮箱（ADR-0018，2026-08-16 起）**：环境变量 `TEAM_ANALYSIS_EMAIL`（默认 soulhappylab@163.com）统一管理——后端交付邮件/站内信经 `_team_analysis_notice()` 使用；前端经 `GET /payment/products` 响应字段 `team_analysis_email` 下发（`lib/api/payment.ts` 的 `getTeamAnalysisEmail()` 模块级缓存 + `TEAM_ANALYSIS_EMAIL_FALLBACK` 兑底）。
 
 ## 智能体架构
 
@@ -347,7 +350,7 @@ python scripts/init_db.py
 - `/api/v1/chat/*` - 对话
 - `/api/v1/search/*` - 检索
 - `/api/v1/formula/*` - 公式
-- `/api/v1/export/*` - 导出（`POST /export/report-pdf/{id}` 有完成度门控：五阶段未完成一律 409，admin 也不例外，2026-08-07 起；admin 豁免仅限审核状态阻塞。报告批复通过瞬间——人工 `POST /admin/reports/{id}/approve` 或超时自动批复 job——后台自动生成报告 markdown（`report_review_service.kick_report_generation`，2026-08-10 起），用户页「生成报告」按钮仅为兜底。重新生成限额（2026-08-15 起）：普通用户 force 每报告限 2 次、成功才计数（`report_regen_count`）、超限 403，admin 不限且 admin 报告列表有「重新生成」按钮；三条生成路径（审核预生成/批复/手动）共用 `report_pdf_service` 单轨锁，同报告不并发）
+- `/api/v1/export/*` - 导出（`POST /export/report-pdf/{id}` 有完成度门控：五阶段未完成一律 409，admin 也不例外，2026-08-07 起；admin 豁免仅限审核状态阻塞。报告批复通过瞬间——人工 `POST /admin/reports/{id}/approve` 或超时自动批复 job——后台自动生成报告 markdown（`report_review_service.kick_report_generation`，2026-08-10 起），用户页「生成报告」按钮仅为兜底。重新生成限额（2026-08-15 起）：普通用户 force 每报告限 2 次、成功才计数（`report_regen_count`）、超限 403，admin 后端不限（force 能力保留供运维手动触发；admin 报告列表已下线「重新生成」按钮，2026-08-16 起 admin 只能下载用户已生成的报告）；三条生成路径（审核预生成/批复/手动）共用 `report_pdf_service` 单轨锁，同报告不并发。PDF 页面顺序（2026-08-16 起）：封面 → 阅读指南 → 报告模块总览 → 其余章节（`_markdown_to_pdf` 在第一个分页符处切开正文插入总览页，找不到分页符降级为旧顺序）；正文表格有行级分页保护（`.content tr/th/td { break-inside: avoid }`，防同一行左右格被拦腰分到两页））
 - `/api/v1/admin/*` - 管理（含 `/admin/coupons` 折扣券、`/admin/payment/orders` 订单与退款、`/admin/consultations` 咨询管理、`/admin/users` 用户管理：deleted 筛选 / `restore-deletion` 注销恢复 / PATCH status 对已注销用户启用会 400 拦截；`/admin/reports` 列表含 `report_unlocked` 字段，`completed_steps` 已修 v4 口径：rumination locked 计入）
 - `/api/v1/payment/*` - 支付（用户侧：products / coupons/validate / orders；`/payment/notify/alipay` 为渠道回调，无登录鉴权）
 - `/api/v1/analytics/*` - 埋点（点赞、报告生成、`POST /analytics/event` 通用事件上报：PV 不依赖登录，auth_active 仅服务端内部写；漏斗统计 `GET /admin/analytics/funnel`，ADR-0013）
@@ -398,7 +401,7 @@ python scripts/init_db.py
 - `docs/DOCKER.md` - Docker 使用
 - `docs/ADMIN_SANDBOX_FORK.md` - 管理员调试沙箱（Fork 正式激活码）
 - `CONTEXT.md` - 领域术语（探索流程 + 支付与商业化：试用/完整码、激活码（季度套餐/年度套餐）、折扣券、报告审核、团队分析）
-- `docs/adr/` - 架构决策记录（0005 双线支付 / 0006-0007 会员体系保留 / 0008 套餐与试用码 / 0009 报告审核自动批复 / 0010 码双角色与报告授权 / 0011 存储演进路线：SQLite 全量入库→条件触发 PG / 0012 品牌更名 OpenLife / 0013 统计看板：事件时间口径漏斗 + 埋点业务同库 / 0014 套餐全量未绑定码交付 + 消耗升级 + 年度 ¥159 / 0016 延期改版：首过免费送 7 天 + 付费 9.9 元/7 天 / 0017 报告后处理修正管线：一次生成 + 按章节分步修正）
+- `docs/adr/` - 架构决策记录（0005 双线支付 / 0006-0007 会员体系保留 / 0008 套餐与试用码 / 0009 报告审核自动批复 / 0010 码双角色与报告授权 / 0011 存储演进路线：SQLite 全量入库→条件触发 PG / 0012 品牌更名 OpenLife / 0013 统计看板：事件时间口径漏斗 + 埋点业务同库 / 0014 套餐全量未绑定码交付 + 消耗升级 + 年度 ¥159 / 0016 延期改版：首过免费送 7 天 + 付费 9.9 元/7 天 / 0017 报告后处理修正管线：一次生成 + 按章节分步修正 / 0018 套餐码支付成功起算 + 团队分析邮箱变量化）
 - `tasks/payment-module-plan.md` - 支付模块实施计划（P1 折扣券 ✅ / P2a 支付宝 ✅ / P2b 微信待做）
 - `tasks/packages-trial-plan.md` - 套餐与试用体系实施计划（P-A~P-E 全部 ✅）
 - `wiki/开发文档/0720-支付模块.md` - 支付配置操作手册（支付宝平台/.env/沙箱联调）

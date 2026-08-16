@@ -75,13 +75,18 @@ _VALID_PRODUCT_TYPES = {
 INTENT_UPGRADE_TRIAL = "upgrade_trial"
 
 # 团队分析报告提示（年度套餐 3 码交付后：交付邮件附文案 + 站内信 + 前端弹窗）
-TEAM_ANALYSIS_EMAIL = "xunlu.lab@outlook.com"
+# 联系邮箱统一走 settings.TEAM_ANALYSIS_EMAIL（前端经 /payment/products 下发）
 NOTIFY_TYPE_TEAM_ANALYSIS = "team_analysis_notice"
 NOTIFY_TITLE_TEAM_ANALYSIS = "团队分析报告"
-TEAM_ANALYSIS_NOTICE = (
-    "感谢购买！如您需要团队分析报告，请发送至我们的邮箱：xunlu.lab@outlook.com。"
-    "邮箱内容需包含您需要分析的三个激活码，咨询师会在5个工作日内发送报告至您的邮箱，请注意查收。"
-)
+
+
+def _team_analysis_notice() -> str:
+    """团队分析报告提示文案（邮箱独占一行，避免纯文本邮件客户端把上下文误识别为链接）"""
+    return (
+        "感谢购买！如您需要团队分析报告，请发送邮件至：\n"
+        f"{settings.TEAM_ANALYSIS_EMAIL}\n"
+        "邮件内容需包含您需要分析的三个激活码，咨询师会在5个工作日内发送报告至您的邮箱，请注意查收。"
+    )
 
 # 套餐时长（天）：package_type → settings 字段
 _PACKAGE_DAYS = {
@@ -160,14 +165,14 @@ class PaymentService:
                     "duration_days": settings.QUARTERLY_DAYS,
                     "description": (
                         "1 个激活码（未绑定）：可用于升级你的试用码（探索记录保留）、"
-                        "自己激活使用或转送朋友；自首次开始探索起算，有效期 3 个月"
+                        "自己激活使用或转送朋友；自购买成功起算，有效期 3 个月"
                     ),
                     "features": [
                         "不限量对话",
                         "开放全部 5 个探索阶段",
                         "1 份完整报告（30+ 页 / 7+ 主题维度）",
                         "报告 24 小时内人工审核后交付",
-                        "有效期 3 个月（首次探索起算）",
+                        "有效期 3 个月（购买成功起算）",
                     ],
                 },
                 {
@@ -187,7 +192,7 @@ class PaymentService:
                         "团队匹配度分析 + 团队角色投射",
                         "报告 24 小时内人工审核后交付",
                         "3 个激活码（可自用可转送）",
-                        "每码有效期 1 年（首次探索起算）",
+                        "每码有效期 1 年（购买成功起算）",
                     ],
                 },
                 {
@@ -205,6 +210,7 @@ class PaymentService:
             ],
             "member_discount_percent": settings.MEMBER_DISCOUNT_PERCENT,
             "membership_enabled": settings.MEMBERSHIP_ENABLED,
+            "team_analysis_email": settings.TEAM_ANALYSIS_EMAIL,
         }
 
     @staticmethod
@@ -486,7 +492,7 @@ class PaymentService:
                         user_id=user_id,
                         type=NOTIFY_TYPE_TEAM_ANALYSIS,
                         title=NOTIFY_TITLE_TEAM_ANALYSIS,
-                        content=TEAM_ANALYSIS_NOTICE,
+                        content=_team_analysis_notice(),
                         read_at=None,
                         related_feedback_id=None,
                     )
@@ -539,8 +545,9 @@ class PaymentService:
           激活自用 / 转赠 / 消耗升级试用码（POST /simple-auth/codes/apply-to-trial）
         - intent=upgrade_trial（试用拦截点直购，用户主动发起）且用户有 active
           试用码：发码后立即消耗 1 个码原地升级试用码（同一代码路径，审计完整）
-        - 所有套餐码有效期均自首次开始探索起算（交付时 expires_at=None，
-          首次对话时由 maybe_start_validity 落地）
+        - 有效期自支付成功（交付）时刻起算（ADR-0018）：交付时所有码
+          expires_at = now + 套餐天数，未绑定/转赠码同样倒计时；
+          存量未激活码（expires_at=None）仍由 maybe_start_validity 首次对话时落地
         """
         package_type = "quarterly" if order.product_type == PRODUCT_QUARTERLY else "annual"
         days = _package_days(package_type)
@@ -553,7 +560,7 @@ class PaymentService:
         for _ in range(count):
             rec = mgr.create_activation(
                 mode="combined",
-                no_expiry=True,  # 未激活：首次开始探索时起算有效期
+                ttl_minutes=days * 24 * 60,  # 支付成功（交付）即起算有效期
                 code_type="full",
                 vip_level=2,
                 package_type=package_type,
@@ -572,13 +579,14 @@ class PaymentService:
             trial = get_active_trial_code_for_user(user_id)
             if trial is not None:
                 consumed_code = codes[0]
-                mgr.consume_for_trial_upgrade(
+                consumed_rec = mgr.consume_for_trial_upgrade(
                     consumed_code, trial.code, actor={"user_id": user_id}
                 )
                 mgr.upgrade_to_full(
                     trial.code,
                     package_type,
                     days,
+                    expires_at=getattr(consumed_rec, "expires_at", None),
                     source_order_id=order.id,
                     purchaser_user_id=user_id,
                     actor={"user_id": user_id},
@@ -668,20 +676,24 @@ class PaymentService:
                     if remaining:
                         lines += ["", "其余激活码（未绑定，可自行激活或转送朋友）："]
                         lines += [f"  - {c}" for c in remaining]
+                    lines += [
+                        "",
+                        f"每码有效期：{days} 天（自购买成功起算）",
+                    ]
                 else:
                     lines += ["激活码（未绑定，可自行激活、转送朋友，或用于升级您的试用码）："]
                     lines += [f"  - {c}" for c in codes]
                     lines += [
                         "",
-                        f"每码有效期：{days} 天（自首次开始探索起算）",
+                        f"每码有效期：{days} 天（自购买成功起算）",
                         f"激活入口：{frontend}/explore/activate",
                     ]
                 lines += [
                     "",
-                    "请妥善保管本邮件；也可在「个人空间 - 我的订单」中随时查看。",
+                    "请妥善保管本邮件；也可在「个人空间 - 我的激活码」中随时查看。",
                 ]
                 if product_type == PRODUCT_ANNUAL:
-                    lines += ["", TEAM_ANALYSIS_NOTICE]
+                    lines += ["", _team_analysis_notice()]
                 lines += [
                     "",
                     "—— 寻路·OpenLife",
@@ -717,7 +729,7 @@ class PaymentService:
                     f"激活码：{delivered_code}\n"
                     f"有效期：{ttl_days} 天（自发放之日起）\n"
                     f"激活入口：{activate_url}\n\n"
-                    "请妥善保管本邮件；也可在「个人空间 - 我的订单」中随时查看。\n\n"
+                    "请妥善保管本邮件；也可在「个人空间 - 我的激活码」中随时查看。\n\n"
                     "—— 寻路·OpenLife"
                 )
 

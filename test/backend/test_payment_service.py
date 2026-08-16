@@ -799,11 +799,13 @@ async def test_deliver_annual_team_analysis_notice(fake_channel, tmp_path):
     assert len(rows) == 1
     assert rows[0].type == "team_analysis_notice"
     assert rows[0].read_at is None
-    assert "xunlu.lab@outlook.com" in rows[0].content
+    assert settings.TEAM_ANALYSIS_EMAIL in rows[0].content
+    assert "xunlu.lab@outlook.com" not in rows[0].content
 
-    # 交付邮件附同一文案
+    # 交付邮件附同一文案（邮箱独占一行）
     kwargs = ps_mod.EmailService.send_email.await_args.kwargs
-    assert "xunlu.lab@outlook.com" in kwargs["body_text"]
+    assert settings.TEAM_ANALYSIS_EMAIL in kwargs["body_text"]
+    assert "xunlu.lab@outlook.com" not in kwargs["body_text"]
 
     # 重复回调幂等：不重复发站内信
     await PaymentService.handle_alipay_notify(_notify_form(order))
@@ -831,7 +833,7 @@ async def test_deliver_quarterly_no_team_analysis_notice(fake_channel, tmp_path)
     assert cnt == 0
 
     kwargs = ps_mod.EmailService.send_email.await_args.kwargs
-    assert "xunlu.lab@outlook.com" not in kwargs["body_text"]
+    assert settings.TEAM_ANALYSIS_EMAIL not in kwargs["body_text"]
 
 
 @pytest.mark.asyncio
@@ -867,6 +869,8 @@ async def test_intent_upgrade_trial_auto_consumes(fake_channel, tmp_path, monkey
     assert upgraded.vip_level == 2
     assert upgraded.package_type == "quarterly"
     assert upgraded.purchaser_user_id == "u1"
+    # ADR-0018：升级后试用码继承被消耗码的剩余有效期（购买起算口径）
+    assert upgraded.expires_at == consumed.expires_at
 
 
 @pytest.mark.asyncio

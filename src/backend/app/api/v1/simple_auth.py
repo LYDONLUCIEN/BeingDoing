@@ -714,6 +714,7 @@ async def apply_code_to_trial(
         trial.code,
         package_type,
         days,
+        expires_at=getattr(rec, "expires_at", None),  # 继承被消耗码剩余有效期（购买起算口径）
         source_order_id=getattr(rec, "source_order_id", None),
         purchaser_user_id=getattr(rec, "purchaser_user_id", None) or user_id,
         actor=current_user,

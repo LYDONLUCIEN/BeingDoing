@@ -215,11 +215,8 @@ export default function AdminReportsPage() {
     await downloadPdf(reportId);
   };
 
-  // admin 强制重新生成（不限次数、不计数），完成后自动下载新 PDF
-  const handleRegeneratePdf = async (reportId: string) => {
-    setError(null);
-    await downloadPdf(reportId, { force: true });
-  };
+  // 注意：admin 不再提供「重新生成」按钮（2026-08-16 起，只能下载用户已生成的报告）；
+  // 后端 force 能力保留，仅供运维通过脚本/Swagger 手动触发。
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -400,26 +397,6 @@ export default function AdminReportsPage() {
                             {pdfStatus === 'generating' && activeReportId === item.report_id
                               ? '生成中...'
                               : '下载PDF'}
-                          </button>
-                        </span>
-                        <span
-                          title={
-                            item.report_unlocked === false
-                              ? '用户尚未完成全部探索阶段，暂不可重新生成'
-                              : '强制重新生成报告（覆盖现有内容），完成后自动下载新 PDF'
-                          }
-                          className="inline-block"
-                        >
-                          <button
-                            type="button"
-                            onClick={() => handleRegeneratePdf(item.report_id)}
-                            disabled={
-                              item.report_unlocked === false ||
-                              (pdfStatus === 'generating' && activeReportId === item.report_id)
-                            }
-                            className="px-2 py-1 rounded border border-bd-border hover:bg-bd-overlay-md whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                          >
-                            重新生成
                           </button>
                         </span>
                       </div>

@@ -555,6 +555,7 @@ class SimpleActivationManager:
         package_type: str,
         duration_days: int,
         *,
+        expires_at: Optional[str] = None,
         source_order_id: Optional[str] = None,
         purchaser_user_id: Optional[str] = None,
         actor: Optional[dict] = None,
@@ -563,7 +564,9 @@ class SimpleActivationManager:
 
         - code_type: trial → full；vip_level=2
         - package_type 写入（决定延期价格档）
-        - 有效期自首次开始探索起算：此处置 None，由 maybe_start_validity 首次对话时落地
+        - 有效期：优先继承调用方传入的 expires_at（消耗升级场景 = 被消耗码的
+          剩余有效期，ADR-0018 购买起算口径）；未传入时置 None，由
+          maybe_start_validity 首次对话时落地（存量未激活码老口径兼容）
         - 记录来源订单与所属人（已有值不覆盖）
         """
         norm = (code or "").strip().upper()
@@ -590,7 +593,9 @@ class SimpleActivationManager:
         rec.code_type = "full"
         rec.vip_level = 2
         rec.package_type = package_type
-        rec.expires_at = None  # 未激活：首次开始探索时（maybe_start_validity）才落有效期
+        # 消耗升级：继承被消耗码的剩余有效期（购买起算口径）；
+        # 未传入（存量未激活码）则保持 None，首次开始探索时才落有效期
+        rec.expires_at = expires_at or None
         rec.status = ActivationStatus.ACTIVE.value
         rec.last_activity_at = now.isoformat()
         if source_order_id and not rec.source_order_id:

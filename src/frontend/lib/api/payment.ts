@@ -130,6 +130,8 @@ export interface ProductsResult {
   /** 会员折扣（百分比，如 85 表示 8.5 折） */
   member_discount_percent: number;
   membership_enabled: boolean;
+  /** 团队分析报告联系邮箱（后端 TEAM_ANALYSIS_EMAIL 统一下发） */
+  team_analysis_email?: string;
 }
 
 export interface OrderItem {
@@ -196,6 +198,27 @@ export interface OrderDetailResult {
 export async function getProducts(): Promise<ProductsResult> {
   const res = await apiClient.get('/payment/products');
   return (res.data ?? { items: [], member_discount_percent: 100, membership_enabled: false }) as ProductsResult;
+}
+
+/** 团队分析报告联系邮箱兜底（与后端 settings.TEAM_ANALYSIS_EMAIL 默认值一致） */
+export const TEAM_ANALYSIS_EMAIL_FALLBACK = 'soulhappylab@163.com';
+
+let cachedTeamAnalysisEmail: string | null = null;
+
+/**
+ * 团队分析报告联系邮箱（模块级缓存；接口失败/未返回时用兜底值）。
+ * 后端唯一来源：TEAM_ANALYSIS_EMAIL 环境变量 → GET /payment/products。
+ */
+export async function getTeamAnalysisEmail(): Promise<string> {
+  if (cachedTeamAnalysisEmail) return cachedTeamAnalysisEmail;
+  try {
+    const res = await getProducts();
+    const v = (res.team_analysis_email || '').trim();
+    if (v) cachedTeamAnalysisEmail = v;
+  } catch {
+    /* 接口失败用兜底值 */
+  }
+  return cachedTeamAnalysisEmail ?? TEAM_ANALYSIS_EMAIL_FALLBACK;
 }
 
 /** 校验折扣券（下单前实时校验抵扣金额）；无效券后端返回 400 */

@@ -851,7 +851,43 @@ class ReportPdfService:
             )
             signature_html = ""
 
-        # 3. 拼装完整 HTML
+        # 3. 页面顺序拼装（2026-08-16 起）：封面 → 阅读指南 → 报告模块总览 → 其余正文
+        #    阅读指南是 LLM 输出的正文第一章，以第一个分页符结尾；
+        #    在第一个分页符处切开正文，把总览页插到阅读指南之后。
+        #    找不到分页符（异常/旧版 markdown）时降级为旧顺序：总览页在正文之前。
+        overview_html = self._overview_page_html(theme)
+        pb_m = re.search(
+            r'<div[^>]*(?:class="pb"|page-break-after\s*:\s*always)[^>]*>\s*</div>',
+            html_body,
+            flags=re.IGNORECASE,
+        )
+        if pb_m:
+            guide_html = html_body[: pb_m.end()]
+            rest_html = html_body[pb_m.end() :]
+            body_block = f"""<!-- 阅读指南（正文第一章） -->
+<div class="content">
+{guide_html}
+</div>
+
+<!-- 报告模块总览（预览页） -->
+{overview_html}
+
+<!-- 正文（其余章节） -->
+<div class="content">
+{rest_html}
+{signature_html}
+</div>"""
+        else:
+            body_block = f"""<!-- 报告模块总览（预览页） -->
+{overview_html}
+
+<!-- 正文 -->
+<div class="content">
+{html_body}
+{signature_html}
+</div>"""
+
+        # 4. 拼装完整 HTML
         full_html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -875,14 +911,7 @@ class ReportPdfService:
   </div>
 </div>
 
-<!-- 报告模块总览（预览页） -->
-{self._overview_page_html(theme)}
-
-<!-- 正文 -->
-<div class="content">
-{html_body}
-{signature_html}
-</div>
+{body_block}
 </body>
 </html>"""
 
