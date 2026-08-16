@@ -36,6 +36,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.api.v1.auth import get_current_user
+from app.core.llmapi.usage_context import set_llm_usage_context
 from app.api.v1.simple_chat.context_resolver import (
     load_basic_info_from_activation as _load_basic_info_from_activation,
 )
@@ -419,6 +420,11 @@ async def combo_chat_endpoint(req: ComboChatReq, current_user: dict = Depends(ge
     2026-08-06(ADR-0015):纯对话,无任何隐藏协议(chips/tool/双信号已删除);
     分析中的 combo 拒绝新消息(锁输入);新对话作废旧判定(聊即作废)。
     """
+    set_llm_usage_context(
+        user_id=(current_user or {}).get("user_id"),
+        activation_code=getattr(req, "activation_code", None),
+        scene="rumination",
+    )
     reports_root, rid, rec = _resolve_v4_ctx_with_rec(req.activation_code, current_user)
     _assert_rumination_editable(reports_root, rid, current_user, rec)
     state = load_v4_state(reports_root, rid)
@@ -550,6 +556,11 @@ async def confirm_conclusion_card_endpoint(
     - {analysis_failed: {error}}            —— 判定失败(可重新调本端点重试)
     - {done: true}                          —— 流结束
     """
+    set_llm_usage_context(
+        user_id=(current_user or {}).get("user_id"),
+        activation_code=getattr(req, "activation_code", None),
+        scene="rumination",
+    )
     reports_root, rid, rec = _resolve_v4_ctx_with_rec(req.activation_code, current_user)
     _assert_rumination_editable(reports_root, rid, current_user, rec)
     try:

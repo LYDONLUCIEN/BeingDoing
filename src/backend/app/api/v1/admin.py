@@ -341,6 +341,86 @@ async def sync_analytics_from_history(current_user: Optional[dict] = Depends(get
     return {"code": 200, "message": "success", "data": result}
 
 
+# ── LLM token 用量统计（llm_usage_logs，调用粒度，落库时定价） ──────────────
+
+
+def _parse_usage_date_range(
+    start: Optional[str], end: Optional[str]
+) -> tuple[Optional[date], Optional[date]]:
+    try:
+        start_d = date.fromisoformat(start) if start else None
+        end_d = date.fromisoformat(end) if end else None
+    except ValueError:
+        raise HTTPException(status_code=400, detail="日期格式须为 YYYY-MM-DD")
+    return start_d, end_d
+
+
+@router.get("/analytics/llm-usage/summary")
+async def get_llm_usage_summary(
+    start: Optional[str] = Query(None, description="开始日期 YYYY-MM-DD（Asia/Shanghai），默认近 30 天"),
+    end: Optional[str] = Query(None, description="结束日期 YYYY-MM-DD（含当天），默认今天"),
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """LLM 用量总览：总量 + 分场景 + 按天趋势 + 峰谷拆分（仅 super_admin）"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    from app.services.llm_usage_service import LlmUsageStatsService
+
+    start_d, end_d = _parse_usage_date_range(start, end)
+    try:
+        data = await LlmUsageStatsService.get_summary(start_d, end_d)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"code": 200, "message": "success", "data": data}
+
+
+@router.get("/analytics/llm-usage/users")
+async def get_llm_usage_users(
+    start: Optional[str] = Query(None),
+    end: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    q: Optional[str] = Query(None, description="按用户名/邮箱/user_id/激活码搜索"),
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """按用户聚合的 token 消耗与预估成本（仅 super_admin）"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    from app.services.llm_usage_service import LlmUsageStatsService
+
+    start_d, end_d = _parse_usage_date_range(start, end)
+    try:
+        data = await LlmUsageStatsService.get_users(start_d, end_d, page=page, page_size=page_size, q=q)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"code": 200, "message": "success", "data": data}
+
+
+@router.get("/analytics/llm-usage/calls")
+async def get_llm_usage_calls(
+    start: Optional[str] = Query(None),
+    end: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    user_id: Optional[str] = Query(None),
+    scene: Optional[str] = Query(None),
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """单次 LLM 调用明细（仅 super_admin）"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    from app.services.llm_usage_service import LlmUsageStatsService
+
+    start_d, end_d = _parse_usage_date_range(start, end)
+    try:
+        data = await LlmUsageStatsService.get_calls(
+            start_d, end_d, page=page, page_size=page_size, user_id=user_id, scene=scene
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"code": 200, "message": "success", "data": data}
+
+
 @router.get("/analytics/like-detail")
 async def get_like_detail(
     session_id: str,

@@ -8,6 +8,7 @@ import {
 } from '@/lib/api/admin';
 import { formatLocalDateTime } from '@/lib/utils/formatTime';
 import FunnelStatsPanel from '@/components/admin/FunnelStatsPanel';
+import LlmUsagePanel from '@/components/admin/LlmUsagePanel';
 
 export default function AdminAnalyticsPage() {
   const [dashboard, setDashboard] = useState<AdminAnalyticsDashboard | null>(null);
@@ -86,6 +87,8 @@ export default function AdminAnalyticsPage() {
       </header>
 
       <FunnelStatsPanel />
+
+      <LlmUsagePanel />
 
       {error && (
         <section className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-xs">

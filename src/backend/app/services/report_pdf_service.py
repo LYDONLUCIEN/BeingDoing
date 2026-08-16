@@ -462,6 +462,26 @@ class ReportPdfService:
         self, report_id: str, *, user_id: Optional[str] = None, vip_level: int = 1
     ) -> str:
         """调用 LLM 生成 markdown 报告。"""
+        # token 用量归属：scene=report（reset 恢复外层上下文，避免污染调用方后续调用）
+        from app.core.llmapi.usage_context import (
+            reset_llm_usage_context,
+            set_llm_usage_context,
+        )
+
+        _usage_ctx_token = set_llm_usage_context(
+            user_id=user_id, session_id=report_id, scene="report"
+        )
+        try:
+            return await self._generate_report_markdown_impl(
+                report_id, user_id=user_id, vip_level=vip_level
+            )
+        finally:
+            reset_llm_usage_context(_usage_ctx_token)
+
+    async def _generate_report_markdown_impl(
+        self, report_id: str, *, user_id: Optional[str] = None, vip_level: int = 1
+    ) -> str:
+        """调用 LLM 生成 markdown 报告（实现）。"""
         # 1. 收集数据
         phase_data = self._collect_phase_data(report_id)
         profile_block = ""

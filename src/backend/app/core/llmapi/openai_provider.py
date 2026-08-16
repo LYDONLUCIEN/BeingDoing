@@ -23,14 +23,15 @@ class OpenAIProvider(BaseLLMProvider):
     def __init__(self, model: str, api_key: Optional[str] = None, base_url: Optional[str] = None, **kwargs):
         """
         初始化OpenAI Provider（也支持兼容接口如 DeepSeek）
-        
+
         Args:
             model: 模型名称（如 gpt-4, deepseek-chat）
             api_key: API密钥
             base_url: 可选，API 地址（如 https://api.deepseek.com）
-            **kwargs: 其他配置
+            **kwargs: 其他配置（provider_name=渠道名，用于用量统计归属）
         """
         super().__init__(model, api_key, **kwargs)
+        self.provider_name = kwargs.get("provider_name")  # deepseek / kimi / qwen / openai
         key = api_key or settings.OPENAI_API_KEY or ""
         client_kwargs = dict(
             api_key=key,
@@ -57,6 +58,40 @@ class OpenAIProvider(BaseLLMProvider):
                 self._encoding = tiktoken.get_encoding("cl100k_base")
         return self._encoding
     
+    async def _record_usage(self, usage: Optional[Dict]) -> None:
+        """记录本次调用用量到 llm_usage_logs（尽力而为，绝不阻断主流程）"""
+        try:
+            from app.services.llm_usage_service import record_llm_usage
+
+            await record_llm_usage(provider=self.provider_name, model=self.model, usage=usage)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _normalize_usage(usage_obj) -> Optional[Dict]:
+        """把 SDK usage 对象转成 dict，并补齐 DeepSeek 缓存字段（非流式可能被 SDK 模型丢弃）"""
+        if usage_obj is None:
+            return None
+        try:
+            usage = usage_obj.model_dump()
+        except Exception:
+            usage = dict(getattr(usage_obj, "__dict__", {}) or {})
+        for field in ("prompt_cache_hit_tokens", "prompt_cache_miss_tokens"):
+            if usage.get(field) is None:
+                value = getattr(usage_obj, field, None)
+                if value is None:
+                    extra = getattr(usage_obj, "model_extra", None) or {}
+                    value = extra.get(field)
+                if value is not None:
+                    usage[field] = value
+        details = getattr(usage_obj, "completion_tokens_details", None)
+        if details is not None and not usage.get("completion_tokens_details"):
+            try:
+                usage["completion_tokens_details"] = details.model_dump()
+            except Exception:
+                pass
+        return usage
+
     async def chat(
         self,
         messages: List[LLMMessage],
@@ -94,7 +129,8 @@ class OpenAIProvider(BaseLLMProvider):
             
             # 解析响应
             choice = response.choices[0]
-            usage = response.usage.model_dump() if response.usage else None
+            usage = self._normalize_usage(response.usage)
+            await self._record_usage(usage)
             tool_calls: Optional[List[Dict]] = None
             raw_tool_calls = getattr(choice.message, "tool_calls", None)
             if raw_tool_calls:
@@ -151,6 +187,7 @@ class OpenAIProvider(BaseLLMProvider):
                 {"role": msg.role, "content": msg.content}
                 for msg in messages
             ]
+            self._last_stream_usage = None  # 防止残留上一次调用的 usage 被重复记账
 
             # deepseek-reasoner / v4-pro 思维链模式下 temperature 等参数会被静默忽略
             create_kwargs = dict(
@@ -170,18 +207,11 @@ class OpenAIProvider(BaseLLMProvider):
                 # 普通模型：直接 yield 字符串
                 async for chunk in stream:
                     if chunk.usage:
-                        u = {
-                            "prompt_tokens": chunk.usage.prompt_tokens,
-                            "completion_tokens": chunk.usage.completion_tokens,
-                            "total_tokens": chunk.usage.total_tokens,
-                        }
-                        if hasattr(chunk.usage, "prompt_cache_hit_tokens"):
-                            u["prompt_cache_hit_tokens"] = getattr(chunk.usage, "prompt_cache_hit_tokens", None)
-                        if hasattr(chunk.usage, "prompt_cache_miss_tokens"):
-                            u["prompt_cache_miss_tokens"] = getattr(chunk.usage, "prompt_cache_miss_tokens", None)
+                        u = self._normalize_usage(chunk.usage) or {}
                         self._last_stream_usage = u
                     if chunk.choices and chunk.choices[0].delta.content:
                         yield chunk.choices[0].delta.content
+                await self._record_usage(self._last_stream_usage)
                 return
 
             # 推理模型：分离 reasoning_content 与 content
@@ -203,16 +233,7 @@ class OpenAIProvider(BaseLLMProvider):
 
             async for chunk in stream:
                 if chunk.usage:
-                    usage_dict = {
-                        "prompt_tokens": chunk.usage.prompt_tokens,
-                        "completion_tokens": chunk.usage.completion_tokens,
-                        "total_tokens": chunk.usage.total_tokens,
-                    }
-                    # DeepSeek Context Caching: 诊断 prefilling 延迟
-                    if hasattr(chunk.usage, "prompt_cache_hit_tokens"):
-                        usage_dict["prompt_cache_hit_tokens"] = getattr(chunk.usage, "prompt_cache_hit_tokens", None)
-                    if hasattr(chunk.usage, "prompt_cache_miss_tokens"):
-                        usage_dict["prompt_cache_miss_tokens"] = getattr(chunk.usage, "prompt_cache_miss_tokens", None)
+                    usage_dict = self._normalize_usage(chunk.usage) or {}
                     self._last_stream_usage = usage_dict
                 if not chunk.choices:
                     continue
@@ -230,6 +251,8 @@ class OpenAIProvider(BaseLLMProvider):
 
             if think_buf:
                 yield {"_t": "think_end", "content": "".join(think_buf)}
+
+            await self._record_usage(self._last_stream_usage)
 
         except Exception as e:
             raise LLMError(f"OpenAI流式API调用失败: {str(e)}")

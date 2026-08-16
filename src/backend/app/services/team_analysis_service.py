@@ -178,6 +178,14 @@ class TeamAnalysisService:
                 return
             report_ids = json.loads(analysis.report_ids or "[]")
             codes = json.loads(analysis.code_list or "[]")
+            owner_user_id = analysis.user_id
+
+        # token 用量归属：scene=team_analysis（成员报告生成会被 report 场景覆盖，见 report_pdf_service）
+        from app.core.llmapi.usage_context import set_llm_usage_context
+
+        set_llm_usage_context(
+            user_id=owner_user_id, session_id=analysis_id, scene="team_analysis"
+        )
 
         try:
             markdown = await cls._generate_markdown(report_ids, codes)

@@ -7,6 +7,7 @@ from app.models.session import Session, Progress
 from app.models.answer import Question, Answer
 from app.models.selection import UserSelection, GuidePreference, ExplorationResult
 from app.models.analytics import AnalyticsChatTurn, AnalyticsReport, AnalyticsLike
+from app.models.llm_usage import LlmUsageLog
 from app.models.refresh_token import RefreshToken
 from app.models.notification import NotificationTask, NotificationRecipient
 from app.models.email_bounce import EmailBounce
@@ -41,6 +42,7 @@ __all__ = [
     "AnalyticsChatTurn",
     "AnalyticsReport",
     "AnalyticsLike",
+    "LlmUsageLog",
     "RefreshToken",
     "NotificationTask",
     "NotificationRecipient",

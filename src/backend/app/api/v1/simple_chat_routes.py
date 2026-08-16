@@ -23,6 +23,7 @@ from jinja2 import Environment
 from pydantic import BaseModel, ConfigDict
 
 from app.api.v1.auth import _is_debug_admin, get_current_user
+from app.core.llmapi.usage_context import set_llm_usage_context
 from app.api.v1.simple_chat.context_resolver import assert_step_editable as _assert_step_editable
 from app.api.v1.simple_chat.context_resolver import (
     can_bypass_flow_limits as _can_bypass_flow_limits,
@@ -2151,6 +2152,11 @@ async def rumination_step_opening_stream(
     request: RuminationStepOpeningStreamRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    set_llm_usage_context(
+        user_id=(current_user or {}).get("user_id"),
+        activation_code=getattr(request, "activation_code", None),
+        scene="rumination",
+    )
     """子步引导流式生成（SSE 事件与 /message/stream 的 chunk/think/done 兼容）。"""
     step = max(1, min(MAX_FILTER_STEP, int(request.filter_step)))
     if get_opening_mode(step) != "llm":
@@ -2512,6 +2518,11 @@ async def rumination_table_submit(
     request: RuminationTableSubmitRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    set_llm_usage_context(
+        user_id=(current_user or {}).get("user_id"),
+        activation_code=getattr(request, "activation_code", None),
+        scene="rumination",
+    )
     """提交 rumination 筛选表格数据，更新 progress，并可能返回下一步表格。"""
     try:
         manager = get_activation_manager_for_code(request.activation_code)
@@ -3251,6 +3262,11 @@ async def rumination_save_combo_conclusion(
     request: ComboConclusionSaveRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    set_llm_usage_context(
+        user_id=(current_user or {}).get("user_id"),
+        activation_code=getattr(request, "activation_code", None),
+        scene="rumination",
+    )
     """保存单个组合的结论状态（确认/跳过）。"""
     try:
         manager = get_activation_manager_for_code(request.activation_code)
@@ -3450,6 +3466,11 @@ async def rumination_ensure_combo_guide(
     request: RuminationComboGuideRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    set_llm_usage_context(
+        user_id=(current_user or {}).get("user_id"),
+        activation_code=getattr(request, "activation_code", None),
+        scene="rumination",
+    )
     """确保进入某个组合时右侧已出现引导语。
     - 已有消息 → 立即返回 created=false
     - 正在排队或生成 → 返回 status=queued
@@ -3748,6 +3769,11 @@ async def rumination_neg_resolve(
     request: RuminationNegResolveRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    set_llm_usage_context(
+        user_id=(current_user or {}).get("user_id"),
+        activation_code=getattr(request, "activation_code", None),
+        scene="rumination",
+    )
     """闸门后续：继续推进 / 开始深入讨论 / 结束讨论并回到表格。"""
     try:
         manager = get_activation_manager_for_code(request.activation_code)
@@ -4347,6 +4373,13 @@ async def simple_chat(
     request: SimpleChatRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    set_llm_usage_context(
+        user_id=(current_user or {}).get("user_id"),
+        activation_code=getattr(request, "activation_code", None),
+        scene="rumination"
+        if "rumination" in (getattr(request, "phase", "") or "").lower()
+        else "chat",
+    )
     """
     [DEPRECATED] 简单模式的单轮对话（同步版本）。
     前端已全部迁移到 /message/stream 流式端点，此端点仅作降级保留。
@@ -4561,6 +4594,11 @@ async def simple_init(
 
 
 async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> SimpleChatResponse:
+    set_llm_usage_context(
+        user_id=(current_user or {}).get("user_id"),
+        activation_code=request.activation_code,
+        scene="chat",
+    )
     manager = get_activation_manager_for_code(request.activation_code)
     # 试用码阶段锁（预检，保证 402 优先于阶段推进锁的 400）
     _peek_trial_phase_lock(
@@ -5497,6 +5535,11 @@ async def simple_chat_stream(
     - 使用 chat_stream 按块返回助手回复
     - 结束时保存完整助手回复
     """
+    set_llm_usage_context(
+        user_id=(current_user or {}).get("user_id"),
+        activation_code=request.activation_code,
+        scene="rumination" if "rumination" in (request.phase or "").lower() else "chat",
+    )
     manager = get_activation_manager_for_code(request.activation_code)
     # 试用码阶段锁（预检，保证 402 优先于阶段推进锁的 400）
     _peek_trial_phase_lock(

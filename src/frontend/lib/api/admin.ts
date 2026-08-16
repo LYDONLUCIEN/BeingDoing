@@ -1725,3 +1725,90 @@ export async function assignAdminFeedback(
   return res.data;
 }
 
+
+// ── LLM token 用量统计（llm_usage_logs，调用粒度，落库时定价） ──────────────
+
+export interface AdminLlmUsageAgg {
+  calls: number;
+  prompt_tokens: number;
+  cache_hit_tokens: number;
+  cache_miss_tokens: number;
+  completion_tokens: number;
+  reasoning_tokens: number;
+  cost_yuan: number;
+  cost_known: boolean;
+  cache_hit_rate?: number | null;
+}
+
+export interface AdminLlmUsageSummary {
+  range: { start: string; end: string };
+  total: AdminLlmUsageAgg;
+  by_scene: Array<{ scene: string } & AdminLlmUsageAgg>;
+  by_day: Array<{ date: string } & AdminLlmUsageAgg>;
+  peak: AdminLlmUsageAgg;
+  off_peak: AdminLlmUsageAgg;
+}
+
+export async function fetchAdminLlmUsageSummary(params?: {
+  start?: string;
+  end?: string;
+}): Promise<AdminLlmUsageSummary> {
+  const res = await apiClient.get('/admin/analytics/llm-usage/summary', { params });
+  return (res.data ?? {}) as AdminLlmUsageSummary;
+}
+
+export interface AdminLlmUsageUser {
+  user_id: string | null;
+  activation_code: string | null;
+  username: string | null;
+  email: string | null;
+  calls: number;
+  prompt_tokens: number;
+  cache_hit_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  cost_yuan: number | null;
+  scenes: string[];
+  last_active_at: string | null;
+}
+
+export async function fetchAdminLlmUsageUsers(params?: {
+  start?: string;
+  end?: string;
+  page?: number;
+  page_size?: number;
+  q?: string;
+}): Promise<{ records: AdminLlmUsageUser[]; total: number; page: number; page_size: number }> {
+  const res = await apiClient.get('/admin/analytics/llm-usage/users', { params });
+  return (res.data ?? { records: [], total: 0, page: 1, page_size: 50 }) as any;
+}
+
+export interface AdminLlmUsageCall {
+  id: string;
+  user_id: string | null;
+  session_id: string | null;
+  activation_code: string | null;
+  scene: string;
+  provider: string | null;
+  model: string | null;
+  prompt_tokens: number;
+  cache_hit_tokens: number;
+  cache_miss_tokens: number;
+  completion_tokens: number;
+  reasoning_tokens: number;
+  cost_yuan: number | null;
+  is_peak: boolean;
+  created_at: string | null;
+}
+
+export async function fetchAdminLlmUsageCalls(params?: {
+  start?: string;
+  end?: string;
+  page?: number;
+  page_size?: number;
+  user_id?: string;
+  scene?: string;
+}): Promise<{ records: AdminLlmUsageCall[]; total: number; page: number; page_size: number }> {
+  const res = await apiClient.get('/admin/analytics/llm-usage/calls', { params });
+  return (res.data ?? { records: [], total: 0, page: 1, page_size: 50 }) as any;
+}

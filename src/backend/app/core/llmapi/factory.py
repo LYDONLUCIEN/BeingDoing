@@ -23,25 +23,25 @@ def create_llm_provider(
     if provider == "openai":
         final_api_key = api_key or settings.OPENAI_API_KEY
         final_base_url = base_url or settings.LLM_BASE_URL
-        return OpenAIProvider(model=model, api_key=final_api_key, base_url=final_base_url)
+        return OpenAIProvider(model=model, api_key=final_api_key, base_url=final_base_url, provider_name="openai")
 
     if provider == "deepseek":
         final_api_key = api_key or settings.DEEPSEEK_API_KEY
         final_base_url = base_url or settings.LLM_BASE_URL or "https://api.deepseek.com"
         final_model = model or "deepseek-v4-pro"
-        return OpenAIProvider(model=final_model, api_key=final_api_key, base_url=final_base_url)
+        return OpenAIProvider(model=final_model, api_key=final_api_key, base_url=final_base_url, provider_name="deepseek")
 
     if provider == "kimi":
         final_api_key = api_key or getattr(settings, "KIMI_API_KEY", None)
         final_base_url = base_url or getattr(settings, "KIMI_BASE_URL", "https://api.moonshot.cn/v1")
         final_model = model or getattr(settings, "KIMI_MODEL", "moonshot-v1-8k")
-        return OpenAIProvider(model=final_model, api_key=final_api_key, base_url=final_base_url)
+        return OpenAIProvider(model=final_model, api_key=final_api_key, base_url=final_base_url, provider_name="kimi")
 
     if provider == "qwen":
         final_api_key = api_key or getattr(settings, "QWEN_API_KEY", None)
         final_base_url = base_url or getattr(settings, "QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
         final_model = model or getattr(settings, "QWEN_MODEL", "qwen-plus")
-        return OpenAIProvider(model=final_model, api_key=final_api_key, base_url=final_base_url)
+        return OpenAIProvider(model=final_model, api_key=final_api_key, base_url=final_base_url, provider_name="qwen")
 
     raise ValueError(f"不支持的LLM Provider: {provider}")
 

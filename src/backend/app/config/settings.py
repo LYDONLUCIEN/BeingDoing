@@ -88,6 +88,12 @@ class Settings(BaseSettings):
     # 全局思维链开关：控制 v4-pro 等模型是否开启 thinking 模式（默认关，提升响应速度）
     LLM_THINKING_ENABLED: bool = False
 
+    # LLM 用量计费（Admin token 统计，元/百万 tokens，详见 app/utils/llm_pricing.py）
+    # 高峰时段（Asia/Shanghai），峰时费率见费率表 peak 字段
+    LLM_PEAK_HOURS: str = "09:00-12:00,14:00-18:00"
+    # 可选：JSON 字符串覆盖/增补内置费率表（按 model 键整体替换时间段规则列表）
+    LLM_PRICING_JSON: Optional[str] = None
+
     # LLM 模型配置加密密钥（admin 后台存的 api_key 用 Fernet 加密）
     # 为空时回退 SECRET_KEY；轮换会让历史密文不可解密，需重新填写 api_key
     MODEL_CONFIG_ENC_KEY: Optional[str] = None

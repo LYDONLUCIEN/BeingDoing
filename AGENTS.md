@@ -98,6 +98,12 @@ ARCHITECTURE_MODE=simple  # simple | full
 # 可选：语音功能
 AUDIO_MODE=False
 
+# LLM token 用量统计（admin「埋点与 Token 统计」页，llm_usage_logs 表）
+# 峰谷时段（Asia/Shanghai）：DeepSeek 2026-08-17 起峰时价 = 谷时 2 倍
+LLM_PEAK_HOURS=09:00-12:00,14:00-18:00
+# 可选：JSON 覆盖/增补内置费率表（app/utils/llm_pricing.py DEFAULT_PRICING，按 model 键整体替换）
+# LLM_PRICING_JSON={"deepseek-v4-pro":[{"from":"2026-08-17T00:00:00+08:00","peak":{"hit":0.30,"miss":9.0,"out":27.0},"off_peak":{"hit":0.15,"miss":4.5,"out":13.5}}]}
+
 # 可选：SMTP 邮件（忘记密码功能）
 SMTP_HOST=smtp.163.com
 SMTP_PORT=465
@@ -354,6 +360,7 @@ python scripts/init_db.py
 - `/api/v1/admin/*` - 管理（含 `/admin/coupons` 折扣券、`/admin/payment/orders` 订单与退款、`/admin/consultations` 咨询管理、`/admin/users` 用户管理：deleted 筛选 / `restore-deletion` 注销恢复 / PATCH status 对已注销用户启用会 400 拦截；`/admin/reports` 列表含 `report_unlocked` 字段，`completed_steps` 已修 v4 口径：rumination locked 计入）
 - `/api/v1/payment/*` - 支付（用户侧：products / coupons/validate / orders；`/payment/notify/alipay` 为渠道回调，无登录鉴权）
 - `/api/v1/analytics/*` - 埋点（点赞、报告生成、`POST /analytics/event` 通用事件上报：PV 不依赖登录，auth_active 仅服务端内部写；漏斗统计 `GET /admin/analytics/funnel`，ADR-0013）
+  - LLM token 用量统计（2026-08-16 起）：`GET /admin/analytics/llm-usage/summary`（总量+分场景+按天+峰谷）/ `users`（按用户聚合）/ `calls`（单次调用明细），数据源 `llm_usage_logs` 表（调用粒度，落库时按当时费率表+峰谷定价存死 cost_yuan）。采集在 `OpenAIProvider.chat/chat_stream` 出口统一埋点，归属（user_id/scene/activation_code）经 `core/llmapi/usage_context.py` contextvar 在各入口设置；费率表 `app/utils/llm_pricing.py`（内置 DeepSeek 8-17 前后两套价，`LLM_PRICING_JSON` 可覆盖，`LLM_PEAK_HOURS` 配峰时）；前端 `components/admin/LlmUsagePanel.tsx` 并入 `/admin/analytics` 页
 - `/api/v1/consultation/*` - 报告解读咨询（用户侧：my-reports / bookings / survey；admin `POST /admin/consultations/{id}/schedule` 确定时间后发站内信 `consultation_scheduled` 通知用户，admin_note 为内部备注不透出，2026-08-10 起）
 - `/api/v1/team-analysis/*` - 团队分析（candidates / 创建 / 列表 / 详情）
 
