@@ -74,23 +74,28 @@ Core Services (src/backend/app/core/)
 Data Layer (SQLite dev / PostgreSQL prod)
 ```
 
+Also see [AGENTS.md](./AGENTS.md) (fuller architecture doc, Chinese) and [CONTEXT.md](./CONTEXT.md) (domain terminology, Chinese) — follow the terminology there (e.g. 阶段 phases, 沉淀 rumination, 组合会话 combo session). Architectural decisions are recorded in `docs/adr/`.
+
 ### Backend (`src/backend/app/`)
-- **`api/v1/`** — Route handlers. Key endpoints: `auth`, `chat`, `chat_optimized`, `simple_auth`, `simple_chat`, `sessions`, `questions`, `answers`, `admin`, `export`, `analytics`, `audio`
-- **`services/`** — Business logic: auth, user, answer, guide, session, progress, export, analytics, email
+- **`api/v1/`** — Route handlers. Key endpoint groups: `auth`/`simple_auth`, `chat`/`chat_optimized`/`simple_chat_routes`, `sessions`, `questions`, `answers`, `admin_*` (notifications, feedbacks, consultations, payment, model_config, maintenance, bounces), `rumination_v4_routes`, `payment` + `payment_webhook`, `feedbacks`, `notifications`, `consultation`, `search`, `formula`, `team_analysis`, `site_notices`, `export`, `analytics`, `audio`
+- **`services/`** — Business logic (one `*_service.py` per domain): auth, user, answer, guide, session, progress, export, analytics, email, rumination_v4/ab/finalize, report_pdf/review/postprocess, payment, coupon, feedback, notification, consultation, team_analysis, search, etc.
 - **`core/`** — Infrastructure:
   - `llmapi/` — Unified LLM provider interface (`BaseLLMProvider`). Supports OpenAI, DeepSeek, Kimi, Qwen
   - `agent/` — LangGraph-based ReAct agent with nodes (reasoning, action, observation, guide) and tools (SearchTool, GuideTool, ExampleTool)
   - `knowledge/` — CSV/Markdown knowledge base loader + keyword search
   - `asr/`, `tts/` — Optional speech services (controlled by `AUDIO_MODE` env var)
+  - `payment/` — Payment channel abstraction (base + alipay; `get_channel` factory)
   - `database/` — SQLAlchemy models and DB initialization
-- **`models/`** — SQLAlchemy models: User, Session, Question, Answer, Progress, Analytics, RefreshToken
+- **`domain/`** — Business domain layer (exploration steps, prompt configuration, knowledge config)
+- **`models/`** — SQLAlchemy models: User, Session, Question, Answer, Progress, Analytics, RefreshToken, plus payment/feedback/notification/report models
 - **`config/settings.py`** — Centralized settings from environment variables
 
 ### Frontend (`src/frontend/`)
 - **Next.js 14 App Router** (`app/`):
   - `auth/` — Login/register pages
   - `(main)/dashboard/` — User dashboard
-  - `(main)/explore/` — Core exploration flow (values, talents, interests)
+  - `(main)/explore/` — Core exploration flow (values, strengths, interests, purpose, rumination)
+  - `(main)/payment/`, `(main)/profile/`, `(main)/admin/`, `(main)/community/`, `(main)/about/`, `(main)/theory/`
 - **`components/`** — React components (explore, admin, layout, survey)
 - **`stores/`** — Zustand state management
 - **`lib/`** — Utilities and API client (Axios)
