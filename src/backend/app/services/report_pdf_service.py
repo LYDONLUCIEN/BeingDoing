@@ -31,7 +31,7 @@ import markdown as md_lib
 
 from app.core.llmapi import LLMMessage, get_default_llm_provider
 from app.domain.prompts.loader import _get_loader
-from app.services.report_postprocess import apply_report_postprocess
+from app.services.report_postprocess import _normalize_role_opener, apply_report_postprocess
 from app.utils.report_registry import STEP_IDS, ReportRegistry
 from app.utils.simple_activation_manager import get_simple_base_dir
 from app.utils.survey_storage import load_dimension_conclusions
@@ -742,9 +742,10 @@ class ReportPdfService:
     # ── 报告总览页（预览页）──────────────────────────────────
 
     def _overview_page_html(self, theme: Dict[str, str]) -> str:
-        """封面之后的「报告模块总览」页（设计来源 uidesign/beautiful/report Figma 稿）。
+        """封面之后的「报告内容总览」页（设计来源 uidesign/beautiful/report Figma 稿）。
 
-        8 个模块卡与报告实际章节一一对应；卡片头色按主题 4 色轮换。
+        8 个章节卡与报告实际章节一一对应；卡片头色按主题 4 色轮换。
+        2026-08-16 起：去掉「日期/版本/密级」档案头，标题由「报告模块总览」改为「报告内容总览」。
         """
         modules = [
             ("01", "职业角色", "CAREER ROLE DEFINITION", "基础框架"),
@@ -781,23 +782,19 @@ class ReportPdfService:
             f"<tr><td>{cards[i]}</td><td>{cards[i + 1]}</td></tr>"
             for i in range(0, len(cards), 2)
         )
-        now = datetime.now(timezone.utc)
         return f"""<div class="overview">
   <div class="overview-toprule"></div>
   <table class="overview-header">
     <tr>
       <td>
         <p class="overview-kicker">CAREER INTELLIGENCE REPORT · 职业发展深度报告</p>
-        <p class="overview-title">报告模块总览</p>
-        <p class="overview-desc">本报告共包含 8 大分析模块，从职业角色到名人画像，通过提升自我认知，提供结构化的行动参考。</p>
-      </td>
-      <td>
-        <p class="overview-meta">日期：{now.strftime("%Y")} 年 {now.month} 月<br/>版本：V1.0<br/>密级：个人机密</p>
+        <p class="overview-title">报告内容总览</p>
+        <p class="overview-desc">本报告共包含 8 个章节内容，从职业角色到名人画像，通过提升自我认知，提供结构化的行动参考。</p>
       </td>
     </tr>
   </table>
   <div class="overview-divider"></div>
-  <div class="overview-section"><span class="overview-section-bar"></span><span class="overview-section-label">分析模块 · ANALYSIS MODULES</span></div>
+  <div class="overview-section"><span class="overview-section-bar"></span><span class="overview-section-label">内容章节 · CONTENTS</span></div>
   <table class="overview-grid">
     {rows}
   </table>
@@ -812,6 +809,9 @@ class ReportPdfService:
         from weasyprint import HTML
 
         # 1. markdown → HTML
+        #    先跑确定性的职业角色开篇规范化：兜底保证「开篇：职业角色」标题存在，
+        #    让生成时未过新管线的存量缓存 markdown 下载时也能补齐（ADR-0017）
+        markdown_text = _normalize_role_opener(markdown_text)
         extensions = ["extra", "nl2br"]
         html_body = md_lib.markdown(markdown_text, extensions=extensions)
 
@@ -889,7 +889,7 @@ class ReportPdfService:
 {guide_html}
 </div>
 
-<!-- 报告模块总览（预览页） -->
+<!-- 报告内容总览（预览页） -->
 {overview_html}
 
 <!-- 正文（其余章节） -->
@@ -898,7 +898,7 @@ class ReportPdfService:
 {signature_html}
 </div>"""
         else:
-            body_block = f"""<!-- 报告模块总览（预览页） -->
+            body_block = f"""<!-- 报告内容总览（预览页） -->
 {overview_html}
 
 <!-- 正文 -->

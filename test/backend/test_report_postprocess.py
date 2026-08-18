@@ -25,6 +25,7 @@ _normalize_headings = _rp._normalize_headings
 _find_letter_section = _rp._find_letter_section
 _normalize_lists = _rp._normalize_lists
 _normalize_pagebreaks = _rp._normalize_pagebreaks
+_normalize_role_opener = _rp._normalize_role_opener
 apply_report_postprocess = _rp.apply_report_postprocess
 
 
@@ -151,3 +152,99 @@ def test_heading_skip_code_block():
 
 def test_count_chars_ignores_markdown_symbols():
     assert _count_chars("# 标题\n- **加粗** 正文") == len("标题加粗正文")
+
+
+# ── 职业角色开篇规范化 ─────────────────────────────────
+
+
+def _role_md(opener: str = None) -> str:
+    """构造当前版式报告开头：扉页 + 职业角色章 + 第一章。"""
+    parts = [
+        "# 小明的寻路之旅",
+        "## 阅读指南",
+        "指南内容。",
+        PAGEBREAK_DIV,
+    ]
+    if opener:
+        parts.append(opener)
+    parts += [
+        "### 寻路者",
+        "#### The Pathfinder",
+        "角色描述正文。",
+        PAGEBREAK_DIV,
+        "## 第一章 价值观分析",
+        "第一章内容。",
+    ]
+    return "\n\n".join(parts)
+
+
+def test_role_opener_inserted_when_missing():
+    out = _normalize_role_opener(_role_md())
+    assert "## 开篇：职业角色\n\n### 寻路者" in out
+
+
+def test_role_opener_level_normalized_to_h2():
+    out = _normalize_role_opener(_role_md(opener="### 开篇：职业角色"))
+    assert "## 开篇：职业角色" in out
+    assert "### 开篇：职业角色" not in out
+
+
+def test_role_opener_legacy_format_untouched():
+    # 旧版报告（无第一章）不做任何改动
+    md = "# 寻路报告\n\n## 你的价值观\n\n内容"
+    assert _normalize_role_opener(md) == md
+
+
+def test_role_opener_applied_in_pipeline():
+    out = asyncio.run(apply_report_postprocess(_role_md(), llm_call=None))
+    assert "## 开篇：职业角色" in out
+
+
+# ── 职业角色压缩 ─────────────────────────────────
+
+
+def test_short_role_not_compressed():
+    called = False
+
+    async def fake_llm(prompt: str) -> str:
+        nonlocal called
+        called = True
+        return "x"
+
+    md = _role_md(opener="### 开篇：职业角色")
+    out = asyncio.run(apply_report_postprocess(md, fake_llm))
+    assert not called
+    assert "角色描述正文。" in out
+
+
+def test_long_role_compressed():
+    async def fake_llm(prompt: str) -> str:
+        return "压缩后的角色描述。" + "字" * 700
+
+    md = _role_md().replace("角色描述正文。", "长" * 1200)
+    out = asyncio.run(apply_report_postprocess(md, fake_llm))
+    assert "压缩后的角色描述。" in out
+    assert "长" * 1200 not in out
+    # 标题行原样保留，章末分页符不丢
+    assert "## 开篇：职业角色" in out
+    assert "### 寻路者" in out
+    assert "#### The Pathfinder" in out
+    assert f"{PAGEBREAK_DIV}\n\n## 第一章" in out
+
+
+def test_role_compress_validation_failure_keeps_original():
+    async def fake_llm(prompt: str) -> str:
+        return "太短"
+
+    md = _role_md().replace("角色描述正文。", "长" * 1200)
+    out = asyncio.run(apply_report_postprocess(md, fake_llm))
+    assert "长" * 1200 in out  # 验收失败回退原文
+
+
+def test_role_compress_llm_exception_keeps_original():
+    async def fake_llm(prompt: str) -> str:
+        raise RuntimeError("LLM down")
+
+    md = _role_md().replace("角色描述正文。", "长" * 1200)
+    out = asyncio.run(apply_report_postprocess(md, fake_llm))
+    assert "长" * 1200 in out

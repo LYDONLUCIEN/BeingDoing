@@ -10,9 +10,16 @@
 3. 标题层级归一化：提示词要求最多 #### 但 LLM 常输出 h5（与正文同字号、
    视觉上消失）。规则：h5/h6 → h4；含中文的 h4（章内小节）→ h3；
    纯英文 h4（职业角色英文名副标题）保持 h4。
+4. 职业角色开篇规范化：保证「开篇：职业角色」章节标题存在且统一为二级标题
+   （h2 左侧强调条样式，与角色名 H3 区分）；LLM 漏输出时在角色名标题前补。
+   本规则同时被 report_pdf_service._markdown_to_pdf 在渲染侧调用，
+   让生成时未过新管线的存量缓存 markdown 下载时也能兜底补齐。
 
 LLM 修正器（针对特定章节，各自独立 prompt，可插拔扩展）：
-4. 信件压缩器：「给读者的一封信」超过 ~700 字时，用专用 prompt 重写至
+5. 职业角色压缩器：「开篇：职业角色」详细描述超过 ~800 字时（一页放不下），
+   用专用 prompt 重写至 600-750 字；保留开篇/角色名/英文名标题行不动。
+   校验失败 / 调用失败兜底保留原文。
+6. 信件压缩器：「给读者的一封信」超过 ~700 字时，用专用 prompt 重写至
    550-650 字（信件区 CSS 收紧排版后，该字数 + 签名图可稳定一页内）；
    同时保证信件标题前必有分页符。校验失败 / 调用失败兜底保留原文。
 """
@@ -37,6 +44,13 @@ _LETTER_TARGET_MAX = 650
 _LETTER_ACCEPT_MIN = 450
 _LETTER_ACCEPT_MAX = 750
 
+# 职业角色字数控制（提示词要求 800 字以内；超过一页放不下）
+_ROLE_COMPRESS_THRESHOLD = 800  # 详细描述超过该字数触发压缩
+_ROLE_TARGET_MIN = 600
+_ROLE_TARGET_MAX = 750
+_ROLE_ACCEPT_MIN = 500
+_ROLE_ACCEPT_MAX = 850
+
 _LEGACY_PB_RE = re.compile(
     r"<div[^>]*page-break-after\s*:\s*always[^>]*>\s*</div>", re.IGNORECASE
 )
@@ -45,6 +59,13 @@ _STAR_LIST_RE = re.compile(r"^(\s*)\*\s+")
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 _LETTER_HEADING_RE = re.compile(r"^(#{1,6})\s*致.{0,30}一封信\s*$", re.MULTILINE)
+
+# 职业角色开篇契约：章节标题固定为二级标题「开篇：职业角色」
+_ROLE_OPENER_HEADING = "## 开篇：职业角色"
+_ROLE_OPENER_RE = re.compile(r"^#{1,6}\s*开篇[：:]\s*职业角色\s*$", re.MULTILINE)
+_GUIDE_HEADING_RE = re.compile(r"^#{1,6}\s*阅读指南\s*$", re.MULTILINE)
+_CHAPTER1_RE = re.compile(r"^#{1,6}\s*第一章", re.MULTILINE)
+_ANY_HEADING_RE = re.compile(r"^#{1,6}\s+\S", re.MULTILINE)
 
 
 def _count_chars(text: str) -> int:
@@ -124,6 +145,107 @@ def _normalize_headings(text: str) -> str:
             level = 3
         out.append("#" * level + " " + title)
     return "\n".join(out)
+
+
+def _normalize_role_opener(text: str) -> str:
+    """规范「开篇：职业角色」章节标题（确定性规则，生成侧与渲染侧共用）：
+
+    - 已有标题（任意层级）→ 统一为二级标题（h2 左侧强调条样式，与角色名 H3 区分）；
+    - 缺标题 → 在「阅读指南」之后、「第一章」之前的第一个标题（角色名）前补齐；
+    - 找不到「第一章」（旧版报告格式，无职业角色章）→ 原样返回。
+    """
+    ch1 = _CHAPTER1_RE.search(text)
+    if not ch1:
+        return text
+    opener = _ROLE_OPENER_RE.search(text, 0, ch1.start())
+    if opener:
+        return text[: opener.start()] + _ROLE_OPENER_HEADING + text[opener.end():]
+    guide = _GUIDE_HEADING_RE.search(text, 0, ch1.start())
+    region_start = guide.end() if guide else 0
+    first_heading = _ANY_HEADING_RE.search(text, region_start, ch1.start())
+    if not first_heading:
+        return text
+    prefix = text[: first_heading.start()].rstrip("\n")
+    return prefix + "\n\n" + _ROLE_OPENER_HEADING + "\n\n" + text[first_heading.start():]
+
+
+def _find_role_section(text: str) -> Optional[tuple]:
+    """定位「开篇：职业角色」章节，返回 (标题行起始, 第一章标题前) 字符区间；找不到返回 None。"""
+    opener = _ROLE_OPENER_RE.search(text)
+    if not opener:
+        return None
+    ch1 = _CHAPTER1_RE.search(text, opener.end())
+    if not ch1:
+        return None
+    return opener.start(), ch1.start()
+
+
+_ROLE_COMPRESS_PROMPT = """你是一位资深的职业咨询师兼中文编辑。下面是一份职业探索报告「开篇：职业角色」章节的详细描述正文（角色名称、英文名称等标题不在其中，你只需处理这段正文）。
+请将它改写压缩到 {min_len}-{max_len} 字（中文字符计），要求：
+
+1. 保留该角色的核心定位、典型工作场景、创造的价值，以及与用户特质的匹配逻辑。
+2. 保留取材自用户对话的具体细节，删掉重复抒情与空泛总结。
+3. 保持专业、温暖、平实的语气，2-4 个自然段。
+4. 直接输出正文 markdown，不要输出任何标题，不要解释。
+
+原正文：
+{body}
+"""
+
+
+async def _compress_role(
+    text: str,
+    start: int,
+    end: int,
+    llm_call: Callable[[str], Awaitable[str]],
+) -> str:
+    """职业角色描述超阈值时调用 LLM 压缩；任何失败/验收不通过都回退原文。"""
+    section = text[start:end]
+    # 章节末尾的分页符与空白不属于正文，原样保留
+    tail_m = re.search(rf"((?:\s*{re.escape(PAGEBREAK_DIV)})+\s*)$", section)
+    tail = tail_m.group(1) if tail_m else ""
+    core = section[: len(section) - len(tail)] if tail else section
+    # 保留开头连续标题行（开篇标题 + 角色名 H3 + 英文名 H4），只压缩描述正文
+    lines = core.split("\n")
+    head_lines: List[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if not line.strip():
+            i += 1
+            continue
+        if _HEADING_RE.match(line) and len(head_lines) < 3:
+            head_lines.append(line.strip())
+            i += 1
+            continue
+        break
+    if len(head_lines) < 2:  # 至少应有 开篇标题 + 角色名，结构异常则不压缩
+        return text
+    body = "\n".join(lines[i:]).strip()
+    if _count_chars(body) <= _ROLE_COMPRESS_THRESHOLD:
+        return text
+    original_len = _count_chars(body)
+    try:
+        prompt = _ROLE_COMPRESS_PROMPT.format(
+            min_len=_ROLE_TARGET_MIN, max_len=_ROLE_TARGET_MAX, body=body
+        )
+        compressed = (await llm_call(prompt)).strip()
+        # 去掉模型可能带回来的标题行
+        compressed = re.sub(r"^(#{1,6}\s[^\n]*\n+)+", "", compressed).strip()
+        new_len = _count_chars(compressed)
+        if not compressed or not (_ROLE_ACCEPT_MIN <= new_len <= _ROLE_ACCEPT_MAX):
+            logger.warning(
+                "职业角色压缩结果验收失败（原 %d 字 / 压缩后 %d 字），保留原文",
+                original_len,
+                new_len,
+            )
+            return text
+        logger.info("职业角色压缩完成：%d 字 → %d 字", original_len, new_len)
+        new_section = "\n".join(head_lines) + "\n\n" + compressed + "\n" + tail
+        return text[:start] + new_section + text[end:]
+    except Exception:
+        logger.exception("职业角色压缩 LLM 调用失败，保留原文")
+        return text
 
 
 def _find_letter_section(text: str) -> Optional[tuple]:
@@ -208,6 +330,11 @@ async def apply_report_postprocess(
     text = _normalize_pagebreaks(markdown_text)
     text = _normalize_lists(text)
     text = _normalize_headings(text)
+    text = _normalize_role_opener(text)
+
+    role = _find_role_section(text)
+    if role and llm_call:
+        text = await _compress_role(text, role[0], role[1], llm_call)
 
     section = _find_letter_section(text)
     if section:
