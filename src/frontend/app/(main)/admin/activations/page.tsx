@@ -36,6 +36,7 @@ export default function AdminActivationsPage() {
   const [selectedCodes, setSelectedCodes] = useState<string[]>([]);
   const [createCount, setCreateCount] = useState(10);
   const [createTtlDays, setCreateTtlDays] = useState(30);
+  const [createCodeType, setCreateCodeType] = useState<'full' | 'trial'>('full');
   const [extendDays, setExtendDays] = useState(30);
   const [working, setWorking] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -309,11 +310,16 @@ export default function AdminActivationsPage() {
       const result = await batchCreateActivations({
         ttl_days: createTtlDays,
         count: createCount,
+        code_type: createCodeType,
       });
       if (tab === 'active') {
         await loadActiveList();
       }
-      setNotice(`已创建 ${result?.count ?? createCount} 条通用激活码（${createTtlDays} 天）`);
+      setNotice(
+        createCodeType === 'trial'
+          ? `已创建 ${result?.count ?? createCount} 条临时试用码（不过期，values 阶段限 10 轮）`
+          : `已创建 ${result?.count ?? createCount} 条通用激活码（${createTtlDays} 天）`,
+      );
     } catch (e: any) {
       setError(e?.message || '批量创建失败');
     } finally {
@@ -413,14 +419,28 @@ export default function AdminActivationsPage() {
             />
           </div>
           <div className="space-y-1">
-            <p className="text-[11px] text-bd-subtle">有效期(天)</p>
+            <p className="text-[11px] text-bd-subtle">类型</p>
+            <select
+              value={createCodeType}
+              onChange={(e) => setCreateCodeType(e.target.value as 'full' | 'trial')}
+              className="rounded-lg border border-bd-border bg-bd-overlay px-3 py-2 text-xs"
+            >
+              <option value="full">完整码</option>
+              <option value="trial">临时试用码（10 轮）</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <p className="text-[11px] text-bd-subtle">
+              有效期(天){createCodeType === 'trial' ? '（试用码不过期）' : ''}
+            </p>
             <input
               type="number"
               min={1}
               max={3650}
               value={createTtlDays}
+              disabled={createCodeType === 'trial'}
               onChange={(e) => setCreateTtlDays(Number(e.target.value || 30))}
-              className="w-28 rounded-lg border border-bd-border bg-bd-overlay px-3 py-2 text-xs"
+              className="w-28 rounded-lg border border-bd-border bg-bd-overlay px-3 py-2 text-xs disabled:opacity-50"
             />
           </div>
           <button
@@ -668,6 +688,11 @@ export default function AdminActivationsPage() {
                     </td>
                     <td className="px-2 py-2 font-mono text-[11px]" style={{ color: 'var(--bd-fg)' }}>
                       {item.activation_code}
+                      {tab === 'active' && (item as AdminActivationItem).code_type === 'trial' && (
+                        <span className="ml-1 inline-flex items-center rounded-full border border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-700 px-1.5 py-0.5 text-[10px] font-medium font-sans">
+                          试用
+                        </span>
+                      )}
                     </td>
                     <td className="px-2 py-2">
                       {tab === 'active' && 'activation_type' in item ? (

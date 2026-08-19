@@ -14,6 +14,7 @@ import {
   type ConversationStatsResult,
 } from '@/lib/api/admin';
 import { useReportPdfDownload } from '@/hooks/useReportPdfDownload';
+import ReportRecheckPanel from '@/components/admin/ReportRecheckPanel';
 
 export default function AdminReportsPage() {
   const [items, setItems] = useState<AdminReportItem[]>([]);
@@ -35,6 +36,9 @@ export default function AdminReportsPage() {
   const [reviewFilter, setReviewFilter] = useState<'' | AdminReportReviewStatus>('');
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+
+  // 复核面板（仅当报告存在未关闭复核单时可打开）
+  const [recheckReportId, setRecheckReportId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!toast) return;
@@ -217,6 +221,8 @@ export default function AdminReportsPage() {
 
   // 注意：admin 不再提供「重新生成」按钮（2026-08-16 起，只能下载用户已生成的报告）；
   // 后端 force 能力保留，仅供运维通过脚本/Swagger 手动触发。
+  // 2026-08-18 起新增复核体系：仅当报告有未关闭复核单时出现「复核」入口，
+  // 重新生成（staging）/ 确认发布 / 驳回均在复核面板内完成。
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -342,7 +348,16 @@ export default function AdminReportsPage() {
                     <td className="px-2 py-2 font-mono text-[11px]">{item.user_id}</td>
                     <td className="px-2 py-2">{item.completed_steps}/5</td>
                     <td className="px-2 py-2">{item.status}</td>
-                    <td className="px-2 py-2">{renderReviewBadge(item)}</td>
+                    <td className="px-2 py-2">
+                      <div className="flex flex-col gap-1 items-start">
+                        {renderReviewBadge(item)}
+                        {item.recheck_status && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-amber-300 bg-amber-50 text-amber-700 text-[10px] font-medium whitespace-nowrap">
+                            复核中
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-2 py-2 whitespace-nowrap">
                       <div className="flex items-center gap-2 whitespace-nowrap flex-nowrap">
                         {item.review_status === 'pending_review' && (
@@ -353,6 +368,15 @@ export default function AdminReportsPage() {
                             className="px-2 py-1 rounded border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 whitespace-nowrap disabled:opacity-60"
                           >
                             {approvingId === item.report_id ? '审核中...' : '确认审核'}
+                          </button>
+                        )}
+                        {item.recheck_status && (
+                          <button
+                            type="button"
+                            onClick={() => setRecheckReportId(item.report_id)}
+                            className="px-2 py-1 rounded border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 whitespace-nowrap"
+                          >
+                            复核
                           </button>
                         )}
                         <button
@@ -422,6 +446,15 @@ export default function AdminReportsPage() {
         >
           {toast.msg}
         </div>
+      )}
+
+      {/* 复核面板 */}
+      {recheckReportId && (
+        <ReportRecheckPanel
+          reportId={recheckReportId}
+          onClose={() => setRecheckReportId(null)}
+          onChanged={() => void loadReports()}
+        />
       )}
 
       {(statsReportId !== null || statsLoading) && (

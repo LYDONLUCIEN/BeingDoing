@@ -42,12 +42,17 @@ export async function getMyReportId(activationCode: string): Promise<string | nu
 
 export type ReportReviewStatus = 'not_started' | 'pending_review' | 'approved';
 
+/** 复核状态（进行中）：pending=待处理 / regenerating=重新生成中 / pending_confirm=待 admin 确认 */
+export type RecheckStatus = 'pending' | 'regenerating' | 'pending_confirm';
+
 export interface MyReportInfo {
   report_id: string | null;
   /** 审核状态；存量报告无该字段，视为 approved（祖父豁免）；not_started = 五阶段未完成或尚未进入报告页 */
   review_status: ReportReviewStatus | null;
   /** 审核截止时间（ISO 字符串），仅 pending_review 时可能返回 */
   review_deadline: string | null;
+  /** 复核进行中状态；null = 无进行中复核 */
+  recheck_status: RecheckStatus | null;
 }
 
 /**
@@ -65,6 +70,7 @@ export async function getMyReportInfo(activationCode: string): Promise<MyReportI
     report_id: data?.report_id ?? null,
     review_status: data?.review_status ?? null,
     review_deadline: data?.review_deadline ?? null,
+    recheck_status: data?.recheck_status ?? null,
   };
 }
 
@@ -118,7 +124,7 @@ export async function triggerReportPdf(
 export async function pollReportPdfStatus(
   reportId: string,
   options?: { activationCode?: string },
-): Promise<{ status: PdfGenStatus; error?: string; regenRemaining?: number | null }> {
+): Promise<{ status: PdfGenStatus; error?: string }> {
   const params: Record<string, any> = {};
   if (options?.activationCode) params.activation_code = options.activationCode;
 
@@ -130,8 +136,6 @@ export async function pollReportPdfStatus(
   return {
     status: data?.status ?? 'none',
     error: data?.error,
-    // null = 不限（admin）；undefined = 后端未返回（旧版本兼容）
-    regenRemaining: data?.regen_remaining,
   };
 }
 
@@ -169,4 +173,34 @@ export async function extractBlobError(e: any): Promise<string> {
     }
   }
   return e?.response?.data?.detail || e?.message || '操作失败';
+}
+
+// ---------- 报告复核（2026-08-18）----------
+
+export type RecheckCategory = 'content_issue' | 'download_issue';
+
+export interface RecheckSubmitResult {
+  /** recheck = 已建复核单（内容问题）；feedback = 已转故障反馈（下载问题） */
+  path: 'recheck' | 'feedback';
+}
+
+/**
+ * 提交报告复核申请。
+ * content_issue → 建复核单 + 双写 Feedback 工单（每报告每天限 1 次，有进行中复核时 409）；
+ * download_issue → 仅进 Feedback 通道（与「反馈 bug」同流程同结果）。
+ */
+export async function submitReportRecheck(
+  reportId: string,
+  options: {
+    activationCode: string;
+    category: RecheckCategory;
+    description?: string;
+  },
+): Promise<RecheckSubmitResult> {
+  const res = await apiClient.raw.post(
+    `/export/report-recheck/${encodeURIComponent(reportId)}`,
+    { category: options.category, description: options.description ?? '' },
+    { params: { activation_code: options.activationCode } },
+  );
+  return { path: (res.data as any)?.path ?? 'feedback' };
 }

@@ -54,6 +54,10 @@ _SIGNATURE_SUFFIX = ".png"
 
 # 缓存文件名
 _REPORT_MARKDOWN_FILENAME = "report_markdown.md"
+# 复核新稿影子文件与发布备份（报告复核体系，2026-08-18）：
+# 重新生成写入 staging，admin 确认发布后才原子替换正式文件（旧版留 .bak）
+_REPORT_STAGING_FILENAME = "report_markdown.staging.md"
+_REPORT_BACKUP_FILENAME = "report_markdown.bak.md"
 
 # ── 配色主题（report_theme.json）──────────────────────────────────────
 # CSS 中的 {{token}} 占位符渲染时替换；修改配色见
@@ -697,6 +701,72 @@ class ReportPdfService:
 
     def _markdown_path(self, report_id: str) -> Path:
         return self.reports_root / report_id / _REPORT_MARKDOWN_FILENAME
+
+    # ── 复核 staging 影子稿（2026-08-18）────────────────────
+    # 复核重新生成的 markdown 写入 staging，不影响正式缓存；
+    # admin 预览用 staging 即时渲染 PDF；确认发布后原子替换正式文件。
+
+    def _staging_path(self, report_id: str) -> Path:
+        return self.reports_root / report_id / _REPORT_STAGING_FILENAME
+
+    async def generate_staging_markdown(
+        self,
+        report_id: str,
+        *,
+        user_id: Optional[str] = None,
+        vip_level: int = 1,
+    ) -> str:
+        """复核专用：强制重新生成 markdown 并写入 staging 文件（不触碰正式缓存）。"""
+        report_md = await self._generate_report_markdown(
+            report_id, user_id=user_id, vip_level=vip_level
+        )
+        staging_path = self._staging_path(report_id)
+        staging_path.parent.mkdir(parents=True, exist_ok=True)
+        staging_path.write_text(report_md, encoding="utf-8")
+        logger.info("复核新稿已写入 staging: report_id=%s", report_id)
+        return report_md
+
+    def has_staging_markdown(self, report_id: str) -> bool:
+        return self._staging_path(report_id).is_file()
+
+    def load_staging_markdown(self, report_id: str) -> Optional[str]:
+        path = self._staging_path(report_id)
+        if not path.is_file():
+            return None
+        try:
+            return path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return None
+
+    def publish_staging(self, report_id: str) -> bool:
+        """确认发布：staging 原子替换正式缓存（旧版留 .bak），并刷新缓存时间戳。
+
+        Returns: True = 发布成功；False = staging 不存在。
+        """
+        staging_path = self._staging_path(report_id)
+        if not staging_path.is_file():
+            return False
+        official_path = self._markdown_path(report_id)
+        backup_path = self.reports_root / report_id / _REPORT_BACKUP_FILENAME
+        if official_path.is_file():
+            backup_path.write_bytes(official_path.read_bytes())
+        staging_path.replace(official_path)
+
+        # 刷新缓存时间戳（_load_cached_markdown 依赖该字段判定缓存有效）
+        registry = ReportRegistry(base_dir=str(self.simple_base_dir))
+        record = registry.get_report_by_id(report_id)
+        if record:
+            record["report_markdown_generated_at"] = datetime.now(timezone.utc).isoformat()
+            registry._save_record(record)
+        logger.info("复核新稿已发布: report_id=%s", report_id)
+        return True
+
+    def discard_staging(self, report_id: str) -> None:
+        """丢弃 staging 文件（复核关闭后清理）。"""
+        try:
+            self._staging_path(report_id).unlink(missing_ok=True)
+        except OSError:
+            pass
 
     # ── 落款签名 ─────────────────────────────────────────────
 

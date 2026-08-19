@@ -30,6 +30,7 @@ from app.config.settings import settings
 from app.utils.super_admin import is_super_admin_user
 
 from app.services.analytics_service import AnalyticsService
+from app.services import report_recheck_service
 from app.utils.sandbox_fork import (
     SANDBOX_RETENTION_DAYS,
     delete_sandbox_by_code,
@@ -80,6 +81,8 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 class ActivationBatchCreateRequest(BaseModel):
     ttl_days: int = Field(default=30, ge=1, le=3650)
     count: int = Field(default=1, ge=1, le=500)
+    # full=完整码（按 ttl_days 过期）；trial=临时试用码（不过期，仅 values 阶段 10 轮，便于测试）
+    code_type: str = Field(default="full", pattern="^(full|trial)$")
 
 
 class ActivationBatchActionRequest(BaseModel):
@@ -527,6 +530,8 @@ async def list_activations(
                 "activation_code": rec.code,
                 "session_id": rec.session_id,
                 "mode": "combined",
+                "code_type": getattr(rec, "code_type", None) or "full",
+                "vip_level": getattr(rec, "vip_level", None) or 1,
                 "created_at": rec.created_at,
                 "expires_at": rec.expires_at,
                 "last_activity_at": rec.last_activity_at,
@@ -625,6 +630,7 @@ async def batch_create_activations(
         mode="combined",
         ttl_minutes=request.ttl_days * 24 * 60,
         count=request.count,
+        code_type=request.code_type,
     )
     # 审计日志：批量创建
     from app.utils.activation_audit import append_activation_audit, EVENT_BATCH_CREATED
@@ -634,7 +640,11 @@ async def batch_create_activations(
             rec.code,
             actor_user_id=(current_user or {}).get("user_id"),
             actor_email=(current_user or {}).get("email"),
-            detail={"ttl_days": request.ttl_days, "mode": "combined"},
+            detail={
+                "ttl_days": request.ttl_days,
+                "mode": "combined",
+                "code_type": request.code_type,
+            },
         )
     return {
         "code": 200,
@@ -642,11 +652,14 @@ async def batch_create_activations(
         "data": {
             "count": len(created),
             "ttl_days": request.ttl_days,
+            "code_type": request.code_type,
             "items": [
                 {
                     "activation_code": rec.code,
                     "session_id": rec.session_id,
                     "mode": rec.mode,
+                    "code_type": rec.code_type,
+                    "vip_level": rec.vip_level,
                     "created_at": rec.created_at,
                     "expires_at": rec.expires_at,
                     "status": rec.status,
@@ -1034,6 +1047,8 @@ async def list_reports(
                 "review_type": report.get("review_type"),
                 "review_deadline": report.get("review_deadline"),
                 "reviewed_at": report.get("reviewed_at"),
+                # 复核状态（2026-08-18）：None=无进行中复核；否则 pending/regenerating/pending_confirm
+                "recheck_status": report_recheck_service.get_recheck_status(report),
             }
         )
     items.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
@@ -1075,6 +1090,165 @@ async def approve_report_manual(
             "review_type": record.get("review_type"),
         },
     }
+
+
+# ── 报告复核管理（2026-08-18，tasks/report-review-plan.md）────────
+# 原则：admin 不能随意重新生成——「重新生成」必须挂在用户发起的未关闭
+# 复核单上；新稿写入 staging（用户不可见），admin 确认发布后才同步给用户。
+
+
+class RecheckRejectRequest(BaseModel):
+    reason: str = Field(..., min_length=1, max_length=2000)
+
+
+def _get_report_or_404(registry: ReportRegistry, report_id: str) -> dict:
+    report = registry.get_report_by_id(report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="报告不存在")
+    return report
+
+
+@router.get("/reports/{report_id}/recheck")
+async def get_report_recheck(
+    report_id: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """复核单详情：当前复核单 + staging 状态 + 历史次数。"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    registry = ReportRegistry()
+    report = _get_report_or_404(registry, report_id)
+
+    from app.services.report_pdf_service import ReportPdfService
+
+    service = ReportPdfService()
+    task = report_recheck_service.get_staging_task_status(report_id)
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "report_id": report_id,
+            "current": report_recheck_service.get_current_recheck(report),
+            "total_count": len(report_recheck_service.list_recheck_requests(report)),
+            "has_staging": service.has_staging_markdown(report_id),
+            "staging_task": task,
+        },
+    }
+
+
+@router.post("/reports/{report_id}/recheck/regenerate")
+async def regenerate_report_recheck(
+    report_id: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """触发复核重新生成（生成到 staging，用户仍看旧版）。
+
+    仅当存在未关闭复核单时可用；复核单关闭后此入口即失效（admin 不能随意重新生成）。
+    未关闭期间可反复触发（覆盖 staging），直到满意后确认发布。
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    registry = ReportRegistry()
+    report = _get_report_or_404(registry, report_id)
+    if report_recheck_service.get_current_recheck(report) is None:
+        raise HTTPException(status_code=409, detail="该报告没有进行中的复核，不能重新生成")
+
+    from app.services.report_pdf_service import is_generation_inflight
+
+    if is_generation_inflight(report_id):
+        raise HTTPException(status_code=409, detail="该报告正在生成中，请稍后")
+    kicked = report_recheck_service.kick_recheck_regeneration(
+        registry, report_id, (current_user or {}).get("user_id")
+    )
+    if not kicked:
+        raise HTTPException(status_code=409, detail="触发失败（可能正在生成中）")
+    return {"code": 200, "message": "success", "data": {"report_id": report_id, "status": "regenerating"}}
+
+
+@router.get("/reports/{report_id}/recheck/staging-pdf")
+async def download_recheck_staging_pdf(
+    report_id: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """下载 staging 新稿渲染的 PDF（admin 预览用，不影响用户可见的正式版）。"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    registry = ReportRegistry()
+    _get_report_or_404(registry, report_id)
+
+    from urllib.parse import quote
+
+    from fastapi.responses import Response as FastResponse
+
+    from app.services.report_pdf_service import ReportPdfService
+
+    service = ReportPdfService()
+    markdown_text = service.load_staging_markdown(report_id)
+    if not markdown_text:
+        raise HTTPException(status_code=409, detail="新稿尚未生成，请先触发重新生成")
+    try:
+        pdf_bytes = service.markdown_to_pdf_bytes(markdown_text, report_id=report_id)
+    except Exception as e:
+        logger.exception("复核新稿 PDF 转换失败: report_id=%s", report_id)
+        raise HTTPException(status_code=500, detail=f"PDF 转换失败: {e}")
+    filename = quote(f"复核新稿_{report_id}.pdf")
+    return FastResponse(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+    )
+
+
+@router.post("/reports/{report_id}/recheck/publish")
+async def publish_report_recheck(
+    report_id: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """确认发布：staging 原子替换正式缓存（旧版留 .bak），站内信+邮件通知用户。"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    registry = ReportRegistry()
+    async with AsyncSessionLocal() as db:
+        try:
+            entry = await report_recheck_service.publish_recheck(
+                db,
+                registry,
+                report_id,
+                admin_id=(current_user or {}).get("user_id"),
+            )
+        except LookupError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        await db.commit()
+    return {"code": 200, "message": "success", "data": entry}
+
+
+@router.post("/reports/{report_id}/recheck/reject")
+async def reject_report_recheck(
+    report_id: str,
+    payload: RecheckRejectRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """驳回复核（必须填理由）：站内信告知用户，清理 staging，关闭 Feedback 工单。"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    registry = ReportRegistry()
+    async with AsyncSessionLocal() as db:
+        try:
+            entry = await report_recheck_service.reject_recheck(
+                db,
+                registry,
+                report_id,
+                admin_id=(current_user or {}).get("user_id"),
+                reason=payload.reason,
+            )
+        except LookupError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        await db.commit()
+    return {"code": 200, "message": "success", "data": entry}
 
 
 @router.get("/reports/{report_id}")

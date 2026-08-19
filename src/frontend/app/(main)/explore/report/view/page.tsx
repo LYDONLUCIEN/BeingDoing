@@ -12,6 +12,7 @@ import {
   setLastActivationCode,
 } from '@/lib/explore/session';
 import LikedContentSection from '@/components/explore/LikedContentSection';
+import ReportRecheckModal from '@/components/explore/ReportRecheckModal';
 import PurchaseModal from '@/components/payment/PurchaseModal';
 import { useLocale } from '@/hooks/useLocale';
 import { getMyReportInfo, type MyReportInfo } from '@/lib/api/report';
@@ -44,7 +45,12 @@ function ReportViewContent() {
   /** 403：当前账号无权查看该码的报告 */
   const [forbidden, setForbidden] = useState(false);
 
-  const { status, error: pdfError, regenRemaining, check, prepare, saveNow } = useReportPdfDownload({ activationCode });
+  const { status, error: pdfError, check, prepare, saveNow } = useReportPdfDownload({ activationCode });
+
+  // 复核申请弹窗（报告复核体系：用户不能重新生成，只能申请复核）
+  const [recheckOpen, setRecheckOpen] = useState(false);
+  /** 复核进行中（pending/regenerating/pending_confirm）：显示提示条并禁用申请入口 */
+  const recheckInProgress = reportInfo?.recheck_status != null;
 
   // 报告页加载后（approved）先查一次生成状态：
   // - 已有缓存（含审核期后台预生成完成）→ 直接显示「下载 PDF 报告」，不重新生成
@@ -81,7 +87,7 @@ function ReportViewContent() {
         const status = e?.response?.status;
         if (status === 404) {
           // 该码无报告/码不存在：走「尚未解锁」分支
-          setReportInfo({ report_id: null, review_status: 'not_started', review_deadline: null });
+          setReportInfo({ report_id: null, review_status: 'not_started', review_deadline: null, recheck_status: null });
         } else if (status === 403) {
           // 无权查看：清除残留的本地激活码
           clearLastActivationCode();
@@ -104,15 +110,6 @@ function ReportViewContent() {
     if (!reportId || status === 'generating') return;
     setFetchError(null);
     await prepare(reportId);
-  };
-
-  // 普通用户每份报告限 2 次重新生成（成功才计数）；null=不限（admin）
-  const regenExhausted = regenRemaining === 0;
-
-  const handleRegenerate = async () => {
-    if (!reportId || status === 'generating' || regenExhausted) return;
-    setFetchError(null);
-    await prepare(reportId, { force: true });
   };
 
   const handleDownloadPdf = async () => {
@@ -326,6 +323,12 @@ function ReportViewContent() {
         {/* 报告生成 / 下载按钮区：生成与下载分离，避免 Chrome 拦截异步自动下载 */}
         {activationCode && reportId && (
           <div className="space-y-2">
+            {/* 复核进行中提示条：报告不锁定，仍可查看下载旧版 */}
+            {recheckInProgress && (
+              <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
+                报告复核中，内容可能更新，完成后将通过站内信与邮件通知你。
+              </div>
+            )}
             {status === 'ready' ? (
               <div className="flex flex-wrap items-center justify-center gap-3">
                 <button
@@ -336,19 +339,24 @@ function ReportViewContent() {
                   <Download size={16} />
                   下载 PDF 报告
                 </button>
-                <button
-                  type="button"
-                  onClick={handleRegenerate}
-                  disabled={regenExhausted}
+                {/* 申请复核（用户不能重新生成；复核由管理员人工处理） */}
+                <span
                   title={
-                    regenExhausted
-                      ? '重新生成次数已用完（每份报告限 2 次），如有问题请联系客服'
-                      : `重新生成报告（会覆盖现有内容，还可重新生成 ${regenRemaining ?? 2} 次）`
+                    recheckInProgress
+                      ? '已有复核申请在处理中，完成后可再次申请'
+                      : '报告内容有问题？提交后由管理员人工复核，必要时重新生成；期间你仍可查看当前报告'
                   }
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-bd-border bg-bd-card px-4 py-3 text-xs font-medium text-bd-muted hover:bg-bd-overlay-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-bd-card"
+                  className="inline-block"
                 >
-                  重新生成{regenRemaining != null && regenRemaining < 2 ? `（剩 ${regenRemaining} 次）` : ''}
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setRecheckOpen(true)}
+                    disabled={recheckInProgress}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-bd-border bg-bd-card px-4 py-3 text-xs font-medium text-bd-muted hover:bg-bd-overlay-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-bd-card"
+                  >
+                    {recheckInProgress ? '复核处理中' : '申请复核'}
+                  </button>
+                </span>
               </div>
             ) : (
               <button
@@ -361,6 +369,11 @@ function ReportViewContent() {
                   <>
                     <Loader2 size={16} className="animate-spin" />
                     报告生成中…
+                  </>
+                ) : status === 'error' ? (
+                  <>
+                    <FileText size={16} />
+                    重新尝试生成
                   </>
                 ) : (
                   <>
@@ -408,6 +421,22 @@ function ReportViewContent() {
           onClose={() => setConsultOpen(false)}
           defaultProductType="consultation"
         />
+
+        {/* 复核申请弹窗 */}
+        {reportId && (
+          <ReportRecheckModal
+            open={recheckOpen}
+            onClose={() => setRecheckOpen(false)}
+            reportId={reportId}
+            activationCode={activationCode}
+            onSubmitted={(res) => {
+              // 建单成功后立即把页面切到「复核处理中」态
+              if (res.path === 'recheck') {
+                setReportInfo((prev) => (prev ? { ...prev, recheck_status: 'pending' } : prev));
+              }
+            }}
+          />
+        )}
 
         {/* 报告授权开关（P-E：赠品码激活人授权报告给所属人） */}
         {activationCode && <ReportAuthorizeCard activationCode={activationCode} />}

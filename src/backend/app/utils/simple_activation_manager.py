@@ -391,12 +391,14 @@ class SimpleActivationManager:
         return record
 
     def create_activation_batch(
-        self, mode: str, ttl_minutes: int = 60, count: int = 1
+        self, mode: str, ttl_minutes: int = 60, count: int = 1, code_type: str = "full"
     ) -> List[ActivationRecord]:
         count = max(1, min(int(count), 500))
         created: List[ActivationRecord] = []
         for _ in range(count):
-            created.append(self.create_activation(mode=mode, ttl_minutes=ttl_minutes))
+            created.append(
+                self.create_activation(mode=mode, ttl_minutes=ttl_minutes, code_type=code_type)
+            )
         return created
 
     def get_activation(self, code: str) -> Optional[ActivationRecord]:

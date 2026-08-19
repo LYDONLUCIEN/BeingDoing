@@ -30,11 +30,9 @@ interface UseReportPdfReturn {
   status: PdfGenStatus | 'idle';
   /** 错误信息 */
   error: string | null;
-  /** 重新生成剩余次数（null=不限 admin；undefined=未知/旧后端） */
-  regenRemaining: number | null | undefined;
   /** 正在处理的 report_id */
   activeReportId: string | null;
-  /** 触发下载流程（生成+轮询+自动下载，Admin 用）；force=true 强制重新生成后下载（Admin 不限次） */
+  /** 触发下载流程（生成+轮询+自动下载，Admin 用）；force=true 强制重新生成后下载（Admin 运维用） */
   download: (reportId: string, opts?: { force?: boolean }) => Promise<void>;
   /** 只查询当前状态（不触发生成）：none=未生成 / generating=生成中 / ready=可下载 */
   check: (reportId: string) => Promise<PdfGenStatus>;
@@ -51,7 +49,6 @@ export function useReportPdfDownload(options?: UseReportPdfOptions): UseReportPd
   const [status, setStatus] = useState<PdfGenStatus | 'idle'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [activeReportId, setActiveReportId] = useState<string | null>(null);
-  const [regenRemaining, setRegenRemaining] = useState<number | null | undefined>(undefined);
   const pollingRef = useRef(false);
   // 组件卸载即停止轮询（之前无取消机制，卸载后空跑到超时）
   const cancelledRef = useRef(false);
@@ -71,13 +68,12 @@ export function useReportPdfDownload(options?: UseReportPdfOptions): UseReportPd
           await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
           if (cancelledRef.current) return 'none';
 
-          const { status: pollStatus, error: pollError, regenRemaining: rr } =
+          const { status: pollStatus, error: pollError } =
             await pollReportPdfStatus(
               reportId,
               { activationCode: options?.activationCode },
             );
           if (cancelledRef.current) return 'none';
-          if (rr !== undefined) setRegenRemaining(rr);
 
           if (pollStatus === 'ready') return 'ready';
           if (pollStatus === 'error') {
@@ -144,10 +140,9 @@ export function useReportPdfDownload(options?: UseReportPdfOptions): UseReportPd
   const check = useCallback(
     async (reportId: string): Promise<PdfGenStatus> => {
       try {
-        const { status: s, regenRemaining: rr } = await pollReportPdfStatus(reportId, {
+        const { status: s } = await pollReportPdfStatus(reportId, {
           activationCode: options?.activationCode,
         });
-        if (rr !== undefined) setRegenRemaining(rr);
         setActiveReportId(reportId);
         setStatus(s);
         return s;
@@ -208,5 +203,5 @@ export function useReportPdfDownload(options?: UseReportPdfOptions): UseReportPd
     [options?.activationCode, check],
   );
 
-  return { status, error, activeReportId, regenRemaining, download, check, prepare, saveNow };
+  return { status, error, activeReportId, download, check, prepare, saveNow };
 }

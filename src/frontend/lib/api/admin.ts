@@ -4,6 +4,9 @@ export interface AdminActivationItem {
   activation_code: string;
   session_id: string;
   mode: string;
+  /** full=完整码；trial=临时试用码（不过期，仅 values 阶段 10 轮） */
+  code_type?: 'full' | 'trial';
+  vip_level?: number;
   created_at: string;
   expires_at: string;
   last_activity_at: string;
@@ -53,6 +56,8 @@ export async function fetchAdminActivations(params?: {
 export async function batchCreateActivations(payload: {
   ttl_days: number;
   count: number;
+  /** full=完整码（按 ttl_days 过期）；trial=临时试用码（不过期，10 轮试用） */
+  code_type?: 'full' | 'trial';
 }) {
   const res = await apiClient.post('/admin/activations/batch-create', payload);
   return res.data ?? { count: 0, items: [] };
@@ -292,7 +297,11 @@ export interface AdminReportItem {
   review_deadline?: string | null;
   /** 批复时间（ISO 字符串） */
   reviewed_at?: string | null;
+  /** 复核状态（2026-08-18）：null=无进行中复核；否则 pending/regenerating/pending_confirm */
+  recheck_status?: AdminRecheckStatus | null;
 }
+
+export type AdminRecheckStatus = 'pending' | 'regenerating' | 'pending_confirm';
 
 export async function fetchAdminReports(params?: {
   q?: string;
@@ -315,6 +324,68 @@ export async function approveAdminReport(reportId: string): Promise<AdminReportI
 export async function fetchAdminReportDetail(reportId: string): Promise<any> {
   const res = await apiClient.get(`/admin/reports/${encodeURIComponent(reportId)}`);
   return res.data ?? null;
+}
+
+// ---------- 报告复核管理（2026-08-18，tasks/report-review-plan.md）----------
+
+export interface AdminRecheckEntry {
+  id: string;
+  status: 'pending' | 'regenerating' | 'pending_confirm' | 'done' | 'rejected';
+  description: string;
+  feedback_id: string | null;
+  requested_by: string;
+  requested_at: string;
+  updated_at: string;
+  closed_at: string | null;
+  reject_reason: string | null;
+  regen_error: string | null;
+}
+
+export interface AdminRecheckInfo {
+  report_id: string;
+  current: AdminRecheckEntry | null;
+  total_count: number;
+  has_staging: boolean;
+  staging_task: { status: 'pending' | 'done' | 'error'; error: string | null } | null;
+}
+
+export async function fetchAdminReportRecheck(reportId: string): Promise<AdminRecheckInfo> {
+  const res = await apiClient.get(`/admin/reports/${encodeURIComponent(reportId)}/recheck`);
+  return res.data as AdminRecheckInfo;
+}
+
+/** 触发复核重新生成（生成到 staging，用户仍看旧版）。仅存在未关闭复核单时可用。 */
+export async function regenerateAdminReportRecheck(reportId: string): Promise<void> {
+  await apiClient.post(`/admin/reports/${encodeURIComponent(reportId)}/recheck/regenerate`);
+}
+
+/** 下载 staging 新稿渲染的 PDF（admin 预览）。 */
+export async function downloadAdminRecheckStagingPdf(reportId: string): Promise<void> {
+  const res = await apiClient.raw.get(
+    `/admin/reports/${encodeURIComponent(reportId)}/recheck/staging-pdf`,
+    { responseType: 'blob' },
+  );
+  const blob = res.data as Blob;
+  const filename = pickFilenameFromHeaders(res.headers, `复核新稿_${reportId}.pdf`);
+  triggerBlobDownload(blob, filename);
+}
+
+/** 确认发布：staging 原子替换正式缓存，站内信+邮件通知用户。 */
+export async function publishAdminReportRecheck(reportId: string): Promise<AdminRecheckEntry> {
+  const res = await apiClient.post(`/admin/reports/${encodeURIComponent(reportId)}/recheck/publish`);
+  return res.data as AdminRecheckEntry;
+}
+
+/** 驳回复核（必须填理由）：站内信告知用户。 */
+export async function rejectAdminReportRecheck(
+  reportId: string,
+  reason: string,
+): Promise<AdminRecheckEntry> {
+  const res = await apiClient.post(
+    `/admin/reports/${encodeURIComponent(reportId)}/recheck/reject`,
+    { reason },
+  );
+  return res.data as AdminRecheckEntry;
 }
 
 export async function syncReportsFromActivations() {

@@ -5,7 +5,9 @@ from fastapi import APIRouter, HTTPException, Depends, status, Query, Response
 from fastapi.responses import JSONResponse, Response as FastResponse
 from pydantic import BaseModel
 from typing import Dict, Optional
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.auth import get_current_user
+from app.models.database import get_db
 from app.services.export_service import ExportService
 from app.utils.report_registry import ReportRegistry, _report_portal_unlocked
 from app.utils.simple_activation_manager import (
@@ -187,22 +189,14 @@ import uuid
 # 状态: {"status": "pending"|"done"|"error", "error": str|None, "created_at": float}
 _pdf_tasks: Dict[str, dict] = {}
 
-# 普通用户每份报告的重新生成（force）次数上限；admin 不限且不计数
-_MAX_USER_REGEN = 2
-
 
 async def _run_pdf_generation(
     report_id: str,
     user_id: str,
     base_dir: Optional[str],
     force: bool,
-    count_regen: bool = False,
 ):
-    """后台异步生成报告 markdown（PDF 由下载时即时转换）。
-
-    count_regen=True（普通用户 force 重新生成）时，仅在生成成功后
-    将 record.json 的 report_regen_count +1（失败不扣次数）。
-    """
+    """后台异步生成报告 markdown（PDF 由下载时即时转换）。"""
     from app.services.report_pdf_service import ReportPdfService, release_generation
 
     try:
@@ -219,12 +213,6 @@ async def _run_pdf_generation(
             "error": None,
             "created_at": _pdf_tasks.get(report_id, {}).get("created_at", asyncio.get_event_loop().time()),
         }
-        if count_regen:
-            registry = ReportRegistry(base_dir=base_dir) if base_dir else ReportRegistry()
-            record = registry.get_report_by_id(report_id)
-            if record is not None:
-                record["report_regen_count"] = int(record.get("report_regen_count") or 0) + 1
-                registry.save_record(record)
         logger.info("PDF 报告 markdown 生成完成: report_id=%s", report_id)
     except Exception as e:
         logger.exception("PDF 报告生成失败: report_id=%s", report_id)
@@ -242,7 +230,6 @@ def _kick_pdf_generation(
     user_id: str,
     base_dir: Optional[str],
     force: bool = False,
-    count_regen: bool = False,
 ) -> None:
     """若未在生成中，启动后台任务预生成报告 markdown（审核期间完成，批复后下载秒出）。
 
@@ -272,7 +259,7 @@ def _kick_pdf_generation(
         "error": None,
         "created_at": asyncio.get_event_loop().time(),
     }
-    asyncio.create_task(_run_pdf_generation(rid, user_id, base_dir, force, count_regen))
+    asyncio.create_task(_run_pdf_generation(rid, user_id, base_dir, force))
 
 
 def _ensure_review_started(
@@ -320,7 +307,14 @@ async def get_my_report_id(
         raise HTTPException(status_code=404, detail="未找到您的报告")
     # 进入报告页即触发审核计时起点（五阶段已完成时），并后台预生成报告
     report = _ensure_review_started(report, registry, str(root), user_id)
-    data = {"report_id": report.get("report_id"), "review_status": get_review_status(report)}
+    from app.services.report_recheck_service import get_recheck_status
+
+    data = {
+        "report_id": report.get("report_id"),
+        "review_status": get_review_status(report),
+        # 复核进行中（pending/regenerating/pending_confirm）时前端展示提示条并禁用申请入口
+        "recheck_status": get_recheck_status(report),
+    }
     if is_pending_review(report):
         data["review_deadline"] = report.get("review_deadline")
     return data
@@ -477,16 +471,8 @@ async def trigger_report_pdf(
     if blocked is not None:
         return {"report_id": report_id, "status": blocked["review_status"], **blocked}
 
-    # 限量重新生成（2026-08-15）：普通用户 force 重新生成每份报告限
-    # _MAX_USER_REGEN 次（成功才计数，见 _run_pdf_generation）；admin 不限不计数
-    is_admin = is_super_admin_user(current_user)
-    if force and not is_admin:
-        used = int((report or {}).get("report_regen_count") or 0)
-        if used >= _MAX_USER_REGEN:
-            raise HTTPException(
-                status_code=403,
-                detail="重新生成次数已用完（每份报告限 2 次），如有问题请联系客服",
-            )
+    # force 重新生成：用户侧已于 2026-08-18 下线（改走复核体系），
+    # 后端 force 能力保留，供 admin/运维脚本调用（不计数、不限次）。
 
     # 检查缓存是否已有 markdown
     service = ReportPdfService(base_dir=base_dir)
@@ -502,9 +488,7 @@ async def trigger_report_pdf(
     if (existing and existing.get("status") == "pending") or is_generation_inflight(report_id):
         return {"report_id": report_id, "status": "generating", "review_status": REVIEW_STATUS_APPROVED}
 
-    _kick_pdf_generation(
-        report_id, user_id, base_dir, force, count_regen=force and not is_admin
-    )
+    _kick_pdf_generation(report_id, user_id, base_dir, force)
 
     return {"report_id": report_id, "status": "generating", "review_status": REVIEW_STATUS_APPROVED}
 
@@ -529,14 +513,6 @@ async def get_report_pdf_status(
         is_generation_inflight,
     )
 
-    # 重新生成剩余次数（普通用户限量；admin 返回 null 表示不限）
-    registry = ReportRegistry(base_dir=base_dir) if base_dir else ReportRegistry()
-    report = registry.get_report_by_id(report_id) or {}
-    used = int(report.get("report_regen_count") or 0)
-    regen_remaining = (
-        None if is_super_admin_user(current_user) else max(0, _MAX_USER_REGEN - used)
-    )
-
     task = _pdf_tasks.get(report_id)
     # pending 以单轨锁为准：任务表 pending 但锁已释放 = 另一路径的任务已结束
     # （批复路径不写本表），此时落到缓存检查，避免状态永远卡在 generating
@@ -545,7 +521,6 @@ async def get_report_pdf_status(
             "report_id": report_id,
             "status": "generating",
             "review_status": REVIEW_STATUS_APPROVED,
-            "regen_remaining": regen_remaining,
         }
     if task and task.get("status") == "error":
         return {
@@ -553,7 +528,6 @@ async def get_report_pdf_status(
             "status": "error",
             "error": task.get("error", "生成失败"),
             "review_status": REVIEW_STATUS_APPROVED,
-            "regen_remaining": regen_remaining,
         }
 
     # done / 无任务记录 / 残留 pending：以缓存为准
@@ -563,13 +537,11 @@ async def get_report_pdf_status(
             "report_id": report_id,
             "status": "ready",
             "review_status": REVIEW_STATUS_APPROVED,
-            "regen_remaining": regen_remaining,
         }
     return {
         "report_id": report_id,
         "status": "none",
         "review_status": REVIEW_STATUS_APPROVED,
-        "regen_remaining": regen_remaining,
     }
 
 
@@ -624,3 +596,74 @@ async def download_report_pdf(
             "Content-Disposition": f"attachment; filename*=UTF-8''{filename_encoded}",
         },
     )
+
+
+# ── 报告复核申请（2026-08-18，tasks/report-review-plan.md）──────
+
+
+class RecheckRequest(BaseModel):
+    """复核申请：分类必选 + 描述选填"""
+    category: str  # content_issue 内容有问题 / download_issue 下载或打开失败
+    description: Optional[str] = None
+
+
+@router.post("/report-recheck/{report_id}")
+async def submit_report_recheck(
+    report_id: str,
+    payload: RecheckRequest,
+    activation_code: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """用户申请报告复核。
+
+    - content_issue → 建复核单（record.json 权威数据源）+ 双写 Feedback 工单；
+      每报告每天限 1 次，有未关闭复核单时 409
+    - download_issue → 只进 Feedback 通道（与右侧「反馈 bug」完全同流程同结果），
+      不建复核单、不出现重新生成按钮
+    """
+    from app.services import feedback_service, report_recheck_service
+
+    category = (payload.category or "").strip()
+    if category not in ("content_issue", "download_issue"):
+        raise HTTPException(status_code=400, detail="无效的复核分类")
+
+    base_dir, user_id = _verify_report_access(report_id, current_user, activation_code)
+    user_email = (current_user.get("email") or "").strip()
+    registry = ReportRegistry(base_dir=base_dir) if base_dir else ReportRegistry()
+    report = registry.get_report_by_id(report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="报告不存在")
+    code = (activation_code or report.get("activation_code") or "").strip().upper()
+    description = (payload.description or "").strip()
+    if len(description) > 2000:
+        raise HTTPException(status_code=400, detail="描述最长 2000 字")
+
+    if category == "download_issue":
+        # 与「反馈 bug」完全同流程：auto_ack + admin 通知 + SLA，不建复核单
+        await feedback_service.create_feedback(
+            db=db,
+            user_id=user_id,
+            user_email=user_email,
+            type_="bug",
+            content=report_recheck_service.compose_download_issue_feedback_content(
+                report_id, code, description
+            ),
+            attachment_ids=[],
+        )
+        await db.commit()
+        return {"report_id": report_id, "path": "feedback"}
+
+    try:
+        entry = await report_recheck_service.submit_recheck(
+            db,
+            registry,
+            report,
+            user_id=user_id,
+            user_email=user_email,
+            description=description,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    await db.commit()
+    return {"report_id": report_id, "path": "recheck", "recheck": entry}
