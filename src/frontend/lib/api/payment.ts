@@ -201,7 +201,7 @@ export async function getProducts(): Promise<ProductsResult> {
 }
 
 /** 团队分析报告联系邮箱兜底（与后端 settings.TEAM_ANALYSIS_EMAIL 默认值一致） */
-export const TEAM_ANALYSIS_EMAIL_FALLBACK = 'soulhappylab@163.com';
+export const TEAM_ANALYSIS_EMAIL_FALLBACK = 'xunlu.lab@outlook.com';
 
 let cachedTeamAnalysisEmail: string | null = null;
 

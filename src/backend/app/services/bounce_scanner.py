@@ -178,6 +178,12 @@ class BounceScanner:
         conn = imaplib.IMAP4_SSL(cfg["host"], cfg["port"])
         try:
             conn.login(cfg["user"], cfg["pass"])
+            # 163/126 等网易邮箱要求登录后先发送 IMAP ID（RFC 2971）自报家门，
+            # 否则 select 被拒："Unsafe Login. Please contact kefu@188.com for help"
+            imaplib.Commands["ID"] = ("AUTH",)
+            conn._simple_command(
+                "ID", '("name" "openlife-bounce-scanner" "version" "1.0")'
+            )
             conn.select("INBOX")
 
             # 搜索条件：日期 >= lookback AND UID > last_uid

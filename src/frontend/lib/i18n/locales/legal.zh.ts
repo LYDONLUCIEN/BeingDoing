@@ -116,7 +116,7 @@ export const privacyPolicyZh = `版本日期：2026年7月10日
 
 如您对本隐私政策有任何疑问、意见或建议，或希望行使您的个人信息相关权利，可通过以下方式联系我们：
 
-· 电子邮箱：soulhappylab@163.com
+· 电子邮箱：xunlu.lab@outlook.com
 
 我们将在5个工作日内回复您的请求。
 
@@ -231,7 +231,7 @@ export const termsOfServiceZh = `版本日期：2026年7月10日
 
 如您对本服务条款有任何疑问，可通过以下方式联系我们：
 
-· 电子邮箱：soulhappylab@163.com
+· 电子邮箱：xunlu.lab@outlook.com
 
 请您在使用本平台前，务必仔细阅读并充分理解上述《隐私政策》与《服务条款》的全部内容。
 `;

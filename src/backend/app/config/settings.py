@@ -106,14 +106,14 @@ class Settings(BaseSettings):
     SMTP_FROM_EMAIL: Optional[str] = None
     SMTP_FROM_NAME: str = "OpenLife"
     # 团队分析报告联系邮箱（交付邮件/站内信/前端提示共用，经 /payment/products 下发前端）
-    TEAM_ANALYSIS_EMAIL: str = "soulhappylab@163.com"
+    TEAM_ANALYSIS_EMAIL: str = "xunlu.lab@outlook.com"
     SMTP_USE_SSL: bool = True
     SMTP_USE_TLS: bool = False
     SMTP_TIMEOUT_SECONDS: int = 20
 
     # 退信扫描（IMAP）配置——用于群发邮件后识别不可达邮箱
-    # 默认复用 SMTP 账号；163 邮箱需在后台单独开启 IMAP 服务并生成授权码
-    BOUNCE_IMAP_HOST: Optional[str] = None       # 例：imap.163.com
+    # 默认复用 SMTP 账号（当前为 Outlook，用应用密码即可，SMTP/IMAP 通用）
+    BOUNCE_IMAP_HOST: Optional[str] = None       # 例：outlook.office365.com
     BOUNCE_IMAP_PORT: int = 993
     BOUNCE_IMAP_USER: Optional[str] = None       # 不填则回退 SMTP_USER
     BOUNCE_IMAP_PASS: Optional[str] = None       # 不填则回退 SMTP_PASS

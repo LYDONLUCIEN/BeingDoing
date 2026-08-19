@@ -89,3 +89,6 @@ uidesign/font/*.zip
 src/backend/certs/
 .start_env
 test/report0816
+
+# 本地 env 备份（含密钥，禁止入库）
+.env.bak-*

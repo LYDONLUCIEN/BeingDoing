@@ -105,11 +105,13 @@ LLM_PEAK_HOURS=09:00-12:00,14:00-18:00
 # LLM_PRICING_JSON={"deepseek-v4-pro":[{"from":"2026-08-17T00:00:00+08:00","peak":{"hit":0.30,"miss":9.0,"out":27.0},"off_peak":{"hit":0.15,"miss":4.5,"out":13.5}}]}
 
 # 可选：SMTP 邮件（忘记密码功能）
+# 当前用 163 邮箱：465 端口 + SSL（SMTP_USE_SSL=True），密码为 163 客户端授权码
+# （2026-08-19 试过换 Outlook：微软在账号层面禁用个人邮箱 SMTP/IMAP 基本认证，无解，回退 163）
 SMTP_HOST=smtp.163.com
 SMTP_PORT=465
 SMTP_USER=xxx@163.com
 SMTP_PASS=授权码
-TEAM_ANALYSIS_EMAIL=soulhappylab@163.com  # 团队分析报告联系邮箱（前后端共用，ADR-0018）
+TEAM_ANALYSIS_EMAIL=xunlu.lab@outlook.com  # 团队分析报告联系邮箱（前后端共用，ADR-0018；仅联系地址，与发信通道无关）
 
 # 可选：支付模块（P1 折扣券；P2a 支付宝闭环已上线，微信 P2b 预留）
 # 商品目录（ADR-0008；2026-07-28 起对外口径改回：季度套餐 / 年度套餐，内部 SKU 仍为 quarterly_package/annual_package）
@@ -293,7 +295,7 @@ python scripts/init_db.py
 - **延期体系（ADR-0016，2026-08-08 起）**：完整码首次过期当天，每日扫描 job（`activation_expiry_scan`，默认 10:00）给激活人发邮件+站内信送**免费 7 天续期**（每码一次，`free_renewal_offered_at`/`free_renewal_claimed_at` 幂等；存量已过期码首次扫描全量补发）；链接 → `/dashboard/codes?free_renewal=<code>` 弹窗手动领取，不限时、领取后从当天起 +7 天。付费续期统一 **9.9 元 / 7 天**（`RENEWAL_PRICE=990`/`RENEWAL_DAYS=7`，旧 20 元/90 天下线仅历史订单展示），与免费解耦、不限次、active/expired 均可买、不可退。关键文件：`app/services/activation_expiry_scan.py`、`POST /simple-auth/codes/free-renewal/claim`、前端 `FreeRenewalClaimModal`。
 - **多码展示口径（2026-08-08 起）**：交付码等价、不区分用途——订单页（`dashboard/orders`）、支付结果页、PurchaseModal 成功视图对多码套餐一律平级列出全部码（`激活码（共 N 个）`，meta.codes 并集 delivered_code/gift_codes 去重），单码订单才保留「你的激活码」单独展示；弹窗消耗升级后通过 `onUpgraded(trialCode, consumedCode)` 把已消耗码从展示列表排除。前端请求被取消（页面刷新/导航，`isRequestCanceled`，含 axios ERR_CANCELED/“Request aborted”）一律静默忽略，不作为错误展示。
 - **团队分析报告提示（2026-08-10 起）**：年度套餐（3 人团队码）交付时引导用户邮件申请团队分析报告——后端 `_deliver_order` 随单发站内信（`type=team_analysis_notice`，交付幂等故仅一次）并在交付邮件附同一文案（`payment_service._team_analysis_notice()` 动态生成，邮箱独占一行避免纯文本邮件误识别链接）；前端支付结果页交付后弹 `TeamAnalysisNoticeModal`（每单一次，关闭后再弹消耗升级避免叠加），PurchaseModal 成功视图内嵌 `TeamAnalysisNoticeBox`。
-- **团队分析联系邮箱（ADR-0018，2026-08-16 起）**：环境变量 `TEAM_ANALYSIS_EMAIL`（默认 soulhappylab@163.com）统一管理——后端交付邮件/站内信经 `_team_analysis_notice()` 使用；前端经 `GET /payment/products` 响应字段 `team_analysis_email` 下发（`lib/api/payment.ts` 的 `getTeamAnalysisEmail()` 模块级缓存 + `TEAM_ANALYSIS_EMAIL_FALLBACK` 兑底）。
+- **团队分析联系邮箱（ADR-0018，2026-08-16 起）**：环境变量 `TEAM_ANALYSIS_EMAIL`（默认 xunlu.lab@outlook.com，2026-08-19 起发件邮箱从 163 切换为 Outlook）统一管理——后端交付邮件/站内信经 `_team_analysis_notice()` 使用；前端经 `GET /payment/products` 响应字段 `team_analysis_email` 下发（`lib/api/payment.ts` 的 `getTeamAnalysisEmail()` 模块级缓存 + `TEAM_ANALYSIS_EMAIL_FALLBACK` 兑底）。
 
 ## 智能体架构
 
