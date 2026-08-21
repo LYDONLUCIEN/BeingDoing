@@ -1,0 +1,29 @@
+{
+  "nickname": "",
+  "gender": "女",
+  "age": "31-36",
+  "education_school": "",
+  "education_degree": "本科",
+  "education_major": "视觉传达",
+  "city": "南京",
+  "family_status": [
+    "未婚"
+  ],
+  "family_affects_career": "不会",
+  "career_status": "离职待业",
+  "industry": "互联网",
+  "position": "交互设计师",
+  "work_years_total": "8",
+  "work_history": "8年4份工作，1年时间离职有两份，3年离职的有两份。都在互联网相关的公司工作。最多3年就会感到无聊枯燥跳槽。",
+  "company_types": [
+    "民企"
+  ],
+  "salary_level": "12000",
+  "core_needs": [
+    "想转型但不知道如何开始",
+    "职业倦怠",
+    "职业方向不清晰"
+  ],
+  "core_needs_other": "",
+  "past_consultation": "有"
+}

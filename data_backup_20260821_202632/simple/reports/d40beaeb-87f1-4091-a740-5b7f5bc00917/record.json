@@ -1,0 +1,77 @@
+{
+  "report_id": "d40beaeb-87f1-4091-a740-5b7f5bc00917",
+  "activation_code": "GI2DKUURQC",
+  "user_id": "4cac6f6a-a4e8-4bca-bb6a-aa7ecb59e317",
+  "created_at": "2026-04-09T12:00:31.098335Z",
+  "updated_at": "2026-04-25T09:04:31.439501Z",
+  "status": "in_progress",
+  "final_conclusion": null,
+  "steps": {
+    "values": {
+      "step_id": "values",
+      "selected_session_id": "8e9eafac-032d-4bf8-91f6-00b5537c32ab",
+      "locked": true,
+      "session_ids": [
+        "8e9eafac-032d-4bf8-91f6-00b5537c32ab",
+        "t_1775743055247_04xj9e6"
+      ],
+      "updated_at": "2026-04-25T09:04:31.435078Z",
+      "anchor_summary": {
+        "goals": "用户最终确认了5个核心价值观词：成就感、获得感（需回报）、发展前景、人际关系（倾向专业高效/清晰界限）、稳步提升。其中，获得感强调回报，人际关系注重界限和效率，发展前景与稳步提升在探索中融合为稳健成长。目标已达成，价值观探索收敛，无新增重要信息。",
+        "personality": "务实、清晰、注重效率与原则",
+        "style": "简洁、直接、具体",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-04-10T06:05:20.802383Z"
+    },
+    "strengths": {
+      "step_id": "strengths",
+      "selected_session_id": "8e9eafac-032d-4bf8-91f6-00b5537c32ab",
+      "locked": true,
+      "session_ids": [
+        "8e9eafac-032d-4bf8-91f6-00b5537c32ab"
+      ],
+      "updated_at": "2026-04-25T08:54:44.087937Z",
+      "anchor_summary": {
+        "goals": "本阶段用户确认了四项核心优势：精通CAD及多种建模软件、通过直观探索与实践模仿快速学习、务实推进者、在自主空间内高效执行。目标达成顺利，已累计沉淀8项优势，凸显了可迁移的能力线索如系统思维、目标导向和实践学习。",
+        "personality": "务实、目标导向、直接",
+        "style": "简洁、具体、行动导向",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-04-10T08:54:46.957568Z"
+    },
+    "interests": {
+      "step_id": "interests",
+      "selected_session_id": "t_1775810933636_vcdafae",
+      "locked": true,
+      "session_ids": [
+        "8e9eafac-032d-4bf8-91f6-00b5537c32ab",
+        "t_1775810933636_vcdafae"
+      ],
+      "updated_at": "2026-04-25T09:04:31.436530Z",
+      "anchor_summary": {
+        "goals": "本阶段成功沉淀了用户确认的三个核心热爱方向：职业规划、突破发展和人文旅行。这些方向体现了用户对发展路径的系统性规划、内在向上驱动力以及对多元世界体验的向往。目标达成，用户无异议，热忱发现阶段完成。",
+        "personality": "坦诚、目标驱动、坚持",
+        "style": "简洁、直接、务实",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-04-19T08:52:40.504934Z"
+    },
+    "purpose": {
+      "step_id": "purpose",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [
+        "8e9eafac-032d-4bf8-91f6-00b5537c32ab"
+      ],
+      "updated_at": "2026-04-25T09:04:31.439450Z"
+    },
+    "rumination": {
+      "step_id": "rumination",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [],
+      "updated_at": "2026-04-09T12:00:31.098335Z"
+    }
+  }
+}

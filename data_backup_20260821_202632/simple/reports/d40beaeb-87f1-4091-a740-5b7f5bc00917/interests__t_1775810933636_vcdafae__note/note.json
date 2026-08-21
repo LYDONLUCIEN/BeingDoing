@@ -1,0 +1,45 @@
+{
+  "session_id": "d40beaeb-87f1-4091-a740-5b7f5bc00917",
+  "category": "interests__t_1775810933636_vcdafae__note/note",
+  "notes": [
+    {
+      "id": "note_1",
+      "type": "pending_conclusion_created",
+      "payload": {
+        "phase": "interests",
+        "thread_id": "t_1775810933636_vcdafae",
+        "pending_conclusion": {
+          "summary": "小李的核心热爱源于对发展路径的规划、对突破现状的追求以及对多元世界的体验。具体表现为：热衷于系统性研究职业可能性的‘职业规划’；内在驱动不断向更高目标进发的‘突破发展’；以及向往融合体验不同文化与风景的‘人文旅行’。这三者共同构成了其行动的动力与精神愿景。",
+          "keywords": [
+            "职业规划",
+            "突破发展",
+            "人文旅行"
+          ]
+        }
+      },
+      "created_at": "2026-04-10T09:31:15.781587Z"
+    },
+    {
+      "id": "note_2",
+      "type": "dimension_conclusion_confirmed",
+      "payload": {
+        "phase": "interests",
+        "thread_id": "t_1775810933636_vcdafae",
+        "dimension_conclusion": {
+          "summary": "小李的核心热爱源于对发展路径的规划、对突破现状的追求以及对多元世界的体验。具体表现为：热衷于系统性研究职业可能性的‘职业规划’；内在驱动不断向更高目标进发的‘突破发展’；以及向往融合体验不同文化与风景的‘人文旅行’。这三者共同构成了其行动的动力与精神愿景。",
+          "keywords": [
+            "职业规划",
+            "突破发展",
+            "人文旅行"
+          ]
+        }
+      },
+      "created_at": "2026-04-10T09:41:45.182487Z"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-04-10T09:31:15.781587Z",
+    "updated_at": "2026-04-10T09:41:45.182487Z",
+    "total_notes": 2
+  }
+}

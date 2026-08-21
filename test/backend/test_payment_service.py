@@ -800,12 +800,12 @@ async def test_deliver_annual_team_analysis_notice(fake_channel, tmp_path):
     assert rows[0].type == "team_analysis_notice"
     assert rows[0].read_at is None
     assert settings.TEAM_ANALYSIS_EMAIL in rows[0].content
-    assert "xunlu.lab@outlook.com" not in rows[0].content
+    assert "soulhappylab@163.com" not in rows[0].content
 
     # 交付邮件附同一文案（邮箱独占一行）
     kwargs = ps_mod.EmailService.send_email.await_args.kwargs
     assert settings.TEAM_ANALYSIS_EMAIL in kwargs["body_text"]
-    assert "xunlu.lab@outlook.com" not in kwargs["body_text"]
+    assert "soulhappylab@163.com" not in kwargs["body_text"]
 
     # 重复回调幂等：不重复发站内信
     await PaymentService.handle_alipay_notify(_notify_form(order))

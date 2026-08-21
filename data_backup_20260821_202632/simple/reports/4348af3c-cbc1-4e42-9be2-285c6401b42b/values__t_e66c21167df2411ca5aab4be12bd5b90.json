@@ -1,0 +1,30 @@
+{
+  "report_id": "4348af3c-cbc1-4e42-9be2-285c6401b42b",
+  "category": "values__t_e66c21167df2411ca5aab4be12bd5b90",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "你好呀，欢迎来到第一轮咨询！很高兴能和你一起开启这段探索之旅。\n\n今天我们的目标很轻松，也很有意义：**帮助你发现并确认对你职业发展最重要的5个价值观关键词**。简单来说，就是搞清楚——在工作和生活中，什么东西对你来说是最重要的？是自由、稳定、成就感、人际关系，还是别的什么？\n\n明确自己的价值观，就像给自己装了一个内心的指南针。当你面临选择时，它能帮你做出更坚定的决定；当你感到焦虑或不满时，它能帮你识别情绪的根源。\n\n在开始之前，我想先问你一个轻松的问题：\n\n**试着想一想，在你心中，目前能想到的、对你最重要的价值观关键词是什么？哪怕只想到1个、2个，或者完全想不出来，都完全没关系，放心说“不知道”就行～**",
+      "thread_id": "t_e66c21167df2411ca5aab4be12bd5b90",
+      "activation_session_id": "39348570-9e15-4365-8c8b-837bfaf6d89e",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 1682,
+        "completion_tokens": 164,
+        "total_tokens": 1846,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 1682
+      },
+      "created_at": "2026-06-04T06:21:32.823810Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-06-04T06:21:32.824584Z",
+    "updated_at": "2026-06-04T06:21:32.824612Z",
+    "total_messages": 1
+  }
+}

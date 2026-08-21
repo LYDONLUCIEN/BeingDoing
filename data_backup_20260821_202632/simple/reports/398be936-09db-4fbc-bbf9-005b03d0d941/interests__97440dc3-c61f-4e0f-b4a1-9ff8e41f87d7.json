@@ -1,0 +1,47 @@
+{
+  "session_id": "398be936-09db-4fbc-bbf9-005b03d0d941",
+  "category": "interests__97440dc3-c61f-4e0f-b4a1-9ff8e41f87d7",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "你好，欢迎回来。很高兴能继续我们的职业规划探索之旅。\n\n在上一轮，我们深入了解了你的价值观和优势，这为我们描绘了你内心珍视什么，以及你擅长如何行动。今天，我们将开启一个更令人兴奋的环节：**发现你的“热爱”**。\n\n所谓“热爱”，是指那些你真正感兴趣、充满好奇，让你愿意主动投入时间去了解、去探索的领域。它可能是一个学科、一项活动、一种现象，比如“心理学”、“户外徒步”、“古典音乐”或者“社会变迁”。找到这些领域，能帮助我们看见你内心真正的动力源泉。\n\n那么，让我们开始吧。首先，我想请你凭直觉想一想：\n\n**你自己认为，你有哪些热爱的事情或领域？请列举一些你真正感兴趣、充满好奇的方向。暂时没答案的话，放心说‘不知道’就行～**",
+      "session_id": "97440dc3-c61f-4e0f-b4a1-9ff8e41f87d7",
+      "step_id": "interests",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 2026,
+        "completion_tokens": 193,
+        "total_tokens": 2219,
+        "prompt_cache_hit_tokens": 1216,
+        "prompt_cache_miss_tokens": 810
+      },
+      "created_at": "2026-04-20T16:46:31.049864Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    },
+    {
+      "role": "assistant",
+      "content": "你好！很高兴能和你继续这次探索。在上一轮，我们梳理了对你非常重要的价值观和优势，这让我们对你的内在特质有了更深的了解。\n\n今天，我们进入一个更轻松、也很有趣的环节：**发现你的“热爱”**。所谓“热爱”，就是那些你真正感兴趣、充满好奇的领域或事物。它不一定是你现在正在做的事，也可能是你一直想了解、看到相关话题就忍不住点进去、或者单纯觉得“这真有意思”的方向。它通常是一个名词性的领域，比如“心理学”、“星空”、“编程”、“传统手工艺”等等。\n\n我们的目标是，一起找到至少6个这样的领域，然后从中选出你最核心的3个热爱。\n\n那么，让我们开始吧。第一个问题很简单，也可能会有点难：\n\n**你自己认为，你有哪些热爱的事情或领域？请列举一些你真正感兴趣、充满好奇的方向。暂时没答案的话，放心说“不知道”就行～**",
+      "session_id": "97440dc3-c61f-4e0f-b4a1-9ff8e41f87d7",
+      "step_id": "interests",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 2009,
+        "completion_tokens": 213,
+        "total_tokens": 2222,
+        "prompt_cache_hit_tokens": 1216,
+        "prompt_cache_miss_tokens": 793
+      },
+      "created_at": "2026-04-20T16:46:34.479492Z",
+      "message_id": "msg_2",
+      "id": "msg_2"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-04-20T16:46:31.050667Z",
+    "updated_at": "2026-04-20T16:46:34.480448Z",
+    "total_messages": 2
+  }
+}

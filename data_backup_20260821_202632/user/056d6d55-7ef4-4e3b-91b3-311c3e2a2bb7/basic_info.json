@@ -1,0 +1,30 @@
+{
+  "nickname": "Bruce",
+  "gender": "男",
+  "age": "42+",
+  "education_school": "斯图加特大学",
+  "education_degree": "研究生",
+  "education_major": "国民经济",
+  "city": "上海",
+  "family_status": [
+    "已婚",
+    "有子女",
+    "需兼顾家人照料"
+  ],
+  "family_affects_career": "会",
+  "career_status": "在职",
+  "industry": "人力资源",
+  "position": "",
+  "work_years_total": "15",
+  "work_history": "肯耐珂萨科技有限公司",
+  "company_types": [
+    "民企"
+  ],
+  "salary_level": "",
+  "core_needs": [
+    "职业方向不清晰",
+    "想转型但不知道如何开始"
+  ],
+  "core_needs_other": "",
+  "past_consultation": "有"
+}

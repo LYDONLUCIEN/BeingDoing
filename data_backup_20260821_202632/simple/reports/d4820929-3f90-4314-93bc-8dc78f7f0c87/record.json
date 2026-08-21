@@ -1,0 +1,84 @@
+{
+  "report_id": "d4820929-3f90-4314-93bc-8dc78f7f0c87",
+  "activation_code": "7E4064DLKL",
+  "user_id": "69cd0743-6d4d-4b88-9e84-6b9b99548da8",
+  "created_at": "2026-06-12T13:46:10.086640Z",
+  "updated_at": "2026-06-14T10:14:18.042296Z",
+  "status": "in_progress",
+  "final_conclusion": null,
+  "steps": {
+    "values": {
+      "step_id": "values",
+      "selected_session_id": "t_0d25610a282b4cd78668241b2ede326c",
+      "locked": true,
+      "session_ids": [
+        "t_0d25610a282b4cd78668241b2ede326c"
+      ],
+      "updated_at": "2026-06-12T15:42:24.902066Z",
+      "anchor_summary": {
+        "goals": "用户最终确认了5个核心价值观词及其优先级顺序：收入、成长、乐观、真诚、自由，并给出了个人化解释。本阶段目标已达成。",
+        "personality": "坦诚、反思型，在职业探索中曾感到迷茫和煎熬，但能积极思考并澄清价值观。",
+        "style": "表达直接、有条理，能区分概念，在引导下逐步明确自己的需求。",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-06-12T14:42:47.522922Z"
+    },
+    "strengths": {
+      "step_id": "strengths",
+      "selected_session_id": "t_e381abaf39204759841d87ac067418b8",
+      "locked": true,
+      "session_ids": [
+        "t_e381abaf39204759841d87ac067418b8"
+      ],
+      "updated_at": "2026-06-12T15:57:14.224935Z",
+      "anchor_summary": {
+        "goals": "本阶段已沉淀的核心结论：用户确认了5个优势项——耐心专注地完成精细任务、高效配合确保流程顺畅、主动创造机会并推动尝试、善于接收并梳理复杂信息、乐于分享与支持他人。其中高效配合、主动创造、乐于分享三项与成功相关，另两项有充实感。可迁移能力线索：在需要深度投入、明确流程或协作环境的工作中能发挥优势。",
+        "personality": "用户性格沉稳、有耐心，善于反思和总结，愿意配合探索，具有利他倾向。",
+        "style": "文字表达具体、平实，多用实际例子（如打网球、手术室跟台），逻辑清晰。",
+        "conflicts": "用户曾自述在业务岗感到思维跟不上，与自身耐心慢热的优势存在潜在冲突，但已通过优势确认和职业建议得到化解。"
+      },
+      "anchor_updated_at": "2026-06-12T15:43:06.453630Z"
+    },
+    "interests": {
+      "step_id": "interests",
+      "selected_session_id": "t_527f7b646c6f46799c9e202b44fd5836",
+      "locked": true,
+      "session_ids": [
+        "t_527f7b646c6f46799c9e202b44fd5836"
+      ],
+      "updated_at": "2026-06-14T09:33:35.269961Z",
+      "anchor_summary": {
+        "goals": "本阶段通过层层追问，帮助用户从6个候选热爱领域中确认了3个核心热爱：深度沟通与分享、流程优化、技术钻研。这三个方向与用户此前确认的价值观（真诚、成长）和优势（耐心专注、梳理信息、乐于分享）高度吻合，实现了热爱的精准沉淀，为后续职业导航奠定了清晰基础。",
+        "personality": "坦诚直接，善于内省，沟通中能快速聚焦核心，不回避选择。",
+        "style": "简短精炼，表达直接，多用短语确认。",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-06-14T08:49:58.641390Z"
+    },
+    "purpose": {
+      "step_id": "purpose",
+      "selected_session_id": "t_e23e913d887e445bb21dd62e8a417f75",
+      "locked": true,
+      "session_ids": [
+        "t_e23e913d887e445bb21dd62e8a417f75"
+      ],
+      "updated_at": "2026-06-14T10:14:18.036932Z",
+      "anchor_summary": {
+        "goals": "本阶段通过梳理10段具体经历，确认了谢春梅的工作使命：她希望用真诚的陪伴和实在的知识传递，帮助他人顺利度过难关或获得成长，同时自由选择付出的方式并感受到自身能力的价值。该使命融合了她视“真诚”“成长”为核心的价值取向，用户对总结表示认可。",
+        "personality": "安静、真诚、不张扬，帮助他人时自然且不求回报，行动力与耐心兼具。",
+        "style": "表达简短直接，常用价值观关键词回应，叙述朴实不浮夸。",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-06-14T09:38:48.739358Z"
+    },
+    "rumination": {
+      "step_id": "rumination",
+      "selected_session_id": "t_c58c79175c8643829ca5f1cab7aad4cc",
+      "locked": false,
+      "session_ids": [
+        "t_c58c79175c8643829ca5f1cab7aad4cc"
+      ],
+      "updated_at": "2026-06-14T10:14:18.042256Z"
+    }
+  }
+}

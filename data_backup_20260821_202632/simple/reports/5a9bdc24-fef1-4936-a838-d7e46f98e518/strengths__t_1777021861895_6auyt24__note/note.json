@@ -1,0 +1,63 @@
+{
+  "session_id": "5a9bdc24-fef1-4936-a838-d7e46f98e518",
+  "category": "strengths__t_1777021861895_6auyt24__note/note",
+  "notes": [
+    {
+      "id": "note_1",
+      "type": "pending_conclusion_created",
+      "payload": {
+        "phase": "strengths",
+        "thread_id": "t_1777021861895_6auyt24",
+        "pending_conclusion": {
+          "summary": "用户确认了5个优势关键词：点燃氛围、快速洞察问题根源、深度倾听与共情、结构化推进、探求事物本质。其中‘结构化推进’被标记为‘有充实感且与成功有关’，其余四项均标记为‘有充实感’。",
+          "keywords": [
+            "点燃氛围",
+            "快速洞察问题根源",
+            "深度倾听与共情",
+            "结构化推进",
+            "探求事物本质"
+          ],
+          "strength_markers": [
+            "b",
+            "b",
+            "b",
+            "a",
+            "b"
+          ]
+        }
+      },
+      "created_at": "2026-04-24T09:28:10.280782Z"
+    },
+    {
+      "id": "note_2",
+      "type": "dimension_conclusion_confirmed",
+      "payload": {
+        "phase": "strengths",
+        "thread_id": "t_1777021861895_6auyt24",
+        "dimension_conclusion": {
+          "summary": "用户确认了5个优势关键词：点燃氛围、快速洞察问题根源、深度倾听与共情、结构化推进、探求事物本质。其中‘结构化推进’被标记为‘有充实感且与成功有关’，其余四项均标记为‘有充实感’。",
+          "keywords": [
+            "点燃氛围",
+            "快速洞察问题根源",
+            "深度倾听与共情",
+            "结构化推进",
+            "探求事物本质"
+          ],
+          "strength_markers": [
+            "b",
+            "b",
+            "b",
+            "a",
+            "b"
+          ]
+        }
+      },
+      "created_at": "2026-04-24T09:28:12.625241Z"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-04-24T09:28:10.280782Z",
+    "updated_at": "2026-04-24T09:28:12.625241Z",
+    "total_notes": 2
+  }
+}

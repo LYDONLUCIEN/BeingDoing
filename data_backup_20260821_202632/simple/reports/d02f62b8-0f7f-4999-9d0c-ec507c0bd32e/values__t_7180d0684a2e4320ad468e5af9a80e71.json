@@ -1,0 +1,30 @@
+{
+  "report_id": "d02f62b8-0f7f-4999-9d0c-ec507c0bd32e",
+  "category": "values__t_7180d0684a2e4320ad468e5af9a80e71",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "亲爱的来访者，欢迎你来到第一轮咨询！我是你的职业规划咨询师，很高兴能和你一起开启这段探索之旅。\n\n本轮咨询的目标，是**帮助你发现并确认对你职业发展最重要的5个价值观关键词**。简单来说，价值观就像你职业道路上的“指南针”——它决定了什么工作会让你感到充实、什么选择会让你心安、什么环境会让你充满动力。当你迷茫时，价值观能帮你理清头绪，找到情绪的根源。\n\n让我们先放松一下。在开始之前，试着想一想，**在你心中，对你最重要的5个价值观关键词是什么？** 暂时没答案的话，放心说“不知道”就行～ 比如，是“稳定”、“自由”、“成就感”，还是“人际关系”？\n\n你可以先告诉我你想到的任何词，哪怕只有一个，我们也可以从它开始聊起。",
+      "thread_id": "t_7180d0684a2e4320ad468e5af9a80e71",
+      "activation_session_id": "6cf61443-1c92-4183-8cd5-ab1e407f24b5",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 1816,
+        "completion_tokens": 168,
+        "total_tokens": 1984,
+        "prompt_cache_hit_tokens": 1024,
+        "prompt_cache_miss_tokens": 792
+      },
+      "created_at": "2026-06-04T06:52:31.855907Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-06-04T06:52:31.856621Z",
+    "updated_at": "2026-06-04T06:52:31.856641Z",
+    "total_messages": 1
+  }
+}

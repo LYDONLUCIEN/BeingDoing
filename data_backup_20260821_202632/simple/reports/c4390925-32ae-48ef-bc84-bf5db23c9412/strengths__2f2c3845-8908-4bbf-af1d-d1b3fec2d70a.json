@@ -1,0 +1,29 @@
+{
+  "session_id": "c4390925-32ae-48ef-bc84-bf5db23c9412",
+  "category": "strengths__2f2c3845-8908-4bbf-af1d-d1b3fec2d70a",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "玉莹你好，很高兴再次与你进行咨询。上一轮我们深入探讨了你的职业价值观，明确了“自主平衡”、“安稳”、“意义感”、“热爱专精”和“情感联结”这五个核心关键词，它们是你职业选择的内在指南针。\n\n今天，我们将进入第二轮咨询，目标是：**帮助你发现并确认你最突出的5个优势**。优势是你自然而然就能做好的事，是你能量的来源。了解它们，能让你在寻找方向时更有力量，也更能找到让你感到充实的工作。\n\n那么，我们开始第一步。请你先凭直觉想一想，然后告诉我：\n\n**你自己认为你的优势有哪些？请尽量列举，不用考虑是否“足够好”或“算不算优势”。**",
+      "session_id": "2f2c3845-8908-4bbf-af1d-d1b3fec2d70a",
+      "step_id": "strengths",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 1625,
+        "completion_tokens": 166,
+        "total_tokens": 1791,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 1625
+      },
+      "created_at": "2026-04-14T12:26:36.300030Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-04-14T12:26:36.300802Z",
+    "updated_at": "2026-04-14T12:26:36.300821Z",
+    "total_messages": 1
+  }
+}

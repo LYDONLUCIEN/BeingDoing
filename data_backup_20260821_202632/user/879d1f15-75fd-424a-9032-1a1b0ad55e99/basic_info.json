@@ -1,0 +1,26 @@
+{
+  "nickname": "锐德",
+  "gender": "男",
+  "age": "25-30",
+  "education_school": "",
+  "education_degree": "",
+  "education_major": "英语",
+  "city": "北京",
+  "family_status": [
+    "未婚"
+  ],
+  "family_affects_career": "不确定",
+  "career_status": "",
+  "industry": "",
+  "position": "",
+  "work_years_total": "",
+  "work_history": "",
+  "company_types": [],
+  "salary_level": "",
+  "core_needs": [
+    "职业方向不清晰",
+    "其他"
+  ],
+  "core_needs_other": "如何平衡赚钱和技能提升",
+  "past_consultation": "无"
+}

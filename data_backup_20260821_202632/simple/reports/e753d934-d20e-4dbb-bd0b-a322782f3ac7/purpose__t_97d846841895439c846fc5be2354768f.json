@@ -1,0 +1,488 @@
+{
+  "report_id": "e753d934-d20e-4dbb-bd0b-a322782f3ac7",
+  "category": "purpose__t_97d846841895439c846fc5be2354768f",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "恭喜你即将完成整个职业探索旅程！这一轮，我们将一起发现你的工作使命——你内心深处最希望为他人提供的价值。\n\n真正长久的职业动力，往往来自于你的工作结果能实实在在地对他人产生积极影响。这种影响不需要惊天动地，哪怕很微小，只要它恰好契合了你的内心价值观，外界认可的正向反馈就会给你带来深深的满足感，驱动你继续走下去。\n\n还记得我们在第一轮一起探索出的对你最重要的5个价值观吗？它们是：**爱、成长、自由、公平、利他**。在接下来的讨论中，我们会用到它们。\n\n那我们现在开始吧。请你回想一下，在过去的生活或工作中，有没有哪些时刻，你觉得自己实实在在地帮助了别人、给别人带来了积极影响？可以和我分享**第一个**这样的经历吗？简单说说当时发生了什么就好。",
+      "thread_id": "t_97d846841895439c846fc5be2354768f",
+      "activation_session_id": "06e742f1-53b6-42e9-ba8a-07e3b4e9b24c",
+      "step_id": "purpose",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 3319,
+        "completion_tokens": 473,
+        "total_tokens": 3792,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 3319
+      },
+      "created_at": "2026-07-07T02:46:45.722254+00:00",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    },
+    {
+      "role": "user",
+      "content": "我经常帮助别人，但其中最让我印象深刻，成就感很强的是，在大学的时候，有一位朋友主动找到我说要聊一聊她的毕业设计，我记得当时我和她一起聊，产生很多新想法，她也感觉我的想法很不错，当时特别有成就感。她对自己的课题也更有动力了，我当时觉得非常有意思。",
+      "thread_id": "t_97d846841895439c846fc5be2354768f",
+      "activation_session_id": "06e742f1-53b6-42e9-ba8a-07e3b4e9b24c",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-07-07T02:50:25.314036+00:00",
+      "message_id": "msg_2",
+      "id": "msg_2"
+    },
+    {
+      "role": "assistant",
+      "content": "这段经历真美好。你在和朋友聊毕业设计的过程中，激发了她的新想法，也让她对自己的课题更有动力——这种\"点燃他人灵感\"的时刻，确实会带来很深的成就感。\n\n现在我们一起看看，这段经历中你提供的帮助，对应着哪些价值观。你觉得在这段对话里，你帮朋友获得的——比如新想法、对课题的动力——更多体现了**利他**（在保证自己利益之后，去做对别人有贡献的事情），还是**成长**（希望学到更多、能够进步），或者还有**爱**（对这件事本身的热爱与兴趣）？你认为哪些是你在这段经历中真正传递出去的？",
+      "thread_id": "t_97d846841895439c846fc5be2354768f",
+      "activation_session_id": "06e742f1-53b6-42e9-ba8a-07e3b4e9b24c",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 3530,
+        "completion_tokens": 257,
+        "total_tokens": 3787,
+        "prompt_cache_hit_tokens": 3200,
+        "prompt_cache_miss_tokens": 330
+      },
+      "created_at": "2026-07-07T02:50:33.635855+00:00",
+      "message_id": "msg_3",
+      "id": "msg_3"
+    },
+    {
+      "role": "user",
+      "content": "我觉得这三种都有吧",
+      "thread_id": "t_97d846841895439c846fc5be2354768f",
+      "activation_session_id": "06e742f1-53b6-42e9-ba8a-07e3b4e9b24c",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-07-07T02:51:02.447560+00:00",
+      "message_id": "msg_4",
+      "id": "msg_4"
+    },
+    {
+      "role": "assistant",
+      "content": "嗯，听起来这段经历确实同时流动着对课题的热爱、帮朋友成长的快乐，以及想要对他人有所贡献的心意。我们把它记下来。\n\n那现在可以继续想想，还有没有其他让你觉得\"我帮到了别人\"的时刻？和第一段不一样的场景也可以，说说**第二个经历**吧。",
+      "thread_id": "t_97d846841895439c846fc5be2354768f",
+      "activation_session_id": "06e742f1-53b6-42e9-ba8a-07e3b4e9b24c",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 3669,
+        "completion_tokens": 459,
+        "total_tokens": 4128,
+        "prompt_cache_hit_tokens": 3456,
+        "prompt_cache_miss_tokens": 213
+      },
+      "created_at": "2026-07-07T02:51:14.156191+00:00",
+      "message_id": "msg_5",
+      "id": "msg_5"
+    },
+    {
+      "role": "user",
+      "content": "哦，我还想到，我考上研究生以后开始接一些课程，上课的过程让我感觉自己帮助到了考生，自己也很有成就感。我会给考生备考建议，同时写一些经验贴，希望能够帮助到一些人。",
+      "thread_id": "t_97d846841895439c846fc5be2354768f",
+      "activation_session_id": "06e742f1-53b6-42e9-ba8a-07e3b4e9b24c",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-07-07T02:54:01.046218+00:00",
+      "message_id": "msg_6",
+      "id": "msg_6"
+    },
+    {
+      "role": "assistant",
+      "content": "这段经历真好，把考上研究生的经验转化为帮助别人的力量——给考生上课、写经验贴，让后来的人少走弯路。这种\"我走过这条路，想把路标画清楚给你\"的心情，和上一段帮朋友聊毕设又有些不同，更像是在有意识地传递方法与信心。\n\n那我们还是来做匹配：在这段经历中，你帮助考生们获得的——比如备考方向、信心、知识——你觉得对应的是哪些价值观？是**利他**、**成长**，还是也有**爱**的成分？你感觉哪些在其中得到了体现？",
+      "thread_id": "t_97d846841895439c846fc5be2354768f",
+      "activation_session_id": "06e742f1-53b6-42e9-ba8a-07e3b4e9b24c",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 3781,
+        "completion_tokens": 404,
+        "total_tokens": 4185,
+        "prompt_cache_hit_tokens": 3584,
+        "prompt_cache_miss_tokens": 197
+      },
+      "created_at": "2026-07-07T02:54:12.779580+00:00",
+      "message_id": "msg_7",
+      "id": "msg_7"
+    },
+    {
+      "role": "user",
+      "content": "在这段经历中，利他是首要的，因为我的专业很冷门，我希望能为备考无绪的人提供帮助，当然其中有爱的成分，我很喜欢我的专业，我很乐意去教别人，成长的部分比较小，但也有，教课的过程中我会对知识复习，会有一些成长。",
+      "thread_id": "t_97d846841895439c846fc5be2354768f",
+      "activation_session_id": "06e742f1-53b6-42e9-ba8a-07e3b4e9b24c",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-07-07T02:55:43.451055+00:00",
+      "message_id": "msg_8",
+      "id": "msg_8"
+    },
+    {
+      "role": "assistant",
+      "content": "嗯，这段经历里\"利他\"确实最突出，爱和成长也自然地交织其中——在帮助别人的同时，自己也在巩固与重温热爱。我们记下来。\n\n那我们继续挖掘。现在请你想一想，除了给朋友建议或者教学这类场景，还有没有其他时候，你觉得自己给别人带来了积极影响？可以是完全不同的一种情境，比如日常生活中、志愿活动里、或者实习中遇到的某个瞬间。说说你的**第三个经历**吧。",
+      "thread_id": "t_97d846841895439c846fc5be2354768f",
+      "activation_session_id": "06e742f1-53b6-42e9-ba8a-07e3b4e9b24c",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 3965,
+        "completion_tokens": 574,
+        "total_tokens": 4539,
+        "prompt_cache_hit_tokens": 3712,
+        "prompt_cache_miss_tokens": 253
+      },
+      "created_at": "2026-07-07T02:55:59.701565+00:00",
+      "message_id": "msg_9",
+      "id": "msg_9"
+    },
+    {
+      "role": "user",
+      "content": "我不知道该怎么说这个积极影响，比如在家的话，爸爸妈妈总说因为我所以很欢乐，我开始写感恩日记以后，我建议我的爸妈和我一起写，还有我的男朋友，他们说因为感恩日记，自己也觉得很有收获，那段时间感觉家里氛围超级融洽",
+      "thread_id": "t_97d846841895439c846fc5be2354768f",
+      "activation_session_id": "06e742f1-53b6-42e9-ba8a-07e3b4e9b24c",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-07-07T03:09:31.923211+00:00",
+      "message_id": "msg_10",
+      "id": "msg_10"
+    },
+    {
+      "role": "assistant",
+      "content": "这正是一个非常温暖的积极影响——你发起了一个小行动，然后整个家的氛围都变得不一样了。感恩日记本身是你自己的觉察工具，但当你把它分享给家人和伴侣时，它变成了连接彼此的纽带，让每个人都感受到被看见、被珍惜。\n\n那我们来看看这段经历里流动着哪些价值观。你建议家人一起写感恩日记，他们因此感到有收获、家里氛围更融洽——这让你觉得体现了**爱**吗？还是有**利他**，或者是**成长**的成分？你觉得是哪些？",
+      "thread_id": "t_97d846841895439c846fc5be2354768f",
+      "activation_session_id": "06e742f1-53b6-42e9-ba8a-07e3b4e9b24c",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 4117,
+        "completion_tokens": 331,
+        "total_tokens": 4448,
+        "prompt_cache_hit_tokens": 3840,
+        "prompt_cache_miss_tokens": 277
+      },
+      "created_at": "2026-07-07T03:09:42.535024+00:00",
+      "message_id": "msg_11",
+      "id": "msg_11"
+    },
+    {
+      "role": "user",
+      "content": "爱和利他",
+      "thread_id": "t_97d846841895439c846fc5be2354768f",
+      "activation_session_id": "06e742f1-53b6-42e9-ba8a-07e3b4e9b24c",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-07-07T03:10:00.741869+00:00",
+      "message_id": "msg_12",
+      "id": "msg_12"
+    },
+    {
+      "role": "assistant",
+      "content": "从朋友、教学再到家人，你的影响从个人延伸到家庭，爱和利他都自然地流动其中。我们把这第三条也记下来。\n\n那现在请你想一想，有没有哪一次，你是帮助别人解决了一个具体的问题，或者帮他们度过了一段困难的时期？可能是倾听、可能是给建议，也可能是别的什么形式。说说你的**第四个经历**吧。",
+      "thread_id": "t_97d846841895439c846fc5be2354768f",
+      "activation_session_id": "06e742f1-53b6-42e9-ba8a-07e3b4e9b24c",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 4234,
+        "completion_tokens": 450,
+        "total_tokens": 4684,
+        "prompt_cache_hit_tokens": 4096,
+        "prompt_cache_miss_tokens": 138
+      },
+      "created_at": "2026-07-07T03:10:13.808820+00:00",
+      "message_id": "msg_13",
+      "id": "msg_13"
+    },
+    {
+      "role": "user",
+      "content": "那可能就是朋友失恋找我聊天？帮她排解情绪，但这样我也很累。还有就是去云南旅游的时候有一对外国情侣听不懂中文，我翻译了大巴司机的话给他们，告诉他们在哪里下车。其他的我暂时想不起来。",
+      "thread_id": "t_97d846841895439c846fc5be2354768f",
+      "activation_session_id": "06e742f1-53b6-42e9-ba8a-07e3b4e9b24c",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-07-08T01:50:27.677383+00:00",
+      "message_id": "msg_14",
+      "id": "msg_14"
+    },
+    {
+      "role": "assistant",
+      "content": "这两段经历都很珍贵，我们先聚焦在\"朋友失恋找你聊天\"这一段。你倾听她、陪她度过情绪低谷，虽然自己也感到累，但确实帮到了她。在这段陪伴里，你传递出去的关心和安慰，体现了哪些价值观？是**利他**，还是有**爱**的成分？或者还有别的？",
+      "thread_id": "t_97d846841895439c846fc5be2354768f",
+      "activation_session_id": "06e742f1-53b6-42e9-ba8a-07e3b4e9b24c",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 4363,
+        "completion_tokens": 902,
+        "total_tokens": 5265,
+        "prompt_cache_hit_tokens": 4224,
+        "prompt_cache_miss_tokens": 139
+      },
+      "created_at": "2026-07-08T01:51:02.509809+00:00",
+      "message_id": "msg_15",
+      "id": "msg_15"
+    },
+    {
+      "role": "user",
+      "content": "利他吧，朋友不开心我会很努力的开导她。",
+      "thread_id": "t_97d846841895439c846fc5be2354768f",
+      "activation_session_id": "06e742f1-53b6-42e9-ba8a-07e3b4e9b24c",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-07-08T01:52:26.737026+00:00",
+      "message_id": "msg_16",
+      "id": "msg_16"
+    },
+    {
+      "role": "assistant",
+      "content": "开导朋友的过程虽然耗费心力，但你依然会去努力，这种付出里藏着很深的利他。我们把它记下来。\n\n你刚才提到在云南帮那对外国情侣翻译大巴司机的话，告诉他们哪里下车——这也是一个很清晰的帮助瞬间呢。我们就把它作为你的**第五个经历**好吗？你觉得在这段简单直接的翻译帮助里，主要体现了哪种价值观？是**利他**，还是也有其他的比如**爱**（对旅行、对帮助他人的那种自然的热心），或者别的？",
+      "thread_id": "t_97d846841895439c846fc5be2354768f",
+      "activation_session_id": "06e742f1-53b6-42e9-ba8a-07e3b4e9b24c",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 4451,
+        "completion_tokens": 249,
+        "total_tokens": 4700,
+        "prompt_cache_hit_tokens": 4352,
+        "prompt_cache_miss_tokens": 99
+      },
+      "created_at": "2026-07-08T01:52:35.670961+00:00",
+      "message_id": "msg_17",
+      "id": "msg_17"
+    },
+    {
+      "role": "user",
+      "content": "我经常会主动帮助他人，自发的，可能也包含爱？我喜欢主动帮助人。",
+      "thread_id": "t_97d846841895439c846fc5be2354768f",
+      "activation_session_id": "06e742f1-53b6-42e9-ba8a-07e3b4e9b24c",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-07-08T01:54:37.767846+00:00",
+      "message_id": "msg_18",
+      "id": "msg_18"
+    },
+    {
+      "role": "assistant",
+      "content": "主动帮助人本身就是一种爱——源自内心的热忱，不计算回报，只是单纯想伸出那只手。我们把**爱**和**利他**都记在这段经历里。\n\n这样五段经历都梳理完成了。我根据你分享的这些瞬间，整理出了一份关于你工作使命的总结——也就是你内心深处最希望为他人提供的价值。你看是否契合你的感受：\n\n---\n\n从你分享的经历来看，无论是帮朋友点燃灵感、为考生照亮前路，还是用感恩日记温暖家人的氛围、在异乡帮陌生人一句翻译，都有一个共同点：你总是在**源自我心的热爱里，主动为他人带去启发、支持与温暖**。\n\n**使命概括**：我希望通过我的工作，源自我心中的热爱，主动帮助他人获得启发、支持与成长。\n\n**详细解释**：\n你对专业与生活的**爱**，是你一切行动的源头——因为热爱，你才会有能量去关注他人的需要；**利他**是你把这份热爱转化为行动的方式，主动分享、陪伴、翻译、开导，不求回报；而**成长**，既是你在帮助他人的过程中自己收获的回响，也是你希望最终给予他人的正向改变——点亮对方的灵感，支撑他们往前走。\n\n**最终目的**：让更多人因为你的存在，而对自己的生活多一份信心与动力。因为当一个人感受到被真诚地帮助过，那种温暖会变成他们内心的燃料，继续燃烧下去。\n\n---\n\n以上是我根据你的经历梳理出的使命总结，你认可这个总结吗？有没有需要调整的地方？",
+      "thread_id": "t_97d846841895439c846fc5be2354768f",
+      "activation_session_id": "06e742f1-53b6-42e9-ba8a-07e3b4e9b24c",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 4582,
+        "completion_tokens": 2317,
+        "total_tokens": 6899,
+        "prompt_cache_hit_tokens": 4352,
+        "prompt_cache_miss_tokens": 230
+      },
+      "created_at": "2026-07-08T01:55:27.777199+00:00",
+      "message_id": "msg_19",
+      "id": "msg_19"
+    },
+    {
+      "role": "conclusion_card",
+      "content": "{\"summary\": \"从你分享的经历来看，无论是帮朋友点燃灵感、为考生照亮前路，还是用感恩日记温暖家人、在异乡帮陌生人一句翻译，你总是在源自我心的热爱里，主动为他人带去启发与温暖。\", \"keywords\": [\"利他\", \"爱\", \"成长\"], \"mission_core\": \"我希望通过我的工作，源自我心中的热爱，主动帮助他人获得启发、支持与成长。\", \"mission_detail\": \"你对专业与生活的爱，是你一切行动的源头；利他是你把这份热爱转化为对他人的贡献的方式；而成长，既是你在帮助过程中收获的回响，也是你希望最终给予他人的正向改变。\", \"mission_aim\": \"最终目的是让更多人因为你的存在，而对自己的生活多一份信心与动力。\", \"experience_value_rows\": [{\"experience\": \"和朋友聊毕业设计，激发了她的新想法和对课题的动力。\", \"values\": [\"爱\", \"成长\", \"利他\"]}, {\"experience\": \"考上研究生后开课、写经验贴，为备考无绪的考生提供方向与信心。\", \"values\": [\"利他\", \"爱\", \"成长\"]}, {\"experience\": \"带家人一起写感恩日记，让家庭氛围更融洽，彼此更珍惜。\", \"values\": [\"爱\", \"利他\"]}, {\"experience\": \"开导失恋的朋友，陪她度过情绪低谷。\", \"values\": [\"利他\"]}, {\"experience\": \"在云南旅游时主动帮外国情侣翻译大巴司机的话，帮他们顺利找到目的地。\", \"values\": [\"利他\", \"爱\"]}]}",
+      "thread_id": "t_97d846841895439c846fc5be2354768f",
+      "activation_session_id": "06e742f1-53b6-42e9-ba8a-07e3b4e9b24c",
+      "step_id": "purpose",
+      "agent_id": "coach",
+      "event": "dimension_conclusion",
+      "card_type": "dimension_conclusion",
+      "card_payload": {
+        "summary": "从你分享的经历来看，无论是帮朋友点燃灵感、为考生照亮前路，还是用感恩日记温暖家人、在异乡帮陌生人一句翻译，你总是在源自我心的热爱里，主动为他人带去启发与温暖。",
+        "keywords": [
+          "利他",
+          "爱",
+          "成长"
+        ],
+        "mission_core": "我希望通过我的工作，源自我心中的热爱，主动帮助他人获得启发、支持与成长。",
+        "mission_detail": "你对专业与生活的爱，是你一切行动的源头；利他是你把这份热爱转化为对他人的贡献的方式；而成长，既是你在帮助过程中收获的回响，也是你希望最终给予他人的正向改变。",
+        "mission_aim": "最终目的是让更多人因为你的存在，而对自己的生活多一份信心与动力。",
+        "experience_value_rows": [
+          {
+            "experience": "和朋友聊毕业设计，激发了她的新想法和对课题的动力。",
+            "values": [
+              "爱",
+              "成长",
+              "利他"
+            ]
+          },
+          {
+            "experience": "考上研究生后开课、写经验贴，为备考无绪的考生提供方向与信心。",
+            "values": [
+              "利他",
+              "爱",
+              "成长"
+            ]
+          },
+          {
+            "experience": "带家人一起写感恩日记，让家庭氛围更融洽，彼此更珍惜。",
+            "values": [
+              "爱",
+              "利他"
+            ]
+          },
+          {
+            "experience": "开导失恋的朋友，陪她度过情绪低谷。",
+            "values": [
+              "利他"
+            ]
+          },
+          {
+            "experience": "在云南旅游时主动帮外国情侣翻译大巴司机的话，帮他们顺利找到目的地。",
+            "values": [
+              "利他",
+              "爱"
+            ]
+          }
+        ]
+      },
+      "created_at": "2026-07-08T01:58:23.681145+00:00",
+      "message_id": "msg_20",
+      "id": "msg_20"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-07-07T02:46:45.722899+00:00",
+    "updated_at": "2026-07-08T01:58:23.684594+00:00",
+    "total_messages": 20,
+    "question_bank": "1. ### 22. 如果向一个完全陌生的人介绍你能提供的帮助，你会怎么说？\n2. 它触动你的具体是什么？从中可以看出你向往的贡献形象是什么？\n3. ### 11. 什么样的感谢或反馈会让你觉得我的付出撞到点上了？\n4. ### 16. 迄今为止，你做过什么让你感到「我对别人有用」的事？\n5. 你想持续为周围的人或社会带去什么样的影响？从中可以看出你对自己「能为别人做什么」的长期期待吗？\n6. ### 13. 有没有一个社会问题或公共议题，让你愿意投入时间去推动哪怕很小的改善？",
+    "question_bank_phase": "purpose",
+    "purpose_progress": {
+      "current_index": 5,
+      "confirmed_rows": [
+        {
+          "experience": "和朋友聊毕业设计，激发了她的新想法和对课题的动力。",
+          "values": [
+            "爱",
+            "成长",
+            "利他"
+          ]
+        },
+        {
+          "experience": "考上研究生后开课、写经验贴，为备考无绪的考生提供方向与信心。",
+          "values": [
+            "利他",
+            "爱",
+            "成长"
+          ]
+        },
+        {
+          "experience": "带家人一起写感恩日记，让家庭氛围更融洽，彼此更珍惜。",
+          "values": [
+            "爱",
+            "利他"
+          ]
+        },
+        {
+          "experience": "开导失恋的朋友，陪她度过情绪低谷。",
+          "values": [
+            "利他"
+          ]
+        },
+        {
+          "experience": "在云南旅游时主动帮外国情侣翻译大巴司机的话，帮他们顺利找到目的地。",
+          "values": [
+            "利他",
+            "爱"
+          ]
+        }
+      ],
+      "completed": true
+    },
+    "conclusion_state": "confirmed",
+    "conclusion_draft": null,
+    "conclusion_final": {
+      "summary": "从你分享的经历来看，无论是帮朋友点燃灵感、为考生照亮前路，还是用感恩日记温暖家人、在异乡帮陌生人一句翻译，你总是在源自我心的热爱里，主动为他人带去启发与温暖。",
+      "keywords": [
+        "利他",
+        "爱",
+        "成长"
+      ],
+      "mission_core": "我希望通过我的工作，源自我心中的热爱，主动帮助他人获得启发、支持与成长。",
+      "mission_detail": "你对专业与生活的爱，是你一切行动的源头；利他是你把这份热爱转化为对他人的贡献的方式；而成长，既是你在帮助过程中收获的回响，也是你希望最终给予他人的正向改变。",
+      "mission_aim": "最终目的是让更多人因为你的存在，而对自己的生活多一份信心与动力。",
+      "experience_value_rows": [
+        {
+          "experience": "和朋友聊毕业设计，激发了她的新想法和对课题的动力。",
+          "values": [
+            "爱",
+            "成长",
+            "利他"
+          ]
+        },
+        {
+          "experience": "考上研究生后开课、写经验贴，为备考无绪的考生提供方向与信心。",
+          "values": [
+            "利他",
+            "爱",
+            "成长"
+          ]
+        },
+        {
+          "experience": "带家人一起写感恩日记，让家庭氛围更融洽，彼此更珍惜。",
+          "values": [
+            "爱",
+            "利他"
+          ]
+        },
+        {
+          "experience": "开导失恋的朋友，陪她度过情绪低谷。",
+          "values": [
+            "利他"
+          ]
+        },
+        {
+          "experience": "在云南旅游时主动帮外国情侣翻译大巴司机的话，帮他们顺利找到目的地。",
+          "values": [
+            "利他",
+            "爱"
+          ]
+        }
+      ]
+    },
+    "conclusion_feedback": "",
+    "thread_completed": true,
+    "conclusion_shown_at_turn": 9,
+    "conclusion_reject_baseline_user_count": null
+  }
+}

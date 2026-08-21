@@ -1,0 +1,946 @@
+{
+  "report_id": "69695815-eb4a-4db5-a6dd-0bd918bb8a96",
+  "category": "purpose__t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "琦雯，看到你一路走到这里，真的很为你高兴。你已经完整梳理了内心看重的价值观、天然流淌的优势，还有那些让你真正感到活着、有能量的热爱。这三样东西像一份私人地图，而现在我们即将为它标上最动人的终点——你究竟想用它们，为这个世界带来什么。\n\n恭喜你即将完成整个职业探索旅程！本轮我们将一起发现你的**工作使命**——也就是你内心深处，最希望为他人提供的价值。\n\n真正长久的职业动力，往往不来自“我完成了什么任务”，而来自“我让谁变得更好了一点”。当你实实在在地帮到别人、产生了哪怕微小的积极影响，而这种帮助又恰好呼应了你内心真正在乎的东西时，外界回馈给你的认可和满足，会成为持续推动你前行的深层燃料。\n\n而且请放心，我们这里说的“使命”和“传递价值观”，不是让你刻意去教育谁或高喊口号。它只是：当你以自己最自然的方式去做好一件事时，你内在的某些品质会悄然透过你的成果，影响到接收它的人。就像一束光，照到别人身上并不是你的刻意为之，但你确实带来了光亮。\n\n还记得我们在第一轮，一起挖出的那五个对你最重要的价值观吗？它们是——**平衡、公平、创造力、成长、勇气**。在接下来的讨论里，我们会反复用到它们，看看你曾经如何把它们变成别人生命中的礼物。\n\n那我们现在从更具体的经历开始吧。请你回想一下，在过去的生活或工作中，有没有哪些时刻，你觉得自己**为他人提供了帮助、解决了问题，或者带来了积极的影响**？不管是大事还是小事，只要你觉得“那时候，我帮到了别人”，就可以。现在，先请你分享第一个这样的经历吧——用一两句话简单描述一下当时发生了什么就好。",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 3439,
+        "completion_tokens": 740,
+        "total_tokens": 4179,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 3439
+      },
+      "created_at": "2026-06-20T09:20:38.031811Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    },
+    {
+      "role": "user",
+      "content": "和室友逛展，有人骚扰问她要电话号码，我带她甩开了；财富流沙盘推演后，我的玩家真的有把收获带到现实生活中去，晚上11点前睡创建疗愈赛道小红书号获得很多粉丝，点赞，评论表达感谢",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-06-20T09:25:10.837495Z",
+      "message_id": "msg_2",
+      "id": "msg_2"
+    },
+    {
+      "role": "assistant",
+      "content": "琦雯，你一下子分享了三段经历，每一件都带着温度和力量，真好。我们先一个一个来，把它们慢慢展开，看看你当时传递了什么。\n\n先从第一件开始——\n\n**陪室友逛展时，有人骚扰她索要电话号码，你带着她甩开了那个人。**\n\n在这件事里，你帮室友获得的结果或感受，大概对应着第一轮中的哪个或哪几个价值观？比如**平衡**（保护了她的边界不被侵犯）、**公平**（让她被尊重对待）、**勇气**（你敢于站出来带她离开）……当然这只是我的猜测，你觉得哪个或哪几个最贴切？",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 3833,
+        "completion_tokens": 310,
+        "total_tokens": 4143,
+        "prompt_cache_hit_tokens": 3328,
+        "prompt_cache_miss_tokens": 505
+      },
+      "created_at": "2026-06-20T09:25:16.752216Z",
+      "message_id": "msg_3",
+      "id": "msg_3"
+    },
+    {
+      "role": "user",
+      "content": "勇气最贴切",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-06-20T09:25:49.769296Z",
+      "message_id": "msg_4",
+      "id": "msg_4"
+    },
+    {
+      "role": "assistant",
+      "content": "嗯，“勇气”非常精准。在那个瞬间，你不仅自己有勇气面对不适，还把这份“敢于保护”的勇气传递给了室友——她没有独自承受，而是因为你而获得了一个安全的结果。\n\n那我们来看看第二段：\n\n**财富流沙盘推演后，你的玩家真的把收获带到现实生活中，比如晚上11点前睡觉。**\n\n在这件事里，你帮助他们获得的改变，你觉得更多地对应着哪个价值观？是让他们获得了某种**成长**，还是帮他们找到了生活里的**平衡**？或者还有其他你感觉更贴切的词？",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 3970,
+        "completion_tokens": 366,
+        "total_tokens": 4336,
+        "prompt_cache_hit_tokens": 3712,
+        "prompt_cache_miss_tokens": 258
+      },
+      "created_at": "2026-06-20T09:25:56.111697Z",
+      "message_id": "msg_5",
+      "id": "msg_5"
+    },
+    {
+      "role": "user",
+      "content": "成长，这是一种 启智利他",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-06-20T09:26:15.987242Z",
+      "message_id": "msg_6",
+      "id": "msg_6"
+    },
+    {
+      "role": "assistant",
+      "content": "“启智利他”这个词很有力量，也恰好呼应了你内心真正在乎的东西——你不是只让对方玩一场游戏，而是让这场推演真的穿透到他们的日常里，长出新的秩序。所以把这段经历对应到**成长**，再贴切不过了。\n\n那我们来看第三段：\n\n**创建疗愈赛道小红书号后，获得很多粉丝、点赞和评论表达感谢。**\n\n你通过这些内容，让那些陌生人的内心获得了什么？他们会来感谢你，是因为你传递出去的某些东西，触动了他们。你觉得这段经历，更多地呼应了哪个价值观——是**创造力**的输出，还是某种**勇气**的感染，或者是陪伴式的**成长**？或者，可能不止一个？",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 4095,
+        "completion_tokens": 396,
+        "total_tokens": 4491,
+        "prompt_cache_hit_tokens": 3968,
+        "prompt_cache_miss_tokens": 127
+      },
+      "created_at": "2026-06-20T09:26:22.997185Z",
+      "message_id": "msg_7",
+      "id": "msg_7"
+    },
+    {
+      "role": "user",
+      "content": "创造力，成长",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-06-20T09:26:50.281756Z",
+      "message_id": "msg_8",
+      "id": "msg_8"
+    },
+    {
+      "role": "assistant",
+      "content": "这三段经历串联起来，已经能隐约看到你的特质——你用**勇气**守护他人边界，用**成长**引导他人发生真实改变，再用**创造力**把内心世界酿成内容，去抚慰更多陌生人。\n\n那我们继续往下挖，请你想一想第四段经历——也许它在日常生活里安静地发生过，或者在某个学习、志愿活动的角落里留下过痕迹。你回想一下，还有没有哪些时刻，你曾经以自己的方式，实实在在地给过别人一些帮助或正面影响？",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 4249,
+        "completion_tokens": 367,
+        "total_tokens": 4616,
+        "prompt_cache_hit_tokens": 3968,
+        "prompt_cache_miss_tokens": 281
+      },
+      "created_at": "2026-06-20T09:26:56.903146Z",
+      "message_id": "msg_9",
+      "id": "msg_9"
+    },
+    {
+      "role": "user",
+      "content": "有人在餐厅抽烟，我勇敢地在大众点评上发差评，帮大家避雷；有时我也给大家很多种草",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-06-20T09:28:10.697156Z",
+      "message_id": "msg_10",
+      "id": "msg_10"
+    },
+    {
+      "role": "assistant",
+      "content": "这段经历很有意思——你不只是在保护自己，还用公开的方式，让更多人避免踩进不舒服的环境里。\n\n我们先聚焦第四段：**有人在餐厅抽烟，你在大众点评上发差评，帮大家避雷。**\n\n在你写下那条差评的时候，你心里想传递的，或者说你希望帮到别人的，是一种什么感觉？是让规则被尊重、环境恢复应得的**公平**？还是你再次调动了那个敢于发声的**勇气**？或者是二者皆有——你觉得哪个（或哪些）词更贴合你当时的心意？",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 4382,
+        "completion_tokens": 307,
+        "total_tokens": 4689,
+        "prompt_cache_hit_tokens": 4224,
+        "prompt_cache_miss_tokens": 158
+      },
+      "created_at": "2026-06-20T09:28:16.537633Z",
+      "message_id": "msg_11",
+      "id": "msg_11"
+    },
+    {
+      "role": "user",
+      "content": "二者皆有",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-06-20T09:28:39.071007Z",
+      "message_id": "msg_12",
+      "id": "msg_12"
+    },
+    {
+      "role": "assistant",
+      "content": "“公平”与“勇气”在这里确实交织在一起——你心里有一把尺，不允许不守规则的行为伤害到他人，然后你站出来，用自己的声音把这个边界重新划清楚。\n\n那我们把这两段也记下来，继续往下走。现在请你回想第五段经历——也许是在工作的某个项目里，或者某次学习交流中，甚至只是一个很微小的日常瞬间。有没有哪一次，你觉得自己帮到了另一个人，哪怕是让对方心情变好了一点，或者少走了一步弯路？",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 4503,
+        "completion_tokens": 374,
+        "total_tokens": 4877,
+        "prompt_cache_hit_tokens": 4352,
+        "prompt_cache_miss_tokens": 151
+      },
+      "created_at": "2026-06-20T09:28:45.635453Z",
+      "message_id": "msg_13",
+      "id": "msg_13"
+    },
+    {
+      "role": "user",
+      "content": "我的表演，让大家开心，从中获取勇气力量",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-06-20T09:31:02.547345Z",
+      "message_id": "msg_14",
+      "id": "msg_14"
+    },
+    {
+      "role": "assistant",
+      "content": "「让大家开心，并从中获取勇气力量」——这本身就是一种深刻的给予。你不是为了被掌声托起来，而是在用自己整个人的存在，把**勇气**悄然递到观众手中。\n\n那我们顺着这个节奏继续，请回想第六段经历。有没有哪次，你用自己的方式，帮过某个人——也许是认真地倾听了一次，也许是给出过一个有用的建议，或者在别人动摇时，你说了一句恰好稳住了他的话？",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 4621,
+        "completion_tokens": 388,
+        "total_tokens": 5009,
+        "prompt_cache_hit_tokens": 4480,
+        "prompt_cache_miss_tokens": 141
+      },
+      "created_at": "2026-06-20T09:31:09.273676Z",
+      "message_id": "msg_15",
+      "id": "msg_15"
+    },
+    {
+      "role": "user",
+      "content": "带财富流沙盘推演时，对方问我她还有没有别的可以改进的地方",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-06-20T09:33:50.060299Z",
+      "message_id": "msg_16",
+      "id": "msg_16"
+    },
+    {
+      "role": "assistant",
+      "content": "你提的这一点特别值得留意——并不是你主动去教什么，而是对方在经历之后，主动向你寻求进一步的改进建议。这种信任本身，就是你已经给对方带来了某种价值的信号。\n\n在那次对话里，当对方认真地问你“还有没有可以改进的地方”时，你给出建议的那一刻，你希望她获得的是什么？是一种继续往前的**成长**，还是别的什么？你觉得这个经历最呼应哪个价值观？",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 4732,
+        "completion_tokens": 459,
+        "total_tokens": 5191,
+        "prompt_cache_hit_tokens": 4608,
+        "prompt_cache_miss_tokens": 124
+      },
+      "created_at": "2026-06-20T09:33:57.744410Z",
+      "message_id": "msg_17",
+      "id": "msg_17"
+    },
+    {
+      "role": "user",
+      "content": "继续往前的成长",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-06-20T09:38:21.218254Z",
+      "message_id": "msg_18",
+      "id": "msg_18"
+    },
+    {
+      "role": "assistant",
+      "content": "“继续往前的成长”——你这个回应很干脆。对方之所以来问你，说明她之前已经从你这里收到过“往前走一步”的推动，才会信任地把下一步也交到你手里。\n\n我们已经集齐六段了，继续顺流而下。现在请你想一想第七段经历：有没有哪一次，你为别人做了一件小事，对方的反馈让你自己都略微意外——可能是对方真心地说了句“谢谢”，或者眼神里有被理解到的光？也许是倾听中的一次点头，或者一个你曾默默为别人撑了一下的时刻？",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 4830,
+        "completion_tokens": 340,
+        "total_tokens": 5170,
+        "prompt_cache_hit_tokens": 4608,
+        "prompt_cache_miss_tokens": 222
+      },
+      "created_at": "2026-06-20T09:38:27.425375Z",
+      "message_id": "msg_19",
+      "id": "msg_19"
+    },
+    {
+      "role": "user",
+      "content": "我写了一个公众号表达自己的观点，一个朋友说对他很有启发",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-06-20T09:39:12.872394Z",
+      "message_id": "msg_20",
+      "id": "msg_20"
+    },
+    {
+      "role": "assistant",
+      "content": "“写公众号表达自己的观点”是你自主的输出，而朋友那一句“对他很有启发”，说明你无形中替别人点亮了什么。\n\n那这段经历，你觉得最呼应哪个价值观？是将内在观点酿成文字的**创造力**，还是你给朋友带来的那一点**成长**？或者两者都有，甚至是别的词更贴切？",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 4962,
+        "completion_tokens": 483,
+        "total_tokens": 5445,
+        "prompt_cache_hit_tokens": 4736,
+        "prompt_cache_miss_tokens": 226
+      },
+      "created_at": "2026-06-20T09:39:20.610836Z",
+      "message_id": "msg_21",
+      "id": "msg_21"
+    },
+    {
+      "role": "user",
+      "content": "都有",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-06-20T09:39:36.076021Z",
+      "message_id": "msg_22",
+      "id": "msg_22"
+    },
+    {
+      "role": "assistant",
+      "content": "是啊，创造与成长常常结伴而来——你表达自己的洞见，顺便成为了别人路上的一盏小灯。\n\n那我们继续扩展一下视野。我想请你回忆一下，有没有哪次，你在团队里或小组中，因为你的存在，让某件事变得更顺利、让某个人更安心，或者让大家的气氛变得更好了？可能是工作项目，也可能是学习小组，甚至是一次旅行的规划——只要你觉得“那时候，我确实帮到了大家”，就可以。这是第八段经历了。",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 5038,
+        "completion_tokens": 445,
+        "total_tokens": 5483,
+        "prompt_cache_hit_tokens": 4864,
+        "prompt_cache_miss_tokens": 174
+      },
+      "created_at": "2026-06-20T09:39:43.868087Z",
+      "message_id": "msg_23",
+      "id": "msg_23"
+    },
+    {
+      "role": "user",
+      "content": "我当群主，转发了很多有用的讯息；特殊时期站出来当团长，义务帮大家分发物品；当课程助教，早上5:25起来开会",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-06-20T09:42:17.979120Z",
+      "message_id": "msg_24",
+      "id": "msg_24"
+    },
+    {
+      "role": "assistant",
+      "content": "这三件事有一个共同点——你不是被安排去做，而是自己站了出来，承担起一个组织者、一个服务者的角色。\n\n我们先聚焦在第八段经历的第一个部分：**你当群主，转发了很多有用的讯息。**\n\n当你不断往群里搬运那些“有用的讯息”时，你希望大家得到什么？是让信息更透明、每个人都能平等获取的**公平**？还是帮大家做出更好选择的**成长**？你觉得哪个词更贴切你当时的心？",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 5177,
+        "completion_tokens": 315,
+        "total_tokens": 5492,
+        "prompt_cache_hit_tokens": 4992,
+        "prompt_cache_miss_tokens": 185
+      },
+      "created_at": "2026-06-20T09:42:23.851302Z",
+      "message_id": "msg_25",
+      "id": "msg_25"
+    },
+    {
+      "role": "user",
+      "content": "前两个是希望大家得到便利性；最后是帮大家成长",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-06-20T09:43:37.346295Z",
+      "message_id": "msg_26",
+      "id": "msg_26"
+    },
+    {
+      "role": "assistant",
+      "content": "“便利性”这个感受很真实，也让我想到——你给出去的不只是一条信息或一袋物资，而是帮大家省下了心力，让他们的生活多了一点从容。\n\n如果试着把“便利性”放回我们那五个价值观里，你觉得它更接近哪一种感受——是让大家获得了更公平的信息和资源（**公平**），还是帮他们在混乱中找回了一点喘息和秩序（**平衡**）？或者你有更匹配的想法？",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 5295,
+        "completion_tokens": 396,
+        "total_tokens": 5691,
+        "prompt_cache_hit_tokens": 5120,
+        "prompt_cache_miss_tokens": 175
+      },
+      "created_at": "2026-06-20T09:43:44.509680Z",
+      "message_id": "msg_27",
+      "id": "msg_27"
+    },
+    {
+      "role": "user",
+      "content": "第一个公平；第二个平衡",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-06-20T09:51:28.369214Z",
+      "message_id": "msg_28",
+      "id": "msg_28"
+    },
+    {
+      "role": "assistant",
+      "content": "嗯，梳理得很清楚——当群主转发有用讯息，是帮大家打破信息不对称，对应**公平**；特殊时期站出来当团长义务分发物品，则在混乱中为邻里撑出了一点安稳的秩序，对应**平衡**。\n\n那我们来看第八段经历的第三部分：**当课程助教，早上5:25起来开会。** 你刚刚说这段是在“帮大家成长”，这个感觉我理解了——你是实打实地付出了自己的时间和精力，让学员能更好地学习。\n\n那我们确认一下，这段经历里你提供给他们的价值，最呼应的是**成长**，对吗？\n\n（确认后，我们继续收集第九段经历。）",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 5400,
+        "completion_tokens": 326,
+        "total_tokens": 5726,
+        "prompt_cache_hit_tokens": 5248,
+        "prompt_cache_miss_tokens": 152
+      },
+      "created_at": "2026-06-20T09:51:34.316432Z",
+      "message_id": "msg_29",
+      "id": "msg_29"
+    },
+    {
+      "role": "user",
+      "content": "三件事对应三个",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-06-20T09:52:28.105927Z",
+      "message_id": "msg_30",
+      "id": "msg_30"
+    },
+    {
+      "role": "assistant",
+      "content": "这三件事像三个小小的锚点，在不同场景里稳稳地托住了别人——你未必高声宣告，却让周围的人感到便利、安稳和被支持。\n\n那现在我们向更柔软的方向找一找第九段经历。有没有哪次，你曾用自己的方式陪伴过一个人度过低谷——可能是一段耐心的倾听，可能是一句让对方突然被看见的话，也可能只是安静的在场？",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 5545,
+        "completion_tokens": 326,
+        "total_tokens": 5871,
+        "prompt_cache_hit_tokens": 5376,
+        "prompt_cache_miss_tokens": 169
+      },
+      "created_at": "2026-06-20T09:52:33.285486Z",
+      "message_id": "msg_31",
+      "id": "msg_31"
+    },
+    {
+      "role": "user",
+      "content": "有",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-06-20T09:53:20.246012Z",
+      "message_id": "msg_32",
+      "id": "msg_32"
+    },
+    {
+      "role": "assistant",
+      "content": "嗯，那我们就轻轻地把它打开一点。请你想一想那一次陪伴，你大概做了什么——可能是耐心听对方说完了一肚子话，可能是给了对方一个不一样的看事情的角度，也可能只是用你的存在，让对方觉得自己没有被丢下。\n\n用一两句话描述一下那个场景就好。这是你的第九段经历。",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 5629,
+        "completion_tokens": 310,
+        "total_tokens": 5939,
+        "prompt_cache_hit_tokens": 5504,
+        "prompt_cache_miss_tokens": 125
+      },
+      "created_at": "2026-06-20T09:53:26.080169Z",
+      "message_id": "msg_33",
+      "id": "msg_33"
+    },
+    {
+      "role": "user",
+      "content": "耐心听对方说完了一肚子话",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-06-20T09:53:48.609804Z",
+      "message_id": "msg_34",
+      "id": "msg_34"
+    },
+    {
+      "role": "assistant",
+      "content": "那种“耐心听对方说完一肚子话”的陪伴，本身就是一种很深的给予——你不用急着修补什么，只是稳稳地接住了对方。\n\n那这段经历里，你帮对方获得的，你觉得更接近哪个价值观？是让对方在倾诉之后找回了一点内心的**平衡**，还是从被倾听中获得了一些继续向前的**成长**？或者两者都有，甚至还有别的词更贴切？",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 5705,
+        "completion_tokens": 344,
+        "total_tokens": 6049,
+        "prompt_cache_hit_tokens": 5504,
+        "prompt_cache_miss_tokens": 201
+      },
+      "created_at": "2026-06-20T09:53:54.218985Z",
+      "message_id": "msg_35",
+      "id": "msg_35"
+    },
+    {
+      "role": "user",
+      "content": "都有",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-06-20T09:54:11.411396Z",
+      "message_id": "msg_36",
+      "id": "msg_36"
+    },
+    {
+      "role": "assistant",
+      "content": "是的，当一个人被完完整整地听见，内心的混乱就开始重新变得有序，也有力气继续往前走了——你在那场倾听里，同时给出了**平衡**与**成长**。\n\n到现在，我们已经攒下九段实打实的经历，每一段都是你用自己独特的方式，在别人的世界里轻轻推了一把。还差最后一段，我们把它也收进来。\n\n请你再回想一下，有没有哪一次，你帮到了某个人——也许是帮对方打开了一个新的视角，也许是帮对方省掉了一个麻烦，甚至可能只是因为你做了一件事，让另一个人觉得“被理解”或“被撑了一下”？任何微小的事都可以。这是第十段经历。",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 5794,
+        "completion_tokens": 370,
+        "total_tokens": 6164,
+        "prompt_cache_hit_tokens": 5632,
+        "prompt_cache_miss_tokens": 162
+      },
+      "created_at": "2026-06-20T09:54:20.050982Z",
+      "message_id": "msg_37",
+      "id": "msg_37"
+    },
+    {
+      "role": "user",
+      "content": "是的",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-06-20T09:55:30.158360Z",
+      "message_id": "msg_38",
+      "id": "msg_38"
+    },
+    {
+      "role": "assistant",
+      "content": "嗯，那就请你用一两句话，把那个时刻简单描述出来——你当时做了什么，帮到了谁，或者让对方有什么感受。哪怕是非常微小的一次伸手，也值得被收进来。这是你第十段经历。",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 5940,
+        "completion_tokens": 233,
+        "total_tokens": 6173,
+        "prompt_cache_hit_tokens": 5760,
+        "prompt_cache_miss_tokens": 180
+      },
+      "created_at": "2026-06-20T09:55:34.912403Z",
+      "message_id": "msg_39",
+      "id": "msg_39"
+    },
+    {
+      "role": "user",
+      "content": "让对方感受到被看见被理解",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-06-20T09:55:55.747859Z",
+      "message_id": "msg_40",
+      "id": "msg_40"
+    },
+    {
+      "role": "assistant",
+      "content": "那是一种安静却有力的给予——你穿透表面，让对方的存在被稳稳地托住。\n\n这段经历里，帮助对方获得的那种被看见、被理解的感受，更贴近哪个价值观？是让对方在混乱中找到了一点**平衡**，还是从被理解中获得向前走的**成长**？或者两者都有？",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 6123,
+        "completion_tokens": 871,
+        "total_tokens": 6994,
+        "prompt_cache_hit_tokens": 3328,
+        "prompt_cache_miss_tokens": 2795
+      },
+      "created_at": "2026-06-20T09:56:07.972706Z",
+      "message_id": "msg_41",
+      "id": "msg_41"
+    },
+    {
+      "role": "user",
+      "content": "都有",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-06-20T09:57:51.704798Z",
+      "message_id": "msg_42",
+      "id": "msg_42"
+    },
+    {
+      "role": "assistant",
+      "content": "琦雯，我一直在细细感受你分享的这十段经历，从陪着室友全身而退，到沙盘推演后认真给出改进建议，再到安静地让对方被听见、被看见。它们都不是那种轰轰烈烈的壮举，却都实实在在地让某个人、某个群体，因为你的存在而变得好了一点点。\n\n从这些经历里我观察到一些共同的主题——无论你是站出来发声、分发物资、做内容创作，还是沉默地倾听，你好像总是在做这样几件事：**为他人划定边界，让秩序回来一些；在混沌里给出一条看得见的路；把自己酿成的内容，变成别人心里的光。**\n\n综合这些，我试着把你的核心使命概括成下面这段话，你感受一下：\n\n**“我希望通过我的工作，帮助他人获得成长与启发，同时在过程中守护公平、传递勇气、创造出能抚慰人心的内容，并为身边的人带来便利与安稳。”**\n\n展开来说：\n- **成长与启发**，是你最常给出的礼物——无论是沙盘后的生活改变、朋友收到启发、还是学员被你帮助后往前迈出一步，你都真心盼望别人因此变得更强一点。\n- **守护公平与传递勇气**，是你为他们撑起的保护伞——差评避雷、站出来当团长分物资，你让规则被尊重，也让他们敢于面对自己的处境。\n- **创造力与便利**，是你把内心秩序外化给世界的方式——小红书疗愈号、公众号观点、群里转发的有用讯息，你让流动的内容成为他人手里实实在在的暖意和工具。\n- 而**平衡**，则藏在你每一次耐心的倾听、每一次义务分发物品的安稳里——你让起伏的情绪重新落回地面，让他人的日子多一点点从容。\n\n如果把这些再浓缩成一句最终目的，大概是：**你希望更多人因为你的存在，拥有自信与力量，更从容地面对自己的生活。**\n\n它不是说教式的“我来拯救你”，而是以你最自然的方式——勇敢发声、认真创造、贴心服务、安静倾听——让别人的世界悄然变得明亮一些。\n\n琦雯，这就是我根据你说的十段经历梳理出的使命总结，你听完觉得这个概括贴切吗？有没有哪一处你想调整或补充？",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 6192,
+        "completion_tokens": 891,
+        "total_tokens": 7083,
+        "prompt_cache_hit_tokens": 6016,
+        "prompt_cache_miss_tokens": 176
+      },
+      "created_at": "2026-06-20T09:58:05.401163Z",
+      "message_id": "msg_43",
+      "id": "msg_43"
+    },
+    {
+      "role": "user",
+      "content": "是的、",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-06-20T09:59:41.556621Z",
+      "message_id": "msg_44",
+      "id": "msg_44"
+    },
+    {
+      "role": "conclusion_card",
+      "content": "{\"summary\": \"核心使命：通过工作帮助他人获得成长与启发，同时守护公平、传递勇气、创造出能抚慰人心的内容，并为身边的人带来便利与安稳。最终目的是希望更多人因为你的存在，拥有自信与力量，更从容地面对自己的生活。\\n\\n这一使命来自十段为你人提供价值的经历：从替室友挺身甩开骚扰、在财富流推演后给出改进建议、创建疗愈小红书号被感谢，到公开差评帮人避雷、站定表演传递勇气、当群主转发有用信息、特殊时期义务分物、当助教早起开会，以及每一次耐心倾听与让人感到被看见的陪伴。这些经历交织出你在日常时刻里传递成长、公平、勇气、创造力与平衡的独特方式。\", \"keywords\": [\"平衡\", \"公平\", \"创造力\", \"成长\", \"勇气\"], \"mission_core\": \"我希望通过我的工作，帮助他人获得成长与启发，同时在过程中守护公平、传递勇气、创造出能抚慰人心的内容，并为身边的人带来便利与安稳。\", \"mission_detail\": \"成长与启发是你最常给出的礼物——无论沙盘后的生活改变、朋友得到启发、还是学员被帮助后往前一步，你都真心希望别人因此变强。守护公平与传递勇气是你为他们撑起的保护伞——差评避雷、站出来当团长分物，你让规则被尊重，也让他们敢于面对自己的处境。创造力与便利是你把内心秩序外化给世界的方式——小红书号、公众号、有用讯息，你让流动的内容成为他人手里实实在在的暖意和工具。而平衡则藏在每一次耐心的倾听、每一次安稳的陪伴里——你让起伏的情绪落回地面，让他人的日子多一点点从容。\", \"mission_aim\": \"你希望更多人因为你的存在，拥有自信与力量，更从容地面对自己的生活。\", \"experience_value_rows\": [{\"experience\": \"带室友摆脱骚扰\", \"values\": [\"勇气\"]}, {\"experience\": \"财富流推演后玩家改变生活习惯\", \"values\": [\"成长\"]}, {\"experience\": \"创建疗愈小红书号得到感谢\", \"values\": [\"创造力\", \"成长\"]}, {\"experience\": \"公开差评帮大家避雷\", \"values\": [\"公平\", \"勇气\"]}, {\"experience\": \"表演让大家开心并获得勇气力量\", \"values\": [\"勇气\"]}, {\"experience\": \"财富流推演后给对方改进建议\", \"values\": [\"成长\"]}, {\"experience\": \"公众号观点对朋友有启发\", \"values\": [\"创造力\", \"成长\"]}, {\"experience\": \"当群主转发有用讯息\", \"values\": [\"公平\"]}, {\"experience\": \"站出来当团长分发物品\", \"values\": [\"平衡\"]}, {\"experience\": \"当助教早起开会支持学员\", \"values\": [\"成长\"]}, {\"experience\": \"耐心听对方倾诉\", \"values\": [\"平衡\", \"成长\"]}, {\"experience\": \"让人感到被看见被理解\", \"values\": [\"平衡\", \"成长\"]}]}",
+      "thread_id": "t_e0e3bba1de7e4ea0b80c69f3c5ce924b",
+      "activation_session_id": "709e3380-e9c6-4beb-9832-6f55bc881851",
+      "step_id": "purpose",
+      "agent_id": "coach",
+      "event": "dimension_conclusion",
+      "card_type": "dimension_conclusion",
+      "card_payload": {
+        "summary": "核心使命：通过工作帮助他人获得成长与启发，同时守护公平、传递勇气、创造出能抚慰人心的内容，并为身边的人带来便利与安稳。最终目的是希望更多人因为你的存在，拥有自信与力量，更从容地面对自己的生活。\n\n这一使命来自十段为你人提供价值的经历：从替室友挺身甩开骚扰、在财富流推演后给出改进建议、创建疗愈小红书号被感谢，到公开差评帮人避雷、站定表演传递勇气、当群主转发有用信息、特殊时期义务分物、当助教早起开会，以及每一次耐心倾听与让人感到被看见的陪伴。这些经历交织出你在日常时刻里传递成长、公平、勇气、创造力与平衡的独特方式。",
+        "keywords": [
+          "平衡",
+          "公平",
+          "创造力",
+          "成长",
+          "勇气"
+        ],
+        "mission_core": "我希望通过我的工作，帮助他人获得成长与启发，同时在过程中守护公平、传递勇气、创造出能抚慰人心的内容，并为身边的人带来便利与安稳。",
+        "mission_detail": "成长与启发是你最常给出的礼物——无论沙盘后的生活改变、朋友得到启发、还是学员被帮助后往前一步，你都真心希望别人因此变强。守护公平与传递勇气是你为他们撑起的保护伞——差评避雷、站出来当团长分物，你让规则被尊重，也让他们敢于面对自己的处境。创造力与便利是你把内心秩序外化给世界的方式——小红书号、公众号、有用讯息，你让流动的内容成为他人手里实实在在的暖意和工具。而平衡则藏在每一次耐心的倾听、每一次安稳的陪伴里——你让起伏的情绪落回地面，让他人的日子多一点点从容。",
+        "mission_aim": "你希望更多人因为你的存在，拥有自信与力量，更从容地面对自己的生活。",
+        "experience_value_rows": [
+          {
+            "experience": "带室友摆脱骚扰",
+            "values": [
+              "勇气"
+            ]
+          },
+          {
+            "experience": "财富流推演后玩家改变生活习惯",
+            "values": [
+              "成长"
+            ]
+          },
+          {
+            "experience": "创建疗愈小红书号得到感谢",
+            "values": [
+              "创造力",
+              "成长"
+            ]
+          },
+          {
+            "experience": "公开差评帮大家避雷",
+            "values": [
+              "公平",
+              "勇气"
+            ]
+          },
+          {
+            "experience": "表演让大家开心并获得勇气力量",
+            "values": [
+              "勇气"
+            ]
+          },
+          {
+            "experience": "财富流推演后给对方改进建议",
+            "values": [
+              "成长"
+            ]
+          },
+          {
+            "experience": "公众号观点对朋友有启发",
+            "values": [
+              "创造力",
+              "成长"
+            ]
+          },
+          {
+            "experience": "当群主转发有用讯息",
+            "values": [
+              "公平"
+            ]
+          },
+          {
+            "experience": "站出来当团长分发物品",
+            "values": [
+              "平衡"
+            ]
+          },
+          {
+            "experience": "当助教早起开会支持学员",
+            "values": [
+              "成长"
+            ]
+          },
+          {
+            "experience": "耐心听对方倾诉",
+            "values": [
+              "平衡",
+              "成长"
+            ]
+          },
+          {
+            "experience": "让人感到被看见被理解",
+            "values": [
+              "平衡",
+              "成长"
+            ]
+          }
+        ]
+      },
+      "created_at": "2026-06-20T10:08:06.596146Z",
+      "message_id": "msg_45",
+      "id": "msg_45"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-06-20T09:20:38.032435Z",
+    "updated_at": "2026-06-20T10:08:06.600426Z",
+    "total_messages": 45,
+    "question_bank": "1. ### 23. 你曾因为想帮别人而做出过哪些超出「份内」的事？\n2. 你后来怎么理解这件事？从中可以看出你对有效帮助的反思是什么？\n3. 它触动你的具体是什么？从中可以看出你向往的贡献形象是什么？\n4. ### 20. 有没有一本书、一部电影或一个人物，让你强烈感到「我也想成为对别人有那种影响的人」？\n5. 事后你后悔吗？为什么？从中可以看出你愿意为利他付出到什么尺度？\n6. ### 21. 在团队中，你通常是为别人补位、为别人解释、为别人争取，还是为别人兜底？",
+    "question_bank_phase": "purpose",
+    "purpose_progress": {
+      "current_index": 10,
+      "confirmed_rows": [],
+      "completed": true
+    },
+    "conclusion_state": "confirmed",
+    "conclusion_draft": null,
+    "conclusion_final": {
+      "summary": "核心使命：通过工作帮助他人获得成长与启发，同时守护公平、传递勇气、创造出能抚慰人心的内容，并为身边的人带来便利与安稳。最终目的是希望更多人因为你的存在，拥有自信与力量，更从容地面对自己的生活。\n\n这一使命来自十段为你人提供价值的经历：从替室友挺身甩开骚扰、在财富流推演后给出改进建议、创建疗愈小红书号被感谢，到公开差评帮人避雷、站定表演传递勇气、当群主转发有用信息、特殊时期义务分物、当助教早起开会，以及每一次耐心倾听与让人感到被看见的陪伴。这些经历交织出你在日常时刻里传递成长、公平、勇气、创造力与平衡的独特方式。",
+      "keywords": [
+        "平衡",
+        "公平",
+        "创造力",
+        "成长",
+        "勇气"
+      ],
+      "mission_core": "我希望通过我的工作，帮助他人获得成长与启发，同时在过程中守护公平、传递勇气、创造出能抚慰人心的内容，并为身边的人带来便利与安稳。",
+      "mission_detail": "成长与启发是你最常给出的礼物——无论沙盘后的生活改变、朋友得到启发、还是学员被帮助后往前一步，你都真心希望别人因此变强。守护公平与传递勇气是你为他们撑起的保护伞——差评避雷、站出来当团长分物，你让规则被尊重，也让他们敢于面对自己的处境。创造力与便利是你把内心秩序外化给世界的方式——小红书号、公众号、有用讯息，你让流动的内容成为他人手里实实在在的暖意和工具。而平衡则藏在每一次耐心的倾听、每一次安稳的陪伴里——你让起伏的情绪落回地面，让他人的日子多一点点从容。",
+      "mission_aim": "你希望更多人因为你的存在，拥有自信与力量，更从容地面对自己的生活。",
+      "experience_value_rows": [
+        {
+          "experience": "带室友摆脱骚扰",
+          "values": [
+            "勇气"
+          ]
+        },
+        {
+          "experience": "财富流推演后玩家改变生活习惯",
+          "values": [
+            "成长"
+          ]
+        },
+        {
+          "experience": "创建疗愈小红书号得到感谢",
+          "values": [
+            "创造力",
+            "成长"
+          ]
+        },
+        {
+          "experience": "公开差评帮大家避雷",
+          "values": [
+            "公平",
+            "勇气"
+          ]
+        },
+        {
+          "experience": "表演让大家开心并获得勇气力量",
+          "values": [
+            "勇气"
+          ]
+        },
+        {
+          "experience": "财富流推演后给对方改进建议",
+          "values": [
+            "成长"
+          ]
+        },
+        {
+          "experience": "公众号观点对朋友有启发",
+          "values": [
+            "创造力",
+            "成长"
+          ]
+        },
+        {
+          "experience": "当群主转发有用讯息",
+          "values": [
+            "公平"
+          ]
+        },
+        {
+          "experience": "站出来当团长分发物品",
+          "values": [
+            "平衡"
+          ]
+        },
+        {
+          "experience": "当助教早起开会支持学员",
+          "values": [
+            "成长"
+          ]
+        },
+        {
+          "experience": "耐心听对方倾诉",
+          "values": [
+            "平衡",
+            "成长"
+          ]
+        },
+        {
+          "experience": "让人感到被看见被理解",
+          "values": [
+            "平衡",
+            "成长"
+          ]
+        }
+      ]
+    },
+    "conclusion_feedback": "",
+    "thread_completed": true,
+    "conclusion_shown_at_turn": 22,
+    "conclusion_reject_baseline_user_count": null
+  }
+}

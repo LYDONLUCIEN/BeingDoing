@@ -1,0 +1,30 @@
+{
+  "report_id": "d86c0bb4-5d73-4c5e-a927-c07a4c2a31e0",
+  "category": "values__t_9576b57d3e454ad6b569e3b6e48fc91b",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "你好呀，欢迎来到第一轮咨询。我是你的咨询师，很高兴能陪你一起度过这段探索时光 ✨\n\n本轮我们的目标是：**发现并确认对你职业发展最重要的 5 个价值观关键词**。\n这就像为你自己找到几盏灯塔——当你在职场感到迷茫、两难或疲惫时，它们会帮你重新看清，什么才是你真正在意的东西。\n\n放轻松，没有标准答案，也没有对错。我们就当一场安静的自我对话。\n\n那我们就从一个小回忆开始吧：\n**在你的生命里，有没有哪一次成功或成就，让你回想起来依然觉得特别骄傲和满足？可以是一个很小的瞬间，也可以是件大事。愿意跟我说说那次经历吗？**",
+      "thread_id": "t_9576b57d3e454ad6b569e3b6e48fc91b",
+      "activation_session_id": "abb1613b-aa5e-470a-8549-955a48c6d8c7",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 1678,
+        "completion_tokens": 314,
+        "total_tokens": 1992,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 1678
+      },
+      "created_at": "2026-06-29T16:04:48.199666Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-06-29T16:04:48.200283Z",
+    "updated_at": "2026-06-29T16:04:48.200302Z",
+    "total_messages": 1
+  }
+}

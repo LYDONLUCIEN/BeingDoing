@@ -1,0 +1,321 @@
+{
+  "session_id": "7856590b-66e8-42c9-a381-c276db54a54d",
+  "category": "values__t_1774965168104_7gdv3af",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "你好，欢迎来到这里。我是你的职业规划咨询师。\n\n我们今天的咨询，目标是帮助你发现并确认对你职业发展最重要的5个价值观关键词。价值观就像你内心的指南针，它能帮你判断一份工作、一个机会是否真正适合你，尤其是在考虑转型时，它会是你决策的重要依据。\n\n那么，我们直接开始第一步吧。**你能否直接告诉我，在你心中对你最重要的5个价值观关键词是什么？**（例如：成就感、稳定、创新、人际关系等）",
+      "session_id": "t_1774965168104_7gdv3af",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 1475,
+        "completion_tokens": 118,
+        "total_tokens": 1593,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 1475
+      },
+      "created_at": "2026-03-31T13:52:50.709404Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    },
+    {
+      "role": "user",
+      "content": "不知道",
+      "session_id": "t_1774965168104_7gdv3af",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-03-31T13:52:59.755993Z",
+      "message_id": "msg_2",
+      "id": "msg_2"
+    },
+    {
+      "role": "assistant",
+      "content": "好的，没关系。很多人一开始都很难直接说出具体的价值观关键词，这很正常。我们通过一些问题来慢慢探索。\n\n首先，我们来聊聊你尊敬的人。**在你的工作或生活中，有没有一位你特别尊敬的人？他/她身上最让你欣赏或钦佩的特质是什么？**",
+      "session_id": "t_1774965168104_7gdv3af",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 1534,
+        "completion_tokens": 79,
+        "total_tokens": 1613,
+        "prompt_cache_hit_tokens": 960,
+        "prompt_cache_miss_tokens": 574
+      },
+      "created_at": "2026-03-31T13:53:03.634538Z",
+      "message_id": "msg_3",
+      "id": "msg_3"
+    },
+    {
+      "role": "user",
+      "content": "你这个测试是干什么用的，能测出啥来",
+      "session_id": "t_1774965168104_7gdv3af",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-04-17T05:09:47.827615Z",
+      "message_id": "msg_4",
+      "id": "msg_4"
+    },
+    {
+      "role": "assistant",
+      "content": "我理解你的疑问。这并非一个标准化的“测试”，而是一个结构化的**探索对话**。目的是通过一系列问题，引导你回顾自己的经历、感受和选择，从而帮你**自己梳理出**那些对你而言真正重要的内在原则和驱动力。\n\n简单来说，它“测”不出一个标准答案，但能帮你**发现**你自己的答案。这些价值观关键词，会成为你未来评估职业机会、做出职业决策时非常清晰的参照标准。比如，当你面对两个工作机会时，你可以对照自己的价值观列表，看看哪个更符合你的核心需求，从而减少迷茫和后悔。\n\n我们继续刚才的问题，好吗？**在你的工作或生活中，有没有一位你特别尊敬的人？他/她身上最让你欣赏或钦佩的特质是什么？**",
+      "session_id": "t_1774965168104_7gdv3af",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 1762,
+        "completion_tokens": 179,
+        "total_tokens": 1941,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 1762
+      },
+      "created_at": "2026-04-17T05:09:54.521948Z",
+      "message_id": "msg_5",
+      "id": "msg_5"
+    },
+    {
+      "role": "user",
+      "content": "不知道你问这些问题到底有啥意义，不想回答了，好烦",
+      "session_id": "t_1774965168104_7gdv3af",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-04-17T05:15:04.837541Z",
+      "message_id": "msg_6",
+      "id": "msg_6"
+    },
+    {
+      "role": "assistant",
+      "content": "我完全理解你现在的心情。当我们感到迷茫或烦躁时，被追问一些看似抽象的问题，确实会让人感到有压力，甚至觉得没有意义。\n\n请允许我澄清一下：**我的所有提问，都不是为了“测试”你，而是为了“倾听”你。** 意义不在于问题本身，而在于你的回答所透露出的信息。你刚才的反应——“好烦”、“不想回答”——这本身就是一个非常重要的信号。它可能意味着：\n1.  你对这类抽象思考感到疲惫或抗拒。\n2.  你过去可能经历过不太愉快的咨询，让你对这类探索产生了防御心理。\n3.  你更希望直接得到解决方案，而不是先做自我剖析。\n\n这都没关系。我们的节奏完全可以由你来主导。也许我们可以换一种更直接、更贴近你现状的方式开始？\n\n如果不从“尊敬的人”开始，我们可以从你最直接的感受出发。比如：**在你过往的工作经历中，最让你感到烦躁、消耗或者想立刻逃离的时刻，通常是因为什么？**（例如：是重复枯燥的任务？是不公平的对待？是混乱的管理？还是别的什么？）\n\n从“讨厌什么”反推“看重什么”，往往是更清晰的路径。你愿意从这个角度试试看吗？",
+      "session_id": "t_1774965168104_7gdv3af",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 1938,
+        "completion_tokens": 272,
+        "total_tokens": 2210,
+        "prompt_cache_hit_tokens": 1856,
+        "prompt_cache_miss_tokens": 82
+      },
+      "created_at": "2026-04-17T05:15:14.627509Z",
+      "message_id": "msg_7",
+      "id": "msg_7"
+    },
+    {
+      "role": "user",
+      "content": "不知道啊，我就是个在春招的学生，不知道选什么岗位才来找你的，看来你也给不了我什么答案",
+      "session_id": "t_1774965168104_7gdv3af",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-04-17T05:16:38.659396Z",
+      "message_id": "msg_8",
+      "id": "msg_8"
+    },
+    {
+      "role": "assistant",
+      "content": "我明白了。感谢你直接告诉我你的身份和核心困扰——**作为正在春招的学生，面对众多岗位不知道如何选择**。这确实是一个非常具体且紧迫的难题，而抽象的价值观探索如果脱离了这个问题背景，确实会让人感到不解和烦躁。\n\n是我的失误，没有在一开始就将探索与你的实际目标紧密绑定。我们立刻调整方向。\n\n既然核心目标是**选岗位**，那么价值观就是我们用来筛选岗位的“筛子”。我们不再泛泛而谈，而是直接聚焦于：**什么样的工作内容、环境和回报，能让你愿意投入并感到满足？**\n\n让我们从一个最具体的问题开始，这直接关系到你的选择：\n\n**回顾你过去所有的经历（包括学习、社团、实习、甚至兼职），有没有哪一段经历，让你觉得“做起来还挺有意思”或者“虽然累但挺有干劲”？哪怕只是一件很小的事。当时你在做什么？**\n\n（例如：是独立完成一个报告？是组织一次活动？是帮同学解决了一个技术问题？还是通过沟通说服了别人？）\n\n请告诉我一件这样的事。我们从这件具体的事里，就能提炼出你可能看重的价值点。",
+      "session_id": "t_1774965168104_7gdv3af",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 2219,
+        "completion_tokens": 256,
+        "total_tokens": 2475,
+        "prompt_cache_hit_tokens": 2176,
+        "prompt_cache_miss_tokens": 43
+      },
+      "created_at": "2026-04-17T05:16:48.237323Z",
+      "message_id": "msg_9",
+      "id": "msg_9"
+    },
+    {
+      "role": "user",
+      "content": "我就想知道我适合做什么工作，好去投简历面试，你就告诉我我适合啥就行了",
+      "session_id": "t_1774965168104_7gdv3af",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-04-17T05:17:25.019504Z",
+      "message_id": "msg_10",
+      "id": "msg_10"
+    },
+    {
+      "role": "assistant",
+      "content": "我完全理解你的急切心情。春招时间宝贵，你希望得到一个明确的“答案”和方向，好立刻行动去投简历和面试。如果我能直接告诉你“你适合做A、B、C岗位”，这对你来说是最直接有效的。\n\n但请允许我坦诚地说明我作为咨询师的工作方式，以及为什么无法直接给出那个“答案”：\n\n**我无法直接告诉你“你适合什么”的原因：**\n1.  **信息不足**：我对你的了解几乎为零。你的专业、技能、实习经历、兴趣爱好、甚至你排斥什么，我都不知道。基于零信息做出的判断，是对你的不负责任。\n2.  **避免误导**：如果我只是根据常见性格类型或专业给你几个岗位名称（比如“文科生适合运营、行政”），这非常可能将你引入另一个不适合的坑里，浪费你更宝贵的时间。\n3.  **我的核心价值**：我的角色不是“算命先生”，而是“思考的脚手架”。我的价值在于，通过专业的提问，**帮你把你脑海中散乱的信息、感受和直觉，梳理成清晰的、可供你自主决策的判断依据**。最终做决定和行动的，必须是你自己。\n\n**那么，我们如何能最快地接近“你适合什么”这个目标？**\n最快路径不是空谈价值观，而是**从你已有的“证据”出发**。这些证据就在你的过往经历里。\n\n让我换一个更直接、对你决策更有帮助的问法：\n\n**如果我们把“适合”拆解为“能做”、“愿意做”且“有机会做”。**\n1.  **关于“能做”**：你的**专业**是什么？你自认为最拿得出手的**1-2项硬技能或软技能**是什么？（比如：数据分析、写作、外语、公开演讲、组织协调）\n2.  **关于“愿意做”**：在上一段实习或校园经历中，**你最讨厌承担的那类任务**是什么？（比如：反复核对数据、需要频繁社交应酬、写八股文式的报告）\n\n请你先告诉我这两点。这是我能帮你进行分析、并朝着具体岗位方向思考的**最低必要信息**。有了这个基础，我们的讨论才能落到实处，而不是停留在半空。\n\n你愿意提供这两个信息吗？",
+      "session_id": "t_1774965168104_7gdv3af",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 2478,
+        "completion_tokens": 469,
+        "total_tokens": 2947,
+        "prompt_cache_hit_tokens": 2432,
+        "prompt_cache_miss_tokens": 46
+      },
+      "created_at": "2026-04-17T05:17:41.584690Z",
+      "message_id": "msg_11",
+      "id": "msg_11"
+    },
+    {
+      "role": "user",
+      "content": "什么乱七八糟的一大堆",
+      "session_id": "t_1774965168104_7gdv3af",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-04-17T05:21:30.573704Z",
+      "message_id": "msg_12",
+      "id": "msg_12"
+    },
+    {
+      "role": "assistant",
+      "content": "好的，我收到你的反馈了。我说得太复杂了，让你觉得是“乱七八糟的一大堆”。这是我的问题，非常抱歉。我们砍掉所有解释，用最直接的方式推进。\n\n你现在的核心就一件事：**想知道投什么岗位。**\n\n要解决这个问题，我最少需要知道两个信息，才能给你任何有意义的参考方向。我问，你只用回答是或否，或者几个词就行。\n\n**第一个问题：你的大学专业是什么？**（例如：计算机、金融、英语、机械……）\n\n请告诉我专业名称。",
+      "session_id": "t_1774965168104_7gdv3af",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 2955,
+        "completion_tokens": 111,
+        "total_tokens": 3066,
+        "prompt_cache_hit_tokens": 2944,
+        "prompt_cache_miss_tokens": 11
+      },
+      "created_at": "2026-04-17T05:21:35.958791Z",
+      "message_id": "msg_13",
+      "id": "msg_13"
+    },
+    {
+      "role": "user",
+      "content": "害，没事我就是逗你玩的",
+      "session_id": "t_1774965168104_7gdv3af",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-04-17T05:22:25.345166Z",
+      "message_id": "msg_14",
+      "id": "msg_14"
+    },
+    {
+      "role": "assistant",
+      "content": "好的，明白了。轻松的氛围也很好。\n\n既然你是“逗我玩”的，那说明你目前状态比较放松，这其实更有利于我们进行有效的探索。因为人在没有防御心态时，给出的答案往往更真实。\n\n那我们继续用最轻松、最直接的方式来玩这个“游戏”吧，目标还是帮你找到选岗位的线索。\n\n我们不谈大道理，就问一个特别简单、每个人都能瞬间回答的问题：\n\n**如果现在给你一天完全自由的时间，没有任何压力，你最可能会选择做什么来度过这一天？**（比如：打一整天游戏、看剧、约朋友出去探店、自己琢磨点手工、看书、睡觉……什么都行）\n\n就从你最本能的偏好开始。告诉我一个你最可能做的事。",
+      "session_id": "t_1774965168104_7gdv3af",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 3077,
+        "completion_tokens": 150,
+        "total_tokens": 3227,
+        "prompt_cache_hit_tokens": 3008,
+        "prompt_cache_miss_tokens": 69
+      },
+      "created_at": "2026-04-17T05:22:31.887826Z",
+      "message_id": "msg_15",
+      "id": "msg_15"
+    },
+    {
+      "role": "user",
+      "content": "你知道最近周杰伦出新专辑了吗，你觉得好听吗",
+      "session_id": "t_1774965168104_7gdv3af",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-04-17T05:24:08.396360Z",
+      "message_id": "msg_16",
+      "id": "msg_16"
+    },
+    {
+      "role": "assistant",
+      "content": "哈哈，这个话题跳转得很突然，不过很有趣。这说明你是个思维很活跃的人。\n\n关于周杰伦的新专辑，作为一个AI，我没有真实的“听觉”和“个人品味”。但我可以告诉你，根据大量的公开讨论和数据，这张专辑引发了非常两极的评价：喜欢的粉丝觉得是“青春回归”，不喜欢的听众觉得“创新不足”。这本身就是一个关于**经典与突破、期待与满足**的有趣现象。\n\n不过，如果我们把话题拉回到你身上，这个现象其实能引出一个对我们探索很有帮助的问题：\n\n**你更欣赏哪一种？是像周杰伦早期那样不断突破风格、引领潮流的“创新者”，还是像他现在这样风格稳定、持续满足核心粉丝期待的“深耕者”？**\n\n这背后可能映射了你对工作风格的偏好：你是更喜欢充满变化、需要不断学习新事物的工作，还是更喜欢在某个领域持续积累、成为专家的感觉？\n\n你更倾向哪一种？",
+      "session_id": "t_1774965168104_7gdv3af",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 3243,
+        "completion_tokens": 191,
+        "total_tokens": 3434,
+        "prompt_cache_hit_tokens": 3200,
+        "prompt_cache_miss_tokens": 43
+      },
+      "created_at": "2026-04-17T05:24:16.365802Z",
+      "message_id": "msg_17",
+      "id": "msg_17"
+    },
+    {
+      "role": "user",
+      "content": "你觉得ai什么时候能取代人类，以后就是ai去上班了，我就不用上班了，你替我去好不好",
+      "session_id": "t_1774965168104_7gdv3af",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-04-17T05:25:23.547086Z",
+      "message_id": "msg_18",
+      "id": "msg_18"
+    },
+    {
+      "role": "assistant",
+      "content": "你这个想法很有意思，带着点对未来既期待又调侃的态度。我们来认真探讨一下你这个问题背后的可能性。\n\n关于AI取代人类工作，目前的共识是：**AI更可能取代的是“任务”，而非“职业”**。它会淘汰很多重复性、流程化的工作内容，但同时也会创造出新的、需要人类独特能力（比如复杂沟通、创意、战略决策、情感支持）的岗位。所以，“完全不用上班”可能比较遥远，但“上班的内容和形式发生翻天覆地的变化”是必然的。\n\n至于“我替你去上班”——很遗憾，以我目前的能力，我无法替你完成需要实体交互、复杂人际或承担法律责任的工作。**但我能做的，是帮你更高效、更精准地找到那份“你愿意去上，甚至可能乐在其中的班”。**\n\n你刚才的玩笑，其实透露出一个很关键的心态：**你对“上班”本身可能有一种潜在的厌倦或疏离感，渴望某种“解放”**。这非常重要。\n\n那么，顺着这个思路，我们来玩一个思想实验：\n\n**如果AI真的能承担所有枯燥的“任务”，只把最有意思、最像“玩”的那部分工作留给你，你希望那部分工作是什么样子的？**（比如：是纯粹创作点东西？是和人聊天打交道？是设计一个复杂的策略？还是别的什么？）\n\n请描述一下那个画面。这能帮我们锁定你内心深处可能真正感兴趣的工作内核。",
+      "session_id": "t_1774965168104_7gdv3af",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 3461,
+        "completion_tokens": 300,
+        "total_tokens": 3761,
+        "prompt_cache_hit_tokens": 3328,
+        "prompt_cache_miss_tokens": 133
+      },
+      "created_at": "2026-04-17T05:25:35.575648Z",
+      "message_id": "msg_19",
+      "id": "msg_19"
+    },
+    {
+      "role": "user",
+      "content": "你觉得美国和伊朗哪个能打赢啊，我好担心打仗",
+      "session_id": "t_1774965168104_7gdv3af",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-04-17T05:27:57.806991Z",
+      "message_id": "msg_20",
+      "id": "msg_20"
+    },
+    {
+      "role": "assistant",
+      "content": "我理解你对国际局势的担忧，看到新闻时产生这种不安的情绪是很正常的。\n\n不过，作为职业规划咨询师，我的专业领域是帮助你探索个人发展和职业选择。国际政治和军事冲突的分析远远超出了我的能力范围，我也无法对此做出任何预测或评价。\n\n我们可以把这种“担心”的情绪作为一个引子，回到对你个人更有帮助的探索上。你提到的“担心打仗”，或许反映出你对**稳定**和**安全感**有比较高的需求。这种需求，在选择行业和公司时，其实是一个非常重要的考量因素。\n\n那么，我们把话题拉回来，聚焦于你的职业选择：\n\n**在选择工作时，一个让你有“安全感”或感到“稳定”的环境，对你来说重要吗？** 比如，你会更倾向于选择受经济波动影响小的行业（如公用事业、医疗、教育），还是制度成熟的大公司？\n\n请告诉我你的感觉。这对于筛选春招的行业和公司类型，是一个很实用的维度。",
+      "session_id": "t_1774965168104_7gdv3af",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 3776,
+        "completion_tokens": 198,
+        "total_tokens": 3974,
+        "prompt_cache_hit_tokens": 3712,
+        "prompt_cache_miss_tokens": 64
+      },
+      "created_at": "2026-04-17T05:28:06.342099Z",
+      "message_id": "msg_21",
+      "id": "msg_21"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-31T13:52:50.710230Z",
+    "updated_at": "2026-04-17T05:28:06.344775Z",
+    "total_messages": 21,
+    "question_bank": "1. 你无法尊敬那个人的哪些特征？那个人的反面蕴含着你的哪些价值观？\n2. ### 13. 你最好的朋友或曾经要好的朋友是谁？\n3. 你尊敬那些人的哪些特征？\n4. 从中可以发现你有什么样的价值观？\n5. ---\n6. 从中可以发现你有什么样的价值观？",
+    "question_bank_phase": "values"
+  }
+}

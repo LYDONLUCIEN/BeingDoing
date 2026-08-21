@@ -1,0 +1,52 @@
+{
+  "report_id": "admin_mock_template",
+  "activation_code": "MOCK",
+  "user_id": "admin",
+  "steps": {
+    "values": {
+      "step_id": "values",
+      "selected_session_id": "admin_mock",
+      "locked": true,
+      "session_ids": [
+        "admin_mock"
+      ],
+      "updated_at": "2024-01-01T00:00:00Z"
+    },
+    "strengths": {
+      "step_id": "strengths",
+      "selected_session_id": "admin_mock",
+      "locked": true,
+      "session_ids": [
+        "admin_mock"
+      ],
+      "updated_at": "2024-01-01T00:00:00Z"
+    },
+    "interests": {
+      "step_id": "interests",
+      "selected_session_id": "admin_mock",
+      "locked": true,
+      "session_ids": [
+        "admin_mock"
+      ],
+      "updated_at": "2024-01-01T00:00:00Z"
+    },
+    "purpose": {
+      "step_id": "purpose",
+      "selected_session_id": "admin_mock",
+      "locked": true,
+      "session_ids": [
+        "admin_mock"
+      ],
+      "updated_at": "2024-01-01T00:00:00Z"
+    },
+    "rumination": {
+      "step_id": "rumination",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [],
+      "updated_at": "2024-01-01T00:00:00Z"
+    }
+  },
+  "status": "in_progress",
+  "final_conclusion": null
+}

@@ -1,0 +1,86 @@
+{
+  "report_id": "6a4f8c38-6e24-4b3e-9772-8ff7673553c4",
+  "activation_code": "OGML1V47JA",
+  "user_id": "966ac41d-4ef4-4350-8ddb-a16064b738a0",
+  "created_at": "2026-06-24T14:51:17.568642Z",
+  "updated_at": "2026-06-30T08:20:35.478082Z",
+  "status": "in_progress",
+  "final_conclusion": null,
+  "steps": {
+    "values": {
+      "step_id": "values",
+      "selected_session_id": "t_1ba3e2f965e44473a87b2f069e728e27",
+      "locked": true,
+      "session_ids": [
+        "t_c13b124b40484528a12f6c93a27224b0",
+        "t_c1613d370f8d4bef901d3a57c5b307cc",
+        "t_1ba3e2f965e44473a87b2f069e728e27"
+      ],
+      "updated_at": "2026-06-30T08:01:56.031107Z",
+      "anchor_summary": {
+        "goals": "通过深入对话，沉淀了用户最终确认的5个核心价值观词及其优先级顺序，并厘清了彼此的层次关系：自由是精神根基，完整性是内在状态，创造力与行动力是缺一不可的表达，善良是与外界的连接方式，感受力是吸收滋养的桥梁。",
+        "personality": "内省、自愈力强，对自我主权与内在秩序有强烈需求，能清晰辨认自身需要，坚持独立判断。",
+        "style": "表达直接、凝练，常用简短有力的肯定或否定词，偶尔展开细腻的自我观察，整体坦诚。",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-06-25T09:04:38.413860Z"
+    },
+    "strengths": {
+      "step_id": "strengths",
+      "selected_session_id": "t_aa03549596b24bbcb502eaf59b7bcd12",
+      "locked": true,
+      "session_ids": [
+        "t_aa03549596b24bbcb502eaf59b7bcd12"
+      ],
+      "updated_at": "2026-06-30T08:10:25.136949Z",
+      "anchor_summary": {
+        "goals": "成功沉淀了用户确认的5个优势项：将抽象需求转化为具体创意方案、敏锐地发现并主动肯定他人的潜在价值、在高质量思维碰撞中汲取和创造新能量、将突发灵感即兴转化为趣味性互动、快速扎根于新环境并展开探索。凸显了从创意、赋能、能量、互动到适应的可迁移能力线索。",
+        "personality": "内省且富有创造力，真诚坦率，具有深度共情与赋能他人的本能，享受创造与高质量连接，适应力强且乐于探索。",
+        "style": "表达生动具象，善用比喻（如“反向弹簧”“三分钟热度”），口语化中带着自我觉察，亲和且带有行动的热情。",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-06-26T03:05:40.930362Z"
+    },
+    "interests": {
+      "step_id": "interests",
+      "selected_session_id": "t_458f057bcd5b4338807e55d92908e02d",
+      "locked": true,
+      "session_ids": [
+        "t_458f057bcd5b4338807e55d92908e02d"
+      ],
+      "updated_at": "2026-06-30T08:20:35.478052Z",
+      "anchor_summary": {
+        "goals": "成功锁定用户确认的3个核心热爱方向（疗愈性自由绘画、社会现象与人性探究、深度对话与思维激荡），均源于持续投入且能“充电”的真实经历，为后续深化行动奠定基础。",
+        "personality": "坦诚直接，注重真实感受多于概念包装，敏锐自察且不避讳局限（如非社会学背景、亲密关系经历单一），选择热爱看重内在能量感而非外在成就。",
+        "style": "用具体的生活实例说明喜好（声音装置工作坊、花束般的恋爱、弄堂偶遇），语言朴实有画面感，倾向“感受式”表达而非抽象概括。",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-06-26T03:44:36.206200Z"
+    },
+    "purpose": {
+      "step_id": "purpose",
+      "selected_session_id": "t_ce7d96e86ef8486a9d660f125a5f1621",
+      "locked": true,
+      "session_ids": [
+        "t_ce7d96e86ef8486a9d660f125a5f1621"
+      ],
+      "updated_at": "2026-06-30T07:27:04.777496Z",
+      "anchor_summary": {
+        "goals": "本阶段成功将用户的五条助人经历与价值观关键词（自由、创造力、深度交流、共情、使命感）一一对应，并提炼出一份清晰的使命陈述：通过工作传递共情与深度交流，用创造力和使命感将体贴转化为可触摸的价值。使命总结已获用户确认。",
+        "personality": "细腻温暖，善于共情，有自我觉察和主动纠错意识，表达温和而坚定。",
+        "style": "直接、真诚，不回避问题，能在觉察到信息偏差时平静指出并澄清。",
+        "conflicts": "用户发现助理误用了旧版价值观关键词（自由、完整性等五词），明确指正后重新对齐至正确词集（自由、创造力、深度交流、共情、使命感），该冲突已解决。"
+      },
+      "anchor_updated_at": "2026-06-26T06:49:12.031430Z"
+    },
+    "rumination": {
+      "step_id": "rumination",
+      "selected_session_id": "t_afa6d34163b04ae9b8bc783aba4fc2b8",
+      "locked": false,
+      "session_ids": [
+        "t_afa6d34163b04ae9b8bc783aba4fc2b8"
+      ],
+      "updated_at": "2026-06-26T10:21:52.782567Z"
+    }
+  }
+}

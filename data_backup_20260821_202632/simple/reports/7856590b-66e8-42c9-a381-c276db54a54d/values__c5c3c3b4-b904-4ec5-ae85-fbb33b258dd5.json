@@ -1,0 +1,89 @@
+{
+  "session_id": "7856590b-66e8-42c9-a381-c276db54a54d",
+  "category": "values__c5c3c3b4-b904-4ec5-ae85-fbb33b258dd5",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "你好，欢迎来到职业规划咨询。我是你的咨询师，很高兴能和你一起探索。\n\n我们今天的首要目标是，发现并确认对你职业发展最重要的5个价值观关键词。价值观就像你内心的指南针，它能帮助我们在面临选择时，知道什么对自己是真正重要的，从而让转型的方向更清晰、更坚定。\n\n那么，我们直接开始第一步吧：\n\n**你能否直接告诉我，在你心中对你最重要的5个价值观关键词是什么？**（例如：成就感、稳定、创新、人际关系等）\n\n---",
+      "session_id": "c5c3c3b4-b904-4ec5-ae85-fbb33b258dd5",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 1494,
+        "completion_tokens": 125,
+        "total_tokens": 1619,
+        "prompt_cache_hit_tokens": 960,
+        "prompt_cache_miss_tokens": 534
+      },
+      "created_at": "2026-03-30T13:56:13.976835Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    },
+    {
+      "role": "user",
+      "content": "我觉得是创新，人际，稳定，自由，助人为乐！",
+      "session_id": "c5c3c3b4-b904-4ec5-ae85-fbb33b258dd5",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-03-30T13:58:19.280158Z",
+      "message_id": "msg_2",
+      "id": "msg_2"
+    },
+    {
+      "role": "assistant",
+      "content": "好的，非常感谢你的分享。我已经记录下你自述的5个价值观关键词：\n\n**【用户自述】**\n1.  创新\n2.  人际\n3.  稳定\n4.  自由\n5.  助人为乐\n\n这是一个很好的起点。接下来，为了更深入地理解这些价值观在你生活和职业中的具体体现，以及确认它们是否就是对你最重要的，我会向你提出一些问题。我们从第一个问题开始：\n\n**回顾你过去10年的高校教师生涯，有没有哪一个瞬间或一段经历，让你觉得“这份工作真不错，很有价值”？可以具体描述一下当时的情景和你的感受吗？**",
+      "session_id": "c5c3c3b4-b904-4ec5-ae85-fbb33b258dd5",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 1567,
+        "completion_tokens": 148,
+        "total_tokens": 1715,
+        "prompt_cache_hit_tokens": 960,
+        "prompt_cache_miss_tokens": 607
+      },
+      "created_at": "2026-03-30T13:58:25.038929Z",
+      "message_id": "msg_3",
+      "id": "msg_3"
+    },
+    {
+      "role": "user",
+      "content": "好像没有特别好的经历",
+      "session_id": "c5c3c3b4-b904-4ec5-ae85-fbb33b258dd5",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-03-30T13:58:35.970195Z",
+      "message_id": "msg_4",
+      "id": "msg_4"
+    },
+    {
+      "role": "assistant",
+      "content": "我理解你的感受，有时候我们更容易记住那些困扰或平淡的时刻。那么，我们换个角度来探索。\n\n**如果让你想象一个理想的、让你充满动力的工作场景，它大概是什么样子的？**（比如：你在做什么？和谁在一起？环境如何？）",
+      "session_id": "c5c3c3b4-b904-4ec5-ae85-fbb33b258dd5",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 1704,
+        "completion_tokens": 78,
+        "total_tokens": 1782,
+        "prompt_cache_hit_tokens": 1664,
+        "prompt_cache_miss_tokens": 40
+      },
+      "created_at": "2026-03-30T13:58:39.958606Z",
+      "message_id": "msg_5",
+      "id": "msg_5"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-30T13:56:13.977449Z",
+    "updated_at": "2026-03-30T13:58:39.960384Z",
+    "total_messages": 5,
+    "question_bank": "1. ### 4. 对于母亲的生活方式，哪些地方你喜欢，哪些地方你不喜欢？\n2. 做那个决策时，你考虑了哪些因素？\n3. 成为你的动力源泉的价值观是什么？\n4. ---\n5. ### 10. 从出生到小学阶段，最令你开心的事是什么？\n6. ### 7. 因为哪些事会感动？",
+    "question_bank_phase": "values"
+  }
+}

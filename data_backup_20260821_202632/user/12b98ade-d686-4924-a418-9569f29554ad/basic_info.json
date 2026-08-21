@@ -1,0 +1,29 @@
+{
+  "nickname": "雾",
+  "gender": "女",
+  "age": "18-24",
+  "education_school": "普通本科",
+  "education_degree": "本科",
+  "education_major": "汉语言文学（师范类）",
+  "city": "烟台",
+  "family_status": [
+    "未婚"
+  ],
+  "family_affects_career": "不确定",
+  "career_status": "在职",
+  "industry": "教培",
+  "position": "语文老师",
+  "work_years_total": "2年",
+  "work_history": "私立学校一年，教培目前来看两个月",
+  "company_types": [
+    "民企"
+  ],
+  "salary_level": "3000-4000",
+  "core_needs": [
+    "职业方向不清晰",
+    "想转型但不知道如何开始",
+    "其他"
+  ],
+  "core_needs_other": "教培的经历让我觉得我不适合当老师，但是我不知道我适合做做什么，喜欢做什么，未来做什么职业",
+  "past_consultation": "无"
+}

@@ -1,0 +1,89 @@
+{
+  "report_id": "5a53d0f8-def0-4f0d-b8f0-8a42128ef40b",
+  "activation_code": "XTHQJE50MN",
+  "user_id": "e49656e7-f4fd-451d-bb16-9ea6f74c48c7",
+  "created_at": "2026-03-28T06:04:36.937072Z",
+  "updated_at": "2026-04-24T09:00:13.827322Z",
+  "status": "in_progress",
+  "final_conclusion": null,
+  "steps": {
+    "values": {
+      "step_id": "values",
+      "selected_session_id": "t_1774678447173_nw1yoff",
+      "locked": true,
+      "session_ids": [
+        "47e97efb-9663-4afe-a4fd-607cb7363e21",
+        "t_1774678447173_nw1yoff"
+      ],
+      "updated_at": "2026-04-24T09:00:13.827209Z",
+      "anchor_summary": {
+        "goals": "用户已通过多轮探索提炼出多个价值观关键词，并在引导下开始整合，明确了成就感为核心价值观，将影响力和财富视为其实现方式。本阶段目标仍在进行中，用户尚未最终确认5个关键词，需进一步引导以完成排序和删减。",
+        "personality": "坦诚、重视原则、追求独立",
+        "style": "直接、具体",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-03-29T14:44:54.432233Z"
+    },
+    "strengths": {
+      "step_id": "strengths",
+      "selected_session_id": "t_1774794875439_67ag0u8",
+      "locked": true,
+      "session_ids": [
+        "47e97efb-9663-4afe-a4fd-607cb7363e21",
+        "t_1774794875439_67ag0u8"
+      ],
+      "updated_at": "2026-04-19T12:05:12.278402Z",
+      "anchor_summary": {
+        "goals": "本阶段成功沉淀用户确认的9项核心优势：认真负责与细节关注、理性思维与本质洞察、好相处、乐观、善于学习借鉴、目标导向执行落地、重视真实真诚、乐于交流反馈、分析梳理能力，凸显了可迁移的执行、学习与互动能力线索。目标接近达成，还差最后一项动手实践优势待用户确认。",
+        "personality": "乐观、好相处，重视真实交流与思想碰撞。",
+        "style": "简洁直接，务实。",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-03-30T09:04:01.081543Z"
+    },
+    "interests": {
+      "step_id": "interests",
+      "selected_session_id": "t_1774861357095_sqbfv94",
+      "locked": true,
+      "session_ids": [
+        "47e97efb-9663-4afe-a4fd-607cb7363e21",
+        "t_1774799589164_dhlvu6m",
+        "t_1774861357095_sqbfv94"
+      ],
+      "updated_at": "2026-04-13T13:13:06.494754Z",
+      "anchor_summary": {
+        "goals": "本阶段通过发散提问和筛选确认，帮助用户锁定了三个核心热爱方向：1) 旅行（了解世界各地人们的不同生活方式），体现对跨文化实地体验的投入；2) 分享知识与助人成长，反映持续助人动力；3) 科技前沿，代表对新技术探索的长期关注。用户积极参与并确认命名，目标达成。",
+        "personality": "理性、关注社会趋势、乐于助人",
+        "style": "简洁、直接",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-03-30T09:30:31.495045Z"
+    },
+    "purpose": {
+      "step_id": "purpose",
+      "selected_session_id": "t_1774862727014_a65cqps",
+      "locked": true,
+      "session_ids": [
+        "t_1774862727014_a65cqps"
+      ],
+      "updated_at": "2026-04-19T12:26:13.847156Z",
+      "anchor_summary": {
+        "goals": "已成功提炼出明确的使命宣言，用户确认核心价值为'赋能'，即运用好奇心、前沿知识探索与高效行动支持他人突破限制、实现成长。使命草稿已获用户初步认可。",
+        "personality": "理性、简洁、注重实效",
+        "style": "直接、务实、少修饰",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-04-11T14:41:43.377076Z"
+    },
+    "rumination": {
+      "step_id": "rumination",
+      "selected_session_id": "t_1775322796434_uygkp5g",
+      "locked": false,
+      "session_ids": [
+        "47e97efb-9663-4afe-a4fd-607cb7363e21",
+        "t_1775322796434_uygkp5g"
+      ],
+      "updated_at": "2026-04-19T12:26:13.849368Z"
+    }
+  }
+}

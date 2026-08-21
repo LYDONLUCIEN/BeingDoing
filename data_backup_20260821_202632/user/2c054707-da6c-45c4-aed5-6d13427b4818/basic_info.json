@@ -1,0 +1,23 @@
+{
+  "nickname": "X",
+  "gender": "女",
+  "age": "18-24",
+  "education_school": "",
+  "education_degree": "",
+  "education_major": "",
+  "city": "",
+  "family_status": [
+    "未婚"
+  ],
+  "family_affects_career": "不会",
+  "career_status": "应届生",
+  "industry": "",
+  "position": "",
+  "work_years_total": "",
+  "work_history": "",
+  "company_types": [],
+  "salary_level": "",
+  "core_needs": [],
+  "core_needs_other": "",
+  "past_consultation": "无"
+}

@@ -128,7 +128,7 @@ class Settings(BaseSettings):
     SMTP_FROM_EMAIL: Optional[str] = None
     SMTP_FROM_NAME: str = "OpenLife"
     # 团队分析报告联系邮箱（交付邮件/站内信/前端提示共用，经 /payment/products 下发前端）
-    TEAM_ANALYSIS_EMAIL: str = "xunlu.lab@outlook.com"
+    TEAM_ANALYSIS_EMAIL: str = "soulhappylab@163.com"
     SMTP_USE_SSL: bool = True
     SMTP_USE_TLS: bool = False
     SMTP_TIMEOUT_SECONDS: int = 20
