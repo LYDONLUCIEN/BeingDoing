@@ -119,6 +119,10 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
       await selectFinal(Array.from(selectedIds));
       await submitFinal();
       onConfirm();
+    } catch {
+      // 后端门槛拦截(如判定恰好此刻未完成/状态漂移):在弹窗内提示 store 中的错误
+      const err = useRuminationV4Store.getState().error;
+      showToast(err || '提交失败，请稍后重试');
     } finally {
       setSubmitting(false);
     }

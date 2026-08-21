@@ -132,7 +132,7 @@ SMTP_HOST=smtp.163.com
 SMTP_PORT=465
 SMTP_USER=xxx@163.com
 SMTP_PASS=授权码
-TEAM_ANALYSIS_EMAIL=xunlu.lab@outlook.com  # 团队分析报告联系邮箱（前后端共用，ADR-0018；仅联系地址，与发信通道无关）
+TEAM_ANALYSIS_EMAIL=soulhappylab@163.com  # 团队分析报告联系邮箱（前后端共用，ADR-0018；仅联系地址，与发信通道无关）
 
 # 可选：支付模块（P1 折扣券；P2a 支付宝闭环已上线，微信 P2b 预留）
 # 商品目录（ADR-0008；2026-07-28 起对外口径改回：季度套餐 / 年度套餐，内部 SKU 仍为 quarterly_package/annual_package）
@@ -196,6 +196,8 @@ MEMBERSHIP_ENABLED=False        # 会员开关（P3 预留）
 ./start.sh restart backend    # 仅重启后端
 ./start.sh attach         # 附加到 tmux session 查看日志
 ```
+
+> **conda 环境按目标环境自动选择**（2026-08-21 起）：`prod` 用生产小机的 base 环境（默认 `/root/miniconda3`），`dev/test`/无参数用开发机 py312（默认 `/mnt/vdb1/miniconda3`）；路径不对时启动前会直接报错提示。可用环境变量覆盖：`CONDA_BASE=/path CONDA_ENV=xxx ./start.sh prod`。注意：生产机上裸跑 `./start.sh`（不带 prod）会走 dev 的 conda 默认值，**生产请始终用 `./start.sh prod`**。
 
 ### 手动启动
 
@@ -316,7 +318,7 @@ python scripts/init_db.py
 - **延期体系（ADR-0016，2026-08-08 起）**：完整码首次过期当天，每日扫描 job（`activation_expiry_scan`，默认 10:00）给激活人发邮件+站内信送**免费 7 天续期**（每码一次，`free_renewal_offered_at`/`free_renewal_claimed_at` 幂等；存量已过期码首次扫描全量补发）；链接 → `/dashboard/codes?free_renewal=<code>` 弹窗手动领取，不限时、领取后从当天起 +7 天。付费续期统一 **9.9 元 / 7 天**（`RENEWAL_PRICE=990`/`RENEWAL_DAYS=7`，旧 20 元/90 天下线仅历史订单展示），与免费解耦、不限次、active/expired 均可买、不可退。关键文件：`app/services/activation_expiry_scan.py`、`POST /simple-auth/codes/free-renewal/claim`、前端 `FreeRenewalClaimModal`。
 - **多码展示口径（2026-08-08 起）**：交付码等价、不区分用途——订单页（`dashboard/orders`）、支付结果页、PurchaseModal 成功视图对多码套餐一律平级列出全部码（`激活码（共 N 个）`，meta.codes 并集 delivered_code/gift_codes 去重），单码订单才保留「你的激活码」单独展示；弹窗消耗升级后通过 `onUpgraded(trialCode, consumedCode)` 把已消耗码从展示列表排除。前端请求被取消（页面刷新/导航，`isRequestCanceled`，含 axios ERR_CANCELED/“Request aborted”）一律静默忽略，不作为错误展示。
 - **团队分析报告提示（2026-08-10 起）**：年度套餐（3 人团队码）交付时引导用户邮件申请团队分析报告——后端 `_deliver_order` 随单发站内信（`type=team_analysis_notice`，交付幂等故仅一次）并在交付邮件附同一文案（`payment_service._team_analysis_notice()` 动态生成，邮箱独占一行避免纯文本邮件误识别链接）；前端支付结果页交付后弹 `TeamAnalysisNoticeModal`（每单一次，关闭后再弹消耗升级避免叠加），PurchaseModal 成功视图内嵌 `TeamAnalysisNoticeBox`。
-- **团队分析联系邮箱（ADR-0018，2026-08-16 起）**：环境变量 `TEAM_ANALYSIS_EMAIL`（默认 xunlu.lab@outlook.com，2026-08-19 起发件邮箱从 163 切换为 Outlook）统一管理——后端交付邮件/站内信经 `_team_analysis_notice()` 使用；前端经 `GET /payment/products` 响应字段 `team_analysis_email` 下发（`lib/api/payment.ts` 的 `getTeamAnalysisEmail()` 模块级缓存 + `TEAM_ANALYSIS_EMAIL_FALLBACK` 兑底）。
+- **团队分析联系邮箱（ADR-0018，2026-08-16 起）**：环境变量 `TEAM_ANALYSIS_EMAIL`（默认 soulhappylab@163.com，2026-08-19 起发件邮箱从 163 切换为 Outlook）统一管理——后端交付邮件/站内信经 `_team_analysis_notice()` 使用；前端经 `GET /payment/products` 响应字段 `team_analysis_email` 下发（`lib/api/payment.ts` 的 `getTeamAnalysisEmail()` 模块级缓存 + `TEAM_ANALYSIS_EMAIL_FALLBACK` 兑底）。
 
 ## 智能体架构
 
@@ -397,6 +399,7 @@ python scripts/init_db.py
 3. **JWT 验证**: Token 有效期默认 60 分钟
 4. **超级管理员**: 通过 `SUPER_ADMIN_USER_IDS` 或 `SUPER_ADMIN_EMAILS` 配置
 5. **Debug 模式**: `DEBUG_MODE=True` 仅对超级管理员生效
+6. **登录防爆破（2026-08-21 起）**: `AuthService.login` 按登录标识（email 小写/phone，**含不存在的账号**）进程内内存计数——1 小时滑动窗口 5 次失败锁 15 分钟（固定不续期、锁定期密码正确也拒绝、成功登录清零、重启失效）；锁定返回 HTTP 423 + detail JSON `{"type":"login_locked","retry_after_seconds":N}`（对齐试用 402 风格）；失败统一文案「邮箱/手机号或密码错误」防枚举（不存在的账号走假哈希校验对齐耗时）。关键文件：`app/services/auth_service.py`（`_login_failures` / `LoginLockedError` / `LOGIN_FAIL_*` 常量）、`app/api/v1/auth.py` 423 分支、前端 `AuthModal.tsx` 倒计时；测试 `test/backend/test_login_lockout.py`
 
 ## 常用开发任务
 
@@ -440,6 +443,7 @@ python scripts/init_db.py
 - `wiki/开发文档/0731-迁移计划.md` - 新生产服务器迁移计划（v1.5.1→HEAD 变化总览 + openlife.beyondego.me 切流步骤）
 - `wiki/开发文档/0821-迁移计划-v1.5.1-to-v1.6.0.md` - **生产迁移完整手册（v1.5.1→v1.6.0，0731 版的完整替代）**：12 个 migration（007→019）/ xunlu 渲染引擎 / 延期改版 / LLM key 隔离与 sync_llm_db_config / SMTP 163 授权码 / 逐步 todo list + 验收与回滚
 - `wiki/开发文档/0821-测试环境升级指引-v1.6.0.md` - 测试服务器维护人员用：测试/生产数据独立不同步、**无需数据迁移**，只需代码升级 v1.6.0 + 依赖 + 测试库 007→019 + 激活码 schema 脚本（含测试数据根）+ .env 测试口径核对
+- `wiki/开发文档/0821-nginx-openlife-prod.md` - openlife.beyondego.me 新生产站 1Panel/nginx 配置指南（0705 xunlu 版的改写：建站+TLS+双反代+维护模式三段配置+旧站 301+验证）
 - `wiki/开发文档/0812-报告配色配置说明.md` - 报告 PDF 配色配置（只改 `app/static/styles/report_theme.json` + 重启后端；PDF 下载时即时渲染故无需重生成报告）
 
 ## 调试技巧

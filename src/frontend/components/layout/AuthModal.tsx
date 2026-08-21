@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { AxiosError } from 'axios';
 import { X } from 'lucide-react';
 import { authApi } from '@/lib/api/auth';
 import { getApiErrorMessage } from '@/lib/api/client';
@@ -61,6 +62,8 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [resetCooldown, setResetCooldown] = useState(0);
+  // 登录防爆破：423 login_locked 时的剩余锁定秒数（倒计时，期间禁用提交）
+  const [loginLockSeconds, setLoginLockSeconds] = useState(0);
   const { setUser, setToken, setRecoveryMode } = useAuthStore();
   const router = useRouter();
   const pathname = usePathname();
@@ -76,6 +79,22 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
   useLegalConsentPersistence(registerForm.watch, registerForm.setValue);
 
   const [successMsg, setSuccessMsg] = useState('');
+
+  // 锁定倒计时：每秒递减，归零后自动清除
+  useEffect(() => {
+    if (loginLockSeconds <= 0) return;
+    const timer = window.setTimeout(() => {
+      setLoginLockSeconds((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [loginLockSeconds]);
+
+  const formatLockRemain = (totalSeconds: number) => {
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
+    if (m <= 0) return `${s} 秒`;
+    return s > 0 ? `${m} 分 ${s} 秒` : `${m} 分钟`;
+  };
   useEffect(() => {
     if (mode !== 'forgot' || resetCooldown <= 0) return;
     const timer = window.setInterval(() => {
@@ -167,7 +186,20 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
         setLoading(false);
       }
     } catch (err: unknown) {
-      setError(getApiErrorMessage(err, '登录失败，请检查邮箱/手机号和密码'));
+      const axiosErr = err as AxiosError<{ detail?: string }>;
+      if (axiosErr?.response?.status === 423) {
+        // 防爆破锁定：解析 retry_after_seconds 并启动倒计时
+        let seconds = 15 * 60;
+        try {
+          const parsed = JSON.parse(axiosErr.response?.data?.detail || '{}');
+          if (parsed?.type === 'login_locked' && Number(parsed?.retry_after_seconds) > 0) {
+            seconds = Number(parsed.retry_after_seconds);
+          }
+        } catch { /* 解析失败用默认锁定时长 */ }
+        setLoginLockSeconds(seconds);
+      } else {
+        setError(getApiErrorMessage(err, '登录失败，请检查邮箱/手机号和密码'));
+      }
     } finally {
       setLoading(false);
     }
@@ -340,12 +372,16 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
             ))}
           </div>
 
-          {/* Error */}
-          {error && (
+          {/* Error（登录锁定倒计时优先展示） */}
+          {loginLockSeconds > 0 ? (
+            <div className="mb-4 p-3 rounded-lg text-sm bg-bd-error-dim border border-bd-err text-bd-err">
+              尝试次数过多，账号已临时锁定，请 {formatLockRemain(loginLockSeconds)} 后重试
+            </div>
+          ) : error ? (
             <div className="mb-4 p-3 rounded-lg text-sm bg-bd-error-dim border border-bd-err text-bd-err">
               {error}
             </div>
-          )}
+          ) : null}
           {/* Success */}
           {successMsg && (
             <div className="mb-4 p-3 rounded-lg text-sm bg-green-500/15 border border-green-500/50 text-green-700 dark:text-green-400">
@@ -378,7 +414,7 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
               />
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || loginLockSeconds > 0}
                 className="w-full py-2.5 px-4 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-bd-primary-fg"
                 style={{ background: 'var(--bd-primary)' }}
                 onMouseEnter={(e) => !loading && (e.currentTarget.style.background = 'var(--bd-primary-alt)')}

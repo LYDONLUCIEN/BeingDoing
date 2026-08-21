@@ -75,6 +75,61 @@ _account_recovery_codes: Dict[str, Dict[str, Any]] = {}
 _email_verify_cooldowns: Dict[str, datetime] = {}
 _refresh_schema_ready: bool = False
 
+# ── 登录防爆破（进程内内存，对齐上方验证码冷却模式，重启失效）────────────
+# 口径：按登录标识（email 小写 / phone）计数，不存在的账号同样计入（防枚举旁路）；
+# 1 小时滑动窗口内累计失败达上限 → 锁 15 分钟（固定时长，期间重试不续期）；
+# 锁定期间一律拒绝（即使密码正确）；成功登录清零。
+LOGIN_FAIL_WINDOW_SECONDS = 3600
+LOGIN_FAIL_MAX_ATTEMPTS = 5
+LOGIN_LOCK_SECONDS = 15 * 60
+LOGIN_FAIL_MESSAGE = "邮箱/手机号或密码错误"
+# key: 规范化登录标识，value: {"fails": [datetime, ...], "locked_until": datetime | None}
+_login_failures: Dict[str, Dict[str, Any]] = {}
+# 用户不存在时的假哈希：verify 一遍对齐真实校验耗时，堵计时侧信道枚举
+_DUMMY_PASSWORD_HASH = pwd_context.hash("openlife-dummy-password-for-timing")
+
+
+class LoginLockedError(ValueError):
+    """登录失败次数过多被临时锁定（API 层转 423，detail 带 retry_after_seconds）"""
+
+    def __init__(self, retry_after_seconds: int):
+        super().__init__("尝试次数过多，账号已临时锁定，请稍后再试")
+        self.retry_after_seconds = max(1, int(retry_after_seconds))
+
+
+def _get_login_lock_remaining(key: str) -> int:
+    """锁定中返回剩余秒数；未锁定返回 0（过期锁定顺带清零）"""
+    rec = _login_failures.get(key)
+    if not rec:
+        return 0
+    locked_until = rec.get("locked_until")
+    if not locked_until:
+        return 0
+    now = datetime.now(timezone.utc)
+    if now >= locked_until:
+        _login_failures.pop(key, None)
+        return 0
+    return max(1, int((locked_until - now).total_seconds()))
+
+
+def _record_login_failure(key: str) -> int:
+    """记录一次失败；若因此触发锁定返回剩余锁定秒数，否则返回 0"""
+    now = datetime.now(timezone.utc)
+    rec = _login_failures.setdefault(key, {"fails": [], "locked_until": None})
+    window_start = now - timedelta(seconds=LOGIN_FAIL_WINDOW_SECONDS)
+    fails = [t for t in rec["fails"] if t > window_start]
+    fails.append(now)
+    rec["fails"] = fails
+    if len(fails) >= LOGIN_FAIL_MAX_ATTEMPTS:
+        rec["locked_until"] = now + timedelta(seconds=LOGIN_LOCK_SECONDS)
+        logger.warning("登录失败次数过多，临时锁定: id=%s, fails=%d", key, len(fails))
+        return LOGIN_LOCK_SECONDS
+    return 0
+
+
+def _clear_login_failures(key: str) -> None:
+    _login_failures.pop(key, None)
+
 
 def _normalize_email(email: Optional[str]) -> Optional[str]:
     val = (email or "").strip().lower()
@@ -747,7 +802,8 @@ class AuthService:
             登录结果（包含user_id和token）
 
         Raises:
-            ValueError: 如果用户不存在或密码错误
+            ValueError: 登录标识或密码错误（统一文案，不区分用户不存在）
+            LoginLockedError: 失败次数过多被临时锁定（携带 retry_after_seconds）
         """
         email = _normalize_email(email)
         phone = _normalize_phone(phone)
@@ -757,6 +813,12 @@ class AuthService:
 
         if not password:
             raise ValueError("密码不能为空")
+
+        # 防爆破：锁定期间一律拒绝（即使密码正确），不重置倒计时
+        lock_key = email or phone or ""
+        locked_remaining = _get_login_lock_remaining(lock_key)
+        if locked_remaining:
+            raise LoginLockedError(locked_remaining)
 
         async with AsyncSessionLocal() as db:
             user_db = UserDB(db)
@@ -768,13 +830,22 @@ class AuthService:
                 user = await user_db.get_user_by_phone(phone)
 
             if not user:
-                raise ValueError("用户不存在")
+                # 假哈希校验对齐耗时；失败计数含不存在的账号，统一文案防枚举
+                AuthService.verify_password(password, _DUMMY_PASSWORD_HASH)
+                remaining = _record_login_failure(lock_key)
+                if remaining:
+                    raise LoginLockedError(remaining)
+                raise ValueError(LOGIN_FAIL_MESSAGE)
 
             if not user.is_active:
                 # 已注销账户：验证密码后签发受限 token（仅供恢复流程，不签发 refresh token）
                 if getattr(user, "deleted_at", None):
                     if not AuthService.verify_password(password, user.password_hash):
-                        raise ValueError("密码错误")
+                        remaining = _record_login_failure(lock_key)
+                        if remaining:
+                            raise LoginLockedError(remaining)
+                        raise ValueError(LOGIN_FAIL_MESSAGE)
+                    _clear_login_failures(lock_key)
                     restricted_token = _create_token(
                         {"sub": user.id, "email": user.email, "phone": user.phone},
                         expires_delta=timedelta(minutes=30),
@@ -794,7 +865,13 @@ class AuthService:
 
             # 验证密码
             if not AuthService.verify_password(password, user.password_hash):
-                raise ValueError("密码错误")
+                remaining = _record_login_failure(lock_key)
+                if remaining:
+                    raise LoginLockedError(remaining)
+                raise ValueError(LOGIN_FAIL_MESSAGE)
+
+            # 登录成功：清零失败计数
+            _clear_login_failures(lock_key)
 
             # 更新最后登录时间
             await user_db.update_user(user.id, last_login_at=datetime.now(timezone.utc))

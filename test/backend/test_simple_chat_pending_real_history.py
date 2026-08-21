@@ -48,7 +48,7 @@ class FakeDialogueLLM:
     async def chat(self, messages, temperature=0.7, response_format=None):
         return SimpleNamespace(content=self.chat_reply, usage={})
 
-    async def chat_stream(self, messages, temperature=0.7):
+    async def chat_stream(self, messages, temperature=0.7, max_tokens=None):
         if self.stream_reply:
             yield self.stream_reply
 

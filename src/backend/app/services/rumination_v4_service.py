@@ -39,6 +39,9 @@ NO_CONCLUSION_NUDGE_N_ROUNDS = 50  # (预留)50 轮未出结论 → 软提醒
 
 # 判定 LLM 调用参数与重试次数(首次 + 1 次自动重试 = 共 2 次尝试)
 BALANCE_JUDGE_MAX_ATTEMPTS = 2
+# thinking 模型(deepseek-v4-pro)的 max_tokens 是思维链+正文的合计上限,
+# 400 极易被 reasoning 耗尽导致 content 为空(JSONDecodeError: char 0);逐次放大
+BALANCE_JUDGE_MAX_TOKENS = (2000, 8000)
 
 # 进行中的判定任务注册表: key = f"{report_id}:{combo_id}"
 # 仅本进程内存;进程重启后 analyzing 态由 sweep_orphan_analysis 自愈为 failed
@@ -580,14 +583,27 @@ async def run_balance_judge(
     from app.core.llmapi import LLMMessage
     for attempt in range(1, BALANCE_JUDGE_MAX_ATTEMPTS + 1):
         try:
+            max_tokens = BALANCE_JUDGE_MAX_TOKENS[
+                min(attempt - 1, len(BALANCE_JUDGE_MAX_TOKENS) - 1)
+            ]
             resp = await llm.chat(
                 [LLMMessage(role="system", content=prompt)],
                 temperature=0.3,
-                max_tokens=400,
+                max_tokens=max_tokens,
             )
             raw = (resp.content or "").strip()
+            if not raw:
+                # 空响应常见于 max_tokens 被思维链耗尽(finish_reason=length),视为可重试失败
+                raise ValueError(
+                    f"LLM 返回空内容(finish_reason={getattr(resp, 'finish_reason', None)})"
+                )
             raw = re.sub(r"^```json\s*", "", raw)
             raw = re.sub(r"\s*```$", "", raw)
+            # 容错:模型在 JSON 前后夹杂说明文字时,提取第一个 {...} 块
+            if not raw.startswith("{"):
+                m = re.search(r"\{.*\}", raw, re.DOTALL)
+                if m:
+                    raw = m.group(0)
             obj = json.loads(raw)
             if not isinstance(obj, dict):
                 raise ValueError("判定输出不是 JSON 对象")
