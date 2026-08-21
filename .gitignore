@@ -53,9 +53,7 @@ desktop.ini
 # 数据文件
 data/
 *.db
-*.db.bak
-*.db.bak.*
-*.db.bak-*
+*.db.bak*
 *.sqlite
 *.sqlite3
 
