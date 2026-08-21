@@ -64,6 +64,8 @@ type EditorialFrameProps = {
   footerNote?: string;
   pageClassName?: string;
   footerMark?: string;
+  /** 页头右上角标签（章节编号 · 英文副标题，2026-08-21 起替代原 logo） */
+  cornerTag?: string;
 };
 
 export function EditorialFrame({
@@ -72,16 +74,21 @@ export function EditorialFrame({
   footerNote = "AI生成，仅供参考",
   pageClassName = "",
   footerMark = REPORT_DESIGN.footerMark.asset,
+  cornerTag,
 }: EditorialFrameProps) {
   return (
     <main className="editorial-shell">
       <article className={`editorial-page ${pageClassName}`}>
         <header className="editorial-header">
           <div className="editorial-header__label"><span>CAREER INTELLIGENCE REPORT</span><small>职业发展深度报告</small></div>
-          <img className="editorial-header__logo" src={DOCUMENT_ASSETS.logo} alt="寻路 OpenLife" />
+          {cornerTag ? <div className="editorial-header__corner">{cornerTag}</div> : null}
         </header>
 
-        <div className="editorial-watermark" aria-hidden="true">寻路 · OPEN LIFE</div>
+        <div className="editorial-watermark-layer" aria-hidden="true">
+          <div className="editorial-watermark-strip editorial-watermark-strip--1"><img src={DOCUMENT_ASSETS.watermark} alt="" /></div>
+          <div className="editorial-watermark-strip editorial-watermark-strip--2"><img src={DOCUMENT_ASSETS.watermark} alt="" /></div>
+          <div className="editorial-watermark-strip editorial-watermark-strip--3"><img src={DOCUMENT_ASSETS.watermark} alt="" /></div>
+        </div>
         {children}
 
         <footer className="editorial-footer">

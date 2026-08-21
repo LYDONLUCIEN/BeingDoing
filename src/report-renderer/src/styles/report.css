@@ -137,17 +137,16 @@ body {
 .editorial-header__label { padding-top: 10px; display: flex; flex-direction: column; color: #829093; }
 .editorial-header__label span { font: 600 8px/1.4 Arial,sans-serif; letter-spacing: .28em; }
 .editorial-header__label small { margin-top: 6px; font-size: 10px; letter-spacing: .15em; }
-.editorial-watermark {
-  position: absolute;
-  left: 51%;
-  top: 48%;
-  color: rgba(48,98,107,.035);
-  font: 500 48px/1 Arial,sans-serif;
-  letter-spacing: .25em;
-  white-space: nowrap;
-  transform: translate(-50%,-50%) rotate(-45deg);
-  pointer-events: none;
-}
+/* 页头右上角章节标签（替代原 logo，2026-08-21 起） */
+.editorial-header__corner { padding-top: 12px; color: #a5b0b2; font: 600 8px/1.4 Arial,sans-serif; letter-spacing: .26em; text-align: right; white-space: nowrap; }
+/* 水印层：每页 3 条 45° 斜向水印带（15%/48%/81%），置于内容层之上（z-index 3）。
+   水印图为抠净浅灰「寻路 · OPEN LIFE」文字带（已裁透明边），opacity 0.5 可调。 */
+.editorial-watermark-layer { position: absolute; inset: 0; z-index: 3; overflow: hidden; pointer-events: none; }
+.editorial-watermark-strip { position: absolute; left: 50%; width: 1000px; margin-left: -500px; text-align: center; transform: rotate(-45deg); opacity: .5; white-space: nowrap; }
+.editorial-watermark-strip--1 { top: 15%; }
+.editorial-watermark-strip--2 { top: 48%; }
+.editorial-watermark-strip--3 { top: 81%; }
+.editorial-watermark-strip img { width: 320px; height: auto; }
 .editorial-content { min-height: 0; position: relative; z-index: 1; }
 
 .editorial-footer { height: 62px; margin-top: auto; position: relative; z-index: 1; display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: end; border-top: 1px solid rgba(68,109,116,.08); }
@@ -199,7 +198,7 @@ body {
 .markdown-report-page__running span { font: 400 23px/1 Georgia,serif; opacity: .7; }
 .markdown-report-page__running strong { font-size: 12px; letter-spacing: .08em; }
 .markdown-report-page__running small { margin-left: auto; color: #aa9e95; font: 600 7px/1 Arial,sans-serif; letter-spacing: .15em; }
-.markdown-report-page__body { min-height: 0; overflow: hidden; color: #353535; }
+.markdown-report-page__body { min-height: 0; overflow: hidden; position: relative; z-index: 1; color: #353535; }
 .markdown-report-page__body h2 { margin: 9px 0 13px; padding: 0 0 7px 12px; color: color-mix(in srgb,var(--theme-deep),#27383c 22%); border-left: 4px solid var(--theme-color); border-bottom: 1px solid color-mix(in srgb,var(--theme-color),transparent 69%); font-size: 19px; line-height: 1.38; letter-spacing: .04em; }
 .markdown-report-page__body p { margin: 0 0 11px; color: #393938; font-size: 12.6px; line-height: 1.78; text-align: justify; letter-spacing: .012em; }
 .markdown-report-page__body p strong { color: color-mix(in srgb,var(--theme-deep),#26383d 30%); }
@@ -213,10 +212,17 @@ body {
 .markdown-report-page__body th { color: color-mix(in srgb,var(--theme-deep),#35484d 35%); background: color-mix(in srgb,var(--theme-color),var(--paper) 89%); font-weight: 700; }
 .markdown-report-page--guide .markdown-report-page__body > p:first-child,.markdown-report-page--role .markdown-report-page__body > p:first-child,.markdown-report-page--letter .markdown-report-page__body > p:first-child { color: #315c68; font-size: 13.2px; font-weight: 600; }
 .markdown-report-page--letter .markdown-report-page__body p { font-size: 12.8px; line-height: 1.82; }
-.markdown-report-letter-signature { width: 245px; min-height: 98px; margin: auto 0 0 auto; padding: 8px 3px 0 18px; display: grid; grid-template-columns: 1fr 108px; align-items: end; column-gap: 10px; border-top: 1px solid color-mix(in srgb,#b58c58,transparent 55%); color: #8a7666; }
-.markdown-report-letter-signature span { align-self: start; grid-column: 1 / -1; font-size: 8px; letter-spacing: .06em; text-align: right; }
-.markdown-report-letter-signature img { width: 108px; height: 47px; grid-column: 2; grid-row: 2 / 4; display: block; object-fit: contain; object-position: center; }
-.markdown-report-letter-signature strong { grid-column: 1; grid-row: 2; color: #275e6c; font-size: 10px; text-align: right; white-space: nowrap; }
+.markdown-report-letter-signature { width: 245px; min-height: 78px; margin: auto 0 0 auto; padding: 8px 3px 0 18px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; border-top: 1px solid color-mix(in srgb,#b58c58,transparent 55%); color: #8a7666; }
+.markdown-report-letter-signature span { font-size: 8px; letter-spacing: .06em; text-align: right; }
+.markdown-report-letter-signature img { width: 108px; height: 47px; display: block; object-fit: contain; object-position: right center; }
+
+/* 阅读指南首页横条装饰（裁自 uidesign 横条中间带，底色已校准为纸色） */
+.markdown-report-guide-bar { width: 100%; height: auto; display: block; margin: 2px 0 12px; }
+/* 信件页水彩框背景（contain 居中；底色已校准为纸色。注意：Chrome 打印不支持
+   mix-blend-mode 与页面背景混合，装饰素材不能走「白底+multiply」路线） */
+.markdown-report-letter-bg { position: absolute; left: 0; right: 0; bottom: 0; z-index: 0; width: 100%; height: 100%; object-fit: contain; object-position: center top; pointer-events: none; }
+.markdown-report-page__chapter,.markdown-report-page__running { position: relative; z-index: 1; }
+.markdown-report-letter-signature { position: relative; z-index: 1; }
 
 .markdown-report-cover-shell { min-height: 0; padding: 0; }
 .markdown-report-cover.editorial-page { padding: 0; isolation: isolate; color: #164b5d; background: var(--paper); }

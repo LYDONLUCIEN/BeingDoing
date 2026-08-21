@@ -1,5 +1,6 @@
 export const DOCUMENT_ASSETS = {
   logo: "/report-assets/brand/openlife-logo-primary-a4.png",
+  watermark: "/report-assets/brand/watermark-logo.png",
   footer: "/report-assets/footer-sailboat-a4.png",
   editorialBrushline: "/report-assets/editorial/editorial-brushline-v1.png",
   editorialSidewash: "/report-assets/editorial/editorial-sidewash-v2.png",

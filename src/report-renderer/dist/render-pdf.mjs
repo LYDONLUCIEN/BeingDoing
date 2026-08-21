@@ -27994,6 +27994,7 @@ var import_react = __toESM(require_react(), 1);
 // src/core/report-page-content.ts
 var DOCUMENT_ASSETS = {
   logo: "/report-assets/brand/openlife-logo-primary-a4.png",
+  watermark: "/report-assets/brand/watermark-logo.png",
   footer: "/report-assets/footer-sailboat-a4.png",
   editorialBrushline: "/report-assets/editorial/editorial-brushline-v1.png",
   editorialSidewash: "/report-assets/editorial/editorial-sidewash-v2.png",
@@ -28060,7 +28061,8 @@ function EditorialFrame({
   pageNumber,
   footerNote = "AI\u751F\u6210\uFF0C\u4EC5\u4F9B\u53C2\u8003",
   pageClassName = "",
-  footerMark = REPORT_DESIGN.footerMark.asset
+  footerMark = REPORT_DESIGN.footerMark.asset,
+  cornerTag
 }) {
   return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("main", { className: "editorial-shell", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: `editorial-page ${pageClassName}`, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", { className: "editorial-header", children: [
@@ -28068,9 +28070,13 @@ function EditorialFrame({
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "CAREER INTELLIGENCE REPORT" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("small", { children: "\u804C\u4E1A\u53D1\u5C55\u6DF1\u5EA6\u62A5\u544A" })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { className: "editorial-header__logo", src: DOCUMENT_ASSETS.logo, alt: "\u5BFB\u8DEF OpenLife" })
+      cornerTag ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "editorial-header__corner", children: cornerTag }) : null
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "editorial-watermark", "aria-hidden": "true", children: "\u5BFB\u8DEF \xB7 OPEN LIFE" }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "editorial-watermark-layer", "aria-hidden": "true", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "editorial-watermark-strip editorial-watermark-strip--1", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: DOCUMENT_ASSETS.watermark, alt: "" }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "editorial-watermark-strip editorial-watermark-strip--2", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: DOCUMENT_ASSETS.watermark, alt: "" }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "editorial-watermark-strip editorial-watermark-strip--3", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: DOCUMENT_ASSETS.watermark, alt: "" }) })
+    ] }),
     children,
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("footer", { className: "editorial-footer", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "editorial-footer__page", children: [
@@ -28243,7 +28249,7 @@ function ReportCard({ module }) {
     ] })
   ] });
 }
-function ReportOverview({ yearMonth }) {
+function ReportOverview({ yearMonth, totalPages }) {
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("main", { className: "page-shell", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("section", { className: "report-page", children: [
     /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("header", { className: "topbar", children: [
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Brand, {}),
@@ -28255,13 +28261,10 @@ function ReportOverview({ yearMonth }) {
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { children: [
           /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { "aria-hidden": "true", children: "\u25B1" }),
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("b", { children: "\u7248\u672C\uFF1A" }),
-          "V1.0"
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { "aria-hidden": "true", children: "\u2659" }),
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("b", { children: "\u5BC6\u7EA7\uFF1A" }),
-          "\u4E2A\u4EBA\u673A\u5BC6"
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("b", { children: "\u9875\u6570\uFF1A" }),
+          "\u5171 ",
+          totalPages ?? "\u2014",
+          " \u9875"
         ] })
       ] })
     ] }),
@@ -28269,7 +28272,7 @@ function ReportOverview({ yearMonth }) {
     /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("section", { className: "hero", children: [
       /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "hero__copy", children: [
         /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("p", { className: "eyebrow", children: "CAREER INTELLIGENCE REPORT \xB7 \u804C\u4E1A\u53D1\u5C55\u6DF1\u5EA6\u62A5\u544A" }),
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h1", { children: "\u62A5\u544A\u6A21\u5757\u603B\u89C8" }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h1", { children: "\u62A5\u544A\u5185\u5BB9\u9884\u89C8" }),
         /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "title-ornament", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", {}) }),
         /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("p", { className: "hero__intro", children: [
           "\u672C\u62A5\u544A\u5171\u5305\u542B 8 \u5927\u5206\u6790\u6A21\u5757\uFF0C\u4ECE\u804C\u4E1A\u89D2\u8272\u5230\u540D\u4EBA\u753B\u50CF\uFF0C",
@@ -28549,6 +28552,7 @@ function splitBlock(block, maxHeight) {
 }
 function pageBudget(section, sectionPage) {
   if (section.kind === "letter") return sectionPage === 0 ? 560 : 670;
+  if (section.kind === "guide" && sectionPage === 0) return 705;
   return sectionPage === 0 ? 785 : 850;
 }
 function sequenceHeight(blocks) {
@@ -28678,15 +28682,27 @@ function PageChrome({ page, pageNumber, totalPages, isSectionLast, meta: meta2 }
     "--trim-height": theme.ornamentHeight ?? "360px"
   };
   const pageLabel = String(pageNumber).padStart(2, "0");
+  const cornerTag = page.section.kind === "guide" ? "00 \xB7 READING GUIDE" : page.section.kind === "letter" ? "\u4FE1 \xB7 A LETTER TO THE EXPLORER" : `${moduleInfo.number} \xB7 ${moduleInfo.subtitle}`;
   return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
     EditorialFrame,
     {
       pageNumber: pageLabel,
       pageClassName: `markdown-report-page module-content-page markdown-report-page--${page.section.kind}`,
       footerNote: `${pageLabel} / ${String(totalPages).padStart(2, "0")}`,
+      cornerTag,
       children: [
         /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("img", { className: `module-content-page__trim module-content-page__trim--${theme.ornamentLayout}`, style: pageStyle, src: theme.ornamentAsset, alt: "", "aria-hidden": "true" }),
         /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("section", { className: "markdown-report-page__content", style: pageStyle, children: [
+          page.section.kind === "letter" ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+            "img",
+            {
+              className: "markdown-report-letter-bg",
+              style: { top: page.sectionPage === 0 ? 120 : 52 },
+              src: "/report-assets/editorial/letter-frame.png",
+              alt: "",
+              "aria-hidden": "true"
+            }
+          ) : null,
           page.sectionPage === 0 ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("header", { className: "module-content-page__chapter markdown-report-page__chapter", children: [
             /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "module-content-page__number", children: page.section.kind === "guide" ? "00" : page.section.kind === "letter" ? "\u4FE1" : moduleInfo.number }),
             /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { children: [
@@ -28706,11 +28722,11 @@ function PageChrome({ page, pageNumber, totalPages, isSectionLast, meta: meta2 }
               String(page.sectionPage + 1).padStart(2, "0")
             ] })
           ] }),
+          page.section.kind === "guide" && page.sectionPage === 0 ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("img", { className: "markdown-report-guide-bar", src: "/report-assets/editorial/guide-brush-bar.png", alt: "", "aria-hidden": "true" }) : null,
           /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "markdown-report-page__body", children: page.blocks.map((block, index) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(MarkdownBlockView, { block }, `${block.type}-${index}`)) }),
           page.section.kind === "letter" && isSectionLast ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("aside", { className: "markdown-report-letter-signature", children: [
             /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { children: "\u2014\u2014 \u4F60\u7684\u5BFB\u8DEF\u63A2\u7D22\u5F15\u5BFC\u5E08" }),
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("img", { src: meta2.signatureAsset ?? REPORT_DESIGN.signature.asset, alt: "\u63A2\u7D22\u5F15\u5BFC\u5E08\u7B7E\u540D" }),
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("strong", { children: "\u5BFB\u8DEF \xB7 OpenLife" })
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("img", { src: meta2.signatureAsset ?? REPORT_DESIGN.signature.asset, alt: "\u63A2\u7D22\u5F15\u5BFC\u5E08\u7B7E\u540D" })
           ] }) : null
         ] })
       ]
@@ -28757,8 +28773,8 @@ function ReportCoverPage({ totalPages, meta: meta2 }) {
     ] })
   ] }) });
 }
-function InsertedOverviewPage({ meta: meta2 }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "markdown-report__overview", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ReportOverview, { yearMonth: meta2.yearMonth }) });
+function InsertedOverviewPage({ meta: meta2, totalPages }) {
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "markdown-report__overview", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ReportOverview, { yearMonth: meta2.yearMonth, totalPages }) });
 }
 function MarkdownReportDocument({ markdown: markdown2, meta: meta2 = {} }) {
   const pages = paginateReport(markdown2);
@@ -28785,7 +28801,7 @@ function MarkdownReportDocument({ markdown: markdown2, meta: meta2 = {} }) {
     /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "markdown-report__pages", children: [
       /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ReportCoverPage, { totalPages, meta: meta2 }),
       pages.map((page, index) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_react.Fragment, { children: [
-        index === overviewIndex ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(InsertedOverviewPage, { meta: meta2 }) : null,
+        index === overviewIndex ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(InsertedOverviewPage, { meta: meta2, totalPages }) : null,
         /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
           PageChrome,
           {
@@ -28797,7 +28813,7 @@ function MarkdownReportDocument({ markdown: markdown2, meta: meta2 = {} }) {
           }
         )
       ] }, `${page.section.title}-${page.sectionPage}`)),
-      overviewIndex === pages.length ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(InsertedOverviewPage, { meta: meta2 }) : null
+      overviewIndex === pages.length ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(InsertedOverviewPage, { meta: meta2, totalPages }) : null
     ] })
   ] });
 }

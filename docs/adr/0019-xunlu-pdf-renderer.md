@@ -39,6 +39,18 @@
 - **按钮语义与「生成中」状态恢复**（2026-08-20）：admin 列表「下载PDF」改为**纯渲染下载**（先查状态，md 不存在不再隐式触发 LLM 生成，报错提示）；「生成中」按钮态的真源在后端单轨锁——新增 `GET /admin/reports/generating`（`list_generation_inflight`），admin 列表页 3s 轮询恢复按钮态，刷新页面不丢；用户报告页原本就有同等恢复（mount 时 `check()` → generating 则 `prepare()` 接管轮询）；重渲染按钮的「渲染中」为请求内同步态（5-10s，刷新即取消，可接受）。
 - 测试：`src/report-renderer/tests/normalize.test.mjs`（7 项，含 xunlu 样例恒等变换断言）；`test/backend/test_report_xunlu_renderer.py`（13 项：默认引擎/分流与元数据映射/weasyprint 不触碰/未构建报错/直渲端点 403·200·400/render-pdf 端点 403·409·200）。
 
+## 素材与版式调整（2026-08-21）
+
+- **封面**：替换为 `uidesign/report/封面背景图.png`（水粉汇流），覆盖渲染器 `cover-a-quiet-horizon.png`，代码逻辑不变。
+- **阅读指南首页**：章标题与正文之间插入横条装饰（`阅读指南页的横条.png` 自动裁中间内容带 1774×143 → `editorial/guide-brush-bar.png`）；分页估算指南首页预算 785→705 防溢出（`markdown-parser.pageBudget`）。
+- **信件页**：`一页信.png`（3:2 水粉框）作为内容区背景，contain 垂直居中、仅位于章标题/续页眉之下（装饰绝对定位，不影响排版与分页）。
+- **页头**：`EditorialFrame` 移除右上角寻路 logo（总览页 Brand 保留；页头高度不变，分页不受影响）；右上角改为**章节小标签**（指南 `00 · READING GUIDE` / 模块 `02 · VALUES ANALYSIS` 等 / 信件 `信 · A LETTER TO THE EXPLORER`）。
+- **水印**：每页 3 条 45° 斜向水印带（15%/48%/81%），素材 `brand/watermark-logo.png`（抠图版「寻路 · OPEN LIFE」文字带，`report/抠图/openlife-水印-抠图.png` 裁透明边后使用），**置于内容层之上（z-index 3）**，opacity 0.5；封面与总览页不加。落款签名块去掉「寻路 · OpenLife」品牌行，只留「—— 你的寻路探索引导师」+ 签名图。
+- **信件页水彩框**：`object-position: center top`（标题下方立即出图，不再下沉到页面中下段）。
+- **总览页**：标题「报告模块总览」→「报告内容预览」；meta 从 日期/版本/密级 改为 日期/页数（`totalPages` 由装配层传入）。
+- **素材校准管线** `scripts/calibrate_assets.py`：封面用白点缩放把底色统一提亮到纸色 `#fffdf9`；**抠图素材直接用**（2026-08-21 起，用户外制 `report/抠图/*-抠图.png`：hero 山水/帆船/logo-mark/页脚标识A/指南横条/信件框 共 6 个，背景已抠净的 RGBA 原图直接拷贝，页面 CSS 纸色精确透出，效果最佳）；其余母版装饰素材（竖向边饰×12/签名×3/页脚标识BC）仍用 Color-to-Alpha 透明化（脚本第 3 步从母版重新拷贝后处理，可重跑幂等）；**不做的**：封面（全幅无缝可谈）、八卡片（自带边框的独立物件）。
+- **重要实测结论**：① Chrome headless 打印不支持 `mix-blend-mode: multiply` 与页面背景混合（混合结果≈白底原图，缝更明显）；② Chrome 打印对 ICC 图片有 1-2 级色偏，不透明素材只能「逼近」纸色；③ **透明化（Color-to-Alpha）才是装饰素材的正解**——改后采样：图内背景 (254,252,248) vs 页面纸色 (255,253,249)，Δ≤1 级达标。
+
 ## 后果
 
 - `RENDER_ENGINE=xunlu` 时用户下载与 admin staging 预览走新渲染器；默认 `weasyprint` 行为与现状完全一致。

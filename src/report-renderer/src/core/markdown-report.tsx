@@ -53,15 +53,30 @@ function PageChrome({ page, pageNumber, totalPages, isSectionLast, meta }: { pag
     "--trim-height": theme.ornamentHeight ?? "360px",
   } as CSSProperties;
   const pageLabel = String(pageNumber).padStart(2, "0");
+  // 页头右上角章节标签：指南/信件有独立文案，其余取模块编号 · 英文副标题
+  const cornerTag =
+    page.section.kind === "guide" ? "00 · READING GUIDE"
+    : page.section.kind === "letter" ? "信 · A LETTER TO THE EXPLORER"
+    : `${moduleInfo.number} · ${moduleInfo.subtitle}`;
 
   return (
     <EditorialFrame
       pageNumber={pageLabel}
       pageClassName={`markdown-report-page module-content-page markdown-report-page--${page.section.kind}`}
       footerNote={`${pageLabel} / ${String(totalPages).padStart(2, "0")}`}
+      cornerTag={cornerTag}
     >
       <img className={`module-content-page__trim module-content-page__trim--${theme.ornamentLayout}`} style={pageStyle} src={theme.ornamentAsset} alt="" aria-hidden="true" />
       <section className="markdown-report-page__content" style={pageStyle}>
+        {page.section.kind === "letter" ? (
+          <img
+            className="markdown-report-letter-bg"
+            style={{ top: page.sectionPage === 0 ? 120 : 52 }}
+            src="/report-assets/editorial/letter-frame.png"
+            alt=""
+            aria-hidden="true"
+          />
+        ) : null}
         {page.sectionPage === 0 ? (
           <header className="module-content-page__chapter markdown-report-page__chapter">
             <span className="module-content-page__number">{page.section.kind === "guide" ? "00" : page.section.kind === "letter" ? "信" : moduleInfo.number}</span>
@@ -74,12 +89,14 @@ function PageChrome({ page, pageNumber, totalPages, isSectionLast, meta }: { pag
         ) : (
           <header className="markdown-report-page__running"><span>{moduleInfo.number}</span><strong>{page.section.title}</strong><small>续 · {String(page.sectionPage + 1).padStart(2, "0")}</small></header>
         )}
+        {page.section.kind === "guide" && page.sectionPage === 0 ? (
+          <img className="markdown-report-guide-bar" src="/report-assets/editorial/guide-brush-bar.png" alt="" aria-hidden="true" />
+        ) : null}
         <div className="markdown-report-page__body">{page.blocks.map((block, index) => <MarkdownBlockView key={`${block.type}-${index}`} block={block} />)}</div>
         {page.section.kind === "letter" && isSectionLast ? (
           <aside className="markdown-report-letter-signature">
             <span>—— 你的寻路探索引导师</span>
             <img src={meta.signatureAsset ?? REPORT_DESIGN.signature.asset} alt="探索引导师签名" />
-            <strong>寻路 · OpenLife</strong>
           </aside>
         ) : null}
       </section>
@@ -110,8 +127,8 @@ function ReportCoverPage({ totalPages, meta }: { totalPages: number; meta: Repor
   );
 }
 
-function InsertedOverviewPage({ meta }: { meta: ReportMeta }) {
-  return <div className="markdown-report__overview"><ReportOverview yearMonth={meta.yearMonth} /></div>;
+function InsertedOverviewPage({ meta, totalPages }: { meta: ReportMeta; totalPages: number }) {
+  return <div className="markdown-report__overview"><ReportOverview yearMonth={meta.yearMonth} totalPages={totalPages} /></div>;
 }
 
 export function MarkdownReportDocument({ markdown, meta = {} }: { markdown: string; meta?: ReportMeta }) {
@@ -129,7 +146,7 @@ export function MarkdownReportDocument({ markdown, meta = {} }: { markdown: stri
         <ReportCoverPage totalPages={totalPages} meta={meta} />
         {pages.map((page, index) => (
           <Fragment key={`${page.section.title}-${page.sectionPage}`}>
-            {index === overviewIndex ? <InsertedOverviewPage meta={meta} /> : null}
+            {index === overviewIndex ? <InsertedOverviewPage meta={meta} totalPages={totalPages} /> : null}
             <PageChrome
               page={page}
               pageNumber={index + 2 + (index >= overviewIndex ? 1 : 0)}
@@ -139,7 +156,7 @@ export function MarkdownReportDocument({ markdown, meta = {} }: { markdown: stri
             />
           </Fragment>
         ))}
-        {overviewIndex === pages.length ? <InsertedOverviewPage meta={meta} /> : null}
+        {overviewIndex === pages.length ? <InsertedOverviewPage meta={meta} totalPages={totalPages} /> : null}
       </div>
     </main>
   );

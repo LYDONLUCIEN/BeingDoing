@@ -45,6 +45,8 @@ desktop.ini
 .env
 .env.local
 .env.*.local
+.env.prod
+.env.test
 
 # 数据文件
 data/

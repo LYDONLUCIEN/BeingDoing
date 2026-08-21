@@ -321,6 +321,8 @@ function splitBlock(block: MarkdownBlock, maxHeight: number) {
 
 function pageBudget(section: ReportSection, sectionPage: number) {
   if (section.kind === "letter") return sectionPage === 0 ? 560 : 670;
+  // 阅读指南首页插入横条装饰（渲染层高约 56px + 间距），预算相应扣减防溢出
+  if (section.kind === "guide" && sectionPage === 0) return 705;
   return sectionPage === 0 ? 785 : 850;
 }
 

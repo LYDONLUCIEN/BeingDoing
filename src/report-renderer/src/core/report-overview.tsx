@@ -44,7 +44,7 @@ function ReportCard({ module }: { module: ReportModule }) {
   );
 }
 
-export function ReportOverview({ yearMonth }: { yearMonth?: string }) {
+export function ReportOverview({ yearMonth, totalPages }: { yearMonth?: string; totalPages?: number }) {
   return (
     <main className="page-shell">
       <section className="report-page">
@@ -52,8 +52,7 @@ export function ReportOverview({ yearMonth }: { yearMonth?: string }) {
           <Brand />
           <div className="report-meta" aria-label="报告信息">
             <div><span aria-hidden="true">▣</span><b>日期：</b>{yearMonth ?? "2026年8月"}</div>
-            <div><span aria-hidden="true">▱</span><b>版本：</b>V1.0</div>
-            <div><span aria-hidden="true">♙</span><b>密级：</b>个人机密</div>
+            <div><span aria-hidden="true">▱</span><b>页数：</b>共 {totalPages ?? "—"} 页</div>
           </div>
         </header>
 
@@ -62,7 +61,7 @@ export function ReportOverview({ yearMonth }: { yearMonth?: string }) {
         <section className="hero">
           <div className="hero__copy">
             <p className="eyebrow">CAREER INTELLIGENCE REPORT · 职业发展深度报告</p>
-            <h1>报告模块总览</h1>
+            <h1>报告内容预览</h1>
             <div className="title-ornament"><span /></div>
             <p className="hero__intro">本报告共包含 8 大分析模块，从职业角色到名人画像，<br />通过提升自我认知，提供结构化的行动参考。</p>
           </div>
