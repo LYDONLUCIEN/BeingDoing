@@ -128,21 +128,25 @@ ENV_LOAD_CMD="$ENV_LOAD_CMD; set +a"
 # ── Conda 环境：按目标环境选择（可用环境变量 CONDA_BASE / CONDA_ENV 覆盖）──
 #   prod：生产小机只有一个 base 环境（/root/miniconda3）
 #   dev/test 及默认：开发机 py312 环境（/mnt/vdb1/miniconda3）
-if [ "$ENV_TARGET" = "prod" ]; then
-  CONDA_BASE="${CONDA_BASE:-/root/miniconda3}"
-  CONDA_ENV="${CONDA_ENV:-base}"
-else
-  CONDA_BASE="${CONDA_BASE:-/mnt/vdb1/miniconda3}"
-  CONDA_ENV="${CONDA_ENV:-py312}"
+# 仅 start/restart 需要 conda（要拉起后端进程）；stop/attach/maintenance 不检查
+BACKEND_CMD=""
+if [ "$COMMAND" = "start" ] || [ "$COMMAND" = "restart" ]; then
+  if [ "$ENV_TARGET" = "prod" ]; then
+    CONDA_BASE="${CONDA_BASE:-/root/miniconda3}"
+    CONDA_ENV="${CONDA_ENV:-base}"
+  else
+    CONDA_BASE="${CONDA_BASE:-/mnt/vdb1/miniconda3}"
+    CONDA_ENV="${CONDA_ENV:-py312}"
+  fi
+  # 启动前明确报错，避免 tmux 窗口里静默失败难排查
+  if [ ! -f "$CONDA_BASE/etc/profile.d/conda.sh" ]; then
+    echo "[start.sh] 错误: 未找到 $CONDA_BASE/etc/profile.d/conda.sh（env=${ENV_TARGET:-default}）"
+    echo "[start.sh] 请用 CONDA_BASE=/你的/conda路径 覆盖，或检查该机器 conda 安装位置（conda info --base）"
+    exit 1
+  fi
+  # source conda.sh 使 conda activate 在非交互式 shell 里生效
+  BACKEND_CMD="$ENV_LOAD_CMD && source '$CONDA_BASE/etc/profile.d/conda.sh' && conda activate $CONDA_ENV && cd '$BACKEND_DIR' && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
 fi
-# 启动前明确报错，避免 tmux 窗口里静默失败难排查
-if [ ! -f "$CONDA_BASE/etc/profile.d/conda.sh" ]; then
-  echo "[start.sh] 错误: 未找到 $CONDA_BASE/etc/profile.d/conda.sh（env=${ENV_TARGET:-default}）"
-  echo "[start.sh] 请用 CONDA_BASE=/你的/conda路径 覆盖，或检查该机器 conda 安装位置（conda info --base）"
-  exit 1
-fi
-# source conda.sh 使 conda activate 在非交互式 shell 里生效
-BACKEND_CMD="$ENV_LOAD_CMD && source '$CONDA_BASE/etc/profile.d/conda.sh' && conda activate $CONDA_ENV && cd '$BACKEND_DIR' && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
 
 # ── 前端运行模式 ────────────────────────────────────────
 # 默认（dev/prod/test）：clean build + npm run start
