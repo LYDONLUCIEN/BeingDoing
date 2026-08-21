@@ -1,0 +1,30 @@
+{
+  "report_id": "c0bb01af-9573-4ed8-b579-5cc83b8891b7",
+  "category": "values__t_9a90859ac0974fbdb7b844d8128c54da",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "你好呀，很高兴能陪你开启这趟探索之旅。我是你的职业规划咨询师，今天这第一轮对话，我们不做复杂的测试，也不急着下结论，先一起安静地看一看：在你心里，什么才是真正重要的。\n\n这一轮的目标很纯粹：我们希望一起找到并确认对你职业发展最重要的 **5 个价值观关键词**。为什么要先做这一步呢？——因为当我们能说出自己看重什么，选择就不再靠碰运气，遇到困惑时也能认出情绪的源头，而不是被它淹没。就像在迷雾里点亮几盏小灯，它们不一定照出整条路，但能让脚下的方向清晰很多。\n\n那么，我想先请你试着想一想：**在你心中，对你最重要的5个价值观关键词是什么？** 不用追求完美，也不必绞尽脑汁，哪怕一时想不出或者只想到一两个也没关系，放心说“不知道”就好～ 我就在这里陪着你慢慢梳理。",
+      "thread_id": "t_9a90859ac0974fbdb7b844d8128c54da",
+      "activation_session_id": "f46699c5-f0e1-4659-9992-e21d3901e1ec",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 1794,
+        "completion_tokens": 378,
+        "total_tokens": 2172,
+        "prompt_cache_hit_tokens": 1024,
+        "prompt_cache_miss_tokens": 770
+      },
+      "created_at": "2026-06-16T14:55:31.523102Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-06-16T14:55:31.524251Z",
+    "updated_at": "2026-06-16T14:55:31.524302Z",
+    "total_messages": 1
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "report_id": "765def7c-65d9-4116-804f-6b63ff530653",
+  "activation_code": "LE3PUPCEGU",
+  "user_id": "c63af02b-47bb-44df-ba9d-d0d102fd61fa",
+  "created_at": "2026-06-04T07:37:54.890646Z",
+  "updated_at": "2026-06-04T07:39:28.894023Z",
+  "status": "in_progress",
+  "final_conclusion": null,
+  "steps": {
+    "values": {
+      "step_id": "values",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [
+        "t_d24746096d154140a2efb432ee01b666"
+      ],
+      "updated_at": "2026-06-04T07:39:28.893968Z"
+    },
+    "strengths": {
+      "step_id": "strengths",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [],
+      "updated_at": "2026-06-04T07:37:54.890646Z"
+    },
+    "interests": {
+      "step_id": "interests",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [],
+      "updated_at": "2026-06-04T07:37:54.890646Z"
+    },
+    "purpose": {
+      "step_id": "purpose",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [],
+      "updated_at": "2026-06-04T07:37:54.890646Z"
+    },
+    "rumination": {
+      "step_id": "rumination",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [],
+      "updated_at": "2026-06-04T07:37:54.890646Z"
+    }
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "report_id": "d96f1dc0-d457-4f3d-a7ea-398be7f13737",
+  "activation_code": "RP8XX55FWA",
+  "user_id": "e35dc09e-bca8-4b9b-8a22-f6afab1c213b",
+  "created_at": "2026-04-05T09:09:24.023994Z",
+  "updated_at": "2026-04-26T10:43:08.486155Z",
+  "status": "in_progress",
+  "final_conclusion": null,
+  "steps": {
+    "values": {
+      "step_id": "values",
+      "selected_session_id": "df0e2752-f9d2-4aee-92fe-a8c1fc4e09ca",
+      "locked": true,
+      "session_ids": [
+        "df0e2752-f9d2-4aee-92fe-a8c1fc4e09ca"
+      ],
+      "updated_at": "2026-04-26T10:43:08.486105Z",
+      "anchor_summary": {
+        "goals": "用户已确认并排序了5个核心价值观词：意义感、独立/自主、真实、安全感、平等，目标达成，核心结论沉淀完毕。",
+        "personality": "直接务实，在探索中逐步明确想法，偏好简洁回应。",
+        "style": "表达简短口语化，核心意思清晰。",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-04-15T12:08:22.065708Z"
+    },
+    "strengths": {
+      "step_id": "strengths",
+      "selected_session_id": "df0e2752-f9d2-4aee-92fe-a8c1fc4e09ca",
+      "locked": true,
+      "session_ids": [
+        "df0e2752-f9d2-4aee-92fe-a8c1fc4e09ca",
+        "t_1775401537451_9zntzxe"
+      ],
+      "updated_at": "2026-04-26T09:08:41.494321Z",
+      "anchor_summary": {
+        "goals": "本阶段通过深度探索，用户确认了五个核心优势：营造安全包容的沟通氛围、坚韧（有承诺感）、自我保护（的身心智慧）、敏锐觉察他人需求、内省（自我觉察）。优势已精炼、标记，并与用户自述高度关联，权重增加，目标达成。",
+        "personality": "细腻内省，敏感于他人情绪，坚韧且具有自我保护意识。",
+        "style": "表达真诚具体，善用实例和反思性文字。",
+        "conflicts": "觉察力强但行动受角色影响（如作为配合者可能不行动）；坚韧优势带来解脱感而非充实感，暗示内在矛盾。"
+      },
+      "anchor_updated_at": "2026-04-17T12:37:51.053461Z"
+    },
+    "interests": {
+      "step_id": "interests",
+      "selected_session_id": "t_1776265322448_ft2ewzu",
+      "locked": true,
+      "session_ids": [
+        "df0e2752-f9d2-4aee-92fe-a8c1fc4e09ca",
+        "t_1776265322448_ft2ewzu"
+      ],
+      "updated_at": "2026-04-26T09:09:05.979000Z",
+      "anchor_summary": {
+        "goals": "本阶段成功沉淀了用户确认的三个核心热爱方向：书法艺术（享受即时进步与创造和谐的成就感）、人性探索（基于好奇心通过观察、代入与反思理解行为动机）、日语及文化学习（由文化兴趣驱动并享受学习新语言的过程）。用户基于投入感和持续性做出选择，目标已达成。",
+        "personality": "坦诚、自我觉察、善于反思",
+        "style": "简洁、直率、思考性",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-04-18T06:49:18.829592Z"
+    },
+    "purpose": {
+      "step_id": "purpose",
+      "selected_session_id": "t_1776434757619_unzd1z9",
+      "locked": true,
+      "session_ids": [
+        "df0e2752-f9d2-4aee-92fe-a8c1fc4e09ca",
+        "t_1776434757619_unzd1z9"
+      ],
+      "updated_at": "2026-04-26T10:43:08.308229Z",
+      "anchor_summary": {
+        "goals": "已沉淀用户的核心使命：通过具体行动、情感共鸣和环境维护，为他人创造和谐、安稳的体验，并守护其身心健康，最终成为他人生活中稳定、温暖的支持性力量。用户确认了基于10段经历与价值观（和谐、健康、成长、自主）的匹配结果。",
+        "personality": "配合度高，善于自我反思，乐于助人，注重集体和谐。",
+        "style": "简洁具体，多用举例说明，表达直接。",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-04-26T10:39:11.195858Z"
+    },
+    "rumination": {
+      "step_id": "rumination",
+      "selected_session_id": "df0e2752-f9d2-4aee-92fe-a8c1fc4e09ca",
+      "locked": false,
+      "session_ids": [
+        "df0e2752-f9d2-4aee-92fe-a8c1fc4e09ca",
+        "t_1776931123203_xiljppc"
+      ],
+      "updated_at": "2026-04-26T10:43:08.310746Z"
+    }
+  }
+}

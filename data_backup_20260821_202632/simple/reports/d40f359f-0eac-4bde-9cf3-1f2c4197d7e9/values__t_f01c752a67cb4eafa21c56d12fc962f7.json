@@ -1,0 +1,65 @@
+{
+  "report_id": "d40f359f-0eac-4bde-9cf3-1f2c4197d7e9",
+  "category": "values__t_f01c752a67cb4eafa21c56d12fc962f7",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "好的，很高兴能和你一起开始这段探索之旅。我是你的职业规划咨询师。\n\n我们先从一个轻松但直击内心的问题开始吧。不用着急，慢慢想。\n\n试着想一想，在你心中对你最重要的5个价值观关键词是什么？暂时没答案的话，放心说“不知道”就行～",
+      "thread_id": "t_f01c752a67cb4eafa21c56d12fc962f7",
+      "activation_session_id": "dff2b1e2-3293-490d-ad34-2eabbc6c6c45",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 1761,
+        "completion_tokens": 60,
+        "total_tokens": 1821,
+        "prompt_cache_hit_tokens": 1024,
+        "prompt_cache_miss_tokens": 737
+      },
+      "created_at": "2026-05-24T05:31:18.204434Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    },
+    {
+      "role": "user",
+      "content": "你好啊，我现在还不知道。",
+      "thread_id": "t_f01c752a67cb4eafa21c56d12fc962f7",
+      "activation_session_id": "dff2b1e2-3293-490d-ad34-2eabbc6c6c45",
+      "step_id": "values",
+      "filter_step": null,
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-05-24T05:31:29.186700Z",
+      "message_id": "msg_2",
+      "id": "msg_2"
+    },
+    {
+      "role": "assistant",
+      "content": "完全没问题，“不知道”是一个非常诚实的开始。那我们换个方式来找找感觉。\n\n回想一下你过去的工作经历，从网易云音乐、快手，到现在的中国移动。在你看来，这三份工作带给你最大的感受有什么不同？或者，有没有哪个瞬间让你觉得“这活儿干得真带劲”？",
+      "thread_id": "t_f01c752a67cb4eafa21c56d12fc962f7",
+      "activation_session_id": "dff2b1e2-3293-490d-ad34-2eabbc6c6c45",
+      "step_id": "values",
+      "filter_step": null,
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 1783,
+        "completion_tokens": 65,
+        "total_tokens": 1848,
+        "prompt_cache_hit_tokens": 1024,
+        "prompt_cache_miss_tokens": 759
+      },
+      "created_at": "2026-05-24T05:31:30.585343Z",
+      "message_id": "msg_3",
+      "id": "msg_3"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-05-24T05:31:18.205181Z",
+    "updated_at": "2026-05-24T05:31:30.587468Z",
+    "total_messages": 3,
+    "question_bank": "1. ---\n2. 那个人做了什么让你这样认为？从中可以发现你有什么样的价值观？\n3. ### 29. 你会忍不住对什么说脏话，感到十分不满？\n4. ### 20. 迄今为止你做过什么重要的决策吗？\n5. ### 13. 你最好的朋友或曾经要好的朋友是谁？\n6. 从中可以发现你有什么样的价值观？",
+    "question_bank_phase": "values"
+  }
+}

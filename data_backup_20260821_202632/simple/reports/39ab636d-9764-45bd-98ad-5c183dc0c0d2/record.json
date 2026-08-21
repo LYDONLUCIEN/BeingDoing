@@ -1,0 +1,84 @@
+{
+  "report_id": "39ab636d-9764-45bd-98ad-5c183dc0c0d2",
+  "activation_code": "TMT3KVR5EJ",
+  "user_id": "a2c7dcc9-1eee-486c-b48e-f7d3042ad077",
+  "created_at": "2026-06-17T06:41:36.650189Z",
+  "updated_at": "2026-07-03T09:47:23.377896Z",
+  "status": "in_progress",
+  "final_conclusion": null,
+  "steps": {
+    "values": {
+      "step_id": "values",
+      "selected_session_id": "t_248cf6860ee14cb6bc9ca347c6b674d9",
+      "locked": true,
+      "session_ids": [
+        "t_248cf6860ee14cb6bc9ca347c6b674d9"
+      ],
+      "updated_at": "2026-07-02T00:31:32.606046Z",
+      "anchor_summary": {
+        "goals": "已将价值观整合为四项核心词，并逐一精准定义：有成长空间（自我成长要求，接纳节奏，带来希望感）、诚信（组织对内对外信守承诺）、尊重（人际与组织底线，含对员工生活边界的尊重）、自主创造（在边界与支持下的自由创造空间）。最后一步排序尚未完成，对话在最终确认前暂停。",
+        "personality": "用户注重精准与自我觉察，善于整合概念，对词语的细微差别敏感，接纳自身成长的节奏，不苛求完美。",
+        "style": "表达直接、理性，常用具体情境和因果逻辑澄清词义，愿意反复打磨表述直至贴合内心真实。",
+        "conflicts": "尚未进行最终优先级排序，对话中断前助手正总结四项核心，用户还未给出排序回复。"
+      },
+      "anchor_updated_at": "2026-06-17T08:06:35.394194Z"
+    },
+    "strengths": {
+      "step_id": "strengths",
+      "selected_session_id": "t_69e82e164cb547d084ee624ba6b8e544",
+      "locked": true,
+      "session_ids": [
+        "t_69e82e164cb547d084ee624ba6b8e544"
+      ],
+      "updated_at": "2026-06-24T12:21:16.279094Z",
+      "anchor_summary": {
+        "goals": "本阶段通过深入对话与故事复盘，确认了用户的五大核心优势：“穿透现象看到结构归因”“发现非常规的创意连接”“将输入快速重构为个人化的实用工具”“主动化解他人的社交不适”“主动超越既定条件去达成结果”，并整合了重复优势、强化了可迁移的破局与协同能力线索。",
+        "personality": "高度自省、不满足于表面，追求精准定义与深层价值；既有理性架构力，也能在人际中敏锐体察氛围。",
+        "style": "直接务实，偏好用具体案例自证，表达中带有冷静的自我剖析与策略性取舍。",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-06-21T22:31:16.569357Z"
+    },
+    "interests": {
+      "step_id": "interests",
+      "selected_session_id": "t_6de11d1323e54fa7bc503486da3db120",
+      "locked": true,
+      "session_ids": [
+        "t_6de11d1323e54fa7bc503486da3db120"
+      ],
+      "updated_at": "2026-06-24T14:51:47.325788Z",
+      "anchor_summary": {
+        "goals": "本阶段通过深度对话，用户从8个候选项中最终确认了3个核心热爱方向：视觉日记、空间营造、自我认同与身份探索。这三个方向都围绕“人如何找到属于自己的秩序和位置”展开，用户对每个方向都表达了清晰的投入感与持续性好奇。至此，核心热爱的探索与沉淀已完成。",
+        "personality": "用户内省、坦诚，有深度思考习惯，愿意花时间厘清模糊感受，不急于求成，对自我探索持开放且认真的态度。",
+        "style": "表达简短直接，用词克制但准确，回应常为“可以”“都有”“继续挖掘”等，不堆砌解释，信任对话流程。",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-06-21T22:56:39.573483Z"
+    },
+    "purpose": {
+      "step_id": "purpose",
+      "selected_session_id": "t_1397b902623242b795bd18e6c422131d",
+      "locked": true,
+      "session_ids": [
+        "t_1397b902623242b795bd18e6c422131d"
+      ],
+      "updated_at": "2026-07-03T09:47:23.365961Z",
+      "anchor_summary": {
+        "goals": "通过10段为他人提供价值的经历梳理，沉淀出用户使命陈述：“以尊重为前提，为人提供可以自主创造的清晰空间与成长契机”，并确认了尊重、有成长空间、自主创造三个核心价值关键词。",
+        "personality": "内省、务实，善于打开空间而不越界，注重边界与精准。",
+        "style": "表达简洁直接，不喜虚浮，倾向用最少消耗表达认真态度。",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-06-28T22:47:20.025905Z"
+    },
+    "rumination": {
+      "step_id": "rumination",
+      "selected_session_id": "t_e6c9fb0e918342cabffaf15de981c036",
+      "locked": false,
+      "session_ids": [
+        "t_e6c9fb0e918342cabffaf15de981c036"
+      ],
+      "updated_at": "2026-07-03T09:47:23.377840Z"
+    }
+  }
+}

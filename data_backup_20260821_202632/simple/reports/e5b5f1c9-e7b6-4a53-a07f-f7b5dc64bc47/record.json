@@ -1,0 +1,84 @@
+{
+  "report_id": "e5b5f1c9-e7b6-4a53-a07f-f7b5dc64bc47",
+  "activation_code": "S0VZ8GSB6G",
+  "user_id": "481572f9-9d0c-486d-b2b2-59ee07f65621",
+  "created_at": "2026-05-29T08:09:08.604337Z",
+  "updated_at": "2026-06-11T10:16:58.101673Z",
+  "status": "in_progress",
+  "final_conclusion": null,
+  "steps": {
+    "values": {
+      "step_id": "values",
+      "selected_session_id": "t_3d606851b37c4193bb7fe2030c59be40",
+      "locked": true,
+      "session_ids": [
+        "t_3d606851b37c4193bb7fe2030c59be40"
+      ],
+      "updated_at": "2026-06-11T06:18:01.411998Z",
+      "anchor_summary": {
+        "goals": "本阶段已沉淀用户最终确认的5个核心价值观词，按优先级排序为：真诚、尊重、成就感、问题解决、体验。用户确认该结果作为职业发展的核心指引。",
+        "personality": "务实、有原则，注重人际真实与尊重，渴望成就与智力挑战，追求丰富体验，但以基本底线为前提。",
+        "style": "表达简洁直接，使用数字明确优先级，思考有层次，善于总结和确认。",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-05-29T09:13:56.123037Z"
+    },
+    "strengths": {
+      "step_id": "strengths",
+      "selected_session_id": "t_e884c2df50cb4c2cb2c6f7416e5656e5",
+      "locked": true,
+      "session_ids": [
+        "t_e884c2df50cb4c2cb2c6f7416e5656e5"
+      ],
+      "updated_at": "2026-06-11T10:16:58.101645Z",
+      "anchor_summary": {
+        "goals": "本阶段已沉淀的核心结论：用户确认了5个核心优势，全部标记为“有充实感且与成功有关”。优势包括：分析问题本质并给出解决方案、保障系统正常运行、营造有序且舒适的环境、在节奏或框架中自由表达、系统调试及优化。这些优势共同描绘出用户善于诊断系统问题、优化环境并维持稳定运行的模式。",
+        "personality": "理性、注重系统性和秩序，乐于解决问题，行动导向，善于观察和分析。",
+        "style": "表达简洁直接，多用短句和肯定回答，善于用具体事例说明抽象概念。",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-05-30T16:55:36.758945Z"
+    },
+    "interests": {
+      "step_id": "interests",
+      "selected_session_id": "t_fc237e94c1224a28a398caad0fa0e50f",
+      "locked": true,
+      "session_ids": [
+        "t_fc237e94c1224a28a398caad0fa0e50f"
+      ],
+      "updated_at": "2026-06-11T06:20:03.830648Z",
+      "anchor_summary": {
+        "goals": "本阶段已沉淀用户确认的3个核心热爱方向：情感共鸣（通过表达与他人建立深层情感连接）、动机分析（探究行为背后的逻辑与心理）、个性表达（通过外在风格或创作传递内心世界）。用户对这三个方向均有持续的投入感和具体的生活化实践意向（如音乐表达、观察路人、搭配穿搭）。",
+        "personality": "坦诚、有洞察力，善于从日常细节中提炼深层兴趣；对人际连接和自我表达有强烈渴望。",
+        "style": "简洁直接，偶尔幽默（如‘教天津话哈哈’），表达自然贴近生活。",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-05-31T11:02:52.359060Z"
+    },
+    "purpose": {
+      "step_id": "purpose",
+      "selected_session_id": "t_a2c4182d2a284d6e833cb77a1215cae9",
+      "locked": true,
+      "session_ids": [
+        "t_a2c4182d2a284d6e833cb77a1215cae9"
+      ],
+      "updated_at": "2026-06-11T10:16:52.824565Z",
+      "anchor_summary": {
+        "goals": "已成功收集10段经历并匹配价值观，用户确认使命核心为通过真诚沟通和问题解决能力帮助他人理清思路、做出更好决定。目标达成。",
+        "personality": "内敛、真诚、注重实际效果，倾向于简短回应但配合度高。",
+        "style": "简洁直接，多用“嗯”或关键词回应，不主动展开细节。",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-05-31T11:21:38.345141Z"
+    },
+    "rumination": {
+      "step_id": "rumination",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [
+        "t_e24a6aabd09f4927a7b3ae75e5a25fe4"
+      ],
+      "updated_at": "2026-05-31T11:57:57.038858Z"
+    }
+  }
+}

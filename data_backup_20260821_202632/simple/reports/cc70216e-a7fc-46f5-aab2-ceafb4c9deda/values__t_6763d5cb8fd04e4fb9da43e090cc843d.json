@@ -1,0 +1,30 @@
+{
+  "report_id": "cc70216e-a7fc-46f5-aab2-ceafb4c9deda",
+  "category": "values__t_6763d5cb8fd04e4fb9da43e090cc843d",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "欢迎你来到第一轮咨询。\n\n本轮我们的目标是：一起找到对你职业发展最重要的5个价值观关键词。简单来说，价值观就像你内心的指南针——当你难以抉择时，它能帮你明确什么更值得选；当你感到不舒服时，它也能帮你弄清楚情绪的根源。所以，从这里开始，很有意义。\n\n现在，先让自己放松下来。在你过往的职场或生活经历里，有没有哪个人——可以是导师、家人、朋友、同事，甚至是一个你在远处观察的人——对你影响特别深远？聊聊这个人，是什么地方让你觉得他对你如此重要？",
+      "thread_id": "t_6763d5cb8fd04e4fb9da43e090cc843d",
+      "activation_session_id": "14f7d597-b3be-44b3-8eec-dbaa9cf90459",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 1668,
+        "completion_tokens": 501,
+        "total_tokens": 2169,
+        "prompt_cache_hit_tokens": 1024,
+        "prompt_cache_miss_tokens": 644
+      },
+      "created_at": "2026-07-07T04:52:21.206685+00:00",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-07-07T04:52:21.207487+00:00",
+    "updated_at": "2026-07-07T04:52:21.207611+00:00",
+    "total_messages": 1
+  }
+}

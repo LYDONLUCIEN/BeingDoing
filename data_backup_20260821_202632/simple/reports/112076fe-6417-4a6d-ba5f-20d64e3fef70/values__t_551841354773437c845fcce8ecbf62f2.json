@@ -1,0 +1,30 @@
+{
+  "report_id": "112076fe-6417-4a6d-ba5f-20d64e3fef70",
+  "category": "values__t_551841354773437c845fcce8ecbf62f2",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "你好呀！欢迎来到第一轮职业规划咨询。很开心能和你一起开启这段探索之旅。\n\n今天我们的目标很特别——不是讨论你的简历，也不是分析行业趋势，而是一起**找到对你职业发展最重要的5个价值观关键词**。简单来说，就是弄清楚：**在工作和生活中，什么东西对你来说真正重要？**\n\n为什么要做这件事呢？因为当你清楚地知道自己最看重什么时，做选择就会更有底气，遇到纠结的事情也能更快找到情绪的根源。\n\n那么，我们先从一个轻松的问题开始吧——\n\n**在你的人生里，有没有哪一刻，或者哪一件小事，让你觉得“这么做很值得”、“我真的很喜欢这种感觉”？可以回忆一下，然后和我说说看。**",
+      "thread_id": "t_551841354773437c845fcce8ecbf62f2",
+      "activation_session_id": "7e370ebb-be01-43ee-826b-c90dfcd5db5a",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 1710,
+        "completion_tokens": 144,
+        "total_tokens": 1854,
+        "prompt_cache_hit_tokens": 1024,
+        "prompt_cache_miss_tokens": 686
+      },
+      "created_at": "2026-06-04T14:32:50.623129Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-06-04T14:32:50.623769Z",
+    "updated_at": "2026-06-04T14:32:50.623789Z",
+    "total_messages": 1
+  }
+}

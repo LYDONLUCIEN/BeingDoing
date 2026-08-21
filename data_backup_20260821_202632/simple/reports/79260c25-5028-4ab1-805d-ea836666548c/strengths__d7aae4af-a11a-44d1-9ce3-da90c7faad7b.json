@@ -1,0 +1,29 @@
+{
+  "session_id": "79260c25-5028-4ab1-805d-ea836666548c",
+  "category": "strengths__d7aae4af-a11a-44d1-9ce3-da90c7faad7b",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "您好！很高兴能继续为您提供职业规划咨询服务。我是您的咨询师。\n\n在上一轮，我们共同梳理了您最核心的职业价值观，这为我们今天的探索打下了很好的基础。本轮的目标是**帮助您发现并确认您最突出的10个优势**。了解自己的优势，是转型路上最坚实的第一步。\n\n那么，我们直接开始吧。\n\n**第一个问题：您自己认为您的优势有哪些？请尽量列举，想到什么都可以说。**",
+      "session_id": "d7aae4af-a11a-44d1-9ce3-da90c7faad7b",
+      "step_id": "strengths",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 1221,
+        "completion_tokens": 113,
+        "total_tokens": 1334,
+        "prompt_cache_hit_tokens": 576,
+        "prompt_cache_miss_tokens": 645
+      },
+      "created_at": "2026-03-30T13:55:44.802700Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-03-30T13:55:44.803458Z",
+    "updated_at": "2026-03-30T13:55:44.803486Z",
+    "total_messages": 1
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "report_id": "ad2060bf-5bb0-433d-a66f-f2041622e034",
+  "category": "values__t_1778080276190_4yrvtcx",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "好的，我们这就开始吧。不用紧张，这个过程就像一次轻松的自我探索聊天。\n\n试着想一想，在你心中对你最重要的5个价值观关键词是什么？暂时没答案的话，放心说“不知道”就行～",
+      "thread_id": "t_1778080276190_4yrvtcx",
+      "activation_session_id": "5ec6960c-57cb-432b-9f81-75b200443ba0",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 1601,
+        "completion_tokens": 63,
+        "total_tokens": 1664,
+        "prompt_cache_hit_tokens": 896,
+        "prompt_cache_miss_tokens": 705
+      },
+      "created_at": "2026-05-06T15:11:17.315444Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-05-06T15:11:17.316330Z",
+    "updated_at": "2026-05-06T15:11:17.316353Z",
+    "total_messages": 1
+  }
+}

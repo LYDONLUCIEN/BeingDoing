@@ -1,0 +1,45 @@
+{
+  "session_id": "398be936-09db-4fbc-bbf9-005b03d0d941",
+  "category": "interests__t_1776703164696_v2wfeq7__note/note",
+  "notes": [
+    {
+      "id": "note_1",
+      "type": "pending_conclusion_created",
+      "payload": {
+        "phase": "interests",
+        "thread_id": "t_1776703164696_v2wfeq7",
+        "pending_conclusion": {
+          "summary": "用户从初始的'不知道'出发，通过引导式提问逐步探索，最终从13个潜在兴趣领域中，确认了3个最核心的热爱方向：可爱事物、音乐、美食探索。这些领域均能激发用户主动投入与好奇。",
+          "keywords": [
+            "可爱事物",
+            "音乐",
+            "美食探索"
+          ]
+        }
+      },
+      "created_at": "2026-04-20T17:19:06.175780Z"
+    },
+    {
+      "id": "note_2",
+      "type": "dimension_conclusion_confirmed",
+      "payload": {
+        "phase": "interests",
+        "thread_id": "t_1776703164696_v2wfeq7",
+        "dimension_conclusion": {
+          "summary": "用户从初始的'不知道'出发，通过引导式提问逐步探索，最终从13个潜在兴趣领域中，确认了3个最核心的热爱方向：可爱事物、音乐、美食探索。这些领域均能激发用户主动投入与好奇。",
+          "keywords": [
+            "可爱事物",
+            "音乐",
+            "美食探索"
+          ]
+        }
+      },
+      "created_at": "2026-04-20T17:19:31.614149Z"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-04-20T17:19:06.175780Z",
+    "updated_at": "2026-04-20T17:19:31.614149Z",
+    "total_notes": 2
+  }
+}

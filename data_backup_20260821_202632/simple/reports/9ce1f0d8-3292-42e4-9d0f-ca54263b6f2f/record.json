@@ -1,0 +1,98 @@
+{
+  "report_id": "9ce1f0d8-3292-42e4-9d0f-ca54263b6f2f",
+  "activation_code": "9S2ET4OWDL",
+  "user_id": "056d6d55-7ef4-4e3b-91b3-311c3e2a2bb7",
+  "created_at": "2026-06-05T12:48:12.723268Z",
+  "updated_at": "2026-06-10T07:56:54.917694Z",
+  "status": "in_progress",
+  "final_conclusion": null,
+  "steps": {
+    "values": {
+      "step_id": "values",
+      "selected_session_id": "t_b0f3a9acaece4644943bab9f02ab1c35",
+      "locked": true,
+      "session_ids": [
+        "t_b0f3a9acaece4644943bab9f02ab1c35"
+      ],
+      "updated_at": "2026-06-09T03:14:26.740127Z",
+      "anchor_summary": {
+        "goals": "用户最终确认了5个职业发展核心价值观，按优先级排序为：独特性、家庭、自我掌控、报酬、互惠。用户明确区分了报酬（价值复制与丰厚回报）和互惠（合作氛围），并将真诚与平和置于相对次要位置。",
+        "personality": "逻辑清晰，善于反思，注重实际利益与自主性，有强烈的创造欲和边界意识。",
+        "style": "直接、具体，善用例子和比喻，能够迅速澄清概念差异。",
+        "conflicts": "用户最初将报酬归入互惠，后明确区分二者；用户对顺序尚未最终确认，但已明确将真诚和平和排在后面。",
+        "final_keywords_ordered": [
+          "独特性",
+          "家庭",
+          "自我掌控",
+          "报酬",
+          "互惠"
+        ],
+        "keyword_user_explanations_optional": {
+          "独特性": "享受拥有不可替代的专业壁垒和创造力，独立完成有价值且无人能复制的工作带来最大成就感。",
+          "家庭": "需要温馨宽松的家庭氛围，长期远离子女或家人反对会放弃机会。",
+          "自我掌控": "不希望7×24投入工作，需要自我时间和独处空间，偏好远程工作以灵活安排生活。",
+          "报酬": "指创造的价值能被规模化复制（通过产品、互联网、管道）带来的丰厚回报，而非仅工资。",
+          "互惠": "与人之间公平、对等的合作氛围，是长久协作的基础。"
+        }
+      },
+      "anchor_updated_at": "2026-06-05T14:37:20.627971Z"
+    },
+    "strengths": {
+      "step_id": "strengths",
+      "selected_session_id": "t_06986bb62f1948e7b7fd71043b1fe320",
+      "locked": true,
+      "session_ids": [
+        "t_06986bb62f1948e7b7fd71043b1fe320"
+      ],
+      "updated_at": "2026-06-09T03:15:09.829645Z",
+      "anchor_summary": {
+        "goals": "已沉淀用户确认的5个优势项：信息搜集与结构化整合(b)、经验迁移并快速应用(a)、整合差异并促成共识(c)、通过提问启发思考(a)、为问题创造独特工具(b)。用户基本认可但指出可能存重叠，需进一步澄清。",
+        "personality": "理性、自我觉察强、善于对比分析、对精准描述要求高",
+        "style": "简洁直接，善于纠正和提出建设性意见",
+        "conflicts": "用户认为5个优势之间可能存在重叠，需进一步澄清具体重叠项"
+      },
+      "anchor_updated_at": "2026-06-05T15:45:39.884859Z"
+    },
+    "interests": {
+      "step_id": "interests",
+      "selected_session_id": "t_fca491a27ed148719e56e5145decbf3b",
+      "locked": true,
+      "session_ids": [
+        "t_fca491a27ed148719e56e5145decbf3b"
+      ],
+      "updated_at": "2026-06-10T07:56:54.917659Z",
+      "anchor_summary": {
+        "goals": "已成功引导用户从7个候选热爱中确认3个核心方向：策略推演、自然语言、绘画。用户不仅明确选择了这三个，还给出了有投入感和持续性的具体理由（如反复测试伤害公式、学习多种语言、从小画画），完成了热爱方向的初步沉淀。",
+        "personality": "逻辑清晰，善于自我剖析，有系统思维和好奇心，同时兼顾感性表达。",
+        "style": "口语化，使用表情符号，描述具体例子（如硅基生命、大富翁、脱口秀），喜欢用比喻和形象化表达。",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-06-06T03:38:49.232500Z"
+    },
+    "purpose": {
+      "step_id": "purpose",
+      "selected_session_id": "t_a988f35a8a5e41d681501700761a4afe",
+      "locked": true,
+      "session_ids": [
+        "t_a988f35a8a5e41d681501700761a4afe"
+      ],
+      "updated_at": "2026-06-09T03:15:05.661690Z",
+      "anchor_summary": {
+        "goals": "本阶段已沉淀8条经历线索（经历5-8），核心价值观为独特性、责任感、互惠，其中责任感被用户确认为独立价值；报酬价值观被用户扩展为包含精神回报与财务回报双重维度。整体目标为梳理使命表达与价值整合，当前进展良好。",
+        "personality": "认真反思，坚持自我感受，对价值观有深度剖析，注重责任与集体目标。",
+        "style": "表达直接，善用具体案例，会主动澄清和补充自己的理解，具有教练式沟通特点。",
+        "conflicts": "用户对'报酬'价值观的理解与原始定义存在偏差，强调精神层面的价值放大与财务回报并重，需进一步明确。"
+      },
+      "anchor_updated_at": "2026-06-06T04:30:10.812438Z"
+    },
+    "rumination": {
+      "step_id": "rumination",
+      "selected_session_id": null,
+      "locked": false,
+      "session_ids": [
+        "t_084d6fcd3ead46acb1eb05cd03e8497f"
+      ],
+      "updated_at": "2026-06-09T03:04:31.843647Z"
+    }
+  }
+}

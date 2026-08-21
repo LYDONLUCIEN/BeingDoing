@@ -1,0 +1,118 @@
+{
+  "session_id": "67c1f425-9442-48f6-96f4-33cf98749cc0",
+  "category": "values__8380dc82-c49c-4d45-a8e2-b1bb0cb115c5",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "你好，欢迎来到我们的职业规划咨询。我是你的咨询师，今天我们将一起探索对你而言最重要的价值观，这些价值观是未来职业选择和发展的重要指引。\n\n为了让我们有一个清晰的开始，我想先请你尝试直接告诉我：**在你心中，对你最重要的5个价值观关键词是什么？**（例如：成就感、稳定、创新、人际关系、自由等）\n\n你可以先想到什么就说什么，不用有压力，我们后续会一起慢慢梳理和确认。",
+      "session_id": "8380dc82-c49c-4d45-a8e2-b1bb0cb115c5",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 1398,
+        "completion_tokens": 113,
+        "total_tokens": 1511,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 1398
+      },
+      "created_at": "2026-04-01T11:53:03.740686Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    },
+    {
+      "role": "user",
+      "content": "人机关系很重要，其他的不知道",
+      "session_id": "8380dc82-c49c-4d45-a8e2-b1bb0cb115c5",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-04-01T12:03:39.648323Z",
+      "message_id": "msg_2",
+      "id": "msg_2"
+    },
+    {
+      "role": "assistant",
+      "content": "好的，我记下了你提到的第一个关键词：**人际关系**。这很有价值，我们把它作为“用户自述”的第一个价值观。\n\n没关系，很多人一开始都无法立刻想到五个。这正是我们接下来要做的——通过一些具体的问题，帮助你从自己的经历和感受中，发现那些对你真正重要的东西。\n\n那么，我们开始第一个探索问题：\n\n**请回想一下，在你过往的学习、工作或生活中，有没有哪一段经历让你觉得特别有成就感，或者让你感到“这就是我想要的”？可以和我分享一下那是什么事吗？**\n\n---",
+      "session_id": "8380dc82-c49c-4d45-a8e2-b1bb0cb115c5",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 1490,
+        "completion_tokens": 133,
+        "total_tokens": 1623,
+        "prompt_cache_hit_tokens": 960,
+        "prompt_cache_miss_tokens": 530
+      },
+      "created_at": "2026-04-01T12:03:45.315053Z",
+      "message_id": "msg_3",
+      "id": "msg_3"
+    },
+    {
+      "role": "user",
+      "content": "有的",
+      "session_id": "8380dc82-c49c-4d45-a8e2-b1bb0cb115c5",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-04-01T12:03:52.644217Z",
+      "message_id": "msg_4",
+      "id": "msg_4"
+    },
+    {
+      "role": "assistant",
+      "content": "很好。能具体和我描述一下那是一件什么样的事吗？以及，**为什么这件事会让你觉得特别有成就感，或者感觉“这就是我想要的”？**\n\n（请尽可能详细地分享，这能帮助我们找到背后的价值观。）",
+      "session_id": "8380dc82-c49c-4d45-a8e2-b1bb0cb115c5",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 1608,
+        "completion_tokens": 46,
+        "total_tokens": 1654,
+        "prompt_cache_hit_tokens": 1600,
+        "prompt_cache_miss_tokens": 8
+      },
+      "created_at": "2026-04-01T12:03:55.820328Z",
+      "message_id": "msg_5",
+      "id": "msg_5"
+    },
+    {
+      "role": "user",
+      "content": "我觉得很多东西都是我想要的！比如果幸福的爱情",
+      "session_id": "8380dc82-c49c-4d45-a8e2-b1bb0cb115c5",
+      "step_id": "values",
+      "agent_id": null,
+      "event": "user_message",
+      "created_at": "2026-04-01T12:18:54.503306Z",
+      "message_id": "msg_6",
+      "id": "msg_6"
+    },
+    {
+      "role": "assistant",
+      "content": "感谢你的分享，这非常具体，也很有启发性。从“幸福的爱情”这个回答中，我捕捉到了一个潜在的关键词：**亲密关系**。\n\n这似乎是你“人际关系”价值观中一个更具体、更核心的维度。我们可以先把它记录下来。\n\n那么，基于这个发现，我想继续追问：\n**在一段“幸福的爱情”中，你觉得最重要的是什么？是彼此的理解与支持、共同的成长、稳定的陪伴，还是其他什么特质？**\n\n（这能帮助我们更精确地定义“亲密关系”对你而言意味着什么。）",
+      "session_id": "8380dc82-c49c-4d45-a8e2-b1bb0cb115c5",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "assistant_reply",
+      "token_usage": {
+        "prompt_tokens": 1667,
+        "completion_tokens": 114,
+        "total_tokens": 1781,
+        "prompt_cache_hit_tokens": 1600,
+        "prompt_cache_miss_tokens": 67
+      },
+      "created_at": "2026-04-01T12:18:59.087286Z",
+      "message_id": "msg_7",
+      "id": "msg_7"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-04-01T11:53:03.741651Z",
+    "updated_at": "2026-04-01T12:18:59.089195Z",
+    "total_messages": 7,
+    "question_bank": "1. 你的价值观里有母亲的价值观的影子吗？抑或是将母亲的价值观当作反面教材？\n2. ### 7. 因为哪些事会感动？\n3. ### 10. 从出生到小学阶段，最令你开心的事是什么？\n4. ### 14. 迄今为止你最努力的经历是什么？\n5. 你喜欢那本书的哪个部分？从中可以发现你有什么样的价值观？\n6. ### 22. 请回顾迄今为止的人生后再回答。",
+    "question_bank_phase": "values"
+  }
+}

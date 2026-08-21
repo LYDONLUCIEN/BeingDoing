@@ -1,0 +1,89 @@
+{
+  "report_id": "398be936-09db-4fbc-bbf9-005b03d0d941",
+  "activation_code": "3K28KMFHOR",
+  "user_id": "e49656e7-f4fd-451d-bb16-9ea6f74c48c7",
+  "created_at": "2026-04-04T10:54:14.897374Z",
+  "updated_at": "2026-05-05T11:51:54.641658Z",
+  "status": "in_progress",
+  "final_conclusion": null,
+  "steps": {
+    "values": {
+      "step_id": "values",
+      "selected_session_id": "t_1776693433712_xohjx55",
+      "locked": true,
+      "session_ids": [
+        "97440dc3-c61f-4e0f-b4a1-9ff8e41f87d7",
+        "t_1776693433712_xohjx55"
+      ],
+      "updated_at": "2026-04-24T09:35:35.629172Z",
+      "anchor_summary": {
+        "goals": "本阶段已成功沉淀用户最终确认的5个核心价值观词，按优先级排序为：1. 内心平和（追求稳定安宁的心理和生活状态），2. 自由（向往空间和精神上的无拘无束），3. 尊重融洽（重视人际和谐与尊重），4. 深刻/求真（欣赏并追求对事物的深刻洞察），5. 自然/美（从优美自然环境中获得滋养）。用户已确认排序和含义，目标达成。",
+        "personality": "直接、务实，在引导下逐步开放分享。",
+        "style": "简洁、直接，偶尔有详细描述。",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-04-20T14:34:02.775865Z"
+    },
+    "strengths": {
+      "step_id": "strengths",
+      "selected_session_id": "t_1776695565551_pgiqjg7",
+      "locked": true,
+      "session_ids": [
+        "97440dc3-c61f-4e0f-b4a1-9ff8e41f87d7",
+        "t_1776695565551_pgiqjg7"
+      ],
+      "updated_at": "2026-04-24T09:35:11.851980Z",
+      "anchor_summary": {
+        "goals": "本阶段成功引导用户从无法自述优势到确认五个核心优势，包括分析底层逻辑、深度倾听后精准补充等。用户对其中三项优势标记为有充实感，两项为不确定，凸显了可迁移的理性分析、信息整合与自我调节能力线索。目标达成，为职业规划提供了内在能力基础。",
+        "personality": "理性、分析型、善于倾听、谨慎内向。",
+        "style": "简洁直接，偶尔口语化。",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-04-20T16:40:45.796198Z"
+    },
+    "interests": {
+      "step_id": "interests",
+      "selected_session_id": "t_1776703164696_v2wfeq7",
+      "locked": true,
+      "session_ids": [
+        "97440dc3-c61f-4e0f-b4a1-9ff8e41f87d7",
+        "t_1776703164696_v2wfeq7"
+      ],
+      "updated_at": "2026-04-24T09:35:16.057485Z",
+      "anchor_summary": {
+        "goals": "本阶段成功沉淀了用户确认的三个核心热爱方向：可爱事物、音乐和美食探索。用户从初始不确定通过引导式探索明确选择，体现了主动投入和持续兴趣。目标达成，为后续结合优势与价值观规划方向奠定基础。",
+        "personality": "坦诚直接，愿意参与探索",
+        "style": "简洁口语化",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-04-20T17:23:07.084342Z"
+    },
+    "purpose": {
+      "step_id": "purpose",
+      "selected_session_id": "97440dc3-c61f-4e0f-b4a1-9ff8e41f87d7",
+      "locked": true,
+      "session_ids": [
+        "97440dc3-c61f-4e0f-b4a1-9ff8e41f87d7",
+        "t_1776705580983_g976rec"
+      ],
+      "updated_at": "2026-05-05T11:51:54.641563Z",
+      "anchor_summary": {
+        "goals": "本阶段已通过10段具体经历分析，初步总结出用户的核心使命是帮助他人在纷扰或困境中恢复内心的安定与思维的清晰，对应首要价值观'内心平和'与'深刻/求真'。当前已提出使命陈述草案，目标达成情况良好，等待用户确认或调整。",
+        "personality": "理性、分析性强，注重逻辑与真实性",
+        "style": "简洁、直接，回答常简短明确",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-04-21T12:09:29.907192Z"
+    },
+    "rumination": {
+      "step_id": "rumination",
+      "selected_session_id": "97440dc3-c61f-4e0f-b4a1-9ff8e41f87d7",
+      "locked": false,
+      "session_ids": [
+        "97440dc3-c61f-4e0f-b4a1-9ff8e41f87d7",
+        "t_1776707290517_nxptpmc"
+      ],
+      "updated_at": "2026-04-24T09:35:20.194750Z"
+    }
+  }
+}

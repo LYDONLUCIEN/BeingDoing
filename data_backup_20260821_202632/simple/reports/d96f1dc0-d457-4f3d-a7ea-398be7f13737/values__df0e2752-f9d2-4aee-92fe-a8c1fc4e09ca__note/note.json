@@ -1,0 +1,49 @@
+{
+  "session_id": "d96f1dc0-d457-4f3d-a7ea-398be7f13737",
+  "category": "values__df0e2752-f9d2-4aee-92fe-a8c1fc4e09ca__note/note",
+  "notes": [
+    {
+      "id": "note_1",
+      "type": "pending_conclusion_created",
+      "payload": {
+        "phase": "values",
+        "thread_id": "df0e2752-f9d2-4aee-92fe-a8c1fc4e09ca",
+        "pending_conclusion": {
+          "summary": "通过咨询探索，确认了qq在职业发展中最核心的5个价值观。她最看重工作能否带来不计得失、全心投入的‘意义感’。其次是保持‘独立/自主’的精神内核，不被他人改变。她极度厌恶‘真实’的反面，如造假和两面派。‘安全感’体现为对心理放松、无压力环境的追求。‘平等’则聚焦于人格层面的相互尊重。",
+          "keywords": [
+            "意义感",
+            "独立/自主",
+            "真实",
+            "安全感",
+            "平等"
+          ]
+        }
+      },
+      "created_at": "2026-04-05T13:18:23.031052Z"
+    },
+    {
+      "id": "note_2",
+      "type": "dimension_conclusion_confirmed",
+      "payload": {
+        "phase": "values",
+        "thread_id": "df0e2752-f9d2-4aee-92fe-a8c1fc4e09ca",
+        "dimension_conclusion": {
+          "summary": "通过咨询探索，确认了qq在职业发展中最核心的5个价值观。她最看重工作能否带来不计得失、全心投入的‘意义感’。其次是保持‘独立/自主’的精神内核，不被他人改变。她极度厌恶‘真实’的反面，如造假和两面派。‘安全感’体现为对心理放松、无压力环境的追求。‘平等’则聚焦于人格层面的相互尊重。",
+          "keywords": [
+            "意义感",
+            "独立/自主",
+            "真实",
+            "安全感",
+            "平等"
+          ]
+        }
+      },
+      "created_at": "2026-04-05T15:05:32.315101Z"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-04-05T13:18:23.031052Z",
+    "updated_at": "2026-04-05T15:05:32.315101Z",
+    "total_notes": 2
+  }
+}

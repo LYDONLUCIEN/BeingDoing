@@ -1,0 +1,84 @@
+{
+  "report_id": "a8eff0d7-d9f8-40c3-bc00-b3a4b747fa7e",
+  "activation_code": "ANFOAUJT94",
+  "user_id": "879d1f15-75fd-424a-9032-1a1b0ad55e99",
+  "created_at": "2026-06-25T11:20:04.771839Z",
+  "updated_at": "2026-07-24T12:46:14.897198+00:00",
+  "status": "in_progress",
+  "final_conclusion": null,
+  "steps": {
+    "values": {
+      "step_id": "values",
+      "selected_session_id": "t_07c2bdcc6de74720b926f09457bb2582",
+      "locked": true,
+      "session_ids": [
+        "t_07c2bdcc6de74720b926f09457bb2582"
+      ],
+      "updated_at": "2026-07-24T12:42:37.705002+00:00",
+      "anchor_summary": {
+        "goals": "用户最终确认了按优先级排序的5个核心价值观词：成长与成就感并重、专注、坚持、自由/掌控感、好奇，并给出了每个词的个人化解释，完成了价值观的沉淀与排序。",
+        "personality": "善于自省，认真觉察内心，对理想生活有清晰画面，务实而坚韧。",
+        "style": "表达真实细腻，善用比喻和自身经历，语言平实但富有感悟。",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-06-25T12:48:41.493064Z"
+    },
+    "strengths": {
+      "step_id": "strengths",
+      "selected_session_id": "t_c463ab6f6693439aa160c9c5eddd3a5b",
+      "locked": true,
+      "session_ids": [
+        "t_c463ab6f6693439aa160c9c5eddd3a5b"
+      ],
+      "updated_at": "2026-06-25T13:53:35.494765Z",
+      "anchor_summary": {
+        "goals": "本阶段已确认用户五个核心优势：在压力下主动澄清观点、沉浸于节奏与宁静、运用新工具优化任务产出、在助人中获取意义感、依惯性执行长线任务，并完成了各优势的充实感与成功关联性标记，清晰揭示了可迁移的能力线索，如主动沟通、深度专注、工具整合、价值驱动与长线执行力。",
+        "personality": "真诚务实，坦诚表达不确定感，有内省但不陷入过度分析，愿意用轻松心态面对探索。",
+        "style": "简洁直接，带有轻松幽默感（如“哈哈哈”“没想过，应该都有”），用词口语化且不加修饰。",
+        "conflicts": "用户曾自认“懦弱自卑”，却在压力下能主动澄清观点，形成反差；长线执行（英语打卡）的驱动力来源不清，或与身份执念有关；运用新工具虽高效，但对是否真正带来充实感心存犹疑。"
+      },
+      "anchor_updated_at": "2026-06-25T13:19:01.705735Z"
+    },
+    "interests": {
+      "step_id": "interests",
+      "selected_session_id": "t_ea359810f19d45b6a6c7c8eeb2835af1",
+      "locked": true,
+      "session_ids": [
+        "t_ea359810f19d45b6a6c7c8eeb2835af1"
+      ],
+      "updated_at": "2026-06-25T14:17:51.288503Z",
+      "anchor_summary": {
+        "goals": "通过对比筛选，确认了用户现阶段三个核心热爱：沉浸式的叙事体验、身心觉察与关系探索、日常现象的科学与心理原理探究。这三个方向既与用户内在激情契合，又能以轻松、可持续的方式融入日常生活，强调低负担探索与自然积累。",
+        "personality": "坦诚、自省、对身心连接敏锐，愿意分享私密细节，对宏大问题有追问但懂得避开过度思辨的负担。",
+        "style": "直接、不加修饰，用词坦诚，理性且善于梳理思路。",
+        "conflicts": "用户对“宗教”一词敏感并拒绝；尽管对哲学思辨有深层兴趣，但因容易引发痛苦迷茫而主动选择更轻松的日常现象探究作为核心热爱，但对其持续性有疑虑，倾向于采取随手查阅、未来配合内容输出的维持策略。"
+      },
+      "anchor_updated_at": "2026-06-25T13:57:54.532294Z"
+    },
+    "purpose": {
+      "step_id": "purpose",
+      "selected_session_id": "t_cf1e00b884a84e7e98b3fcec628c4181",
+      "locked": true,
+      "session_ids": [
+        "t_cf1e00b884a84e7e98b3fcec628c4181"
+      ],
+      "updated_at": "2026-07-24T12:46:14.897087+00:00",
+      "anchor_summary": {
+        "goals": "已沉淀用户核心工作使命：“让更多人拥有能力与内在自由，去成为他们自己问题的解决者。”该使命通过5段具体经历（带学生背单词、推荐AI工具、倾听疏导性侵阴影、发起读书会、将新方法纳入SOP）得到充分印证，这些经历自然贯穿着成长与成就感并重、坚持、专注、自由/掌控感等价值观，使命与价值观高度一致。",
+        "personality": "真诚、自我觉察高，在分享深刻助人经历时既坦诚又克制，助人时带着自然而然的不求回报感，对人性有深度理解。",
+        "style": "简洁直接，用词质朴，偶尔冒出哲思性总结（如“每个人生来都是孤独的”），表达中带有内心确认感和力量感。",
+        "conflicts": ""
+      },
+      "anchor_updated_at": "2026-06-25T14:27:51.480903Z"
+    },
+    "rumination": {
+      "step_id": "rumination",
+      "selected_session_id": "t_e4af751f3bc046918e8e935af8112e50",
+      "locked": false,
+      "session_ids": [
+        "t_e4af751f3bc046918e8e935af8112e50"
+      ],
+      "updated_at": "2026-06-25T15:49:28.725333Z"
+    }
+  }
+}

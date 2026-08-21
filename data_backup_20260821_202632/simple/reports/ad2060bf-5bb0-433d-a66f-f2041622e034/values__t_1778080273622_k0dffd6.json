@@ -1,0 +1,30 @@
+{
+  "report_id": "ad2060bf-5bb0-433d-a66f-f2041622e034",
+  "category": "values__t_1778080273622_k0dffd6",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "你好呀，很高兴能和你开启这段关于职业价值观的探索旅程。不用紧张，这就像一次轻松的聊天，我们慢慢来。\n\n试着想一想，在你心中对你最重要的5个价值观关键词是什么？暂时没答案的话，放心说“不知道”就行～",
+      "thread_id": "t_1778080273622_k0dffd6",
+      "activation_session_id": "5ec6960c-57cb-432b-9f81-75b200443ba0",
+      "step_id": "values",
+      "agent_id": "coach",
+      "event": "init_question",
+      "token_usage": {
+        "prompt_tokens": 1614,
+        "completion_tokens": 73,
+        "total_tokens": 1687,
+        "prompt_cache_hit_tokens": 896,
+        "prompt_cache_miss_tokens": 718
+      },
+      "created_at": "2026-05-06T15:11:14.909134Z",
+      "message_id": "msg_1",
+      "id": "msg_1"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-05-06T15:11:14.910004Z",
+    "updated_at": "2026-05-06T15:11:14.910050Z",
+    "total_messages": 1
+  }
+}
