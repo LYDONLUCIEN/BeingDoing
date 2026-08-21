@@ -79,8 +79,20 @@ DATABASE_URL=sqlite+aiosqlite:///./app.db
 # LLM 配置（当前默认使用 DeepSeek）
 LLM_PROVIDER=deepseek
 LLM_BASE_URL=https://api.deepseek.com
-LLM_MODEL=deepseek-chat
+LLM_MODEL=deepseek-v4-pro
+# ⚠️ 2026-08-19 起测试/生产 key 完全隔离：.env 只放测试 key，生产 key 只放 .env.prod
+# （.env.prod 由 start.sh prod 叠加覆盖）；生产服务器另有 /etc/beingdoing.env（systemd）
 DEEPSEEK_API_KEY=sk-xxx
+
+# 模型场景分流（2026-08-19 起，仅 deepseek 生效）：按 usage_context 的 scene 在
+# factory._get_vip_provider_config 内确定性选模型（优先级高于 LLM_VIP1_MODEL）——
+# scene=chat（前四 phase values/strengths/interests/purpose 的对话+结论卡）→ flash；
+# rumination / report / team_analysis / 未知 → pro。默认值如下，一般无需显式配置
+# LLM_FLASH_MODEL=deepseek-v4-flash
+# LLM_PRO_MODEL=deepseek-v4-pro
+# 注意：vip_level=None 的链路（旧 ReAct agent）走 DB-first resolver（llm_model_configs
+# 表 is_default 行，key 加密入库），换 key 后需同步：python scripts/sync_llm_db_config.py
+# （--check 只读对比 env 与 DB），或 admin 后台「模型配置」页修改
 
 # VIP 档位（按激活码 vip_level 选模型）
 # P-A 起（ADR-0008）：试用码 vip_level=1、完整码 vip_level=2，两档均配置为 DeepSeek
@@ -94,6 +106,15 @@ LLM_VIP2_PROVIDER=deepseek
 
 # 架构模式
 ARCHITECTURE_MODE=simple  # simple | full
+
+# 报告 PDF 渲染引擎（ADR-0019，2026-08-20 起）
+# weasyprint（默认，内置 Python 渲染）| xunlu（src/report-renderer 精简 Node 渲染器，子进程调用）
+# 优先级：admin 运行时配置（报告页单选，存 data/report_render_config.json，即时生效）> 本 env > 默认
+# RENDER_ENGINE=xunlu
+# REPORT_RENDERER_DIR=src/report-renderer 绝对路径（默认自动推导）
+# REPORT_RENDERER_NODE=node / CHROME_PATH=（留空自动探测 /usr/bin/google-chrome）
+# REPORT_RENDER_TIMEOUT=120（单次渲染超时秒数）
+# 注：xunlu 引擎需服务器有 Node ≥20 + Chrome/Chromium；dist/ 已入库无需构建，改源码后需 npm run build
 
 # 可选：语音功能
 AUDIO_MODE=False
@@ -359,8 +380,8 @@ python scripts/init_db.py
 - `/api/v1/chat/*` - 对话
 - `/api/v1/search/*` - 检索
 - `/api/v1/formula/*` - 公式
-- `/api/v1/export/*` - 导出（`POST /export/report-pdf/{id}` 有完成度门控：五阶段未完成一律 409，admin 也不例外，2026-08-07 起；admin 豁免仅限审核状态阻塞。报告批复通过瞬间——人工 `POST /admin/reports/{id}/approve` 或超时自动批复 job——后台自动生成报告 markdown（`report_review_service.kick_report_generation`，2026-08-10 起），用户页「生成报告」按钮仅为兜底。**报告复核体系（2026-08-18 起，`tasks/report-review-plan.md`）**：用户侧重新生成已下线（按钮 + `_MAX_USER_REGEN` + `report_regen_count` 计数全删），改「申请复核」——`POST /export/report-recheck/{id}` 分类必选（`content_issue` 建复核单 + 双写 Feedback 工单 / `download_issue` 仅进 Feedback 通道同「反馈 bug」；每报告每天限 1 次、有未关闭单 409）；复核单存 record.json `recheck_requests`（append-only，状态机 pending→regenerating→pending_confirm→done/rejected，LLM 失败退回 pending 可重试）；重新生成写 staging `report_markdown.staging.md`（PDF 即时渲染故用户始终看旧版，报告不锁定只加提示条），admin 确认发布才原子替换正式缓存（旧版留 `.bak`）+ 站内信 + 邮件；admin 端点 `/admin/reports/{id}/recheck/*`（regenerate / staging-pdf / publish / reject 必填理由），「重新生成」按钮仅随未关闭复核单出现、期间可反复生成、关闭即消失，后端 force 保留供运维脚本；关键文件 `app/services/report_recheck_service.py`、`report_pdf_service` staging 方法、前端 `components/explore/ReportRecheckModal.tsx` + `components/admin/ReportRecheckPanel.tsx`）；三条生成路径（审核预生成/批复/手动）共用 `report_pdf_service` 单轨锁，同报告不并发。PDF 页面顺序（2026-08-16 起）：封面 → 阅读指南 → 报告内容总览（原「报告模块总览」，已去掉日期/版本/密级档案头）→ 其余章节（`_markdown_to_pdf` 在第一个分页符处切开正文插入总览页，找不到分页符降级为旧顺序）；正文表格有行级分页保护（`.content tr/th/td { break-inside: avoid }`，防同一行左右格被拦腰分到两页）；「开篇：职业角色」章由后处理规范化（ADR-0017：`_normalize_role_opener` 保证 H2 标题必有，渲染侧 `_markdown_to_pdf` 也跑、存量缓存下载即生效；描述 >800 字时 `_compress_role` LLM 压缩至 600-750 字，仅生成侧，验收失败回退原文））
-- `/api/v1/admin/*` - 管理（含 `/admin/coupons` 折扣券、`/admin/payment/orders` 订单与退款、`/admin/consultations` 咨询管理、`/admin/users` 用户管理：deleted 筛选 / `restore-deletion` 注销恢复 / PATCH status 对已注销用户启用会 400 拦截；`/admin/reports` 列表含 `report_unlocked` 字段，`completed_steps` 已修 v4 口径：rumination locked 计入）
+- `/api/v1/export/*` - 导出（`POST /export/report-pdf/{id}` 有完成度门控：五阶段未完成一律 409，admin 也不例外，2026-08-07 起；admin 豁免仅限审核状态阻塞。报告批复通过瞬间——人工 `POST /admin/reports/{id}/approve` 或超时自动批复 job——后台自动生成报告 markdown（`report_review_service.kick_report_generation`，2026-08-10 起），用户页「生成报告」按钮仅为兜底。**报告复核体系（2026-08-18 起，`tasks/report-review-plan.md`）**：用户侧重新生成已下线（按钮 + `_MAX_USER_REGEN` + `report_regen_count` 计数全删），改「申请复核」——`POST /export/report-recheck/{id}` 分类必选（`content_issue` 建复核单 + 双写 Feedback 工单 / `download_issue` 仅进 Feedback 通道同「反馈 bug」；每报告每天限 1 次、有未关闭单 409）；复核单存 record.json `recheck_requests`（append-only，状态机 pending→regenerating→pending_confirm→done/rejected，LLM 失败退回 pending 可重试）；重新生成写 staging `report_markdown.staging.md`（PDF 即时渲染故用户始终看旧版，报告不锁定只加提示条），admin 确认发布才原子替换正式缓存（旧版留 `.bak`）+ 站内信 + 邮件；admin 端点 `/admin/reports/{id}/recheck/*`（regenerate / staging-pdf / publish / reject 必填理由），「重新生成」按钮仅随未关闭复核单出现、期间可反复生成、关闭即消失，后端 force 保留供运维脚本；关键文件 `app/services/report_recheck_service.py`、`report_pdf_service` staging 方法、前端 `components/explore/ReportRecheckModal.tsx` + `components/admin/ReportRecheckPanel.tsx`）；三条生成路径（审核预生成/批复/手动）共用 `report_pdf_service` 单轨锁，同报告不并发。PDF 页面顺序（2026-08-16 起）：封面 → 阅读指南 → 报告内容总览（原「报告模块总览」，已去掉日期/版本/密级档案头）→ 其余章节（`_markdown_to_pdf` 在第一个分页符处切开正文插入总览页，找不到分页符降级为旧顺序）；正文表格有行级分页保护（`.content tr/th/td { break-inside: avoid }`，防同一行左右格被拦腰分到两页）；「开篇：职业角色」章由后处理规范化（ADR-0017：`_normalize_role_opener` 保证 H2 标题必有，渲染侧 `_markdown_to_pdf` 也跑、存量缓存下载即生效；描述 >800 字时 `_compress_role` LLM 压缩至 600-750 字，仅生成侧，验收失败回退原文））。**渲染引擎双轨（ADR-0019，2026-08-20 起）**：`RENDER_ENGINE=weasyprint`（默认）| `xunlu`（`src/report-renderer/` 精简 Node 渲染器，抽自只读母版 `report/xunlu`，子进程调用，契约 markdown→bytes 不变），分流点 `_markdown_to_pdf`，用户下载与 admin staging 预览同时生效；xunlu 引擎自带存量方言归一化（旧式分页符/`*` 列表/h5-h6/`##`·`###` 章节标题提升/动态角色名识别）
+- `/api/v1/admin/*` - 管理（含 `/admin/coupons` 折扣券、`/admin/payment/orders` 订单与退款、`/admin/consultations` 咨询管理、`/admin/users` 用户管理：deleted 筛选 / `restore-deletion` 注销恢复 / PATCH status 对已注销用户启用会 400 拦截；`/admin/reports` 列表含 `report_unlocked` 字段，`completed_steps` 已修 v4 口径：rumination locked 计入；`POST /admin/render-pdf-from-md` md 直渲 PDF 与 `GET /admin/reports/{id}/render-pdf` 报告重渲染——均 super admin、强制走 xunlu 渲染器（ADR-0019）；`GET/POST /admin/report-render-config` 渲染引擎运行时配置（报告页单选即时生效）；`GET /admin/reports/generating` 生成中列表（前端恢复按钮态）；admin 列表「下载PDF」为纯渲染下载（md 不存在不隐式触发 LLM 生成）；运维脚本 `scripts/rerender_report.sh <激活码>`）
 - `/api/v1/payment/*` - 支付（用户侧：products / coupons/validate / orders；`/payment/notify/alipay` 为渠道回调，无登录鉴权）
 - `/api/v1/analytics/*` - 埋点（点赞、报告生成、`POST /analytics/event` 通用事件上报：PV 不依赖登录，auth_active 仅服务端内部写；漏斗统计 `GET /admin/analytics/funnel`，ADR-0013）
   - LLM token 用量统计（2026-08-16 起）：`GET /admin/analytics/llm-usage/summary`（总量+分场景+按天+峰谷）/ `users`（按用户聚合）/ `calls`（单次调用明细），数据源 `llm_usage_logs` 表（调用粒度，落库时按当时费率表+峰谷定价存死 cost_yuan）。采集在 `OpenAIProvider.chat/chat_stream` 出口统一埋点，归属（user_id/scene/activation_code）经 `core/llmapi/usage_context.py` contextvar 在各入口设置；费率表 `app/utils/llm_pricing.py`（内置 DeepSeek 8-17 前后两套价，`LLM_PRICING_JSON` 可覆盖，`LLM_PEAK_HOURS` 配峰时）；前端 `components/admin/LlmUsagePanel.tsx` 并入 `/admin/analytics` 页
@@ -411,7 +432,7 @@ python scripts/init_db.py
 - `docs/DOCKER.md` - Docker 使用
 - `docs/ADMIN_SANDBOX_FORK.md` - 管理员调试沙箱（Fork 正式激活码）
 - `CONTEXT.md` - 领域术语（探索流程 + 支付与商业化：试用/完整码、激活码（季度套餐/年度套餐）、折扣券、报告审核、团队分析）
-- `docs/adr/` - 架构决策记录（0005 双线支付 / 0006-0007 会员体系保留 / 0008 套餐与试用码 / 0009 报告审核自动批复 / 0010 码双角色与报告授权 / 0011 存储演进路线：SQLite 全量入库→条件触发 PG / 0012 品牌更名 OpenLife / 0013 统计看板：事件时间口径漏斗 + 埋点业务同库 / 0014 套餐全量未绑定码交付 + 消耗升级 + 年度 ¥159 / 0016 延期改版：首过免费送 7 天 + 付费 9.9 元/7 天 / 0017 报告后处理修正管线：一次生成 + 按章节分步修正 / 0018 套餐码支付成功起算 + 团队分析邮箱变量化）
+- `docs/adr/` - 架构决策记录（0005 双线支付 / 0006-0007 会员体系保留 / 0008 套餐与试用码 / 0009 报告审核自动批复 / 0010 码双角色与报告授权 / 0011 存储演进路线：SQLite 全量入库→条件触发 PG / 0012 品牌更名 OpenLife / 0013 统计看板：事件时间口径漏斗 + 埋点业务同库 / 0014 套餐全量未绑定码交付 + 消耗升级 + 年度 ¥159 / 0016 延期改版：首过免费送 7 天 + 付费 9.9 元/7 天 / 0017 报告后处理修正管线：一次生成 + 按章节分步修正 / 0018 套餐码支付成功起算 + 团队分析邮箱变量化 / 0019 报告渲染接入 xunlu 精简渲染器：子进程 + RENDER_ENGINE 开关共存）
 - `tasks/payment-module-plan.md` - 支付模块实施计划（P1 折扣券 ✅ / P2a 支付宝 ✅ / P2b 微信待做）
 - `tasks/packages-trial-plan.md` - 套餐与试用体系实施计划（P-A~P-E 全部 ✅）
 - `wiki/开发文档/0720-支付模块.md` - 支付配置操作手册（支付宝平台/.env/沙箱联调）

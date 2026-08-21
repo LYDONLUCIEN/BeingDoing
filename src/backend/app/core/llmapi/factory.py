@@ -2,11 +2,34 @@
 LLM Provider工厂
 
 支持 API 池与 VIP 模型：DeepSeek=VIP1（基础），Kimi/Qwen=VIP2（高级）。
+
+模型场景分流（2026-08-19 起，deepseek 专用）：按 usage_context 的 scene 选模型——
+scene=chat（前四 phase 对话+结论卡）→ flash；rumination/report/其他 → pro。
 """
 from typing import Optional
 from app.core.llmapi.base import BaseLLMProvider
 from app.core.llmapi.openai_provider import OpenAIProvider
 from app.config.settings import settings
+
+# scene → flash 档位（前四 phase values/strengths/interests/purpose 的对话与结论卡）
+_FLASH_SCENES = {"chat"}
+
+
+def _scene_model() -> str:
+    """按当前 usage_context 的 scene 确定性选择 deepseek 模型。
+
+    chat → flash（LLM_FLASH_MODEL）；其余（rumination/report/team_analysis/unknown）→ pro。
+    usage_context 为无依赖的 contextvar 模块，各入口在 LLM 调用前已设置 scene。
+    """
+    try:
+        from app.core.llmapi.usage_context import get_llm_usage_context
+
+        scene = (get_llm_usage_context().get("scene") or "unknown").strip()
+    except Exception:
+        scene = "unknown"
+    if scene in _FLASH_SCENES:
+        return settings.LLM_FLASH_MODEL or "deepseek-v4-flash"
+    return settings.LLM_PRO_MODEL or "deepseek-v4-pro"
 
 
 def create_llm_provider(
@@ -52,10 +75,11 @@ def _get_vip_provider_config(vip_level: int) -> tuple[str, Optional[str], Option
     if level == 2:
         p = getattr(settings, "LLM_VIP2_PROVIDER", "deepseek").lower()
         if p == "deepseek":
-            # P-A 起（ADR-0008）：VIP2 与 VIP1 同配 DeepSeek
+            # P-A 起（ADR-0008）：VIP2 与 VIP1 同配 DeepSeek；
+            # 模型按场景分流（2026-08-19 起），不再读 VIP 模型配置
             return (
                 "deepseek",
-                getattr(settings, "LLM_VIP1_MODEL", None) or "deepseek-v4-pro",
+                _scene_model(),
                 settings.DEEPSEEK_API_KEY,
                 settings.LLM_BASE_URL or "https://api.deepseek.com",
             )
@@ -77,7 +101,7 @@ def _get_vip_provider_config(vip_level: int) -> tuple[str, Optional[str], Option
     if p == "deepseek":
         return (
             "deepseek",
-            getattr(settings, "LLM_VIP1_MODEL", None) or "deepseek-v4-pro",
+            _scene_model(),
             settings.DEEPSEEK_API_KEY,
             settings.LLM_BASE_URL or "https://api.deepseek.com",
         )

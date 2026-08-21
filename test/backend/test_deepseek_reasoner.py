@@ -1,7 +1,8 @@
 """
 DeepSeek Reasoner API 集成测试
 
-验证 deepseek-reasoner 调用是否成功，以及 reasoning_content 与 content 的返回结构。
+验证 DeepSeek 思维链模型（deepseek-v4-pro，LLM_PRO_MODEL 可覆盖）调用是否成功，
+以及 reasoning_content 与 content 的返回结构。
 
 运行方式（在项目根目录）：
 
@@ -36,7 +37,7 @@ if env_path.exists():
 
 
 async def test_deepseek_reasoner_stream():
-    """测试 DeepSeek reasoner 流式调用，打印 delta 结构（不依赖项目配置）"""
+    """测试 DeepSeek 思维链模型流式调用，打印 delta 结构（不依赖项目配置）"""
     from openai import AsyncOpenAI
 
     api_key = os.getenv("DEEPSEEK_API_KEY")
@@ -54,7 +55,7 @@ async def test_deepseek_reasoner_stream():
     client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
     stream = await client.chat.completions.create(
-        model="deepseek-reasoner",
+        model=os.getenv("LLM_PRO_MODEL") or "deepseek-v4-pro",
         messages=[{"role": "user", "content": question}],
         stream=True,
     )
@@ -115,11 +116,19 @@ async def test_project_provider_stream():
     from app.core.llmapi import get_default_llm_provider
     from app.core.llmapi.base import LLMMessage
 
-    provider = get_default_llm_provider(vip_level=1)
-    if "reasoner" not in (provider.model or "").lower():
-        print("⚠️  当前 VIP1 模型不是 reasoner，请检查 LLM_VIP1_MODEL / .env")
-        print("   当前模型:", provider.model)
+    # 无 DeepSeek key 时直接跳过：openai 客户端在空 key 时会回落到全局
+    # OPENAI_API_KEY 环境变量，打到 DeepSeek 端点必 401（污染环境残留）
+    import os as _os
+
+    if not (_os.getenv("DEEPSEEK_API_KEY") or "").strip():
+        print("⚠️  未设置 DEEPSEEK_API_KEY，跳过项目 Provider 冒烟测试")
         return False
+
+    provider = get_default_llm_provider(vip_level=1)
+    # 2026-08-19 起模型按场景分流：无 scene 时默认 pro（思维链模型）
+    if "v4" not in (provider.model or "").lower():
+        print("⚠️  当前模型不含 v4，请检查 .env / 场景分流配置")
+        print("   当前模型:", provider.model)
 
     messages = [LLMMessage(role="user", content="1+1=? 一个字回答。")]
     print("=" * 60)

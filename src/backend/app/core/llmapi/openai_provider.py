@@ -25,7 +25,7 @@ class OpenAIProvider(BaseLLMProvider):
         初始化OpenAI Provider（也支持兼容接口如 DeepSeek）
 
         Args:
-            model: 模型名称（如 gpt-4, deepseek-chat）
+            model: 模型名称（如 gpt-4, deepseek-v4-pro）
             api_key: API密钥
             base_url: 可选，API 地址（如 https://api.deepseek.com）
             **kwargs: 其他配置（provider_name=渠道名，用于用量统计归属）
@@ -177,7 +177,7 @@ class OpenAIProvider(BaseLLMProvider):
         """
         发送流式聊天请求
 
-        当模型为 deepseek-reasoner 时，会 yield 字典：
+        当模型为思维链模型（如 deepseek-v4-pro）时，会 yield 字典：
         - {"_t": "think_start"} 开始思考
         - {"_t": "think_end", "content": "..."} 思考结束，附完整思考内容
         - 普通字符串为正式回复内容
@@ -189,7 +189,7 @@ class OpenAIProvider(BaseLLMProvider):
             ]
             self._last_stream_usage = None  # 防止残留上一次调用的 usage 被重复记账
 
-            # deepseek-reasoner / v4-pro 思维链模式下 temperature 等参数会被静默忽略
+            # deepseek-v4-pro 思维链模式下 temperature 等参数会被静默忽略
             create_kwargs = dict(
                 model=self.model,
                 messages=openai_messages,

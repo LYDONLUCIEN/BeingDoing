@@ -38,8 +38,9 @@ def _resolve_provider_and_key_for_vip(vip_level: int) -> tuple[str, Optional[str
 
 
 def to_non_reasoning_model(model: str) -> str:
-    """将推理模型名转换为对话模型名。示例：deepseek-reasoner -> deepseek-chat
+    """将推理模型名转换为对话模型名。
     v4 系列模型通过 API 参数控制思维链，无需换模型名，直接返回。
+    （历史旧名如 deepseek-reasoner 会映射为对应对话名，仅为兼容兜底）
     """
     m = (model or "").strip()
     if not m:
@@ -52,8 +53,9 @@ def to_non_reasoning_model(model: str) -> str:
 
 
 def to_reasoning_model(model: str) -> str:
-    """将对话模型名转换为推理模型名。示例：deepseek-chat -> deepseek-reasoner
+    """将对话模型名转换为推理模型名。
     v4 系列模型通过 API 参数控制思维链，无需换模型名，直接返回。
+    （历史旧名如 deepseek-chat 会映射为对应推理名，仅为兼容兜底）
     """
     m = (model or "").strip()
     if not m:

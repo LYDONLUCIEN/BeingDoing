@@ -1199,6 +1199,167 @@ async def download_recheck_staging_pdf(
     )
 
 
+class RenderPdfFromMdRequest(BaseModel):
+    """md 直渲 PDF 请求（ADR-0019）。signature 为 xunlu 渲染器签名方案 01/02/03。"""
+
+    markdown: str = Field(..., min_length=1)
+    nickname: Optional[str] = None
+    date: Optional[str] = None
+    signature: Optional[str] = None
+
+
+@router.get("/reports/generating")
+async def list_generating_reports(
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """当前在生成中（LLM 写 markdown）的 report_id 列表。
+
+    admin 报告页加载/刷新后据此恢复「生成中」按钮态（ADR-0019）；
+    状态真源在后端单轨锁，与前端 React 状态无关。
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    from app.services.report_pdf_service import list_generation_inflight
+
+    return {"code": 200, "message": "success", "data": {"report_ids": list_generation_inflight()}}
+
+
+class ReportRenderConfigRequest(BaseModel):
+    """报告渲染引擎配置（ADR-0019）：weasyprint 简洁版 / xunlu 设计版。"""
+
+    engine: str
+
+
+@router.get("/report-render-config")
+async def get_report_render_config(
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """读取报告渲染引擎配置（运行时 > env > 默认）。"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    from app.services.report_render_config import VALID_ENGINES, get_render_engine
+
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "engine": get_render_engine(),
+            "env_default": settings.RENDER_ENGINE,
+            "available": list(VALID_ENGINES),
+        },
+    }
+
+
+@router.post("/report-render-config")
+async def put_report_render_config(
+    body: ReportRenderConfigRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """切换报告渲染引擎（即时生效、无需重启；作用于用户下载与 admin 下载/staging 预览）。"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    from app.services.report_render_config import get_render_engine, set_render_engine
+
+    try:
+        set_render_engine(body.engine)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"code": 200, "message": "success", "data": {"engine": get_render_engine()}}
+
+
+@router.get("/reports/{report_id}/render-pdf")
+async def admin_render_report_pdf(
+    report_id: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """用 xunlu 精简渲染器重新渲染正式报告 PDF（ADR-0019）。
+
+    与「重新生成」的区别：不重跑 LLM、内容不变，仅把现有 markdown 缓存按新版式出 PDF。
+    强制走 xunlu 渲染器（不受 RENDER_ENGINE 全局开关影响），供 admin 灰度验证新版式；
+    无 markdown 缓存时 409。
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    registry = ReportRegistry()
+    _get_report_or_404(registry, report_id)
+
+    import asyncio
+    from urllib.parse import quote
+
+    from fastapi.responses import Response as FastResponse
+
+    from app.services.report_pdf_service import ReportPdfService
+    from app.services.report_xunlu_renderer import XunluRenderError, XunluRenderTimeout
+
+    service = ReportPdfService()
+    markdown_text = service.load_cached_markdown(report_id)
+    if not markdown_text:
+        raise HTTPException(status_code=409, detail="报告尚未生成 markdown 缓存，请先走生成流程")
+    try:
+        pdf_bytes = await asyncio.to_thread(
+            service._markdown_to_pdf_via_xunlu, markdown_text, report_id
+        )
+    except XunluRenderTimeout as e:
+        raise HTTPException(status_code=504, detail=str(e))
+    except XunluRenderError as e:
+        logger.exception("admin 重渲染 PDF 失败: report_id=%s", report_id)
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.exception("admin 重渲染 PDF 失败: report_id=%s", report_id)
+        raise HTTPException(status_code=500, detail=f"PDF 渲染失败: {e}")
+    filename = quote(f"重渲染_{report_id}.pdf")
+    return FastResponse(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+    )
+
+
+@router.post("/render-pdf-from-md")
+async def render_pdf_from_markdown(
+    body: RenderPdfFromMdRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """直接由 markdown 渲染 PDF（xunlu 精简渲染器；不经过报告生成流程）。
+
+    供 admin 调试渲染效果/验证素材替换；强制走 xunlu 渲染器，不受 RENDER_ENGINE 开关影响。
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    if not body.markdown.strip():
+        raise HTTPException(status_code=400, detail="markdown 不能为空")
+
+    import asyncio
+    from urllib.parse import quote
+
+    from fastapi.responses import Response as FastResponse
+
+    from app.services.report_xunlu_renderer import (
+        XunluRenderError,
+        XunluRenderTimeout,
+        render_pdf_with_xunlu,
+    )
+
+    try:
+        pdf_bytes = await asyncio.to_thread(
+            render_pdf_with_xunlu,
+            body.markdown,
+            nickname=body.nickname,
+            date=body.date,
+            signature=body.signature,
+        )
+    except XunluRenderTimeout as e:
+        raise HTTPException(status_code=504, detail=str(e))
+    except XunluRenderError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    filename = quote(f"直渲_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf")
+    return FastResponse(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+    )
+
+
 @router.post("/reports/{report_id}/recheck/publish")
 async def publish_report_recheck(
     report_id: str,

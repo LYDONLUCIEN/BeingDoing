@@ -1,0 +1,24 @@
+{
+  "name": "xunlu-report-renderer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "寻路报告精简渲染器：markdown → A4 HTML（react-dom/server）→ Chrome headless PDF。渲染核心从 report/xunlu 抽取，母版只读。",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "esbuild src/render.tsx --bundle --platform=node --format=esm --target=node20 --banner:js=\"import{createRequire as __createRequire}from'node:module';const require=__createRequire(import.meta.url);\" --outfile=dist/render-pdf.mjs && esbuild src/core-api.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/core.mjs",
+    "test": "npm run build && node --test tests/"
+  },
+  "dependencies": {
+    "react": "19.2.6",
+    "react-dom": "19.2.6"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "esbuild": "^0.25.0",
+    "typescript": "5.9.3"
+  }
+}

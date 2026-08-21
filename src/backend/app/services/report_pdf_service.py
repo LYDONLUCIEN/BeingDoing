@@ -100,6 +100,9 @@ _CONVERSATION_PHASE_HEAD_CHARS = 6000
 # 昵称兜底
 _DEFAULT_NICKNAME = "探索者"
 
+# 主流程签名（record.json report_signature）→ xunlu 渲染器签名方案 ID（ADR-0019，按下标映射）
+_SIGNATURE_TO_XUNLU = {"signature_1": "01", "signature_2": "02", "signature_3": "03"}
+
 # ── 报告生成单轨锁（2026-08-15）────────────────────────────────────
 # 三条触发路径（审核预生成 / 批复自动生成 / 用户手动生成）统一登记，
 # 消灭 export._pdf_tasks 与 review_service._gen_inflight 双轨锁
@@ -123,6 +126,11 @@ def release_generation(report_id: str) -> None:
 
 def is_generation_inflight(report_id: str) -> bool:
     return (report_id or "").strip() in _generation_inflight
+
+
+def list_generation_inflight() -> List[str]:
+    """当前所有在生成中的 report_id（admin 页面刷新后恢复「生成中」按钮态用，ADR-0019）。"""
+    return sorted(_generation_inflight)
 
 
 def _image_data_uri(path: Path) -> str:
@@ -791,6 +799,38 @@ class ReportPdfService:
             logger.exception("报告落款签名读取/分配失败: report_id=%s", report_id)
             return None
 
+    # ── xunlu 渲染器分流（ADR-0019）──────────────────────────────
+
+    def _markdown_to_pdf_via_xunlu(self, markdown_text: str, report_id: Optional[str] = None) -> bytes:
+        """走 xunlu 精简渲染器（Node 子进程）。元数据按报告动态组装：
+        签名沿用 record.json 的 report_signature（下标映射到渲染器签名方案），
+        日期取 report_markdown_generated_at（存量缺失时由渲染器取当天），
+        昵称由渲染器从 markdown「{昵称}的寻路之旅」标题提取。
+        """
+        from app.services.report_xunlu_renderer import render_pdf_with_xunlu
+
+        signature = None
+        date_text = None
+        if report_id:
+            sig = self._get_or_assign_signature(report_id)
+            signature = _SIGNATURE_TO_XUNLU.get(sig or "")
+            date_text = self._report_generated_date_text(report_id)
+        return render_pdf_with_xunlu(markdown_text, date=date_text, signature=signature)
+
+    def _report_generated_date_text(self, report_id: str) -> Optional[str]:
+        """读取 record.json 的 report_markdown_generated_at 并格式化为「YYYY 年 MM 月 DD 日」。"""
+        try:
+            registry = ReportRegistry(base_dir=str(self.simple_base_dir))
+            record = registry.get_report_by_id(report_id)
+            raw = (record or {}).get("report_markdown_generated_at")
+            if not raw:
+                return None
+            dt = datetime.fromisoformat(str(raw))
+            return dt.strftime("%Y 年 %m 月 %d 日")
+        except Exception:
+            logger.exception("报告生成日期读取失败: report_id=%s", report_id)
+            return None
+
     def _signature_block_html(self, report_id: Optional[str]) -> str:
         """报告末尾的落款签名区块；无 report_id 或签名图缺失时返回空串。"""
         if not report_id:
@@ -875,7 +915,15 @@ class ReportPdfService:
     # ── PDF 生成 ─────────────────────────────────────────────
 
     def _markdown_to_pdf(self, markdown_text: str, report_id: Optional[str] = None) -> bytes:
-        """markdown → HTML → PDF（含水印），返回 bytes。"""
+        """markdown → HTML → PDF（含水印），返回 bytes。
+
+        RENDER_ENGINE=xunlu 时分流到 xunlu 精简渲染器（ADR-0019），其余走内置 WeasyPrint。
+        引擎取值：admin 运行时配置（report_render_config）> env RENDER_ENGINE > 默认。
+        """
+        from app.services.report_render_config import get_render_engine
+
+        if get_render_engine() == "xunlu":
+            return self._markdown_to_pdf_via_xunlu(markdown_text, report_id=report_id)
         from weasyprint import HTML
 
         # 1. markdown → HTML

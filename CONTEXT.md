@@ -105,6 +105,9 @@ _Avoid_: 付费码、正式码
 **报告重新生成限额 (Report Regen Limit)**  
 普通用户对每份报告最多 **2 次**重新生成（2026-08-15 起）：首次生成不计数；force 重新生成**成功才计 1 次**（record.json `report_regen_count`），LLM 失败不占次数；次数用完前端按钮禁用态、后端 403。admin 不限次数不计数。三条生成触发路径（审核预生成 / 批复自动生成 / 用户手动）共用进程内**单轨锁**（`report_pdf_service._generation_inflight`），同一报告不并发重复生成；任务进行中再触发一律返回 generating。
 
+**报告渲染引擎 (Render Engine, ADR-0019)**  
+报告 markdown → PDF 的渲染器（2026-08-20 起）双引擎共存：**运行时配置 > `RENDER_ENGINE` env > 默认 weasyprint**——admin 报告页「PDF 渲染引擎」单选即时切换（简洁版 weasyprint 约 1MB / 设计版 xunlu 约 9MB），存 `data/report_render_config.json`（`report_render_config.py`）。`xunlu` = `src/report-renderer/` 精简 Node 渲染器（从设计母版 `report/xunlu` 抽取——母版只读不动；react-dom/server 出 A4 HTML + Chrome headless 打印，子进程调用，契约 markdown→bytes 不变）。分流点在 `report_pdf_service._markdown_to_pdf`，用户下载与 admin staging 预览同时生效；WeasyPrint 保留兜底。渲染器自带**输入归一化层**适配存量报告方言（旧式分页符/`*` 列表/h5-h6/章节标题层级/动态角色名）。admin 端点：`POST /admin/render-pdf-from-md`（md 直渲，不经过生成流程）/ `GET /admin/reports/{id}/render-pdf`（报告重渲染=现有 md 出新版式，与**重新生成**=LLM 出新 md 语义对立）/ `GET /admin/reports/generating`（生成中列表，前端刷新后恢复按钮态）；脚本 `scripts/rerender_report.sh <激活码>`。素材替换：母版更新后重新拷贝到 `src/report-renderer/assets/report-assets/` 即生效（即时渲染无需重生成）。
+
 **团队分析 (Team Analysis)**  
 年度套餐能力：选择多份报告（自己名下码的 + 自己订单交付且被激活人授权的）生成团队匹配度分析与团队角色投射。所属人可看到自己订单交付的所有码「被谁激活」，但看不到对话内容。
 

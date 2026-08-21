@@ -9,6 +9,10 @@ import {
   syncReportsFromActivations,
   getReportConversationStats,
   approveAdminReport,
+  renderAdminReportPdf,
+  fetchGeneratingReports,
+  fetchReportRenderConfig,
+  updateReportRenderConfig,
   type AdminReportItem,
   type AdminReportReviewStatus,
   type ConversationStatsResult,
@@ -46,9 +50,58 @@ export default function AdminReportsPage() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // PDF 异步下载（admin 不传 activationCode）
-  const { status: pdfStatus, error: pdfError, activeReportId, download: downloadPdf } =
-    useReportPdfDownload();
+  // PDF 异步下载（admin 不传 activationCode）；check/prepare/saveNow 不隐式触发生成（先查状态）
+  const {
+    status: pdfStatus,
+    error: pdfError,
+    activeReportId,
+    check,
+    prepare,
+    saveNow,
+  } = useReportPdfDownload();
+
+  // 渲染引擎配置（ADR-0019，全局即时生效）
+  const [renderEngine, setRenderEngine] = useState<string>('weasyprint');
+  const [engineSaving, setEngineSaving] = useState(false);
+  useEffect(() => {
+    fetchReportRenderConfig()
+      .then((cfg) => setRenderEngine(cfg.engine))
+      .catch(() => { /* 读取失败用默认 */ });
+  }, []);
+  const handleEngineChange = async (engine: string) => {
+    if (engine === renderEngine || engineSaving) return;
+    setEngineSaving(true);
+    try {
+      const saved = await updateReportRenderConfig(engine);
+      setRenderEngine(saved);
+      setToast({
+        type: 'success',
+        msg: saved === 'xunlu' ? '已切换为设计版渲染器（版式精，PDF 较大）' : '已切换为简洁版渲染器（PDF 体积小）',
+      });
+    } catch (e: any) {
+      setToast({ type: 'error', msg: e?.message || '切换渲染引擎失败' });
+    } finally {
+      setEngineSaving(false);
+    }
+  };
+
+  // 生成中状态（真源在后端单轨锁）：定时拉取，刷新页面也能恢复按钮态
+  const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let stopped = false;
+    const tick = async () => {
+      try {
+        const ids = await fetchGeneratingReports();
+        if (!stopped) setGeneratingIds(new Set(ids));
+      } catch { /* 查询失败保持现状 */ }
+    };
+    void tick();
+    const timer = setInterval(tick, 3000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, []);
 
   const loadReports = async () => {
     setLoading(true);
@@ -213,10 +266,42 @@ export default function AdminReportsPage() {
     }
   };
 
-  // 下载报告 PDF（异步生成 + 轮询 + 下载）
+  // 下载报告 PDF（纯渲染下载：先查状态，md 不存在不隐式触发 LLM 生成）
   const handleDownloadPdf = async (reportId: string) => {
     setError(null);
-    await downloadPdf(reportId);
+    const s = await check(reportId);
+    if (s === 'none') {
+      setError('报告尚未生成 markdown，admin 下载不触发 LLM 生成；请先由用户侧或复核流程生成');
+      return;
+    }
+    if (s === 'generating') {
+      // 后台正在生成：接管轮询直到就绪
+      await prepare(reportId);
+    }
+    await saveNow(reportId);
+  };
+
+  // 重渲染报告 PDF（xunlu 新版式渲染器；不重新生成内容，仅按现有 markdown 出新版式，ADR-0019）
+  const [rerenderingId, setRerenderingId] = useState<string | null>(null);
+  const handleRenderPdf = async (reportId: string) => {
+    setError(null);
+    setRerenderingId(reportId);
+    try {
+      await renderAdminReportPdf(reportId);
+    } catch (e: any) {
+      // blob 响应的错误体需要额外解析
+      let msg = e?.message || '重渲染失败';
+      const data = e?.response?.data;
+      if (data instanceof Blob) {
+        try {
+          const parsed = JSON.parse(await data.text());
+          if (parsed?.detail) msg = parsed.detail;
+        } catch { /* 忽略解析失败 */ }
+      }
+      setError(msg);
+    } finally {
+      setRerenderingId(null);
+    }
   };
 
   // 注意：admin 不再提供「重新生成」按钮（2026-08-16 起，只能下载用户已生成的报告）；
@@ -234,6 +319,37 @@ export default function AdminReportsPage() {
           查看所有 report_id，支持按关键字搜索并查看五步骤绑定详情。
         </p>
       </header>
+
+      {/* PDF 渲染引擎配置（ADR-0019，全局即时生效）：简洁版体积小 / 设计版版式精 */}
+      <section className="rounded-2xl bg-bd-card border border-bd-border px-6 py-4 shadow-sm flex flex-wrap items-center gap-4 text-xs">
+        <span className="font-medium" style={{ color: 'var(--bd-fg)' }}>
+          PDF 渲染引擎
+        </span>
+        <label className="inline-flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="radio"
+            name="render-engine"
+            checked={renderEngine === 'weasyprint'}
+            onChange={() => handleEngineChange('weasyprint')}
+            disabled={engineSaving}
+          />
+          简洁版（WeasyPrint，体积小约 1MB）
+        </label>
+        <label className="inline-flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="radio"
+            name="render-engine"
+            checked={renderEngine === 'xunlu'}
+            onChange={() => handleEngineChange('xunlu')}
+            disabled={engineSaving}
+          />
+          设计版（xunlu，版式精，体积大约 9MB）
+        </label>
+        {engineSaving && <span style={{ color: 'var(--bd-fg-muted)' }}>保存中...</span>}
+        <span style={{ color: 'var(--bd-fg-muted)' }}>
+          全局即时生效，无需重启；作用于用户下载与 admin 下载
+        </span>
+      </section>
 
       <section className="rounded-2xl bg-bd-card border border-bd-border px-6 py-4 shadow-sm flex flex-wrap items-center gap-3 text-xs">
         <input
@@ -414,13 +530,32 @@ export default function AdminReportsPage() {
                             onClick={() => handleDownloadPdf(item.report_id)}
                             disabled={
                               item.report_unlocked === false ||
+                              generatingIds.has(item.report_id) ||
                               (pdfStatus === 'generating' && activeReportId === item.report_id)
                             }
                             className="px-2 py-1 rounded border border-bd-border hover:bg-bd-overlay-md whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                           >
-                            {pdfStatus === 'generating' && activeReportId === item.report_id
+                            {generatingIds.has(item.report_id) ||
+                            (pdfStatus === 'generating' && activeReportId === item.report_id)
                               ? '生成中...'
                               : '下载PDF'}
+                          </button>
+                        </span>
+                        {/* 重渲染：用 xunlu 新版式渲染器出 PDF（不重新生成内容）；无 markdown 缓存时后端 409 */}
+                        <span
+                          title="用 xunlu 新版式渲染器重新渲染现有报告（内容不变，仅版式更新）"
+                          className="inline-block"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleRenderPdf(item.report_id)}
+                            disabled={
+                              item.report_unlocked === false ||
+                              rerenderingId === item.report_id
+                            }
+                            className="px-2 py-1 rounded border border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100 whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-sky-50"
+                          >
+                            {rerenderingId === item.report_id ? '渲染中...' : '重渲染PDF'}
                           </button>
                         </span>
                       </div>

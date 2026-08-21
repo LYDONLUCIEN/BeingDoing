@@ -4,7 +4,7 @@
 from pydantic_settings import BaseSettings
 from typing import Optional
 from pathlib import Path
-from app.utils.data_paths import get_conversation_dir
+from app.utils.data_paths import get_conversation_dir, get_project_root
 
 class Settings(BaseSettings):
     """应用配置类"""
@@ -67,6 +67,14 @@ class Settings(BaseSettings):
     LLM_VIP1_PROVIDER: str = "deepseek"
     LLM_VIP1_MODEL: Optional[str] = None  # 默认 deepseek-v4-pro
     LLM_VIP2_PROVIDER: str = "deepseek"  # deepseek | kimi | qwen（当前默认 deepseek）
+
+    # 模型场景分流（2026-08-19 起，deepseek provider 专用）：
+    # scene=chat（前四 phase values/strengths/interests/purpose 的对话+结论卡）→ flash；
+    # rumination / report / team_analysis / 未知场景 → pro。
+    # 分流在 factory._get_vip_provider_config 内按 usage_context 的 scene 决定，
+    # 优先级高于 LLM_VIP1_MODEL。
+    LLM_FLASH_MODEL: Optional[str] = None  # 默认 deepseek-v4-flash
+    LLM_PRO_MODEL: Optional[str] = None  # 默认 deepseek-v4-pro
     KIMI_API_KEY: Optional[str] = None
     KIMI_BASE_URL: Optional[str] = "https://api.moonshot.cn/v1"
     KIMI_MODEL: str = "moonshot-v1-8k"
@@ -97,6 +105,20 @@ class Settings(BaseSettings):
     # LLM 模型配置加密密钥（admin 后台存的 api_key 用 Fernet 加密）
     # 为空时回退 SECRET_KEY；轮换会让历史密文不可解密，需重新填写 api_key
     MODEL_CONFIG_ENC_KEY: Optional[str] = None
+
+    # 报告 PDF 渲染引擎（ADR-0019）：
+    # - weasyprint（默认）：内置 Python 渲染，现状行为不变
+    # - xunlu：src/report-renderer 精简 Node 渲染器（子进程调用，需先 npm install && npm run build）
+    # 作用于用户下载与 admin staging 预览两处（report_pdf_service._markdown_to_pdf 单点分流）
+    RENDER_ENGINE: str = "weasyprint"
+    # xunlu 渲染器目录（内含 dist/render-pdf.mjs、assets/）
+    REPORT_RENDERER_DIR: str = str(get_project_root() / "src" / "report-renderer")
+    # Node 可执行文件
+    REPORT_RENDERER_NODE: str = "node"
+    # Chrome/Chromium 路径（留空由渲染器自动探测 /usr/bin/google-chrome 等）
+    CHROME_PATH: Optional[str] = None
+    # 单次渲染超时（秒）
+    REPORT_RENDER_TIMEOUT: int = 120
 
     # SMTP 邮件配置（忘记密码验证码）
     SMTP_HOST: Optional[str] = None
