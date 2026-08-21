@@ -1,12 +1,13 @@
 """
 认证API
 """
+import json
 import logging
 
 from fastapi import APIRouter, HTTPException, Depends, status, Header, Response, Cookie
 from pydantic import BaseModel, EmailStr
 from typing import Optional
-from app.services.auth_service import AuthService
+from app.services.auth_service import AuthService, LoginLockedError
 from app.config.settings import settings
 from app.utils.super_admin import is_super_admin_user
 
@@ -275,7 +276,20 @@ async def login(request: LoginRequest, response: Response):
             message="登录成功",
             data=result
         )
-    
+
+    except LoginLockedError as e:
+        # 防爆破锁定：423 + JSON detail（对齐试用 402 风格，前端按 type 识别）
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail=json.dumps(
+                {
+                    "type": "login_locked",
+                    "message": str(e),
+                    "retry_after_seconds": e.retry_after_seconds,
+                },
+                ensure_ascii=False,
+            ),
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

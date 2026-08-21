@@ -197,6 +197,8 @@ MEMBERSHIP_ENABLED=False        # 会员开关（P3 预留）
 ./start.sh attach         # 附加到 tmux session 查看日志
 ```
 
+> **conda 环境按目标环境自动选择**（2026-08-21 起）：`prod` 用生产小机的 base 环境（默认 `/root/miniconda3`），`dev/test`/无参数用开发机 py312（默认 `/mnt/vdb1/miniconda3`）；路径不对时启动前会直接报错提示。可用环境变量覆盖：`CONDA_BASE=/path CONDA_ENV=xxx ./start.sh prod`。注意：生产机上裸跑 `./start.sh`（不带 prod）会走 dev 的 conda 默认值，**生产请始终用 `./start.sh prod`**。
+
 ### 手动启动
 
 ```bash
@@ -397,6 +399,7 @@ python scripts/init_db.py
 3. **JWT 验证**: Token 有效期默认 60 分钟
 4. **超级管理员**: 通过 `SUPER_ADMIN_USER_IDS` 或 `SUPER_ADMIN_EMAILS` 配置
 5. **Debug 模式**: `DEBUG_MODE=True` 仅对超级管理员生效
+6. **登录防爆破（2026-08-21 起）**: `AuthService.login` 按登录标识（email 小写/phone，**含不存在的账号**）进程内内存计数——1 小时滑动窗口 5 次失败锁 15 分钟（固定不续期、锁定期密码正确也拒绝、成功登录清零、重启失效）；锁定返回 HTTP 423 + detail JSON `{"type":"login_locked","retry_after_seconds":N}`（对齐试用 402 风格）；失败统一文案「邮箱/手机号或密码错误」防枚举（不存在的账号走假哈希校验对齐耗时）。关键文件：`app/services/auth_service.py`（`_login_failures` / `LoginLockedError` / `LOGIN_FAIL_*` 常量）、`app/api/v1/auth.py` 423 分支、前端 `AuthModal.tsx` 倒计时；测试 `test/backend/test_login_lockout.py`
 
 ## 常用开发任务
 
@@ -440,6 +443,7 @@ python scripts/init_db.py
 - `wiki/开发文档/0731-迁移计划.md` - 新生产服务器迁移计划（v1.5.1→HEAD 变化总览 + openlife.beyondego.me 切流步骤）
 - `wiki/开发文档/0821-迁移计划-v1.5.1-to-v1.6.0.md` - **生产迁移完整手册（v1.5.1→v1.6.0，0731 版的完整替代）**：12 个 migration（007→019）/ xunlu 渲染引擎 / 延期改版 / LLM key 隔离与 sync_llm_db_config / SMTP 163 授权码 / 逐步 todo list + 验收与回滚
 - `wiki/开发文档/0821-测试环境升级指引-v1.6.0.md` - 测试服务器维护人员用：测试/生产数据独立不同步、**无需数据迁移**，只需代码升级 v1.6.0 + 依赖 + 测试库 007→019 + 激活码 schema 脚本（含测试数据根）+ .env 测试口径核对
+- `wiki/开发文档/0821-nginx-openlife-prod.md` - openlife.beyondego.me 新生产站 1Panel/nginx 配置指南（0705 xunlu 版的改写：建站+TLS+双反代+维护模式三段配置+旧站 301+验证）
 - `wiki/开发文档/0812-报告配色配置说明.md` - 报告 PDF 配色配置（只改 `app/static/styles/report_theme.json` + 重启后端；PDF 下载时即时渲染故无需重生成报告）
 
 ## 调试技巧

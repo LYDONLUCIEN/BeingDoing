@@ -103,8 +103,13 @@ export const useRuminationV4Store = create<RuminationV4Store>((set, get) => {
   /** 应用判定 SSE 事件到 combo(confirm 与 attach 共用) */
   const applyAnalysisEvent = (comboId: string, evt: BalanceAnalysisEvent) => {
     if (evt.analysis_status === 'analyzing') {
+      // 后端 confirm 时已置 concluded+analyzing 并落盘,前端须同步 concluded,
+      // 否则判定进行期间 status 仍是 discussing,终选弹窗的 pending 检测
+      // (要求 status==='concluded')会漏检,不显示「正在检测结论…」浮层
       updateCombo(comboId, (c) => ({
         ...c,
+        status: 'concluded',
+        user_skipped: false,
         balance_analysis: {
           status: 'analyzing',
           balance_found: null,

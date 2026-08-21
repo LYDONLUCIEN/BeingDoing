@@ -43,6 +43,7 @@ class OpenAIProvider(BaseLLMProvider):
         self.client = AsyncOpenAI(**client_kwargs)
         self._encoding = None
         self._last_stream_usage = None  # 流式调用结束后的 token 用量
+        self._last_stream_finish_reason = None  # 流式调用结束后的 finish_reason（length=被 max_tokens 截断）
     
     def _get_encoding(self):
         """获取tiktoken编码器（延迟加载）"""
@@ -188,6 +189,7 @@ class OpenAIProvider(BaseLLMProvider):
                 for msg in messages
             ]
             self._last_stream_usage = None  # 防止残留上一次调用的 usage 被重复记账
+            self._last_stream_finish_reason = None
 
             # deepseek-v4-pro 思维链模式下 temperature 等参数会被静默忽略
             create_kwargs = dict(
@@ -209,8 +211,11 @@ class OpenAIProvider(BaseLLMProvider):
                     if chunk.usage:
                         u = self._normalize_usage(chunk.usage) or {}
                         self._last_stream_usage = u
-                    if chunk.choices and chunk.choices[0].delta.content:
-                        yield chunk.choices[0].delta.content
+                    if chunk.choices:
+                        if chunk.choices[0].finish_reason:
+                            self._last_stream_finish_reason = chunk.choices[0].finish_reason
+                        if chunk.choices[0].delta.content:
+                            yield chunk.choices[0].delta.content
                 await self._record_usage(self._last_stream_usage)
                 return
 
@@ -237,6 +242,8 @@ class OpenAIProvider(BaseLLMProvider):
                     self._last_stream_usage = usage_dict
                 if not chunk.choices:
                     continue
+                if chunk.choices[0].finish_reason:
+                    self._last_stream_finish_reason = chunk.choices[0].finish_reason
                 delta = chunk.choices[0].delta
                 rc, cc = _get_rc_cc(delta)
 

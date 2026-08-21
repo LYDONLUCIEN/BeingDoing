@@ -252,6 +252,9 @@ from app.utils.survey_storage import (
 SIMPLE_QUESTION_SAMPLE_SIZE = 6
 # 发送给 LLM 的历史消息最大轮数（减少 token、加快响应）
 MAX_HISTORY_TURNS = 30
+# 主对话流 max_tokens 上限：不显式传时 DeepSeek 默认 4096，可见回复与 [STATE_JSON] 块共享该额度，
+# 聊长后易被从句中截断（finish_reason=length 且此前无人检查）；8192 只是上限，不按量计费
+SIMPLE_CHAT_STREAM_MAX_TOKENS = 8192
 # 并发 LLM 调用限制（0=不限制）
 _LLM_SEM = None
 PENDING_JUDGE_TIMEOUT_SECONDS = 20
@@ -6186,7 +6189,9 @@ async def simple_chat_stream(
 
         try:
             sem = _get_llm_semaphore()
-            stream_coro = llm.chat_stream(llm_messages, temperature=0.7)
+            stream_coro = llm.chat_stream(
+                llm_messages, temperature=0.7, max_tokens=SIMPLE_CHAT_STREAM_MAX_TOKENS
+            )
 
             full_think = ""
             rfs_stream = (
@@ -6245,8 +6250,48 @@ async def simple_chat_stream(
                         yield ev
         except Exception as e:
             err = str(e)
+            logger.warning("[llm_stream] 流式输出异常中断 session=%s: %s", session_id, err)
+            # 尽力落盘已流出的部分回复（剥离协议块），避免用户刷新后整条丢失
+            try:
+                partial_raw = (full_reply or "").strip()
+                if partial_raw:
+                    if phase_step == "rumination" and int(request.rumination_filter_step or 0) == 3:
+                        partial_visible, _ = _split_visible_reply_and_row_state(partial_raw)
+                    else:
+                        partial_visible, _ = _split_visible_reply_and_state(partial_raw)
+                    partial_visible = (partial_visible or "").strip()
+                    if partial_visible:
+                        await conv_manager.append_message(
+                            session_id=session_id,
+                            category=category,
+                            message={
+                                "role": "assistant",
+                                "content": partial_visible,
+                                **IDCodec.build_message_ids(
+                                    thread_id=logical_session_id,
+                                    activation_session_id=rec.session_id,
+                                ),
+                                "step_id": phase_step,
+                                "filter_step": (
+                                    int(request.rumination_filter_step)
+                                    if phase_step == "rumination" and request.rumination_filter_step
+                                    else None
+                                ),
+                                "agent_id": "coach",
+                                "event": "assistant_reply_partial",
+                            },
+                        )
+            except Exception:
+                pass
             yield f'data: {{"error": {json.dumps(err, ensure_ascii=False)} }}\n\n'
             return
+        stream_finish_reason = getattr(llm, "_last_stream_finish_reason", None)
+        if stream_finish_reason == "length":
+            logger.warning(
+                "[llm_stream] 回复被 max_tokens 截断 session=%s max_tokens=%s",
+                session_id,
+                SIMPLE_CHAT_STREAM_MAX_TOKENS,
+            )
         stream_usage = _normalize_token_usage(getattr(llm, "_last_stream_usage", None))
         # 诊断 DeepSeek Context Cache：首 token 慢时查看 hit/miss
         if stream_usage and (
