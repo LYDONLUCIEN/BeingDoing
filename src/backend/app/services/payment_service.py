@@ -163,6 +163,7 @@ class PaymentService:
                     "name": "季度套餐",
                     "price": settings.QUARTERLY_PRICE,
                     "duration_days": settings.QUARTERLY_DAYS,
+                    "popular": True,
                     "description": (
                         "1 个激活码（未绑定）：可用于升级你的试用码（探索记录保留）、"
                         "自己激活使用或转送朋友；自购买成功起算，有效期 3 个月"
@@ -180,7 +181,6 @@ class PaymentService:
                     "name": "年度套餐",
                     "price": settings.ANNUAL_PRICE,
                     "duration_days": settings.ANNUAL_DAYS,
-                    "popular": True,
                     "description": (
                         "3 个激活码（均未绑定）：可自用、转送朋友，或用 1 个升级你的试用码；"
                         "可用于 3 个不同账号，或同一账号分阶段对比；每码有效期 1 年"

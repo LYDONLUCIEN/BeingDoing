@@ -204,7 +204,7 @@ async def llm_flag_step3_hypotheses(llm: Any, rows: List[Dict[str, Any]]) -> Tup
             LLMMessage(role="user", content=user),
         ]
         # 该质检用于闸门辅助，超时后自动降级；45s 留足 LLM 响应余量
-        resp = await asyncio.wait_for(llm.chat(msgs, temperature=0.2, max_tokens=800), timeout=45.0)
+        resp = await asyncio.wait_for(llm.chat(msgs, temperature=0.2, max_tokens=8192), timeout=45.0)
         raw = (resp.content or "").strip()
         start = raw.find("[")
         end = raw.rfind("]")

@@ -144,8 +144,10 @@ async def test_products_catalog():
     data = PaymentService.get_products()
     types = {item["product_type"] for item in data["items"]}
     assert types == {"quarterly_package", "annual_package", "consultation"}
+    quarterly = next(i for i in data["items"] if i["product_type"] == "quarterly_package")
+    assert quarterly["popular"] is True  # 「最受欢迎」标在季度套餐（2026-08-24 起）
     annual = next(i for i in data["items"] if i["product_type"] == "annual_package")
-    assert annual["popular"] is True
+    assert "popular" not in annual
     assert annual["price"] == settings.ANNUAL_PRICE
     consultation = next(i for i in data["items"] if i["product_type"] == "consultation")
     assert consultation["requires_report"] is True

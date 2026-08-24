@@ -40,8 +40,9 @@ NO_CONCLUSION_NUDGE_N_ROUNDS = 50  # (预留)50 轮未出结论 → 软提醒
 # 判定 LLM 调用参数与重试次数(首次 + 1 次自动重试 = 共 2 次尝试)
 BALANCE_JUDGE_MAX_ATTEMPTS = 2
 # thinking 模型(deepseek-v4-pro)的 max_tokens 是思维链+正文的合计上限,
-# 400 极易被 reasoning 耗尽导致 content 为空(JSONDecodeError: char 0);逐次放大
-BALANCE_JUDGE_MAX_TOKENS = (2000, 8000)
+# 小额度极易被 reasoning 耗尽导致 content 为空(JSONDecodeError: char 0);
+# 全部场景已切 pro+思维链(2026-08-23),首轮即给足 8000,重试再放大
+BALANCE_JUDGE_MAX_TOKENS = (8000, 16000)
 
 # 进行中的判定任务注册表: key = f"{report_id}:{combo_id}"
 # 仅本进程内存;进程重启后 analyzing 态由 sweep_orphan_analysis 自愈为 failed
@@ -756,7 +757,7 @@ async def maybe_summarize_combo(
     from app.core.llmapi import LLMMessage
     prompt = render_summarizer_prompt(prev_summary, recent)
     try:
-        resp = await llm.chat([LLMMessage(role="system", content=prompt)], temperature=0.3, max_tokens=600)
+        resp = await llm.chat([LLMMessage(role="system", content=prompt)], temperature=0.3, max_tokens=8192)
         new_summary = (resp.content or "").strip()
         if new_summary:
             combo["summary"] = new_summary

@@ -220,7 +220,7 @@ export default function DashboardCodesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copiedText, setCopiedText] = useState<string | null>(null);
-  /** 延期激活目标码：非 null 时打开 PurchaseModal 延期模式 */
+  /** 激活码延期目标码：非 null 时打开 PurchaseModal 延期模式 */
   const [renewalTarget, setRenewalTarget] = useState<string | null>(null);
   /** 7 天免费续期领取目标码（ADR-0015）：非 null 时打开领取弹窗 */
   const [freeRenewalTarget, setFreeRenewalTarget] = useState<string | null>(null);
@@ -322,7 +322,8 @@ export default function DashboardCodesPage() {
       </div>
 
       {activeTab === 'codes' ? (
-        loading ? (
+        <>
+          {loading ? (
         <div className="bg-bd-card/80 backdrop-blur-lg border border-bd-border rounded-2xl p-8 text-center">
           <p className="text-bd-muted">{t('common.loading')}</p>
         </div>
@@ -360,11 +361,8 @@ export default function DashboardCodesPage() {
             />
           ))}
         </div>
-      )
-      ) : (
-        <>
-          {/* 订单记录 tab：订单列表 + 购买记录按订单分组（去向 5 态） */}
-          <OrdersSection />
+      )}
+          {/* 我购买的激活码：每码去向/使用情况（订单详情见「订单记录」tab） */}
           <PurchasedCodesSection
             t={t}
             copiedText={copiedText}
@@ -373,12 +371,15 @@ export default function DashboardCodesPage() {
             refreshKey={purchasedRefreshKey}
           />
         </>
+      ) : (
+        // 订单记录 tab：仅订单详情 + 本单交付的激活码列表（码的去向见「激活码」tab）
+        <OrdersSection />
       )}
 
       {/* 购买激活码：标题右侧「购买激活码」按钮入口 */}
       <PurchaseModal open={purchaseOpen} onClose={() => setPurchaseOpen(false)} />
 
-      {/* 延期激活：关闭后刷新列表（有效期可能已追加） */}
+      {/* 激活码延期：关闭后刷新列表（有效期可能已追加） */}
       <PurchaseModal
         open={renewalTarget !== null}
         onClose={() => {
@@ -414,16 +415,10 @@ export default function DashboardCodesPage() {
   );
 }
 
-/** 分转元：整元不带小数 */
-function formatYuan(fen: number): string {
-  const yuan = fen / 100;
-  return Number.isInteger(yuan) ? String(yuan) : yuan.toFixed(2);
-}
-
-/** 所属人视角（P-E，ADR-0010/0014）：我购买的码，按订单分组 + 每码「去向」备注。
+/** 所属人视角（P-E，ADR-0010/0014）：我购买的码，平铺列表 + 每码「去向」备注。
  *
- * 订单头：商品名 / 订单号 / 下单日期 / 实付金额（+优惠）；
- * 无 source_order_id 的存量码归入末尾「其他来源」分组（不显示金额/订单号）。
+ * 口径（2026-08-24 起）：订单详情（商品/金额/订单号）只在「订单记录」tab 展示；
+ * 本区只回答「每枚码现在去哪了/用得怎么样」——未绑定/已绑定自己/已绑定他人/已用于升级/已作废 + 报告状态。
  */
 function PurchasedCodesSection({
   t,
@@ -455,29 +450,8 @@ function PurchasedCodesSection({
 
   if (!loaded || items.length === 0) return null;
 
-  // 按 source_order_id 分组；无来源的归入「其他来源」
-  const byOrder = new Map<string, PurchasedCodeItem[]>();
-  const others: PurchasedCodeItem[] = [];
-  for (const item of items) {
-    if (item.source_order_id) {
-      const arr = byOrder.get(item.source_order_id);
-      if (arr) arr.push(item);
-      else byOrder.set(item.source_order_id, [item]);
-    } else {
-      others.push(item);
-    }
-  }
-  const orderGroups = Array.from(byOrder.entries()).map(([orderId, codes]) => ({
-    orderId,
-    codes,
-    orderNo: codes.find((c) => c.order_no)?.order_no ?? null,
-    createdAt: codes.find((c) => c.order_created_at)?.order_created_at ?? null,
-    productName: codes.find((c) => c.product_name)?.product_name ?? null,
-    amountPaid: codes.find((c) => c.amount_paid != null)?.amount_paid ?? null,
-    amountDiscount: codes.find((c) => (c.amount_discount ?? 0) > 0)?.amount_discount ?? null,
-  }));
-  // 订单按下单时间倒序；「其他来源」永远最后
-  orderGroups.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+  // 平铺展示：按创建时间倒序（最新的码在最前）
+  const sorted = [...items].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
 
   /** 单个码一行：码值 + 状态 badge + 去向备注（合并激活情况） + 报告状态；未绑定码保留复制/去使用 */
   const renderCodeRow = (item: PurchasedCodeItem) => {
@@ -561,47 +535,8 @@ function PurchasedCodesSection({
         <h2 className="text-lg font-semibold text-bd-fg">{t('dashboard.codesPage.purchasedTitle')}</h2>
         <p className="text-xs text-bd-muted mt-1">{t('dashboard.codesPage.purchasedDesc')}</p>
       </div>
-      <div className="space-y-3">
-        {orderGroups.map((g) => (
-          <div
-            key={g.orderId}
-            className="bg-bd-card/80 backdrop-blur-lg border border-bd-border rounded-2xl shadow-sm overflow-hidden"
-          >
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 border-b border-bd-border text-xs">
-              <span className="font-medium text-bd-fg">
-                {g.productName ?? t('dashboard.codesPage.fallbackProduct')}
-              </span>
-              <span className="text-bd-muted">
-                {t('dashboard.codesPage.orderNoLabel')}
-                <span className="ml-1 font-mono">{g.orderNo ?? g.orderId.slice(-8)}</span>
-              </span>
-              {g.createdAt && (
-                <span className="text-bd-muted">{formatLocalDateTime(g.createdAt)}</span>
-              )}
-              {g.amountPaid != null && (
-                <span className="ml-auto text-bd-fg">
-                  {t('dashboard.codesPage.paidAmount', { amount: formatYuan(g.amountPaid) })}
-                  {g.amountDiscount != null && g.amountDiscount > 0 && (
-                    <span className="ml-2 text-emerald-600">
-                      {t('dashboard.codesPage.discountSaved', {
-                        amount: formatYuan(g.amountDiscount),
-                      })}
-                    </span>
-                  )}
-                </span>
-              )}
-            </div>
-            <div className="divide-y divide-bd-border">{g.codes.map(renderCodeRow)}</div>
-          </div>
-        ))}
-        {others.length > 0 && (
-          <div className="bg-bd-card/80 backdrop-blur-lg border border-bd-border rounded-2xl shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b border-bd-border text-xs font-medium text-bd-fg">
-              {t('dashboard.codesPage.otherSourceGroup')}
-            </div>
-            <div className="divide-y divide-bd-border">{others.map(renderCodeRow)}</div>
-          </div>
-        )}
+      <div className="bg-bd-card/80 backdrop-blur-lg border border-bd-border rounded-2xl shadow-sm overflow-hidden">
+        <div className="divide-y divide-bd-border">{sorted.map(renderCodeRow)}</div>
       </div>
     </section>
   );

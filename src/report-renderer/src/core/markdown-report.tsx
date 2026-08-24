@@ -114,7 +114,7 @@ function ReportCoverPage({ totalPages, meta }: { totalPages: number; meta: Repor
           <p>寻路 · OPEN LIFE</p>
           <h1>寻路·OpenLife<br />职业发展深度报告</h1>
           <i />
-          <strong>探索真实的自己，找到更像你的方向</strong>
+          <strong>所有热爱,都值得成为事业。</strong>
         </section>
         <dl className="markdown-report-cover__meta">
           <div><dt>探索者</dt><dd>{meta.nickname ?? "探索者"}</dd></div>

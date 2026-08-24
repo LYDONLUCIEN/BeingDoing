@@ -3,8 +3,9 @@
 
 覆盖：
 - 生成钩子：ensure_report 写 review_status=not_started（不计时）
-- 计时起点：进入报告页（my-report-id）且五阶段完成 → pending_review + 随机 3~24h deadline
-  并后台预生成报告 markdown；五阶段未完成则保持 not_started 且阻塞 PDF 端点
+- 计时起点：v4 终选提交（final-selection/submit）即转 pending_review + 随机 3~24h deadline
+  并后台预生成报告 markdown（2026-08-23 前移）；进入报告页（my-report-id）的懒触发保留兑底；
+  五阶段未完成则保持 not_started 且阻塞 PDF 端点
 - 存量报告（无审核字段）祖父豁免视为 approved
 - 用户侧阻塞：pending → HTTP 200 返回审核中状态；approved → 放行
 - admin 人工批复：manual 字段 + 站内信触发；列表审核字段与筛选
@@ -366,6 +367,70 @@ def test_review_not_started_when_phases_incomplete(reg: ReportRegistry) -> None:
     assert rid not in export_mod._pdf_tasks
     saved = reg.get_report_by_id(rid)
     assert saved["review_status"] == "not_started"
+
+
+# ── 2c. 计时起点前移：v4 终选提交即开始审核（2026-08-23） ────
+
+
+def test_review_starts_on_v4_final_submit(reg: ReportRegistry) -> None:
+    """v4 终选提交成功即转 pending_review + 随机 deadline 并后台预生成（不进报告页也计时）。"""
+    rid = "rpt-v4-submit"
+    # 提交前的 record：前四阶段完成，rumination 未锁（submit 端点负责 lock_step）
+    rec = _not_started_record(rid, complete=True)
+    rec["steps"]["rumination"] = {
+        "step_id": "rumination",
+        "selected_session_id": None,
+        "locked": False,
+        "session_ids": [],
+        "updated_at": "2026-01-01T00:00:00+00:00",
+    }
+    _write_record(reg.simple_base_dir, rid, rec)
+    _override_user("user-1")
+    export_mod._pdf_tasks.pop(rid, None)
+
+    async def _noop_generation(*args, **kwargs):
+        return None
+
+    reports_root = reg.simple_base_dir / "reports"
+    with (
+        patch(
+            "app.api.v1.rumination_v4_routes._resolve_v4_ctx_with_rec",
+            return_value=(reports_root, rid, object()),
+        ),
+        patch("app.api.v1.rumination_v4_routes._assert_rumination_editable", return_value=None),
+        patch(
+            "app.api.v1.rumination_v4_routes.submit_final_selection",
+            return_value={
+                "final_selection": {"selected_combo_ids": ["c1"]},
+                "main_section": "end",
+            },
+        ),
+        patch("app.api.v1.rumination_v4_routes._audit_log", return_value=None),
+        patch.object(export_mod, "_run_pdf_generation", _noop_generation),
+    ):
+        client = TestClient(app)
+        before = datetime.now(timezone.utc)
+        resp = client.post(
+            "/api/v1/simple-chat/rumination-v4/final-selection/submit",
+            json={"activation_code": "CODE1"},
+        )
+        after = datetime.now(timezone.utc)
+
+    try:
+        assert resp.status_code == 200
+        saved = reg.get_report_by_id(rid)
+        # rumination 锁定 + 审核计时开始 + 随机 deadline + 后台预生成已启动
+        assert saved["steps"]["rumination"]["locked"] is True
+        assert saved["review_status"] == "pending_review"
+        deadline = datetime.fromisoformat(saved["review_deadline"])
+        assert before + timedelta(hours=AUTO_APPROVE_MIN_HOURS) <= deadline
+        assert deadline <= after + timedelta(hours=AUTO_APPROVE_MAX_HOURS)
+        assert export_mod._pdf_tasks.get(rid, {}).get("status") == "pending"
+    finally:
+        export_mod._pdf_tasks.pop(rid, None)
+        from app.services.report_pdf_service import _generation_inflight
+
+        _generation_inflight.discard(rid)
 
 
 # ── 3. admin 人工批复（API） ────────────────────────────────

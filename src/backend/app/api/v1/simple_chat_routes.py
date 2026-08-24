@@ -1182,6 +1182,7 @@ async def _decide_pending_action_by_llm(
         resp = await llm.chat(
             [LLMMessage(role="user", content=prompt)],
             temperature=0.1,
+            max_tokens=8192,  # 思维链模型的 max_tokens 含 reasoning，默认 4096 易被耗尽
             response_format={"type": "json_object"},
         )
     except Exception as e:
@@ -1194,7 +1195,9 @@ async def _decide_pending_action_by_llm(
         )
     if resp is None:
         try:
-            resp = await llm.chat([LLMMessage(role="user", content=token_prompt)], temperature=0.1)
+            resp = await llm.chat(
+                [LLMMessage(role="user", content=token_prompt)], temperature=0.1, max_tokens=8192
+            )
         except Exception as e:
             logger.warning(
                 "[pending_judge] reasoner plain mode failed model=%s err_type=%s err=%s",
@@ -1219,6 +1222,7 @@ async def _decide_pending_action_by_llm(
             dialog_resp = await dialog_llm.chat(
                 [LLMMessage(role="user", content=token_prompt)],
                 temperature=0.1,
+                max_tokens=8192,
             )
             dialog_text = (dialog_resp.content or "").strip()
             dialog_obj = (
@@ -1296,7 +1300,7 @@ async def _decide_pending_action_by_llm_streaming(
         try:
             out_parts: List[str] = []
             async for item in llm.chat_stream(
-                [LLMMessage(role="user", content=token_prompt)], temperature=0.1
+                [LLMMessage(role="user", content=token_prompt)], temperature=0.1, max_tokens=8192
             ):
                 if isinstance(item, dict):
                     t = str(item.get("_t") or "")
@@ -2127,7 +2131,7 @@ async def rumination_step_opening_stream(
 
         async def run_one() -> AsyncIterator[str]:
             nonlocal full_reply
-            stream_coro = llm.chat_stream(llm_messages, temperature=0.65, max_tokens=600)
+            stream_coro = llm.chat_stream(llm_messages, temperature=0.65, max_tokens=8192)
             async for piece in stream_coro:
                 if isinstance(piece, dict):
                     t = piece.get("_t")
@@ -3286,9 +3290,9 @@ async def _generate_and_store_combo_guide(
             sem = _get_llm_semaphore()
             if sem:
                 async with sem:
-                    resp = await llm.chat(llm_messages, temperature=0.65, max_tokens=600)
+                    resp = await llm.chat(llm_messages, temperature=0.65, max_tokens=8192)
             else:
-                resp = await llm.chat(llm_messages, temperature=0.65, max_tokens=600)
+                resp = await llm.chat(llm_messages, temperature=0.65, max_tokens=8192)
             content = getattr(resp, "content", resp) if resp else ""
             # 记录原始返回便于排查"短文案/空返回"类问题
             logger.info(
@@ -5280,7 +5284,7 @@ async def _hyp_candidate_fallback_retry(
         ]
 
         async def _matrix_call(*, use_json_mode: bool) -> Any:
-            kwargs: dict = {"temperature": 0.1, "max_tokens": 1500}
+            kwargs: dict = {"temperature": 0.1, "max_tokens": 8192}
             if use_json_mode:
                 kwargs["response_format"] = {"type": "json_object"}
             try:
@@ -5295,7 +5299,7 @@ async def _hyp_candidate_fallback_retry(
                         "[step3] matrix retry: response_format unsupported, fallback to plain"
                     )
                     return await asyncio.wait_for(
-                        llm.chat(matrix_messages, temperature=0.1, max_tokens=1500),
+                        llm.chat(matrix_messages, temperature=0.1, max_tokens=8192),
                         timeout=25.0,
                     )
                 raise
@@ -5340,7 +5344,7 @@ async def _hyp_candidate_fallback_retry(
             proto_messages = matrix_messages + [LLMMessage(role="system", content=protocol_addon)]
             try:
                 resp_proto = await asyncio.wait_for(
-                    llm.chat(proto_messages, temperature=0.1, max_tokens=1500),
+                    llm.chat(proto_messages, temperature=0.1, max_tokens=8192),
                     timeout=25.0,
                 )
                 raw_m = (getattr(resp_proto, "content", "") or "").strip() if resp_proto else ""

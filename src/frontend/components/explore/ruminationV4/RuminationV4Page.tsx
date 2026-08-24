@@ -61,6 +61,35 @@ export default function RuminationV4Page({
   const introCheckedRef = useRef(false);
   const router = useRouter();
 
+  /**
+   * 自适应堆叠模式（2026-08-24）：
+   * 工作台过窄（< 视口 2/3，对齐 v3 口径）或视口过低（< 760px，常见于系统缩放
+   * 150% 的笔记本 100% 缩放场景）时，左右双栏改为上下堆叠 + 页面纵向滚动，
+   * 避免固定视口高 + overflow-hidden 把左栏选择器/结论卡裁掉。
+   * （阈值可调：125% 缩放等效 864px 高，走双栏 + 选择器内部滚动 + 小高度压缩）
+   */
+  const workbenchRef = useRef<HTMLDivElement>(null);
+  const [stacked, setStacked] = useState(false);
+  useEffect(() => {
+    const el = workbenchRef.current;
+    if (!el) return;
+    const update = () => {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const w = el.getBoundingClientRect().width;
+      setStacked(w < (vw * 2) / 3 || vh < 760);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    window.addEventListener('resize', update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', update);
+    };
+    // state 加载完成后 workbench 才渲染，依赖 state 确保 ref 已挂载
+  }, [state]);
+
   /** 终选已提交：顶栏按钮变为「查看报告」直达报告页（报告下载页除个人空间外的另一入口） */
   const finalSubmitted = !!state?.final_selection?.submitted;
   const gotoReport = () => {
@@ -125,13 +154,18 @@ export default function RuminationV4Page({
 
   return (
     <div
-      className="rumination-beautiful-root flow-light relative flex min-h-0 flex-1 overflow-hidden"
+      className={`rumination-beautiful-root rumination-v4-root flow-light relative min-h-0 flex-1 ${
+        stacked ? 'block overflow-y-auto' : 'flex overflow-hidden'
+      }`}
       data-phase="rumination"
     >
       <ExploreLandingMeshLayers />
 
       <div className="relative z-10 flex min-h-0 w-full flex-col px-3 pb-3 pt-1 sm:px-4">
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={outerShellStyle}>
+        <div
+          className={`flex w-full flex-col ${stacked ? 'flex-none' : 'min-h-0 flex-1 overflow-hidden'}`}
+          style={outerShellStyle}
+        >
           {/* 顶栏：居中标题 + 右上完成并继续 */}
           <header className="hero mb-2.5 grid shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-[rgba(80,94,145,0.08)] pb-3 pt-1 text-center">
             <div />
@@ -188,15 +222,26 @@ export default function RuminationV4Page({
             </div>
           )}
 
-          {/* 左选择器 / 右对话 */}
-          <div className="rumination-workbench flex min-h-0 flex-1 gap-3 overflow-hidden">
+          {/* 左选择器 / 右对话（stacked 时上下堆叠，页面纵向滚动） */}
+          <div
+            ref={workbenchRef}
+            className={`rumination-workbench flex gap-3 ${
+              stacked ? 'w-full flex-none flex-col' : 'min-h-0 flex-1 overflow-hidden'
+            }`}
+          >
             <div
-              className="flex min-h-0 min-w-0 flex-[1.05] flex-col overflow-hidden"
+              className={`flex min-w-0 flex-col ${
+                stacked ? 'w-full flex-none' : 'min-h-0 flex-[1.05] overflow-hidden'
+              }`}
               style={innerPaneStyle}
             >
-              <V4MatrixLeftPanel />
+              <V4MatrixLeftPanel stacked={stacked} />
             </div>
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div
+              className={`flex min-w-0 flex-col overflow-hidden ${
+                stacked ? 'h-[min(58vh,560px)] w-full flex-none' : 'min-h-0 flex-1'
+              }`}
+            >
               <V4ChatPanel comboId={state.active_combo_id} />
             </div>
           </div>

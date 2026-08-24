@@ -61,7 +61,7 @@ async def append_post_table_finalize_message(
 
     try:
         msgs = build_rumination_closing_epilogue_messages(summary)
-        cresp = await llm.chat(msgs, temperature=0.6, max_tokens=450)
+        cresp = await llm.chat(msgs, temperature=0.6, max_tokens=8192)
         ctext = (cresp.content or "").strip()
         if not ctext:
             return

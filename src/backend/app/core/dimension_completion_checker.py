@@ -390,9 +390,11 @@ async def check_dimension_complete(
 
         messages = [LLMMessage(role="user", content=check_prompt)]
         try:
-            response = await llm.chat(messages, temperature=0.1, response_format={"type": "json_object"})
+            response = await llm.chat(
+                messages, temperature=0.1, max_tokens=8192, response_format={"type": "json_object"}
+            )
         except TypeError:
-            response = await llm.chat(messages, temperature=0.1)
+            response = await llm.chat(messages, temperature=0.1, max_tokens=8192)
         text = (response.content or "").strip()
         text_clean = text
         if "```json" in text:
@@ -422,9 +424,10 @@ async def check_dimension_complete(
         summary_response = await llm.chat(
             gen_messages,
             temperature=0.3,
+            max_tokens=8192,
             response_format={"type": "json_object"},
         )
     except TypeError:
-        summary_response = await llm.chat(gen_messages, temperature=0.3)
+        summary_response = await llm.chat(gen_messages, temperature=0.3, max_tokens=8192)
     summary_text = (summary_response.content or "").strip()
     return finalize_conclusion_from_summary_text(phase, summary_text, prior_conclusion)

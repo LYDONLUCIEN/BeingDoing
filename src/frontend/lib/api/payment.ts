@@ -117,7 +117,7 @@ export interface ProductItem {
   duration_days?: number;
   /** 旧 SKU 的激活码有效期（天） */
   ttl_days?: number;
-  /** 「最受欢迎」标记（年度套餐） */
+  /** 「最受欢迎」标记（季度套餐） */
   popular?: boolean;
   /** 购买前置条件：需有已完成报告（咨询） */
   requires_report?: boolean;

@@ -5,7 +5,10 @@ deepseek provider 的模型由 usage_context 的 scene 确定性决定：
 - scene=chat（前四 phase values/strengths/interests/purpose 的对话+结论卡）→ flash
 - scene=rumination / report / team_analysis / 未设置 → pro
 - LLM_FLASH_MODEL / LLM_PRO_MODEL 可覆盖默认值
+  （2026-08-23 起 .env 将 LLM_FLASH_MODEL 覆盖为 deepseek-v4-pro，即全部场景统一 pro）
 - 非 deepseek provider 不受 scene 影响
+
+注意：默认值断言需先把 settings 覆盖回 None，否则会被 .env 中的显式配置影响。
 """
 
 from __future__ import annotations
@@ -29,6 +32,13 @@ def _clean_scene_ctx():
     reset_llm_usage_context(token)
 
 
+@pytest.fixture
+def _default_models(monkeypatch: pytest.MonkeyPatch):
+    """屏蔽 .env 中 LLM_FLASH_MODEL/LLM_PRO_MODEL 覆盖，断言代码内默认值。"""
+    monkeypatch.setattr(settings, "LLM_FLASH_MODEL", None)
+    monkeypatch.setattr(settings, "LLM_PRO_MODEL", None)
+
+
 def _model_for_scene(scene: str | None) -> str:
     token = set_llm_usage_context(scene=scene)
     try:
@@ -37,6 +47,7 @@ def _model_for_scene(scene: str | None) -> str:
         reset_llm_usage_context(token)
 
 
+@pytest.mark.usefixtures("_default_models")
 class TestSceneModel:
     def test_chat_scene_uses_flash(self) -> None:
         assert _model_for_scene("chat") == "deepseek-v4-flash"
@@ -63,6 +74,7 @@ class TestSceneModel:
         assert _model_for_scene("report") == "deepseek-v4-pro-x"
 
 
+@pytest.mark.usefixtures("_default_models")
 class TestVipProviderConfig:
     def test_vip1_deepseek_uses_scene_model(self) -> None:
         token = set_llm_usage_context(scene="chat")

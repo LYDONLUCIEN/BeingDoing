@@ -12,9 +12,10 @@
 - review_type: manual / auto / None
 - reviewed_by / reviewed_at: 批复人与批复时间
 
-生命周期（2026-07-27 修订，计时锚点后移）：
+生命周期（2026-08-23 修订，计时锚点前移）：
 - 新建 record（激活/首次会话）→ not_started，不计时
-- 用户进入报告页且五阶段已完成 → pending_review + 随机 3~24h 时限（计时起点）
+- rumination v4 终选提交成功（五阶段完成）→ pending_review + 随机 3~24h 时限（计时起点）；
+  用户进报告页（my-report-id / 审核阻塞兜底）的懒触发保留，覆盖存量 not_started
 - admin 人工批复 / 超时自动批复 → approved
 
 注意（ADR-0009 后果）：auto 批复是「善意伪装」的兜底，用户侧文案一律
@@ -64,7 +65,8 @@ def mark_review_not_started(record: dict) -> dict:
 def start_review(record: dict, now: Optional[datetime] = None) -> dict:
     """
     审核计时起点：not_started → pending_review + 随机 3~24h 时限。
-    由报告页入口（my-report-id / 审核阻塞兜底）在五阶段完成后调用。
+    主触发点为 rumination v4 终选提交（2026-08-23 起）；
+    报告页入口（my-report-id / 审核阻塞兜底）为存量懒触发兜底。
     """
     ts = now or _utcnow()
     deadline = ts + timedelta(hours=random.uniform(AUTO_APPROVE_MIN_HOURS, AUTO_APPROVE_MAX_HOURS))

@@ -241,7 +241,7 @@ class TeamAnalysisService:
                 LLMMessage(role="user", content=joined),
             ],
             temperature=0.7,
-            max_tokens=4000,
+            max_tokens=16384,
         )
         return response.content
 

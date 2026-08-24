@@ -45,7 +45,7 @@ function ReportViewContent() {
   /** 403：当前账号无权查看该码的报告 */
   const [forbidden, setForbidden] = useState(false);
 
-  const { status, error: pdfError, check, prepare, saveNow } = useReportPdfDownload({ activationCode });
+  const { status, error: pdfError, downloading, check, prepare, saveNow } = useReportPdfDownload({ activationCode });
 
   // 复核申请弹窗（报告复核体系：用户不能重新生成，只能申请复核）
   const [recheckOpen, setRecheckOpen] = useState(false);
@@ -53,13 +53,17 @@ function ReportViewContent() {
   const recheckInProgress = reportInfo?.recheck_status != null;
 
   // 报告页加载后（approved）先查一次生成状态：
-  // - 已有缓存（含审核期后台预生成完成）→ 直接显示「下载 PDF 报告」，不重新生成
-  // - 未生成 → 显示「生成报告」
+  // - 已有缓存（含提交时/审核期后台预生成完成）→ 直接显示「下载 PDF 报告」
+  // - 生成失败 → 警示块（重试 / 申请复核）；无缓存且从未生成 → 「报告异常」警示块
+  // statusChecked：首次 check 返回前不渲染异常警示块，避免 idle 闪现误报
+  const [statusChecked, setStatusChecked] = useState(false);
   const reportId = reportInfo?.report_id ?? null;
   const isApproved = reportInfo?.review_status === 'approved';
   useEffect(() => {
     if (isApproved && reportId) {
+      setStatusChecked(false);
       void check(reportId).then((s) => {
+        setStatusChecked(true);
         // 后台正在生成（如审核期预生成未完成）：接管轮询，完成后自动变为「下载」按钮；
         // trigger 幂等（任务进行中不会重启），不会重复生成
         if (s === 'generating') void prepare(reportId);
@@ -334,10 +338,20 @@ function ReportViewContent() {
                 <button
                   type="button"
                   onClick={handleDownloadPdf}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[var(--bd-ui-accent)] text-bd-ui-accent-fg px-6 py-3 text-sm font-medium hover:opacity-90 transition-opacity"
+                  disabled={downloading}
+                  className="inline-flex items-center gap-2 rounded-xl bg-[var(--bd-ui-accent)] text-bd-ui-accent-fg px-6 py-3 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <Download size={16} />
-                  下载 PDF 报告
+                  {downloading ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      下载中…
+                    </>
+                  ) : (
+                    <>
+                      <Download size={16} />
+                      下载 PDF 报告
+                    </>
+                  )}
                 </button>
                 {/* 申请复核（用户不能重新生成；复核由管理员人工处理） */}
                 <span
@@ -358,31 +372,58 @@ function ReportViewContent() {
                   </button>
                 </span>
               </div>
-            ) : (
+            ) : isGenerating ? (
               <button
                 type="button"
-                onClick={handleGenerate}
-                disabled={isGenerating}
-                className="inline-flex items-center gap-2 rounded-xl bg-[var(--bd-ui-accent)] text-bd-ui-accent-fg px-6 py-3 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-60"
+                disabled
+                className="inline-flex items-center gap-2 rounded-xl bg-[var(--bd-ui-accent)] text-bd-ui-accent-fg px-6 py-3 text-sm font-medium opacity-60"
               >
-                {isGenerating ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    报告生成中…
-                  </>
-                ) : status === 'error' ? (
-                  <>
+                <Loader2 size={16} className="animate-spin" />
+                报告生成中…
+              </button>
+            ) : status === 'error' ? (
+              /* 生成失败警示块：用户无主动生成权，仅保留失败重试 + 复核入口 */
+              <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-4 space-y-3">
+                <p className="text-sm font-medium text-red-500">报告生成失败</p>
+                <p className="text-xs text-red-500/80 leading-relaxed">
+                  报告生成过程中出现问题，你可以重试，或提交复核申请由管理员处理。
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleGenerate}
+                    className="inline-flex items-center gap-2 rounded-xl bg-[var(--bd-ui-accent)] text-bd-ui-accent-fg px-5 py-2.5 text-sm font-medium hover:opacity-90 transition-opacity"
+                  >
                     <FileText size={16} />
                     重新尝试生成
-                  </>
-                ) : (
-                  <>
-                    <FileText size={16} />
-                    生成报告
-                  </>
-                )}
-              </button>
-            )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRecheckOpen(true)}
+                    disabled={recheckInProgress}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-bd-border bg-bd-card px-4 py-2.5 text-xs font-medium text-bd-muted hover:bg-bd-overlay-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-bd-card"
+                  >
+                    {recheckInProgress ? '复核处理中' : '申请复核'}
+                  </button>
+                </div>
+              </div>
+            ) : statusChecked && status === 'none' ? (
+              /* approved 但无可用 markdown 且从未生成：报告异常警示块，仅留复核入口 */
+              <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-4 space-y-3">
+                <p className="text-sm font-medium text-red-500">报告异常</p>
+                <p className="text-xs text-red-500/80 leading-relaxed">
+                  报告内容尚未就绪，请提交复核申请，我们会尽快为你处理。
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setRecheckOpen(true)}
+                  disabled={recheckInProgress}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--bd-ui-accent)] text-bd-ui-accent-fg px-5 py-2.5 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {recheckInProgress ? '复核处理中' : '申请复核'}
+                </button>
+              </div>
+            ) : null}
             {isGenerating && (
               <p className="text-xs text-bd-subtle animate-pulse">
                 AI 正在为您撰写专属报告，通常需要 1-5 分钟，完成后此处会出现「下载 PDF 报告」按钮

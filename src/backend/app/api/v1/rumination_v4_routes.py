@@ -463,7 +463,7 @@ async def combo_chat_endpoint(req: ComboChatReq, current_user: dict = Depends(ge
         llm = _get_dialogue_llm_provider(vip_level=vip_level)
 
         full_reply = ""
-        async for piece in llm.chat_stream(llm_messages, temperature=0.7, max_tokens=800):
+        async for piece in llm.chat_stream(llm_messages, temperature=0.7, max_tokens=8192):
             if isinstance(piece, dict):
                 # 项目内 think_chunk 等特殊信号,透传
                 t = piece.get("_t")
@@ -744,7 +744,24 @@ async def submit_final_selection_endpoint(req: SubmitFinalReq, current_user: dic
         raise HTTPException(status_code=400, detail=str(e))
     # 终选提交即锁定 rumination（与其它四阶段「进入下一阶段锁上一阶段」口径对称；
     # rumination 是最后一步，无后续阶段触发锁定，需在此显式锁定）
-    ReportRegistry(base_dir=str(reports_root.parent)).lock_step(rid, "rumination")
+    registry = ReportRegistry(base_dir=str(reports_root.parent))
+    registry.lock_step(rid, "rumination")
+    # 提交即开始审核计时 + 后台预生成报告 markdown（2026-08-23 起，原触发点为
+    # 用户首次进报告页；进报告页的 _ensure_review_started 保留作存量懒触发兜底，幂等不冲突）。
+    # 失败不影响提交响应（审核计时会在用户进报告页时补上）。
+    try:
+        from app.api.v1.export import _ensure_review_started  # 延迟导入，与 _can_bypass_flow_limits 同模式
+
+        record = registry.get_report_by_id(rid)
+        if record:
+            _ensure_review_started(
+                record,
+                registry,
+                str(reports_root.parent),
+                (current_user or {}).get("user_id") or "",
+            )
+    except Exception:
+        logger.exception("终选提交后启动审核/预生成失败 report=%s", rid)
     _audit_log("rumination_v4_final_submitted", current_user, req.activation_code, {"selected": state.get("final_selection", {}).get("selected_combo_ids")})
     return {"code": 200, "message": "success", "data": {"final_selection": state.get("final_selection"), "main_section": state.get("main_section")}}
 

@@ -458,3 +458,41 @@ html[data-rumination-mesh-page='true']:not([data-color-scheme='dark'])
   background: linear-gradient(90deg, #5eead4, #14b8a6);
   transition: width 0.3s ease;
 }
+
+/* ══════════════════════════════════════════
+   v4 小高度视口适配（2026-08-24）
+   系统缩放 125%/150% 的笔记本 100% 缩放时等效视口高度仅 ~720-860px，
+   压缩 header 与选择器卡片，为工作区留出高度（配合 RuminationV4Page 的
+   堆叠降级 + 选择器面板内部滚动兜底）。
+   ══════════════════════════════════════════ */
+@media (max-height: 860px) {
+  .rumination-v4-root .hero {
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+  }
+  .rumination-v4-root .hero h1 {
+    font-size: 24px;
+  }
+  /* 副标题在小高度视口下隐藏，释放约 40px */
+  .rumination-v4-root .hero p {
+    display: none;
+  }
+  .rumination-v4-root .selection-block {
+    margin-bottom: 10px;
+  }
+  .rumination-v4-root .selection-block .section-title {
+    margin-bottom: 8px;
+    font-size: 14px;
+  }
+  .rumination-v4-root .choice-card {
+    min-height: 84px;
+    row-gap: 6px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .rumination-v4-root .choice-card .round-icon {
+    height: 32px;
+    width: 32px;
+    font-size: 18px;
+  }
+}

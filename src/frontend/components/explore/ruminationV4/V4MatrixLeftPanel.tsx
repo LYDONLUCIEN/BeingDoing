@@ -27,7 +27,7 @@ const conclusionPanelStyle: CSSProperties = {
   padding: '14px 16px 12px',
 };
 
-export default function V4MatrixLeftPanel() {
+export default function V4MatrixLeftPanel({ stacked = false }: { stacked?: boolean }) {
   const { state, createAndStart, comboCache, error, clearError } = useRuminationV4Store();
   const [creating, setCreating] = useState(false);
 
@@ -57,7 +57,9 @@ export default function V4MatrixLeftPanel() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2.5 overflow-hidden">
+    <div
+      className={`flex flex-col gap-2.5 ${stacked ? 'h-auto' : 'h-full min-h-0 overflow-hidden'}`}
+    >
       {error && (
         <div
           className="shrink-0 rounded-xl px-3 py-2 text-[12px] font-[650] leading-snug text-red-700"
@@ -80,7 +82,11 @@ export default function V4MatrixLeftPanel() {
         </div>
       )}
 
-      <div className="shrink-0" style={selectionPanelStyle}>
+      {/* 选择器面板：双栏模式下空间不足时允许收缩并内部滚动（修复低高度视口裁切），堆叠模式下自然高度由页面滚动承载 */}
+      <div
+        className={stacked ? 'shrink-0' : 'min-h-0 shrink overflow-y-auto rumination-hyp-preview-scroll'}
+        style={selectionPanelStyle}
+      >
         <V4ComboMatrixSelector
           passions={passions}
           strengths={strengths}
@@ -92,7 +98,9 @@ export default function V4MatrixLeftPanel() {
         />
       </div>
 
-      <div className="shrink-0 flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div
+        className={`flex flex-col ${stacked ? 'flex-none' : 'min-h-0 flex-1 overflow-hidden'}`}
+      >
         <div
           className="flex min-h-0 flex-1 flex-col overflow-y-auto rumination-hyp-preview-scroll"
           style={conclusionPanelStyle}

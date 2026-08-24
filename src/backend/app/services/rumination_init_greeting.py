@@ -25,7 +25,7 @@ async def synthesize_rumination_entry_greeting(
     prior_block: str,
     normalize_token_usage: NormalizeUsageFn,
     temperature: float = 0.65,
-    max_tokens: int = 500,
+    max_tokens: int = 8192,
 ) -> Tuple[str, dict]:
     """
     Returns:

@@ -32,6 +32,8 @@ interface UseReportPdfReturn {
   error: string | null;
   /** 正在处理的 report_id */
   activeReportId: string | null;
+  /** saveNow 下载进行中（用户报告页「下载中…」按钮态） */
+  downloading: boolean;
   /** 触发下载流程（生成+轮询+自动下载，Admin 用）；force=true 强制重新生成后下载（Admin 运维用） */
   download: (reportId: string, opts?: { force?: boolean }) => Promise<void>;
   /** 只查询当前状态（不触发生成）：none=未生成 / generating=生成中 / ready=可下载 */
@@ -49,6 +51,7 @@ export function useReportPdfDownload(options?: UseReportPdfOptions): UseReportPd
   const [status, setStatus] = useState<PdfGenStatus | 'idle'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [activeReportId, setActiveReportId] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
   const pollingRef = useRef(false);
   // 组件卸载即停止轮询（之前无取消机制，卸载后空跑到超时）
   const cancelledRef = useRef(false);
@@ -186,7 +189,9 @@ export function useReportPdfDownload(options?: UseReportPdfOptions): UseReportPd
 
   const saveNow = useCallback(
     async (reportId: string) => {
+      if (downloading) return; // 下载中防重复点击
       setError(null);
+      setDownloading(true);
       try {
         await downloadReportPdfFile(reportId, {
           activationCode: options?.activationCode,
@@ -198,10 +203,12 @@ export function useReportPdfDownload(options?: UseReportPdfOptions): UseReportPd
           ? '报告还在生成中，请稍后再点击下载'
           : msg);
         await check(reportId);
+      } finally {
+        setDownloading(false);
       }
     },
-    [options?.activationCode, check],
+    [options?.activationCode, check, downloading],
   );
 
-  return { status, error, activeReportId, download, check, prepare, saveNow };
+  return { status, error, activeReportId, downloading, download, check, prepare, saveNow };
 }

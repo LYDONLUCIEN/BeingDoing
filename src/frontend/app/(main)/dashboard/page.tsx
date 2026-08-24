@@ -409,8 +409,8 @@ function PurchaseCard({ onBuy, t }: { onBuy: () => void; t: (k: string) => strin
         </div>
         <div className="flex items-center gap-4">
           <div className="text-left text-xs text-bd-muted leading-tight">
-            <div>{t('dashboard.purchaseCard.quarterly')} <span className="font-semibold text-bd-fg">¥69</span></div>
-            <div>{t('dashboard.purchaseCard.annual')} <span className="font-semibold text-bd-fg">¥159</span> · {t('dashboard.purchaseCard.popular')}</div>
+            <div>{t('dashboard.purchaseCard.quarterly')} <span className="font-semibold text-bd-fg">¥69</span> · {t('dashboard.purchaseCard.popular')}</div>
+            <div>{t('dashboard.purchaseCard.annual')} <span className="font-semibold text-bd-fg">¥159</span></div>
           </div>
           <button
             type="button"

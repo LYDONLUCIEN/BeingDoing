@@ -96,7 +96,7 @@ async def generate_hypothesis_pair_for_row(
                 LLMMessage(role="user", content=user),
             ],
             temperature=0.72,
-            max_tokens=500,
+            max_tokens=8192,
         )
         raw = (resp.content or "").strip()
         h1, h2 = _parse_hypothesis_pair(raw)

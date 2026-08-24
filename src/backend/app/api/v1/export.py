@@ -269,9 +269,11 @@ def _ensure_review_started(
     user_id: str,
 ) -> dict:
     """
-    审核计时起点（ADR-0009，2026-07-27 修订）：
+    审核计时起点（ADR-0009，2026-08-23 修订）：
     not_started 且五阶段均已完成（报告入口解锁）→ 转 pending_review + 随机 3~24h 时限，
     并立即后台预生成报告 markdown（审核期间报告已在自动生成）。
+    主触发点已前移至 rumination v4 终选提交（rumination_v4_routes.submit_final_selection_endpoint），
+    此处为存量 not_started 报告与直连 PDF 端点的懒触发兜底。
     幂等：已 pending/approved 或五阶段未完成时不动。
     """
     if not is_not_started(report):

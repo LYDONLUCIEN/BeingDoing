@@ -32,7 +32,7 @@ export type PurchaseModalProps = {
   resumeOrderId?: string;
   /** 下单视图默认选中的商品（如 dashboard 购买卡默认年度套餐） */
   defaultProductType?: ProductType;
-  /** 传入即进入「延期激活」模式：跳过商品选择，直接渠道 + 券码下单 */
+  /** 传入即进入「激活码延期」模式：跳过商品选择，直接渠道 + 券码下单 */
   renewalTargetCode?: string;
   /** 订单意图（ADR-0014）：试用拦截点直购升级——支付成功后后端自动消耗 1 码升级试用码 */
   intent?: 'upgrade_trial';
@@ -60,6 +60,7 @@ const FALLBACK_PRODUCTS: ProductItem[] = [
     description: '不限量对话 · 全部 5 阶段 · 1 份完整报告 + 人工审核',
     price: 6900,
     duration_days: 90,
+    popular: true,
   },
   {
     product_type: 'annual_package',
@@ -67,7 +68,6 @@ const FALLBACK_PRODUCTS: ProductItem[] = [
     description: '3 份完整报告 · 3 个激活码（可自用可转赠） · 团队分析 · 人工审核',
     price: 15900,
     duration_days: 365,
-    popular: true,
   },
   {
     product_type: 'consultation',
