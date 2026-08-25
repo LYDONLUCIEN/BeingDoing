@@ -40,6 +40,17 @@ class EmailService:
         await EmailService.send_email(to_email=to_email, subject=subject, body_text=body)
 
     @staticmethod
+    async def send_password_changed_notice(to_email: str) -> None:
+        subject = "【寻路·OpenLife】密码修改通知"
+        body = (
+            "您好，\n\n"
+            "您的寻路·OpenLife账号密码刚刚完成修改，\n"
+            "全部登录会话已下线，需使用新密码重新登录。\n\n"
+            "如果这不是您的操作，请立即通过登录弹窗的「忘记密码」重置密码，并联系我们处理。\n"
+        )
+        await EmailService.send_email(to_email=to_email, subject=subject, body_text=body)
+
+    @staticmethod
     async def send_account_restored_notice(to_email: str) -> None:
         subject = "【寻路·OpenLife】账号已恢复"
         body = (

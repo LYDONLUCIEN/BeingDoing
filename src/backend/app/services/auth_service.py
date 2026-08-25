@@ -666,6 +666,107 @@ class AuthService:
             password_hash = AuthService.get_password_hash(new_password)
             await user_db.update_user(user.id, password_hash=password_hash)
 
+    # ===================== 修改密码相关（已登录用户） =====================
+
+    @staticmethod
+    async def change_password(user_id: str, old_password: str, new_password: str) -> None:
+        """
+        已登录用户修改密码：校验旧密码 → 更新 hash → 撤销全部 refresh token（强制下线）
+        → 站内信 + 邮件通知。
+
+        防爆破：复用登录锁定机制——lock_key 与登录一致（email 小写 / phone），
+        失败计数与登录共享，1 小时滑窗 5 次失败锁 15 分钟；锁定期间即使旧密码正确也拒绝。
+
+        Args:
+            user_id: 当前登录用户 ID
+            old_password: 旧密码（明文）
+            new_password: 新密码（明文，≥6 位，且不能与旧密码相同）
+
+        Raises:
+            ValueError: 参数校验失败 / 旧密码不正确 / 账户状态异常
+            LoginLockedError: 失败次数过多被临时锁定（携带 retry_after_seconds）
+        """
+        if not old_password:
+            raise ValueError("旧密码不能为空")
+        if not new_password:
+            raise ValueError("新密码不能为空")
+        if len(new_password) < 6:
+            raise ValueError("新密码至少 6 位")
+        if new_password == old_password:
+            raise ValueError("新密码不能与旧密码相同")
+
+        uid = (user_id or "").strip()
+        if not uid:
+            raise ValueError("用户 ID 不能为空")
+
+        async with AsyncSessionLocal() as db:
+            user_db = UserDB(db)
+            user = await user_db.get_user_by_id(uid)
+            if not user or not user.is_active:
+                raise ValueError("账户状态异常")
+            email = _normalize_email(user.email)
+
+            # 与登录共用 lock_key，失败计数互通（防爆破口径见模块注释）
+            lock_key = email or _normalize_phone(user.phone) or uid
+            locked_remaining = _get_login_lock_remaining(lock_key)
+            if locked_remaining:
+                raise LoginLockedError(locked_remaining)
+
+            if not AuthService.verify_password(old_password, user.password_hash):
+                remaining = _record_login_failure(lock_key)
+                if remaining:
+                    raise LoginLockedError(remaining)
+                raise ValueError("旧密码不正确")
+
+            _clear_login_failures(lock_key)
+            await user_db.update_user(
+                uid, password_hash=AuthService.get_password_hash(new_password)
+            )
+
+            # 撤销该用户全部未撤销 refresh token（含当前会话）→ 全部强制下线
+            now = datetime.now(timezone.utc)
+            tokens = (
+                (
+                    await db.execute(
+                        select(RefreshToken).where(
+                            RefreshToken.user_id == uid,
+                            RefreshToken.is_revoked.is_(False),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for rec in tokens:
+                rec.is_revoked = True
+                rec.revoked_at = now
+                rec.revoked_reason = "password_changed"
+
+            # 站内信通知（防盗号静默改密）
+            from app.models.feedback import Notification
+
+            db.add(
+                Notification(
+                    user_id=uid,
+                    type="password_changed",
+                    title="密码已修改",
+                    content=(
+                        "您的账号密码刚刚完成修改，全部登录会话已下线，需使用新密码重新登录。"
+                        "如果这不是您的操作，请立即通过「忘记密码」重置密码，并联系我们处理。"
+                    ),
+                    read_at=None,
+                    related_feedback_id=None,
+                )
+            )
+            await db.commit()
+
+        # 邮件通知（发送失败不影响修改结果，只记日志）
+        if email:
+            try:
+                await EmailService.send_password_changed_notice(to_email=email)
+            except Exception:
+                logger.exception("密码修改通知邮件发送失败: user_id=%s", uid)
+
     # ===================== 邮箱验证相关 =====================
 
     @staticmethod

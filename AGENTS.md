@@ -405,6 +405,7 @@ python scripts/init_db.py
 4. **超级管理员**: 通过 `SUPER_ADMIN_USER_IDS` 或 `SUPER_ADMIN_EMAILS` 配置
 5. **Debug 模式**: `DEBUG_MODE=True` 仅对超级管理员生效
 6. **登录防爆破（2026-08-21 起）**: `AuthService.login` 按登录标识（email 小写/phone，**含不存在的账号**）进程内内存计数——1 小时滑动窗口 5 次失败锁 15 分钟（固定不续期、锁定期密码正确也拒绝、成功登录清零、重启失效）；锁定返回 HTTP 423 + detail JSON `{"type":"login_locked","retry_after_seconds":N}`（对齐试用 402 风格）；失败统一文案「邮箱/手机号或密码错误」防枚举（不存在的账号走假哈希校验对齐耗时）。关键文件：`app/services/auth_service.py`（`_login_failures` / `LoginLockedError` / `LOGIN_FAIL_*` 常量）、`app/api/v1/auth.py` 423 分支、前端 `AuthModal.tsx` 倒计时；测试 `test/backend/test_login_lockout.py`
+7. **用户自助修改密码（2026-08-24 起）**: `POST /auth/password/change`（需登录，旧密码+新密码，新密码 ≥6 位且不能与旧密码相同）→ `AuthService.change_password`：旧密码错误**复用登录锁定机制**（同一 lock_key、失败计数与登录互通，423 口径一致）；成功后撤销该用户全部 refresh token（`revoked_reason=password_changed`，含当前会话，全部强制下线）+ 清 refresh cookie + 站内信（`type=password_changed`）+ 邮件通知（`EmailService.send_password_changed_notice`，发送失败不阻断）。前端入口：个人空间 `/dashboard/settings`「修改密码」区块（423 倒计时与 AuthModal 同口径；成功后 toast 提示并 logout 跳首页引导重新登录）；测试 `test/backend/test_change_password.py`
 
 ## 常用开发任务
 

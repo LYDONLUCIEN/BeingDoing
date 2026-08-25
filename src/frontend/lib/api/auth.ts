@@ -42,6 +42,11 @@ export interface PasswordResetConfirmRequest {
   new_password: string;
 }
 
+export interface PasswordChangeRequest {
+  old_password: string;
+  new_password: string;
+}
+
 export interface RefreshTokenResponse {
   token: string;
   expires_in: number;
@@ -78,6 +83,11 @@ export const authApi = {
 
   confirmPasswordReset: async (data: PasswordResetConfirmRequest): Promise<ApiResponse<void>> => {
     return apiClient.post('/auth/password/reset/confirm', data);
+  },
+
+  /** 已登录用户修改密码（旧密码 + 新密码）。成功后全部会话被强制下线，调用方需登出并引导重新登录 */
+  changePassword: async (data: PasswordChangeRequest): Promise<ApiResponse<void>> => {
+    return apiClient.post('/auth/password/change', data);
   },
 
   refresh: async (): Promise<ApiResponse<RefreshTokenResponse>> => {

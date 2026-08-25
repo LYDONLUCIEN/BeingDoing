@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import type { AxiosError } from 'axios';
 import { useAuthStore } from '@/stores/authStore';
 import { useLocale } from '@/hooks/useLocale';
 import { getLastActivationCode } from '@/lib/explore/session';
 import { surveyApi } from '@/lib/api/survey';
-import { apiClient, getApiErrorMessage } from '@/lib/api/client';
+import { apiClient, getApiErrorMessage, isRequestCanceled } from '@/lib/api/client';
 import { authApi } from '@/lib/api/auth';
 import SurveyFormBd from '@/components/survey/SurveyFormBd';
 import type { SurveyData } from '@/lib/survey/schema';
@@ -35,6 +36,15 @@ export default function DashboardSettingsPage() {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleteWorking, setDeleteWorking] = useState(false);
   const DELETE_CONFIRM_PHRASE = '注销我的账户';
+
+  // 修改密码 state
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [pwdSaving, setPwdSaving] = useState(false);
+  // 防爆破锁定倒计时（秒，后端 423 login_locked 下发）
+  const [pwdLockSeconds, setPwdLockSeconds] = useState(0);
+  const pwdLockRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!toast) return;
@@ -110,6 +120,74 @@ export default function DashboardSettingsPage() {
       setVerifySending(false);
     }
   }, [user?.email, verifySending, verifyCooldown, t]);
+
+  // 修改密码锁定倒计时
+  useEffect(() => {
+    if (pwdLockSeconds <= 0) {
+      if (pwdLockRef.current) clearInterval(pwdLockRef.current);
+      return;
+    }
+    pwdLockRef.current = setInterval(() => {
+      setPwdLockSeconds((prev) => {
+        if (prev <= 1) {
+          if (pwdLockRef.current) clearInterval(pwdLockRef.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => {
+      if (pwdLockRef.current) clearInterval(pwdLockRef.current);
+    };
+  }, [pwdLockSeconds]);
+
+  const handleChangePassword = async () => {
+    if (pwdSaving || pwdLockSeconds > 0) return;
+    if (!oldPassword || !newPassword || !confirmNewPassword) {
+      setToast({ type: 'error', msg: '请完整填写旧密码和两次新密码' });
+      return;
+    }
+    if (newPassword.length < 6) {
+      setToast({ type: 'error', msg: '新密码至少 6 位' });
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setToast({ type: 'error', msg: '两次输入的新密码不一致' });
+      return;
+    }
+    if (newPassword === oldPassword) {
+      setToast({ type: 'error', msg: '新密码不能与旧密码相同' });
+      return;
+    }
+    setPwdSaving(true);
+    try {
+      await authApi.changePassword({ old_password: oldPassword, new_password: newPassword });
+      // 后端已撤销全部会话（含当前），本地登出并引导重新登录
+      setToast({ type: 'success', msg: '密码修改成功，请使用新密码重新登录' });
+      setTimeout(() => {
+        logout();
+        router.push('/');
+      }, 1200);
+    } catch (err: unknown) {
+      const axiosErr = err as AxiosError<{ detail?: string }>;
+      if (axiosErr?.response?.status === 423) {
+        // 防爆破锁定：解析 retry_after_seconds 并启动倒计时（与 AuthModal 登录锁定同口径）
+        let seconds = 15 * 60;
+        try {
+          const parsed = JSON.parse(axiosErr.response?.data?.detail || '{}');
+          if (parsed?.type === 'login_locked' && Number(parsed?.retry_after_seconds) > 0) {
+            seconds = Number(parsed.retry_after_seconds);
+          }
+        } catch { /* 解析失败用默认锁定时长 */ }
+        setPwdLockSeconds(seconds);
+        setToast({ type: 'error', msg: '尝试次数过多，账号已临时锁定，请稍后再试' });
+      } else if (!isRequestCanceled(err)) {
+        setToast({ type: 'error', msg: getApiErrorMessage(err, '修改密码失败，请稍后重试') });
+      }
+    } finally {
+      setPwdSaving(false);
+    }
+  };
 
   const openDeleteDialog = () => {
     setDeleteConfirmText('');
@@ -266,6 +344,69 @@ export default function DashboardSettingsPage() {
           </div>
         </section>
       )}
+
+      {/* 账号安全：修改密码 */}
+      <section className="rounded-2xl border border-bd-border bg-bd-card/80 backdrop-blur-lg p-8 shadow-sm">
+        <h2 className="text-lg font-medium text-bd-fg mb-1">修改密码</h2>
+        <p className="text-sm text-bd-muted mb-6">
+          修改成功后所有设备将退出登录，需使用新密码重新登录；忘记旧密码可通过登录弹窗的「忘记密码」重置。
+        </p>
+        <div className="space-y-4 max-w-sm">
+          <div>
+            <label className="block text-sm font-medium text-bd-muted mb-1.5">旧密码</label>
+            <input
+              type="password"
+              value={oldPassword}
+              onChange={(e) => setOldPassword(e.target.value)}
+              placeholder="请输入当前密码"
+              autoComplete="current-password"
+              disabled={pwdSaving || pwdLockSeconds > 0}
+              className="w-full rounded-xl border border-bd-border bg-bd-overlay px-4 py-2.5 text-bd-fg placeholder:text-bd-subtle focus:border-bd-ui-accent focus:ring-2 focus:ring-bd-ui-accent/20 outline-none transition-colors disabled:opacity-50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-bd-muted mb-1.5">新密码</label>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="至少 6 位"
+              autoComplete="new-password"
+              disabled={pwdSaving || pwdLockSeconds > 0}
+              className="w-full rounded-xl border border-bd-border bg-bd-overlay px-4 py-2.5 text-bd-fg placeholder:text-bd-subtle focus:border-bd-ui-accent focus:ring-2 focus:ring-bd-ui-accent/20 outline-none transition-colors disabled:opacity-50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-bd-muted mb-1.5">确认新密码</label>
+            <input
+              type="password"
+              value={confirmNewPassword}
+              onChange={(e) => setConfirmNewPassword(e.target.value)}
+              placeholder="再次输入新密码"
+              autoComplete="new-password"
+              disabled={pwdSaving || pwdLockSeconds > 0}
+              className="w-full rounded-xl border border-bd-border bg-bd-overlay px-4 py-2.5 text-bd-fg placeholder:text-bd-subtle focus:border-bd-ui-accent focus:ring-2 focus:ring-bd-ui-accent/20 outline-none transition-colors disabled:opacity-50"
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => void handleChangePassword()}
+              disabled={pwdSaving || pwdLockSeconds > 0}
+              className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-all bd-btn-black disabled:opacity-50"
+            >
+              {pwdLockSeconds > 0
+                ? `已锁定 ${Math.floor(pwdLockSeconds / 60)}:${String(pwdLockSeconds % 60).padStart(2, '0')}`
+                : pwdSaving
+                  ? '提交中…'
+                  : '确认修改'}
+            </button>
+            {pwdLockSeconds > 0 && (
+              <p className="text-xs text-bd-subtle">尝试次数过多，账号已临时锁定</p>
+            )}
+          </div>
+        </div>
+      </section>
 
       {/* 个人简介信息 */}
       <section className="rounded-2xl border border-bd-border bg-bd-card/80 backdrop-blur-lg p-8 shadow-sm">

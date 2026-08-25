@@ -55,6 +55,12 @@ class PasswordResetSMSConfirmRequest(BaseModel):
     new_password: str
 
 
+class PasswordChangeRequest(BaseModel):
+    """已登录用户修改密码请求"""
+    old_password: str
+    new_password: str
+
+
 class RefreshTokenRequest(BaseModel):
     refresh_token: Optional[str] = None
 
@@ -293,6 +299,44 @@ async def login(request: LoginRequest, response: Response):
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(e)
+        )
+
+
+@router.post("/password/change", response_model=AuthResponse)
+async def change_password(
+    request: PasswordChangeRequest,
+    response: Response,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    已登录用户修改密码（旧密码 + 新密码）。
+
+    成功后撤销该用户全部 refresh token（强制下线，需重新登录）并发站内信+邮件通知；
+    旧密码错误复用登录防爆破锁定（423 + login_locked JSON detail，与登录口径一致）。
+    """
+    try:
+        await AuthService.change_password(
+            current_user["user_id"], request.old_password, request.new_password
+        )
+        _clear_refresh_cookie(response)
+        return AuthResponse(code=200, message="密码修改成功，请使用新密码重新登录", data={})
+    except LoginLockedError as e:
+        # 防爆破锁定：423 + JSON detail（与 /auth/login 同一口径，前端复用倒计时）
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail=json.dumps(
+                {
+                    "type": "login_locked",
+                    "message": str(e),
+                    "retry_after_seconds": e.retry_after_seconds,
+                },
+                ensure_ascii=False,
+            ),
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
 
