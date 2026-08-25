@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import FlowAiMessage from '@/components/explore/FlowAiMessage';
 import DimensionConclusionCard, { type DimensionConclusionData } from '@/components/explore/DimensionConclusionCard';
+import ConclusionRequestButton, { type ConclusionRequestState } from '@/components/explore/ConclusionRequestButton';
 import PhaseCompleteWarmModal from '@/components/explore/PhaseCompleteWarmModal';
 import PhaseWelcomeModal from '@/components/explore/PhaseWelcomeModal';
 import TrialLimitModal from '@/components/explore/TrialLimitModal';
@@ -53,7 +54,6 @@ const RuminationV4Page = dynamic(
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { apiClient, getApiErrorMessage } from '@/lib/api/client';
 import { fetchRuminationVersion } from '@/lib/explore/ruminationV4Api';
-import { authApi } from '@/lib/api/auth';
 import {
   PHASES,
   PHASE_ESTIMATE_MINUTES,
@@ -359,6 +359,8 @@ export default function ChatPhasePage() {
   const [hypRetryActive, setHypRetryActive] = useState(false);
   /** 已收到 conclusion_loading、结论卡尚未推送（与消息区 spinner 一致） */
   const [waitingForConclusionCardUi, setWaitingForConclusionCardUi] = useState(false);
+  /** 手动出卡按钮（「对话结束无法进行下一步？点击这里」）的请求状态 */
+  const [conclusionReqState, setConclusionReqState] = useState<ConclusionRequestState>('idle');
   const [adminDebugBypass, setAdminDebugBypass] = useState(false);
   const [savepointBusy, setSavepointBusy] = useState(false);
   const [savepointModalOpen, setSavepointModalOpen] = useState(false);
@@ -441,7 +443,7 @@ export default function ChatPhasePage() {
   /** flush 函数 ref：供定义顺序在前的 callback（如 handleRuminationNegDeepEnd）调用，
    *  避免在 deep_end 前漏存 debounce 窗口内的表格改动。 */
   const flushRuminationStep3TableRef = useRef<(() => Promise<void>) | null>(null);
-  const { user, setTokens } = useAuthStore();
+  const { user } = useAuthStore();
   const userChatAvatarInitials = (user?.username || user?.email || 'U').slice(0, 2).toUpperCase();
 
   // 邮箱未验证：禁止进入探索对话（后端写端点统一 403 email_not_verified），回问卷页做验证引导
@@ -1137,6 +1139,21 @@ export default function ChatPhasePage() {
       const last = lastDimensionConclusionMessage(messages);
       return !!(last && !last.conclusionCollapsed && !last.conclusionConfirmed);
     })();
+  /** 手动出卡按钮：四阶段、满 11 轮用户消息、从未出过卡、阶段未完成时显示 */
+  const userTurnCount = useMemo(
+    () => messages.filter((m) => m.role === 'user').length,
+    [messages]
+  );
+  const hasAnyConclusionCard = useMemo(
+    () => messages.some((m) => m.type === 'dimension_conclusion'),
+    [messages]
+  );
+  const showConclusionRequestButton =
+    phase !== 'rumination' &&
+    !isSelectedCompleted &&
+    !reportUnlocked &&
+    !hasAnyConclusionCard &&
+    userTurnCount >= 11;
   /** 回看模式：正在查看历史已提交步骤（只读），不影响当前数据 */
   const ruminationReviewMode = useMemo(
     () => isRuminationReviewMode(ruminationViewStep, ruminationProgressState),
@@ -1901,11 +1918,9 @@ export default function ChatPhasePage() {
       let res = await doStreamFetch(token);
       if (res.status === 401) {
         try {
-          const refreshed = await authApi.refresh();
-          const nextToken = refreshed?.data?.token || null;
+          // 统一走 single-flight，避免与拦截器并发 refresh 触发后端重放检测
+          const nextToken = await apiClient.refreshAccessToken();
           if (nextToken) {
-            apiClient.setToken(nextToken);
-            setTokens(nextToken);
             res = await doStreamFetch(nextToken);
           }
         } catch {
@@ -2320,6 +2335,53 @@ export default function ChatPhasePage() {
       isNavigatingRef.current = false;
     }
   }, [activationCode, session, phase, router, setSession]);
+
+  /** 手动出卡：「对话结束无法进行下一步？点击这里」按钮 → POST /simple-chat/conclusion/request */
+  const handleRequestConclusion = async () => {
+    if (conclusionReqState === 'loading' || sending) return;
+    if (!activationCode || !phase) return;
+    const targetThreadId = activeThreadId || backendSyncedThreadId;
+    if (!targetThreadId) return;
+    setConclusionReqState('loading');
+    try {
+      const res = await apiClient.post('/simple-chat/conclusion/request', {
+        activation_code: activationCode,
+        phase: BACKEND_PHASE[phase],
+        thread_id: targetThreadId,
+      });
+      const concl = res.data?.data?.dimension_conclusion as DimensionConclusionData | undefined;
+      if (res.data?.code === 200 && concl) {
+        const conclMsg: ThreadMessage = {
+          id: `concl_${Date.now()}`,
+          role: 'assistant',
+          content: '',
+          type: 'dimension_conclusion',
+          conclusionData: concl,
+          conclusionCollapsed: false,
+          conclusionConfirmed: false,
+          conclusionLocked: false,
+          createdAt: Date.now(),
+        };
+        setMessages((prev) => {
+          const frozenHistory = prev.map((m) =>
+            m.type === 'dimension_conclusion' ? { ...m, conclusionLocked: true } : m
+          );
+          return [...frozenHistory, conclMsg];
+        });
+        setConclusionReqState('idle');
+      } else {
+        setConclusionReqState('error');
+      }
+    } catch (e) {
+      console.warn('[RequestConclusion] failed:', e);
+      setConclusionReqState('error');
+    }
+  };
+
+  // 切换对话/阶段时复位手动出卡按钮状态
+  useEffect(() => {
+    setConclusionReqState('idle');
+  }, [activeThreadId, phase]);
 
   const handleConfirmConclusion = async () => {
     if (stepLocked && !adminDebugBypass) return;
@@ -3375,12 +3437,7 @@ export default function ChatPhasePage() {
         });
         if (res.status === 401) {
           try {
-            const refreshed = await authApi.refresh();
-            const nextToken = refreshed?.data?.token || null;
-            if (nextToken) {
-              apiClient.setToken(nextToken);
-              setTokens(nextToken);
-            }
+            await apiClient.refreshAccessToken();
           } catch {}
         }
         const reader = res.body?.getReader();
@@ -3486,7 +3543,7 @@ export default function ChatPhasePage() {
         abortControllerRef.current = null;
       }
     },
-    [activationCode, sending, phase, activeThreadId, backendSyncedThreadId, locale, authApi, apiClient, setTokens]
+    [activationCode, sending, phase, activeThreadId, backendSyncedThreadId, locale, apiClient]
   );
 
   const applyStep3SideEffect = useCallback(
@@ -3760,11 +3817,8 @@ export default function ChatPhasePage() {
           if (err?.name === 'AbortError') return;
           if (err?.message?.includes('401')) {
             try {
-              const refreshed = await authApi.refresh();
-              const nextToken = refreshed?.data?.token || null;
+              const nextToken = await apiClient.refreshAccessToken();
               if (nextToken) {
-                apiClient.setToken(nextToken);
-                setTokens(nextToken);
                 await doStream(nextToken);
                 return;
               }
@@ -4856,6 +4910,13 @@ export default function ChatPhasePage() {
                   >
                     {t('explore.chat.conclusionChoiceRequiredBanner')}
                   </p>
+                )}
+                {showConclusionRequestButton && (
+                  <ConclusionRequestButton
+                    state={conclusionReqState}
+                    idle={!sending && !anyGuideBusy && !input.trim()}
+                    onClick={handleRequestConclusion}
+                  />
                 )}
                 <div
                   className={`flow-input-box${

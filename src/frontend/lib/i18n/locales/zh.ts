@@ -286,6 +286,10 @@ export const zh = {
       streamStatusHypothesis: '正在为您生成假设建议，请稍后…',
       conclusionChoiceRequiredBanner:
         '请先在上方结论卡片上点击「确认没有问题」或「我想再聊聊」，之后才能继续输入。',
+      /** 满 11 轮未出卡时的手动出卡按钮（「对话结束无法进行下一步？点击这里」） */
+      conclusionRequestButton: '对话结束无法进行下一步?点击这里',
+      conclusionRequestLoading: '正在生成阶段小结…',
+      conclusionRequestError: '生成失败，点击重试',
       aiDisclaimer: 'AI生成，仅供参考',
       completeStep: '完成此步，进入下一步',
       completeAndContinue: '完成并继续',

@@ -168,6 +168,15 @@ class ApiClient {
     localStorage.setItem('token', accessToken);
   }
 
+  /**
+   * 统一 refresh 入口（single-flight 去重）：聊天流式等自建 fetch 通道收到 401 时
+   * 必须走这里，避免与响应拦截器并发 refresh 触发后端轮换重放检测撤销整个 token 族。
+   * 成功返回新 access token（已写入 localStorage 与 authStore），失败返回 null。
+   */
+  async refreshAccessToken(): Promise<string | null> {
+    return this.refreshAccessTokenSingleFlight();
+  }
+
   private async refreshAccessTokenSingleFlight(): Promise<string | null> {
     if (this.refreshPromise) {
       return this.refreshPromise;

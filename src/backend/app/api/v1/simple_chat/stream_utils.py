@@ -2,8 +2,11 @@
 SSE 流处理工具：隐藏协议块过滤、STATE_JSON 解析、JSON 提取。
 """
 import json
+import logging
 import re
 from typing import Callable, Dict, Optional, Sequence, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 def extract_json_object(text: str) -> Optional[Dict]:
@@ -171,14 +174,30 @@ def split_visible_reply_and_state(raw_text: str) -> tuple[str, Optional[Dict]]:
     end_marker = "[/STATE_JSON]"
     start = raw_text.rfind(start_marker)
     end = raw_text.rfind(end_marker)
-    if start < 0 or end < 0 or end <= start:
+    if start < 0:
+        return raw_text.strip(), None
+    if end < 0 or end <= start:
+        # 块未闭合（典型原因：max_tokens 截断），此前静默返回导致不出卡且不可查
+        logger.warning(
+            "[state_json] unclosed block: start=%d end=%d text_len=%d tail=%r",
+            start,
+            end,
+            len(raw_text),
+            raw_text[start:][-300:],
+        )
         return raw_text.strip(), None
     json_part = raw_text[start + len(start_marker) : end].strip()
     visible = raw_text[:start].rstrip()
     try:
         obj = json.loads(json_part)
         return visible, obj if isinstance(obj, dict) else None
-    except (json.JSONDecodeError, TypeError):
+    except (json.JSONDecodeError, TypeError) as e:
+        # 解析失败此前静默吞掉导致不出卡且不可查，补日志便于线上排查
+        logger.warning(
+            "[state_json] parse failed err=%s json_part_excerpt=%r",
+            e,
+            json_part[:500],
+        )
         return (visible if visible else raw_text.strip()), None
 
 

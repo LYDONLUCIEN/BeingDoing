@@ -268,6 +268,11 @@ CONCLUSION_STATE_REJECTED = "rejected"
 # 用户否定/再聊聊后，每满 N 轮用户消息触发一次强制兜底（后端直接生成 draft）
 CONCLUSION_REJECT_NUDGE_USER_TURNS = 3
 
+# 结论卡最早出卡轮数（用户消息条数，含当前条）：四阶段所有用户前 10 轮为深入探索期，
+# 一律不出卡（模型输出 pending_ready 也拦截）；第 11 轮起放开模型自觉出卡 + 手动按钮。
+# admin 调试（_can_bypass_flow_limits）不受限。
+CONCLUSION_MIN_USER_TURNS = 11
+
 
 def _trim_history_messages_for_llm(
     history_messages: List[dict], max_user_turns: int = MAX_HISTORY_TURNS
@@ -1446,6 +1451,14 @@ class PriorContextSaveRequest(BaseModel):
 
 
 class ThreadCompleteRequest(BaseModel):
+    activation_code: str
+    phase: str
+    thread_id: str
+
+
+class ConclusionCardRequest(BaseModel):
+    """用户主动请求生成结论卡草案（「对话结束无法进行下一步？点击这里」按钮）。"""
+
     activation_code: str
     phase: str
     thread_id: str
@@ -4954,6 +4967,152 @@ async def mark_thread_complete(
     )
 
 
+@router.post("/conclusion/request", response_model=SimpleChatResponse)
+async def request_conclusion_card(
+    request: ConclusionCardRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """用户主动请求生成结论卡草案（前端「对话结束无法进行下一步？点击这里」按钮）。
+
+    口径（2026-08-25 起）：
+    - 四阶段（values/strengths/interests/purpose）用户消息满 CONCLUSION_MIN_USER_TURNS(11) 轮才允许；
+      admin 调试工作区（_can_bypass_flow_limits）不受轮数限制；
+    - 仅 state=none 时生成；已有 pending/confirmed 直接幂等返回现有卡；
+    - 生成走 check_dimension_complete(skip_completion_check=True)，与 rejected 满 3 轮 retrigger 同链路；
+    - 生成失败抛 503（前端展示「生成失败，点击重试」，不静默）。
+    """
+    manager = get_activation_manager_for_code(request.activation_code)
+    # 试用码阶段锁（预检，保证 402 优先于阶段推进锁的 400）
+    _peek_trial_phase_lock(
+        manager,
+        request.activation_code,
+        current_user,
+        ReportRegistry.normalize_step_id(request.phase),
+    )
+    rec, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
+        manager=manager,
+        activation_code=request.activation_code,
+        current_user=current_user,
+        phase=request.phase,
+        thread_id=request.thread_id,
+    )
+    # 试用码阶段锁 + 邮箱验证门控（与全部写端点同口径）
+    _assert_trial_phase_allowed(rec, current_user, phase_step)
+    if phase_step == "rumination":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="rumination 阶段不支持手动请求结论卡"
+        )
+    conv_data = await conv_manager.get_conversation_data(report["report_id"], category)
+    metadata = conv_data.get("metadata", {})
+    cmeta = _read_conclusion_meta(metadata)
+    if cmeta.get("thread_completed"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="本阶段已完成，无需再生成结论卡"
+        )
+    # 幂等：已有 pending 草案或 confirmed 终稿时直接返回，不重复生成
+    existing = None
+    if cmeta.get("state") == CONCLUSION_STATE_PENDING and isinstance(cmeta.get("draft"), dict):
+        existing = cmeta.get("draft")
+    elif cmeta.get("state") == CONCLUSION_STATE_CONFIRMED and isinstance(cmeta.get("final"), dict):
+        existing = cmeta.get("final")
+    if existing:
+        return SimpleChatResponse(
+            code=200,
+            message="success",
+            data={"dimension_conclusion": existing, "idempotent": True},
+        )
+    user_count = _count_user_messages(conv_data.get("messages"))
+    if user_count < CONCLUSION_MIN_USER_TURNS and not _can_bypass_flow_limits(current_user, rec):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"对话轮数不足（当前 {user_count} 轮，满 {CONCLUSION_MIN_USER_TURNS} 轮后可生成），继续深入探索后再试",
+        )
+    vip_level = getattr(rec, "vip_level", 1) or 1
+    conv_history = [
+        {"role": m.get("role", "user"), "content": m.get("content", "")}
+        for m in conv_data.get("messages", [])
+    ]
+    basic_info = _load_basic_info_from_activation(request.activation_code)
+    prior_context = _load_prior_context_from_activation(request.activation_code, phase_step, report)
+    reasoning_llm = _get_reasoning_llm_provider(vip_level=vip_level)
+    conclusion = None
+    try:
+        conclusion = await asyncio.wait_for(
+            check_dimension_complete(
+                phase_step,
+                conv_history,
+                prior_conclusion=None,
+                vip_level=vip_level,
+                llm_provider=reasoning_llm,
+                skip_completion_check=True,
+                basic_info=basic_info,
+                prior_context=prior_context,
+            ),
+            timeout=CONCLUSION_GEN_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "[conclusion_request] timeout after %ss phase=%s thread=%s",
+            CONCLUSION_GEN_TIMEOUT_SECONDS,
+            phase_step,
+            logical_session_id,
+        )
+    except Exception as e:
+        logger.warning(
+            "[conclusion_request] failed err_type=%s err=%s phase=%s thread=%s",
+            type(e).__name__,
+            e,
+            phase_step,
+            logical_session_id,
+        )
+    if not isinstance(conclusion, dict):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="结论卡生成失败，请稍后点击重试",
+        )
+    draft_to_save = sanitize_pending_conclusion_draft(phase_step, dict(conclusion))
+    # 使命阶段：用 metadata 的 confirmed_rows 覆盖 LLM 的 experience_value_rows（与自动出卡链路一致）
+    if phase_step == "purpose":
+        try:
+            prog = normalize_progress(metadata.get("purpose_progress"))
+            meta_rows = progress_to_experience_value_rows(prog)
+            if meta_rows:
+                draft_to_save["experience_value_rows"] = meta_rows
+        except Exception:
+            pass
+    await conv_manager.update_metadata(
+        report["report_id"],
+        category,
+        _build_conclusion_meta_update(
+            state=CONCLUSION_STATE_PENDING,
+            draft=draft_to_save,
+            shown_at=user_count,
+            thread_completed=False,
+        ),
+    )
+    try:
+        await _append_note_json(
+            conv_manager,
+            report["report_id"],
+            category,
+            "pending_conclusion_created",
+            {
+                "phase": phase_step,
+                **IDCodec.build_thread_ref(logical_session_id),
+                "source": "user_manual_request",
+                "user_count": user_count,
+                "dimension_conclusion": draft_to_save,
+            },
+        )
+    except Exception:
+        pass
+    return SimpleChatResponse(
+        code=200,
+        message="success",
+        data={"dimension_conclusion": draft_to_save, "user_count": user_count},
+    )
+
+
 @router.get("/threads", response_model=SimpleHistoryResponse)
 async def list_threads(
     activation_code: str,
@@ -6139,6 +6298,16 @@ async def simple_chat_stream(
         pending_conclusion = cmeta.get("draft")
         rejected_feedback = cmeta.get("feedback") or ""
 
+        # 前 10 轮深入探索期不出卡门控（四阶段所有用户；admin 调试豁免）
+        # 仅拦截「首次出卡」（state=none）：rejected 说明该线程出过卡（被否定后补充），
+        # 其重新出卡（pending_ready / retrigger）不受轮数限制
+        conclusion_gate_active = (
+            phase_step != "rumination"
+            and user_count < CONCLUSION_MIN_USER_TURNS
+            and (cmeta.get("state") or CONCLUSION_STATE_NONE) == CONCLUSION_STATE_NONE
+            and not _can_bypass_flow_limits(current_user, rec)
+        )
+
         should_try_retrigger = False
         turns_since_reject: Optional[int] = None
         if (
@@ -6146,6 +6315,7 @@ async def simple_chat_stream(
             and not cmeta.get("thread_completed")
             and not isinstance(pending_conclusion, dict)
             and phase_step != "rumination"
+            and not conclusion_gate_active
         ):
             baseline = meta.get("conclusion_reject_baseline_user_count")
             if isinstance(baseline, int):
@@ -6182,6 +6352,7 @@ async def simple_chat_stream(
                 draft=pending_conclusion if isinstance(pending_conclusion, dict) else None,
                 feedback=clean_feedback,
                 turns_since_reject=turns_since_reject,
+                gate_active=conclusion_gate_active,
             )
             if state_injection:
                 llm_messages[0] = LLMMessage(
@@ -6549,7 +6720,28 @@ async def simple_chat_stream(
         if state_obj and not cmeta.get("thread_completed"):
             state_name = str(state_obj.get("state") or "").strip().lower()
             draft = state_obj.get("draft")
-            if state_name == "pending_ready" and isinstance(draft, dict):
+            if state_name == "pending_ready" and not isinstance(draft, dict):
+                # 模型输出了 pending_ready 但 draft 缺失/非对象，此前静默跳过导致不出卡且不可查
+                logger.warning(
+                    "[state_json] pending_ready without valid draft phase=%s thread=%s draft_type=%s",
+                    phase_step,
+                    logical_session_id,
+                    type(draft).__name__,
+                )
+            if state_name == "pending_ready" and isinstance(draft, dict) and conclusion_gate_active:
+                # 前 10 轮深入探索期：拦截出卡，仅记录日志（用户可继续聊，满 11 轮后模型会再出或走手动按钮）
+                logger.info(
+                    "[state_json] pending_ready suppressed by min-turns gate phase=%s thread=%s user_count=%s min_turns=%s",
+                    phase_step,
+                    logical_session_id,
+                    user_count,
+                    CONCLUSION_MIN_USER_TURNS,
+                )
+            if (
+                state_name == "pending_ready"
+                and isinstance(draft, dict)
+                and not conclusion_gate_active
+            ):
                 # 自动出卡统一链路：pending_ready 先走结论生成器，稳定复用文风规则与示例。
                 draft_to_save = sanitize_pending_conclusion_draft(phase_step, dict(draft))
                 # 使命阶段：用 metadata 的 confirmed_rows 覆盖 LLM 的 experience_value_rows
@@ -6582,8 +6774,21 @@ async def simple_chat_stream(
                         timeout=CONCLUSION_GEN_TIMEOUT_SECONDS,
                     )
                 except asyncio.TimeoutError:
+                    logger.warning(
+                        "[conclusion_gen] pending_ready refine timeout after %ss phase=%s thread=%s; fallback to raw draft",
+                        CONCLUSION_GEN_TIMEOUT_SECONDS,
+                        phase_step,
+                        logical_session_id,
+                    )
                     refined_conclusion = None
-                except Exception:
+                except Exception as e:
+                    logger.warning(
+                        "[conclusion_gen] pending_ready refine failed err_type=%s err=%s phase=%s thread=%s; fallback to raw draft",
+                        type(e).__name__,
+                        e,
+                        phase_step,
+                        logical_session_id,
+                    )
                     refined_conclusion = None
                 if isinstance(refined_conclusion, dict):
                     draft_to_save = sanitize_pending_conclusion_draft(

@@ -223,7 +223,7 @@
   --careering-scroll-fade-bottom: 5.5rem;
   padding: 1.25rem 0 10rem;
   padding-right: 0 !important;
-  gap: 2rem;
+  gap: 1.25rem;
   -webkit-mask-image: linear-gradient(
     to bottom,
     transparent 0,
@@ -249,7 +249,7 @@
     padding-bottom: 10rem;
     padding-left: 0;
     padding-right: 0 !important;
-    gap: 2rem;
+    gap: 1.25rem;
   }
 }
 
@@ -320,12 +320,13 @@
   }
 }
 
-/* AI / 用户 顶栏 meta（头像 + 时间） */
+/* AI / 用户 顶栏 meta（头像 + 时间）：与自身气泡间距仅保留 wrap 的 8px gap，
+   避免 16px 总间距让头像视觉上更靠近上一条对方气泡 */
 .flow-msg-careering-meta {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0;
   font-size: 0.8rem;
   color: #6b7280;
 }

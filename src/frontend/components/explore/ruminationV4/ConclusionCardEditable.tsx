@@ -24,7 +24,6 @@ interface Props {
   card: ConclusionCard | null;
   /** 平衡点判定状态(null = 未判定) */
   analysis: BalanceAnalysis | null;
-  strengths: string[];
   /** 用户已跳过(status=abandoned / user_skipped),卡保留、可逆 */
   userSkipped?: boolean;
 }
@@ -40,7 +39,7 @@ function getToken(): string | undefined {
   return typeof window !== 'undefined' ? localStorage.getItem('token') || undefined : undefined;
 }
 
-export default function ConclusionCardEditable({ comboId, card, analysis, strengths, userSkipped }: Props) {
+export default function ConclusionCardEditable({ comboId, card, analysis, userSkipped }: Props) {
   const { patchCard, confirmCard, setStatus } = useRuminationV4Store();
   /** 终选已提交：整页回看模式，结论卡只读、操作按钮全部隐藏 */
   const finalSubmitted = useRuminationV4Store(
@@ -173,24 +172,17 @@ export default function ConclusionCardEditable({ comboId, card, analysis, streng
         <Briefcase size={28} strokeWidth={1.6} />
       </div>
 
-      {/* 中间内容 */}
+      {/* 中间内容（2026-08-25 起不再显示选中优势徽章：只取前 2 个显示不全、视觉杂乱，
+          标题行仅在已有判定灯/保存提示时出现） */}
       <div className="min-w-0">
-        <div className="conclusion-title mb-1.5 flex flex-wrap items-center gap-2 text-[14px] font-[800] text-[#1f2937]">
-          <span
-            className="combo-badge inline-flex rounded-full px-2 py-0.5 text-[11px] font-[700]"
-            style={
-              userSkipped
-                ? { background: '#e5e7eb', color: '#6b7280' }
-                : { background: '#efedff', color: '#6756ee' }
-            }
-          >
-            {strengths.slice(0, 2).join('、') || '组合'}
-          </span>
-          {renderJudgeLight()}
-          <span className="ml-auto text-[11px] font-[500] text-[#9ca3af]">
-            {saving && !isAnalyzing ? '保存中…' : ''}
-          </span>
-        </div>
+        {(isJudged || (saving && !isAnalyzing)) && (
+          <div className="conclusion-title mb-1.5 flex flex-wrap items-center gap-2 text-[14px] font-[800] text-[#1f2937]">
+            {renderJudgeLight()}
+            <span className="ml-auto text-[11px] font-[500] text-[#9ca3af]">
+              {saving && !isAnalyzing ? '保存中…' : ''}
+            </span>
+          </div>
+        )}
 
         <label
           className={`mb-1 block text-[12px] font-[700] ${userSkipped ? 'text-[#9ca3af]' : 'text-[#6b7280]'}`}

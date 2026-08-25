@@ -234,16 +234,23 @@ function createSseStream<T extends { error?: string }>(
 
   (async () => {
     try {
-      const resp = await fetch(`${resolveApiBaseURL()}${PREFIX}${path}`, {
-        method: 'POST',
-        credentials: 'include',
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(body),
-      });
+      const doFetch = (accessToken?: string) =>
+        fetch(`${resolveApiBaseURL()}${PREFIX}${path}`, {
+          method: 'POST',
+          credentials: 'include',
+          signal: controller.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          },
+          body: JSON.stringify(body),
+        });
+      let resp = await doFetch(token);
+      if (resp.status === 401) {
+        // access token 过期：统一走 single-flight refresh 后重试一次
+        const nextToken = await apiClient.refreshAccessToken();
+        if (nextToken) resp = await doFetch(nextToken);
+      }
       if (!resp.ok || !resp.body) {
         let detail = `HTTP ${resp.status}`;
         try {

@@ -124,7 +124,6 @@ export default function V4MatrixLeftPanel({ stacked = false }: { stacked?: boole
               comboId={activeCombo.combo_id}
               card={conclusionCard}
               analysis={activeCombo.balance_analysis || null}
-              strengths={activeCombo.strengths}
               userSkipped={!!activeCombo.user_skipped || activeCombo.status === 'abandoned'}
             />
           )}

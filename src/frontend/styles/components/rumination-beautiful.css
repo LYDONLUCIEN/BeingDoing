@@ -171,11 +171,15 @@ html[data-rumination-mesh-page='true']:not([data-color-scheme='dark'])
   box-sizing: border-box;
 }
 
-/* 用户消息 meta（头像 + 名称/时间）在沉淀右栏中的间距微调 */
+/* 用户消息 meta（头像 + 名称/时间）在沉淀右栏中的间距微调：
+   与自身气泡仅保留 wrap 的 8px gap，消息间距与 careering 对齐为 1.25rem */
 .rumination-beautiful-root .rumination-beautiful-chat-panel .flow-msg-careering-meta {
-  margin-bottom: 0.375rem;
+  margin-bottom: 0;
   font-size: 0.75rem;
   color: #77829f;
+}
+.rumination-beautiful-root .rumination-beautiful-chat-panel .flow-chat-body {
+  gap: 1.25rem;
 }
 .rumination-beautiful-root .rumination-beautiful-chat-panel .flow-msg-careering-avatar {
   width: 26px;

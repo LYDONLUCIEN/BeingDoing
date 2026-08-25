@@ -63,6 +63,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 REFRESH_TOKEN_EXPIRE_DAYS = settings.REFRESH_TOKEN_EXPIRE_DAYS
 REFRESH_TOKEN_ROTATE = settings.REFRESH_TOKEN_ROTATE
+REFRESH_TOKEN_ROTATE_GRACE_SECONDS = settings.REFRESH_TOKEN_ROTATE_GRACE_SECONDS
 REFRESH_TOKEN_SECRET_KEY = settings.REFRESH_TOKEN_SECRET_KEY or SECRET_KEY
 
 # 简单的内存级找回密码验证码存储（开发环境用，进程重启后会失效）
@@ -324,22 +325,37 @@ class AuthService:
                 raise ValueError("refresh_token 已失效，请重新登录")
 
             if rec.is_revoked:
-                # 已撤销 token 再使用：撤销整族
-                fam_res = await db.execute(
-                    select(RefreshToken).where(
-                        RefreshToken.user_id == rec.user_id,
-                        RefreshToken.family_id == rec.family_id,
-                    )
+                # 轮换宽限期内的并发重放（多标签页 / 流式与轮询同时 401 触发双通道 refresh）：
+                # 旧 token 刚被轮换作废，视为正常并发刷新，继续走换发流程，不按攻击撤族
+                revoked_at = rec.revoked_at
+                if revoked_at is not None and revoked_at.tzinfo is None:
+                    revoked_at = revoked_at.replace(tzinfo=timezone.utc)
+                within_rotate_grace = (
+                    rec.revoked_reason == "rotated"
+                    and revoked_at is not None
+                    and now - revoked_at <= timedelta(seconds=REFRESH_TOKEN_ROTATE_GRACE_SECONDS)
                 )
-                for item in fam_res.scalars().all():
-                    if not item.is_revoked:
-                        item.is_revoked = True
-                        item.revoked_at = now
-                        item.revoked_reason = "reuse_detected"
-                await db.commit()
-                raise ValueError("refresh_token 已失效，请重新登录")
+                if not within_rotate_grace:
+                    # 已撤销 token 再使用：撤销整族
+                    fam_res = await db.execute(
+                        select(RefreshToken).where(
+                            RefreshToken.user_id == rec.user_id,
+                            RefreshToken.family_id == rec.family_id,
+                        )
+                    )
+                    for item in fam_res.scalars().all():
+                        if not item.is_revoked:
+                            item.is_revoked = True
+                            item.revoked_at = now
+                            item.revoked_reason = "reuse_detected"
+                    await db.commit()
+                    raise ValueError("refresh_token 已失效，请重新登录")
 
-            if rec.expires_at <= now:
+            # SQLite DateTime 读回为 naive datetime，统一按 UTC 转 aware 再比较
+            expires_at = rec.expires_at
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if expires_at <= now:
                 rec.is_revoked = True
                 rec.revoked_at = now
                 rec.revoked_reason = "expired"
@@ -365,7 +381,9 @@ class AuthService:
                     user.id, family_id=rec.family_id
                 )
                 rec.is_revoked = True
-                rec.revoked_at = now
+                # 宽限期重放走这里时 revoked_at 已有值：保留首次轮换时间，防止反复重放给宽限期续期
+                if rec.revoked_at is None:
+                    rec.revoked_at = now
                 rec.revoked_reason = "rotated"
                 rec.replaced_by_jti = str(new_payload.get("jti") or "")
                 db.add(

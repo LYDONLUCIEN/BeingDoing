@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     # refresh token 轮换（每次 refresh 后签发新 refresh，并废弃旧 refresh）
     REFRESH_TOKEN_ROTATE: bool = True
+    # 轮换宽限期（秒）：宽限期内重放已轮换的旧 refresh token 视为并发刷新
+    # （多标签页 / 流式与轮询请求同时 401 触发双通道 refresh），正常换发，
+    # 不按"重放攻击"撤销整个 token 族；窗口锚定首次轮换时间，重放不续期
+    REFRESH_TOKEN_ROTATE_GRACE_SECONDS: int = 10
     # 可选：refresh token 独立密钥（不配置时回退 SECRET_KEY）
     REFRESH_TOKEN_SECRET_KEY: Optional[str] = None
     # refresh cookie 配置（HttpOnly）

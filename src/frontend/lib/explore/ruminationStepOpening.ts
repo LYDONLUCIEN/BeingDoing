@@ -3,8 +3,6 @@
  */
 
 import { apiClient } from '@/lib/api/client';
-import { authApi } from '@/lib/api/auth';
-import { useAuthStore } from '@/stores/authStore';
 
 export async function simulateFixedRuminationOpening(
   fullText: string,
@@ -67,17 +65,11 @@ export async function streamRuminationStepOpening(
   let token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
   let res = await doFetch(token);
   if (res.status === 401) {
-    try {
-      const refreshed = await authApi.refresh();
-      const nextToken = refreshed?.data?.token || null;
-      if (nextToken) {
-        apiClient.setToken(nextToken);
-        useAuthStore.getState().setTokens(nextToken);
-        token = nextToken;
-        res = await doFetch(nextToken);
-      }
-    } catch {
-      /* handled below */
+    // 统一走 single-flight，避免与拦截器并发 refresh 触发后端重放检测
+    const nextToken = await apiClient.refreshAccessToken();
+    if (nextToken) {
+      token = nextToken;
+      res = await doFetch(nextToken);
     }
   }
 
