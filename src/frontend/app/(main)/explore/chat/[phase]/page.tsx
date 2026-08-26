@@ -1139,20 +1139,17 @@ export default function ChatPhasePage() {
       const last = lastDimensionConclusionMessage(messages);
       return !!(last && !last.conclusionCollapsed && !last.conclusionConfirmed);
     })();
-  /** 手动出卡按钮：四阶段、满 11 轮用户消息、从未出过卡、阶段未完成时显示 */
+  /** 手动出卡按钮：四阶段、满 11 轮用户消息、当前无待表态结论卡（从未出过，或已「再聊聊」折叠）时显示 */
   const userTurnCount = useMemo(
     () => messages.filter((m) => m.role === 'user').length,
-    [messages]
-  );
-  const hasAnyConclusionCard = useMemo(
-    () => messages.some((m) => m.type === 'dimension_conclusion'),
     [messages]
   );
   const showConclusionRequestButton =
     phase !== 'rumination' &&
     !isSelectedCompleted &&
     !reportUnlocked &&
-    !hasAnyConclusionCard &&
+    !pendingConclusionChoiceBlocksChat &&
+    !lastDimensionConclusionMessage(messages)?.conclusionConfirmed &&
     userTurnCount >= 11;
   /** 回看模式：正在查看历史已提交步骤（只读），不影响当前数据 */
   const ruminationReviewMode = useMemo(
@@ -1768,7 +1765,7 @@ export default function ChatPhasePage() {
     regenerateRowLabel?: string
   ) => {
     const text = prefill ?? input.trim();
-    if (!activationCode || !text || sending || isReadOnly)
+    if (!activationCode || !text || sending || isReadOnly || conclusionReqState === 'loading')
       return;
     setMessages((prev) => {
       const lastIdx = [...prev].map((m) => m.type).lastIndexOf('dimension_conclusion');
@@ -2343,6 +2340,46 @@ export default function ChatPhasePage() {
     const targetThreadId = activeThreadId || backendSyncedThreadId;
     if (!targetThreadId) return;
     setConclusionReqState('loading');
+    const insertConclusionCard = (concl: DimensionConclusionData) => {
+      const conclMsg: ThreadMessage = {
+        id: `concl_${Date.now()}`,
+        role: 'assistant',
+        content: '',
+        type: 'dimension_conclusion',
+        conclusionData: concl,
+        conclusionCollapsed: false,
+        conclusionConfirmed: false,
+        conclusionLocked: false,
+        createdAt: Date.now(),
+      };
+      setMessages((prev) => {
+        // 防重：已存在未表态（未折叠/未确认）的卡则不再插入
+        const last = lastDimensionConclusionMessage(prev);
+        if (last && !last.conclusionCollapsed && !last.conclusionConfirmed) return prev;
+        const frozenHistory = prev.map((m) =>
+          m.type === 'dimension_conclusion' ? { ...m, conclusionLocked: true } : m
+        );
+        return [...frozenHistory, conclMsg];
+      });
+    };
+    // 失败自愈：端点先写盘后响应，响应丢失（刷新/导航/代理中断）时卡其实已生成，
+    // 拉一次 history 检查，已生成就直接补卡，避免误报「生成失败」
+    const recoverFromHistory = async (): Promise<boolean> => {
+      try {
+        const h = await apiClient.get('/simple-chat/history', {
+          params: { activation_code: activationCode, phase: BACKEND_PHASE[phase], thread_id: targetThreadId },
+        });
+        const meta = h.data?.metadata ?? {};
+        const draft = meta?.conclusion_draft;
+        if (meta?.conclusion_state === 'pending' && draft && typeof draft === 'object') {
+          insertConclusionCard(draft as DimensionConclusionData);
+          return true;
+        }
+      } catch {
+        // 自愈失败按真失败处理
+      }
+      return false;
+    };
     try {
       const res = await apiClient.post('/simple-chat/conclusion/request', {
         activation_code: activationCode,
@@ -2351,30 +2388,14 @@ export default function ChatPhasePage() {
       });
       const concl = res.data?.data?.dimension_conclusion as DimensionConclusionData | undefined;
       if (res.data?.code === 200 && concl) {
-        const conclMsg: ThreadMessage = {
-          id: `concl_${Date.now()}`,
-          role: 'assistant',
-          content: '',
-          type: 'dimension_conclusion',
-          conclusionData: concl,
-          conclusionCollapsed: false,
-          conclusionConfirmed: false,
-          conclusionLocked: false,
-          createdAt: Date.now(),
-        };
-        setMessages((prev) => {
-          const frozenHistory = prev.map((m) =>
-            m.type === 'dimension_conclusion' ? { ...m, conclusionLocked: true } : m
-          );
-          return [...frozenHistory, conclMsg];
-        });
+        insertConclusionCard(concl);
         setConclusionReqState('idle');
       } else {
-        setConclusionReqState('error');
+        setConclusionReqState((await recoverFromHistory()) ? 'idle' : 'error');
       }
     } catch (e) {
       console.warn('[RequestConclusion] failed:', e);
-      setConclusionReqState('error');
+      setConclusionReqState((await recoverFromHistory()) ? 'idle' : 'error');
     }
   };
 
@@ -4927,16 +4948,18 @@ export default function ChatPhasePage() {
                       : ''
                   } !flex !flex-col !items-stretch gap-1.5`}
                 >
-                  {(sending &&
-                    (postLlmTailActive ||
-                      waitingForConclusionCardUi ||
-                      conclusionLoading)) && (
+                  {(conclusionReqState === 'loading' ||
+                    (sending &&
+                      (postLlmTailActive ||
+                        waitingForConclusionCardUi ||
+                        conclusionLoading))) && (
                     <p
                       className="w-full shrink-0 px-1 text-left text-xs leading-snug text-neutral-500"
                       role="status"
                       aria-live="polite"
                     >
-                      {waitingForConclusionCardUi ||
+                      {conclusionReqState === 'loading' ||
+                      waitingForConclusionCardUi ||
                       (sending && conclusionLoading)
                         ? t('explore.chat.streamStatusConclusion')
                         : ruminationViewStep === 3
@@ -4991,6 +5014,7 @@ export default function ChatPhasePage() {
                     disabled={
                       sending ||
                       isReadOnly ||
+                      conclusionReqState === 'loading' ||
                       (phase === 'rumination' && ruminationTableNavLoading) ||
                       (isStep3MatrixMode && !matrixModeSelectedComboId) ||
                       discussionNeedsRow
@@ -5018,6 +5042,7 @@ export default function ChatPhasePage() {
                       }
                       disabled={
                         (isReadOnly ||
+                          conclusionReqState === 'loading' ||
                           (isStep3MatrixMode && !matrixModeSelectedComboId) ||
                           discussionNeedsRow ||
                           (!sending &&
