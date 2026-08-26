@@ -258,7 +258,13 @@ SIMPLE_CHAT_STREAM_MAX_TOKENS = 8192
 # 并发 LLM 调用限制（0=不限制）
 _LLM_SEM = None
 PENDING_JUDGE_TIMEOUT_SECONDS = 20
-CONCLUSION_GEN_TIMEOUT_SECONDS = 25
+# 结论生成超时：对齐 LLM 客户端自身的 60s 超时（openai_provider timeout=60.0）。
+# 原 25s 对思维链模型（deepseek-v4-pro + LLM_THINKING_ENABLED）生成带 reasoning 的结论 JSON 太紧：
+# 生产实测长对话（19 轮）生成需 ~26s，25s 必然在写盘前超时 → 503「生成失败」（2026-08-26 事故复盘）。
+# 超过 60s 没有意义：底层客户端届时已自行超时。
+CONCLUSION_GEN_TIMEOUT_SECONDS = 60
+# step3 matrix 假设兜底重试的 LLM 超时：同上，对齐客户端 60s（原 25s 同类误杀风险）
+STEP3_FALLBACK_LLM_TIMEOUT_SECONDS = 60.0
 PENDING_HEARTBEAT_SECONDS = 2.0
 CONCLUSION_STATE_NONE = "none"
 CONCLUSION_STATE_PENDING = "pending"
@@ -5449,7 +5455,7 @@ async def _hyp_candidate_fallback_retry(
             try:
                 return await asyncio.wait_for(
                     llm.chat(matrix_messages, **kwargs),
-                    timeout=25.0,
+                    timeout=STEP3_FALLBACK_LLM_TIMEOUT_SECONDS,
                 )
             except TypeError:
                 # provider 不支持 response_format 关键字 → 降级纯文本
@@ -5459,7 +5465,7 @@ async def _hyp_candidate_fallback_retry(
                     )
                     return await asyncio.wait_for(
                         llm.chat(matrix_messages, temperature=0.1, max_tokens=8192),
-                        timeout=25.0,
+                        timeout=STEP3_FALLBACK_LLM_TIMEOUT_SECONDS,
                     )
                 raise
 
@@ -5467,7 +5473,11 @@ async def _hyp_candidate_fallback_retry(
         try:
             resp_m = await _matrix_call(use_json_mode=True)
         except Exception as e:
-            logger.warning("[step3] matrix fallback retry call#1 failed: %s", e)
+            logger.warning(
+                "[step3] matrix fallback retry call#1 failed err_type=%s err=%s",
+                type(e).__name__,
+                e,
+            )
 
         raw_m = (getattr(resp_m, "content", "") or "").strip() if resp_m else ""
         logger.info(
@@ -5488,7 +5498,11 @@ async def _hyp_candidate_fallback_retry(
                     raw_m[-200:],
                 )
             except Exception as e:
-                logger.warning("[step3] matrix fallback retry call#2 failed: %s", e)
+                logger.warning(
+                    "[step3] matrix fallback retry call#2 failed err_type=%s err=%s",
+                    type(e).__name__,
+                    e,
+                )
 
         if not raw_m:
             # 第 3 次兜底：JSON/空返回都失败时，用 [STEP3_HYP_JSON] 协议块格式再试一次
@@ -5504,7 +5518,7 @@ async def _hyp_candidate_fallback_retry(
             try:
                 resp_proto = await asyncio.wait_for(
                     llm.chat(proto_messages, temperature=0.1, max_tokens=8192),
-                    timeout=25.0,
+                    timeout=STEP3_FALLBACK_LLM_TIMEOUT_SECONDS,
                 )
                 raw_m = (getattr(resp_proto, "content", "") or "").strip() if resp_proto else ""
                 logger.info(
@@ -5513,7 +5527,11 @@ async def _hyp_candidate_fallback_retry(
                     raw_m[-200:],
                 )
             except Exception as e:
-                logger.warning("[step3] matrix fallback retry call#3 (protocol) failed: %s", e)
+                logger.warning(
+                    "[step3] matrix fallback retry call#3 (protocol) failed err_type=%s err=%s",
+                    type(e).__name__,
+                    e,
+                )
         if not raw_m:
             logger.info("[step3] matrix fallback retry: still empty after 3 attempts")
             return [], None

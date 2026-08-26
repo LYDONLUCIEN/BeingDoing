@@ -203,8 +203,8 @@ async def llm_flag_step3_hypotheses(llm: Any, rows: List[Dict[str, Any]]) -> Tup
             LLMMessage(role="system", content=STEP3_LLM_SYSTEM),
             LLMMessage(role="user", content=user),
         ]
-        # 该质检用于闸门辅助，超时后自动降级；45s 留足 LLM 响应余量
-        resp = await asyncio.wait_for(llm.chat(msgs, temperature=0.2, max_tokens=8192), timeout=45.0)
+        # 该质检用于闸门辅助，超时后自动降级；对齐 LLM 客户端自身超时（60s），低于 60s 的包装层会误杀思维链模型的正常长思考
+        resp = await asyncio.wait_for(llm.chat(msgs, temperature=0.2, max_tokens=8192), timeout=60.0)
         raw = (resp.content or "").strip()
         start = raw.find("[")
         end = raw.rfind("]")
@@ -217,7 +217,7 @@ async def llm_flag_step3_hypotheses(llm: Any, rows: List[Dict[str, Any]]) -> Tup
         invalid_rows = [r for r in rows if str(r.get("id")) in invalid_ids]
         return invalid_rows, False
     except asyncio.TimeoutError:
-        logger.warning("rumination step3 hypothesis LLM gate timed out (45s)")
+        logger.warning("rumination step3 hypothesis LLM gate timed out (60s)")
         return [], True
     except json.JSONDecodeError as e:
         logger.warning("rumination step3 hypothesis LLM gate JSON parse failed: %s", e)
