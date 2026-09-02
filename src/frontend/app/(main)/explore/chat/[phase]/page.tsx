@@ -1025,7 +1025,16 @@ export default function ChatPhasePage() {
           }
         } catch (initErr: any) {
           if (!cancelled) {
-            setChatError(getApiErrorMessage(initErr, '初始化失败，请刷新后重试'));
+            // 试用码出卡确认后进入下一阶段：init 被 402 trial_phase_locked 拦截，
+            // 与超 10 轮一样弹购买/升级引导层，而不是笼统的「初始化失败」
+            const block = parseTrialBlock(
+              initErr?.response?.data?.detail ?? initErr?.response?.data?.message
+            );
+            if (block) {
+              setTrialBlock(block);
+            } else {
+              setChatError(getApiErrorMessage(initErr, '初始化失败，请刷新后重试'));
+            }
           }
         } finally {
           if (!cancelled) setInitLoading(false);
@@ -1069,7 +1078,15 @@ export default function ChatPhasePage() {
               }
             } catch (err: any) {
               if (!cancelled) {
-                setChatError(getApiErrorMessage(err, '初始化失败，请刷新后重试'));
+                // 同上：试用码进非价值观阶段 init 402 → 弹购买/升级引导层
+                const block = parseTrialBlock(
+                  err?.response?.data?.detail ?? err?.response?.data?.message
+                );
+                if (block) {
+                  setTrialBlock(block);
+                } else {
+                  setChatError(getApiErrorMessage(err, '初始化失败，请刷新后重试'));
+                }
                 setMessages(thread.messages || []);
                 setBackendSyncedThreadId(activeId);
               }

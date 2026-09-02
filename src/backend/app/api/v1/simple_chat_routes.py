@@ -274,9 +274,12 @@ CONCLUSION_STATE_REJECTED = "rejected"
 # 用户否定/再聊聊后，每满 N 轮用户消息触发一次强制兜底（后端直接生成 draft）
 CONCLUSION_REJECT_NUDGE_USER_TURNS = 3
 
-# 结论卡最早出卡轮数（用户消息条数，含当前条）：四阶段所有用户前 10 轮为深入探索期，
-# 一律不出卡（模型输出 pending_ready 也拦截）；第 11 轮起放开模型自觉出卡 + 手动按钮。
-# admin 调试（_can_bypass_flow_limits）不受限。
+# 手动出卡按钮的最低轮数门槛（用户消息条数，含当前条）：满 11 轮前端才显示
+# 「对话结束无法进行下一步?点击这里」兜底按钮，POST /simple-chat/conclusion/request <11 轮返回 400。
+# 注意：本常量只限「手动强制出卡」，不限制模型自然出卡——模型判断用户明确确认后
+# 任何时候都可输出 STATE_JSON(pending_ready)（2026-09-02 起撤销原 ≤10 轮强制压制门控，
+# 当时为「试用期不出卡促转化」的产品决策，现改由 trial 402 阶段锁承担转化：
+# 试用用户出卡确认后无法进入下一阶段，需付费转正）。admin 调试（_can_bypass_flow_limits）不受限。
 CONCLUSION_MIN_USER_TURNS = 11
 
 
@@ -6316,16 +6319,6 @@ async def simple_chat_stream(
         pending_conclusion = cmeta.get("draft")
         rejected_feedback = cmeta.get("feedback") or ""
 
-        # 前 10 轮深入探索期不出卡门控（四阶段所有用户；admin 调试豁免）
-        # 仅拦截「首次出卡」（state=none）：rejected 说明该线程出过卡（被否定后补充），
-        # 其重新出卡（pending_ready / retrigger）不受轮数限制
-        conclusion_gate_active = (
-            phase_step != "rumination"
-            and user_count < CONCLUSION_MIN_USER_TURNS
-            and (cmeta.get("state") or CONCLUSION_STATE_NONE) == CONCLUSION_STATE_NONE
-            and not _can_bypass_flow_limits(current_user, rec)
-        )
-
         should_try_retrigger = False
         turns_since_reject: Optional[int] = None
         if (
@@ -6333,7 +6326,6 @@ async def simple_chat_stream(
             and not cmeta.get("thread_completed")
             and not isinstance(pending_conclusion, dict)
             and phase_step != "rumination"
-            and not conclusion_gate_active
         ):
             baseline = meta.get("conclusion_reject_baseline_user_count")
             if isinstance(baseline, int):
@@ -6370,7 +6362,6 @@ async def simple_chat_stream(
                 draft=pending_conclusion if isinstance(pending_conclusion, dict) else None,
                 feedback=clean_feedback,
                 turns_since_reject=turns_since_reject,
-                gate_active=conclusion_gate_active,
             )
             if state_injection:
                 llm_messages[0] = LLMMessage(
@@ -6746,20 +6737,7 @@ async def simple_chat_stream(
                     logical_session_id,
                     type(draft).__name__,
                 )
-            if state_name == "pending_ready" and isinstance(draft, dict) and conclusion_gate_active:
-                # 前 10 轮深入探索期：拦截出卡，仅记录日志（用户可继续聊，满 11 轮后模型会再出或走手动按钮）
-                logger.info(
-                    "[state_json] pending_ready suppressed by min-turns gate phase=%s thread=%s user_count=%s min_turns=%s",
-                    phase_step,
-                    logical_session_id,
-                    user_count,
-                    CONCLUSION_MIN_USER_TURNS,
-                )
-            if (
-                state_name == "pending_ready"
-                and isinstance(draft, dict)
-                and not conclusion_gate_active
-            ):
+            if state_name == "pending_ready" and isinstance(draft, dict):
                 # 自动出卡统一链路：pending_ready 先走结论生成器，稳定复用文风规则与示例。
                 draft_to_save = sanitize_pending_conclusion_draft(phase_step, dict(draft))
                 # 使命阶段：用 metadata 的 confirmed_rows 覆盖 LLM 的 experience_value_rows

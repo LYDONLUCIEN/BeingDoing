@@ -118,7 +118,6 @@ def build_conclusion_state_injection(
     draft: Optional[Dict[str, Any]] = None,
     feedback: str = "",
     turns_since_reject: Optional[int] = None,
-    gate_active: bool = False,
 ) -> str:
     """
     统一结论卡状态注入段（放 system 最末尾，[输出协议] 之后）。
@@ -130,19 +129,13 @@ def build_conclusion_state_injection(
     draft: pending/rejected 时的草案内容
     feedback: rejected 时的用户拒绝理由（已清洗）
     turns_since_reject: rejected 状态下距上次拒绝已补充的轮数
-    gate_active: 前 10 轮深入探索期不出卡门控（仅 state=none 时生效）：提示模型不要收口出卡
     """
     s = (state or "").strip().lower()
     if s not in {"none", "pending", "rejected", "confirmed"}:
         s = "none"
 
+    # 模型自然出卡不设最小轮数限制（2026-09-02 起）：用户明确点头确认即可出卡
     none_rule = "- none：未生成过草案。→ 用户对本阶段探索结果明确点头确认时，本轮末尾输出 STATE_JSON(state=pending_ready)。"
-    if gate_active and s == "none":
-        none_rule = (
-            "- none：未生成过草案。→ 当前处于深入探索期，系统暂不出结论卡："
-            "即使对方已明确认可本阶段结果，也不要输出 STATE_JSON；"
-            "不要呈现「最终总结/请你确认」式收口话术，继续围绕本阶段目标深入提问和探索。"
-        )
 
     header = (
         "[结论卡状态·内部参考·严禁向用户复述]\n"
