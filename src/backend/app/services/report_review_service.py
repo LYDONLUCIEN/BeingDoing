@@ -43,35 +43,42 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def build_approved_notification_content(report_id: str) -> str:
-    """人工/自动批复同一文案（ADR-0009：用户只感知「管理员审核通过」）。"""
+def build_approved_notification_content(activation_code: str) -> str:
+    """人工/自动批复同一文案（ADR-0009：用户只感知「管理员审核通过」）。
+
+    用户侧标识用激活码（用户唯一知道的报告标识），不写内部 report_id。
+    """
     return (
         "您的报告已审核通过，点击查看完整报告："
-        f"{REPORT_ENTRY_PATH}\n报告编号：{report_id}"
+        f"{REPORT_ENTRY_PATH}\n激活码：{activation_code}"
     )
 
 
 async def notify_report_approved(
-    db: AsyncSession, user_id: str, report_id: str
+    db: AsyncSession, user_id: str, report_id: str, activation_code: str = ""
 ) -> bool:
     """
     给用户发「报告已审核通过」站内信（复用 notifications 表）。
 
     幂等：同一 (user_id, report_id) 已存在 report_approved 通知则不重复发。
+    去重键优先用激活码（报告↔激活码 1:1，与 report_id 语义等价），
+    正文不再暴露内部 report_id；activation_code 缺失时回退 report_id（仅兼容兜底）。
     Returns: True = 新建了通知；False = 已存在跳过。
     """
     uid = (user_id or "").strip()
     rid = (report_id or "").strip()
+    code = (activation_code or "").strip()
     if not uid or not rid:
         logger.warning("报告批复通知缺少 user_id/report_id，跳过: user_id=%r report_id=%r", user_id, report_id)
         return False
+    dedup_key = code or rid
 
     existing = (
         await db.execute(
             select(Notification).where(
                 Notification.user_id == uid,
                 Notification.type == NOTIFICATION_TYPE,
-                Notification.content.like(f"%{rid}%"),
+                Notification.content.like(f"%{dedup_key}%"),
             )
         )
     ).scalars().first()
@@ -83,7 +90,7 @@ async def notify_report_approved(
             user_id=uid,
             type=NOTIFICATION_TYPE,
             title=NOTIFICATION_TITLE,
-            content=build_approved_notification_content(rid),
+            content=build_approved_notification_content(dedup_key),
             read_at=None,
             related_feedback_id=None,
         )
@@ -182,7 +189,12 @@ async def approve_report(
     registry.save_record(record)
 
     if db is not None:
-        await notify_report_approved(db, record.get("user_id") or "", report_id)
+        await notify_report_approved(
+            db,
+            record.get("user_id") or "",
+            report_id,
+            record.get("activation_code") or "",
+        )
 
     # 批复通过瞬间后台自动生成报告 markdown（用户页「生成报告」按钮仅为兜底）。
     # 五阶段未完成时跳过（未完成的报告生成出来只有占位文案，与 export 完成度门控同口径）。

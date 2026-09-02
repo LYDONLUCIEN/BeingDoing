@@ -28412,22 +28412,36 @@ function visibleLength(text) {
 function lineCount(text, charactersPerLine) {
   return Math.max(1, Math.ceil(visibleLength(text) / charactersPerLine));
 }
+var CONTENT_WIDTH = 694;
+var PARAGRAPH_CHARS_PER_LINE = 53;
+var PARAGRAPH_LINE_HEIGHT = 22.5;
+var LIST_CHARS_PER_LINE = 54;
+var LIST_LINE_HEIGHT = 20;
+var EMPHASIS_CHARS_PER_LINE = 48;
+var H2_CHARS_PER_LINE = 33;
+var H2_LINE_HEIGHT = 26.5;
+var TABLE_LINE_HEIGHT = 15.5;
+var TABLE_ROW_BASE = 15;
+function tableCharactersPerCell(columns) {
+  return Math.max(6, Math.floor((CONTENT_WIDTH / Math.max(1, columns) - 15) / 10.3));
+}
+function tableRowHeight(row, charactersPerCell) {
+  return TABLE_ROW_BASE + Math.max(...row.map((cell) => lineCount(cell, charactersPerCell))) * TABLE_LINE_HEIGHT;
+}
 function estimateBlockHeight(block) {
   if (block.type === "heading") {
-    if (block.level <= 2) return 25 + lineCount(block.text, 30) * 31;
-    return 22 + lineCount(block.text, 44) * 21;
+    if (block.level <= 2) return 30 + lineCount(block.text, H2_CHARS_PER_LINE) * H2_LINE_HEIGHT;
+    return 22 + lineCount(block.text, EMPHASIS_CHARS_PER_LINE) * 21;
   }
   if (block.type === "paragraph") {
-    if (/^\*\*[^*]+\*\*$/.test(block.text)) return 20 + lineCount(block.text, 44) * 22;
-    return 11 + lineCount(block.text, 52) * 23;
+    if (/^\*\*[^*]+\*\*$/.test(block.text)) return 18 + lineCount(block.text, EMPHASIS_CHARS_PER_LINE) * 21;
+    return 11 + lineCount(block.text, PARAGRAPH_CHARS_PER_LINE) * PARAGRAPH_LINE_HEIGHT;
   }
   if (block.type === "list") {
-    return 13 + block.items.reduce((height, item) => height + lineCount(item, 48) * 21 + 5, 0);
+    return 15 + block.items.reduce((height, item) => height + lineCount(item, LIST_CHARS_PER_LINE) * LIST_LINE_HEIGHT + 5, 0);
   }
-  const columns = Math.max(1, block.headers.length);
-  const charactersPerCell = Math.max(12, Math.floor(64 / columns));
-  const rowHeight = (row) => 15 + Math.max(...row.map((cell) => lineCount(cell, charactersPerCell))) * 18;
-  return 18 + rowHeight(block.headers) + block.rows.reduce((height, row) => height + rowHeight(row), 0);
+  const charactersPerCell = tableCharactersPerCell(block.headers.length);
+  return 21 + tableRowHeight(block.headers, charactersPerCell) + block.rows.reduce((height, row) => height + tableRowHeight(row, charactersPerCell), 0);
 }
 function needsFollower(block) {
   return block.type === "heading" || block.type === "paragraph" && /^\*\*[^*]+\*\*$/.test(block.text);
@@ -28448,17 +28462,15 @@ function addedBlockHeight(block, previous) {
 function minimumBlockHeight(block) {
   if (block.type === "paragraph") {
     if (/^\*\*[^*]+\*\*$/.test(block.text)) return estimateBlockHeight(block);
-    return 11 + Math.min(2, lineCount(block.text, 52)) * 23;
+    return 11 + Math.min(2, lineCount(block.text, PARAGRAPH_CHARS_PER_LINE)) * PARAGRAPH_LINE_HEIGHT;
   }
   if (block.type === "list") {
     const firstItem = block.items[0];
-    return firstItem ? 13 + lineCount(firstItem, 48) * 21 + 5 : 0;
+    return firstItem ? 15 + lineCount(firstItem, LIST_CHARS_PER_LINE) * LIST_LINE_HEIGHT + 5 : 0;
   }
   if (block.type === "table") {
-    const columns = Math.max(1, block.headers.length);
-    const charactersPerCell = Math.max(12, Math.floor(64 / columns));
-    const rowHeight = (row) => 15 + Math.max(...row.map((cell) => lineCount(cell, charactersPerCell))) * 18;
-    return 18 + rowHeight(block.headers) + (block.rows[0] ? rowHeight(block.rows[0]) : 0);
+    const charactersPerCell = tableCharactersPerCell(block.headers.length);
+    return 21 + tableRowHeight(block.headers, charactersPerCell) + (block.rows[0] ? tableRowHeight(block.rows[0], charactersPerCell) : 0);
   }
   return estimateBlockHeight(block);
 }
@@ -28501,9 +28513,9 @@ function findTextSplitIndex(text, maxVisibleCharacters) {
 }
 function splitParagraph(block, maxHeight) {
   if (/^\*\*[^*]+\*\*$/.test(block.text)) return void 0;
-  const availableLines = Math.floor((maxHeight - 11) / 23);
+  const availableLines = Math.floor((maxHeight - 11) / PARAGRAPH_LINE_HEIGHT);
   if (availableLines < 2) return void 0;
-  const maxVisibleCharacters = availableLines * 52;
+  const maxVisibleCharacters = availableLines * PARAGRAPH_CHARS_PER_LINE;
   const totalCharacters = visibleLength(block.text);
   if (totalCharacters <= maxVisibleCharacters) return void 0;
   const minimumTailCharacters = Math.min(70, Math.floor(totalCharacters / 3));
@@ -28519,7 +28531,7 @@ function splitList(block, maxHeight) {
   let height = 13;
   let splitIndex = 0;
   for (const item of block.items) {
-    const itemHeight = lineCount(item, 48) * 21 + 5;
+    const itemHeight = lineCount(item, LIST_CHARS_PER_LINE) * LIST_LINE_HEIGHT + 5;
     if (splitIndex > 0 && height + itemHeight > maxHeight) break;
     if (splitIndex === 0 && height + itemHeight > maxHeight) return void 0;
     height += itemHeight;
@@ -28529,10 +28541,9 @@ function splitList(block, maxHeight) {
   return [{ ...block, items: block.items.slice(0, splitIndex) }, { ...block, items: block.items.slice(splitIndex) }];
 }
 function splitTable(block, maxHeight) {
-  const columns = Math.max(1, block.headers.length);
-  const charactersPerCell = Math.max(12, Math.floor(64 / columns));
-  const rowHeight = (row) => 15 + Math.max(...row.map((cell) => lineCount(cell, charactersPerCell))) * 18;
-  let height = 18 + rowHeight(block.headers);
+  const charactersPerCell = tableCharactersPerCell(block.headers.length);
+  const rowHeight = (row) => tableRowHeight(row, charactersPerCell);
+  let height = 7 + rowHeight(block.headers);
   let splitIndex = 0;
   for (const row of block.rows) {
     const nextHeight = rowHeight(row);
@@ -28558,6 +28569,28 @@ function pageBudget(section, sectionPage) {
 function sequenceHeight(blocks) {
   return blocks.reduce((height, block, index) => height + addedBlockHeight(block, blocks[index - 1]), 0);
 }
+function fuseSplitFragments(blocks) {
+  const fused = [];
+  for (const block of blocks) {
+    const prev = fused.at(-1);
+    if (prev && block.splitGroup !== void 0 && prev.splitGroup === block.splitGroup) {
+      if (prev.type === "table" && block.type === "table") {
+        fused[fused.length - 1] = { ...prev, rows: [...prev.rows, ...block.rows] };
+        continue;
+      }
+      if (prev.type === "paragraph" && block.type === "paragraph") {
+        fused[fused.length - 1] = { ...prev, text: prev.text + block.text };
+        continue;
+      }
+      if (prev.type === "list" && block.type === "list") {
+        fused[fused.length - 1] = { ...prev, items: [...prev.items, ...block.items] };
+        continue;
+      }
+    }
+    fused.push(block);
+  }
+  return fused;
+}
 function rebalanceSectionEnd(pages, sectionStartIndex) {
   const sectionPages = pages.slice(sectionStartIndex);
   if (sectionPages.length < 2 || sectionPages[0].section.kind === "letter") return;
@@ -28565,7 +28598,7 @@ function rebalanceSectionEnd(pages, sectionStartIndex) {
   const last = sectionPages.at(-1);
   const previousBudget = pageBudget(previous.section, previous.sectionPage);
   const lastBudget = pageBudget(last.section, last.sectionPage);
-  const combined = [...previous.blocks, ...last.blocks];
+  const combined = fuseSplitFragments([...previous.blocks, ...last.blocks]);
   if (sequenceHeight(combined) <= previousBudget + 35) {
     previous.blocks = combined;
     pages.pop();
@@ -28607,6 +28640,7 @@ function paginateReport(markdown2) {
       budget = pageBudget(section, sectionPage);
     };
     const queue = [...section.blocks];
+    let splitGroupSeq = 0;
     while (queue.length) {
       const block = queue.shift();
       const previousBlock = current.at(-1);
@@ -28626,9 +28660,12 @@ function paginateReport(markdown2) {
       }
       const split = splitBlock(block, availableHeight + marginCollapse);
       if (split) {
-        current.push(split[0]);
-        usedHeight += addedBlockHeight(split[0], previousBlock);
-        queue.unshift(split[1]);
+        const splitGroup = block.splitGroup ?? ++splitGroupSeq;
+        const head = { ...split[0], splitGroup };
+        const tail = { ...split[1], splitGroup };
+        current.push(head);
+        usedHeight += addedBlockHeight(head, previousBlock);
+        queue.unshift(tail);
         finishPage();
         continue;
       }
@@ -28748,7 +28785,7 @@ function ReportCoverPage({ totalPages, meta: meta2 }) {
         "\u804C\u4E1A\u53D1\u5C55\u6DF1\u5EA6\u62A5\u544A"
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("i", {}),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("strong", { children: "\u63A2\u7D22\u771F\u5B9E\u7684\u81EA\u5DF1\uFF0C\u627E\u5230\u66F4\u50CF\u4F60\u7684\u65B9\u5411" })
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("strong", { children: "\u6240\u6709\u70ED\u7231,\u90FD\u503C\u5F97\u6210\u4E3A\u4E8B\u4E1A\u3002" })
     ] }),
     /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("dl", { className: "markdown-report-cover__meta", children: [
       /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { children: [

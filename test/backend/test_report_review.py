@@ -483,6 +483,8 @@ def test_admin_manual_approve(reg: ReportRegistry, db_factory) -> None:
             assert len(rows) == 1
             assert "您的报告已审核通过" in rows[0].content
             assert "/explore/report/view" in rows[0].content
+            assert "激活码：CODE1" in rows[0].content
+            assert rid not in rows[0].content  # 内部 report_id 不透出给用户
 
     asyncio.run(_check())
 
@@ -717,10 +719,31 @@ async def test_auto_approve_overdue(reg: ReportRegistry, db_factory) -> None:
 @pytest.mark.asyncio
 async def test_notify_idempotent(db_factory) -> None:
     async with db_factory() as db:
-        assert await report_review_service.notify_report_approved(db, "user-1", "rpt-x") is True
+        assert (
+            await report_review_service.notify_report_approved(
+                db, "user-1", "rpt-x", "CODE-X"
+            )
+            is True
+        )
         await db.commit()
-        assert await report_review_service.notify_report_approved(db, "user-1", "rpt-x") is False
+        assert (
+            await report_review_service.notify_report_approved(
+                db, "user-1", "rpt-x", "CODE-X"
+            )
+            is False
+        )
         await db.commit()
+        # 内容用激活码做用户可见标识，不暴露内部 report_id
+        n = (
+            await db.execute(
+                select(Notification).where(
+                    Notification.user_id == "user-1",
+                    Notification.type == "report_approved",
+                )
+            )
+        ).scalar_one()
+        assert "激活码：CODE-X" in n.content
+        assert "rpt-x" not in n.content
     assert await _count_notifications(db_factory) == 1
 
 

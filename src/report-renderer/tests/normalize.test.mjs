@@ -89,3 +89,34 @@ test("xunlu 原生样例：归一化是恒等变换，章节结构与页数不�
   // 分页结果与原始输入一致（页数不变）
   assert.equal(paginateReport(normalized).length, paginateReport(sample).length);
 });
+
+test("跨页拆表被 rebalance 合并回同页时，片段按相同表头拼回一张表", () => {
+  // 构造：填满大半个续页的正文 + 一张 6 行表 + 短收尾段，
+  // 使表格在章节最后两页之间被拆（2+4），随后 rebalance 把尾页合并回来。
+  const filler = "这是一段用于填充页面高度的正文内容，".repeat(2);
+  const body = Array.from({ length: 11 }, () => filler).join("\n\n");
+  const row = Array.from({ length: 8 }, (_, i) => `| 方向${i} | 价值观匹配度较高 | 优势匹配度中高 | 热爱匹配度高 | 核心吸引力描述文字 | 风险描述 | 入门难度中 |`).join("\n");
+  const md = [
+    "# 小明的寻路之旅", "", "## 阅读指南", "", "指南", "", PB, "",
+    "# 第七章 其余职业方向推荐", "", body, "",
+    "### 推荐方向总结表", "",
+    "| 方向名称 | 价值观匹配度 | 优势匹配度 | 热爱匹配度 | 核心吸引力 | 风险 | 入门难度 |",
+    "| --- | --- | --- | --- | --- | --- | --- |",
+    row, "",
+    "**结语**", "", "收尾。", "",
+  ].join("\n");
+  const pages = paginateReport(normalizeReportMarkdown(md));
+  let fragmentPairs = 0;
+  let totalRows = 0;
+  for (const page of pages) {
+    for (let i = 1; i < page.blocks.length; i += 1) {
+      const a = page.blocks[i - 1];
+      const b = page.blocks[i];
+      if (a.type === "table" && b.type === "table" && a.headers.join() === b.headers.join()) fragmentPairs += 1;
+      if (a.splitGroup !== undefined && a.splitGroup === b.splitGroup) fragmentPairs += 1;
+    }
+    for (const b of page.blocks) if (b.type === "table" && b.headers[0] === "方向名称") totalRows += b.rows.length;
+  }
+  assert.equal(fragmentPairs, 0, "同页不应出现相邻的同源拆分片段（表格重复表头/段落拦腰截断）");
+  assert.equal(totalRows, 8, "表格行数在拆分/合并后不得丢失");
+});

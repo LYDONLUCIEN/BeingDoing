@@ -710,13 +710,12 @@ class PaymentService:
                     "—— 寻路·OpenLife"
                 )
             elif product_type == PRODUCT_CONSULTATION:
-                booking_id = (meta or {}).get("booking_id", "")
                 subject = "【寻路·OpenLife】报告解读咨询购买成功"
                 body = (
                     "您好，\n\n"
                     "感谢您的购买。请前往填写预约问卷（想探讨的主题、方便的时间段、联系方式），"
                     "我们会尽快与您确认咨询时间：\n\n"
-                    f"{frontend}/dashboard/consultation/{booking_id}\n\n"
+                    f"{frontend}/dashboard/consultation\n\n"
                     "—— 寻路·OpenLife"
                 )
             else:  # 旧 SKU 历史订单

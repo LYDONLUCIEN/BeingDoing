@@ -216,7 +216,8 @@ async def test_admin_schedule_and_complete():
     assert notif.type == "consultation_scheduled"
     assert notif.title == "咨询时间已确认"
     assert "2026-07-25 20:00" in notif.content
-    assert f"/dashboard/consultation/{booking.id}" in notif.content
+    assert "/dashboard/consultation" in notif.content
+    assert booking.id not in notif.content  # 内部 booking_id 不透出给用户
     assert "已微信确认" not in notif.content
     assert notif.read_at is None
 

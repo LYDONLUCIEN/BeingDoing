@@ -378,6 +378,8 @@ async def publish_recheck(
     registry.save_record(record)
 
     user_id = record.get("user_id") or ""
+    # 用户侧标识用激活码（用户唯一知道的报告标识），不写内部 report_id
+    activation_code = record.get("activation_code") or ""
     await _close_feedback(db, cur.get("feedback_id"))
     await _notify_user(
         db,
@@ -387,7 +389,7 @@ async def publish_recheck(
         content=(
             "您申请复核的报告已完成更新，请重新下载查看最新版本："
             "/explore/report/view\n"
-            f"报告编号：{report_id}"
+            f"激活码：{activation_code}"
         ),
     )
     await _send_email_to_user(
@@ -397,7 +399,7 @@ async def publish_recheck(
         body_text=(
             "您好，\n\n"
             "您申请复核的报告已完成内容更新，登录后进入报告页重新下载即可查看最新版本。\n\n"
-            f"报告编号：{report_id}\n\n"
+            f"激活码：{activation_code}\n\n"
             "—— 寻路·OpenLife 团队"
         ),
     )
@@ -437,6 +439,8 @@ async def reject_recheck(
     ReportPdfService(base_dir=str(base_dir) if base_dir else None).discard_staging(report_id)
 
     user_id = record.get("user_id") or ""
+    # 用户侧标识用激活码，不写内部 report_id
+    activation_code = record.get("activation_code") or ""
     await _close_feedback(db, cur.get("feedback_id"))
     await _notify_user(
         db,
@@ -446,7 +450,7 @@ async def reject_recheck(
         content=(
             "您的报告复核申请经管理员评估后未予重新生成，理由如下：\n\n"
             f"{reason}\n\n"
-            f"报告编号：{report_id}\n"
+            f"激活码：{activation_code}\n"
             "如有疑问可通过反馈通道继续与我们联系。"
         ),
     )

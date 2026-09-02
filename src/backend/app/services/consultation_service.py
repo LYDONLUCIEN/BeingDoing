@@ -37,13 +37,14 @@ NOTIFY_TYPE_SCHEDULED = "consultation_scheduled"
 NOTIFY_TITLE_SCHEDULED = "咨询时间已确认"
 
 
-def _build_scheduled_notification_content(booking_id: str, scheduled_dt: datetime) -> str:
-    """预约确认站内信文案（时间 + 详情页入口；admin_note 为内部备注不透出）。"""
+def _build_scheduled_notification_content(scheduled_dt: datetime) -> str:
+    """预约确认站内信文案（时间 + 预约列表页入口；admin_note 为内部备注不透出，
+    booking_id 为内部 UUID 不写进用户可见文案）。"""
     time_str = scheduled_dt.strftime("%Y-%m-%d %H:%M")
     return (
         f"您的报告解读咨询时间已确认：{time_str}。\n"
         "请提前安排好时间，顾问将通过您预留的联系方式与您沟通。\n"
-        f"查看详情：/dashboard/consultation/{booking_id}"
+        "查看详情：/dashboard/consultation"
     )
 
 
@@ -275,7 +276,7 @@ class ConsultationService:
                     user_id=booking.user_id,
                     type=NOTIFY_TYPE_SCHEDULED,
                     title=NOTIFY_TITLE_SCHEDULED,
-                    content=_build_scheduled_notification_content(booking_id, scheduled_dt),
+                    content=_build_scheduled_notification_content(scheduled_dt),
                     read_at=None,
                     related_feedback_id=None,
                 )

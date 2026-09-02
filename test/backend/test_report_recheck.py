@@ -436,7 +436,8 @@ def test_publish_flow(reg: ReportRegistry, db_factory) -> None:
                     )
                 )
             ).scalar_one()
-            assert rid in n.content
+            assert "激活码：CODE1" in n.content
+            assert rid not in n.content  # 内部 report_id 不透出给用户
             # Feedback 工单已关闭
             fb = (
                 await db.execute(select(Feedback).where(Feedback.id == entry["feedback_id"]))

@@ -163,7 +163,7 @@ export default function ConsultationBookingPage() {
             >
               {reports.map((r) => (
                 <option key={r.report_id} value={r.report_id}>
-                  {r.report_id}
+                  {r.activation_code}
                 </option>
               ))}
             </select>

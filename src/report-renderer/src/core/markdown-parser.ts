@@ -1,10 +1,10 @@
 import type { ModulePageNumber } from "./module-content";
 
 export type MarkdownBlock =
-  | { type: "heading"; level: 1 | 2 | 3 | 4; text: string }
-  | { type: "paragraph"; text: string }
-  | { type: "list"; items: string[] }
-  | { type: "table"; headers: string[]; rows: string[][] };
+  | { type: "heading"; level: 1 | 2 | 3 | 4; text: string; splitGroup?: number }
+  | { type: "paragraph"; text: string; splitGroup?: number }
+  | { type: "list"; items: string[]; splitGroup?: number }
+  | { type: "table"; headers: string[]; rows: string[][]; splitGroup?: number };
 
 export type ReportSectionKind = "guide" | "role" | "module" | "letter";
 
@@ -163,22 +163,49 @@ function lineCount(text: string, charactersPerLine: number) {
   return Math.max(1, Math.ceil(visibleLength(text) / charactersPerLine));
 }
 
+// ── 版式常量（2026-08-31 校准，与 src/styles/report.css 对齐）──
+// 字体为内嵌 Noto Serif SC，字宽确定（CJK ≈ 1em）；正文内容宽度 =
+// 210mm(≈794px) − 左右 padding 50px×2 = 694px。各值刻意留 1~2% 余量，
+// 保证估算宁可略高（早断一行）不可偏低（溢出会被 overflow:hidden 裁字）。
+const CONTENT_WIDTH = 694;
+// 段落 p：12.6px 字 + 0.012em 字距 ≈ 12.75px/字 → 694/12.75 ≈ 54 字/行；行高 12.6×1.78 ≈ 22.4px
+const PARAGRAPH_CHARS_PER_LINE = 53;
+const PARAGRAPH_LINE_HEIGHT = 22.5;
+// 列表 li：12px 字，文本宽 694 − 22(ul padding) − 3(li padding) = 669 → ≈55 字/行；行高 12×1.67 ≈ 20px
+const LIST_CHARS_PER_LINE = 54;
+const LIST_LINE_HEIGHT = 20;
+// 加粗小标题/强调段（渲染为 .markdown-report__label/__emphasis）：13.5px 字 + 字距 ≈ 14px/字 → ≈49 字/行
+const EMPHASIS_CHARS_PER_LINE = 48;
+// 二级标题 h2：19px 字 + 0.04em 字距 ≈ 19.8px/字，文本宽 678 → ≈34 字/行；行高 19×1.38 ≈ 26.2px
+const H2_CHARS_PER_LINE = 33;
+const H2_LINE_HEIGHT = 26.5;
+// 表格 td：10.3px 字，行高 ×1.48 ≈ 15.2px；行基础高 = padding 7×2 + border ≈ 15px
+const TABLE_LINE_HEIGHT = 15.5;
+const TABLE_ROW_BASE = 15;
+
+/** 表格每格每行可容纳字数：列宽 = 694/列数（table-layout: fixed 均分），减 td padding 14px，按 10.3px/字 */
+function tableCharactersPerCell(columns: number) {
+  return Math.max(6, Math.floor((CONTENT_WIDTH / Math.max(1, columns) - 15) / 10.3));
+}
+
+function tableRowHeight(row: string[], charactersPerCell: number) {
+  return TABLE_ROW_BASE + Math.max(...row.map((cell) => lineCount(cell, charactersPerCell))) * TABLE_LINE_HEIGHT;
+}
+
 export function estimateBlockHeight(block: MarkdownBlock) {
   if (block.type === "heading") {
-    if (block.level <= 2) return 25 + lineCount(block.text, 30) * 31;
-    return 22 + lineCount(block.text, 44) * 21;
+    if (block.level <= 2) return 30 + lineCount(block.text, H2_CHARS_PER_LINE) * H2_LINE_HEIGHT;
+    return 22 + lineCount(block.text, EMPHASIS_CHARS_PER_LINE) * 21;
   }
   if (block.type === "paragraph") {
-    if (/^\*\*[^*]+\*\*$/.test(block.text)) return 20 + lineCount(block.text, 44) * 22;
-    return 11 + lineCount(block.text, 52) * 23;
+    if (/^\*\*[^*]+\*\*$/.test(block.text)) return 18 + lineCount(block.text, EMPHASIS_CHARS_PER_LINE) * 21;
+    return 11 + lineCount(block.text, PARAGRAPH_CHARS_PER_LINE) * PARAGRAPH_LINE_HEIGHT;
   }
   if (block.type === "list") {
-    return 13 + block.items.reduce((height, item) => height + lineCount(item, 48) * 21 + 5, 0);
+    return 15 + block.items.reduce((height, item) => height + lineCount(item, LIST_CHARS_PER_LINE) * LIST_LINE_HEIGHT + 5, 0);
   }
-  const columns = Math.max(1, block.headers.length);
-  const charactersPerCell = Math.max(12, Math.floor(64 / columns));
-  const rowHeight = (row: string[]) => 15 + Math.max(...row.map((cell) => lineCount(cell, charactersPerCell))) * 18;
-  return 18 + rowHeight(block.headers) + block.rows.reduce((height, row) => height + rowHeight(row), 0);
+  const charactersPerCell = tableCharactersPerCell(block.headers.length);
+  return 21 + tableRowHeight(block.headers, charactersPerCell) + block.rows.reduce((height, row) => height + tableRowHeight(row, charactersPerCell), 0);
 }
 
 function needsFollower(block: MarkdownBlock) {
@@ -204,17 +231,15 @@ function addedBlockHeight(block: MarkdownBlock, previous?: MarkdownBlock) {
 function minimumBlockHeight(block: MarkdownBlock) {
   if (block.type === "paragraph") {
     if (/^\*\*[^*]+\*\*$/.test(block.text)) return estimateBlockHeight(block);
-    return 11 + Math.min(2, lineCount(block.text, 52)) * 23;
+    return 11 + Math.min(2, lineCount(block.text, PARAGRAPH_CHARS_PER_LINE)) * PARAGRAPH_LINE_HEIGHT;
   }
   if (block.type === "list") {
     const firstItem = block.items[0];
-    return firstItem ? 13 + lineCount(firstItem, 48) * 21 + 5 : 0;
+    return firstItem ? 15 + lineCount(firstItem, LIST_CHARS_PER_LINE) * LIST_LINE_HEIGHT + 5 : 0;
   }
   if (block.type === "table") {
-    const columns = Math.max(1, block.headers.length);
-    const charactersPerCell = Math.max(12, Math.floor(64 / columns));
-    const rowHeight = (row: string[]) => 15 + Math.max(...row.map((cell) => lineCount(cell, charactersPerCell))) * 18;
-    return 18 + rowHeight(block.headers) + (block.rows[0] ? rowHeight(block.rows[0]) : 0);
+    const charactersPerCell = tableCharactersPerCell(block.headers.length);
+    return 21 + tableRowHeight(block.headers, charactersPerCell) + (block.rows[0] ? tableRowHeight(block.rows[0], charactersPerCell) : 0);
   }
   return estimateBlockHeight(block);
 }
@@ -263,10 +288,10 @@ function findTextSplitIndex(text: string, maxVisibleCharacters: number) {
 
 function splitParagraph(block: Extract<MarkdownBlock, { type: "paragraph" }>, maxHeight: number) {
   if (/^\*\*[^*]+\*\*$/.test(block.text)) return undefined;
-  const availableLines = Math.floor((maxHeight - 11) / 23);
+  const availableLines = Math.floor((maxHeight - 11) / PARAGRAPH_LINE_HEIGHT);
   if (availableLines < 2) return undefined;
 
-  const maxVisibleCharacters = availableLines * 52;
+  const maxVisibleCharacters = availableLines * PARAGRAPH_CHARS_PER_LINE;
   const totalCharacters = visibleLength(block.text);
   if (totalCharacters <= maxVisibleCharacters) return undefined;
 
@@ -285,7 +310,7 @@ function splitList(block: Extract<MarkdownBlock, { type: "list" }>, maxHeight: n
   let height = 13;
   let splitIndex = 0;
   for (const item of block.items) {
-    const itemHeight = lineCount(item, 48) * 21 + 5;
+    const itemHeight = lineCount(item, LIST_CHARS_PER_LINE) * LIST_LINE_HEIGHT + 5;
     if (splitIndex > 0 && height + itemHeight > maxHeight) break;
     if (splitIndex === 0 && height + itemHeight > maxHeight) return undefined;
     height += itemHeight;
@@ -296,10 +321,10 @@ function splitList(block: Extract<MarkdownBlock, { type: "list" }>, maxHeight: n
 }
 
 function splitTable(block: Extract<MarkdownBlock, { type: "table" }>, maxHeight: number) {
-  const columns = Math.max(1, block.headers.length);
-  const charactersPerCell = Math.max(12, Math.floor(64 / columns));
-  const rowHeight = (row: string[]) => 15 + Math.max(...row.map((cell) => lineCount(cell, charactersPerCell))) * 18;
-  let height = 18 + rowHeight(block.headers);
+  const charactersPerCell = tableCharactersPerCell(block.headers.length);
+  const rowHeight = (row: string[]) => tableRowHeight(row, charactersPerCell);
+  // 本页占用 = 上外边距 7 + 表头 + 放得下的小行；下外边距（14px）悬在末行之后不影响本页装载
+  let height = 7 + rowHeight(block.headers);
   let splitIndex = 0;
   for (const row of block.rows) {
     const nextHeight = rowHeight(row);
@@ -330,6 +355,35 @@ function sequenceHeight(blocks: MarkdownBlock[]) {
   return blocks.reduce((height, block, index) => height + addedBlockHeight(block, blocks[index - 1]), 0);
 }
 
+/**
+ * 融合相邻的同源片段：splitBlock 跨页拆开的段落/列表/表格，若 rebalance 把尾页
+ * 合并回上一页，两个片段会同页相邻——表格会渲染成「一张表中间断开、重复表头」，
+ * 段落会被拦腰截成两段。拆分时会打 splitGroup 标记，这里按标记拼回一个块。
+ */
+function fuseSplitFragments(blocks: MarkdownBlock[]) {
+  const fused: MarkdownBlock[] = [];
+  for (const block of blocks) {
+    const prev = fused.at(-1);
+    if (prev && block.splitGroup !== undefined && prev.splitGroup === block.splitGroup) {
+      if (prev.type === "table" && block.type === "table") {
+        fused[fused.length - 1] = { ...prev, rows: [...prev.rows, ...block.rows] };
+        continue;
+      }
+      if (prev.type === "paragraph" && block.type === "paragraph") {
+        // 拆分点两侧的 trim 只会吞掉 ASCII 空格，报告为中文正文，直接拼接
+        fused[fused.length - 1] = { ...prev, text: prev.text + block.text };
+        continue;
+      }
+      if (prev.type === "list" && block.type === "list") {
+        fused[fused.length - 1] = { ...prev, items: [...prev.items, ...block.items] };
+        continue;
+      }
+    }
+    fused.push(block);
+  }
+  return fused;
+}
+
 function rebalanceSectionEnd(pages: MarkdownReportPage[], sectionStartIndex: number) {
   const sectionPages = pages.slice(sectionStartIndex);
   if (sectionPages.length < 2 || sectionPages[0].section.kind === "letter") return;
@@ -338,7 +392,7 @@ function rebalanceSectionEnd(pages: MarkdownReportPage[], sectionStartIndex: num
   const last = sectionPages.at(-1)!;
   const previousBudget = pageBudget(previous.section, previous.sectionPage);
   const lastBudget = pageBudget(last.section, last.sectionPage);
-  const combined = [...previous.blocks, ...last.blocks];
+  const combined = fuseSplitFragments([...previous.blocks, ...last.blocks]);
 
   // The estimator intentionally rounds rows and wrapped lines up. A small
   // merge allowance avoids creating a nearly empty final page for a few
@@ -390,6 +444,7 @@ export function paginateReport(markdown: string): MarkdownReportPage[] {
     };
 
     const queue = [...section.blocks];
+    let splitGroupSeq = 0;
     while (queue.length) {
       const block = queue.shift()!;
       const previousBlock = current.at(-1);
@@ -412,9 +467,13 @@ export function paginateReport(markdown: string): MarkdownReportPage[] {
 
       const split = splitBlock(block, availableHeight + marginCollapse);
       if (split) {
-        current.push(split[0]);
-        usedHeight += addedBlockHeight(split[0], previousBlock);
-        queue.unshift(split[1]);
+        // 拆分片段打上同源标记：跨页拆分后若被 rebalance 合并回同页，可据此拼回
+        const splitGroup = block.splitGroup ?? ++splitGroupSeq;
+        const head = { ...split[0], splitGroup };
+        const tail = { ...split[1], splitGroup };
+        current.push(head);
+        usedHeight += addedBlockHeight(head, previousBlock);
+        queue.unshift(tail);
         finishPage();
         continue;
       }
