@@ -4,12 +4,13 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Sparkles, Star, Check } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Info, Star, Check } from 'lucide-react';
 import { useLocale } from '@/hooks/useLocale';
 import { useAuthStore } from '@/stores/authStore';
 import { useAuthModalStore } from '@/stores/authModalStore';
 import LegalDocLink from '@/components/legal/LegalDocLink';
 import PurchaseModal from '@/components/payment/PurchaseModal';
+import LegacyBrowserNotice from '@/components/layout/LegacyBrowserNotice';
 // ── 用户故事（9 条，3x3 平铺，头像占位 assets/user_story/）──────────────────────────
 const TESTIMONIALS: Array<{
   quote: string;
@@ -149,70 +150,121 @@ function DimensionsSection({ t }: { t: (p: string) => string; locale: string }) 
   );
 }
 
-// ── 即将上线轮播（职业双轨 / 光谱共振 / 静室之我）──
-const COMING_SOON_ITEMS = [
+// ── 常见问题解答（点击展开答案，可同时展开多个）──
+const FAQ_ITEMS = [
   {
-    title: '职业双轨',
-    desc: '职业不是人生的全部，但可以是人生最重要的表达。我们正在构建一套工具，帮你同时规划职业成就路径与人生意义路径。',
+    q: '对话结束后无法继续下一步，该如何操作？',
+    a: '通常情况下，对话结束时，对话框上方会出现“对话结束无法继续？点击下一步”的按钮。点击该按钮后，系统会生成结论卡，您可再点击右上角按钮进入下一轮。若未出现该按钮，您也可以在对话框中手动输入“出结论卡”触发相同流程。请注意，务必在对话正式结束后再进行上述操作，以免因提前操作导致信息遗漏，影响最终报告结果。',
   },
   {
-    title: '光谱共振',
-    desc: '匹配与你四个维度相似或互补的伙伴，在共振中看见彼此、共创可能。',
+    q: '为什么报告需要等待24小时才能下载？',
+    a: '我们采用“AI生成+人工审核”的双重机制，以最大程度降低AI可能产生的偏差，同时注入更多人文关怀。24小时的等待期，正是为了让专业咨询师有充足时间复核和优化报告内容，确保您收到的每一份报告都准确、可靠且富有温度。',
   },
   {
-    title: '静室之我',
-    desc: '属于你自己的读书与思考空间。可随时记录、可空闲沉淀，亦可匿名分享给有缘人。',
+    q: '如果对当前轮次的对话结果感到不确定，有什么建议？',
+    a: '每轮对话的左上角都设有“新增对话”功能。我们建议您可以在不同时间重新开启一轮对话。根据我们的实验，多次对话的结果会逐渐收敛至一个相对稳定的状态，这个过程也有助于您更全面地认识和了解自己。',
+  },
+  {
+    q: '为什么不支持返回上一轮对话主题？',
+    a: '目前我们暂未开放返回功能。建议您在当前话题内充分探讨和思考，再进入下一步。如需重新开始，可点击页面左上角的“新建对话”发起全新会话。',
+  },
+  {
+    q: '使用过程中遇到问题，应该联系谁？',
+    a: '页面右下角设有浮动反馈框，点击后即可提交您的问题、反馈或建议。我们会第一时间查看并回复您。',
+  },
+  {
+    q: '购买后如何申请退款？',
+    a: '若您在购买后尚未使用服务，可通过右下角浮动反馈框提交“问题反馈”，经核实后我们将为您办理退款。若已开始使用，则除因系统故障导致无法正常获取报告外，原则上不予受理退款申请。',
+  },
+  {
+    q: '中途有事需要暂停，能否稍后继续？',
+    a: '可以。对话记录会自动保存，您可随时退出。之后，进入“个人空间-当前进度”，选择对应旅程中正在进行的话题，即可恢复上次的对话。',
+  },
+  {
+    q: '能否回看之前的对话记录？',
+    a: '在套餐有效期内，您可随时回看历史对话记录。进入“个人空间-当前进度”，直接点击您想查看的旅程和话题即可。',
   },
 ];
 
-function ComingSoonFlat() {
-  const { t } = useLocale();
+// 非问答句式，作为 FAQ 列表底部的浏览器兼容性提示条
+const FAQ_BROWSER_TIP = '建议使用 Edge 或 Chrome 浏览器访问；使用其他浏览器如遇到问题，欢迎向我们提交反馈。';
+
+function FaqSection() {
+  const [openIndexes, setOpenIndexes] = useState<number[]>([]);
+  const toggle = (i: number) =>
+    setOpenIndexes((prev) => (prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]));
 
   return (
-    <section className="relative z-10 max-w-4xl mx-auto px-5 py-20">
-      <div className="text-center mb-16">
-        <motion.div
-          initial={false}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          className="inline-flex items-center gap-2 bg-purple-100/60 dark:bg-purple-500/20 backdrop-blur-md text-purple-700 dark:text-purple-300 px-5 py-2 rounded-full mb-6"
-        >
-          <Sparkles className="h-4 w-4" />
-          <span className="text-sm">{t('home.comingSoonBadge')}</span>
-        </motion.div>
+    <section className="relative z-10 max-w-3xl mx-auto px-5 py-20">
+      <div className="text-center mb-12">
         <motion.h2
           initial={false}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
-          className="text-5xl font-semibold mb-4 tracking-[0.05em]"
+          className="text-4xl md:text-5xl font-semibold mb-4 tracking-[0.05em]"
           style={{ color: 'var(--bd-fg)' }}
         >
-          {t('home.comingSoonTitle')}
+          常见问题解答
         </motion.h2>
         <motion.p
           initial={false}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
-          className="text-xl font-light"
+          className="text-lg font-light"
           style={{ color: 'var(--bd-fg-muted)' }}
         >
-          {t('home.comingSoonSubtitle')}
+          关于使用流程、报告与购买的常见疑问
         </motion.p>
       </div>
-      <div className="grid md:grid-cols-3 gap-6">
-        {COMING_SOON_ITEMS.map((item, i) => (
-          <motion.div
-            key={i}
-            initial={false}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ delay: i * 0.1 }}
-            className="bg-white/60 dark:bg-white/10 backdrop-blur-[24px] border border-white/90 dark:border-white/20 rounded-3xl p-8 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.03)] transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_30px_60px_-15px_rgba(0,0,0,0.08)] hover:bg-white/85 dark:hover:bg-white/15"
-          >
-            <h3 className="text-xl font-medium mb-3" style={{ color: 'var(--bd-fg)' }}>{item.title}</h3>
-            <p className="text-sm leading-relaxed font-light" style={{ color: 'var(--bd-fg-muted)' }}>{item.desc}</p>
-          </motion.div>
-        ))}
+      <div className="space-y-3">
+        {FAQ_ITEMS.map((item, i) => {
+          const open = openIndexes.includes(i);
+          return (
+            <motion.div
+              key={i}
+              initial={false}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="bg-white/60 dark:bg-white/10 backdrop-blur-[24px] border border-white/90 dark:border-white/20 rounded-2xl shadow-[0_20px_40px_-10px_rgba(0,0,0,0.03)] overflow-hidden"
+            >
+              <button
+                type="button"
+                onClick={() => toggle(i)}
+                aria-expanded={open}
+                className="w-full flex items-center justify-between gap-4 px-6 py-4 text-left"
+              >
+                <span className="font-medium" style={{ color: 'var(--bd-fg)' }}>
+                  {item.q}
+                </span>
+                <ChevronDown
+                  className={`h-4 w-4 shrink-0 transition-transform duration-300 ${open ? 'rotate-180' : ''}`}
+                  style={{ color: 'var(--bd-fg-muted)' }}
+                />
+              </button>
+              <div
+                className={`grid transition-all duration-300 ease-in-out ${
+                  open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+                }`}
+              >
+                <div className="overflow-hidden">
+                  <p
+                    className="px-6 pb-5 text-sm leading-relaxed font-light"
+                    style={{ color: 'var(--bd-fg-muted)' }}
+                  >
+                    {item.a}
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+      <div
+        className="mt-6 flex items-start gap-2 rounded-2xl border border-dashed px-5 py-4 text-sm font-light"
+        style={{ borderColor: 'rgba(124,92,252,0.35)', color: 'var(--bd-fg-muted)' }}
+      >
+        <Info className="h-4 w-4 mt-0.5 shrink-0" />
+        <span>{FAQ_BROWSER_TIP}</span>
       </div>
     </section>
   );
@@ -628,10 +680,9 @@ function LandingFooter() {
   const { t } = useLocale();
   const year = new Date().getFullYear();
   const copyright = t('footer.copyright').replace('{year}', String(year));
-  // about / contact 走 Link，privacy / terms 走 LegalDocLink 弹层
+  // about 走 Link，privacy / terms 走 LegalDocLink 弹层
   const links = [
     { label: t('footer.aboutUs'), href: '/about' },
-    { label: t('footer.contactUs'), href: '/contact' },
   ];
   const footerLinkClass = 'text-sm hover:underline transition-colors';
   const footerLinkStyle = { color: 'var(--bd-fg-muted)' } as const;
@@ -710,6 +761,8 @@ export default function LandingPage() {
 
   return (
     <div className="landing-mesh-wrap">
+      {/* 旧内核浏览器提示（ADR-0020）：「不再提示」前每次进首页都弹 */}
+      <LegacyBrowserNotice />
       {/* 动态背景：光谱扫射 prism（参考 background4） */}
       <div className="landing-mesh-bg">
         <div className="landing-mesh-prism" aria-hidden />
@@ -774,14 +827,14 @@ export default function LandingPage() {
       {/* ② 四个维度 */}
       <DimensionsSection t={t} locale={locale} />
 
-      {/* ③ 即将上线（职业双轨 / 光谱共振 / 静室之我） */}
-      <ComingSoonFlat />
-
-      {/* ④ 他们的故事：3×3 平铺 */}
+      {/* ③ 他们的故事：3×3 平铺 */}
       <TestimonialGrid videoSrc={STORIES_VIDEO_SRC || undefined} />
 
-      {/* ⑤ 定价 */}
+      {/* ④ 定价 */}
       <PricingSection />
+
+      {/* ⑤ 常见问题解答 */}
+      <FaqSection />
 
       {/* ⑥ 页脚 */}
       <LandingFooter />

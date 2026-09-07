@@ -3,13 +3,15 @@
 
 覆盖：
 - 生成钩子：ensure_report 写 review_status=not_started（不计时）
-- 计时起点：v4 终选提交（final-selection/submit）即转 pending_review + 随机 3~24h deadline
-  并后台预生成报告 markdown（2026-08-23 前移）；进入报告页（my-report-id）的懒触发保留兑底；
-  五阶段未完成则保持 not_started 且阻塞 PDF 端点
+- 计时起点：v4 终选提交（final-selection/submit）即转 pending_review + 固定 24h deadline
+  （2026-09-06 起，原随机 3~24h）并后台预生成报告 markdown（2026-08-23 前移）；
+  进入报告页（my-report-id）的懒触发保留兑底；五阶段未完成则保持 not_started 且阻塞 PDF 端点
 - 存量报告（无审核字段）祖父豁免视为 approved
 - 用户侧阻塞：pending → HTTP 200 返回审核中状态；approved → 放行
 - admin 人工批复：manual 字段 + 站内信触发；列表审核字段与筛选
 - 自动批复 job：过期 pending → approved + auto + 站内信；未过期/not_started/存量不动
+- 审核期生成看门狗（2026-09-06）：pending 未过期 + markdown 缓存缺失 + 无人生成
+  → 自动重试预生成（距上次 >=1h、上限 3 次），保证 24h 解锁时报告已就绪
 - 通知幂等：重复批复/重复跑 job 不重复发站内信
 - 批复后自动生成：approve_report 批复瞬间 kick 后台生成报告 markdown（五阶段未完成跳过；
   幂等批复不重复 kick）；kick 函数本身在无事件循环的同步上下文安全跳过
@@ -37,8 +39,8 @@ from app.models.user import User
 from app.services import report_review_service
 from app.utils.report_registry import STEP_IDS, ReportRegistry
 from app.utils.report_review import (
-    AUTO_APPROVE_MAX_HOURS,
-    AUTO_APPROVE_MIN_HOURS,
+    AUTO_APPROVE_HOURS,
+    PREGEN_RETRY_MAX,
     get_review_status,
     is_pending_review,
     start_review,
@@ -189,13 +191,13 @@ def test_ensure_report_marks_review_not_started(reg: ReportRegistry) -> None:
     assert on_disk["review_deadline"] is None
 
 
-def test_random_deadline_within_range() -> None:
+def test_fixed_deadline_is_24h() -> None:
+    """审核时限固定 24h（2026-09-06 起，原随机 3~24h）。"""
     now = datetime.now(timezone.utc)
     for _ in range(100):
         rec = start_review({}, now=now)
         deadline = datetime.fromisoformat(rec["review_deadline"])
-        delta_h = (deadline - now).total_seconds() / 3600
-        assert AUTO_APPROVE_MIN_HOURS <= delta_h <= AUTO_APPROVE_MAX_HOURS
+        assert deadline - now == timedelta(hours=AUTO_APPROVE_HOURS)
 
 
 def test_legacy_record_without_fields_treated_as_approved(reg: ReportRegistry, tmp_path: Path) -> None:
@@ -303,7 +305,7 @@ def test_user_side_approved_passes(reg: ReportRegistry) -> None:
 
 
 def test_review_starts_on_report_page_entry(reg: ReportRegistry) -> None:
-    """not_started + 五阶段完成 → my-report-id 即刻转 pending + 随机 deadline，并后台预生成。"""
+    """not_started + 五阶段完成 → my-report-id 即刻转 pending + 固定 24h deadline，并后台预生成。"""
     rid = "rpt-start"
     _write_record(reg.simple_base_dir, rid, _not_started_record(rid, complete=True))
     _override_user("user-1")
@@ -324,8 +326,8 @@ def test_review_starts_on_report_page_entry(reg: ReportRegistry) -> None:
         assert body["report_id"] == rid
         assert body["review_status"] == "pending_review"
         deadline = datetime.fromisoformat(body["review_deadline"])
-        assert before + timedelta(hours=AUTO_APPROVE_MIN_HOURS) <= deadline
-        assert deadline <= after + timedelta(hours=AUTO_APPROVE_MAX_HOURS)
+        assert before + timedelta(hours=AUTO_APPROVE_HOURS) <= deadline
+        assert deadline <= after + timedelta(hours=AUTO_APPROVE_HOURS)
 
         # 审核开始即后台预生成报告 markdown（审核期间报告已在自动生成）
         assert export_mod._pdf_tasks.get(rid, {}).get("status") == "pending"
@@ -373,7 +375,7 @@ def test_review_not_started_when_phases_incomplete(reg: ReportRegistry) -> None:
 
 
 def test_review_starts_on_v4_final_submit(reg: ReportRegistry) -> None:
-    """v4 终选提交成功即转 pending_review + 随机 deadline 并后台预生成（不进报告页也计时）。"""
+    """v4 终选提交成功即转 pending_review + 固定 24h deadline 并后台预生成（不进报告页也计时）。"""
     rid = "rpt-v4-submit"
     # 提交前的 record：前四阶段完成，rumination 未锁（submit 端点负责 lock_step）
     rec = _not_started_record(rid, complete=True)
@@ -423,8 +425,8 @@ def test_review_starts_on_v4_final_submit(reg: ReportRegistry) -> None:
         assert saved["steps"]["rumination"]["locked"] is True
         assert saved["review_status"] == "pending_review"
         deadline = datetime.fromisoformat(saved["review_deadline"])
-        assert before + timedelta(hours=AUTO_APPROVE_MIN_HOURS) <= deadline
-        assert deadline <= after + timedelta(hours=AUTO_APPROVE_MAX_HOURS)
+        assert before + timedelta(hours=AUTO_APPROVE_HOURS) <= deadline
+        assert deadline <= after + timedelta(hours=AUTO_APPROVE_HOURS)
         assert export_mod._pdf_tasks.get(rid, {}).get("status") == "pending"
     finally:
         export_mod._pdf_tasks.pop(rid, None)
@@ -712,6 +714,98 @@ async def test_auto_approve_overdue(reg: ReportRegistry, db_factory) -> None:
     )
     assert count2 == 0
     assert await _count_notifications(db_factory) == 1
+
+
+# ── 4b. 审核期生成看门狗（2026-09-06）────────────────────────
+
+@pytest.mark.asyncio
+async def test_pregen_watchdog_retries_when_cache_missing(
+    reg: ReportRegistry, db_factory, _mock_gen_kick
+) -> None:
+    """pending 未过期 + 无 markdown 缓存 + 无人生成 → 看门狗 kick 一次并计数落盘。"""
+    rid = "rpt-wd"
+    rec = _pending_record(rid, datetime.now(timezone.utc) + timedelta(hours=10))
+    _write_record(reg.simple_base_dir, rid, rec)
+
+    count = await report_review_service.auto_approve_overdue(
+        base_dir=str(reg.simple_base_dir), session_factory=db_factory
+    )
+    assert count == 0  # 未过期不批复
+    assert _mock_gen_kick.call_count == 1
+    args = _mock_gen_kick.call_args.args
+    assert args[0] == rid
+    assert args[1] == "user-1"
+    saved = reg.get_report_by_id(rid)
+    assert saved["review_status"] == "pending_review"
+    assert saved["pregen_retry_count"] == 1
+    assert saved["pregen_last_retry_at"]
+
+
+@pytest.mark.asyncio
+async def test_pregen_watchdog_respects_retry_interval(
+    reg: ReportRegistry, db_factory, _mock_gen_kick
+) -> None:
+    """距上次重试 <1h 不重复；>=1h 再次重试。"""
+    rid = "rpt-wd-interval"
+    now = datetime.now(timezone.utc)
+    rec = _pending_record(rid, now + timedelta(hours=10))
+    rec["pregen_retry_count"] = 1
+    rec["pregen_last_retry_at"] = (now - timedelta(minutes=30)).isoformat()
+    _write_record(reg.simple_base_dir, rid, rec)
+
+    await report_review_service.auto_approve_overdue(
+        base_dir=str(reg.simple_base_dir), session_factory=db_factory
+    )
+    assert _mock_gen_kick.call_count == 0
+
+    # 距上次 >= 1h → 再试一次
+    rec2 = reg.get_report_by_id(rid)
+    rec2["pregen_last_retry_at"] = (now - timedelta(hours=2)).isoformat()
+    reg.save_record(rec2)
+    await report_review_service.auto_approve_overdue(
+        base_dir=str(reg.simple_base_dir), session_factory=db_factory
+    )
+    assert _mock_gen_kick.call_count == 1
+    assert reg.get_report_by_id(rid)["pregen_retry_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_pregen_watchdog_stops_at_max_retries(
+    reg: ReportRegistry, db_factory, _mock_gen_kick
+) -> None:
+    """重试次数达上限（PREGEN_RETRY_MAX）后不再 kick。"""
+    rid = "rpt-wd-max"
+    now = datetime.now(timezone.utc)
+    rec = _pending_record(rid, now + timedelta(hours=10))
+    rec["pregen_retry_count"] = PREGEN_RETRY_MAX
+    rec["pregen_last_retry_at"] = (now - timedelta(hours=5)).isoformat()
+    _write_record(reg.simple_base_dir, rid, rec)
+
+    await report_review_service.auto_approve_overdue(
+        base_dir=str(reg.simple_base_dir), session_factory=db_factory
+    )
+    assert _mock_gen_kick.call_count == 0
+    assert reg.get_report_by_id(rid)["pregen_retry_count"] == PREGEN_RETRY_MAX
+
+
+@pytest.mark.asyncio
+async def test_pregen_watchdog_skips_when_cache_exists(
+    reg: ReportRegistry, db_factory, _mock_gen_kick
+) -> None:
+    """markdown 缓存已就绪 → 看门狗不动。"""
+    rid = "rpt-wd-cached"
+    now = datetime.now(timezone.utc)
+    rec = _pending_record(rid, now + timedelta(hours=10))
+    rec["report_markdown_generated_at"] = now.isoformat()
+    _write_record(reg.simple_base_dir, rid, rec)
+    md_path = reg.simple_base_dir / "reports" / rid / "report_markdown.md"
+    md_path.write_text("# cached report", encoding="utf-8")
+
+    await report_review_service.auto_approve_overdue(
+        base_dir=str(reg.simple_base_dir), session_factory=db_factory
+    )
+    assert _mock_gen_kick.call_count == 0
+    assert "pregen_retry_count" not in reg.get_report_by_id(rid)
 
 
 # ── 5. 通知幂等（service 层） ───────────────────────────────

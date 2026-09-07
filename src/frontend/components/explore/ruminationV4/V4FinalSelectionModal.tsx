@@ -136,7 +136,7 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="modal-overlay fixed inset-0 z-[100] flex items-center justify-center p-6"
-          style={{ background: 'rgba(17,29,51,0.46)', backdropFilter: 'blur(5px)' }}
+          style={{ background: 'rgba(17,29,51,0.46)', backdropFilter: 'blur(5px)', WebkitBackdropFilter: 'blur(5px)' }}
           onClick={onClose}
         >
           <motion.section
@@ -239,6 +239,7 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
                       border: '1px solid rgba(255,255,255,0.75)',
                       boxShadow: '0 12px 32px rgba(33,48,79,0.12)',
                       backdropFilter: 'blur(8px)',
+                      WebkitBackdropFilter: 'blur(8px)', /* 老 WebKit 内核需前缀（ADR-0020） */
                     }}
                     role="status"
                   >

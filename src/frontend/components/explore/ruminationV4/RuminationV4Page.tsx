@@ -38,6 +38,7 @@ const outerShellStyle: CSSProperties = {
   background: 'rgba(255,255,255,0.42)',
   boxShadow: '0 16px 40px rgba(33,48,79,0.08)',
   backdropFilter: 'blur(18px)',
+  WebkitBackdropFilter: 'blur(18px)', /* 老 WebKit 内核需前缀（ADR-0020） */
   padding: '14px 16px 16px',
 };
 

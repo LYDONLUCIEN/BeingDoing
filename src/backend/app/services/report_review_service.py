@@ -3,7 +3,10 @@
 
 - approve_report：人工/自动批复共用入口（幂等：已 approved 不重复写、不重复通知）
 - notify_report_approved：站内信通知（复用 notifications 表，幂等）
-- auto_approve_overdue：APScheduler 周期任务，超时 pending → auto 批复
+- auto_approve_overdue：APScheduler 周期任务，超时 pending → auto 批复；
+  同一扫描循环内兼任「审核期生成看门狗」：未过期 pending 记录若 markdown 缓存
+  缺失且无人正在生成，自动重试预生成（每小时一次、上限 PREGEN_RETRY_MAX 次，
+  2026-09-06 起），保证固定 24h 解锁时报告已生成好
 - kick_report_generation：批复通过瞬间后台自动生成报告 markdown
   （用户报告页「生成报告」按钮仅为兜底机制；生成失败不影响批复主流程）
 
@@ -15,7 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import select
@@ -24,6 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.feedback import Notification
 from app.utils.report_registry import ReportRegistry, _report_portal_unlocked
 from app.utils.report_review import (
+    PREGEN_RETRY_INTERVAL_HOURS,
+    PREGEN_RETRY_MAX,
     REVIEW_STATUS_APPROVED,
     REVIEW_TYPE_AUTO,
     get_review_status,
@@ -210,6 +215,65 @@ async def approve_report(
     return record
 
 
+def _pregen_watchdog_check(registry: ReportRegistry, record: dict) -> bool:
+    """
+    审核期生成看门狗（2026-09-06 起）：pending 未过期记录的报告预生成兜底重试。
+
+    触发条件（全部满足）：
+    - markdown 缓存缺失且当前无人正在生成（单轨锁）
+    - 重试次数 < PREGEN_RETRY_MAX
+    - 从未重试过（首次失败尽快补）或距上次重试 >= PREGEN_RETRY_INTERVAL_HOURS 小时
+
+    命中则 kick 后台生成并累加 record 的 pregen_retry_count / pregen_last_retry_at。
+    Returns: True = 本轮已触发重试。
+    """
+    from app.services.report_pdf_service import ReportPdfService, is_generation_inflight
+
+    rid = (record.get("report_id") or "").strip()
+    if not rid:
+        return False
+    retry_count = int(record.get("pregen_retry_count") or 0)
+    if retry_count >= PREGEN_RETRY_MAX:
+        return False
+    raw_last = (record.get("pregen_last_retry_at") or "").strip()
+    if raw_last:
+        try:
+            last = datetime.fromisoformat(raw_last.replace("Z", "+00:00"))
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+        except ValueError:
+            last = None
+        if last is not None and datetime.now(timezone.utc) - last < timedelta(
+            hours=PREGEN_RETRY_INTERVAL_HOURS
+        ):
+            return False
+    base_dir = getattr(registry, "simple_base_dir", None)
+    base_dir_str = str(base_dir) if base_dir else None
+    service = ReportPdfService(base_dir=base_dir_str)
+    try:
+        if service.has_cached_markdown(rid) or is_generation_inflight(rid):
+            return False
+    except Exception as e:
+        logger.warning("看门狗缓存检查失败，跳过本轮: report_id=%s error=%s", rid, e)
+        return False
+    kicked = kick_report_generation(rid, record.get("user_id") or None, base_dir_str)
+    if not kicked:
+        return False
+    record["pregen_retry_count"] = retry_count + 1
+    record["pregen_last_retry_at"] = _now_iso()
+    try:
+        registry.save_record(record)
+    except Exception as e:
+        logger.warning("看门狗重试计数落盘失败（不影响生成）: report_id=%s error=%s", rid, e)
+    logger.info(
+        "审核期报告预生成看门狗重试: report_id=%s retry=%d/%d",
+        rid,
+        record["pregen_retry_count"],
+        PREGEN_RETRY_MAX,
+    )
+    return True
+
+
 async def auto_approve_overdue(
     base_dir: Optional[str] = None,
     session_factory=None,
@@ -218,7 +282,8 @@ async def auto_approve_overdue(
     自动批复任务（APScheduler 每 REVIEW_SCAN_INTERVAL_MINUTES 分钟调用）：
 
     扫描全部 record.json，pending_review 且已过 deadline → approved + review_type=auto，
-    并触发站内信（与人工批复同一通知函数、同一文案）+ 后台自动生成报告 markdown。
+    并触发站内信（与人工批复同一通知函数、同一文案）+ 后台自动生成报告 markdown；
+    未过期的 pending 记录走生成看门狗（_pregen_watchdog_check，缓存缺失自动重试）。
     单条失败不影响其余。
 
     Returns: 本次批复的报告数。
@@ -233,7 +298,14 @@ async def auto_approve_overdue(
     async with session_factory() as db:
         for record in registry.list_reports():
             rid = (record.get("report_id") or "").strip()
-            if not rid or not is_pending_review(record) or not is_review_overdue(record):
+            if not rid or not is_pending_review(record):
+                continue
+            if not is_review_overdue(record):
+                # 审核期内：报告预生成看门狗（缓存缺失自动重试，每小时一次、上限 3 次）
+                try:
+                    _pregen_watchdog_check(registry, record)
+                except Exception as e:  # 单条失败不影响其余
+                    logger.exception("看门狗处理失败: report_id=%s error=%s", rid, e)
                 continue
             try:
                 updated = await approve_report(

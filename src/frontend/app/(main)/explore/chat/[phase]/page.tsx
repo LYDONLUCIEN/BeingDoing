@@ -26,6 +26,7 @@ import UpgradeTrialModal from '@/components/payment/UpgradeTrialModal';
 import PurchaseModal from '@/components/payment/PurchaseModal';
 import ChatPhaseBackground from '@/components/explore/ChatPhaseBackground';
 import ExploreLandingMeshLayers from '@/components/explore/ExploreLandingMeshLayers';
+import LegacyBrowserNotice from '@/components/layout/LegacyBrowserNotice';
 const PhaseCelebrateBurst = dynamic(
   () => import('@/components/explore/PhaseCelebrateBurst'),
   { ssr: false },
@@ -4163,7 +4164,7 @@ export default function ChatPhasePage() {
     // 后端判定还在加载中且无调试覆盖 → 轻量 loading，避免先闪 v3 再切 v4
     if (ruminationVersion === null && !debugV4 && !debugV3) {
       return (
-        <div className="flex min-h-0 flex-col overflow-hidden h-[calc(100dvh-3.5rem)] max-h-[calc(100dvh-3.5rem)] items-center justify-center text-gray-400">
+        <div className="chat-shell-h flex min-h-0 flex-col overflow-hidden items-center justify-center text-gray-400">
           加载中…
         </div>
       );
@@ -4207,7 +4208,9 @@ export default function ChatPhasePage() {
       };
 
       return (
-        <div className="flex min-h-0 flex-col overflow-hidden h-[calc(100dvh-3.5rem)] max-h-[calc(100dvh-3.5rem)]">
+        <div className="chat-shell-h flex min-h-0 flex-col overflow-hidden">
+          {/* 旧内核浏览器提示（ADR-0020）：「不再提示」前每个 phase 页都弹 */}
+          <LegacyBrowserNotice />
           <RuminationV4Page
             activationCode={activationCode}
             onCompleteAndContinue={handleV4CompleteAndContinue}
@@ -4221,11 +4224,13 @@ export default function ChatPhasePage() {
     <div
       className={
         phase === 'rumination'
-          ? 'rumination-beautiful-root flow-light relative flex min-h-0 flex-col overflow-hidden h-[calc(100dvh-3.5rem)] max-h-[calc(100dvh-3.5rem)]'
-          : 'flow-light careering-matte flex min-h-0 flex-col overflow-hidden h-[calc(100dvh-3.5rem)] max-h-[calc(100dvh-3.5rem)]'
+          ? 'rumination-beautiful-root flow-light chat-shell-h relative flex min-h-0 flex-col overflow-hidden'
+          : 'flow-light careering-matte chat-shell-h flex min-h-0 flex-col overflow-hidden'
       }
       data-phase={phase}
     >
+      {/* 旧内核浏览器提示（ADR-0020）：「不再提示」前每个 phase 页都弹 */}
+      <LegacyBrowserNotice />
       {phase === 'rumination' ? (
         <ExploreLandingMeshLayers />
       ) : (

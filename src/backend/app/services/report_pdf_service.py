@@ -349,6 +349,24 @@ class ReportPdfService:
             if timing_mark:
                 lines.append(f"- 时机标记：{timing_mark}")
 
+            # 平衡点判定（2026-09-06 起注入报告 prompt）：优先 balance_analysis，
+            # 兼容结论卡同步字段（balance_found/balance_fail_reason 双写）
+            analysis = combo.get("balance_analysis") or {}
+            balance_found = analysis.get("balance_found")
+            fail_reason = analysis.get("balance_fail_reason")
+            if balance_found is None:
+                balance_found = card.get("balance_found")
+                fail_reason = fail_reason or card.get("balance_fail_reason")
+            if balance_found is True:
+                lines.append("- 平衡点判定：已找到平衡点（系统推荐方向）")
+            elif balance_found is False:
+                lines.append(
+                    "- 平衡点判定：未找到平衡点（不推荐方向）"
+                    + (f"，卡点：{fail_reason}" if fail_reason else "")
+                )
+            else:
+                lines.append("- 平衡点判定：对话证据不足，未作判定")
+
             lines.append("")  # 空行分隔
 
         return "\n".join(lines)

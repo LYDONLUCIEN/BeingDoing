@@ -30,3 +30,13 @@
 4. 前端报告页新增 `not_started` 占位（「报告尚未解锁」）；admin 审核列表新增「未开始」badge 与筛选项。
 
 「善意伪装」语义不变：自动批复的用户侧文案仍与人工一致。
+
+## 修订（2026-09-06）：随机时限 → 统一固定 24h + 审核期生成看门狗
+
+**背景**：产品决定所有用户统一 24 小时审核后交付（给用户确定的等待预期），推翻上文「时限随机是为了避免用户摸出固定规律」的原始理由。
+
+**修订决策**：
+
+1. `start_review` 的 deadline 由 `random.uniform(3, 24)h` 改为固定 `+24h`（`AUTO_APPROVE_MIN/MAX_HOURS` 常量合并为 `AUTO_APPROVE_HOURS = 24`）。存量 pending 记录（旧随机 deadline）不溯及既往，自然到期。
+2. 用户可见文案同步为确定性口径：「报告提交后 24 小时人工审核交付」（定价页/商品 features）、审核中占位页「将在提交后 24 小时完成审核并解锁」。「善意伪装」口径不变。
+3. 新增**审核期生成看门狗**（`report_review_service._pregen_watchdog_check`，复用自动批复 job 的 10 分钟扫描循环）：pending 未过期记录若 markdown 缓存缺失且无人正在生成，自动重试预生成——距上次重试 ≥1h、上限 3 次（计数落 record.json `pregen_retry_count`/`pregen_last_retry_at`），与「提交时预生成 → 批复时补 kick → 用户页重试/申请复核」组成多层兜底，保证 24h 解锁时报告已生成好。

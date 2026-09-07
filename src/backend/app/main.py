@@ -388,6 +388,26 @@ def _start_bounce_scheduler() -> None:
             max_instances=1,
             misfire_grace_time=3600,
         )
+        # LLM 余额监控（每小时）：余额低于阈值站内信提醒所有 super_admin（当天幂等）
+        from app.services.llm_balance_monitor import scan_llm_balance
+
+        async def _llm_balance_scan_safe() -> None:
+            try:
+                await scan_llm_balance()
+            except Exception as job_err:
+                logging.getLogger(__name__).error(
+                    "llm balance scan job failed: %s", job_err
+                )
+
+        sched.add_job(
+            _llm_balance_scan_safe,
+            IntervalTrigger(minutes=settings.LLM_BALANCE_SCAN_INTERVAL_MINUTES),
+            id="llm_balance_scan",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=600,
+        )
         sched.start()
         _bounce_scheduler = sched
         logging.getLogger(__name__).info(
@@ -408,6 +428,11 @@ def _start_bounce_scheduler() -> None:
         logging.getLogger(__name__).info(
             "activation expiry scan scheduler started, cron='%s'",
             settings.ACTIVATION_EXPIRY_SCAN_CRON,
+        )
+        logging.getLogger(__name__).info(
+            "llm balance scan scheduler started, interval=%dmin, threshold=%.2f",
+            settings.LLM_BALANCE_SCAN_INTERVAL_MINUTES,
+            settings.LLM_BALANCE_ALERT_THRESHOLD,
         )
     except Exception as e:
         # APScheduler 不可用不能阻断启动，只警告

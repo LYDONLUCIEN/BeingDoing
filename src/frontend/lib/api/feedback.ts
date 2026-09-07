@@ -9,6 +9,7 @@ export type NotificationType =
   | 'feedback_new'
   | 'feedback_status_changed'
   | 'feedback_overdue'
+  | 'llm_balance_low'
   | 'announcement';
 
 export interface Feedback {

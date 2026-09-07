@@ -161,6 +161,11 @@ class Settings(BaseSettings):
     # 扫描已过期完整码，给激活人发「免费领取 7 天续期」邮件+站内信（每码一次，幂等）
     ACTIVATION_EXPIRY_SCAN_CRON: str = "0 10 * * *"  # 默认每日 10:00
 
+    # LLM 余额监控（2026-09-06 起，当前仅支持 DeepSeek）
+    # 定时查 DeepSeek 余额（GET /user/balance），低于阈值站内信提醒所有 super_admin（当天幂等）
+    LLM_BALANCE_ALERT_THRESHOLD: float = 10.0        # 告警阈值（元）
+    LLM_BALANCE_SCAN_INTERVAL_MINUTES: int = 60      # 扫描间隔（分钟）
+
     # ========== 支付模块（计划见 tasks/payment-module-plan.md）==========
     # 旧商品：全程激活码（单一 SKU，已下架；配置保留供历史订单展示）
     ACTIVATION_CODE_PRICE: int = 9900  # 99 元

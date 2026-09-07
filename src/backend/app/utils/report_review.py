@@ -2,8 +2,10 @@
 报告阻塞式审核（ADR-0009）纯逻辑模块
 
 常量直接定义在本模块（不进 settings.py，避免并行改动冲突）：
-- AUTO_APPROVE_MIN_HOURS / AUTO_APPROVE_MAX_HOURS：审核开始时随机时限区间
+- AUTO_APPROVE_HOURS：审核固定时限（2026-09-06 起由随机 3~24h 改为统一固定 24h）
 - REVIEW_SCAN_INTERVAL_MINUTES：自动批复扫描周期
+- PREGEN_RETRY_MAX / PREGEN_RETRY_INTERVAL_HOURS：审核期报告预生成看门狗
+  （缓存缺失且无人生成时自动重试，每小时一次、上限 3 次，保证 24h 解锁时报告已就绪）
 
 字段落在 data/simple/reports/{report_id}/record.json：
 - review_status: not_started / pending_review / approved
@@ -11,10 +13,11 @@
 - review_deadline: ISO 截止时间（仅 pending 时有意义）
 - review_type: manual / auto / None
 - reviewed_by / reviewed_at: 批复人与批复时间
+- pregen_retry_count / pregen_last_retry_at: 看门狗重试计数与上次重试时间（可选，缺失按 0/None）
 
 生命周期（2026-08-23 修订，计时锚点前移）：
 - 新建 record（激活/首次会话）→ not_started，不计时
-- rumination v4 终选提交成功（五阶段完成）→ pending_review + 随机 3~24h 时限（计时起点）；
+- rumination v4 终选提交成功（五阶段完成）→ pending_review + 固定 24h 时限（计时起点）；
   用户进报告页（my-report-id / 审核阻塞兜底）的懒触发保留，覆盖存量 not_started
 - admin 人工批复 / 超时自动批复 → approved
 
@@ -25,16 +28,17 @@
 from __future__ import annotations
 
 import logging
-import random
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 # ── 审核常量（禁令：不写进 settings.py） ─────────────────────
-AUTO_APPROVE_MIN_HOURS = 3
-AUTO_APPROVE_MAX_HOURS = 24
+AUTO_APPROVE_HOURS = 24  # 固定审核时限（2026-09-06 起，原随机 3~24h）
 REVIEW_SCAN_INTERVAL_MINUTES = 10
+# 审核期报告预生成看门狗：缓存缺失时自动重试，每小时一次、上限 3 次
+PREGEN_RETRY_MAX = 3
+PREGEN_RETRY_INTERVAL_HOURS = 1
 
 REVIEW_STATUS_NOT_STARTED = "not_started"
 REVIEW_STATUS_PENDING = "pending_review"
@@ -64,12 +68,12 @@ def mark_review_not_started(record: dict) -> dict:
 
 def start_review(record: dict, now: Optional[datetime] = None) -> dict:
     """
-    审核计时起点：not_started → pending_review + 随机 3~24h 时限。
+    审核计时起点：not_started → pending_review + 固定 24h 时限（2026-09-06 起，原随机 3~24h）。
     主触发点为 rumination v4 终选提交（2026-08-23 起）；
     报告页入口（my-report-id / 审核阻塞兜底）为存量懒触发兜底。
     """
     ts = now or _utcnow()
-    deadline = ts + timedelta(hours=random.uniform(AUTO_APPROVE_MIN_HOURS, AUTO_APPROVE_MAX_HOURS))
+    deadline = ts + timedelta(hours=AUTO_APPROVE_HOURS)
     record["review_status"] = REVIEW_STATUS_PENDING
     record["review_deadline"] = deadline.isoformat()
     record["review_type"] = None

@@ -424,6 +424,19 @@ async def get_llm_usage_calls(
     return {"code": 200, "message": "success", "data": data}
 
 
+@router.get("/llm-balance")
+async def get_llm_balance(
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """查询当前默认 LLM 提供商（DeepSeek）账户余额与低余额告警状态（仅 super_admin）"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    from app.services.llm_balance_monitor import query_llm_balance
+
+    data = await query_llm_balance()
+    return {"code": 200, "message": "success", "data": data}
+
+
 @router.get("/analytics/like-detail")
 async def get_like_detail(
     session_id: str,

@@ -1921,3 +1921,19 @@ export async function fetchAdminLlmUsageCalls(params?: {
   const res = await apiClient.get('/admin/analytics/llm-usage/calls', { params });
   return (res.data ?? { records: [], total: 0, page: 1, page_size: 50 }) as any;
 }
+
+/** LLM 余额监控（DeepSeek）：GET /admin/llm-balance */
+export interface AdminLlmBalance {
+  available: boolean;
+  total_balance: number | null;
+  currency: string | null;
+  threshold: number;
+  is_low: boolean;
+  checked_at: string;
+  error: string | null;
+}
+
+export async function fetchAdminLlmBalance(): Promise<AdminLlmBalance> {
+  const res = await apiClient.get('/admin/llm-balance');
+  return (res.data?.data ?? res.data) as AdminLlmBalance;
+}

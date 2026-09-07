@@ -3,6 +3,16 @@
    背景纸纹、四主题色、维度标签、AI左线、用户白泡、输入框
    ══════════════════════════════════════════ */
 
+/* 探索/沉淀页外壳高度（ADR-0020）：先 vh 后 dvh——老内核（<Chrome 108，
+   如旧版搜狗/360 双核高速模式）不认识 dvh 会丢弃整条声明，自动落到 vh；
+   新浏览器用 dvh 适配移动端动态地址栏。禁止在 TSX 里裸写 h-[calc(100dvh-…)]。 */
+.chat-shell-h {
+  height: calc(100vh - 3.5rem);
+  max-height: calc(100vh - 3.5rem);
+  height: calc(100dvh - 3.5rem);
+  max-height: calc(100dvh - 3.5rem);
+}
+
 /* 四主题色（信念蓝/禀赋绿/热忱红/使命黄） */
 .flow-light {
   --flow-values:   #5B8DB8;
@@ -413,29 +423,41 @@
   overflow-wrap: break-word;
   line-break: strict;
 }
-/* 各 step 用户气泡：纯色填充 + 主题色描边（与默认气泡体量一致，无渐变） */
+/* 各 step 用户气泡：纯色填充 + 主题色描边（与默认气泡体量一致，无渐变）
+   color-mix 前均放静态近似色回退：老内核（<Chrome 111，如旧搜狗/360 双核）
+   丢弃 color-mix 声明后仍有可用底色/描边（ADR-0020） */
 .flow-light[data-phase="values"] .flow-msg-user-content {
+  background: #ebf1f6;
   background: color-mix(in srgb, var(--flow-values) 12%, #ffffff);
+  border-color: #d1dfeb;
   border-color: color-mix(in srgb, var(--flow-values) 28%, #ffffff);
 }
 .flow-light[data-phase="strengths"] .flow-msg-user-content {
+  background: #edf3f0;
   background: color-mix(in srgb, var(--flow-strength) 12%, #ffffff);
+  border-color: #d5e4db;
   border-color: color-mix(in srgb, var(--flow-strength) 28%, #ffffff);
 }
 .flow-light[data-phase="interests"] .flow-msg-user-content {
+  background: #f8eeeb;
   background: color-mix(in srgb, var(--flow-interest) 12%, #ffffff);
+  border-color: #eed7d1;
   border-color: color-mix(in srgb, var(--flow-interest) 28%, #ffffff);
 }
 .flow-light[data-phase="purpose"] .flow-msg-user-content {
+  background: #f8f4e9;
   background: color-mix(in srgb, var(--flow-target) 12%, #ffffff);
+  border-color: #f0e6cd;
   border-color: color-mix(in srgb, var(--flow-target) 28%, #ffffff);
 }
 .flow-light[data-phase="rumination"] .flow-msg-user-content {
+  background: linear-gradient(145deg, #d5e7ff 0%, #dbebff 100%);
   background: linear-gradient(
     145deg,
     color-mix(in srgb, var(--flow-rumination) 38%, #ffffff) 0%,
     color-mix(in srgb, var(--flow-rumination) 22%, #f0f7ff) 100%
   );
+  border-color: #add3ff;
   border-color: color-mix(in srgb, var(--flow-rumination) 55%, #cfe8ff);
   color: #1e3a5f;
 }

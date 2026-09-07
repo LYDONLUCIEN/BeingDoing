@@ -253,7 +253,8 @@ class ReportRegistry:
             },
         }
         # 报告阻塞式审核（ADR-0009，2026-07-27 修订）：新建报告仅标记 not_started，
-        # 不计时；用户进入报告页且五阶段完成时才转 pending_review 开始 3~24h 倒计时
+        # 不计时；用户进入报告页且五阶段完成时才转 pending_review 开始固定 24h 倒计时
+        #（2026-09-06 起，原随机 3~24h）
         mark_review_not_started(record)
         return record
 

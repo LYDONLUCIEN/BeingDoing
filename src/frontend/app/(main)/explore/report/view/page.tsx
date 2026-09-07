@@ -136,7 +136,7 @@ function ReportViewContent() {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
-      // 只到小时级别（2026-09-01：分钟级显得过于精确，审核为 3~24h 随机窗口）
+      // 只到小时级别（分钟级显得过于精确；审核固定 24h，2026-09-06 起，原 3~24h 随机窗口）
       hour: '2-digit',
     });
   }, [reportInfo?.review_deadline, locale]);

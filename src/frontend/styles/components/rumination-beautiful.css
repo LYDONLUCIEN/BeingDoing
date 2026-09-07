@@ -63,8 +63,10 @@ html[data-rumination-mesh-page='true']:not([data-color-scheme='dark'])
   color: #2563eb;
 }
 
-/* 与 flow-light 同用时的沉淀阶段：用户气泡无边框；宽度受父级 2/3 栏限制，长文换行 */
+/* 与 flow-light 同用时的沉淀阶段：用户气泡无边框；宽度受父级 2/3 栏限制，长文换行
+   color-mix 前放静态近似渐变回退（<Chrome 111 老内核丢弃 color-mix，ADR-0020） */
 .rumination-beautiful-root.flow-light[data-phase='rumination'] .flow-msg-user-content {
+  background: linear-gradient(145deg, #d3e6ff 0%, #d9eaff 100%);
   background: linear-gradient(
     145deg,
     color-mix(in srgb, var(--flow-rumination) 40%, #ffffff) 0%,

@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useLocale } from '@/hooks/useLocale';
+import { fetchAdminLlmBalance, type AdminLlmBalance } from '@/lib/api/admin';
 
 const ADMIN_NAV_ITEMS = [
   { path: '/admin', icon: BarChart3, label: '总览 Dashboard' },
@@ -52,6 +53,7 @@ export default function AdminLayout({
   const { t } = useLocale();
   const { user, isAuthenticated } = useAuthStore();
   const [mounted, setMounted] = useState(false);
+  const [llmBalance, setLlmBalance] = useState<AdminLlmBalance | null>(null);
 
   const isAdmin = !!(isAuthenticated && user?.is_super_admin);
 
@@ -59,6 +61,20 @@ export default function AdminLayout({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // LLM 余额监控：低于阈值时页面顶部告警横幅提醒充值；查询失败静默忽略
+  useEffect(() => {
+    if (!mounted || !isAdmin) return;
+    let cancelled = false;
+    fetchAdminLlmBalance()
+      .then((data) => {
+        if (!cancelled) setLlmBalance(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, isAdmin]);
 
   if (!mounted) {
     return (
@@ -139,7 +155,22 @@ export default function AdminLayout({
         </p>
       </aside>
 
-      <main className="ml-64 flex-1 p-8 min-w-0">{children}</main>
+      <main className="ml-64 flex-1 p-8 min-w-0">
+        {llmBalance?.available && llmBalance.is_low && (
+          <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
+            <span className="text-lg leading-6">⚠️</span>
+            <div className="text-sm leading-6">
+              <p className="font-semibold">DeepSeek 余额不足</p>
+              <p>
+                当前可用余额 ¥{(llmBalance.total_balance ?? 0).toFixed(2)}，已低于告警阈值 ¥
+                {llmBalance.threshold.toFixed(2)}。欠费将导致 AI 对话、报告生成等服务中断，
+                请尽快前往 DeepSeek 开放平台（platform.deepseek.com）充值。
+              </p>
+            </div>
+          </div>
+        )}
+        {children}
+      </main>
     </div>
   );
 }
