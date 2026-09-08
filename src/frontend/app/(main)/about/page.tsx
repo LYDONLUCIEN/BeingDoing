@@ -42,10 +42,10 @@ export default function AboutPage() {
           <p>
             如有任何产品疑问、合作意向或希望加入我们，欢迎通过邮箱联系我们：
             <a
-              href="mailto:openlife.lab@outlook.com"
+              href="mailto:soulhappylab@163.com"
               className="font-semibold text-bd-fg hover:underline"
             >
-              openlife.lab@outlook.com
+              soulhappylab@163.com
             </a>
             。期待与你同行。
           </p>

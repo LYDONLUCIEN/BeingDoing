@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, ChevronLeft, ChevronRight, Info, Star, Check } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Star, Check } from 'lucide-react';
 import { useLocale } from '@/hooks/useLocale';
 import { useAuthStore } from '@/stores/authStore';
 import { useAuthModalStore } from '@/stores/authModalStore';
@@ -184,10 +184,11 @@ const FAQ_ITEMS = [
     q: '能否回看之前的对话记录？',
     a: '在套餐有效期内，您可随时回看历史对话记录。进入“个人空间-当前进度”，直接点击您想查看的旅程和话题即可。',
   },
+  {
+    q: '推荐使用什么浏览器访问？',
+    a: '建议使用 Edge 或 Chrome 浏览器访问；使用其他浏览器如遇到问题，欢迎向我们提交反馈。',
+  },
 ];
-
-// 非问答句式，作为 FAQ 列表底部的浏览器兼容性提示条
-const FAQ_BROWSER_TIP = '建议使用 Edge 或 Chrome 浏览器访问；使用其他浏览器如遇到问题，欢迎向我们提交反馈。';
 
 function FaqSection() {
   const [openIndexes, setOpenIndexes] = useState<number[]>([]);
@@ -258,13 +259,6 @@ function FaqSection() {
             </motion.div>
           );
         })}
-      </div>
-      <div
-        className="mt-6 flex items-start gap-2 rounded-2xl border border-dashed px-5 py-4 text-sm font-light"
-        style={{ borderColor: 'rgba(124,92,252,0.35)', color: 'var(--bd-fg-muted)' }}
-      >
-        <Info className="h-4 w-4 mt-0.5 shrink-0" />
-        <span>{FAQ_BROWSER_TIP}</span>
       </div>
     </section>
   );
