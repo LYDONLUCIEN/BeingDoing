@@ -437,7 +437,14 @@ export async function syncReportsFromActivations() {
 function pickFilenameFromHeaders(headers: any, fallback: string): string {
   const disposition: string = headers?.['content-disposition'] || '';
   const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
-  return match?.[1] || fallback;
+  const raw = match?.[1];
+  if (!raw) return fallback;
+  // 后端按 RFC 5987 返回 filename*=UTF-8''<percent-encoded>，需解码还原中文文件名
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
 }
 
 /**
