@@ -16,8 +16,9 @@ batch_generate_reports.py — 从 admin 批量导出包批量生成 PDF 报告
        - rumination_v4_progress.json ← v3 数据合成：raw/rumination_progress.json 的
                                        combo_matrix 提供 passion/strength 名称，
                                        summary.json 的 combo_conclusions 中
-                                       state=confirmed 的 text 作为 conclusion_card.hypothesis，
-                                       全部 confirmed 计入 final_selection
+                                       state=confirmed 的 text 作为 conclusion_card.hypothesis；
+                                       终选取 filter_table 的 __final 行（行号反推 combo_id，
+                                       2026-09-08 修正，原误用全部 confirmed），无 __final 行时回退全部 confirmed
     2. 生成：完全复用 app.services.report_pdf_service.ReportPdfService
        （与线上 POST /export/report-pdf 同一套 LLM 提示词、同一套 PDF 渲染），
        产出 PDF + report_markdown.md 到 --output-dir。
@@ -172,15 +173,34 @@ def stage_report(pkg_dir: Path, staging_reports: Path) -> dict:
                 "updated_at": ts,
             }
             state["combo_sessions"].append(sess)
+
+        # 终选口径（2026-09-08 修正）：v3 真正的 N选3 终选在 filter_table 的
+        # __final=true 行（通常 1~3 个），行 id 是 gen_table 行号（1 + pi*5 + si），
+        # 需经 combo_id_to_row_id 反推回 combo_id；此前误用全部 confirmed 组合
+        # （可达 14 条，只是“聊完确认过假设”），导致报告第五章逐个剖析十几个方向。
+        # 找不到有效 __final 行时回退为全部 confirmed（旧口径兼底）。
+        from app.utils.rumination_combo_matrix import combo_id_to_row_id
+
+        row_to_combo = {
+            combo_id_to_row_id(m): cid for cid, m in matrix.items()
+        }
+        final_combo_ids = [
+            row_to_combo.get(str(r.get("id")))
+            for r in (progress.get("filter_table") or [])
+            if r.get("__final")
+        ]
+        final_combo_ids = [c for c in final_combo_ids if c in confirmed]
+        if not final_combo_ids:
+            final_combo_ids = list(confirmed.keys())
         state["final_selection"] = {
-            "selected_combo_ids": list(confirmed.keys()),
+            "selected_combo_ids": final_combo_ids,
             "submitted": True,
             "submitted_at": ts,
         }
         (dest / "rumination_v4_progress.json").write_text(
             json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8"
         )
-        v4_combo_count = len(confirmed)
+        v4_combo_count = len(final_combo_ids)
 
     dims_done = sum(1 for p in _DIMENSION_PHASES if p in dim)
     complete = dims_done == len(_DIMENSION_PHASES) and v4_combo_count > 0

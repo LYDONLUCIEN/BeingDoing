@@ -233,10 +233,14 @@ class ReportPdfService:
         return self._markdown_to_pdf(markdown_text, report_id=report_id)
 
     def get_report_filename(self, record: dict) -> str:
-        """根据 record 生成 PDF 文件名：统一前缀 + 激活码 + report_id（2026-08-07 起）。"""
-        code = (record.get("activation_code") or "").strip() or "NOCODE"
-        rid = (record.get("report_id") or "").strip() or "report"
-        return f"寻路·OpenLife报告_{code}_{rid}.pdf"
+        """根据 record 生成 PDF 文件名：寻路OpenLife职业探索报告_{激活码}.pdf（2026-09-09 起）。
+
+        report_id 与激活码 1:1 且对用户无意义，不再拼入文件名；激活码缺失时不带后缀。
+        """
+        code = (record.get("activation_code") or "").strip()
+        if code:
+            return f"寻路OpenLife职业探索报告_{code}.pdf"
+        return "寻路OpenLife职业探索报告.pdf"
 
     # ── 数据收集 ──────────────────────────────────────────────
 
@@ -349,8 +353,8 @@ class ReportPdfService:
             if timing_mark:
                 lines.append(f"- 时机标记：{timing_mark}")
 
-            # 平衡点判定（2026-09-06 起注入报告 prompt）：优先 balance_analysis，
-            # 兼容结论卡同步字段（balance_found/balance_fail_reason 双写）
+            # 平衡点判定（2026-09-06 起注入报告 prompt，09-08 修订 None 不注入）：
+            # 优先 balance_analysis，兼容结论卡同步字段（balance_found/balance_fail_reason 双写）
             analysis = combo.get("balance_analysis") or {}
             balance_found = analysis.get("balance_found")
             fail_reason = analysis.get("balance_fail_reason")
@@ -364,8 +368,8 @@ class ReportPdfService:
                     "- 平衡点判定：未找到平衡点（不推荐方向）"
                     + (f"，卡点：{fail_reason}" if fail_reason else "")
                 )
-            else:
-                lines.append("- 平衡点判定：对话证据不足，未作判定")
+            # balance_found 为 None（未判定/证据不足/v3 存量数据）时不注入该行，
+            # 避免模型把「未作判定」这类元信息写进报告正文
 
             lines.append("")  # 空行分隔
 
@@ -416,12 +420,14 @@ class ReportPdfService:
         return _DEFAULT_NICKNAME
 
     def _collect_conversation_block(self, report_id: str) -> str:
-        """收集五个阶段的完整对话全文，渲染成文本块（conversation_block）。
+        """收集五个阶段的对话，渲染成文本块（conversation_block）。
 
         口径与 admin 批量导出的 report_<id>.md 一致：
         - 遍历 STEP_IDS，每阶段选会话优先级 selected_session_id > session_ids 最后一个
         - 只保留 user/assistant 消息，过滤 system/tool/conclusion_card 等噪音
         - 单阶段超长时保留开头 + 结尾，中间省略
+        - 例外（2026-09-09 起）：沉淀阶段不走 session 全文，只注入 N选3 选中方向的
+          对话（_collect_rumination_selected_dialogue），未选中方向不进 prompt
         """
         try:
             registry = ReportRegistry(base_dir=str(self.simple_base_dir))
@@ -434,13 +440,23 @@ class ReportPdfService:
 
         blocks: List[str] = []
         for step_id in STEP_IDS:
+            label = _PHASE_LABEL_CN.get(step_id, step_id)
+
+            # 沉淀阶段（2026-09-09 起）：只注入「N选3 最终选中方向」的对话
+            # （v4 combo_sessions[].messages 按组合分存，可精确过滤），
+            # 未选中候选方向的对话不进 prompt，防止模型从全量对话中
+            # 自行摘取未选方向写进报告。
+            if step_id == "rumination":
+                dialogue = self._collect_rumination_selected_dialogue(report_id)
+                blocks.append(f"### {label}阶段\n\n{dialogue}")
+                continue
+
             step = (record.get("steps") or {}).get(step_id) or {}
             session_ids = step.get("session_ids") or []
             chosen = step.get("selected_session_id") or (session_ids[-1] if session_ids else None)
             if not chosen:
                 continue
 
-            label = _PHASE_LABEL_CN.get(step_id, step_id)
             file_path = registry.get_step_session_file(report_id, step_id, chosen)
             if not file_path.is_file():
                 blocks.append(f"### {label}阶段\n\n> （该阶段对话源文件缺失）")
@@ -460,6 +476,48 @@ class ReportPdfService:
         if not blocks:
             return "（暂无对话记录）"
         return "\n\n".join(blocks)
+
+    def _collect_rumination_selected_dialogue(self, report_id: str) -> str:
+        """沉淀阶段对话：只注入 N选3 最终选中方向的对话（v4 combo_sessions.messages）。
+
+        未选中候选方向的对话不进入 prompt；选中方向无对话记录（如 v3 存量/测试数据）
+        时降级为说明文案，结论卡仍由 rumination_block 单独注入。
+        整体超长时与单阶段对话同口径：头尾保留、中间省略。
+        """
+        try:
+            from app.services.rumination_v4_service import load_v4_state
+
+            state = load_v4_state(self.reports_root, report_id)
+        except Exception as e:
+            logger.warning("加载 rumination_v4_state 失败: report_id=%s err=%s", report_id, e)
+            return "（本阶段无对话记录）"
+
+        selected_ids = set(
+            (state.get("final_selection") or {}).get("selected_combo_ids") or []
+        )
+        parts: List[str] = []
+        for combo in state.get("combo_sessions") or []:
+            if combo.get("combo_id") not in selected_ids:
+                continue
+            passion = combo.get("passion") or ""
+            strengths = "、".join(str(s) for s in (combo.get("strengths") or []))
+            dialogue = self._render_dialogue_text(combo.get("messages") or [])
+            if not dialogue:
+                continue
+            parts.append(f"#### 选中方向对话：{passion} × {strengths}\n\n{dialogue}")
+
+        if not parts:
+            return "（本阶段仅提供最终选中方向的结论卡，对话从略）"
+
+        body = "\n\n".join(parts)
+        if len(body) > _CONVERSATION_PHASE_CHAR_LIMIT:
+            head = body[:_CONVERSATION_PHASE_HEAD_CHARS]
+            tail = body[_CONVERSATION_PHASE_HEAD_CHARS - _CONVERSATION_PHASE_CHAR_LIMIT:]
+            body = f"{head}\n\n> ……（中间对话省略）……\n\n{tail}"
+        return (
+            "> 说明：沉淀阶段仅收录用户最终选中方向的对话，"
+            "未入选的候选方向及其对话不在数据中。\n\n" + body
+        )
 
     def _render_dialogue_text(self, messages: list) -> str:
         """把消息列表渲染为「**用户**：xxx」对话文本，超长时头尾保留、中间省略。"""

@@ -155,7 +155,7 @@ export async function downloadReportPdfFile(
   );
 
   const blob = res.data as Blob;
-  const filename = pickFilenameFromHeaders(res.headers, `寻路·OpenLife报告_${reportId}.pdf`);
+  const filename = pickFilenameFromHeaders(res.headers, `寻路OpenLife职业探索报告.pdf`);
   triggerBlobDownload(blob, filename);
 }
 
