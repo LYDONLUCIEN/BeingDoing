@@ -1,12 +1,21 @@
 'use client';
 
+import { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Users, MessageCircle } from 'lucide-react';
+import ExploreLandingMeshLayers from '@/components/explore/ExploreLandingMeshLayers';
 
 export default function CommunityPage() {
+  // 与 /explore/intro 同款 mesh 背景：置 data-mesh-page 统一布局底色
+  useEffect(() => {
+    document.documentElement.setAttribute('data-mesh-page', 'true');
+    return () => document.documentElement.removeAttribute('data-mesh-page');
+  }, []);
+
   return (
-    <div className="min-h-screen bg-bd-gradient text-bd-fg">
-      <div className="max-w-3xl mx-auto px-4 py-16 space-y-10">
+    <div className="bd-mesh-page min-h-screen text-bd-fg">
+      <ExploreLandingMeshLayers />
+      <div className="relative z-[2] max-w-3xl mx-auto px-4 py-16 space-y-10">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -21,7 +30,7 @@ export default function CommunityPage() {
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
-          className="rounded-xl border border-bd-border bg-bd-card p-8 text-center space-y-4"
+          className="bd-glass-card rounded-2xl p-8 text-center space-y-4"
         >
           <MessageCircle className="w-10 h-10 text-bd-subtle mx-auto" />
           <p className="text-bd-muted">社区功能正在开发中，敬请期待</p>

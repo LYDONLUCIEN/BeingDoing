@@ -3,28 +3,34 @@
    首页 mesh 背景（略增不透明度）+ 毛玻璃单卡
    ══════════════════════════════════════════ */
 
-.explore-intro-wrap {
+.explore-intro-wrap,
+.bd-mesh-page {
   position: relative;
   min-height: 100vh;
   overflow-x: hidden;
 }
-html:not([data-color-scheme="dark"]) .explore-intro-wrap {
+html:not([data-color-scheme="dark"]) .explore-intro-wrap,
+html:not([data-color-scheme="dark"]) .bd-mesh-page {
   background-color: #faf9f8;
 }
 
 /* 说明页 mesh 略增不透明度，背景色更明显 */
-.explore-intro-wrap .landing-mesh-blob {
+.explore-intro-wrap .landing-mesh-blob,
+.bd-mesh-page .landing-mesh-blob {
   opacity: 1;
 }
-.explore-intro-wrap .landing-mesh-noise {
+.explore-intro-wrap .landing-mesh-noise,
+.bd-mesh-page .landing-mesh-noise {
   opacity: 0.06;
 }
 
-/* 说明页 / 激活码页时布局背景统一 */
+/* 说明页 / 激活码页 / mesh 内容页（关于我们、社区等）时布局背景统一 */
 html[data-explore-intro="true"]:not([data-color-scheme="dark"]) [class*="bd-aurora-bg"],
 html[data-explore-intro="true"]:not([data-color-scheme="dark"]) [class*="bd-eff-bg"],
 html[data-activate-page="true"]:not([data-color-scheme="dark"]) [class*="bd-aurora-bg"],
-html[data-activate-page="true"]:not([data-color-scheme="dark"]) [class*="bd-eff-bg"] {
+html[data-activate-page="true"]:not([data-color-scheme="dark"]) [class*="bd-eff-bg"],
+html[data-mesh-page="true"]:not([data-color-scheme="dark"]) [class*="bd-aurora-bg"],
+html[data-mesh-page="true"]:not([data-color-scheme="dark"]) [class*="bd-eff-bg"] {
   background-color: #faf9f8 !important;
 }
 
@@ -108,19 +114,24 @@ html:not([data-color-scheme="dark"]) .activate-page-wrap {
     0 6px 20px rgba(0, 0, 0, 0.2);
 }
 
-/* ── 毛玻璃卡片（guide8 复刻）── */
-.bd-intro-card {
-  width: 100%;
-  max-width: 460px;
+/* ── 毛玻璃质感（guide8 复刻）：bd-intro-card 与通用 bd-glass-card 共用 ──
+   bd-glass-card：关于我们 / 社区 / 法律协议弹层等内容卡片复用，
+   只提供质感（背景/模糊/边框/阴影），尺寸与留白由调用方控制 */
+.bd-intro-card,
+.bd-glass-card {
   background: rgba(253, 251, 248, 0.82);
   backdrop-filter: blur(28px) saturate(1.2);
   -webkit-backdrop-filter: blur(28px) saturate(1.2);
   border: 1px solid rgba(255, 255, 255, 0.7);
-  border-radius: 18px;
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.9) inset,
     0 20px 50px rgba(100, 90, 80, 0.08),
     0 4px 14px rgba(100, 90, 80, 0.05);
+}
+.bd-intro-card {
+  width: 100%;
+  max-width: 460px;
+  border-radius: 18px;
   padding: 48px 48px 38px;
 }
 @media (max-width: 540px) {
@@ -322,7 +333,8 @@ html:not([data-color-scheme="dark"]) .activate-page-wrap {
 }
 
 /* 深色模式 */
-[data-color-scheme="dark"] .bd-intro-card {
+[data-color-scheme="dark"] .bd-intro-card,
+[data-color-scheme="dark"] .bd-glass-card {
   background: rgba(20, 20, 24, 0.75);
   border-color: rgba(255, 255, 255, 0.08);
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);

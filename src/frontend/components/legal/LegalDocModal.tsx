@@ -15,7 +15,7 @@ export type LegalDocModalProps = {
  * - 点遮罩关闭
  * - ESC 关闭
  * - 正文 whitespace-pre-line 滚动渲染
- * 视觉与 PhaseCompleteWarmModal 保持一致。
+ * 卡片复用通用毛玻璃质感 .bd-glass-card（与 /explore/intro 的 bd-intro-card 同源）。
  */
 export default function LegalDocModal({ open, title, body, onClose }: LegalDocModalProps) {
   useEffect(() => {
@@ -53,7 +53,7 @@ export default function LegalDocModal({ open, title, body, onClose }: LegalDocMo
             role="dialog"
             aria-modal
             aria-labelledby="legal-doc-title"
-            className="relative w-full max-w-2xl max-h-[80vh] flex flex-col rounded-2xl border border-stone-200/80 bg-white/95 shadow-[0_24px_80px_-24px_rgba(15,23,42,0.18),0_0_0_1px_rgba(255,255,255,0.6)_inset]"
+            className="bd-glass-card relative w-full max-w-2xl max-h-[80vh] flex flex-col rounded-2xl"
             initial={{ opacity: 0, y: 14, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.99 }}
@@ -61,15 +61,15 @@ export default function LegalDocModal({ open, title, body, onClose }: LegalDocMo
             onClick={(e) => e.stopPropagation()}
           >
             {/* 标题栏 + 关闭按钮 */}
-            <div className="flex items-center justify-between gap-4 px-7 py-5 border-b border-stone-200/70">
-              <h2 id="legal-doc-title" className="text-lg font-semibold tracking-tight text-stone-800">
+            <div className="flex items-center justify-between gap-4 px-7 py-5 border-b border-bd-border">
+              <h2 id="legal-doc-title" className="text-lg font-semibold tracking-tight text-bd-fg">
                 {title}
               </h2>
               <button
                 type="button"
                 onClick={onClose}
                 aria-label="关闭"
-                className="shrink-0 rounded-full p-1.5 text-stone-500 hover:bg-stone-100 hover:text-stone-700 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400/60"
+                className="shrink-0 rounded-full p-1.5 text-bd-subtle hover:bg-bd-overlay hover:text-bd-fg transition focus:outline-none focus-visible:ring-2 focus-visible:ring-bd-primary/60"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" strokeLinejoin="round" />
@@ -78,7 +78,7 @@ export default function LegalDocModal({ open, title, body, onClose }: LegalDocMo
             </div>
             {/* 正文（滚动） */}
             <div className="overflow-y-auto px-7 py-6">
-              <p className="whitespace-pre-line text-[14px] leading-[1.75] text-stone-600">{body}</p>
+              <p className="whitespace-pre-line text-[14px] leading-[1.75] text-bd-muted">{body}</p>
             </div>
           </motion.div>
         </motion.div>
