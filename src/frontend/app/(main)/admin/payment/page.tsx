@@ -8,9 +8,14 @@ import {
   createCoupons,
   deleteCoupon,
   fenToYuan,
+  fetchCouponConfig,
   listCoupons,
+  restoreCoupon,
   updateCouponAmount,
+  updateCouponConfig,
+  updateCouponExpiry,
   yuanToFen,
+  type CouponConfig,
   type CouponItem,
   type CouponSource,
   type CouponStatus,
@@ -28,12 +33,16 @@ const STATUS_LABEL: Record<CouponStatus, string> = {
   unused: '未使用',
   locked: '锁定中',
   used: '已使用',
+  expired: '已过期',
+  void: '已作废',
 };
 
 const STATUS_COLOR: Record<CouponStatus, string> = {
   unused: 'bg-emerald-100 text-emerald-700 border-emerald-200',
   locked: 'bg-amber-100 text-amber-700 border-amber-200',
   used: 'bg-neutral-200 text-neutral-600 border-neutral-300',
+  expired: 'bg-amber-100 text-amber-700 border-amber-200',
+  void: 'bg-neutral-200 text-neutral-600 border-neutral-300',
 };
 
 const SOURCE_LABEL: Record<CouponSource, string> = {
@@ -56,12 +65,20 @@ export default function AdminPaymentPage() {
   // 创建表单
   const [createAmount, setCreateAmount] = useState('50');
   const [createCount, setCreateCount] = useState(1);
+  const [createTtl, setCreateTtl] = useState('');
   const [creating, setCreating] = useState(false);
   const [lastCreated, setLastCreated] = useState<CreatedCoupon[]>([]);
+
+  // 折扣券全局配置（默认有效期；进入 tab 时拉取，保存失败回滚）
+  const [couponConfig, setCouponConfig] = useState<CouponConfig | null>(null);
+  const [configInput, setConfigInput] = useState('');
+  const [configSaving, setConfigSaving] = useState(false);
 
   // 行内编辑 / 行操作
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingAmount, setEditingAmount] = useState('');
+  const [editingExpiryId, setEditingExpiryId] = useState<string | null>(null);
+  const [editingExpiry, setEditingExpiry] = useState('');
   const [rowWorkingId, setRowWorkingId] = useState<string | null>(null);
 
   // 复制反馈 + 本地 toast
@@ -100,6 +117,46 @@ export default function AdminPaymentPage() {
     loadCoupons(1, 'all', 'all');
   }, [loadCoupons]);
 
+  // 进入折扣券 tab 时拉取全局默认有效期配置（每次切入都刷新）
+  useEffect(() => {
+    if (tab !== 'coupons') return;
+    fetchCouponConfig()
+      .then((cfg) => {
+        setCouponConfig(cfg);
+        setConfigInput(String(cfg.default_ttl_days));
+      })
+      .catch(() => {
+        /* 读取失败保持现状 */
+      });
+  }, [tab]);
+
+  const handleSaveConfig = async () => {
+    const days = Math.floor(Number(configInput));
+    const min = couponConfig?.min ?? 1;
+    const max = couponConfig?.max ?? 3650;
+    if (!Number.isFinite(days) || days < min || days > max) {
+      setToast({ type: 'error', msg: `默认有效期需为 ${min}-${max} 的整数天数` });
+      return;
+    }
+    if (couponConfig && days === couponConfig.default_ttl_days) return;
+    setConfigSaving(true);
+    try {
+      const saved = await updateCouponConfig(days);
+      setCouponConfig(saved);
+      setConfigInput(String(saved.default_ttl_days));
+      setToast({
+        type: 'success',
+        msg: `默认有效期已更新为 ${saved.default_ttl_days} 天（只影响之后新创建的券）`,
+      });
+    } catch (e: unknown) {
+      // 保存失败回滚输入框为当前生效值
+      if (couponConfig) setConfigInput(String(couponConfig.default_ttl_days));
+      setToast({ type: 'error', msg: getApiErrorMessage(e, '保存默认有效期失败') });
+    } finally {
+      setConfigSaving(false);
+    }
+  };
+
   const reload = () => loadCoupons(page, statusFilter, sourceFilter);
 
   const formatTime = (iso?: string | null) => {
@@ -137,9 +194,21 @@ export default function AdminPaymentPage() {
       setToast({ type: 'error', msg: '数量需为 1-500 的整数' });
       return;
     }
+    // 有效期留空 = 用全局默认值；填写时需为 1-3650 的整数
+    let ttlDays: number | undefined;
+    if (createTtl.trim() !== '') {
+      const ttl = Math.floor(Number(createTtl));
+      const min = couponConfig?.min ?? 1;
+      const max = couponConfig?.max ?? 3650;
+      if (!Number.isFinite(ttl) || ttl < min || ttl > max) {
+        setToast({ type: 'error', msg: `有效期需为 ${min}-${max} 的整数天数，或留空用默认值` });
+        return;
+      }
+      ttlDays = ttl;
+    }
     setCreating(true);
     try {
-      const res = await createCoupons({ amount: fen, count });
+      const res = await createCoupons({ amount: fen, count, ttl_days: ttlDays });
       setLastCreated(res.created);
       setToast({
         type: 'success',
@@ -177,10 +246,54 @@ export default function AdminPaymentPage() {
     }
   };
 
+  const startEditExpiry = (item: CouponItem) => {
+    setEditingExpiryId(item.id);
+    // 默认填入当前有效期（本地日期），无有效期则留空由管理员选择
+    const d = item.expires_at ? new Date(item.expires_at) : null;
+    setEditingExpiry(d && !Number.isNaN(d.getTime()) ? d.toISOString().slice(0, 10) : '');
+  };
+
+  const handleSaveExpiry = async (item: CouponItem) => {
+    if (!editingExpiry) {
+      setToast({ type: 'error', msg: '请选择有效期日期' });
+      return;
+    }
+    // 日期输入按本地时区当天 23:59:59 截止，转 ISO 提交
+    const d = new Date(`${editingExpiry}T23:59:59`);
+    if (Number.isNaN(d.getTime())) {
+      setToast({ type: 'error', msg: '请选择有效日期' });
+      return;
+    }
+    setRowWorkingId(item.id);
+    try {
+      await updateCouponExpiry(item.id, d.toISOString());
+      setToast({ type: 'success', msg: `券 ${item.code} 有效期已调整为 ${editingExpiry}` });
+      setEditingExpiryId(null);
+      await reload();
+    } catch (e: unknown) {
+      setToast({ type: 'error', msg: getApiErrorMessage(e, '修改有效期失败') });
+    } finally {
+      setRowWorkingId(null);
+    }
+  };
+
+  const handleRestore = async (item: CouponItem) => {
+    setRowWorkingId(item.id);
+    try {
+      await restoreCoupon(item.id);
+      setToast({ type: 'success', msg: `券 ${item.code} 已恢复为未使用` });
+      await reload();
+    } catch (e: unknown) {
+      setToast({ type: 'error', msg: getApiErrorMessage(e, '恢复失败') });
+    } finally {
+      setRowWorkingId(null);
+    }
+  };
+
   const handleDelete = async (item: CouponItem) => {
     if (
       !window.confirm(
-        `确认作废折扣券 ${item.code}（¥${fenToYuan(item.amount)}）？\n作废后不可恢复。`,
+        `确认作废折扣券 ${item.code}（¥${fenToYuan(item.amount)}）？\n作废后可通过「恢复」还原。`,
       )
     ) {
       return;
@@ -204,7 +317,7 @@ export default function AdminPaymentPage() {
           支付管理
         </h1>
         <p className="text-sm" style={{ color: 'var(--bd-fg-muted)' }}>
-          折扣券为通用码：固定金额、无门槛、永久有效、核销一次即作废；下单锁定、关单释放。
+          折扣券为通用码：固定金额、无门槛、限期有效、核销一次即作废；下单锁定、关单释放。
         </p>
       </header>
 
@@ -241,6 +354,35 @@ export default function AdminPaymentPage() {
 
       {tab === 'coupons' && (
         <>
+          {/* 默认有效期设置（即时生效，只影响之后新创建的券） */}
+          <section className="rounded-2xl bg-bd-card/80 backdrop-blur-lg border border-bd-border px-6 py-4 shadow-sm flex flex-wrap items-center gap-3 text-xs">
+            <span className="font-medium" style={{ color: 'var(--bd-fg)' }}>
+              默认有效期（天）
+            </span>
+            <input
+              type="number"
+              min={couponConfig?.min ?? 1}
+              max={couponConfig?.max ?? 3650}
+              value={configInput}
+              onChange={(e) => setConfigInput(e.target.value)}
+              disabled={!couponConfig || configSaving}
+              className="w-24 rounded-lg border border-bd-border bg-bd-overlay px-3 py-1.5 text-xs"
+            />
+            <button
+              type="button"
+              onClick={handleSaveConfig}
+              disabled={!couponConfig || configSaving}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-bd-ui-accent text-bd-ui-accent-fg disabled:opacity-60"
+            >
+              {configSaving ? '保存中…' : '保存'}
+            </button>
+            <span className="text-[11px] text-bd-subtle">
+              {couponConfig
+                ? `当前 ${couponConfig.default_ttl_days} 天（范围 ${couponConfig.min}-${couponConfig.max}）· 只影响之后新创建的券`
+                : '配置加载中…'}
+            </span>
+          </section>
+
           {/* 创建折扣券 */}
           <section className="rounded-2xl bg-bd-card/80 backdrop-blur-lg border border-bd-border px-6 py-4 shadow-sm space-y-4">
             <div className="flex flex-wrap items-end gap-3">
@@ -263,6 +405,18 @@ export default function AdminPaymentPage() {
                   max={500}
                   value={createCount}
                   onChange={(e) => setCreateCount(Number(e.target.value || 1))}
+                  className="w-28 rounded-lg border border-bd-border bg-bd-overlay px-3 py-2 text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <p className="text-[11px] text-bd-subtle">有效期（天，留空用默认）</p>
+                <input
+                  type="number"
+                  min={couponConfig?.min ?? 1}
+                  max={couponConfig?.max ?? 3650}
+                  value={createTtl}
+                  onChange={(e) => setCreateTtl(e.target.value)}
+                  placeholder={couponConfig ? String(couponConfig.default_ttl_days) : '默认'}
                   className="w-28 rounded-lg border border-bd-border bg-bd-overlay px-3 py-2 text-xs"
                 />
               </div>
@@ -341,6 +495,8 @@ export default function AdminPaymentPage() {
                 <option value="unused">未使用</option>
                 <option value="locked">锁定中</option>
                 <option value="used">已使用</option>
+                <option value="expired">已过期</option>
+                <option value="void">已作废</option>
               </select>
             </label>
             <label className="inline-flex items-center gap-2">
@@ -377,6 +533,8 @@ export default function AdminPaymentPage() {
                       <th className="px-2 py-2 text-left font-medium">面额</th>
                       <th className="px-2 py-2 text-left font-medium">状态</th>
                       <th className="px-2 py-2 text-left font-medium">来源</th>
+                      <th className="px-2 py-2 text-left font-medium">有效期至</th>
+                      <th className="px-2 py-2 text-left font-medium">归属</th>
                       <th className="px-2 py-2 text-left font-medium">创建时间</th>
                       <th className="px-2 py-2 text-left font-medium">使用信息</th>
                       <th className="px-2 py-2 text-left font-medium">操作</th>
@@ -418,6 +576,12 @@ export default function AdminPaymentPage() {
                           {SOURCE_LABEL[item.source] || item.source}
                         </td>
                         <td className="px-2 py-2 text-[11px] text-bd-muted whitespace-nowrap">
+                          {item.expires_at ? formatTime(item.expires_at) : '不限'}
+                        </td>
+                        <td className="px-2 py-2 text-[11px] text-bd-muted whitespace-nowrap">
+                          {item.owner_email || '未绑定'}
+                        </td>
+                        <td className="px-2 py-2 text-[11px] text-bd-muted whitespace-nowrap">
                           {formatTime(item.created_at)}
                         </td>
                         <td className="px-2 py-2 text-[11px] text-bd-muted">
@@ -434,7 +598,7 @@ export default function AdminPaymentPage() {
                           )}
                         </td>
                         <td className="px-2 py-2 whitespace-nowrap">
-                          {item.status === 'unused' ? (
+                          {item.status === 'unused' || item.status === 'expired' ? (
                             editingId === item.id ? (
                               <div className="inline-flex items-center gap-1.5">
                                 <input
@@ -463,6 +627,32 @@ export default function AdminPaymentPage() {
                                   取消
                                 </button>
                               </div>
+                            ) : editingExpiryId === item.id ? (
+                              <div className="inline-flex items-center gap-1.5">
+                                <input
+                                  type="date"
+                                  value={editingExpiry}
+                                  onChange={(e) => setEditingExpiry(e.target.value)}
+                                  className="rounded-md border border-bd-border bg-bd-overlay px-2 py-1 text-[11px]"
+                                  autoFocus
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveExpiry(item)}
+                                  disabled={rowWorkingId === item.id}
+                                  className="px-2 py-1 rounded-md bg-bd-ui-accent text-bd-ui-accent-fg text-[11px] disabled:opacity-50"
+                                >
+                                  保存
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingExpiryId(null)}
+                                  disabled={rowWorkingId === item.id}
+                                  className="px-2 py-1 rounded-md border border-bd-border text-bd-muted hover:text-bd-fg hover:bg-bd-overlay-md text-[11px]"
+                                >
+                                  取消
+                                </button>
+                              </div>
                             ) : (
                               <div className="inline-flex items-center gap-1.5">
                                 <button
@@ -474,6 +664,13 @@ export default function AdminPaymentPage() {
                                 </button>
                                 <button
                                   type="button"
+                                  onClick={() => startEditExpiry(item)}
+                                  className="px-2 py-1 rounded-md border border-bd-border text-bd-muted hover:text-bd-fg hover:bg-bd-overlay-md text-[11px]"
+                                >
+                                  改期
+                                </button>
+                                <button
+                                  type="button"
                                   onClick={() => handleDelete(item)}
                                   disabled={rowWorkingId === item.id}
                                   className="px-2 py-1 rounded-md border border-rose-200 bg-rose-50 text-rose-700 text-[11px] disabled:opacity-50"
@@ -482,6 +679,15 @@ export default function AdminPaymentPage() {
                                 </button>
                               </div>
                             )
+                          ) : item.status === 'void' ? (
+                            <button
+                              type="button"
+                              onClick={() => handleRestore(item)}
+                              disabled={rowWorkingId === item.id}
+                              className="px-2 py-1 rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 text-[11px] disabled:opacity-50"
+                            >
+                              恢复
+                            </button>
                           ) : (
                             <span className="text-bd-subtle">—</span>
                           )}

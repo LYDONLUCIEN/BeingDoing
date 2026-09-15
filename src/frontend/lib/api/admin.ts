@@ -426,6 +426,33 @@ export async function rejectAdminReportRecheck(
   return res.data as AdminRecheckEntry;
 }
 
+export type RecheckMarkdownVersion = 'original' | 'staging';
+
+/** 获取报告 markdown 原文（复核编辑器用）：original=正式缓存 / staging=新稿。 */
+export async function fetchAdminRecheckMarkdown(
+  reportId: string,
+  version: RecheckMarkdownVersion,
+): Promise<string> {
+  const res = await apiClient.get(
+    `/admin/reports/${encodeURIComponent(reportId)}/recheck/markdown`,
+    { params: { version } },
+  );
+  return ((res.data as any)?.markdown as string) ?? '';
+}
+
+/** 发布 admin 编辑稿：编辑后的 markdown 直接写为正式缓存，staging 清除，关单通知用户。 */
+export async function publishAdminRecheckEdited(
+  reportId: string,
+  version: RecheckMarkdownVersion,
+  markdown: string,
+): Promise<AdminRecheckEntry> {
+  const res = await apiClient.post(
+    `/admin/reports/${encodeURIComponent(reportId)}/recheck/publish-edited`,
+    { version, markdown },
+  );
+  return res.data as AdminRecheckEntry;
+}
+
 export async function syncReportsFromActivations() {
   const res = await apiClient.post('/admin/reports/sync-from-activations');
   return res.data ?? { created: 0, scanned: 0 };

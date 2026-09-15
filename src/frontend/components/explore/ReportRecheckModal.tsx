@@ -30,12 +30,12 @@ const CATEGORY_OPTIONS: Array<{ value: RecheckCategory; label: string; hint: str
   {
     value: 'content_issue',
     label: '报告内容有问题',
-    hint: '内容与你的情况不符、表述不准确等，由管理员人工复核，必要时重新生成',
+    hint: '内容与你的情况不符、表述不准确，由管理员在5个工作日内复核。',
   },
   {
     value: 'download_issue',
     label: '下载或打开失败',
-    hint: '按故障处理，与页面右侧「反馈 bug」同一流程',
+    hint: '3个工作日内回复处理结果。',
   },
 ];
 
@@ -123,6 +123,11 @@ export default function ReportRecheckModal({
           </div>
         ) : (
           <>
+            {category === 'content_issue' && (
+              <div className="rounded-xl border border-amber-300/60 bg-amber-50 dark:bg-amber-500/10 px-4 py-3 text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+                每份报告仅有 1 次免费复核机会，提交后不可撤销，请谨慎填写。
+              </div>
+            )}
             <div className="space-y-2">
               {CATEGORY_OPTIONS.map((opt) => (
                 <label

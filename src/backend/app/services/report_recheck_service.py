@@ -57,7 +57,12 @@ RECHECK_OPEN_STATUSES = {
 NOTIFY_TYPE_DONE = "report_recheck_done"
 NOTIFY_TYPE_REJECTED = "report_recheck_rejected"
 
-SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
+SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")  # 保留供外部兼容引用（本文件限流已改为按次）
+
+# 每份报告终身 1 次免费复核的提示语（提交即消耗，驳回也算用完，溯及既往）
+RECHECK_USED_UP_MESSAGE = (
+    "本次报告的免费复核机会已用完。如仍有问题，请通过页面「反馈 bug」或邮件联系我们。"
+)
 
 
 def _now_iso() -> str:
@@ -91,6 +96,11 @@ def _find_request(report: dict, request_id: str) -> Optional[dict]:
         if req.get("id") == request_id:
             return req
     return None
+
+
+def has_used_recheck(report: dict) -> bool:
+    """该报告是否已用掉免费复核机会（提交即消耗，驳回也算，溯及既往）。"""
+    return len(list_recheck_requests(report)) > 0
 
 
 # ── 提交（用户侧）─────────────────────────────────────────────
@@ -128,7 +138,7 @@ async def submit_recheck(
     """用户提交复核申请（内容问题）。
 
     Raises:
-        ValueError: 状态不允许（报告未批复/有未关闭复核单/当日已申请）
+        ValueError: 状态不允许（报告未批复/有未关闭复核单/免费次数已用完）
     """
     report_id = (report.get("report_id") or "").strip()
     if get_review_status(report) != REVIEW_STATUS_APPROVED:
@@ -138,20 +148,10 @@ async def submit_recheck(
     if get_current_recheck(report) is not None:
         raise ValueError("已有复核申请在处理中，请等待处理完成")
 
-    # 频率限制：同一报告每个自然日（Asia/Shanghai）最多 1 次
-    today = datetime.now(SHANGHAI_TZ).date()
-    for req in list_recheck_requests(report):
-        at = (req.get("requested_at") or "").strip()
-        if not at:
-            continue
-        try:
-            req_date = datetime.fromisoformat(at.replace("Z", "+00:00")).astimezone(
-                SHANGHAI_TZ
-            ).date()
-        except ValueError:
-            continue
-        if req_date == today:
-            raise ValueError("每份报告每天最多申请 1 次复核，请明天再来")
+    # 次数限制（2026-09-14 起）：每份报告终身 1 次免费复核，
+    # 提交即消耗（驳回也算用完），存量复核单溯及既往
+    if has_used_recheck(report):
+        raise ValueError(RECHECK_USED_UP_MESSAGE)
 
     # 双写 Feedback 工单（type=bug：与「反馈 bug」同流程——auto_ack + admin 通知 + SLA）
     feedback = await feedback_service.create_feedback(
@@ -344,34 +344,16 @@ async def _send_email_to_user(
         logger.exception("复核邮件发送失败: user_id=%s", user_id)
 
 
-async def publish_recheck(
+async def _finalize_done(
     db: AsyncSession,
     registry: ReportRegistry,
+    record: dict,
+    cur: dict,
     report_id: str,
     *,
     admin_id: Optional[str],
 ) -> dict:
-    """确认发布：staging 原子替换正式缓存，用户同步看到新报告。
-
-    Raises:
-        ValueError: 无待确认复核单 / staging 不存在
-    """
-    from app.services.report_pdf_service import ReportPdfService
-
-    record = registry.get_report_by_id(report_id)
-    if not record:
-        raise LookupError("报告不存在")
-    cur = get_current_recheck(record)
-    if cur is None:
-        raise ValueError("该报告没有进行中的复核")
-    if cur.get("status") != RECHECK_STATUS_PENDING_CONFIRM:
-        raise ValueError("新稿尚未生成完成，暂不能确认发布")
-
-    base_dir = getattr(registry, "simple_base_dir", None)
-    service = ReportPdfService(base_dir=str(base_dir) if base_dir else None)
-    if not service.publish_staging(report_id):
-        raise ValueError("新稿文件不存在，请重新生成")
-
+    """发布收尾：关单 done、关 Feedback 工单、站内信 + 邮件通知用户。"""
     cur["status"] = RECHECK_STATUS_DONE
     cur["closed_at"] = _now_iso()
     cur["updated_at"] = _now_iso()
@@ -405,6 +387,74 @@ async def publish_recheck(
     )
     logger.info("复核发布完成: report_id=%s admin=%s", report_id, admin_id)
     return cur
+
+
+async def publish_recheck(
+    db: AsyncSession,
+    registry: ReportRegistry,
+    report_id: str,
+    *,
+    admin_id: Optional[str],
+) -> dict:
+    """确认发布：staging 原子替换正式缓存，用户同步看到新报告。
+
+    Raises:
+        ValueError: 无待确认复核单 / staging 不存在
+    """
+    from app.services.report_pdf_service import ReportPdfService
+
+    record = registry.get_report_by_id(report_id)
+    if not record:
+        raise LookupError("报告不存在")
+    cur = get_current_recheck(record)
+    if cur is None:
+        raise ValueError("该报告没有进行中的复核")
+    if cur.get("status") != RECHECK_STATUS_PENDING_CONFIRM:
+        raise ValueError("新稿尚未生成完成，暂不能确认发布")
+
+    base_dir = getattr(registry, "simple_base_dir", None)
+    service = ReportPdfService(base_dir=str(base_dir) if base_dir else None)
+    if not service.publish_staging(report_id):
+        raise ValueError("新稿文件不存在，请重新生成")
+
+    return await _finalize_done(db, registry, record, cur, report_id, admin_id=admin_id)
+
+
+async def publish_edited_recheck(
+    db: AsyncSession,
+    registry: ReportRegistry,
+    report_id: str,
+    *,
+    version: str,
+    markdown: str,
+    admin_id: Optional[str],
+) -> dict:
+    """发布 admin 编辑稿（2026-09-14）：将编辑后的 markdown 直接写为正式缓存。
+
+    原版与新稿均可编辑后发布；发布后 staging 一律清除（未被选择的新稿随之废弃）。
+
+    Raises:
+        ValueError: 无进行中复核单 / markdown 为空 / version 非法
+    """
+    from app.services.report_pdf_service import ReportPdfService
+
+    if version not in ("original", "staging"):
+        raise ValueError("version 必须是 original 或 staging")
+    if not (markdown or "").strip():
+        raise ValueError("发布内容不能为空")
+
+    record = registry.get_report_by_id(report_id)
+    if not record:
+        raise LookupError("报告不存在")
+    cur = get_current_recheck(record)
+    if cur is None:
+        raise ValueError("该报告没有进行中的复核")
+
+    base_dir = getattr(registry, "simple_base_dir", None)
+    service = ReportPdfService(base_dir=str(base_dir) if base_dir else None)
+    service.publish_edited_markdown(report_id, markdown)
+
+    return await _finalize_done(db, registry, record, cur, report_id, admin_id=admin_id)
 
 
 async def reject_recheck(

@@ -51,6 +51,8 @@ function ReportViewContent() {
   const [recheckOpen, setRecheckOpen] = useState(false);
   /** 复核进行中（pending/regenerating/pending_confirm）：显示提示条并禁用申请入口 */
   const recheckInProgress = reportInfo?.recheck_status != null;
+  /** 免费复核机会已用完（每报告 1 次，提交即消耗）：禁止再次申请 */
+  const recheckUsedUp = reportInfo?.recheck_used === true && !recheckInProgress;
 
   // 报告页加载后（approved）先查一次生成状态：
   // - 已有缓存（含提交时/审核期后台预生成完成）→ 直接显示「下载 PDF 报告」
@@ -353,22 +355,24 @@ function ReportViewContent() {
                     </>
                   )}
                 </button>
-                {/* 申请复核（用户不能重新生成；复核由管理员人工处理） */}
+                {/* 申请复核（用户不能重新生成；复核由管理员人工处理；每报告 1 次免费机会） */}
                 <span
                   title={
                     recheckInProgress
-                      ? '已有复核申请在处理中，完成后可再次申请'
-                      : '报告内容有问题？提交后由管理员人工复核，必要时重新生成；期间你仍可查看当前报告'
+                      ? '已有复核申请在处理中，请等待处理完成'
+                      : recheckUsedUp
+                        ? '免费复核机会已用完。如仍有问题，请通过「反馈 bug」或邮件联系我们'
+                        : '报告内容有问题？每份报告仅有 1 次免费复核机会，提交后由管理员人工复核'
                   }
                   className="inline-block"
                 >
                   <button
                     type="button"
                     onClick={() => setRecheckOpen(true)}
-                    disabled={recheckInProgress}
+                    disabled={recheckInProgress || recheckUsedUp}
                     className="inline-flex items-center gap-1.5 rounded-xl border border-bd-border bg-bd-card px-4 py-3 text-xs font-medium text-bd-muted hover:bg-bd-overlay-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-bd-card"
                   >
-                    {recheckInProgress ? '复核处理中' : '申请复核'}
+                    {recheckInProgress ? '复核处理中' : recheckUsedUp ? '复核机会已用完' : '申请复核'}
                   </button>
                 </span>
               </div>

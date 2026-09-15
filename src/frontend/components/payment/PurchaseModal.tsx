@@ -3,7 +3,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, Copy, Loader2, X } from 'lucide-react';
+import {
+  CalendarDays,
+  Check,
+  ChevronDown,
+  Copy,
+  FileText,
+  Loader2,
+  MessageCircle,
+  UserCheck,
+  Users,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import { getApiErrorMessage } from '@/lib/api/client';
 import {
   cancelOrder,
@@ -11,17 +23,28 @@ import {
   fenToYuan,
   getOrder,
   getProducts,
+  listMyCoupons,
   validateCoupon,
+  type MyCouponItem,
   type OrderItem,
   type PayChannel,
   type ProductItem,
   type ProductType,
 } from '@/lib/api/payment';
+import { toDate } from '@/lib/utils/formatTime';
 import { useLocale } from '@/hooks/useLocale';
 import { CopyableCode } from '@/components/payment/CopyableCode';
 import UpgradeTrialModal from '@/components/payment/UpgradeTrialModal';
 import { TeamAnalysisNoticeBox } from '@/components/payment/TeamAnalysisNoticeModal';
 import { getUpgradeContext } from '@/lib/api/activation';
+
+/** 有效期至 YYYY-MM-DD（本地时区） */
+function formatCouponDay(iso: string): string {
+  const d = toDate(iso);
+  if (!d) return iso;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 export type PurchaseModalProps = {
   open: boolean;
@@ -106,9 +129,15 @@ export default function PurchaseModal({
   );
   const [channel, setChannel] = useState<PayChannel>('alipay');
   const [couponInput, setCouponInput] = useState('');
-  const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; amount: number } | null>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    amount: number;
+    expires_at: string | null;
+  } | null>(null);
   const [couponError, setCouponError] = useState<string | null>(null);
   const [couponChecking, setCouponChecking] = useState(false);
+  /** 我的可用券（打开弹窗时懒加载一次；接口失败静默降级为只显示输入框） */
+  const [myCoupons, setMyCoupons] = useState<MyCouponItem[]>([]);
   const [order, setOrder] = useState<OrderItem | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -118,6 +147,8 @@ export default function PurchaseModal({
   const [waitStatus, setWaitStatus] = useState<WaitStatus>('polling');
   /** 消耗升级弹窗（ADR-0014）：套餐成功交付且有已开聊试用码时弹出 */
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+  /** 宽版方案选择视图：功能对比折叠区 */
+  const [compareOpen, setCompareOpen] = useState(false);
   /** 消耗升级完成（本弹窗内或后端直购自动升级）：成功视图切换为「已升级」态 */
   const [trialUpgraded, setTrialUpgraded] = useState(false);
   /** 弹窗消耗升级实际用掉的付费码（从展示列表排除） */
@@ -134,15 +165,15 @@ export default function PurchaseModal({
   // 延期模式价格由后端按码类型定价，前端下单前不展示确定金额
   const finalAmount = Math.max(0, priceProduct.price - (appliedCoupon?.amount ?? 0));
 
-  /** 套餐特性文案（i18n 缺失的键自动跳过） */
-  const planFeatures = (type: ProductType): string[] =>
-    ['f1', 'f2', 'f3', 'f4']
-      .map((f) => {
-        const key = `payment.plan.${type}.${f}`;
-        const val = t(key);
-        return val === key ? null : val;
-      })
-      .filter((v): v is string => Boolean(v));
+  /** 套餐名称（i18n 缺失时回退接口名） */
+  const planName = (p: ProductItem): string => {
+    const key = `payment.plan.${p.product_type}.name`;
+    const val = t(key);
+    return val === key ? p.name : val;
+  };
+
+  /** 套餐月数（展示用，与套餐定义一致：季度 3 / 年度 12） */
+  const planMonths = (type: ProductType): number => (type === 'annual_package' ? 12 : 3);
 
   // ── 进入成功视图（onSuccess 每单只触发一次）──
   const enterSuccess = useCallback(
@@ -184,6 +215,7 @@ export default function PurchaseModal({
     setWaitStatus('polling');
     setUpgradeOpen(false);
     setTrialUpgraded(false);
+    setCompareOpen(false);
     successFiredRef.current = false;
   }, []);
 
@@ -260,6 +292,14 @@ export default function PurchaseModal({
         /* 使用兜底商品信息 */
       });
 
+    // 懒加载「我的可用券」：失败静默，只显示手动输入框
+    setMyCoupons([]);
+    listMyCoupons()
+      .then((res) => setMyCoupons(res.available))
+      .catch(() => {
+        /* 静默降级 */
+      });
+
     if (resumeOrderId) {
       getOrder(resumeOrderId)
         .then((res) => {
@@ -281,14 +321,14 @@ export default function PurchaseModal({
   }, [open, resumeOrderId, defaultProductType]);
 
   // ── 券码校验 ──
-  const handleApplyCoupon = async () => {
-    const code = couponInput.trim();
+  const handleApplyCoupon = async (codeOverride?: string) => {
+    const code = (codeOverride ?? couponInput).trim();
     if (!code || couponChecking) return;
     setCouponChecking(true);
     setCouponError(null);
     try {
       const res = await validateCoupon(code);
-      setAppliedCoupon({ code: res.code, amount: res.amount });
+      setAppliedCoupon({ code: res.code, amount: res.amount, expires_at: res.expires_at ?? null });
     } catch (e: unknown) {
       setAppliedCoupon(null);
       setCouponError(getApiErrorMessage(e, t('payment.coupon.invalid')));
@@ -296,6 +336,36 @@ export default function PurchaseModal({
       setCouponChecking(false);
     }
   };
+
+  /** 选中「我的可用券」下拉项：填入券码并自动触发校验 */
+  const handleSelectMyCoupon = (code: string) => {
+    if (!code) return;
+    setCouponInput(code);
+    void handleApplyCoupon(code);
+  };
+
+  /** 「我的可用券」下拉（仅在拉取到可用券时渲染） */
+  const renderMyCouponsSelect = (selectClassName: string) =>
+    myCoupons.length === 0 ? null : (
+      <select
+        value=""
+        onChange={(e) => handleSelectMyCoupon(e.target.value)}
+        aria-label={t('payment.coupon.myCoupons')}
+        className={selectClassName}
+      >
+        <option value="" disabled>
+          {t('payment.coupon.myCouponsPlaceholder')}
+        </option>
+        {myCoupons.map((c) => (
+          <option key={c.code} value={c.code}>
+            ¥{fenToYuan(c.amount)} · {c.code}
+            {c.expires_at
+              ? ` · ${t('payment.coupon.expiresAt', { date: formatCouponDay(c.expires_at) })}`
+              : ''}
+          </option>
+        ))}
+      </select>
+    );
 
   // ── 下单 ──
   const handlePay = async () => {
@@ -382,6 +452,76 @@ export default function PurchaseModal({
     : consultationMode
       ? t('payment.consultation.title')
       : t('payment.title');
+  /** 宽版方案选择视图（仅套餐下单；延期/咨询/等待/成功保持窄弹窗），UI 对齐设计稿 wiki/开发文档/0914-openlife-purchase.html */
+  const wideMode = view === 'order' && !renewalMode && !consultationMode;
+  const quarterlyProduct =
+    products.find((p) => p.product_type === 'quarterly_package') ?? FALLBACK_PRODUCTS[0];
+  const annualProduct =
+    products.find((p) => p.product_type === 'annual_package') ?? FALLBACK_PRODUCTS[1];
+  const isAnnual = selectedType === 'annual_package';
+
+  /** 左栏权益（按所选套餐切换） */
+  const benefits: Array<{ icon: LucideIcon; chip: string; title: string; sub: string }> = [
+    {
+      icon: MessageCircle,
+      chip: 'bg-[#e4f1ff] text-[#2774d6]',
+      title: t('payment.dialog.benefitChatTitle'),
+      sub: t('payment.dialog.benefitChatSub'),
+    },
+    {
+      icon: FileText,
+      chip: 'bg-[#e3f4ec] text-[#2c8c62]',
+      title: t('payment.dialog.benefitReportTitle', { count: String(isAnnual ? 3 : 1) }),
+      sub: t('payment.dialog.benefitReportSub'),
+    },
+    {
+      icon: UserCheck,
+      chip: 'bg-[#ffe9e7] text-[#d05a4e]',
+      title: t('payment.dialog.benefitReviewTitle'),
+      sub: t('payment.dialog.benefitReviewSub'),
+    },
+    isAnnual
+      ? {
+          icon: Users,
+          chip: 'bg-[#fdf3d8] text-[#b98a1d]',
+          title: t('payment.dialog.benefitTeamTitle'),
+          sub: t('payment.dialog.benefitTeamSub'),
+        }
+      : {
+          icon: CalendarDays,
+          chip: 'bg-[#fdf3d8] text-[#b98a1d]',
+          title: t('payment.dialog.benefitRenewalTitle'),
+          sub: t('payment.dialog.benefitRenewalSub'),
+        },
+  ];
+
+  /** 功能对比行（boolean=是否包含；string=文案） */
+  const compareRows: Array<{ label: string; quarterly: string | boolean; annual: string | boolean }> = [
+    {
+      label: t('payment.compare.quota'),
+      quarterly: t('payment.compare.quotaValue'),
+      annual: t('payment.compare.quotaValue'),
+    },
+    {
+      label: t('payment.compare.reports'),
+      quarterly: t('payment.compare.reportsQuarterly'),
+      annual: t('payment.compare.reportsAnnual'),
+    },
+    { label: t('payment.compare.review'), quarterly: true, annual: true },
+    { label: t('payment.compare.team'), quarterly: false, annual: true },
+    { label: t('payment.compare.renewal'), quarterly: true, annual: true },
+    {
+      label: t('payment.compare.duration'),
+      quarterly: t('payment.compare.durationQuarterly'),
+      annual: t('payment.compare.durationAnnual'),
+    },
+    {
+      label: t('payment.compare.scene'),
+      quarterly: t('payment.compare.sceneQuarterly'),
+      annual: t('payment.compare.sceneAnnual'),
+    },
+  ];
+
   // 套餐交付的全部码（等价、不区分用途）；弹窗升级后排除已消耗的那枚
   const allDeliveredCodes: string[] = order?.meta?.codes?.length
     ? order.meta.codes
@@ -404,7 +544,7 @@ export default function PurchaseModal({
         >
           <button
             type="button"
-            className="absolute inset-0 bg-stone-900/25 backdrop-blur-[2px]"
+            className={`absolute inset-0 ${wideMode ? 'bg-[#24354a]/45 backdrop-blur-[7px]' : 'bg-stone-900/25 backdrop-blur-[2px]'}`}
             aria-label="关闭"
             onClick={onClose}
           />
@@ -412,13 +552,334 @@ export default function PurchaseModal({
             role="dialog"
             aria-modal
             aria-labelledby="purchase-modal-title"
-            className="relative w-full max-w-md max-h-[85vh] flex flex-col rounded-2xl border border-stone-200/80 bg-white/95 shadow-[0_24px_80px_-24px_rgba(15,23,42,0.18),0_0_0_1px_rgba(255,255,255,0.6)_inset]"
+            className={
+              wideMode
+                ? 'relative flex max-h-[85vh] w-full max-w-[1180px] flex-col overflow-hidden rounded-[22px] border border-white/80 shadow-[0_24px_100px_rgba(27,47,81,0.17)]'
+                : 'relative w-full max-w-md max-h-[85vh] flex flex-col rounded-2xl border border-stone-200/80 bg-white/95 shadow-[0_24px_80px_-24px_rgba(15,23,42,0.18),0_0_0_1px_rgba(255,255,255,0.6)_inset]'
+            }
+            style={
+              wideMode
+                ? {
+                    backgroundColor: 'rgba(255,255,255,0.98)',
+                    backgroundImage:
+                      'radial-gradient(ellipse at 0 0,#d9effdcc,transparent 29%),radial-gradient(ellipse at 100% 0,#ffe1e4ad,transparent 25%),radial-gradient(ellipse at 0 100%,#dff5e8b3,transparent 27%),radial-gradient(ellipse at 100% 100%,#fff0c5c7,transparent 27%)',
+                  }
+                : undefined
+            }
             initial={{ opacity: 0, y: 14, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.99 }}
             transition={{ duration: 0.32, ease: [0.25, 0.8, 0.35, 1] }}
             onClick={(e) => e.stopPropagation()}
           >
+            {wideMode ? (
+              <>
+                {/* 右上角浮动关闭（对齐设计稿 0914-openlife-purchase.html） */}
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="关闭"
+                  className="absolute right-4 top-3.5 z-10 grid h-[34px] w-[34px] place-items-center rounded-full text-[28px] font-light leading-none text-[#506b8b] transition hover:bg-[#e9eff9] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#327ce3]"
+                >
+                  ×
+                </button>
+
+                <div className="overflow-y-auto overscroll-contain px-5 pb-5 pt-12 sm:px-10 lg:px-[52px]">
+                  <div className="grid items-stretch gap-6 lg:grid-cols-[1.05fr_1fr]">
+                    {/* 左栏：标题 + 权益（随所选套餐切换） */}
+                    <section>
+                      <h2
+                        id="purchase-modal-title"
+                        className="mb-4 text-[clamp(25px,2.6vw,36px)] font-bold leading-[1.35] tracking-[-1.1px] text-[#142443]"
+                      >
+                        {t('payment.dialog.title')}
+                      </h2>
+                      <div className="mb-6 flex min-h-[30px] items-center gap-3.5">
+                        <span className="shrink-0 rounded-full bg-[#e4f1ff] px-3 py-1 text-[13px] font-semibold text-[#2774d6]">
+                          {planName(selectedProduct)}
+                        </span>
+                        <p className="text-[15px] leading-relaxed text-[#6d7e98]">
+                          {t(isAnnual ? 'payment.dialog.subtitleAnnual' : 'payment.dialog.subtitleQuarterly')}
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2.5">
+                        {benefits.map((b) => (
+                          <div
+                            key={b.title}
+                            className="flex min-h-[88px] items-center gap-3 rounded-2xl border border-[#ebeff5] bg-white/60 px-3 py-4"
+                          >
+                            <span
+                              className={`grid h-[43px] w-[43px] shrink-0 place-items-center rounded-[15px] ${b.chip}`}
+                              aria-hidden
+                            >
+                              <b.icon className="h-[22px] w-[22px]" strokeWidth={1.8} />
+                            </span>
+                            <span>
+                              <strong className="block text-[13px] font-semibold leading-relaxed text-[#142443]">
+                                {b.title}
+                              </strong>
+                              <small className="mt-1 block text-xs leading-normal text-[#6d7e98]">{b.sub}</small>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+
+                    {/* 右栏：套餐单选 + 渠道 + 券码 */}
+                    <fieldset className="flex flex-col gap-3">
+                      <legend className="sr-only">{t('payment.title')}</legend>
+                      {[quarterlyProduct, annualProduct].map((p) => {
+                        const selected = p.product_type === selectedType;
+                        return (
+                          <label
+                            key={p.product_type}
+                            className={`relative block cursor-pointer rounded-2xl border p-5 transition ${
+                              selected
+                                ? 'border-[#3678df] bg-[#eaf2ff]/60 ring-1 ring-[#3678df]/40'
+                                : 'border-[#dfe6ef] bg-white/60 hover:bg-white/90'
+                            }`}
+                          >
+                            {p.popular && (
+                              <span className="absolute -top-2.5 right-3 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-semibold text-white">
+                                {t('payment.plan.popular')}
+                              </span>
+                            )}
+                            <span className="flex items-center gap-3">
+                              <input
+                                type="radio"
+                                name="purchase-plan"
+                                className="sr-only"
+                                checked={selected}
+                                onChange={() => setSelectedType(p.product_type)}
+                                aria-label={`${planName(p)}，¥${fenToYuan(p.price)}，${t('payment.dialog.months', { count: String(planMonths(p.product_type)) })}`}
+                              />
+                              <span
+                                aria-hidden
+                                className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border-2 ${selected ? 'border-[#3678df]' : 'border-[#b9c6d8]'}`}
+                              >
+                                {selected && <span className="h-2.5 w-2.5 rounded-full bg-[#3678df]" />}
+                              </span>
+                              <span className="text-lg font-semibold text-[#142443]">{planName(p)}</span>
+                            </span>
+                            <span className="mt-3 block">
+                              <span className="text-[34px] font-bold leading-none text-[#142443]">
+                                ¥{fenToYuan(p.price)}
+                              </span>
+                              <span className="ml-1.5 text-sm text-[#6d7e98]">
+                                / {t('payment.dialog.months', { count: String(planMonths(p.product_type)) })}
+                              </span>
+                            </span>
+                            <span className="mt-2 block text-[13px] leading-relaxed text-[#6d7e98]">
+                              {t(
+                                p.product_type === 'annual_package'
+                                  ? 'payment.dialog.descAnnual'
+                                  : 'payment.dialog.descQuarterly',
+                              )}
+                            </span>
+                          </label>
+                        );
+                      })}
+
+                      {/* 渠道选择（设计稿同风格；微信预留） */}
+                      <div className="mt-1 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setChannel('alipay')}
+                          className={`rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
+                            channel === 'alipay'
+                              ? 'border-[#1677ff] bg-[#1677ff]/5 text-[#1677ff] ring-1 ring-[#1677ff]/30'
+                              : 'border-[#dfe6ef] bg-white/60 text-[#506b8b] hover:bg-white/90'
+                          }`}
+                        >
+                          {t('payment.channel.alipay')}
+                        </button>
+                        <button
+                          type="button"
+                          disabled
+                          title={t('payment.channel.comingSoon')}
+                          className="relative cursor-not-allowed rounded-xl border border-[#dfe6ef] bg-white/40 px-3 py-2.5 text-sm font-medium text-[#9aa8bb]"
+                        >
+                          {t('payment.channel.wechat')}
+                          <span className="absolute -top-2 right-2 rounded-full bg-stone-200 px-1.5 py-0.5 text-[10px] text-stone-500">
+                            {t('payment.channel.comingSoon')}
+                          </span>
+                        </button>
+                      </div>
+
+                      {/* 券码 */}
+                      {renderMyCouponsSelect(
+                        'w-full rounded-xl border border-[#dfe6ef] bg-white/80 px-3.5 py-2.5 text-sm text-[#142443] outline-none transition focus:border-[#3678df]',
+                      )}
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={couponInput}
+                          onChange={(e) => {
+                            setCouponInput(e.target.value);
+                            setCouponError(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') void handleApplyCoupon();
+                          }}
+                          placeholder={t('payment.coupon.placeholder')}
+                          className="min-w-0 flex-1 rounded-xl border border-[#dfe6ef] bg-white/80 px-3.5 py-2.5 text-sm text-[#142443] outline-none transition focus:border-[#3678df]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void handleApplyCoupon()}
+                          disabled={couponChecking || !couponInput.trim()}
+                          className="shrink-0 rounded-xl border border-[#c8d4e4] px-4 py-2.5 text-sm font-medium text-[#32629a] transition hover:bg-[#e9eff9] disabled:opacity-40"
+                        >
+                          {couponChecking ? t('payment.coupon.checking') : t('payment.coupon.apply')}
+                        </button>
+                      </div>
+                      {appliedCoupon && (
+                        <p className="text-sm font-medium text-emerald-600">
+                          {t('payment.coupon.applied', { amount: fenToYuan(appliedCoupon.amount) })}
+                          {appliedCoupon.expires_at &&
+                            ` · ${t('payment.coupon.expiresAt', { date: formatCouponDay(appliedCoupon.expires_at) })}`}
+                        </p>
+                      )}
+                      {couponError && <p className="text-sm text-red-600">{couponError}</p>}
+                    </fieldset>
+                  </div>
+
+                  {/* 各方案功能对比（折叠；选中套餐列高亮） */}
+                  <div className="mt-6 overflow-hidden rounded-2xl border border-[#dfe6ef] bg-white/60">
+                    <button
+                      type="button"
+                      onClick={() => setCompareOpen((v) => !v)}
+                      className="flex w-full items-center justify-between gap-3 px-5 py-4"
+                      aria-expanded={compareOpen}
+                    >
+                      <span className="text-lg font-semibold text-[#142443]">
+                        {t('payment.dialog.compareTitle')}
+                      </span>
+                      <span className="flex items-center gap-2 text-sm text-[#6d7e98]">
+                        {compareOpen ? t('payment.dialog.compareCollapse') : t('payment.dialog.compareExpand')}
+                        <ChevronDown
+                          className={`h-3.5 w-3.5 transition-transform ${compareOpen ? 'rotate-180' : ''}`}
+                          aria-hidden
+                        />
+                      </span>
+                    </button>
+                    {compareOpen && (
+                      <div
+                        className="overflow-x-auto px-4 pb-4"
+                        role="region"
+                        aria-label={t('payment.dialog.compareTitle')}
+                        tabIndex={0}
+                      >
+                        <table className="w-full min-w-[540px] border-separate border-spacing-0 text-[13px] leading-relaxed text-[#5c6c83]">
+                          <thead>
+                            <tr>
+                              <th
+                                scope="col"
+                                className="w-[34%] bg-[#f3f6fb] px-4 py-2.5 text-left font-semibold text-[#142443]"
+                              >
+                                {t('payment.compare.colFeature')}
+                              </th>
+                              {[
+                                { p: quarterlyProduct, active: !isAnnual },
+                                { p: annualProduct, active: isAnnual },
+                              ].map(({ p, active }) => (
+                                <th
+                                  key={p.product_type}
+                                  scope="col"
+                                  className={`w-[33%] px-4 py-2.5 text-center font-semibold ${active ? 'bg-[#e2edff] text-[#256bc7]' : 'bg-[#f3f6fb] text-[#142443]'}`}
+                                >
+                                  {planName(p)} · ¥{fenToYuan(p.price)}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {compareRows.map((row) => (
+                              <tr key={row.label}>
+                                <th
+                                  scope="row"
+                                  className="border-b border-[#e6ebf2] px-4 py-2.5 text-left font-normal"
+                                >
+                                  {row.label}
+                                </th>
+                                {[
+                                  { v: row.quarterly, active: !isAnnual },
+                                  { v: row.annual, active: isAnnual },
+                                ].map(({ v, active }, ci) => (
+                                  <td
+                                    key={ci}
+                                    className={`border-b border-[#e6ebf2] px-4 py-2.5 text-center ${active ? 'bg-[#eaf2ff]/50 text-[#256bc7]' : ''}`}
+                                  >
+                                    {typeof v === 'boolean' ? (
+                                      v ? (
+                                        <Check
+                                          className="mx-auto h-4 w-4 text-[#2c8c62]"
+                                          strokeWidth={2.5}
+                                          aria-label="包含"
+                                        />
+                                      ) : (
+                                        '—'
+                                      )
+                                    ) : (
+                                      v
+                                    )}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        <p className="mt-3 text-xs leading-relaxed text-[#6d7e98]">
+                          {t('payment.dialog.compareFootnote')}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {error && (
+                    <p
+                      className="mt-3.5 rounded-xl border border-[#bdd5fa] bg-[#eef5ff] px-4 py-3 text-[13px] leading-relaxed text-[#32629a]"
+                      role="status"
+                    >
+                      {error}
+                    </p>
+                  )}
+                </div>
+
+                {/* 固定底栏：已选 + 金额 + 确认购买 */}
+                <footer className="flex shrink-0 flex-col items-center justify-between gap-3 border-t border-[#dfe6ed] bg-white/55 px-5 py-4 sm:flex-row sm:px-10 lg:px-[52px]">
+                  <div className="flex flex-wrap items-baseline justify-center gap-x-3 gap-y-1 text-[15px] text-[#6d7e98] sm:justify-start">
+                    <span>{t('payment.dialog.selectedLabel')}</span>
+                    <strong className="font-semibold text-[#2571d8]">{planName(selectedProduct)}</strong>
+                    {appliedCoupon && (
+                      <>
+                        <span className="line-through">¥{fenToYuan(priceProduct.price)}</span>
+                        <span className="text-emerald-600">
+                          {t('payment.coupon.applied', { amount: fenToYuan(appliedCoupon.amount) })}
+                        </span>
+                      </>
+                    )}
+                    <strong className="whitespace-nowrap text-[25px] font-semibold leading-none text-[#2571d8]">
+                      ¥{fenToYuan(finalAmount)}
+                    </strong>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handlePay()}
+                    disabled={submitting}
+                    className="w-full min-w-[222px] rounded-xl border border-[#3474d9] px-8 py-3.5 text-lg font-semibold text-white transition hover:brightness-[1.06] disabled:cursor-wait disabled:opacity-65 sm:w-auto"
+                    style={{ background: 'linear-gradient(135deg,#3e82e5,#3973d1)' }}
+                  >
+                    {submitting
+                      ? t('payment.creating')
+                      : finalAmount <= 0
+                        ? t('payment.payFree')
+                        : t('payment.dialog.confirm')}
+                  </button>
+                </footer>
+              </>
+            ) : (
+              <>
             {/* 标题栏 + 关闭按钮 */}
             <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-stone-200/70">
               <h2 id="purchase-modal-title" className="text-lg font-semibold tracking-tight text-stone-800">
@@ -472,61 +933,7 @@ export default function PurchaseModal({
                         {t('payment.consultation.desc')}
                       </p>
                     </div>
-                  ) : (
-                    /* 套餐选择：季度套餐 / 年度套餐 */
-                    <div className="grid grid-cols-2 gap-3">
-                      {products.filter((p) => PACKAGE_TYPES.includes(p.product_type)).map((p) => {
-                        const selected = p.product_type === selectedType;
-                        const features = planFeatures(p.product_type);
-                        return (
-                          <button
-                            key={p.product_type}
-                            type="button"
-                            onClick={() => setSelectedType(p.product_type)}
-                            className={`relative rounded-xl border px-4 py-4 text-left transition ${
-                              selected
-                                ? 'border-stone-900 bg-stone-900/[0.03] ring-1 ring-stone-900/60'
-                                : 'border-stone-200 bg-stone-50/60 hover:bg-stone-100/60'
-                            }`}
-                          >
-                            {p.popular && (
-                              <span className="absolute -top-2.5 right-3 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-semibold text-white">
-                                {t('payment.plan.popular')}
-                              </span>
-                            )}
-                            <p className="text-[15px] font-semibold text-stone-800">
-                              {t(`payment.plan.${p.product_type}.name`) !==
-                              `payment.plan.${p.product_type}.name`
-                                ? t(`payment.plan.${p.product_type}.name`)
-                                : p.name}
-                            </p>
-                            <p className="mt-1.5">
-                              <span className="text-xl font-bold text-stone-900">
-                                ¥{fenToYuan(p.price)}
-                              </span>
-                              <span className="ml-1 text-xs text-stone-500">
-                                / {t(`payment.plan.${p.product_type}.period`)}
-                              </span>
-                            </p>
-                            <ul className="mt-2.5 space-y-1">
-                              {(features.length > 0
-                                ? features
-                                : (p.features ?? []).slice(0, 4)
-                              ).map((f) => (
-                                <li
-                                  key={f}
-                                  className="flex items-start gap-1.5 text-[11px] leading-snug text-stone-500"
-                                >
-                                  <Check className="mt-0.5 h-3 w-3 shrink-0 text-emerald-500" strokeWidth={2.5} />
-                                  {f}
-                                </li>
-                              ))}
-                            </ul>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                  ) : null}
 
                   {/* 渠道选择 */}
                   <div className="space-y-2">
@@ -559,6 +966,9 @@ export default function PurchaseModal({
 
                   {/* 券码 */}
                   <div className="space-y-2">
+                    {renderMyCouponsSelect(
+                      'w-full rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-sm text-stone-800 outline-none transition focus:border-stone-400',
+                    )}
                     <div className="flex gap-2">
                       <input
                         type="text"
@@ -585,6 +995,8 @@ export default function PurchaseModal({
                     {appliedCoupon && (
                       <p className="text-sm font-medium text-emerald-600">
                         {t('payment.coupon.applied', { amount: fenToYuan(appliedCoupon.amount) })}
+                        {appliedCoupon.expires_at &&
+                          ` · ${t('payment.coupon.expiresAt', { date: formatCouponDay(appliedCoupon.expires_at) })}`}
                       </p>
                     )}
                     {couponError && <p className="text-sm text-red-600">{couponError}</p>}
@@ -864,7 +1276,9 @@ export default function PurchaseModal({
                   )}
                 </div>
               )}
-            </div>
+                </div>
+              </>
+            )}
           </motion.div>
         </motion.div>
       ) : null}

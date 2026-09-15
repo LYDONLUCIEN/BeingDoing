@@ -665,6 +665,34 @@ async def test_refund_zero_amount_skips_channel(fake_channel, tmp_path):
     assert mgr.get_activation(order.delivered_code).status == "revoked"
 
 
+@pytest.mark.asyncio
+async def test_refund_returns_coupon_to_user(fake_channel, tmp_path):
+    """退款退券：本单已核销的券退回用户（used → unused，清核销字段，保留归属）"""
+    order = await _make_granted_order(tmp_path=tmp_path)
+
+    # 挂上本单已核销的券（归属 u1）
+    coupon = (await CouponService.create_coupons(amount=1000, count=1, owner_user_id="u1"))[0]
+    async with _TestSessionLocal() as db:
+        row = (await db.execute(select(Coupon).where(Coupon.id == coupon.id))).scalar_one()
+        row.status = "used"
+        row.used_by_user_id = "u1"
+        row.used_order_id = order.id
+        row.used_at = datetime.now(timezone.utc)
+        o = (await db.execute(select(PaymentOrder).where(PaymentOrder.id == order.id))).scalar_one()
+        o.coupon_id = coupon.id
+        await db.commit()
+
+    refunded = await PaymentService.admin_refund(order.id, actor={"user_id": "admin"})
+    assert refunded.status == "refunded"
+
+    final = await _get_coupon(coupon.id)
+    assert final.status == "unused"
+    assert final.used_by_user_id is None
+    assert final.used_order_id is None
+    assert final.used_at is None
+    assert final.owner_user_id == "u1"  # 保留归属
+
+
 # ─── Admin 查询 ────────────────────────────────────────────────
 
 

@@ -309,13 +309,15 @@ async def get_my_report_id(
         raise HTTPException(status_code=404, detail="未找到您的报告")
     # 进入报告页即触发审核计时起点（五阶段已完成时），并后台预生成报告
     report = _ensure_review_started(report, registry, str(root), user_id)
-    from app.services.report_recheck_service import get_recheck_status
+    from app.services.report_recheck_service import get_recheck_status, has_used_recheck
 
     data = {
         "report_id": report.get("report_id"),
         "review_status": get_review_status(report),
         # 复核进行中（pending/regenerating/pending_confirm）时前端展示提示条并禁用申请入口
         "recheck_status": get_recheck_status(report),
+        # 每份报告终身 1 次免费复核（提交即消耗，溯及既往），用完后前端禁用申请入口
+        "recheck_used": has_used_recheck(report),
     }
     if is_pending_review(report):
         data["review_deadline"] = report.get("review_deadline")

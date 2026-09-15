@@ -60,6 +60,8 @@ export interface MyReportInfo {
   review_deadline: string | null;
   /** 复核进行中状态；null = 无进行中复核 */
   recheck_status: RecheckStatus | null;
+  /** 免费复核机会是否已用完（每报告 1 次，提交即消耗，溯及既往） */
+  recheck_used?: boolean;
 }
 
 /**
@@ -78,6 +80,7 @@ export async function getMyReportInfo(activationCode: string): Promise<MyReportI
     review_status: data?.review_status ?? null,
     review_deadline: data?.review_deadline ?? null,
     recheck_status: data?.recheck_status ?? null,
+    recheck_used: data?.recheck_used === true,
   };
 }
 

@@ -13,6 +13,7 @@ import { useLocale } from '@/hooks/useLocale';
 import { useState, useEffect, useRef } from 'react';
 import { Menu, X, Sun, Moon } from 'lucide-react';
 import AuthModal from './AuthModal';
+import PurchaseModal from '@/components/payment/PurchaseModal';
 
 export default function TopNavbar() {
   const pathname = usePathname();
@@ -30,6 +31,8 @@ export default function TopNavbar() {
   const isDark = mounted ? colorScheme === 'dark' : false;
   const displayLocale = mounted ? locale : 'zh';
   const { isOpen: authModalOpen, redirectTo, openAuthModal, closeAuthModal } = useAuthModalStore();
+  // 「定价方案」购买弹窗（全站导航入口，2026-09-14 起替代首页定价区块）
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [idleExpired, setIdleExpired] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -104,6 +107,15 @@ export default function TopNavbar() {
 
   // 主动登录无明确意图：登录后留在首页（与 AuthGate 口径一致），不再强制跳引导页
   const handleLoginClick = () => { openAuthModal('/'); };
+  // 定价方案：未登录先弹登录（沿用原首页定价卡口径），已登录直接弹购买弹窗
+  const handlePricingClick = () => {
+    setMobileOpen(false);
+    if (!showAuth) {
+      openAuthModal('/');
+      return;
+    }
+    setPurchaseOpen(true);
+  };
   const handleAuthModalClose = () => { closeAuthModal(); };
   const handleLogout = async () => {
     try {
@@ -170,6 +182,13 @@ export default function TopNavbar() {
               </Link>
             );
           })}
+          <button
+            type="button"
+            onClick={handlePricingClick}
+            className={`${linkBase} ${linkInactive}`}
+          >
+            {t('nav.pricing')}
+          </button>
         </div>
 
         {/* 右侧：主题 / 语言 / 登录注册（靠最右） */}
@@ -277,6 +296,13 @@ export default function TopNavbar() {
               </Link>
             );
           })}
+          <button
+            type="button"
+            onClick={handlePricingClick}
+            className={`block w-full text-left ${linkBase} ${linkInactive}`}
+          >
+            {t('nav.pricing')}
+          </button>
           <div className="pt-2 border-t border-bd-border flex items-center gap-2 mb-2">
             <select
               value={displayLocale}
@@ -329,6 +355,7 @@ export default function TopNavbar() {
     </nav>
 
     <AuthModal isOpen={authModalOpen} onClose={handleAuthModalClose} redirectTo={redirectTo} />
+    <PurchaseModal open={purchaseOpen} onClose={() => setPurchaseOpen(false)} />
   </>
   );
 }

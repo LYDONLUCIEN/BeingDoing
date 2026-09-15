@@ -328,31 +328,38 @@ def test_submit_recheck_blocked_when_open(reg: ReportRegistry, db_factory) -> No
     asyncio.run(_run())
 
 
-def test_submit_recheck_daily_limit(reg: ReportRegistry, db_factory) -> None:
-    """已关闭的复核单当天也算：同一报告每自然日限 1 次。"""
-    from datetime import datetime, timezone
+def test_submit_recheck_once_per_report(reg: ReportRegistry, db_factory) -> None:
+    """每报告终身 1 次免费复核（2026-09-14）：已关闭的复核单（含驳回/很久之前）也算用完。"""
+    for status in ("done", "rejected"):
+        rid = f"rpt-{status}"
+        rec = _approved_record(rid)
+        rec["recheck_requests"] = [{
+            "id": "rc1", "status": status, "description": "x",
+            "feedback_id": None, "requested_by": "user-1",
+            "requested_at": "2020-01-01T00:00:00+00:00",
+            "updated_at": "2020-01-01T00:00:00+00:00",
+            "closed_at": "2020-01-01T00:00:00+00:00",
+            "reject_reason": None, "regen_error": None,
+        }]
+        _write_record(reg.simple_base_dir, rid, rec)
 
+        async def _run(rid=rid):
+            async with db_factory() as db:
+                with pytest.raises(ValueError, match="免费复核机会已用完"):
+                    await report_recheck_service.submit_recheck(
+                        db, reg, reg.get_report_by_id(rid),
+                        user_id="user-1", user_email="user@example.com", description="",
+                    )
+
+        asyncio.run(_run())
+        assert report_recheck_service.has_used_recheck(reg.get_report_by_id(rid)) is True
+        release_generation(rid)
+
+
+def test_has_used_recheck_false_when_never_submitted(reg: ReportRegistry) -> None:
     rid = "rpt-a"
-    rec = _approved_record(rid)
-    rec["recheck_requests"] = [{
-        "id": "rc1", "status": "done", "description": "x",
-        "feedback_id": None, "requested_by": "user-1",
-        "requested_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-        "closed_at": datetime.now(timezone.utc).isoformat(),
-        "reject_reason": None, "regen_error": None,
-    }]
-    _write_record(reg.simple_base_dir, rid, rec)
-
-    async def _run():
-        async with db_factory() as db:
-            with pytest.raises(ValueError, match="每天最多"):
-                await report_recheck_service.submit_recheck(
-                    db, reg, reg.get_report_by_id(rid),
-                    user_id="user-1", user_email="user@example.com", description="",
-                )
-
-    asyncio.run(_run())
+    _write_record(reg.simple_base_dir, rid, _approved_record(rid))
+    assert report_recheck_service.has_used_recheck(reg.get_report_by_id(rid)) is False
 
 
 def test_submit_recheck_blocked_when_not_approved(reg: ReportRegistry, db_factory) -> None:
@@ -705,3 +712,189 @@ def test_admin_recheck_lifecycle_api(reg: ReportRegistry, db_factory) -> None:
         resp = client.get("/api/v1/admin/reports")
         item = next(i for i in resp.json()["data"]["items"] if i["report_id"] == rid)
         assert item["recheck_status"] is None
+
+
+# ── 5. 编辑稿发布（publish-edited，2026-09-14）──────────────────
+
+def test_publish_edited_writes_official_and_clears_staging(
+    reg: ReportRegistry, db_factory
+) -> None:
+    """编辑稿直接写为正式缓存（旧版 .bak 备份 + 时间戳刷新），staging 清除，关单通知。"""
+    rid = "rpt-a"
+    _write_record(reg.simple_base_dir, rid, _approved_record(rid, with_cache=True))
+    official = reg.simple_base_dir / "reports" / rid / "report_markdown.md"
+    official.write_text("旧版", encoding="utf-8")
+    staging = reg.simple_base_dir / "reports" / rid / "report_markdown.staging.md"
+    staging.write_text("新稿", encoding="utf-8")
+    entry = _submit_sync(reg, db_factory, rid)
+
+    async def _publish():
+        with patch("app.services.email_service.EmailService.send_email", new=AsyncMock()) as m:
+            async with db_factory() as db:
+                done = await report_recheck_service.publish_edited_recheck(
+                    db, reg, rid,
+                    version="original", markdown="编辑后的正式版", admin_id="admin-1",
+                )
+                await db.commit()
+            return done, m
+
+    done, mock_send = asyncio.run(_publish())
+    assert done["status"] == "done"
+    assert official.read_text(encoding="utf-8") == "编辑后的正式版"
+    # 旧版备份 + staging 清除（未被选择的新稿随之废弃）
+    backup = reg.simple_base_dir / "reports" / rid / "report_markdown.bak.md"
+    assert backup.read_text(encoding="utf-8") == "旧版"
+    assert not staging.exists()
+    # 缓存时间戳刷新
+    assert reg.get_report_by_id(rid)["report_markdown_generated_at"] > "2026-01-01"
+    mock_send.assert_awaited_once()
+
+    async def _check():
+        async with db_factory() as db:
+            n = (
+                await db.execute(
+                    select(Notification).where(
+                        Notification.user_id == "user-1",
+                        Notification.type == "report_recheck_done",
+                    )
+                )
+            ).scalar_one()
+            assert "激活码：CODE1" in n.content
+            fb = (
+                await db.execute(select(Feedback).where(Feedback.id == entry["feedback_id"]))
+            ).scalar_one()
+            assert fb.status == "done"
+
+    asyncio.run(_check())
+
+
+def test_publish_edited_requires_open_recheck_and_content(
+    reg: ReportRegistry, db_factory
+) -> None:
+    rid = "rpt-a"
+    _write_record(reg.simple_base_dir, rid, _approved_record(rid, with_cache=True))
+
+    async def _run():
+        async with db_factory() as db:
+            # 无复核单
+            with pytest.raises(ValueError, match="没有进行中的复核"):
+                await report_recheck_service.publish_edited_recheck(
+                    db, reg, rid, version="original", markdown="x", admin_id="a"
+                )
+            # 非法 version
+            with pytest.raises(ValueError, match="version"):
+                await report_recheck_service.publish_edited_recheck(
+                    db, reg, rid, version="other", markdown="x", admin_id="a"
+                )
+
+    asyncio.run(_run())
+    _submit_sync(reg, db_factory, rid)
+
+    async def _run2():
+        async with db_factory() as db:
+            with pytest.raises(ValueError, match="不能为空"):
+                await report_recheck_service.publish_edited_recheck(
+                    db, reg, rid, version="staging", markdown="  ", admin_id="a"
+                )
+
+    asyncio.run(_run2())
+
+
+def test_admin_recheck_markdown_and_publish_edited_api(
+    reg: ReportRegistry, db_factory
+) -> None:
+    """admin 端点：GET markdown（original/staging/404/非法 version）+ publish-edited 全链路。"""
+    rid = "rpt-a"
+    _write_record(reg.simple_base_dir, rid, _approved_record(rid, with_cache=True))
+    (reg.simple_base_dir / "reports" / rid / "report_markdown.md").write_text(
+        "旧版", encoding="utf-8"
+    )
+    (reg.simple_base_dir / "reports" / rid / "report_markdown.staging.md").write_text(
+        "新稿", encoding="utf-8"
+    )
+    _override_user("admin-1")
+    _override_db(db_factory)
+
+    rec = reg.get_report_by_id(rid)
+    rec["recheck_requests"] = [{
+        "id": "rc1", "status": "pending_confirm", "description": "内容不准",
+        "feedback_id": None, "requested_by": "user-1",
+        "requested_at": "2026-01-01T00:00:00+00:00",
+        "updated_at": "2026-01-01T00:00:00+00:00",
+        "closed_at": None, "reject_reason": None, "regen_error": None,
+    }]
+    reg.save_record(rec)
+
+    with (
+        patch("app.api.v1.admin._is_super_admin", return_value=True),
+        patch("app.api.v1.admin.ReportRegistry", lambda: reg),
+        patch("app.api.v1.admin.AsyncSessionLocal", db_factory),
+        patch(
+            "app.services.report_pdf_service.get_simple_base_dir",
+            return_value=reg.simple_base_dir,
+        ),
+        patch("app.services.email_service.EmailService.send_email", new=AsyncMock()),
+    ):
+        client = TestClient(app)
+
+        # markdown 原文获取
+        resp = client.get(f"/api/v1/admin/reports/{rid}/recheck/markdown")
+        assert resp.json()["data"]["markdown"] == "旧版"
+        resp = client.get(
+            f"/api/v1/admin/reports/{rid}/recheck/markdown", params={"version": "staging"}
+        )
+        assert resp.json()["data"]["markdown"] == "新稿"
+        resp = client.get(
+            f"/api/v1/admin/reports/{rid}/recheck/markdown", params={"version": "bad"}
+        )
+        assert resp.status_code == 400
+
+        # 发布编辑稿（选择 staging 编辑版）
+        resp = client.post(
+            f"/api/v1/admin/reports/{rid}/recheck/publish-edited",
+            json={"version": "staging", "markdown": "新稿（编辑过）"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["data"]["status"] == "done"
+        assert (reg.simple_base_dir / "reports" / rid / "report_markdown.md").read_text(
+            encoding="utf-8"
+        ) == "新稿（编辑过）"
+        assert not (reg.simple_base_dir / "reports" / rid / "report_markdown.staging.md").exists()
+
+        # 复核单已关闭 → 再次发布 409
+        resp = client.post(
+            f"/api/v1/admin/reports/{rid}/recheck/publish-edited",
+            json={"version": "original", "markdown": "x"},
+        )
+        assert resp.status_code == 409
+
+
+def test_api_my_report_id_exposes_recheck_used(reg: ReportRegistry) -> None:
+    """my-report-id 透传 recheck_used：历史复核单（已关闭/驳回）→ true；无复核单 → false。"""
+    rid = "rpt-a"
+    rec = _approved_record(rid)
+    rec["activation_code"] = "CODEA"
+    rec["recheck_requests"] = [{
+        "id": "rc1", "status": "rejected", "description": "x",
+        "feedback_id": None, "requested_by": "user-1",
+        "requested_at": "2026-01-01T00:00:00+00:00",
+        "updated_at": "2026-01-01T00:00:00+00:00",
+        "closed_at": "2026-01-02T00:00:00+00:00",
+        "reject_reason": "无需重新生成", "regen_error": None,
+    }]
+    _write_record(reg.simple_base_dir, rid, rec)
+    rid2 = "rpt-b"
+    rec2 = _approved_record(rid2)
+    rec2["activation_code"] = "CODEB"
+    _write_record(reg.simple_base_dir, rid2, rec2)
+    _override_user("user-1")
+
+    p1, p2, p3 = _patch_export_access(reg.simple_base_dir)
+    with p1, p2, p3, patch.object(export_mod, "_kick_pdf_generation"):
+        client = TestClient(app)
+        resp = client.get("/api/v1/export/my-report-id", params={"activation_code": "CODEA"})
+        assert resp.status_code == 200
+        assert resp.json()["recheck_used"] is True
+        resp = client.get("/api/v1/export/my-report-id", params={"activation_code": "CODEB"})
+        assert resp.status_code == 200
+        assert resp.json()["recheck_used"] is False

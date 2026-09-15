@@ -8,7 +8,7 @@ import { apiClient } from '@/lib/api/client';
 
 // ─── 类型定义 ─────────────────────────────────────────────
 
-export type CouponStatus = 'unused' | 'locked' | 'used';
+export type CouponStatus = 'unused' | 'locked' | 'used' | 'expired' | 'void';
 
 export type CouponSource = 'admin' | 'email_auto';
 
@@ -24,6 +24,12 @@ export interface CouponItem {
   used_by_email?: string | null;
   used_order_no?: string | null;
   locked_order_no?: string | null;
+  /** 有效期（ISO8601，null=不限） */
+  expires_at: string | null;
+  /** 绑定用户邮箱（null=未绑定） */
+  owner_email: string | null;
+  /** 作废时间（软删除，null=未作废） */
+  voided_at: string | null;
 }
 
 export interface CouponListResult {
@@ -38,6 +44,35 @@ export interface CreatedCoupon {
   code: string;
   /** 面额（分） */
   amount: number;
+  /** 有效期（ISO8601，null=不限） */
+  expires_at?: string | null;
+}
+
+/** 用户侧「我的折扣券」单券（GET /payment/my-coupons） */
+export interface MyCouponItem {
+  code: string;
+  /** 面额（分） */
+  amount: number;
+  /** 有效期（ISO8601，null=不限） */
+  expires_at: string | null;
+  used_at: string | null;
+  used_order_no: string | null;
+  source: CouponSource;
+}
+
+/** 用户侧「我的折扣券」分组响应（不含已作废和锁定中的券） */
+export interface MyCouponsResult {
+  available: MyCouponItem[];
+  used: MyCouponItem[];
+  expired: MyCouponItem[];
+}
+
+/** Admin 折扣券全局配置（GET/POST /admin/coupon-config） */
+export interface CouponConfig {
+  default_ttl_days: number;
+  fallback: number;
+  min: number;
+  max: number;
 }
 
 // ─── 金额换算工具 ─────────────────────────────────────────
@@ -65,24 +100,51 @@ export async function listCoupons(params?: {
   return (res.data ?? { items: [], total: 0, page: 1, page_size: 20 }) as CouponListResult;
 }
 
-/** 批量创建折扣券（定金额，count 1-500），amount 单位：分 */
+/** 批量创建折扣券（定金额，count 1-500），amount 单位：分；ttl_days 不传用全局默认 */
 export async function createCoupons(payload: {
   amount: number;
   count: number;
+  ttl_days?: number;
 }): Promise<{ created: CreatedCoupon[] }> {
   const res = await apiClient.post('/admin/coupons', payload);
   return (res.data ?? { created: [] }) as { created: CreatedCoupon[] };
 }
 
-/** 调整面额（仅 unused 状态可改），amount 单位：分 */
+/** 调整面额（仅 unused/expired 状态可改），amount 单位：分 */
 export async function updateCouponAmount(id: string, amount: number): Promise<CouponItem> {
   const res = await apiClient.patch(`/admin/coupons/${encodeURIComponent(id)}`, { amount });
   return (res.data ?? {}) as CouponItem;
 }
 
-/** 作废折扣券（仅 unused 状态可删） */
+/** 修改有效期（仅 unused/expired 状态可改，改期即复活），expiresAt 为 ISO8601 */
+export async function updateCouponExpiry(id: string, expiresAt: string): Promise<CouponItem> {
+  const res = await apiClient.patch(`/admin/coupons/${encodeURIComponent(id)}`, {
+    expires_at: expiresAt,
+  });
+  return (res.data ?? {}) as CouponItem;
+}
+
+/** 作废折扣券（软删除：unused/expired → void） */
 export async function deleteCoupon(id: string): Promise<void> {
   await apiClient.delete(`/admin/coupons/${encodeURIComponent(id)}`);
+}
+
+/** 恢复已作废折扣券（void → unused） */
+export async function restoreCoupon(id: string): Promise<{ id: string; code: string; status: CouponStatus }> {
+  const res = await apiClient.post(`/admin/coupons/${encodeURIComponent(id)}/restore`);
+  return (res.data ?? {}) as { id: string; code: string; status: CouponStatus };
+}
+
+/** 读取折扣券全局配置（默认有效期天数） */
+export async function fetchCouponConfig(): Promise<CouponConfig> {
+  const res = await apiClient.get('/admin/coupon-config');
+  return (res.data ?? { default_ttl_days: 90, fallback: 90, min: 1, max: 3650 }) as CouponConfig;
+}
+
+/** 更新折扣券默认有效期（1-3650 天，即时生效，只影响之后新创建的券） */
+export async function updateCouponConfig(defaultTtlDays: number): Promise<CouponConfig> {
+  const res = await apiClient.post('/admin/coupon-config', { default_ttl_days: defaultTtlDays });
+  return (res.data ?? { default_ttl_days: defaultTtlDays, fallback: 90, min: 1, max: 3650 }) as CouponConfig;
 }
 
 // ─── P2a 支付闭环（用户侧） ──────────────────────────────
@@ -221,10 +283,22 @@ export async function getTeamAnalysisEmail(): Promise<string> {
   return cachedTeamAnalysisEmail ?? TEAM_ANALYSIS_EMAIL_FALLBACK;
 }
 
-/** 校验折扣券（下单前实时校验抵扣金额）；无效券后端返回 400 */
-export async function validateCoupon(code: string): Promise<{ code: string; amount: number }> {
+/** 校验折扣券（下单前实时校验抵扣金额）；无效/过期/属于他人后端返回 400 */
+export async function validateCoupon(
+  code: string,
+): Promise<{ code: string; amount: number; expires_at: string | null }> {
   const res = await apiClient.post('/payment/coupons/validate', { code });
-  return (res.data ?? { code, amount: 0 }) as { code: string; amount: number };
+  return (res.data ?? { code, amount: 0, expires_at: null }) as {
+    code: string;
+    amount: number;
+    expires_at: string | null;
+  };
+}
+
+/** 我的折扣券（分组：可用 / 已使用 / 已过期；不含已作废和锁定中的券） */
+export async function listMyCoupons(): Promise<MyCouponsResult> {
+  const res = await apiClient.get('/payment/my-coupons');
+  return (res.data ?? { available: [], used: [], expired: [] }) as MyCouponsResult;
 }
 
 /** 创建订单（券码在此锁定）；amount 单位：分 */

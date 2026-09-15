@@ -3,7 +3,8 @@
 
 接口（全部 get_current_user 登录鉴权，统一响应 {code, message, data}）：
 - GET  /payment/products             商品目录 + 会员折扣信息
-- POST /payment/coupons/validate     校验券码（返回面额）
+- POST /payment/coupons/validate     校验券码（返回面额 + 有效期）
+- GET  /payment/my-coupons           我的折扣券（按派生态分组 available/used/expired）
 - POST /payment/orders               下单（锁券 + 渠道下单；0 元单直接交付）
 - GET  /payment/orders               我的订单列表（分页，仅当前用户）
 - GET  /payment/orders/by-no/{order_no}  按商户订单号查详情（支付回跳页用）
@@ -83,12 +84,28 @@ async def validate_coupon(
     payload: CouponValidateRequest,
     current_user: dict = Depends(get_current_user),
 ) -> Dict[str, Any]:
-    """校验券码，返回面额（无效 400）"""
+    """校验券码，返回面额与有效期（无效/过期/非本人券 400；校验不认领归属）"""
     try:
-        coupon = await CouponService.validate_coupon(payload.code)
+        coupon = await CouponService.validate_coupon(
+            payload.code, user_id=str(current_user["user_id"])
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return _ok({"code": coupon.code, "amount": coupon.amount})
+    return _ok(
+        {
+            "code": coupon.code,
+            "amount": coupon.amount,
+            "expires_at": coupon.expires_at.isoformat() if coupon.expires_at else None,
+        }
+    )
+
+
+@router.get("/my-coupons")
+async def list_my_coupons(
+    current_user: dict = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """我的折扣券（按派生态分组 available/used/expired；不含已作废）"""
+    return _ok(await CouponService.list_my_coupons(str(current_user["user_id"])))
 
 
 @router.post("/orders")

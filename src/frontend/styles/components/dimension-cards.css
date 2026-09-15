@@ -135,151 +135,145 @@
 }
 
 /* =========================================
-   结果卡片 report-glass-card（与 new-report-finall 完全一致）
+   报告展示卡片 report-showcase（2026-09-14 改版）
+   左文右图：标题+介绍+六点列表 / 三张低清报告预览错落叠放
+   卡片自带浅色渐变背景，独立于外部 mesh 大背景
    ========================================= */
-.bd-report-glass-card {
-  padding: 60px 40px;
-  border-radius: 32px;
-  background: rgba(255,255,255,0.4);
-  backdrop-filter: blur(24px) saturate(150%);
-  -webkit-backdrop-filter: blur(24px) saturate(150%);
-  border: 1px solid rgba(255,255,255,0.6);
-  box-shadow: 0 30px 60px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,1);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
+.bd-report-showcase {
+  position: relative;
+  border-radius: 28px;
+  background: linear-gradient(135deg, #f7fafd 0%, #edf3fa 55%, #f5f8fc 100%);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 24px 60px rgba(64, 96, 140, 0.08), 0 4px 16px rgba(0, 0, 0, 0.03);
+  padding: 48px 48px 44px;
+  overflow: hidden;
 }
-[data-color-scheme="dark"] .bd-report-glass-card {
-  background: rgba(255,255,255,0.06);
-  border-color: rgba(255,255,255,0.12);
-  box-shadow: 0 30px 60px rgba(0,0,0,0.2);
+[data-color-scheme="dark"] .bd-report-showcase {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
 }
 
-/* 四维共鸣报告卡片：纯白呼吸光，与连接区光柱同频 3.6s，白光消失时触发 */
-.bd-report-glass-card {
-  animation: bd-report-breath-glow 3.6s linear infinite;
+.bd-report-showcase-title {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.55;
+  color: #1d2b3a;
+  margin-bottom: 20px;
 }
-/* @keyframes bd-report-breath-glow {
-  0%, 75% {
-    box-shadow: 0 30px 60px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,1),
-      0 0 16px rgba(255,255,255,0.2),
-      inset 0 0 24px rgba(255,255,255,0.04);
-    border-color: rgba(255,255,255,0.6);
-  }
-  85%, 95% {
-    box-shadow: 0 30px 60px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,1),
-      0 0 36px rgba(255,255,255,0.5),
-      inset 0 0 48px rgba(255,255,255,0.12);
-    border-color: rgba(255,255,255,0.9);
-  }
-} */
- 
-@keyframes bd-report-breath-glow {
-  /* 0%, 100% {
-    box-shadow:
-      0 30px 60px rgba(0,0,0,0.03),
-      inset 0 1px 0 rgba(255,255,255,1),
-      0 0 10px rgba(255,255,255,0.1),
-      inset 0 0 16px rgba(255,255,255,0.03);
-    border-color: rgba(255,255,255,0.5);
-  } */
-  0%, 100% {
-    box-shadow:
-      0 30px 60px rgba(0,0,0,0.03),
-      inset 0 1px 0 rgba(255,255,255,1),
-      0 0 16px rgba(200,220,255,0.15),   /* ← 暗态保留底光 */
-      inset 0 0 24px rgba(255,255,255,0.04);
-    border-color: rgba(255,255,255,0.6);
-  }
-  40% {
-    box-shadow:
-      0 30px 60px rgba(0,0,0,0.03),
-      inset 0 1px 0 rgba(255,255,255,1),
-      0 0 34px rgba(255,255,255,0.55),
-      inset 0 0 50px rgba(255,255,255,0.15);
-    border-color: rgba(255,255,255,0.92);
-  }
-}
-[data-color-scheme="dark"] .bd-report-glass-card {
-  animation-name: bd-report-breath-glow-dark;
-}
-@keyframes bd-report-breath-glow-dark {
-  0%, 100% {
-    box-shadow:
-      0 30px 60px rgba(0,0,0,0.03),
-      inset 0 1px 0 rgba(255,255,255,1),
-      0 0 10px rgba(255,255,255,0.1),
-      inset 0 0 16px rgba(255,255,255,0.03);
-    border-color: rgba(255,255,255,0.5);
-  }
-  40% {
-    box-shadow:
-      0 30px 60px rgba(0,0,0,0.03),
-      inset 0 1px 0 rgba(255,255,255,1),
-      0 0 34px rgba(255,255,255,0.55),
-      inset 0 0 50px rgba(255,255,255,0.15);
-    border-color: rgba(255,255,255,0.92);
-  }
-}
-.bd-report-title {
-  font-size: 26px;
-  font-weight: 600;
-  letter-spacing: 1px;
-  margin-bottom: 24px;
-  color: #1a1d20;
-}
-[data-color-scheme="dark"] .bd-report-title { color: var(--bd-fg); }
-.bd-report-subtitle {
+[data-color-scheme="dark"] .bd-report-showcase-title { color: var(--bd-fg); }
+
+.bd-report-showcase-intro {
   font-size: 15px;
-  color: #5a626a;
-  line-height: 1.8;
-  margin-bottom: 40px;
-  max-width: 500px;
+  line-height: 1.9;
+  color: #4d5a68;
+  margin-bottom: 26px;
 }
-[data-color-scheme="dark"] .bd-report-subtitle { color: var(--bd-fg-muted); }
-.bd-btn-start {
+[data-color-scheme="dark"] .bd-report-showcase-intro { color: var(--bd-fg-muted); }
+
+.bd-report-showcase-list-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #1d2b3a;
+  margin-bottom: 14px;
+}
+[data-color-scheme="dark"] .bd-report-showcase-list-title { color: var(--bd-fg); }
+
+.bd-report-showcase-list {
+  list-style: none;
+  margin: 0 0 34px;
+  padding: 0;
+}
+.bd-report-showcase-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 15px;
+  line-height: 1.75;
+  color: #33404e;
+  margin-bottom: 12px;
+}
+[data-color-scheme="dark"] .bd-report-showcase-list li { color: var(--bd-fg-muted); }
+.bd-report-dot {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-top: 7px;
+}
+.bd-report-item-lead {
+  font-weight: 700;
+  color: #1d2b3a;
+}
+[data-color-scheme="dark"] .bd-report-item-lead { color: var(--bd-fg); }
+
+/* 主按钮：蓝色实心（参照效果图），跳 /explore/intro */
+.bd-report-cta-btn {
   display: inline-flex;
   align-items: center;
-  background: rgba(255,255,255,0.85);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255,255,255,1);
-  padding: 6px 6px 6px 32px;
-  border-radius: 50px;
+  gap: 10px;
+  padding: 14px 34px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #3f74c9, #305ca8);
+  color: #ffffff;
   font-size: 16px;
   font-weight: 600;
-  color: #2c333a;
   cursor: pointer;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.03);
-  transition: all 0.3s ease;
+  box-shadow: 0 8px 20px rgba(63, 116, 201, 0.28);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
-.bd-btn-start:hover {
-  background: #ffffff;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+.bd-report-cta-btn:hover {
   transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(63, 116, 201, 0.38);
 }
-[data-color-scheme="dark"] .bd-btn-start {
-  color: var(--bd-fg);
-  background: rgba(255,255,255,0.1);
-  border-color: rgba(255,255,255,0.2);
+
+/* 右侧：三张报告预览页错落叠放 */
+.bd-report-preview-stack {
+  position: relative;
+  height: 470px;
 }
-.bd-btn-icon-core {
-  width: 36px;
-  height: 36px;
-  margin-left: 20px;
-  border-radius: 50%;
-  background: conic-gradient(from 180deg at 50% 50%, #7bb5fb, #83e0c3, #fc8d98, #fbca5b, #7bb5fb);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  color: white;
-  font-size: 16px;
-  box-shadow: inset 0 2px 4px rgba(255,255,255,0.4);
-  transition: transform 0.5s cubic-bezier(0.175,0.885,0.32,1.275);
+.bd-report-page {
+  position: absolute;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 14px 36px rgba(30, 50, 80, 0.16);
 }
-.bd-btn-start:hover .bd-btn-icon-core {
-  transform: rotate(90deg) scale(1.05);
+.bd-report-page-1 { /* 报告内容预览页：左前方，最上层 */
+  width: 60%;
+  left: 0;
+  top: 8%;
+  z-index: 3;
+}
+.bd-report-page-2 { /* 热爱分析章：右上后方 */
+  width: 52%;
+  right: 4%;
+  top: 0;
+  z-index: 2;
+}
+.bd-report-page-3 { /* 最终选择章：右下后方 */
+  width: 52%;
+  right: 0;
+  top: 38%;
+  z-index: 1;
+}
+.bd-report-preview-caption {
+  text-align: center;
+  font-size: 14px;
+  color: #7c8896;
+  letter-spacing: 2px;
+  margin-top: 22px;
+}
+[data-color-scheme="dark"] .bd-report-preview-caption { color: var(--bd-fg-muted); }
+
+/* 移动端：上下堆叠，预览图等高缩小 */
+@media (max-width: 1023px) {
+  .bd-report-showcase { padding: 32px 24px; }
+  .bd-report-showcase-title { font-size: 20px; }
+  .bd-report-preview-stack { height: 380px; }
+}
+@media (max-width: 480px) {
+  .bd-report-preview-stack { height: 300px; }
 }
 
 /* 你的方向（旧，保留 bd-minimal 作备用） */

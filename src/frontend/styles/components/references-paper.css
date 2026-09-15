@@ -1,0 +1,182 @@
+/* ════════════════════════════════════════════════════════
+   references-paper.css — 首页「参考文献」一页纸模块
+   位置：用户评价与常见问题解答之间（app/(main)/page.tsx ReferencesSection）
+   设计：单张 A4 纸感（奶白纸面 + 细噪点 + 长投影），纸后垫 2 张
+   底层纸只露边缘，hover 整纸微抬、底层纸向外滑开。
+   注意：纸张在深色模式下保持奶白（纸就是纸），仅加深投影。
+   ════════════════════════════════════════════════════════ */
+
+/* 外层：限制纸宽并居中，作为堆叠定位上下文 */
+.bd-ref-paper-wrap {
+  position: relative;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+/* ── 底层纸（仅装饰，无内容）── */
+.bd-ref-paper-under {
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  background: #f5f2ea;
+  border: 1px solid rgba(180, 170, 145, 0.35);
+  box-shadow: 0 8px 24px rgba(30, 50, 80, 0.08);
+  transition: transform 0.3s ease;
+}
+.bd-ref-paper-under-1 {
+  transform: rotate(-2deg) translate(-6px, 4px);
+}
+.bd-ref-paper-under-2 {
+  transform: rotate(1.5deg) translate(6px, 6px);
+  background: #efeadd;
+}
+
+/* ── 主纸 ────────────────────────────────────────────── */
+.bd-ref-paper {
+  position: relative;
+  z-index: 1;
+  border-radius: 6px;
+  /* 奶白纸面 + 细噪点纹理（SVG feTurbulence data URI，低透明度） */
+  background-color: #fdfcf7;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  border: 1px solid rgba(180, 170, 145, 0.3);
+  box-shadow:
+    0 20px 50px rgba(30, 50, 80, 0.12),
+    0 4px 12px rgba(30, 50, 80, 0.06);
+  padding: 44px 52px 30px;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* ── hover 微动效：整纸抬起 + 投影加深，底层纸向外滑开 ── */
+.bd-ref-paper-wrap:hover .bd-ref-paper {
+  transform: translateY(-6px);
+  box-shadow:
+    0 28px 64px rgba(30, 50, 80, 0.16),
+    0 6px 16px rgba(30, 50, 80, 0.08);
+}
+.bd-ref-paper-wrap:hover .bd-ref-paper-under-1 {
+  transform: rotate(-2.8deg) translate(-10px, 6px);
+}
+.bd-ref-paper-wrap:hover .bd-ref-paper-under-2 {
+  transform: rotate(2.2deg) translate(10px, 9px);
+}
+
+/* ── 页眉：logo + 英文小字 + 底部分隔线（复刻报告内页版式）── */
+.bd-ref-paper-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(29, 43, 58, 0.14);
+}
+.bd-ref-paper-brand {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1d2b3a;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.bd-ref-paper-tag {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: #8a94a0;
+}
+
+/* ── 标题与引言 ── */
+.bd-ref-paper-title {
+  font-size: 26px;
+  font-weight: 700;
+  color: #1d2b3a;
+  margin: 26px 0 8px;
+  letter-spacing: 0.04em;
+}
+.bd-ref-paper-sub {
+  font-size: 13.5px;
+  color: #6b7684;
+  margin: 0 0 22px;
+}
+
+/* ── 文献列表：学术排版（衬线体 + 悬挂缩进编号）── */
+.bd-ref-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.bd-ref-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-family: Georgia, 'Times New Roman', 'Songti SC', 'SimSun', serif;
+  font-size: 13.5px;
+  line-height: 1.8;
+  color: #33404e;
+  padding: 7px 0;
+}
+.bd-ref-list li + li {
+  border-top: 1px dashed rgba(29, 43, 58, 0.1);
+}
+.bd-ref-num {
+  flex-shrink: 0;
+  color: #8a94a0;
+  font-size: 12.5px;
+  line-height: 1.95;
+  min-width: 30px;
+  text-align: right;
+}
+.bd-ref-text {
+  flex: 1;
+}
+
+/* ── 页脚（复刻报告页脚）── */
+.bd-ref-paper-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 26px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(29, 43, 58, 0.14);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: #8a94a0;
+}
+
+/* ── 深色模式：纸张保持奶白，仅投影加深（纸就是纸）── */
+[data-color-scheme='dark'] .bd-ref-paper {
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.45),
+    0 4px 12px rgba(0, 0, 0, 0.3);
+}
+[data-color-scheme='dark'] .bd-ref-paper-wrap:hover .bd-ref-paper {
+  box-shadow:
+    0 28px 64px rgba(0, 0, 0, 0.55),
+    0 6px 16px rgba(0, 0, 0, 0.35);
+}
+[data-color-scheme='dark'] .bd-ref-paper-under {
+  background: #e8e4d8;
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+/* ── 移动端：收窄内边距与字号，底层纸旋转角收窄防溢出 ── */
+@media (max-width: 640px) {
+  .bd-ref-paper {
+    padding: 30px 24px 22px;
+  }
+  .bd-ref-paper-title {
+    font-size: 21px;
+  }
+  .bd-ref-list li {
+    font-size: 12.5px;
+  }
+  .bd-ref-paper-under-1 {
+    transform: rotate(-1.5deg) translate(-4px, 3px);
+  }
+  .bd-ref-paper-under-2 {
+    transform: rotate(1.2deg) translate(4px, 5px);
+  }
+  .bd-ref-paper-tag {
+    letter-spacing: 0.12em;
+  }
+}

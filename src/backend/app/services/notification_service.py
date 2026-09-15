@@ -203,7 +203,10 @@ class NotificationService:
                     return
 
                 ok, err, coupon_code, coupon_id = await cls._send_one_with_retry(
-                    recipient.email, task_id, coupon_exclude_ids=drawn_coupon_ids
+                    recipient.email,
+                    task_id,
+                    coupon_exclude_ids=drawn_coupon_ids,
+                    owner_user_id=recipient.user_id,
                 )
                 if coupon_id:
                     drawn_coupon_ids.add(coupon_id)
@@ -229,12 +232,13 @@ class NotificationService:
         to_email: str,
         task_id: str,
         coupon_exclude_ids: Optional[set] = None,
+        owner_user_id: Optional[str] = None,
     ) -> tuple[bool, Optional[str], Optional[str], Optional[str]]:
         """发送单封邮件，失败重试 1 次。
 
         附折扣券任务：先从券池 FIFO 取一码（exclude 本批次已分出的），
-        逐收件人替换正文 {{coupon_code}} 渲染后发送。取券失败不中断整批，
-        该收件人标记失败原因。
+        发放即绑定收件人（owner_user_id），逐收件人替换正文 {{coupon_code}}
+        渲染后发送。取券失败不中断整批，该收件人标记失败原因。
 
         Returns:
             (success, error_msg, coupon_code, coupon_id)
@@ -258,7 +262,9 @@ class NotificationService:
         coupon_id: Optional[str] = None
         if attach_coupon:
             try:
-                coupon = await CouponService.draw_from_pool(exclude_ids=coupon_exclude_ids)
+                coupon = await CouponService.draw_from_pool(
+                    exclude_ids=coupon_exclude_ids, owner_user_id=owner_user_id
+                )
                 coupon_code = coupon.code
                 coupon_id = coupon.id
                 body = body.replace("{{coupon_code}}", coupon_code)

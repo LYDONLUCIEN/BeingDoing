@@ -4,12 +4,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, ChevronLeft, ChevronRight, Star, Check } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Star } from 'lucide-react';
 import { useLocale } from '@/hooks/useLocale';
-import { useAuthStore } from '@/stores/authStore';
-import { useAuthModalStore } from '@/stores/authModalStore';
 import LegalDocLink from '@/components/legal/LegalDocLink';
-import PurchaseModal from '@/components/payment/PurchaseModal';
 import LegacyBrowserNotice from '@/components/layout/LegacyBrowserNotice';
 // ── 用户故事（9 条，3x3 平铺，头像占位 assets/user_story/）──────────────────────────
 const TESTIMONIALS: Array<{
@@ -38,6 +35,9 @@ const DIMENSION_VARS: Record<(typeof DIMENSION_KEYS)[number], { varColor: string
   interests: { varColor: 'var(--bd-phase-interests)', varBorder: 'color-mix(in srgb, var(--bd-phase-interests) 25%, transparent)', varBg: 'var(--bd-phase-interests-dim, color-mix(in srgb, var(--bd-phase-interests) 8%, transparent))' },
   purpose: { varColor: 'var(--bd-phase-purpose)', varBorder: 'color-mix(in srgb, var(--bd-phase-purpose) 25%, transparent)', varBg: 'var(--bd-phase-purpose-dim, color-mix(in srgb, var(--bd-phase-purpose) 8%, transparent))' },
 };
+
+// ── 报告展示卡片六点列表的圆点配色（蓝/绿/红/黄/紫/青，参照效果图）──
+const REPORT_CARD_DOT_COLORS = ['#7bb5fb', '#83e0c3', '#fc8d98', '#fbca5b', '#b3a1e8', '#5ec4bb'];
 
 /* 运行时绘制连接弧线（与 new-report-finall 一致） */
 function useBuildArcs(zoneRef: React.RefObject<HTMLDivElement | null>, svgRef: React.RefObject<SVGSVGElement | null>) {
@@ -122,30 +122,115 @@ function DimensionsSection({ t }: { t: (p: string) => string; locale: string }) 
         <div className="bd-v-final" />
       </div>
 
-      {/* 结果卡片：与 new-report-finall 内容完全一致 */}
-      <section className="w-full max-w-[800px] mx-auto mt-8 lg:mt-0 mb-20 relative z-10">
+      {/* 报告展示卡片（2026-09-14 改版）：左文右图，卡片背景独立于外部 mesh 大背景 */}
+      <section className="w-full max-w-[1100px] mx-auto mt-8 lg:mt-0 mb-20 relative z-10">
         <motion.div
           initial={false}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5, ease: [0.165, 0.84, 0.44, 1] }}
-          className="bd-report-glass-card"
+          className="bd-report-showcase"
         >
-          <h2 className="bd-report-title">{t('home.reportTitle')}</h2>
-          <p className="bd-report-subtitle">
-            {t('home.reportSubtitleLine1')}<br />
-            {t('home.reportSubtitleLine2')}
-          </p>
-          <button
-            type="button"
-            onClick={() => router.push('/explore/intro')}
-            className="bd-btn-start"
-          >
-            {t('home.reportCta')}
-            <span className="bd-btn-icon-core">→</span>
-          </button>
+          <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_1fr] gap-10 items-center">
+            {/* 左：文字介绍 */}
+            <div>
+              <h2 className="bd-report-showcase-title">
+                {t('home.reportCard.titleLine1')}
+                <br />
+                {t('home.reportCard.titleLine2')}
+              </h2>
+              <p className="bd-report-showcase-intro">{t('home.reportCard.intro')}</p>
+              <p className="bd-report-showcase-list-title">{t('home.reportCard.listTitle')}</p>
+              <ul className="bd-report-showcase-list">
+                {REPORT_CARD_DOT_COLORS.map((color, i) => {
+                  // 条目格式「粗体引导语::正文」，参照效果图引导语加粗
+                  const [lead, rest] = t(`home.reportCard.item${i + 1}`).split('::');
+                  return (
+                    <li key={i}>
+                      <span className="bd-report-dot" style={{ background: color }} />
+                      <span>
+                        <strong className="bd-report-item-lead">{lead}</strong>
+                        {rest}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <button
+                type="button"
+                onClick={() => router.push('/explore/intro')}
+                className="bd-report-cta-btn"
+              >
+                {t('home.reportCard.cta')}
+                <span aria-hidden>→</span>
+              </button>
+            </div>
+            {/* 右：三张低清模糊报告预览页错落叠放 */}
+            <div>
+              <div className="bd-report-preview-stack">
+                <img src="/assets/report/preview-1.webp" alt={t('home.reportCard.previewAlt1')} className="bd-report-page bd-report-page-1" loading="lazy" />
+                <img src="/assets/report/preview-2.webp" alt={t('home.reportCard.previewAlt2')} className="bd-report-page bd-report-page-2" loading="lazy" />
+                <img src="/assets/report/preview-3.webp" alt={t('home.reportCard.previewAlt3')} className="bd-report-page bd-report-page-3" loading="lazy" />
+              </div>
+              <p className="bd-report-preview-caption">— {t('home.reportCard.previewCaption')} —</p>
+            </div>
+          </div>
         </motion.div>
       </section>
+    </section>
+  );
+}
+
+// ── 参考文献（一页纸：单张 A4 纸感卡片，内容来自 wiki/开发文档/0914/resume.md，勿改用文案.md）──
+const REFERENCES = [
+  '八木仁平. 世界一やさしい「やりたいこと」の見つけ方——人生のモヤモヤから解放される自己理解メソッド[M]. 東京: KADOKAWA, 2020.',
+  'GARCÍA H, MIRALLES F. Ikigai: The Japanese Secret to a Long and Happy Life[M]. London: Hutchinson, 2017.',
+  'BURNETT B, EVANS D. Designing Your Life: How to Build a Well-Lived, Joyful Life[M]. New York: Alfred A. Knopf, 2016.',
+  'ROBINSON K, ARONICA L. The Element: How Finding Your Passion Changes Everything[M]. New York: Viking, 2009.',
+  'LORE N. The Pathfinder: How to Choose or Change Your Career for a Lifetime of Satisfaction and Success[M]. New York: Simon & Schuster, 1998.',
+  'SCHEIN E H. Career Anchors: Discovering Your Real Values[M]. Rev. ed. San Francisco: Jossey-Bass/Pfeiffer, 1990.',
+  'RATH T. StrengthsFinder 2.0[M]. New York: Gallup Press, 2007.',
+  'PETERSON C, SELIGMAN M E P. Character Strengths and Virtues: A Handbook and Classification[M]. Washington, DC: American Psychological Association; New York: Oxford University Press, 2004.',
+  'BOLLES R N, BROOKS K. What Color Is Your Parachute? 2022: Your Guide to a Lifetime of Meaningful Work and Career Success[M]. Berkeley, CA: Ten Speed Press, 2021.',
+  'LOBENSTINE M. The Renaissance Soul: Life Design for People with Too Many Passions to Pick Just One[M]. New York: Broadway Books, 2006.',
+];
+
+function ReferencesSection() {
+  return (
+    <section className="relative z-10 w-full px-5 py-20">
+      <motion.div
+        initial={{ opacity: 0, y: 24 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.5, ease: [0.165, 0.84, 0.44, 1] }}
+        className="bd-ref-paper-wrap"
+      >
+        {/* 底层纸：只露边缘，营造一叠纸的感觉 */}
+        <div className="bd-ref-paper-under bd-ref-paper-under-1" aria-hidden />
+        <div className="bd-ref-paper-under bd-ref-paper-under-2" aria-hidden />
+        {/* 主纸 */}
+        <div className="bd-ref-paper">
+          <header className="bd-ref-paper-header">
+            <span className="bd-ref-paper-brand">寻路·OpenLife</span>
+            <span className="bd-ref-paper-tag">METHODOLOGY&nbsp;REFERENCES</span>
+          </header>
+          <h2 className="bd-ref-paper-title">参考文献</h2>
+          <p className="bd-ref-paper-sub">本产品的流程与内容设计，参考了以下经典著作与理论研究</p>
+          <ol className="bd-ref-list">
+            {REFERENCES.map((ref, i) => (
+              <li key={i}>
+                <span className="bd-ref-num">[{i + 1}]</span>
+                <span className="bd-ref-text">{ref}</span>
+              </li>
+            ))}
+          </ol>
+          <footer className="bd-ref-paper-footer">
+            <span>寻路·OpenLife</span>
+            <span aria-hidden>·</span>
+            <span>OPEN&nbsp;LIFE</span>
+          </footer>
+        </div>
+      </motion.div>
     </section>
   );
 }
@@ -406,269 +491,6 @@ function TestimonialGrid({ videoSrc }: { videoSrc?: string }) {
   );
 }
 
-// ── 定价区块（四卡：免费版/季度/年度/报告解读咨询，未登录点击先弹登录）──
-type PricingPlan = {
-  key: 'free' | 'quarterly' | 'annual' | 'consult';
-  action: 'free' | 'purchase' | 'consult';
-  productType?: 'quarterly_package' | 'annual_package';
-  popular?: boolean;
-};
-
-const PRICING_PLANS: PricingPlan[] = [
-  { key: 'free', action: 'free' },
-  { key: 'quarterly', action: 'purchase', productType: 'quarterly_package', popular: true },
-  { key: 'annual', action: 'purchase', productType: 'annual_package' },
-  { key: 'consult', action: 'consult' },
-];
-
-function PricingSection() {
-  const { t } = useLocale();
-  const router = useRouter();
-  const { isAuthenticated } = useAuthStore();
-  const { openAuthModal } = useAuthModalStore();
-  const [purchaseOpen, setPurchaseOpen] = useState(false);
-  const [defaultType, setDefaultType] = useState<
-    'quarterly_package' | 'annual_package'
-  >('annual_package');
-
-  const handleCta = (plan: PricingPlan) => {
-    if (!isAuthenticated) {
-      // 未登录：先弹登录，登录后回到落地页
-      openAuthModal('/');
-      return;
-    }
-    if (plan.action === 'free') {
-      // 免费版：进入探索引导页（注册即送试用码）
-      router.push('/explore/intro');
-      return;
-    }
-    if (plan.action === 'consult') {
-      // 报告解读咨询：跳报告页现有咨询购买入口（不新增购买逻辑）
-      router.push('/explore/report/view');
-      return;
-    }
-    if (plan.productType) {
-      setDefaultType(plan.productType);
-      setPurchaseOpen(true);
-    }
-  };
-
-  return (
-    <section className="relative z-10 max-w-7xl mx-auto px-5 py-20">
-      <div className="text-center mb-12">
-        <motion.h2
-          initial={false}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          className="text-5xl font-semibold mb-4 tracking-[0.05em]"
-          style={{ color: 'var(--bd-fg)' }}
-        >
-          {t('home.pricing.title')}
-        </motion.h2>
-        <motion.p
-          initial={false}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          className="text-xl font-light"
-          style={{ color: 'var(--bd-fg-muted)' }}
-        >
-          {t('home.pricing.subtitle')}
-        </motion.p>
-      </div>
-
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        {PRICING_PLANS.map((plan) => {
-          const featureKeys = ['f1', 'f2', 'f3', 'f4', 'f5']
-            .map((f) => `home.pricing.${plan.key}.${f}`)
-            .filter((k) => t(k) !== k);
-          return (
-            <motion.div
-              key={plan.key}
-              initial={false}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, ease: [0.165, 0.84, 0.44, 1] }}
-              className={`relative flex flex-col bg-white/60 dark:bg-white/10 backdrop-blur-[24px] rounded-3xl p-8 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.03)] ${
-                plan.popular
-                  ? 'border-2 border-amber-400/80 dark:border-amber-400/60'
-                  : 'border border-white/90 dark:border-white/20'
-              }`}
-            >
-              {plan.popular && (
-                <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-white shadow-sm">
-                  {t('home.pricing.popular')}
-                </span>
-              )}
-              <h3 className="text-xl font-medium mb-2" style={{ color: 'var(--bd-fg)' }}>
-                {t(`home.pricing.${plan.key}.name`)}
-              </h3>
-              <div className="flex items-baseline gap-2 mb-6">
-                <span className="text-4xl font-bold" style={{ color: 'var(--bd-fg)' }}>
-                  {t(`home.pricing.${plan.key}.price`)}
-                </span>
-                <span className="text-sm" style={{ color: 'var(--bd-fg-muted)' }}>
-                  {t(`home.pricing.${plan.key}.period`)}
-                </span>
-              </div>
-              <ul className="space-y-2.5 mb-8">
-                {featureKeys.map((key) => (
-                  <li key={key} className="flex items-start gap-2.5 text-sm" style={{ color: 'var(--bd-fg-muted)' }}>
-                    <Check className="h-4 w-4 shrink-0 mt-0.5 text-emerald-500" strokeWidth={2.5} />
-                    {t(key)}
-                  </li>
-                ))}
-              </ul>
-              <button
-                type="button"
-                onClick={() => handleCta(plan)}
-                className={`bd-btn-hero mt-auto w-full py-3.5 rounded-2xl font-semibold text-base ${
-                  plan.popular ? 'text-white' : ''
-                }`}
-                style={
-                  plan.popular
-                    ? { background: '#1d1d1f' }
-                    : {
-                        background: 'transparent',
-                        color: 'var(--bd-fg)',
-                        border: '1px solid var(--bd-fg-muted)',
-                      }
-                }
-              >
-                {t(`home.pricing.${plan.key}.cta`)}
-              </button>
-            </motion.div>
-          );
-        })}
-      </div>
-
-      <PricingCompareTable />
-
-      <PurchaseModal
-        open={purchaseOpen}
-        onClose={() => setPurchaseOpen(false)}
-        defaultProductType={defaultType}
-      />
-    </section>
-  );
-}
-
-// ── 方案对比表（定价卡下方；✅=包含，-=不包含）──
-const COMPARE_COLUMNS = ['colFree', 'colQuarterly', 'colAnnual', 'colConsult'] as const;
-const COMPARE_ROWS = [
-  { label: 'r1', cells: ['r1Free', 'r1Quarterly', 'r1Annual', 'r1Consult'] },
-  { label: 'r2', cells: ['r2Free', 'r2Quarterly', 'r2Annual', 'r2Consult'] },
-  { label: 'r3', cells: ['r3Free', 'r3Quarterly', 'r3Annual', 'r3Consult'] },
-  { label: 'r4', cells: ['r4Free', 'r4Quarterly', 'r4Annual', 'r4Consult'] },
-  { label: 'r5', cells: ['r5Free', 'r5Quarterly', 'r5Annual', 'r5Consult'] },
-  { label: 'r8', cells: ['r8Free', 'r8Quarterly', 'r8Annual', 'r8Consult'] },
-  { label: 'r6', cells: ['r6Free', 'r6Quarterly', 'r6Annual', 'r6Consult'] },
-  { label: 'r7', cells: ['r7Free', 'r7Quarterly', 'r7Annual', 'r7Consult'] },
-] as const;
-const COMPARE_NOTES = ['note1', 'note2', 'note3'] as const;
-
-function PricingCompareTable() {
-  const { t } = useLocale();
-  const k = (key: string) => t(`home.pricing.compare.${key}`);
-
-  return (
-    <motion.div
-      initial={false}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      transition={{ duration: 0.5, ease: [0.165, 0.84, 0.44, 1] }}
-      className="mt-16"
-    >
-      <h3
-        className="text-2xl font-semibold text-center mb-8 tracking-[0.05em]"
-        style={{ color: 'var(--bd-fg)' }}
-      >
-        {k('title')}
-      </h3>
-
-      <div className="overflow-x-auto bg-white/60 dark:bg-white/10 backdrop-blur-[24px] rounded-3xl border border-white/90 dark:border-white/20 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.03)]">
-        <table className="w-full min-w-[640px] text-sm">
-          <thead>
-            <tr className="border-b border-black/5 dark:border-white/10">
-              <th
-                className="text-left font-medium px-6 py-4"
-                style={{ color: 'var(--bd-fg)' }}
-              >
-                {k('colFeature')}
-              </th>
-              {COMPARE_COLUMNS.map((col) => (
-                <th
-                  key={col}
-                  className={`text-center font-medium px-4 py-4 ${
-                    col === 'colQuarterly' ? 'bg-amber-50/60 dark:bg-amber-400/10' : ''
-                  }`}
-                  style={{ color: 'var(--bd-fg)' }}
-                >
-                  {k(col)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {COMPARE_ROWS.map((row, ri) => (
-              <tr
-                key={row.label}
-                className={
-                  ri < COMPARE_ROWS.length - 1
-                    ? 'border-b border-black/5 dark:border-white/10'
-                    : ''
-                }
-              >
-                <td className="px-6 py-4" style={{ color: 'var(--bd-fg)' }}>
-                  {k(row.label)}
-                </td>
-                {row.cells.map((cell, ci) => {
-                  const value = k(cell);
-                  return (
-                    <td
-                      key={cell}
-                      className={`text-center px-4 py-4 ${
-                        COMPARE_COLUMNS[ci] === 'colQuarterly'
-                          ? 'bg-amber-50/60 dark:bg-amber-400/10'
-                          : ''
-                      }`}
-                      style={{ color: 'var(--bd-fg-muted)' }}
-                    >
-                      {value === '✅' ? (
-                        <span className="text-base" role="img" aria-label="included">
-                          ✅
-                        </span>
-                      ) : (
-                        value || '-'
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="mt-6 bg-white/40 dark:bg-white/5 backdrop-blur-[24px] rounded-3xl border border-white/90 dark:border-white/20 px-6 py-5">
-        <p className="text-sm font-medium mb-2" style={{ color: 'var(--bd-fg)' }}>
-          {k('noteTitle')}
-        </p>
-        <ul className="space-y-1.5">
-          {COMPARE_NOTES.map((note) => (
-            <li
-              key={note}
-              className="text-xs leading-relaxed"
-              style={{ color: 'var(--bd-fg-muted)' }}
-            >
-              {k(note)}
-            </li>
-          ))}
-        </ul>
-      </div>
-    </motion.div>
-  );
-}
-
 // ── 页脚 ──────────────────────────────────────────────────
 function LandingFooter() {
   const { t } = useLocale();
@@ -824,8 +646,8 @@ export default function LandingPage() {
       {/* ③ 他们的故事：3×3 平铺 */}
       <TestimonialGrid videoSrc={STORIES_VIDEO_SRC || undefined} />
 
-      {/* ④ 定价 */}
-      <PricingSection />
+      {/* ④ 参考文献：一页纸 */}
+      <ReferencesSection />
 
       {/* ⑤ 常见问题解答 */}
       <FaqSection />

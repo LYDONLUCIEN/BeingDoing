@@ -12,9 +12,10 @@ import PurchaseModal from '@/components/payment/PurchaseModal';
 import UpgradeTrialModal from '@/components/payment/UpgradeTrialModal';
 import FreeRenewalClaimModal from '@/components/payment/FreeRenewalClaimModal';
 import OrdersSection from '@/components/dashboard/OrdersSection';
+import CouponsSection from '@/components/dashboard/CouponsSection';
 import { useLocale } from '@/hooks/useLocale';
 
-type CodesTab = 'codes' | 'orders';
+type CodesTab = 'codes' | 'orders' | 'coupons';
 
 /** 状态 badge 配色：active 绿 / inactive 橙 / expired 灰 / revoked 红 / consumed 灰 / 其他 灰 */
 const STATUS_COLOR: Record<string, string> = {
@@ -305,7 +306,7 @@ export default function DashboardCodesPage() {
 
       {/* 页签：激活码 / 订单记录（样式与 AuthModal tab 一致） */}
       <div className="mb-6 flex bg-bd-overlay rounded-lg p-1 max-w-xs">
-        {(['codes', 'orders'] as const).map((tab) => (
+        {(['codes', 'orders', 'coupons'] as const).map((tab) => (
           <button
             key={tab}
             type="button"
@@ -371,6 +372,9 @@ export default function DashboardCodesPage() {
             refreshKey={purchasedRefreshKey}
           />
         </>
+      ) : activeTab === 'coupons' ? (
+        // 折扣券 tab：可用 / 已使用 / 已过期 三组
+        <CouponsSection />
       ) : (
         // 订单记录 tab：仅订单详情 + 本单交付的激活码列表（码的去向见「激活码」tab）
         <OrdersSection />

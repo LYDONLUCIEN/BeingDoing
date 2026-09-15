@@ -76,8 +76,7 @@ html[data-landing-lite="true"] .landing-mesh-noise {
   opacity: 0.02;
 }
 html[data-landing-lite="true"] .bd-dimension-card,
-html[data-landing-lite="true"] .bd-testimonial-card,
-html[data-landing-lite="true"] .bd-report-glass-card {
+html[data-landing-lite="true"] .bd-testimonial-card {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }

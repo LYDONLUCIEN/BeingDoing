@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { X, Loader2, Download, RefreshCw } from 'lucide-react';
+import { X, Loader2, Download, RefreshCw, FileCode2 } from 'lucide-react';
 import {
   downloadAdminRecheckStagingPdf,
   fetchAdminReportRecheck,
@@ -18,6 +18,7 @@ import {
   rejectAdminReportRecheck,
   type AdminRecheckInfo,
 } from '@/lib/api/admin';
+import RecheckMarkdownEditor from './RecheckMarkdownEditor';
 
 interface ReportRecheckPanelProps {
   reportId: string;
@@ -42,6 +43,8 @@ export default function ReportRecheckPanel({ reportId, onClose, onChanged }: Rep
   const [working, setWorking] = useState<string | null>(null); // regenerate/publish/reject/download
   const [rejectReason, setRejectReason] = useState('');
   const [showReject, setShowReject] = useState(false);
+  /** Markdown 预览/编辑区（2026-09-14）：展开后弹窗加宽 */
+  const [showEditor, setShowEditor] = useState(false);
   const pollingRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -148,7 +151,9 @@ export default function ReportRecheckPanel({ reportId, onClose, onChanged }: Rep
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-2xl bg-bd-card border border-bd-border shadow-2xl p-6 space-y-4"
+        className={`w-full rounded-2xl bg-bd-card border border-bd-border shadow-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto transition-[max-width] ${
+          showEditor ? 'max-w-5xl' : 'max-w-lg'
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
@@ -241,6 +246,15 @@ export default function ReportRecheckPanel({ reportId, onClose, onChanged }: Rep
               </button>
               <button
                 type="button"
+                onClick={() => setShowEditor((v) => !v)}
+                disabled={working !== null}
+                className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-bd-border text-bd-fg hover:bg-bd-overlay-md disabled:opacity-60"
+              >
+                <FileCode2 size={12} />
+                {showEditor ? '收起 Markdown 编辑' : 'Markdown 预览/编辑'}
+              </button>
+              <button
+                type="button"
                 onClick={() => setShowReject((v) => !v)}
                 disabled={generating || working !== null}
                 className="px-3 py-2 rounded-lg border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-60"
@@ -248,6 +262,18 @@ export default function ReportRecheckPanel({ reportId, onClose, onChanged }: Rep
                 驳回
               </button>
             </div>
+
+            {showEditor && (
+              <RecheckMarkdownEditor
+                reportId={reportId}
+                hasStaging={info.has_staging}
+                disabled={generating || working !== null}
+                onPublished={() => {
+                  onChanged();
+                  onClose();
+                }}
+              />
+            )}
 
             {showReject && (
               <div className="space-y-2">

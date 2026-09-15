@@ -1221,6 +1221,72 @@ class RenderPdfFromMdRequest(BaseModel):
     signature: Optional[str] = None
 
 
+@router.get("/reports/{report_id}/recheck/markdown")
+async def get_recheck_markdown(
+    report_id: str,
+    version: str = "original",
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """获取报告 markdown 原文（admin 复核编辑器用）：version=original 正式缓存 / staging 新稿。"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    registry = ReportRegistry()
+    _get_report_or_404(registry, report_id)
+
+    from app.services.report_pdf_service import ReportPdfService
+
+    service = ReportPdfService()
+    if version == "original":
+        markdown_text = service.load_cached_markdown_text(report_id)
+    elif version == "staging":
+        markdown_text = service.load_staging_markdown(report_id)
+    else:
+        raise HTTPException(status_code=400, detail="version 必须是 original 或 staging")
+    if markdown_text is None:
+        raise HTTPException(status_code=404, detail="该版本 markdown 不存在")
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {"report_id": report_id, "version": version, "markdown": markdown_text},
+    }
+
+
+class RecheckPublishEditedRequest(BaseModel):
+    """发布 admin 编辑稿请求（2026-09-14）：原版/新稿均可编辑后发布，未选中的一并清除。"""
+
+    version: str = Field(..., pattern="^(original|staging)$")
+    markdown: str = Field(..., min_length=1)
+
+
+@router.post("/reports/{report_id}/recheck/publish-edited")
+async def publish_recheck_edited(
+    report_id: str,
+    payload: RecheckPublishEditedRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """发布 admin 编辑稿：编辑后的 markdown 直接写为正式缓存（旧版留 .bak），
+    staging 清除，关单 done，站内信+邮件通知用户。"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    registry = ReportRegistry()
+    async with AsyncSessionLocal() as db:
+        try:
+            entry = await report_recheck_service.publish_edited_recheck(
+                db,
+                registry,
+                report_id,
+                version=payload.version,
+                markdown=payload.markdown,
+                admin_id=(current_user or {}).get("user_id"),
+            )
+        except LookupError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        await db.commit()
+    return {"code": 200, "message": "success", "data": entry}
+
+
 @router.get("/reports/generating")
 async def list_generating_reports(
     current_user: Optional[dict] = Depends(get_current_user),

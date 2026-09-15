@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>寻路 · OpenLife — 购买探索方案</title>
+<style>
+:root{--ink:#142443;--muted:#6d7e98;--blue:#3678df;--line:#dfe6ef;--radius:22px;font-family:Inter,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;color:var(--ink);font-synthesis:none}
+*{box-sizing:border-box}body{margin:0;background:#f6f8f6}button,input{font:inherit}button{cursor:pointer}button:focus-visible,summary:focus-visible,a:focus-visible{outline:3px solid #327ce3;outline-offset:5px}button{color:inherit}button:disabled{cursor:wait;opacity:.65}
+/* 背景仅为演示页面；可将 dialog 整体放进现有项目。 */
+.site{min-height:100vh;background:radial-gradient(ellipse at 4% 75%,#cce4db 0,transparent 40%),radial-gradient(ellipse at 90% 85%,#f6e8ca 0,transparent 45%),radial-gradient(ellipse at 20% 20%,#deebf6 0,transparent 45%),#f9f9f6}
+nav{height:88px;max-width:1250px;margin:auto;display:flex;align-items:center;justify-content:space-between;padding:0 28px}nav strong{font-size:24px;letter-spacing:-1px}nav .links{display:flex;gap:46px;font-size:14px;color:#60728a}nav small{color:#6c7c8b}.hero{max-width:1160px;margin:120px auto 0;padding:0 30px;display:flex;align-items:center;justify-content:space-between;gap:60px}.hero h1{font-size:54px;line-height:1.4;letter-spacing:-2px;margin:0 0 25px}.hero p{color:#748797;line-height:2}.primary{border:1px solid #3474d9;background:linear-gradient(135deg,#3e82e5,#3973d1);color:white;border-radius:12px;padding:15px 34px;font-size:18px;font-weight:600;transition:filter .15s}.primary:hover{filter:brightness(1.06)}.hero .primary{margin-top:22px}.quote{width:300px;padding:42px;background:#ffffff80;border:1px solid white;border-radius:18px;color:#829187;line-height:2.2;font-size:20px}.quote small{display:block;font-size:13px;margin-top:16px}
+/* 原生 dialog 提供焦点约束、Esc 关闭及背景不可交互。 */
+dialog{padding:0;border:1px solid #fff;border-radius:var(--radius);width:min(1180px,calc(100vw - 64px));max-width:none;max-height:calc(100dvh - 64px);overflow:hidden;color:var(--ink);background:radial-gradient(ellipse at 0 0,#d9effdcc,transparent 29%),radial-gradient(ellipse at 100% 0,#ffe1e4ad,transparent 25%),radial-gradient(ellipse at 0 100%,#dff5e8b3,transparent 27%),radial-gradient(ellipse at 100% 100%,#fff0c5c7,transparent 27%),#fffffffa;box-shadow:0 24px 100px #1b2f512b}dialog::backdrop{background:#24354a70;backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)}body:has(dialog[open]){overflow:hidden}.shell{display:flex;flex-direction:column;max-height:calc(100dvh - 68px)}.content{overflow:auto;overscroll-behavior:contain;padding:52px 54px 22px;scrollbar-width:thin}.close{position:absolute;right:17px;top:15px;z-index:2;width:34px;height:34px;border:0;background:transparent;border-radius:50%;font-size:30px;font-weight:300;line-height:1;color:#506b8b}.close:hover{background:#e9eff9}.purchase-grid{display:grid;grid-template-columns:1.05fr 1fr;gap:26px;align-items:stretch}.intro h2{font-size:clamp(25px,2.6vw,36px);letter-spacing:-1.1px;line-height:1.35;margin:0 0 18px;font-weight:700}.subtitle{display:flex;gap:14px;align-items:center;margin-bottom:26px;min-height:30px}.badge{flex-shrink:0;border-radius:30px;padding:5px 12px;background:#e4f1ff;color:#2774d6;font-size:13px;font-weight:600}.subtitle p{font-size:15px;color:var(--muted);margin:0;line-height:1.6}.benefits{display:grid;grid-template-columns:1fr 1fr;gap:10px}.benefit{display:flex;gap:12px;align-items:center;padding:19px 12px;border:1px solid #ebeff5;border-radius:16px;background:#ffffff9c;min-height:88px}.benefit strong{display:block;font-size:13px;line-height:1.6;font-weight:600}.benefit small{display:block;font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5}.icon{width:43px;height:47px;border-radius:15px;display:grid;place-items:center;flex-shrink:0}.icon svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.blue{color:#4d8ce7;background:#edf4ff}.green{color:#35a66b;background:#edf8f0}.coral{color:#f17f6b;background:#fff0ed}.gold{color:#e9ac28;background:#fff7e3}.plans{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:5px 0 0;padding:0;border:0;min-width:0}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}.plan{position:relative;display:flex;flex-direction:column;align-items:flex-start;border:1px solid #dce3ee;border-radius:17px;background:#ffffff8c;padding:27px 24px 22px;cursor:pointer;transition:background .18s,border-color .18s,box-shadow .18s}.plan:hover{border-color:#8dafdf;background:#f5f9ff}.plan:has(input:checked){border-color:#4988ff;background:linear-gradient(135deg,#ecf5ff,#e7f0ffcc);box-shadow:inset 0 0 0 .5px #4988ff}.plan:has(input:focus-visible){outline:3px solid #266ace;outline-offset:4px}.plan input{appearance:none;width:26px;height:26px;border:2px solid #b0bed1;border-radius:50%;margin:0 0 18px;display:grid;place-content:center;flex-shrink:0}.plan input:checked{border-color:#2e7af0}.plan input:checked:before{content:"";width:16px;height:16px;border-radius:50%;background:#2e7af0}.plan-name{font-size:23px;font-weight:650;margin-bottom:16px}.price{font-size:43px;font-weight:650;letter-spacing:-1.5px;line-height:1.1}.price span{font-size:24px;margin-right:4px}.duration{font-size:17px;color:var(--muted);margin:8px 0 20px}.plan-desc{font-size:15px;line-height:1.8;color:var(--muted);margin-top:auto;white-space:pre-line}
+.compare{border:1px solid var(--line);border-radius:15px;background:#ffffffad;margin-top:22px;overflow:hidden}.compare summary{list-style:none;padding:19px 23px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;gap:12px}.compare summary::-webkit-details-marker{display:none}.compare-title{font-weight:650;font-size:20px}.toggle-label{font-size:14px;color:var(--muted);display:flex;gap:17px;align-items:center}.chevron{width:12px;height:12px;border-bottom:2px solid #38516f;border-right:2px solid #38516f;transform:rotate(45deg) translateY(-3px);transition:transform .2s}.compare[open] .chevron{transform:rotate(225deg) translate(-2px,-1px)}.table-wrap{overflow-x:auto;padding:0 18px 16px}table{border-collapse:separate;border-spacing:0;width:100%;min-width:540px;font-size:13px;color:#5c6c83;line-height:1.6}caption{text-align:left;font-size:12px;padding-bottom:10px;color:var(--muted)}th,td{padding:11px 16px;text-align:center;border-bottom:1px solid #e6ebf2;width:33.33%}thead th{background:#f3f6fb;color:var(--ink);font-weight:600}th:first-child{text-align:left}tbody th{font-weight:400}.active-col{background:#eaf2ff80;color:#256bc7}thead .active-col{background:#e2edff;color:#256bc7}.check{color:#2c8c62;font-weight:700}.footnote{margin:13px 0 0;color:var(--muted);font-size:12px;line-height:1.8}.footer{flex-shrink:0;padding:18px 54px;border-top:1px solid #dfe6ed;background:#ffffff55;display:flex;align-items:center;justify-content:space-between;gap:16px}.total{display:flex;align-items:baseline;gap:15px;font-size:18px}.total strong{font-weight:600;color:#2571d8}.total .amount{font-size:25px;white-space:nowrap}.footer .primary{min-width:222px}.notice{margin:14px 0 0;padding:12px 16px;border:1px solid #bdd5fa;border-radius:12px;background:#eef5ff;color:#32629a;font-size:13px;line-height:1.7}.notice:empty{display:none}
+@media(min-width:1500px){dialog{width:1230px}.content{padding:56px 60px 22px}.footer{padding:20px 60px}.benefit{padding:20px 16px}.intro h2{font-size:38px}}
+@media(max-width:1050px){.content{padding:48px 30px 22px}.footer{padding:18px 30px}.purchase-grid{grid-template-columns:1fr 1fr;gap:20px}.benefits{grid-template-columns:1fr}.benefit{padding:10px 12px;min-height:60px}.icon{width:36px;height:38px}.plan{padding:24px 16px}.subtitle{align-items:flex-start}.plan-name{font-size:20px}.plan-desc{font-size:13px}}
+@media(max-width:700px){nav .links,nav small,.quote{display:none}.hero{margin-top:70px}.hero h1{font-size:38px}dialog{width:calc(100vw - 24px);max-height:calc(100dvh - 24px);border-radius:20px}.shell{max-height:calc(100dvh - 28px)}.content{padding:46px 20px 18px}.purchase-grid{grid-template-columns:1fr}.intro h2{font-size:27px}.subtitle{margin-bottom:18px;gap:8px}.subtitle p{font-size:13px}.benefits{grid-template-columns:1fr 1fr}.benefit{gap:8px;padding:11px 8px}.benefit strong{font-size:12px}.benefit small{font-size:11px}.icon{width:30px;height:36px;border-radius:11px}.icon svg{width:22px}.plans{gap:12px;margin-top:0}.plan{padding:17px}.plan input{width:22px;height:22px;margin-bottom:12px}.plan input:checked:before{width:12px;height:12px}.plan-name{font-size:19px;margin-bottom:12px}.price{font-size:34px}.duration{font-size:14px;margin-bottom:12px}.compare summary{padding:17px 15px}.compare-title{font-size:16px}.toggle-label{font-size:12px;gap:10px}.footer{padding:16px 20px;gap:12px}.total{flex-wrap:wrap;gap:6px;font-size:13px}.total .amount{font-size:20px}.footer .primary{min-width:120px;font-size:15px;padding:13px 18px}.table-wrap{padding:0 10px 12px}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="site">
+<nav><strong>寻路·OpenLife</strong><div class="links"><span>首页</span><span>开始探索</span><span>社区</span></div><small>你好，探索者</small></nav>
+<main class="hero"><div><h1>人生不止一种可能，<br>还有更大的自己。</h1><p>在这里，与你一起寻找热爱、发现优势。<br>所有热爱，都值得成为事业。</p><button class="primary" id="openPurchase">开始探索 →</button></div><div class="quote">每一次探索，<br>都是向自己靠近。<small>寻路 · OpenLife</small></div></main>
+</div>
+<dialog id="purchaseDialog" aria-labelledby="purchaseTitle">
+<div class="shell">
+<button class="close" id="closePurchase" aria-label="关闭购买弹窗" autofocus>×</button>
+<div class="content" id="scrollContent">
+<div class="purchase-grid">
+<section class="intro"><h2 id="purchaseTitle">给探索，多一点可能</h2><div class="subtitle"><span class="badge" id="planBadge"></span><p id="planSubtitle"></p></div><div class="benefits" id="benefits" aria-live="polite"></div></section>
+<fieldset class="plans" id="plans"><legend class="sr-only">选择探索方案</legend></fieldset>
+</div>
+<details class="compare" id="comparison"><summary><span class="compare-title">各方案功能对比</span><span class="toggle-label"><span id="toggleText">展开对比</span><i class="chevron" aria-hidden="true"></i></span></summary><div class="table-wrap" role="region" aria-label="季度与年度功能对比，可横向滚动" tabindex="0"><table id="comparisonTable"><caption>按你的探索节奏，选择合适的方案</caption></table><p class="footnote">季度与年度到期后仍可查看报告，不可编辑或查看对话。</p></div></details>
+<p class="notice" id="purchaseStatus" role="status" aria-live="polite"></p>
+</div>
+<footer class="footer"><div class="total" aria-live="polite"><span>已选</span><strong id="selectedName"></strong><strong class="amount" id="selectedPrice"></strong></div><button class="primary" id="buyButton">确认购买</button></footer>
+</div>
+</dialog>
+<script>
+/* ===== 可配置数据：套餐价格、权益、说明均在此修改 ===== */
+const PLANS = {
+  quarterly: {id:'quarterly',name:'季度探索',price:69,months:3,subtitle:'用一个季度，深入探索当下的自己',description:'阶段性深入探索\n适合短期目标',reports:1,team:false,scene:'个人季度认知迭代，或针对具体问题做阶段性深度探索'},
+  annual: {id:'annual',name:'年度探索',price:159,months:12,subtitle:'用一年的时间，持续认识自己',description:'用一年的时间\n持续认识自己',reports:3,team:true,scene:'个人阶段性评估、团队组建、协同诊断与成员对比分析'}
+};
+const ICONS = {
+ chat:'<path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 3v-3a2 2 0 0 1-2-2V6a2 2 0 0 1 3-2Z"/><path d="M7 11h.01M12 11h.01M17 11h.01"/>',
+ report:'<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 7h6M9 12h6M9 17h4"/>',
+ person:'<circle cx="12" cy="7" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3Z"/>',
+ team:'<circle cx="12" cy="7" r="3"/><path d="M7 21v-3a5 5 0 0 1 10 0v3ZM5 4a3 3 0 0 0 0 6M19 4a3 3 0 0 1 0 6M4 13a4 4 0 0 0-3 4v3h3M20 13a4 4 0 0 1 3 4v3h-3"/>',
+ calendar:'<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 2v6M17 2v6M3 11h18M8 16h8"/>'
+};
+const $ = id => document.getElementById(id);
+const dialog = $('purchaseDialog');
+let selectedId = 'annual';
+let returnFocus = $('openPurchase');
+// 不将配置文案作为 HTML 插入；动态文字使用 textContent。
+function node(tag,cls,text){const el=document.createElement(tag);if(cls)el.className=cls;if(text!==undefined)el.textContent=text;return el;}
+function createCards(){
+  Object.values(PLANS).forEach(plan=>{
+    const label=node('label','plan');
+    const input=document.createElement('input');input.type='radio';input.name='plan';input.value=plan.id;input.checked=plan.id===selectedId;input.setAttribute('aria-label',`${plan.name}，${plan.price}元，${plan.months}个月`);
+    input.addEventListener('change',()=>selectPlan(plan.id));
+    const price=node('span','price');price.append(node('span','', '¥'),document.createTextNode(plan.price));
+    label.append(input,node('span','plan-name',plan.name),price,node('span','duration',`/ ${plan.months}个月`),node('span','plan-desc',plan.description));$('plans').append(label);
+  });
+}
+function renderBenefits(plan){
+  const items=[['blue','chat','AI 深度对话不限轮次','随时提问，深入探索'],['green','report',`${plan.reports} 份完整探索报告`,'多维度看见自己'],['coral','person','人工报告审核','专业把关，更高质量'],plan.team?['gold','team','团队匹配与角色分析','发现你在团队中的独特价值']:['gold','calendar','7 天免费延期','给探索多一点时间']];
+  $('benefits').replaceChildren(...items.map(([color,icon,title,subtitle])=>{const card=node('div','benefit');const mark=node('span',`icon ${color}`);mark.setAttribute('aria-hidden','true');mark.innerHTML=`<svg viewBox="0 0 24 24">${ICONS[icon]}</svg>`;const copy=node('div');copy.append(node('strong','',title),node('small','',subtitle));card.append(mark,copy);return card;}));
+}
+function renderComparison(){
+  const table=$('comparisonTable');table.querySelector('thead')?.remove();table.querySelector('tbody')?.remove();
+  const plans=Object.values(PLANS),head=node('thead'),header=node('tr');header.append(node('th','','项目'));
+  plans.forEach(p=>header.append(node('th',p.id===selectedId?'active-col':'',`${p.name} · ¥${p.price}`)));head.append(header);head.querySelectorAll('th').forEach(th=>th.scope='col');
+  const rows=[['AI 对话额度',()=> '不限'],['完整报告（30+ 页 / 7+ 主题）',p=>`${p.reports} 份`],['人工报告审核',()=>true],['团队匹配与角色分析',p=>p.team],['7 天免费延期',()=>true],['适用时间',p=>`${p.months} 个月`],['适用场景',p=>p.scene]];
+  const body=node('tbody');rows.forEach(([title,value])=>{const tr=node('tr'),th=node('th','',title);th.scope='row';tr.append(th);plans.forEach(p=>{const v=value(p),td=node('td',p.id===selectedId?'active-col':'',typeof v==='boolean'?(v?'✓':'—'):v);if(typeof v==='boolean'){td.setAttribute('aria-label',v?'包含':'不包含');if(v)td.classList.add('check');}tr.append(td);});body.append(tr);});table.append(head,body);
+}
+function selectPlan(id){if(!PLANS[id])return;selectedId=id;const plan=PLANS[id];document.querySelectorAll('input[name="plan"]').forEach(input=>input.checked=input.value===id);$('planBadge').textContent=plan.name;$('planSubtitle').textContent=plan.subtitle;$('selectedName').textContent=plan.name;$('selectedPrice').textContent=`¥${plan.price}`;$('purchaseStatus').textContent='';renderBenefits(plan);renderComparison();}
+function openPurchase(){if(dialog.open)return;returnFocus=document.activeElement;$('comparison').open=false;$('toggleText').textContent='展开对比';$('purchaseStatus').textContent='';dialog.showModal();$('scrollContent').scrollTop=0;}
+$('comparison').addEventListener('toggle',()=>{$('toggleText').textContent=$('comparison').open?'收起对比':'展开对比';});
+$('openPurchase').addEventListener('click',openPurchase);
+$('closePurchase').addEventListener('click',()=>dialog.close());
+dialog.addEventListener('close',()=>{if(returnFocus?.isConnected)returnFocus.focus();});
+// 仅在按下和松开均位于遮罩上时关闭，避免从弹窗内拖动出去误关闭。
+function outside(event){const r=dialog.getBoundingClientRect();return event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom;}
+let backdropDown=false;dialog.addEventListener('pointerdown',e=>{backdropDown=outside(e);});dialog.addEventListener('click',e=>{if(backdropDown&&outside(e))dialog.close();backdropDown=false;});
+/* ===== 支付接入点 =====
+实际项目中定义 window.openLifeCheckout = async ({planId}) => { ... }。
+只传套餐 ID，订单价格、用户权限及支付状态由服务端校验。
+由该回调创建服务端订单并打开支付界面；不要在前端直接标记支付成功。
+此参考文件未接入支付，默认仅展示所选方案，不会扣款。
+*/
+$('buyButton').addEventListener('click',async()=>{
+ const plan=PLANS[selectedId],status=$('purchaseStatus'),button=$('buyButton');
+ if(typeof window.openLifeCheckout!=='function'){status.textContent=`已选择「${plan.name}」，¥${plan.price} / ${plan.months}个月。当前为演示页面，尚未接入支付，不会产生扣款。`;status.scrollIntoView({block:'nearest'});return;}
+ button.disabled=true;button.textContent='正在创建订单…';document.querySelectorAll('input[name="plan"]').forEach(el=>el.disabled=true);status.textContent='';
+ try{await window.openLifeCheckout({planId:plan.id});}
+ catch(error){status.textContent='暂时无法发起支付，请稍后重试。';status.scrollIntoView({block:'nearest'});}
+ finally{button.disabled=false;button.textContent='确认购买';document.querySelectorAll('input[name="plan"]').forEach(el=>el.disabled=false);}
+});
+createCards();selectPlan(selectedId);openPurchase();
+// 对外开放：可由现有网页按钮调用 window.openLifePurchase.open()。
+window.openLifePurchase={open:openPurchase,close:()=>dialog.close(),select:selectPlan};
+</script>
+</body>
+</html>

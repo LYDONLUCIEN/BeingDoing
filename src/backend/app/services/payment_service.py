@@ -173,6 +173,7 @@ class PaymentService:
                         "开放全部 5 个探索阶段",
                         "1 份完整报告（30+ 页 / 7+ 主题维度）",
                         "报告提交后 24 小时人工审核交付",
+                        "1 次免费报告复核",
                         "有效期 3 个月（购买成功起算）",
                     ],
                 },
@@ -192,6 +193,7 @@ class PaymentService:
                         "团队匹配度分析 + 团队角色投射",
                         "报告提交后 24 小时人工审核交付",
                         "3 个激活码（可自用可转送）",
+                        "1 次免费报告复核",
                         "每码有效期 1 年（购买成功起算）",
                     ],
                 },
@@ -347,10 +349,10 @@ class PaymentService:
             if not user:
                 raise ValueError("用户不存在")
 
-            # 券校验（lock 在订单落库后）
+            # 券校验（lock 在订单落库后）；透传 user_id 做归属校验
             coupon: Optional[Coupon] = None
             if coupon_code:
-                coupon = await CouponService.validate_coupon(coupon_code)
+                coupon = await CouponService.validate_coupon(coupon_code, user_id=user_id)
 
             original, discount, paid = cls.compute_amounts(
                 user,
@@ -377,10 +379,10 @@ class PaymentService:
                 meta=json.dumps(order_meta, ensure_ascii=False) if order_meta else None,
             )
 
-        # 锁券（下单即锁定）；失败则删除刚创建的 pending 订单
+        # 锁券（下单即锁定+未绑定券认领归属）；失败则删除刚创建的 pending 订单
         if coupon is not None:
             try:
-                await CouponService.lock_coupon(coupon.code, order.id)
+                await CouponService.lock_coupon(coupon.code, order.id, user_id=user_id)
             except ValueError:
                 await cls._delete_order(order.id)
                 raise
@@ -1389,6 +1391,17 @@ class PaymentService:
                 logger.error("退款作废套餐码失败（需人工核查）：code=%s err=%s", code, e)
         if package_codes:
             logger.info("退款完成，套餐码已全部作废：order_id=%s codes=%s", order_id, package_codes)
+        # 退款退券：本单用过的券退回用户（used → unused，保留归属）；失败不阻断退款
+        if order.coupon_id:
+            try:
+                await CouponService.return_coupon_on_refund(order.coupon_id)
+            except ValueError as e:
+                logger.error(
+                    "退款退券失败（订单已退款，需人工核查）：order=%s coupon=%s err=%s",
+                    order_id,
+                    order.coupon_id,
+                    e,
+                )
         return order
 
     # ─── 序列化 ─────────────────────────────────────────────────

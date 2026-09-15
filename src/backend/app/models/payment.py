@@ -81,13 +81,17 @@ class PaymentOrder(Base):
 class Coupon(Base):
     """折扣券表
 
-    通用券码（不绑定用户）：固定金额（分）、无门槛、永久有效、核销一次即作废。
+    固定金额（分）、无门槛抵扣码；有有效期（expires_at，默认 90 天，admin 可调），
+    可绑定归属用户（owner_user_id，None=未绑定流通券），核销一次即作废。
 
     Attributes:
         id: 券 ID（UUID，主键）
         code: 券码（12 位大写字母+数字，唯一）
         amount: 面额（分）
-        status: 状态（unused/locked/used，locked=下单锁定中）
+        status: 状态（unused/locked/used/void；expired 为 unused 的惰性派生态，不落库）
+        expires_at: 过期时间（unused 且 expires_at<now 即视为已过期；locked 免疫）
+        owner_user_id: 归属用户 ID（发放即绑定/下单认领；None=未绑定流通券）
+        voided_at: 作废时间（软删除，admin 可恢复）
         locked_order_id: 锁定它的订单 ID（locked 时填）
         used_by_user_id: 核销用户 ID
         used_order_id: 核销订单 ID
@@ -103,6 +107,9 @@ class Coupon(Base):
     code = Column(String(32), unique=True, nullable=False, index=True)
     amount = Column(Integer, nullable=False)
     status = Column(String(16), default="unused", nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=True)
+    owner_user_id = Column(String(36), nullable=True, index=True)
+    voided_at = Column(DateTime, nullable=True)
     locked_order_id = Column(String(36), nullable=True)
     used_by_user_id = Column(String(36), nullable=True)
     used_order_id = Column(String(36), nullable=True)

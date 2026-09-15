@@ -852,6 +852,37 @@ class ReportPdfService:
         except OSError:
             pass
 
+    def load_cached_markdown_text(self, report_id: str) -> Optional[str]:
+        """读取正式缓存 markdown 原文（admin 复核编辑器用），无缓存返回 None。"""
+        path = self._markdown_path(report_id)
+        if not path.is_file():
+            return None
+        try:
+            return path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return None
+
+    def publish_edited_markdown(self, report_id: str, markdown: str) -> None:
+        """发布 admin 编辑稿（2026-09-14）：编辑内容原子写为正式缓存（旧版留 .bak），
+        刷新缓存时间戳，并清除 staging（未被选择的新稿随之废弃）。
+        """
+        official_path = self._markdown_path(report_id)
+        backup_path = self.reports_root / report_id / _REPORT_BACKUP_FILENAME
+        if official_path.is_file():
+            backup_path.write_bytes(official_path.read_bytes())
+        tmp_path = official_path.with_suffix(".md.tmp")
+        tmp_path.write_text(markdown, encoding="utf-8")
+        tmp_path.replace(official_path)
+        self.discard_staging(report_id)
+
+        # 刷新缓存时间戳（_load_cached_markdown 依赖该字段判定缓存有效）
+        registry = ReportRegistry(base_dir=str(self.simple_base_dir))
+        record = registry.get_report_by_id(report_id)
+        if record:
+            record["report_markdown_generated_at"] = datetime.now(timezone.utc).isoformat()
+            registry._save_record(record)
+        logger.info("复核编辑稿已发布: report_id=%s", report_id)
+
     # ── 落款签名 ─────────────────────────────────────────────
 
     def _get_or_assign_signature(self, report_id: str) -> Optional[str]:

@@ -22,6 +22,7 @@ import ConclusionRequestButton, { type ConclusionRequestState } from '@/componen
 import PhaseCompleteWarmModal from '@/components/explore/PhaseCompleteWarmModal';
 import PhaseWelcomeModal from '@/components/explore/PhaseWelcomeModal';
 import TrialLimitModal from '@/components/explore/TrialLimitModal';
+import ContinueConfirmModal from '@/components/explore/ContinueConfirmModal';
 import UpgradeTrialModal from '@/components/payment/UpgradeTrialModal';
 import PurchaseModal from '@/components/payment/PurchaseModal';
 import ChatPhaseBackground from '@/components/explore/ChatPhaseBackground';
@@ -407,6 +408,8 @@ export default function ChatPhasePage() {
   const [ruminationStep7FinalizeOpen, setRuminationStep7FinalizeOpen] = useState(false);
   const [phaseCelebrateSignal, setPhaseCelebrateSignal] = useState(0);
   const [phaseCompleteModalOpen, setPhaseCompleteModalOpen] = useState(false);
+  /** 前四阶段「完成并继续」二次确认弹层（进入下一阶段后本阶段锁定不可修改） */
+  const [continueConfirmOpen, setContinueConfirmOpen] = useState(false);
   /** 试用拦截弹层（402 trial_limit_reached / trial_phase_locked），非 null 时展示 */
   const [trialBlock, setTrialBlock] = useState<TrialBlock | null>(null);
   /** 购买引导：试用拦截弹层点「去购买」后打开现有 PurchaseModal */
@@ -2750,6 +2753,19 @@ export default function ChatPhasePage() {
     setChatError,
   ]);
 
+  /**
+   * 前四阶段「完成并继续」点击入口：先弹二次确认（进入下一阶段后本阶段锁定、不可返回修改）。
+   * 已提交锁定（stepLocked）的阶段本就已不可逆，跳过弹层直接导航。
+   */
+  const handleRequestCompleteAndContinue = useCallback(() => {
+    if (stepLocked) {
+      handleCompleteAndContinue();
+      return;
+    }
+    if (!canContinueRef.current && !canContinue) return; // 与按钮 disabled 口径一致，防御性拦截
+    setContinueConfirmOpen(true);
+  }, [stepLocked, canContinue, handleCompleteAndContinue]);
+
   const handleDeleteThread = (thread: ChatThread) => {
     if (!activationCode || !phase) return;
     if (stepLocked && !adminDebugBypass) return;
@@ -4529,7 +4545,7 @@ export default function ChatPhasePage() {
                   <div className="careering-chat-header-actions">
                     <button
                       type="button"
-                      onClick={handleCompleteAndContinue}
+                      onClick={handleRequestCompleteAndContinue}
                       disabled={!canContinue}
                       title={continueDisabledHint}
                       className={`bd-btn-black inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold text-white transition-all sm:px-5 ${
@@ -5425,6 +5441,18 @@ export default function ChatPhasePage() {
         continueLabel={t('explore.phaseComplete.continue')}
         dontRemindLabel={t('explore.phaseComplete.dontRemind')}
         onContinue={handlePhaseCompleteModalContinue}
+      />
+      <ContinueConfirmModal
+        open={continueConfirmOpen}
+        title={t('explore.chat.continueConfirmTitle')}
+        body={t('explore.chat.continueConfirmMessage')}
+        primaryLabel={t('explore.chat.continueConfirmOk')}
+        secondaryLabel={t('explore.chat.continueConfirmCancel')}
+        onPrimary={() => {
+          setContinueConfirmOpen(false);
+          handleCompleteAndContinue();
+        }}
+        onClose={() => setContinueConfirmOpen(false)}
       />
       <TrialLimitModal
         open={trialBlock !== null}

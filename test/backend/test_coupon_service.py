@@ -3,7 +3,7 @@
 
 测试场景：
 1. 创建：单个/批量/唯一性/参数校验（12 位大写字母+数字券码）
-2. 后台管理约束：金额修改与删除仅 unused 可用
+2. 后台管理约束：金额修改与作废仅 unused 可用（作废=软删除 void，可恢复）
 3. 状态机：validate / lock / release / redeem（含 lock 并发竞争只成功一次）
 4. 券池：FIFO 顺序、池空按 DEFAULT_COUPON_AMOUNT 自动创建、exclude_ids 行为
 5. 邮件发券：attach_coupon 任务逐收件人取券渲染、券码落库、取券失败不中断整批
@@ -99,7 +99,7 @@ async def _get_coupon(coupon_id: str) -> Coupon:
 
 
 async def _insert_coupon(code: str, amount: int, created_at: datetime, **kw) -> Coupon:
-    """直接插券（可控 created_at，用于 FIFO 测试）"""
+    """直接插券（可控 created_at，用于 FIFO 测试；kw 支持 status/source/expires_at/owner_user_id）"""
     async with _TestSessionLocal() as db:
         coupon = Coupon(
             code=code,
@@ -107,6 +107,8 @@ async def _insert_coupon(code: str, amount: int, created_at: datetime, **kw) -> 
             status=kw.get("status", "unused"),
             source=kw.get("source", "admin"),
             created_at=created_at,
+            expires_at=kw.get("expires_at"),
+            owner_user_id=kw.get("owner_user_id"),
         )
         db.add(coupon)
         await db.commit()
@@ -192,7 +194,7 @@ async def test_update_amount_invalid_value():
 
 @pytest.mark.asyncio
 async def test_delete_only_when_unused():
-    """删除：unused 可删；locked/used 拒绝；券不存在拒绝"""
+    """作废：unused 可作废（软删除置 void）；locked/used 拒绝；券不存在拒绝"""
     c1 = (await CouponService.create_coupons(amount=1000, count=1))[0]
     c2 = (await CouponService.create_coupons(amount=1000, count=1))[0]
 
@@ -206,11 +208,11 @@ async def test_delete_only_when_unused():
     with pytest.raises(ValueError):
         await CouponService.delete_coupon(c1.id)
 
-    # unused 可删
+    # unused 可作废：软删除（行仍在，status=void + voided_at）
     await CouponService.delete_coupon(c2.id)
-    async with _TestSessionLocal() as db:
-        gone = (await db.execute(select(Coupon).where(Coupon.id == c2.id))).scalar_one_or_none()
-    assert gone is None
+    voided = await _get_coupon(c2.id)
+    assert voided.status == "void"
+    assert voided.voided_at is not None
 
     # 不存在拒绝
     with pytest.raises(ValueError):
@@ -421,6 +423,11 @@ async def test_run_batch_attach_coupon_renders_per_recipient(monkeypatch):
     recipient_codes = {r["coupon_code"] for r in status["recipients"]}
     assert recipient_codes == {c1.code, c2.code}
 
+    # 发放即绑定：两张池券分别归属 alice / bob
+    owner_of = {(await _get_coupon(c1.id)).owner_user_id,
+                (await _get_coupon(c2.id)).owner_user_id}
+    assert owner_of == {"u1", "u2"}
+
 
 @pytest.mark.asyncio
 async def test_run_batch_attach_coupon_auto_create_when_pool_empty(monkeypatch):
@@ -466,11 +473,11 @@ async def test_run_batch_coupon_draw_failure_marks_recipient_failed(monkeypatch)
     original_draw = CouponService.draw_from_pool
     calls = {"n": 0}
 
-    async def flaky_draw(exclude_ids=None):
+    async def flaky_draw(exclude_ids=None, owner_user_id=None):
         calls["n"] += 1
         if calls["n"] == 1:
             raise RuntimeError("pool db error")
-        return await original_draw(exclude_ids=exclude_ids)
+        return await original_draw(exclude_ids=exclude_ids, owner_user_id=owner_user_id)
 
     monkeypatch.setattr(
         "app.services.notification_service.CouponService.draw_from_pool", flaky_draw
