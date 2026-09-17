@@ -584,108 +584,153 @@ export default function PurchaseModal({
                   ×
                 </button>
 
-                <div className="overflow-y-auto overscroll-contain px-5 pb-5 pt-12 sm:px-10 lg:px-[52px]">
-                  <div className="grid items-stretch gap-6 lg:grid-cols-[1.05fr_1fr]">
-                    {/* 左栏：标题 + 权益（随所选套餐切换） */}
-                    <section>
-                      <h2
-                        id="purchase-modal-title"
-                        className="mb-4 text-[clamp(25px,2.6vw,36px)] font-bold leading-[1.35] tracking-[-1.1px] text-[#142443]"
-                      >
-                        {t('payment.dialog.title')}
-                      </h2>
-                      <div className="mb-6 flex min-h-[30px] items-center gap-3.5">
-                        <span className="shrink-0 rounded-full bg-[#e4f1ff] px-3 py-1 text-[13px] font-semibold text-[#2774d6]">
-                          {planName(selectedProduct)}
-                        </span>
-                        <p className="text-[15px] leading-relaxed text-[#6d7e98]">
-                          {t(isAnnual ? 'payment.dialog.subtitleAnnual' : 'payment.dialog.subtitleQuarterly')}
-                        </p>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2.5">
+                <div className="overflow-y-auto overscroll-contain px-5 pb-4 pt-10 sm:px-10 lg:px-[52px]">
+                  {/* 标题区（通栏）：下方左右两栏从同一水平线开始，保证套餐卡与权益矩阵顶/底对齐 */}
+                  <header>
+                    <h2
+                      id="purchase-modal-title"
+                      className="mb-3 text-[clamp(22px,2.2vw,30px)] font-bold leading-[1.35] tracking-[-1.1px] text-[#142443]"
+                    >
+                      {t('payment.dialog.title')}
+                    </h2>
+                    <div className="mb-4 flex min-h-[26px] items-center gap-3">
+                      <span className="shrink-0 rounded-full bg-[#e4f1ff] px-3 py-1 text-xs font-semibold text-[#2774d6]">
+                        {planName(selectedProduct)}
+                      </span>
+                      <p className="text-sm leading-relaxed text-[#6d7e98]">
+                        {t(isAnnual ? 'payment.dialog.subtitleAnnual' : 'payment.dialog.subtitleQuarterly')}
+                      </p>
+                    </div>
+                  </header>
+
+                  <div className="grid items-stretch gap-6 lg:grid-cols-2">
+                    {/* 左栏：权益 2×2 矩阵（随所选套餐切换） + 底部券码行 */}
+                    <section className="flex flex-col">
+                      <div className="grid flex-1 grid-cols-2 grid-rows-2 gap-2.5">
                         {benefits.map((b) => (
                           <div
                             key={b.title}
-                            className="flex min-h-[88px] items-center gap-3 rounded-2xl border border-[#ebeff5] bg-white/60 px-3 py-4"
+                            className="flex h-full min-h-[68px] items-center gap-2.5 rounded-xl border border-[#ebeff5] bg-white/60 px-3 py-2.5"
                           >
                             <span
-                              className={`grid h-[43px] w-[43px] shrink-0 place-items-center rounded-[15px] ${b.chip}`}
+                              className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${b.chip}`}
                               aria-hidden
                             >
-                              <b.icon className="h-[22px] w-[22px]" strokeWidth={1.8} />
+                              <b.icon className="h-[18px] w-[18px]" strokeWidth={1.8} />
                             </span>
                             <span>
-                              <strong className="block text-[13px] font-semibold leading-relaxed text-[#142443]">
+                              <strong className="block text-xs font-semibold leading-relaxed text-[#142443]">
                                 {b.title}
                               </strong>
-                              <small className="mt-1 block text-xs leading-normal text-[#6d7e98]">{b.sub}</small>
+                              <small className="mt-0.5 block text-[11px] leading-normal text-[#6d7e98]">{b.sub}</small>
                             </span>
                           </div>
                         ))}
                       </div>
+
+                      {/* 券码行：输入框 + 使用按钮（与右侧渠道行同一水平线） */}
+                      <div className="mt-3 flex flex-col gap-2">
+                        {renderMyCouponsSelect(
+                          'w-full rounded-xl border border-[#dfe6ef] bg-white/80 px-3 py-2 text-[13px] text-[#142443] outline-none transition focus:border-[#3678df]',
+                        )}
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={couponInput}
+                            onChange={(e) => {
+                              setCouponInput(e.target.value);
+                              setCouponError(null);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') void handleApplyCoupon();
+                            }}
+                            placeholder={t('payment.coupon.placeholder')}
+                            className="min-w-0 flex-1 rounded-xl border border-[#dfe6ef] bg-white/80 px-3 py-2 text-[13px] text-[#142443] outline-none transition focus:border-[#3678df]"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void handleApplyCoupon()}
+                            disabled={couponChecking || !couponInput.trim()}
+                            className="shrink-0 rounded-xl border border-[#c8d4e4] px-3 py-2 text-[13px] font-medium text-[#32629a] transition hover:bg-[#e9eff9] disabled:opacity-40"
+                          >
+                            {couponChecking ? t('payment.coupon.checking') : t('payment.coupon.apply')}
+                          </button>
+                        </div>
+                        {appliedCoupon && (
+                          <p className="text-[13px] font-medium text-emerald-600">
+                            {t('payment.coupon.applied', { amount: fenToYuan(appliedCoupon.amount) })}
+                            {appliedCoupon.expires_at &&
+                              ` · ${t('payment.coupon.expiresAt', { date: formatCouponDay(appliedCoupon.expires_at) })}`}
+                          </p>
+                        )}
+                        {couponError && <p className="text-[13px] text-red-600">{couponError}</p>}
+                      </div>
                     </section>
 
-                    {/* 右栏：套餐单选 + 渠道 + 券码 */}
+                    {/* 右栏：2×2 矩阵（季度套餐 / 年度套餐 / 支付宝 / 微信支付），与左栏等高 */}
                     <fieldset className="flex flex-col gap-3">
                       <legend className="sr-only">{t('payment.title')}</legend>
-                      {[quarterlyProduct, annualProduct].map((p) => {
-                        const selected = p.product_type === selectedType;
-                        return (
-                          <label
-                            key={p.product_type}
-                            className={`relative block cursor-pointer rounded-2xl border p-5 transition ${
-                              selected
-                                ? 'border-[#3678df] bg-[#eaf2ff]/60 ring-1 ring-[#3678df]/40'
-                                : 'border-[#dfe6ef] bg-white/60 hover:bg-white/90'
-                            }`}
-                          >
-                            {p.popular && (
-                              <span className="absolute -top-2.5 right-3 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-semibold text-white">
-                                {t('payment.plan.popular')}
-                              </span>
-                            )}
-                            <span className="flex items-center gap-3">
-                              <input
-                                type="radio"
-                                name="purchase-plan"
-                                className="sr-only"
-                                checked={selected}
-                                onChange={() => setSelectedType(p.product_type)}
-                                aria-label={`${planName(p)}，¥${fenToYuan(p.price)}，${t('payment.dialog.months', { count: String(planMonths(p.product_type)) })}`}
-                              />
-                              <span
-                                aria-hidden
-                                className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border-2 ${selected ? 'border-[#3678df]' : 'border-[#b9c6d8]'}`}
-                              >
-                                {selected && <span className="h-2.5 w-2.5 rounded-full bg-[#3678df]" />}
-                              </span>
-                              <span className="text-lg font-semibold text-[#142443]">{planName(p)}</span>
-                            </span>
-                            <span className="mt-3 block">
-                              <span className="text-[34px] font-bold leading-none text-[#142443]">
-                                ¥{fenToYuan(p.price)}
-                              </span>
-                              <span className="ml-1.5 text-sm text-[#6d7e98]">
-                                / {t('payment.dialog.months', { count: String(planMonths(p.product_type)) })}
-                              </span>
-                            </span>
-                            <span className="mt-2 block text-[13px] leading-relaxed text-[#6d7e98]">
-                              {t(
-                                p.product_type === 'annual_package'
-                                  ? 'payment.dialog.descAnnual'
-                                  : 'payment.dialog.descQuarterly',
+                      {/* 套餐卡：与左栏权益矩阵同行高（默认 items-stretch 拉伸，内容垂直居中） */}
+                      <div className="grid flex-1 gap-3 sm:grid-cols-2">
+                        {[quarterlyProduct, annualProduct].map((p) => {
+                          const selected = p.product_type === selectedType;
+                          return (
+                            <label
+                              key={p.product_type}
+                              className={`relative flex h-full cursor-pointer flex-col justify-center rounded-xl border p-4 transition ${
+                                selected
+                                  ? 'border-[#3678df] bg-[#eaf2ff]/60 ring-1 ring-[#3678df]/40'
+                                  : 'border-[#dfe6ef] bg-white/60 hover:bg-white/90'
+                              }`}
+                            >
+                              {p.popular && (
+                                <span className="absolute -top-2.5 right-3 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-semibold text-white">
+                                  {t('payment.plan.popular')}
+                                </span>
                               )}
-                            </span>
-                          </label>
-                        );
-                      })}
+                              <span className="flex items-center gap-2.5">
+                                <input
+                                  type="radio"
+                                  name="purchase-plan"
+                                  className="sr-only"
+                                  checked={selected}
+                                  onChange={() => setSelectedType(p.product_type)}
+                                  aria-label={`${planName(p)}，¥${fenToYuan(p.price)}，${t('payment.dialog.months', { count: String(planMonths(p.product_type)) })}`}
+                                />
+                                <span
+                                  aria-hidden
+                                  className={`grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full border-2 ${selected ? 'border-[#3678df]' : 'border-[#b9c6d8]'}`}
+                                >
+                                  {selected && <span className="h-2 w-2 rounded-full bg-[#3678df]" />}
+                                </span>
+                                <span className="text-[15px] font-semibold text-[#142443]">{planName(p)}</span>
+                              </span>
+                              <span className="mt-2 block">
+                                <span className="text-[26px] font-bold leading-none text-[#142443]">
+                                  ¥{fenToYuan(p.price)}
+                                </span>
+                                <span className="ml-1 text-xs text-[#6d7e98]">
+                                  / {t('payment.dialog.months', { count: String(planMonths(p.product_type)) })}
+                                </span>
+                              </span>
+                              <span className="mt-1.5 block text-xs leading-relaxed text-[#6d7e98]">
+                                {t(
+                                  p.product_type === 'annual_package'
+                                    ? 'payment.dialog.descAnnual'
+                                    : 'payment.dialog.descQuarterly',
+                                )}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
 
-                      {/* 渠道选择（设计稿同风格；微信预留） */}
-                      <div className="mt-1 grid grid-cols-2 gap-2">
+                      {/* 渠道行：支付宝 / 微信支付（与左侧券码行同一水平线） */}
+                      <div className="grid grid-cols-2 gap-3">
                         <button
                           type="button"
                           onClick={() => setChannel('alipay')}
-                          className={`rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
+                          className={`rounded-xl border px-3 py-2 text-[13px] font-medium transition ${
                             channel === 'alipay'
                               ? 'border-[#1677ff] bg-[#1677ff]/5 text-[#1677ff] ring-1 ring-[#1677ff]/30'
                               : 'border-[#dfe6ef] bg-white/60 text-[#506b8b] hover:bg-white/90'
@@ -697,7 +742,7 @@ export default function PurchaseModal({
                           type="button"
                           disabled
                           title={t('payment.channel.comingSoon')}
-                          className="relative cursor-not-allowed rounded-xl border border-[#dfe6ef] bg-white/40 px-3 py-2.5 text-sm font-medium text-[#9aa8bb]"
+                          className="relative cursor-not-allowed rounded-xl border border-[#dfe6ef] bg-white/40 px-3 py-2 text-[13px] font-medium text-[#9aa8bb]"
                         >
                           {t('payment.channel.wechat')}
                           <span className="absolute -top-2 right-2 rounded-full bg-stone-200 px-1.5 py-0.5 text-[10px] text-stone-500">
@@ -705,57 +750,21 @@ export default function PurchaseModal({
                           </span>
                         </button>
                       </div>
-
-                      {/* 券码 */}
-                      {renderMyCouponsSelect(
-                        'w-full rounded-xl border border-[#dfe6ef] bg-white/80 px-3.5 py-2.5 text-sm text-[#142443] outline-none transition focus:border-[#3678df]',
-                      )}
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={couponInput}
-                          onChange={(e) => {
-                            setCouponInput(e.target.value);
-                            setCouponError(null);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') void handleApplyCoupon();
-                          }}
-                          placeholder={t('payment.coupon.placeholder')}
-                          className="min-w-0 flex-1 rounded-xl border border-[#dfe6ef] bg-white/80 px-3.5 py-2.5 text-sm text-[#142443] outline-none transition focus:border-[#3678df]"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => void handleApplyCoupon()}
-                          disabled={couponChecking || !couponInput.trim()}
-                          className="shrink-0 rounded-xl border border-[#c8d4e4] px-4 py-2.5 text-sm font-medium text-[#32629a] transition hover:bg-[#e9eff9] disabled:opacity-40"
-                        >
-                          {couponChecking ? t('payment.coupon.checking') : t('payment.coupon.apply')}
-                        </button>
-                      </div>
-                      {appliedCoupon && (
-                        <p className="text-sm font-medium text-emerald-600">
-                          {t('payment.coupon.applied', { amount: fenToYuan(appliedCoupon.amount) })}
-                          {appliedCoupon.expires_at &&
-                            ` · ${t('payment.coupon.expiresAt', { date: formatCouponDay(appliedCoupon.expires_at) })}`}
-                        </p>
-                      )}
-                      {couponError && <p className="text-sm text-red-600">{couponError}</p>}
                     </fieldset>
                   </div>
 
                   {/* 各方案功能对比（折叠；选中套餐列高亮） */}
-                  <div className="mt-6 overflow-hidden rounded-2xl border border-[#dfe6ef] bg-white/60">
+                  <div className="mt-4 overflow-hidden rounded-2xl border border-[#dfe6ef] bg-white/60">
                     <button
                       type="button"
                       onClick={() => setCompareOpen((v) => !v)}
-                      className="flex w-full items-center justify-between gap-3 px-5 py-4"
+                      className="flex w-full items-center justify-between gap-3 px-4 py-3"
                       aria-expanded={compareOpen}
                     >
-                      <span className="text-lg font-semibold text-[#142443]">
+                      <span className="text-base font-semibold text-[#142443]">
                         {t('payment.dialog.compareTitle')}
                       </span>
-                      <span className="flex items-center gap-2 text-sm text-[#6d7e98]">
+                      <span className="flex items-center gap-2 text-[13px] text-[#6d7e98]">
                         {compareOpen ? t('payment.dialog.compareCollapse') : t('payment.dialog.compareExpand')}
                         <ChevronDown
                           className={`h-3.5 w-3.5 transition-transform ${compareOpen ? 'rotate-180' : ''}`}
@@ -765,17 +774,17 @@ export default function PurchaseModal({
                     </button>
                     {compareOpen && (
                       <div
-                        className="overflow-x-auto px-4 pb-4"
+                        className="overflow-x-auto px-3 pb-3"
                         role="region"
                         aria-label={t('payment.dialog.compareTitle')}
                         tabIndex={0}
                       >
-                        <table className="w-full min-w-[540px] border-separate border-spacing-0 text-[13px] leading-relaxed text-[#5c6c83]">
+                        <table className="w-full min-w-[540px] border-separate border-spacing-0 text-xs leading-relaxed text-[#5c6c83]">
                           <thead>
                             <tr>
                               <th
                                 scope="col"
-                                className="w-[34%] bg-[#f3f6fb] px-4 py-2.5 text-left font-semibold text-[#142443]"
+                                className="w-[34%] bg-[#f3f6fb] px-3 py-2 text-left font-semibold text-[#142443]"
                               >
                                 {t('payment.compare.colFeature')}
                               </th>
@@ -786,7 +795,7 @@ export default function PurchaseModal({
                                 <th
                                   key={p.product_type}
                                   scope="col"
-                                  className={`w-[33%] px-4 py-2.5 text-center font-semibold ${active ? 'bg-[#e2edff] text-[#256bc7]' : 'bg-[#f3f6fb] text-[#142443]'}`}
+                                  className={`w-[33%] px-3 py-2 text-center font-semibold ${active ? 'bg-[#e2edff] text-[#256bc7]' : 'bg-[#f3f6fb] text-[#142443]'}`}
                                 >
                                   {planName(p)} · ¥{fenToYuan(p.price)}
                                 </th>
@@ -798,7 +807,7 @@ export default function PurchaseModal({
                               <tr key={row.label}>
                                 <th
                                   scope="row"
-                                  className="border-b border-[#e6ebf2] px-4 py-2.5 text-left font-normal"
+                                  className="border-b border-[#e6ebf2] px-3 py-1.5 text-left font-normal"
                                 >
                                   {row.label}
                                 </th>
@@ -808,7 +817,7 @@ export default function PurchaseModal({
                                 ].map(({ v, active }, ci) => (
                                   <td
                                     key={ci}
-                                    className={`border-b border-[#e6ebf2] px-4 py-2.5 text-center ${active ? 'bg-[#eaf2ff]/50 text-[#256bc7]' : ''}`}
+                                    className={`border-b border-[#e6ebf2] px-3 py-1.5 text-center ${active ? 'bg-[#eaf2ff]/50 text-[#256bc7]' : ''}`}
                                   >
                                     {typeof v === 'boolean' ? (
                                       v ? (
@@ -829,7 +838,7 @@ export default function PurchaseModal({
                             ))}
                           </tbody>
                         </table>
-                        <p className="mt-3 text-xs leading-relaxed text-[#6d7e98]">
+                        <p className="mt-2 text-[11px] leading-relaxed text-[#6d7e98]">
                           {t('payment.dialog.compareFootnote')}
                         </p>
                       </div>
@@ -847,8 +856,8 @@ export default function PurchaseModal({
                 </div>
 
                 {/* 固定底栏：已选 + 金额 + 确认购买 */}
-                <footer className="flex shrink-0 flex-col items-center justify-between gap-3 border-t border-[#dfe6ed] bg-white/55 px-5 py-4 sm:flex-row sm:px-10 lg:px-[52px]">
-                  <div className="flex flex-wrap items-baseline justify-center gap-x-3 gap-y-1 text-[15px] text-[#6d7e98] sm:justify-start">
+                <footer className="flex shrink-0 flex-col items-center justify-between gap-2.5 border-t border-[#dfe6ed] bg-white/55 px-5 py-3 sm:flex-row sm:px-10 lg:px-[52px]">
+                  <div className="flex flex-wrap items-baseline justify-center gap-x-3 gap-y-1 text-sm text-[#6d7e98] sm:justify-start">
                     <span>{t('payment.dialog.selectedLabel')}</span>
                     <strong className="font-semibold text-[#2571d8]">{planName(selectedProduct)}</strong>
                     {appliedCoupon && (
@@ -859,7 +868,7 @@ export default function PurchaseModal({
                         </span>
                       </>
                     )}
-                    <strong className="whitespace-nowrap text-[25px] font-semibold leading-none text-[#2571d8]">
+                    <strong className="whitespace-nowrap text-[22px] font-semibold leading-none text-[#2571d8]">
                       ¥{fenToYuan(finalAmount)}
                     </strong>
                   </div>
@@ -867,7 +876,7 @@ export default function PurchaseModal({
                     type="button"
                     onClick={() => void handlePay()}
                     disabled={submitting}
-                    className="w-full min-w-[222px] rounded-xl border border-[#3474d9] px-8 py-3.5 text-lg font-semibold text-white transition hover:brightness-[1.06] disabled:cursor-wait disabled:opacity-65 sm:w-auto"
+                    className="w-full min-w-[200px] rounded-xl border border-[#3474d9] px-8 py-3 text-base font-semibold text-white transition hover:brightness-[1.06] disabled:cursor-wait disabled:opacity-65 sm:w-auto"
                     style={{ background: 'linear-gradient(135deg,#3e82e5,#3973d1)' }}
                   >
                     {submitting

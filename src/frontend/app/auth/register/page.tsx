@@ -71,6 +71,7 @@ function RegisterForm() {
           email: response.data.email,
           phone: response.data.phone,
           username: response.data.username,
+          avatar_url: response.data.avatar_url,
         });
         setToken(response.data.token);
         router.push(redirectTo);

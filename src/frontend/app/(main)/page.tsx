@@ -96,6 +96,7 @@ function DimensionsSection({ t }: { t: (p: string) => string; locale: string }) 
   useBuildArcs(zoneRef, svgRef);
 
   return (
+    <>
     <section className="max-w-5xl mx-auto px-6 pt-8 pb-0 w-full">
       {/* 四卡片区（new-report 以卡片为基准，我们上方有 Hero 故加 pt-8 增加相对留白） */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -122,8 +123,11 @@ function DimensionsSection({ t }: { t: (p: string) => string; locale: string }) 
         <div className="bd-v-final" />
       </div>
 
-      {/* 报告展示卡片（2026-09-14 改版）：左文右图，卡片背景独立于外部 mesh 大背景 */}
-      <section className="w-full max-w-[1100px] mx-auto mt-8 lg:mt-0 mb-20 relative z-10">
+      </section>
+
+      {/* 报告展示卡片（2026-09-14 改版）：左文右图，卡片背景独立于外部 mesh 大背景；
+          宽度独立于上方 max-w-5xl 四维卡片区，保证列表条目单行放下 */}
+      <section className="w-full max-w-[1280px] mx-auto mt-8 lg:mt-0 mb-20 relative z-10 px-6">
         <motion.div
           initial={false}
           whileInView={{ opacity: 1, y: 0 }}
@@ -131,7 +135,7 @@ function DimensionsSection({ t }: { t: (p: string) => string; locale: string }) 
           transition={{ duration: 0.5, ease: [0.165, 0.84, 0.44, 1] }}
           className="bd-report-showcase"
         >
-          <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_1fr] gap-10 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-[1.25fr_1fr] gap-10 items-center">
             {/* 左：文字介绍 */}
             <div>
               <h2 className="bd-report-showcase-title">
@@ -177,7 +181,7 @@ function DimensionsSection({ t }: { t: (p: string) => string; locale: string }) 
           </div>
         </motion.div>
       </section>
-    </section>
+    </>
   );
 }
 
@@ -198,6 +202,27 @@ const REFERENCES = [
 function ReferencesSection() {
   return (
     <section className="relative z-10 w-full px-5 py-20">
+      {/* 模块标题与介绍：与「常见问题解答」「用户评价」同版式（居中，卡片外） */}
+      <div className="text-center mb-12">
+        <motion.h2
+          initial={false}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          className="text-4xl md:text-5xl font-semibold mb-4 tracking-[0.05em]"
+          style={{ color: 'var(--bd-fg)' }}
+        >
+          参考文献
+        </motion.h2>
+        <motion.p
+          initial={false}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          className="text-lg font-light"
+          style={{ color: 'var(--bd-fg-muted)' }}
+        >
+          本产品的流程与内容设计，参考了以下经典著作与理论研究
+        </motion.p>
+      </div>
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         whileInView={{ opacity: 1, y: 0 }}
@@ -214,8 +239,6 @@ function ReferencesSection() {
             <span className="bd-ref-paper-brand">寻路·OpenLife</span>
             <span className="bd-ref-paper-tag">METHODOLOGY&nbsp;REFERENCES</span>
           </header>
-          <h2 className="bd-ref-paper-title">参考文献</h2>
-          <p className="bd-ref-paper-sub">本产品的流程与内容设计，参考了以下经典著作与理论研究</p>
           <ol className="bd-ref-list">
             {REFERENCES.map((ref, i) => (
               <li key={i}>

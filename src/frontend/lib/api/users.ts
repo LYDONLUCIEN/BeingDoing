@@ -73,4 +73,18 @@ export const usersApi = {
   markProfileComplete: async (): Promise<ApiResponse<any>> => {
     return apiClient.post('/users/profile/complete');
   },
+
+  /** 上传头像（multipart），返回永久有效的后端代理 URL（带 ?v= 时间戳） */
+  uploadAvatar: async (file: File): Promise<ApiResponse<{ avatar_url: string }>> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return apiClient.post('/users/avatar', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+
+  /** 更新当前用户基本信息（目前仅昵称） */
+  updateMe: async (data: { username: string }): Promise<ApiResponse<{ username: string }>> => {
+    return apiClient.patch('/users/me', data);
+  },
 };

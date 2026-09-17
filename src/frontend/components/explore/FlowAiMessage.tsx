@@ -175,7 +175,7 @@ export default function FlowAiMessage({
       {showCareeringMeta && timestamp !== undefined && (
         <div className="flow-msg-careering-meta">
           <div className="flow-msg-careering-avatar flow-msg-careering-avatar--ai" aria-hidden>
-            ✨
+            <img src="/assets/lulu-avatar.webp" alt="" className="flow-msg-careering-avatar-img" />
           </div>
           <span>
             {careeringAiRoleLabel} · {formatMessageTime(timestamp)}

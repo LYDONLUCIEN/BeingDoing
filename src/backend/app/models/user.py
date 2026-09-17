@@ -22,6 +22,8 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=True)
     phone = Column(String(20), unique=True, nullable=True)
     username = Column(String(100), nullable=True)
+    # 头像：后端代理 URL（/api/v1/users/{id}/avatar?v=<ts>），图片本体在 OSS avatars/{user_id}
+    avatar_url = Column(String(500), nullable=True)
     password_hash = Column(String(255), nullable=False)
     is_active = Column(Boolean, default=True)
     email_verified = Column(Boolean, default=True)

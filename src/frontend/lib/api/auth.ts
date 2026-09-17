@@ -19,6 +19,7 @@ export interface AuthResponse {
   email?: string;
   phone?: string;
   username?: string;
+  avatar_url?: string;
   token: string;
   expires_in: number;
   email_verified?: boolean;

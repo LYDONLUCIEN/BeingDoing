@@ -238,7 +238,7 @@ export default function V4ChatPanel({ comboId }: Props) {
                         showCareeringAiMeta
                         contentMode="markdown"
                         streaming
-                        careeringAiRoleLabel="路路"
+                        careeringAiRoleLabel="lulu"
                         toolbarCopyTitle="复制"
                         toolbarLikeTitle="点赞"
                         toolbarSavepointTitle="保存"
@@ -431,7 +431,7 @@ function MessageRow({
       showCareeringAiMeta
       contentMode="markdown"
       streaming={isStreaming && isLast}
-      careeringAiRoleLabel="路路"
+      careeringAiRoleLabel="lulu"
       toolbarCopyTitle="复制"
       toolbarLikeTitle="点赞"
       toolbarSavepointTitle="保存"

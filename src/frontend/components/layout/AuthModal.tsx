@@ -143,6 +143,7 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
             email: resData.email,
             phone: resData.phone,
             username: resData.username,
+            avatar_url: resData.avatar_url,
             is_super_admin: false,
             email_verified: resData.email_verified,
           });
@@ -162,6 +163,7 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
             email: userData?.email ?? resData.email,
             phone: userData?.phone ?? resData.phone,
             username: userData?.username ?? resData.username,
+            avatar_url: userData?.avatar_url ?? resData.avatar_url,
             is_super_admin: userData?.is_super_admin,
             email_verified: userData?.email_verified ?? resData.email_verified,
           });
@@ -171,6 +173,7 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
             email: resData.email,
             phone: resData.phone,
             username: resData.username,
+            avatar_url: resData.avatar_url,
             is_super_admin: false,
             email_verified: resData.email_verified,
           });
@@ -227,6 +230,7 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
             email: userData?.email ?? resData.email,
             phone: userData?.phone ?? resData.phone,
             username: userData?.username ?? resData.username,
+            avatar_url: userData?.avatar_url ?? resData.avatar_url,
             is_super_admin: userData?.is_super_admin,
             email_verified: userData?.email_verified ?? resData.email_verified,
           });
@@ -236,6 +240,7 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
             email: resData.email,
             phone: resData.phone,
             username: resData.username,
+            avatar_url: resData.avatar_url,
             is_super_admin: false,
             email_verified: resData.email_verified,
           });

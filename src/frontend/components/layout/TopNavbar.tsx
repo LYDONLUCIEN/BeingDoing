@@ -161,8 +161,13 @@ export default function TopNavbar() {
               e.preventDefault();
               router.push('/');
             }}
-            className="relative z-[60] pointer-events-auto cursor-pointer text-lg font-bold whitespace-nowrap tracking-tight text-bd-fg"
+            className="relative z-[60] pointer-events-auto cursor-pointer flex items-center gap-2 text-lg font-bold whitespace-nowrap tracking-tight text-bd-fg"
           >
+            <img
+              src="/assets/lulu-logo.webp"
+              alt=""
+              className="w-7 h-7 rounded-full object-cover shrink-0"
+            />
             {t('nav.brand')}
           </Link>
         </div>

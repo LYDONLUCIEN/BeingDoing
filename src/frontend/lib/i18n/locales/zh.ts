@@ -215,7 +215,7 @@ export const zh = {
       selectSubmittedThreadHint: '请切换到本阶段提交时选中的那条对话后再继续',
       exploringWithDim: '正在探索 · {dim}维度',
       sessionTopic: '会话主题',
-      careeringAiRole: '路路',
+      careeringAiRole: 'lulu',
       careeringUser: '你',
       inputPlaceholderCareering: '沉下心来，感受对话的节奏…',
       preparingFirstQuestion: '正在准备第一个问题…',

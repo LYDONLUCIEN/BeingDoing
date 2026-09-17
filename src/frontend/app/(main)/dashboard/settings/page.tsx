@@ -9,6 +9,7 @@ import { getLastActivationCode } from '@/lib/explore/session';
 import { surveyApi } from '@/lib/api/survey';
 import { apiClient, getApiErrorMessage, isRequestCanceled } from '@/lib/api/client';
 import { authApi } from '@/lib/api/auth';
+import { usersApi } from '@/lib/api/users';
 import SurveyFormBd from '@/components/survey/SurveyFormBd';
 import type { SurveyData } from '@/lib/survey/schema';
 
@@ -58,20 +59,25 @@ export default function DashboardSettingsPage() {
   }, [user]);
 
   // 从后端同步 email_verified 等字段到本地 store（修复旧登录会话缺失字段的问题）
+  // 注意：必须以 getState() 取最新 user 并保留 avatar_url，否则会抹掉已上传的头像
   useEffect(() => {
     if (!isAuthenticated) return;
     authApi.getCurrentUser().then((me) => {
       const d = me?.data;
-      if (d) {
-        setUser({
-          user_id: d.user_id ?? user?.user_id,
-          email: d.email ?? user?.email,
-          phone: d.phone ?? user?.phone,
-          username: d.username ?? user?.username,
-          is_super_admin: d.is_super_admin ?? user?.is_super_admin,
-          email_verified: d.email_verified,
-        });
-      }
+      if (!d) return;
+      const u = useAuthStore.getState().user;
+      // blob: URL 只在生成它的页面会话内有效，后端 avatar_url 为准，本地残留 blob 一律丢弃
+      const localAvatar = u?.avatar_url?.startsWith('blob:') ? null : u?.avatar_url;
+      setUser({
+        ...u,
+        user_id: d.user_id ?? u?.user_id,
+        email: d.email ?? u?.email,
+        phone: d.phone ?? u?.phone,
+        username: d.username ?? u?.username,
+        is_super_admin: d.is_super_admin ?? u?.is_super_admin,
+        email_verified: d.email_verified,
+        avatar_url: d.avatar_url ?? localAvatar ?? undefined,
+      });
     }).catch(() => {});
   }, [isAuthenticated]);
 
@@ -217,16 +223,63 @@ export default function DashboardSettingsPage() {
     fileInputRef.current?.click();
   };
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [avatarUploading, setAvatarUploading] = useState(false);
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !file.type.startsWith('image/')) return;
-    const url = URL.createObjectURL(file);
-    setAvatarPreview(url);
-    setUser(user ? { ...user, avatar_url: url } : null);
+    e.target.value = ''; // 允许重复选择同一文件
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setToast({ type: 'error', msg: '仅支持图片文件' });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setToast({ type: 'error', msg: '图片大小不能超过 5MB' });
+      return;
+    }
+    // 本地即时预览（blob 仅当前会话有效，仅作预览；上传成功后被服务器 URL 替换）
+    const previewUrl = URL.createObjectURL(file);
+    setAvatarPreview(previewUrl);
+    setAvatarUploading(true);
+    try {
+      const res = await usersApi.uploadAvatar(file);
+      const url = res.data?.avatar_url;
+      if (url) {
+        setAvatarPreview(url);
+        const u = useAuthStore.getState().user;
+        setUser(u ? { ...u, avatar_url: url } : null);
+        setToast({ type: 'success', msg: '头像已更新' });
+      }
+    } catch (err: unknown) {
+      if (!isRequestCanceled(err)) {
+        // 失败回退预览到已保存的头像
+        setAvatarPreview(useAuthStore.getState().user?.avatar_url || null);
+        setToast({ type: 'error', msg: getApiErrorMessage(err, '头像上传失败，请稍后重试') });
+      }
+    } finally {
+      setAvatarUploading(false);
+    }
   };
 
-  const handleNicknameSave = () => {
-    if (user) setUser({ ...user, username: nickname || undefined });
+  const handleNicknameSave = async () => {
+    const u = useAuthStore.getState().user;
+    if (!u) return;
+    const name = nickname.trim();
+    if (name === (u.username || '')) return; // 无改动不请求
+    if (!name) {
+      setNickname(u.username || u.email || ''); // 空白不保存，回退显示
+      return;
+    }
+    try {
+      await usersApi.updateMe({ username: name });
+      setUser({ ...u, username: name });
+      setToast({ type: 'success', msg: '昵称已保存' });
+    } catch (err: unknown) {
+      if (!isRequestCanceled(err)) {
+        setNickname(u.username || u.email || '');
+        setToast({ type: 'error', msg: getApiErrorMessage(err, '昵称保存失败，请稍后重试') });
+      }
+    }
   };
 
   const handleIntroSubmit = async (data: SurveyData) => {
@@ -272,7 +325,8 @@ export default function DashboardSettingsPage() {
             <button
               type="button"
               onClick={handleAvatarClick}
-              className="w-24 h-24 rounded-full flex items-center justify-center text-white text-2xl font-semibold transition-all overflow-hidden ring-2 ring-black/30 ring-offset-2 ring-offset-bd-card shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_4px_12px_rgba(0,0,0,0.25)] hover:ring-black/45"
+              disabled={avatarUploading}
+              className="w-24 h-24 rounded-full flex items-center justify-center text-white text-2xl font-semibold transition-all overflow-hidden ring-2 ring-black/30 ring-offset-2 ring-offset-bd-card shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_4px_12px_rgba(0,0,0,0.25)] hover:ring-black/45 disabled:opacity-60 disabled:cursor-wait"
               style={{
                 background: avatarPreview
                   ? `url(${avatarPreview}) center/cover`

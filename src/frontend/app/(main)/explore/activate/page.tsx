@@ -45,20 +45,25 @@ function ActivatePageContent() {
   const { user, setUser, isAuthenticated } = useAuthStore();
 
   // 从后端同步 email_verified 到本地 store
+  // 注意：必须以 getState() 取最新 user 并保留 avatar_url，否则会抹掉已上传的头像
   useEffect(() => {
     if (!isAuthenticated) return;
     authApi.getCurrentUser().then((me) => {
       const d = me?.data;
-      if (d) {
-        setUser({
-          user_id: d.user_id ?? user?.user_id,
-          email: d.email ?? user?.email,
-          phone: d.phone ?? user?.phone,
-          username: d.username ?? user?.username,
-          is_super_admin: d.is_super_admin ?? user?.is_super_admin,
-          email_verified: d.email_verified,
-        });
-      }
+      if (!d) return;
+      const u = useAuthStore.getState().user;
+      // blob: URL 只在生成它的页面会话内有效，后端 avatar_url 为准，本地残留 blob 一律丢弃
+      const localAvatar = u?.avatar_url?.startsWith('blob:') ? null : u?.avatar_url;
+      setUser({
+        ...u,
+        user_id: d.user_id ?? u?.user_id,
+        email: d.email ?? u?.email,
+        phone: d.phone ?? u?.phone,
+        username: d.username ?? u?.username,
+        is_super_admin: d.is_super_admin ?? u?.is_super_admin,
+        email_verified: d.email_verified,
+        avatar_url: d.avatar_url ?? localAvatar ?? undefined,
+      });
     }).catch(() => {});
   }, [isAuthenticated]);
 

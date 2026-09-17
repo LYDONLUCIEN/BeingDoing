@@ -32,9 +32,9 @@ export default function AboutPage() {
           className="flex items-center justify-center gap-4"
         >
           <img
-            src="/assets/logo.png"
+            src="/assets/lulu-logo.webp"
             alt="寻路·OpenLife"
-            className="w-14 h-14 md:w-16 md:h-16 shrink-0"
+            className="w-14 h-14 md:w-16 md:h-16 shrink-0 rounded-full object-cover"
           />
           <div className="space-y-1">
             <h1 className="text-3xl md:text-4xl font-bold">关于我们</h1>

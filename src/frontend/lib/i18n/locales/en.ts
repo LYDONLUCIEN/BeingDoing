@@ -219,7 +219,7 @@ export const en = {
       selectSubmittedThreadHint: 'Switch to the conversation you submitted for this step to continue',
       exploringWithDim: 'Exploring · {dim}',
       sessionTopic: 'Session topic',
-      careeringAiRole: 'Lulu',
+      careeringAiRole: 'lulu',
       careeringUser: 'You',
       inputPlaceholderCareering: 'Settle in and share your thoughts…',
       preparingFirstQuestion: 'Preparing first question…',

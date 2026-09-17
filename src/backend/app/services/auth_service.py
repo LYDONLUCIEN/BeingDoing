@@ -902,6 +902,7 @@ class AuthService:
                 "email": user.email,
                 "phone": user.phone,
                 "username": user.username,
+                "avatar_url": user.avatar_url,
                 **token_pair,
             }
 
@@ -1001,6 +1002,7 @@ class AuthService:
                 "email": user.email,
                 "phone": user.phone,
                 "username": user.username,
+                "avatar_url": user.avatar_url,
                 **token_pair,
             }
 
@@ -1035,6 +1037,7 @@ class AuthService:
                 "email": user.email,
                 "phone": user.phone,
                 "username": user.username,
+                "avatar_url": user.avatar_url,
                 "email_verified": getattr(user, "email_verified", True),
             }
 
@@ -1191,5 +1194,6 @@ class AuthService:
             "email": user.email,
             "phone": user.phone,
             "username": user.username,
+            "avatar_url": user.avatar_url,
             **token_pair,
         }

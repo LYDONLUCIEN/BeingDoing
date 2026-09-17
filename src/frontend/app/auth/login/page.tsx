@@ -70,6 +70,7 @@ function LoginForm() {
             email: response.data.email,
             phone: response.data.phone,
             username: response.data.username,
+            avatar_url: response.data.avatar_url,
           });
           router.push('/account-recovery');
           return;
@@ -82,6 +83,7 @@ function LoginForm() {
             email: userData.email,
             phone: userData.phone,
             username: userData.username,
+            avatar_url: userData.avatar_url,
             is_super_admin: userData.is_super_admin,
           });
         } catch {
@@ -90,6 +92,7 @@ function LoginForm() {
             email: response.data.email,
             phone: response.data.phone,
             username: response.data.username,
+            avatar_url: response.data.avatar_url,
           });
         }
         setToken(response.data.token);

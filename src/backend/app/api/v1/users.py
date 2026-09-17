@@ -1,10 +1,14 @@
 """
 用户信息API
 """
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, File, Response, UploadFile, status
 from pydantic import BaseModel
 from typing import Optional, List, Dict
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.v1.auth import get_current_user
+from app.models.database import get_db
+from app.services import avatar_service
 from app.services.user_service import UserService
 
 router = APIRouter(prefix="/users", tags=["用户"])
@@ -39,6 +43,86 @@ class StandardResponse(BaseModel):
     code: int = 200
     message: str = "success"
     data: dict
+
+
+class UpdateMeRequest(BaseModel):
+    """更新当前用户基本信息请求"""
+    username: Optional[str] = None
+
+
+@router.post("/avatar", response_model=StandardResponse)
+async def upload_avatar(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """上传当前用户头像（OSS 覆盖写，返回永久有效的后端代理 URL）"""
+    file_bytes = await file.read()
+    try:
+        avatar_url = await avatar_service.upload_avatar(
+            db=db,
+            user_id=current_user["user_id"],
+            file_data=file_bytes,
+            content_type=file.content_type or "",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
+
+    await db.commit()
+    return StandardResponse(code=200, message="上传成功", data={"avatar_url": avatar_url})
+
+
+@router.get("/{user_id}/avatar")
+async def get_avatar(user_id: str):
+    """
+    头像代理转发（公开端点，无鉴权——CSS background 请求不带 Authorization 头）。
+    图片本体在 OSS 私有桶，此处从 OSS 拉字节流转发，URL 永久有效。
+    """
+    try:
+        data, content_type = await avatar_service.download_avatar(user_id)
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
+
+    return Response(
+        content=data,
+        media_type=content_type,
+        # avatar_url 带 ?v=<上传时间戳>，换头像即换 URL，可以安全长缓存
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+@router.patch("/me", response_model=StandardResponse)
+async def update_me(
+    request: UpdateMeRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """更新当前用户基本信息（目前仅昵称）"""
+    username = (request.username or "").strip()
+    if not username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="昵称不能为空"
+        )
+    if len(username) > 100:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="昵称最长 100 个字符"
+        )
+
+    from app.core.database import UserDB
+
+    user_db = UserDB(db)
+    user = await user_db.update_user(current_user["user_id"], username=username)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")
+
+    await db.commit()
+    return StandardResponse(code=200, message="保存成功", data={"username": user.username})
 
 
 @router.post("/profile", response_model=StandardResponse)

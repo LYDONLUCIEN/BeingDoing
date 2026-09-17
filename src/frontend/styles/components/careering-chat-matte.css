@@ -346,7 +346,16 @@
   flex-shrink: 0;
 }
 .flow-msg-careering-avatar--ai {
-  background: #38bdf8;
+  background: #fff;
+  overflow: hidden;
+}
+/* lulu 头像图片：填满圆形底，居中裁剪 */
+.flow-msg-careering-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
 }
 /* 背景色由页面内联样式提供（头像 URL 或与顶栏一致的双色渐变 + 首字母） */
 .flow-msg-careering-avatar--user {

@@ -343,7 +343,7 @@ python scripts/init_db.py
 - **消耗升级溯源与去向展示（2026-08-08 起）**：试用码记录新增 `upgraded_from_code` 字段（consume 升级时由 `consume_for_trial_upgrade` 写入，存量数据用 `scripts/backfill_upgraded_from_code.py --dry-run` 预演后回填）。`/dashboard/codes` 页为双 tab 结构（2026-08-15 起，支持 `?tab=orders` 定位）：tab「激活码」= owner 视角激活码模块（被消耗码无 owner 天然不出现），对升级来的码显示「付费升级」badge（点击展开才显示来源付费码），标题右侧有「购买激活码」按钮；tab「订单记录」= 订单列表（`components/dashboard/OrdersSection.tsx`，原 `/dashboard/orders` 页主体，`/dashboard/orders` 已改为重定向）。**2026-08-24 起职责拆分**：订单 tab 只保留订单详情 + 本单交付的激活码列表（纯码值可复制，不含去向）；码的去向/使用情况统一收敛到激活码 tab 底部的「我购买的激活码」**平铺**列表（不再按订单分组，按创建时间倒序；每码去向 5 态：未绑定/已绑定自己/已绑定他人/已用于升级试用码 XXXX/已作废退款 + 报告状态），`my-purchased-codes` 接口透传 `source_order_id`/`consumed_into` 并联查订单金额（订单字段当前前端未展示，保留供追溯）。Admin 订单详情（`GET /admin/payment/orders/{id}`）新增 `delivered_codes[].destination_type/destination_detail`（去向判定，admin 不脱敏）。计划文档：`tasks/consumed-code-destination-plan.md`。
 - **延期体系（ADR-0016，2026-08-08 起）**：完整码首次过期当天，每日扫描 job（`activation_expiry_scan`，默认 10:00）给激活人发邮件+站内信送**免费 7 天续期**（每码一次，`free_renewal_offered_at`/`free_renewal_claimed_at` 幂等；存量已过期码首次扫描全量补发）；链接 → `/dashboard/codes?free_renewal=<code>` 弹窗手动领取，不限时、领取后从当天起 +7 天。付费续期统一 **9.9 元 / 7 天**（`RENEWAL_PRICE=990`/`RENEWAL_DAYS=7`，旧 20 元/90 天下线仅历史订单展示），与免费解耦、不限次、active/expired 均可买、不可退。关键文件：`app/services/activation_expiry_scan.py`、`POST /simple-auth/codes/free-renewal/claim`、前端 `FreeRenewalClaimModal`。
 - **多码展示口径（2026-08-08 起）**：交付码等价、不区分用途——订单页（`dashboard/orders`）、支付结果页、PurchaseModal 成功视图对多码套餐一律平级列出全部码（`激活码（共 N 个）`，meta.codes 并集 delivered_code/gift_codes 去重），单码订单才保留「你的激活码」单独展示；弹窗消耗升级后通过 `onUpgraded(trialCode, consumedCode)` 把已消耗码从展示列表排除。前端请求被取消（页面刷新/导航，`isRequestCanceled`，含 axios ERR_CANCELED/“Request aborted”）一律静默忽略，不作为错误展示。
-- **团队分析报告提示（2026-08-10 起）**：年度套餐（3 人团队码）交付时引导用户邮件申请团队分析报告——后端 `_deliver_order` 随单发站内信（`type=team_analysis_notice`，交付幂等故仅一次）并在交付邮件附同一文案（`payment_service._team_analysis_notice()` 动态生成，邮箱独占一行避免纯文本邮件误识别链接）；前端支付结果页交付后弹 `TeamAnalysisNoticeModal`（每单一次，关闭后再弹消耗升级避免叠加），PurchaseModal 成功视图内嵌 `TeamAnalysisNoticeBox`。**团队分析页占位（2026-08-24 起）**：团队报告解析能力暂未开放，`/dashboard/team-analysis` 页（page.tsx）已替换为「开发中」占位（展示 TEAM_ANALYSIS_EMAIL 联系邮箱），原完整实现保留在同目录 `page.impl.tsx`，上线时用它替换 page.tsx 即可；侧边栏入口保留。
+- **团队分析报告提示（2026-08-10 起）**：年度套餐（3 人团队码）交付时引导用户邮件申请团队分析报告——后端 `_deliver_order` 随单发站内信（`type=team_analysis_notice`，交付幂等故仅一次）并在交付邮件附同一文案（`payment_service._team_analysis_notice()` 动态生成，邮箱独占一行避免纯文本邮件误识别链接）；前端支付结果页交付后弹 `TeamAnalysisNoticeModal`（每单一次，关闭后再弹消耗升级避免叠加），PurchaseModal 成功视图内嵌 `TeamAnalysisNoticeBox`。**团队分析页占位（2026-08-24 起）**：团队报告解析能力暂未开放，`/dashboard/team-analysis` 页（page.tsx）已替换为「开发中」占位（联系邮箱 2026-09-15 起硬编码为 openlife.lab@outlook.com，不再走 TEAM_ANALYSIS_EMAIL 下发），原完整实现保留在同目录 `page.impl.tsx`，上线时用它替换 page.tsx 即可；侧边栏入口保留。
 - **团队分析联系邮箱（ADR-0018，2026-08-16 起）**：环境变量 `TEAM_ANALYSIS_EMAIL`（默认 soulhappylab@163.com，2026-08-19 起发件邮箱从 163 切换为 Outlook）统一管理——后端交付邮件/站内信经 `_team_analysis_notice()` 使用；前端经 `GET /payment/products` 响应字段 `team_analysis_email` 下发（`lib/api/payment.ts` 的 `getTeamAnalysisEmail()` 模块级缓存 + `TEAM_ANALYSIS_EMAIL_FALLBACK` 兑底）。
 - **首页「参考文献」模块（2026-09-14 起）**：首页在用户评价（TestimonialGrid）与常见问题解答（FaqSection）之间新增一页纸式参考文献区——单张 A4 纸感卡片（奶白纸面+细噪点+长投影，深色模式下纸面保持奶白仅加深投影），纸后垫 2 张只露边的底层纸，hover 整纸微抬、底层纸外滑；文献列表硬编码在 `app/(main)/page.tsx` 的 `REFERENCES`（10 条，内容以 `wiki/开发文档/0914/resume.md` 为准），样式在 `styles/components/references-paper.css`（`bd-ref-*`）。
 - **购买入口改版（2026-09-14 起）**：首页定价区块（免费/季度/年度/咨询 4 卡 + `PricingCompareTable` 对比表，`home.pricing.*` i18n 已删）整块下线，首页不再展示价格；购买入口改为**顶部导航栏「定价方案」按钮**（TopNavbar 桌面+移动端，未登录先弹登录），全站弹 PurchaseModal。PurchaseModal 套餐下单视图改版为宽弹窗两列布局（UI 参考 `wiki/开发文档/0914-openlife-purchase.html`：左栏标题+按套餐切换的权益卡、右栏套餐单选卡+渠道+券码、底部「各方案功能对比」折叠表+固定结算 footer），延期/咨询/等待支付/成功视图保持窄弹窗不变；下单/券码/支付宝收银台/轮询/交付/消耗升级逻辑全部不变（新文案在 `payment.dialog.*`/`payment.compare.*`）。
@@ -404,6 +404,16 @@ python scripts/init_db.py
 
 - `/api/v1/auth/*` - 认证
 - `/api/v1/users/*` - 用户
+
+### 用户头像（2026-09-17 起，迁移 021）
+
+- **背景**：头像曾是纯前端 blob 预览（从未持久化），且 settings/activate 两页的 `/auth/me` 同步 effect 用残缺对象覆盖 store 导致「切页面头像消失」；现已实现完整持久化链路。
+- **存储**：图片本体存 OSS 私有桶，确定性 key = `avatars/{user_id}`（无扩展名，重复上传同 key 覆盖，零孤儿文件）；DB `users.avatar_url` 只存**后端代理 URL** `/api/v1/users/{user_id}/avatar?v=<上传时间戳>`（永久有效，`?v=` 击穿浏览器缓存）。
+- **OSS 口径**：dev/prod 共用同一 bucket（`soulhappy-hermes-agent`）与现有 RAM key，**不分桶**（两边 DB 分离，user_id 不撞车）；bucket 保持私有，头像不走签名 URL（1h 过期会重演消失 bug）。
+- **压缩**：上传时服务端统一压缩（Pillow）——EXIF 方向校正 → 中心裁剪正方形 → 缩放到 256px（只缩不放）→ WebP q85，原图上限 5MB，入库一般 <50KB。
+- **接口**：`POST /users/avatar`（multipart，JPEG/PNG/WebP ≤5MB，OSS 未配置 503）、`GET /users/{user_id}/avatar`（**公开无鉴权**——CSS background 不带 Authorization 头；代理转发 OSS 字节流，content-type 由 magic bytes 嗅探，`Cache-Control: max-age=86400`）、`PATCH /users/me`（昵称更新，替代原纯本地 store 写法）。
+- **关键文件**：`app/services/avatar_service.py`、迁移 `021_user_avatar.py`（决策全文在 docstring）、前端 `lib/api/users.ts`（`uploadAvatar`/`updateMe`）；`/auth/me` 与登录/注册/恢复响应均返回 `avatar_url`，前端所有 `setUser` 点必须带上该字段（新增同步 effect 时注意）。
+- **测试**：`test/backend/test_avatar_service.py`。
 - `/api/v1/sessions/*` - 会话
 - `/api/v1/questions/*` - 问题
 - `/api/v1/answers/*` - 回答

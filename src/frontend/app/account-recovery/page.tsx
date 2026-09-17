@@ -118,6 +118,7 @@ export default function AccountRecoveryPage() {
             email: userData.email,
             phone: userData.phone,
             username: userData.username,
+            avatar_url: userData.avatar_url,
             is_super_admin: userData.is_super_admin,
             email_verified: userData.email_verified,
           });
@@ -127,6 +128,7 @@ export default function AccountRecoveryPage() {
             email: resData.email,
             phone: resData.phone,
             username: resData.username,
+            avatar_url: resData.avatar_url,
           });
         }
         router.push('/dashboard');

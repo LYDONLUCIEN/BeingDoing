@@ -38,6 +38,9 @@ weasyprint>=60.0  # HTML/CSS → PDF（报告导出）
 # 对象存储（反馈截图）
 oss2>=2.19.0  # 阿里云 OSS SDK
 
+# 头像压缩（服务端裁剪+缩放+转 WebP）
+Pillow>=10.0.0
+
 # 测试（开发依赖）
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
