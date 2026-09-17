@@ -52,7 +52,7 @@ export const zh = {
     yourDirection: '你的方向',
     yourDirectionSub: '基于你的价值观、优势、热爱与使命，为你深度推演高度匹配的职业方向。',
     reportCard: {
-      titleLine1: '寻路OpenLife职业探索报告：',
+      titleLine1: '寻路OpenLife职业探索报告',
       titleLine2: '帮助你建立属于自己的职业发展价值评价体系',
       intro: '《寻路OpenLife职业探索报告》围绕价值观、优势、热爱与使命等八大主题，构建起多维度的职业价值评价体系。无论你正身处迷茫、渴望决策依据，还是已在路上、需要验证方向，抑或被阻碍所困、期待重拾动力——这份报告都能为你提供切实有力的支持。',
       listTitle: '报告具体内容包括：',

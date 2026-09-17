@@ -138,11 +138,8 @@ function DimensionsSection({ t }: { t: (p: string) => string; locale: string }) 
           <div className="grid grid-cols-1 lg:grid-cols-[1.25fr_1fr] gap-10 items-center">
             {/* 左：文字介绍 */}
             <div>
-              <h2 className="bd-report-showcase-title">
-                {t('home.reportCard.titleLine1')}
-                <br />
-                {t('home.reportCard.titleLine2')}
-              </h2>
+              <h2 className="bd-report-showcase-title">{t('home.reportCard.titleLine1')}</h2>
+              <p className="bd-report-showcase-subtitle">{t('home.reportCard.titleLine2')}</p>
               <p className="bd-report-showcase-intro">{t('home.reportCard.intro')}</p>
               <p className="bd-report-showcase-list-title">{t('home.reportCard.listTitle')}</p>
               <ul className="bd-report-showcase-list">

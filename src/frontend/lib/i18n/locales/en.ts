@@ -55,7 +55,7 @@ export const en = {
     yourDirection: 'Your Direction',
     yourDirectionSub: 'Discover your career direction through values, strengths, interests and purpose.',
     reportCard: {
-      titleLine1: 'OpenLife Career Exploration Report:',
+      titleLine1: 'OpenLife Career Exploration Report',
       titleLine2: 'Build Your Own Career Value Evaluation System',
       intro: 'The OpenLife Career Exploration Report covers eight major themes — values, strengths, passions, and purpose — building a multi-dimensional career value evaluation system. Whether you feel lost and need a basis for decisions, are already on your way and want to validate your direction, or feel stuck and hope to regain momentum, this report offers practical and powerful support.',
       listTitle: 'The report includes:',

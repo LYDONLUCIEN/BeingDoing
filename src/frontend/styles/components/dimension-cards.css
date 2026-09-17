@@ -155,13 +155,24 @@
 }
 
 .bd-report-showcase-title {
-  font-size: 22px;
+  font-size: 28px;
   font-weight: 700;
-  line-height: 1.55;
+  line-height: 1.4;
+  letter-spacing: 0.5px;
   color: #1d2b3a;
-  margin-bottom: 20px;
+  margin-bottom: 10px;
 }
 [data-color-scheme="dark"] .bd-report-showcase-title { color: var(--bd-fg); }
+
+/* 副标题：比主标题小一号，弱化色，拉开层级 */
+.bd-report-showcase-subtitle {
+  font-size: 16px;
+  line-height: 1.7;
+  letter-spacing: 0.3px;
+  color: #5a6673;
+  margin-bottom: 24px;
+}
+[data-color-scheme="dark"] .bd-report-showcase-subtitle { color: var(--bd-fg-muted); }
 
 .bd-report-showcase-intro {
   font-size: 15px;
@@ -228,11 +239,13 @@
   box-shadow: 0 12px 28px rgba(63, 116, 201, 0.38);
 }
 
-/* 右侧：单张报告预览图（2026-09-17 起替换原三图错落叠放；透明底 PNG 直贴卡片，不加边框/底板） */
+/* 右侧：单张报告预览图（2026-09-17 起替换原三图错落叠放；透明底 PNG 直贴卡片，不加边框/底板）
+   drop-shadow 沿透明轮廓生效，给三张纸的边缘统一补上与中间纸一致的投影 */
 .bd-report-preview-single {
   display: block;
   width: 100%;
   height: auto;
+  filter: drop-shadow(0 16px 28px rgba(30, 50, 80, 0.16)) drop-shadow(0 4px 10px rgba(30, 50, 80, 0.10));
 }
 /* 桌面端适当放大，让图面内容更饱满（卡片 overflow:hidden，控制在 padding 范围内） */
 @media (min-width: 1024px) {
@@ -245,14 +258,15 @@
   font-size: 14px;
   color: #7c8896;
   letter-spacing: 2px;
-  margin-top: 22px;
+  margin-top: 34px;
 }
 [data-color-scheme="dark"] .bd-report-preview-caption { color: var(--bd-fg-muted); }
 
 /* 移动端：上下堆叠，预览图随容器宽度等比缩放（aspect-ratio 处理） */
 @media (max-width: 1023px) {
   .bd-report-showcase { padding: 32px 24px; }
-  .bd-report-showcase-title { font-size: 20px; }
+  .bd-report-showcase-title { font-size: 22px; }
+  .bd-report-showcase-subtitle { font-size: 15px; }
 }
 
 /* 你的方向（旧，保留 bd-minimal 作备用） */
