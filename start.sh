@@ -145,7 +145,8 @@ if [ "$COMMAND" = "start" ] || [ "$COMMAND" = "restart" ]; then
     exit 1
   fi
   # source conda.sh 使 conda activate 在非交互式 shell 里生效
-  BACKEND_CMD="$ENV_LOAD_CMD && source '$CONDA_BASE/etc/profile.d/conda.sh' && conda activate $CONDA_ENV && cd '$BACKEND_DIR' && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+  BACKEND_CMD="$ENV_LOAD_CMD && source '$CONDA_BASE/etc/profile.d/conda.sh' && conda activate $CONDA_ENV && cd '$BACKEND_DIR' && uvicorn app.main:app --reload --host 127.0.0.1 --port 8000"
+  # 127.0.0.1：只允许本机（nginx 反代）访问，杜绝 IP:8000 被公网直连/被搜索引擎收录
 fi
 
 # ── 前端运行模式 ────────────────────────────────────────

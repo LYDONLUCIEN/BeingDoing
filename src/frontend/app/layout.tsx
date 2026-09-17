@@ -38,9 +38,17 @@ const notoSerifSC = localFont({
   display: 'swap',
 });
 
+// canonical host：所有页面的 canonical 统一指向生产域名，
+// 即使测试环境/旧域名内容被抓到，搜索引擎也知道正主是 openlife.beyondego.me。
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://openlife.beyondego.me';
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: '寻路·OpenLife — 所有热爱,都值得成为事业',
   description: '通过价值观、优势、热爱与使命四个维度的深度对话，发现属于你的职业方向。',
+  alternates: {
+    canonical: '/',
+  },
 };
 
 export default function RootLayout({

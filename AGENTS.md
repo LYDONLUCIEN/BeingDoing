@@ -224,6 +224,14 @@ MEMBERSHIP_ENABLED=False        # 会员开关（P3 预留）
 
 ### 手动启动
 
+> **安全口径（2026-09-17 起）**：前后端一律绑定 `127.0.0.1`（start.sh / package.json 已改），
+> 公网只能经 nginx 反代（80/443）访问，禁止改回 `0.0.0.0`，禁止在 next.config.js
+> `allowedDevOrigins` 加裸 IP——IP:3000/8000 曾被搜索引擎收录，根因就是 0.0.0.0 + 安全组放行。
+> SEO 口径：唯一正主域名 `openlife.beyondego.me`——`NEXT_PUBLIC_SITE_URL` 驱动
+> `app/robots.ts`（非生产全站 Disallow）/ `app/sitemap.ts`（非生产空表）/ layout canonical；
+> 测试环境（career.beyondego.me）另由 nginx Basic Auth + X-Robots-Tag 隐藏，
+> 完整方案与运维清单见 `wiki/开发文档/0917-域名收敛与SEO方案.md`。
+
 ```bash
 # 后端
 cd src/backend

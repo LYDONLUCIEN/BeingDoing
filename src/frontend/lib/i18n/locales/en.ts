@@ -81,6 +81,7 @@ export const en = {
     strengths: { name: 'Discover Your Strengths', step: 'Step 2', desc: 'Uncover your unique talents and what you naturally excel at. See the distinct advantages that make you valuable.' },
     interests: { name: 'Find Your Interests', step: 'Step 3', desc: 'Explore the activities and topics that energize you. Identify interests that can sustain long-term motivation.' },
     purpose: { name: 'Define Your Purpose', step: 'Step 4', desc: 'Connect your future work to a larger mission. Identify the social value or impact your desired work can create.' },
+    rumination: { name: 'Settle Your Direction', step: 'Step 5', desc: 'Test your initial direction in real life. Record how practice feels and let time settle what truly fits.' },
   },
 
   explore: {

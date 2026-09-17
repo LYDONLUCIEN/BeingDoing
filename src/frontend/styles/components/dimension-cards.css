@@ -30,6 +30,7 @@
 .bd-dimension-card.bd-dim-strengths::before { background: linear-gradient(90deg, #83e0c3, #a2e8c6); }
 .bd-dimension-card.bd-dim-interests::before { background: linear-gradient(90deg, #fc8d98, #fca5a5); }
 .bd-dimension-card.bd-dim-purpose::before { background: linear-gradient(90deg, #fbca5b, #fde047); }
+.bd-dimension-card.bd-dim-rumination::before { background: linear-gradient(90deg, #b3a1e8, #c9bdf0); }
 .bd-dimension-card .bd-dim-card-title {
   color: #111111;
   font-weight: 700;

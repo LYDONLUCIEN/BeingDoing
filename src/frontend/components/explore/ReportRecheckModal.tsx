@@ -30,7 +30,7 @@ const CATEGORY_OPTIONS: Array<{ value: RecheckCategory; label: string; hint: str
   {
     value: 'content_issue',
     label: '报告内容有问题',
-    hint: '内容与你的情况不符、表述不准确，由管理员在5个工作日内复核。',
+    hint: '内容与你的情况不符、表述不准确，管理员在5个工作日内复核。',
   },
   {
     value: 'download_issue',
@@ -132,24 +132,23 @@ export default function ReportRecheckModal({
               {CATEGORY_OPTIONS.map((opt) => (
                 <label
                   key={opt.value}
-                  className={`flex items-start gap-3 rounded-xl border px-4 py-3 cursor-pointer transition-colors ${
+                  className={`block rounded-xl border px-4 py-3 cursor-pointer transition-colors text-center ${
                     category === opt.value
                       ? 'border-[var(--bd-ui-accent)] bg-bd-overlay-md'
                       : 'border-bd-border hover:bg-bd-overlay-md'
                   }`}
                 >
-                  <input
-                    type="radio"
-                    name="recheck-category"
-                    value={opt.value}
-                    checked={category === opt.value}
-                    onChange={() => setCategory(opt.value)}
-                    className="mt-1"
-                  />
-                  <span>
-                    <span className="block text-sm font-medium text-bd-fg">{opt.label}</span>
-                    <span className="block text-xs text-bd-subtle mt-0.5">{opt.hint}</span>
+                  <span className="flex items-center justify-center gap-2">
+                    <input
+                      type="radio"
+                      name="recheck-category"
+                      value={opt.value}
+                      checked={category === opt.value}
+                      onChange={() => setCategory(opt.value)}
+                    />
+                    <span className="text-sm font-medium text-bd-fg">{opt.label}</span>
                   </span>
+                  <span className="block text-xs text-bd-subtle mt-1">{opt.hint}</span>
                 </label>
               ))}
             </div>

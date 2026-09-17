@@ -27,13 +27,14 @@ const TESTIMONIALS: Array<{
   { quote: '和伴侣一起做完探索，才发现我们原来有这么多共振点。', name: '阿杰', role: '创业合伙人', avatar: '', color: '52, 211, 153' },
 ];
 
-// ── 四个核心维度（配色：价值观=蓝/优势=绿/热爱=红/使命=黄，文案来自 i18n）──
-const DIMENSION_KEYS = ['values', 'strengths', 'interests', 'purpose'] as const;
+// ── 五个核心维度（配色：价值观=蓝/优势=绿/热爱=红/使命=黄/沉淀=紫，文案来自 i18n）──
+const DIMENSION_KEYS = ['values', 'strengths', 'interests', 'purpose', 'rumination'] as const;
 const DIMENSION_VARS: Record<(typeof DIMENSION_KEYS)[number], { varColor: string; varBorder: string; varBg: string }> = {
   values: { varColor: 'var(--bd-phase-values)', varBorder: 'color-mix(in srgb, var(--bd-phase-values) 25%, transparent)', varBg: 'var(--bd-phase-values-dim, color-mix(in srgb, var(--bd-phase-values) 8%, transparent))' },
   strengths: { varColor: 'var(--bd-phase-strengths)', varBorder: 'color-mix(in srgb, var(--bd-phase-strengths) 25%, transparent)', varBg: 'var(--bd-phase-strengths-dim, color-mix(in srgb, var(--bd-phase-strengths) 8%, transparent))' },
   interests: { varColor: 'var(--bd-phase-interests)', varBorder: 'color-mix(in srgb, var(--bd-phase-interests) 25%, transparent)', varBg: 'var(--bd-phase-interests-dim, color-mix(in srgb, var(--bd-phase-interests) 8%, transparent))' },
   purpose: { varColor: 'var(--bd-phase-purpose)', varBorder: 'color-mix(in srgb, var(--bd-phase-purpose) 25%, transparent)', varBg: 'var(--bd-phase-purpose-dim, color-mix(in srgb, var(--bd-phase-purpose) 8%, transparent))' },
+  rumination: { varColor: 'var(--bd-phase-rumination)', varBorder: 'color-mix(in srgb, var(--bd-phase-rumination) 25%, transparent)', varBg: 'var(--bd-phase-rumination-dim, color-mix(in srgb, var(--bd-phase-rumination) 8%, transparent))' },
 };
 
 // ── 报告展示卡片六点列表的圆点配色（蓝/绿/红/黄/紫/青，参照效果图）──
@@ -45,7 +46,7 @@ function useBuildArcs(zoneRef: React.RefObject<HTMLDivElement | null>, svgRef: R
     const zone = zoneRef.current;
     const svg = svgRef.current;
     const cards = document.querySelectorAll('.bd-dimension-card');
-    if (!zone || !svg || cards.length !== 4) return;
+    if (!zone || !svg || cards.length === 0) return;
 
     const zoneRect = zone.getBoundingClientRect();
     if (zoneRect.height < 50) return; // 移动端隐藏连接区时跳过
@@ -72,8 +73,8 @@ function useBuildArcs(zoneRef: React.RefObject<HTMLDivElement | null>, svgRef: R
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', d);
       path.classList.add('bd-arc-path');
-      const delays = [0, 0.15, 0.15, 0];
-      (path as SVGPathElement).style.animationDelay = `${delays[i]}s`;
+      const delays = [0, 0.15, 0.2, 0.15, 0];
+      (path as SVGPathElement).style.animationDelay = `${delays[i] ?? 0.1}s`;
       svg.appendChild(path);
     });
   }, [zoneRef, svgRef]);
@@ -97,9 +98,9 @@ function DimensionsSection({ t }: { t: (p: string) => string; locale: string }) 
 
   return (
     <>
-    <section className="max-w-5xl mx-auto px-6 pt-8 pb-0 w-full">
-      {/* 四卡片区（new-report 以卡片为基准，我们上方有 Hero 故加 pt-8 增加相对留白） */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+    <section className="max-w-6xl mx-auto px-6 pt-8 pb-0 w-full">
+      {/* 五卡片区（new-report 以卡片为基准，我们上方有 Hero 故加 pt-8 增加相对留白） */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
         {DIMENSION_KEYS.map((key) => {
           const vars = DIMENSION_VARS[key];
           return (
