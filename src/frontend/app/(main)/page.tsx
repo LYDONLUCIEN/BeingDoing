@@ -169,13 +169,9 @@ function DimensionsSection({ t }: { t: (p: string) => string; locale: string }) 
                 <span aria-hidden>→</span>
               </button>
             </div>
-            {/* 右：三张低清模糊报告预览页错落叠放 */}
+            {/* 右：单张报告预览图（2026-09-17 起替换原三图错落叠放） */}
             <div>
-              <div className="bd-report-preview-stack">
-                <img src="/assets/report/preview-1.webp" alt={t('home.reportCard.previewAlt1')} className="bd-report-page bd-report-page-1" loading="lazy" />
-                <img src="/assets/report/preview-2.webp" alt={t('home.reportCard.previewAlt2')} className="bd-report-page bd-report-page-2" loading="lazy" />
-                <img src="/assets/report/preview-3.webp" alt={t('home.reportCard.previewAlt3')} className="bd-report-page bd-report-page-3" loading="lazy" />
-              </div>
+              <img src="/assets/report/preview.webp" alt={t('home.reportCard.previewAlt')} className="bd-report-preview-single" loading="lazy" />
               <p className="bd-report-preview-caption">— {t('home.reportCard.previewCaption')} —</p>
             </div>
           </div>

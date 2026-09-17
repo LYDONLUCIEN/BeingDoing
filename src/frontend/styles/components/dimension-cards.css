@@ -136,7 +136,7 @@
 
 /* =========================================
    报告展示卡片 report-showcase（2026-09-14 改版）
-   左文右图：标题+介绍+六点列表 / 三张低清报告预览错落叠放
+   左文右图：标题+介绍+六点列表 / 单张报告预览图（2026-09-17 起）
    卡片自带浅色渐变背景，独立于外部 mesh 大背景
    ========================================= */
 .bd-report-showcase {
@@ -228,40 +228,17 @@
   box-shadow: 0 12px 28px rgba(63, 116, 201, 0.38);
 }
 
-/* 右侧：三张报告预览页错落叠放（宽高比随容器宽度自适应，避免图片压到下方标注） */
-.bd-report-preview-stack {
-  position: relative;
-  height: 470px; /* 不支持 aspect-ratio 的旧浏览器兑底 */
+/* 右侧：单张报告预览图（2026-09-17 起替换原三图错落叠放；透明底 PNG 直贴卡片，不加边框/底板） */
+.bd-report-preview-single {
+  display: block;
+  width: 100%;
+  height: auto;
 }
-@supports (aspect-ratio: 1/1) {
-  .bd-report-preview-stack {
-    height: auto;
-    aspect-ratio: 1 / 1.15;
+/* 桌面端适当放大，让图面内容更饱满（卡片 overflow:hidden，控制在 padding 范围内） */
+@media (min-width: 1024px) {
+  .bd-report-preview-single {
+    transform: scale(1.08);
   }
-}
-.bd-report-page {
-  position: absolute;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.85);
-  box-shadow: 0 14px 36px rgba(30, 50, 80, 0.16);
-}
-.bd-report-page-1 { /* 报告内容预览页：左前方，最上层 */
-  width: 60%;
-  left: 0;
-  top: 8%;
-  z-index: 3;
-}
-.bd-report-page-2 { /* 热爱分析章：右上后方 */
-  width: 52%;
-  right: 4%;
-  top: 0;
-  z-index: 2;
-}
-.bd-report-page-3 { /* 最终选择章：右下后方 */
-  width: 52%;
-  right: 0;
-  top: 33%;
-  z-index: 1;
 }
 .bd-report-preview-caption {
   text-align: center;

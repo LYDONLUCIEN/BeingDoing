@@ -78,6 +78,8 @@ htmlcov/
 docs/_build/
 site/
 report/
+# 例外：前端首页报告预览图为站点静态资源，必须入库部署（2026-09-17 修复生产不显示）
+!src/frontend/public/assets/report/
 bak.report/
 # 用户原始文档（保留在根目录）
 # note.md
