@@ -99,7 +99,21 @@ function LoginForm() {
         router.push(redirectTo);
       }
     } catch (err: any) {
-      setError(err.response?.data?.detail || '登录失败，请检查您的凭据');
+      // 防爆破锁定（423）：detail 为 JSON 字符串，解析出剩余锁定时间友好展示
+      let lockMessage = '';
+      if (err.response?.status === 423) {
+        try {
+          const parsed = JSON.parse(err.response?.data?.detail || '{}');
+          if (parsed?.type === 'login_locked') {
+            const seconds = Number(parsed?.retry_after_seconds) || 0;
+            const m = Math.floor(seconds / 60);
+            const s = seconds % 60;
+            const remain = m > 0 ? (s > 0 ? `${m} 分 ${s} 秒` : `${m} 分钟`) : `${Math.max(1, s)} 秒`;
+            lockMessage = `尝试次数过多，账号已临时锁定，请 ${remain} 后重试`;
+          }
+        } catch { /* 解析失败落到通用文案 */ }
+      }
+      setError(lockMessage || err.response?.data?.detail || '登录失败，请检查您的凭据');
     } finally {
       setLoading(false);
     }

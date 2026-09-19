@@ -77,14 +77,18 @@ _email_verify_cooldowns: Dict[str, datetime] = {}
 _refresh_schema_ready: bool = False
 
 # ── 登录防爆破（进程内内存，对齐上方验证码冷却模式，重启失效）────────────
-# 口径：按登录标识（email 小写 / phone）计数，不存在的账号同样计入（防枚举旁路）；
-# 1 小时滑动窗口内累计失败达上限 → 锁 15 分钟（固定时长，期间重试不续期）；
-# 锁定期间一律拒绝（即使密码正确）；成功登录清零。
+# 口径（2026-09-18 起阶梯锁定 + 每小时整窗重置）：
+# - 按登录标识（email 小写 / phone）计数，不存在的账号同样计入（防枚举旁路）；
+# - 前 5 次失败不锁；第 6/7/8/9 次失败后分别锁 1/2/5/10 分钟，第 9 次起恒锁 10 分钟；
+# - 每小时整窗重置：从首次失败起满 1 小时清零，重新有连续 5 次机会；
+# - 锁定期间一律拒绝（即使密码正确），锁定期重试不计数、不续期；成功登录清零。
 LOGIN_FAIL_WINDOW_SECONDS = 3600
-LOGIN_FAIL_MAX_ATTEMPTS = 5
-LOGIN_LOCK_SECONDS = 15 * 60
+LOGIN_FAIL_FREE_ATTEMPTS = 5
+# 阶梯锁定时长（秒）：索引 = 失败次数 - LOGIN_FAIL_FREE_ATTEMPTS - 1，超出取末档（恒 10 分钟）
+LOGIN_LOCK_LADDER_SECONDS = (60, 120, 300, 600)
 LOGIN_FAIL_MESSAGE = "邮箱/手机号或密码错误"
-# key: 规范化登录标识，value: {"fails": [datetime, ...], "locked_until": datetime | None}
+# key: 规范化登录标识，
+# value: {"first_fail_at": datetime | None, "fails": int, "locked_until": datetime | None}
 _login_failures: Dict[str, Dict[str, Any]] = {}
 # 用户不存在时的假哈希：verify 一遍对齐真实校验耗时，堵计时侧信道枚举
 _DUMMY_PASSWORD_HASH = pwd_context.hash("openlife-dummy-password-for-timing")
@@ -98,33 +102,47 @@ class LoginLockedError(ValueError):
         self.retry_after_seconds = max(1, int(retry_after_seconds))
 
 
+def _reset_login_window_if_expired(rec: Dict[str, Any], now: datetime) -> None:
+    """整窗重置：从首次失败起满 1 小时则清零，重新有连续免费机会"""
+    first = rec.get("first_fail_at")
+    if first and (now - first).total_seconds() >= LOGIN_FAIL_WINDOW_SECONDS:
+        rec["first_fail_at"] = None
+        rec["fails"] = 0
+        rec["locked_until"] = None
+
+
 def _get_login_lock_remaining(key: str) -> int:
-    """锁定中返回剩余秒数；未锁定返回 0（过期锁定顺带清零）"""
+    """锁定中返回剩余秒数；未锁定返回 0（窗口过期的空记录顺带清理）"""
     rec = _login_failures.get(key)
     if not rec:
         return 0
-    locked_until = rec.get("locked_until")
-    if not locked_until:
-        return 0
     now = datetime.now(timezone.utc)
-    if now >= locked_until:
+    locked_until = rec.get("locked_until")
+    # 锁定为绝对口径：即使窗口刚好到期也须服完剩余锁定
+    if locked_until and now < locked_until:
+        return max(1, int((locked_until - now).total_seconds()))
+    _reset_login_window_if_expired(rec, now)
+    rec["locked_until"] = None
+    if not rec["fails"]:
         _login_failures.pop(key, None)
-        return 0
-    return max(1, int((locked_until - now).total_seconds()))
+    return 0
 
 
 def _record_login_failure(key: str) -> int:
-    """记录一次失败；若因此触发锁定返回剩余锁定秒数，否则返回 0"""
+    """记录一次失败；若因此触发阶梯锁定返回锁定秒数，否则返回 0"""
     now = datetime.now(timezone.utc)
-    rec = _login_failures.setdefault(key, {"fails": [], "locked_until": None})
-    window_start = now - timedelta(seconds=LOGIN_FAIL_WINDOW_SECONDS)
-    fails = [t for t in rec["fails"] if t > window_start]
-    fails.append(now)
-    rec["fails"] = fails
-    if len(fails) >= LOGIN_FAIL_MAX_ATTEMPTS:
-        rec["locked_until"] = now + timedelta(seconds=LOGIN_LOCK_SECONDS)
-        logger.warning("登录失败次数过多，临时锁定: id=%s, fails=%d", key, len(fails))
-        return LOGIN_LOCK_SECONDS
+    rec = _login_failures.setdefault(key, {"first_fail_at": None, "fails": 0, "locked_until": None})
+    _reset_login_window_if_expired(rec, now)
+    if not rec["fails"]:
+        rec["first_fail_at"] = now  # 整窗锚点：窗口从首次失败起算 1 小时
+    rec["fails"] += 1
+    fails = rec["fails"]
+    if fails > LOGIN_FAIL_FREE_ATTEMPTS:
+        idx = min(fails - LOGIN_FAIL_FREE_ATTEMPTS - 1, len(LOGIN_LOCK_LADDER_SECONDS) - 1)
+        lock_seconds = LOGIN_LOCK_LADDER_SECONDS[idx]
+        rec["locked_until"] = now + timedelta(seconds=lock_seconds)
+        logger.warning("登录失败阶梯锁定: id=%s, fails=%d, lock=%ds", key, fails, lock_seconds)
+        return lock_seconds
     return 0
 
 
@@ -693,7 +711,8 @@ class AuthService:
         → 站内信 + 邮件通知。
 
         防爆破：复用登录锁定机制——lock_key 与登录一致（email 小写 / phone），
-        失败计数与登录共享，1 小时滑窗 5 次失败锁 15 分钟；锁定期间即使旧密码正确也拒绝。
+        失败计数与登录共享，阶梯锁定（第 6/7/8/9 次锁 1/2/5/10 分钟，之后恒 10 分钟，
+        窗口从首次失败起算 1 小时整窗重置）；锁定期间即使旧密码正确也拒绝。
 
         Args:
             user_id: 当前登录用户 ID

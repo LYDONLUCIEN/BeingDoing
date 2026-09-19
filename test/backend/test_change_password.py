@@ -207,18 +207,20 @@ async def test_unauthenticated_rejected():
 # ─── 防爆破锁定（复用登录机制） ──────────────────────────────
 
 
-async def test_five_wrong_old_passwords_lock():
+async def test_sixth_wrong_old_password_locks():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         token = await _login_token(client)
-        for _ in range(4):
+        # 前 5 次免费机会：400，不锁
+        for _ in range(5):
             res = await _change(client, token, "wrong-old", NEW_PASSWORD)
             assert res.status_code == 400
 
+        # 第 6 次：423，锁 1 分钟
         res = await _change(client, token, "wrong-old", NEW_PASSWORD)
         assert res.status_code == 423
         detail = json.loads(res.json()["detail"])
         assert detail["type"] == "login_locked"
-        assert 0 < detail["retry_after_seconds"] <= as_mod.LOGIN_LOCK_SECONDS
+        assert 0 < detail["retry_after_seconds"] <= as_mod.LOGIN_LOCK_LADDER_SECONDS[0]
 
         # 锁定期间：即使旧密码正确也一律拒绝
         res = await _change(client, token, OLD_PASSWORD, NEW_PASSWORD)
@@ -226,15 +228,11 @@ async def test_five_wrong_old_passwords_lock():
 
 
 async def test_lock_shared_with_login_failures():
-    """失败计数与登录互通：4 次登录失败 + 1 次改密旧密码错误 → 锁定"""
+    """失败计数与登录互通：5 次登录失败 + 1 次改密旧密码错误 → 第 6 次失败触发锁定"""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        for _ in range(4):
-            res = await _login(client, EMAIL, "wrong-pass")
-            assert res.status_code == 401
-
         # 用独立会话拿一个合法 token（登录成功会清零计数，所以先登录再制造失败）
         token = await _login_token(client)
-        for _ in range(4):
+        for _ in range(5):
             res = await _login(client, EMAIL, "wrong-pass")
             assert res.status_code == 401
 
@@ -248,7 +246,7 @@ async def test_successful_change_clears_failures():
     """修改成功清零失败计数"""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         token = await _login_token(client)
-        for _ in range(4):
+        for _ in range(5):
             res = await _change(client, token, "wrong-old", NEW_PASSWORD)
             assert res.status_code == 400
 

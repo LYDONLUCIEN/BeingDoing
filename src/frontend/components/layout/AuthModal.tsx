@@ -399,16 +399,16 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
             <form onSubmit={loginForm.handleSubmit(onLoginSubmit)} className="space-y-4">
               <div>
                 <label htmlFor="login-email" className={labelClass}>邮箱</label>
-                <input {...loginForm.register('email')} type="email" id="login-email" className={inputClass} placeholder="your@email.com" />
+                <input {...loginForm.register('email')} type="email" id="login-email" autoComplete="email" className={inputClass} placeholder="your@email.com" />
                 {loginForm.formState.errors.email && <p className={errorClass}>{loginForm.formState.errors.email.message}</p>}
               </div>
               <div>
                 <label htmlFor="login-phone" className={labelClass}>手机号（可选）</label>
-                <input {...loginForm.register('phone')} type="tel" id="login-phone" className={inputClass} placeholder="13800138000" />
+                <input {...loginForm.register('phone')} type="tel" id="login-phone" autoComplete="tel" className={inputClass} placeholder="13800138000" />
               </div>
               <div>
                 <label htmlFor="login-password" className={labelClass}>密码</label>
-                <input {...loginForm.register('password')} type="password" id="login-password" className={inputClass} placeholder="至少6位" />
+                <input {...loginForm.register('password')} type="password" id="login-password" autoComplete="current-password" className={inputClass} placeholder="至少6位" />
                 {loginForm.formState.errors.password && <p className={errorClass}>{loginForm.formState.errors.password.message}</p>}
               </div>
               {/* 隐私政策 & 服务条款勾选（登录也需同意，勾选状态本地记忆） */}
@@ -434,6 +434,9 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
                   onClick={() => {
                     setError('');
                     setSuccessMsg('');
+                    // 把登录框已填的邮箱带进忘记密码表单，避免重复输入；
+                    // 配合下方各输入框的 name/autoComplete，防止浏览器把邮箱误填进验证码框
+                    setResetEmail((prev) => prev || loginForm.getValues('email')?.trim() || '');
                     setMode('forgot');
                   }}
                 >
@@ -444,9 +447,12 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
           ) : mode === 'forgot' ? (
             <div className="space-y-3.5">
               <div>
-                <label className={labelClass}>邮箱</label>
+                <label htmlFor="forgot-email" className={labelClass}>邮箱</label>
                 <input
                   type="email"
+                  id="forgot-email"
+                  name="email"
+                  autoComplete="email"
                   className={inputClass}
                   placeholder="请输入账号注册时绑定的邮箱"
                   value={resetEmail}
@@ -464,9 +470,12 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
               </button>
 
               <div>
-                <label className={labelClass}>验证码</label>
+                <label htmlFor="forgot-code" className={labelClass}>验证码</label>
                 <input
                   type="text"
+                  id="forgot-code"
+                  name="reset-code"
+                  autoComplete="one-time-code"
                   className={inputClass}
                   placeholder="请输入邮箱验证码"
                   value={resetCode}
@@ -474,9 +483,12 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
                 />
               </div>
               <div>
-                <label className={labelClass}>新密码</label>
+                <label htmlFor="forgot-new-password" className={labelClass}>新密码</label>
                 <input
                   type="password"
+                  id="forgot-new-password"
+                  name="new-password"
+                  autoComplete="new-password"
                   className={inputClass}
                   placeholder="至少6位"
                   value={newPassword}
@@ -484,9 +496,12 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
                 />
               </div>
               <div>
-                <label className={labelClass}>确认新密码</label>
+                <label htmlFor="forgot-confirm-password" className={labelClass}>确认新密码</label>
                 <input
                   type="password"
+                  id="forgot-confirm-password"
+                  name="confirm-new-password"
+                  autoComplete="new-password"
                   className={inputClass}
                   placeholder="请再次输入新密码"
                   value={confirmNewPassword}
@@ -516,7 +531,7 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
             <form onSubmit={registerForm.handleSubmit(onRegisterSubmit)} className="space-y-3.5">
               <div>
                 <label htmlFor="register-email" className={labelClass}>邮箱</label>
-                <input {...registerForm.register('email')} type="email" id="register-email" className={inputClass} placeholder="your@email.com" />
+                <input {...registerForm.register('email')} type="email" id="register-email" autoComplete="email" className={inputClass} placeholder="your@email.com" />
                 {registerForm.formState.errors.email && <p className={errorClass}>{registerForm.formState.errors.email.message}</p>}
               </div>
               <div>
@@ -529,12 +544,12 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
               </div>
               <div>
                 <label htmlFor="register-password" className={labelClass}>密码</label>
-                <input {...registerForm.register('password')} type="password" id="register-password" className={inputClass} placeholder="至少6位" />
+                <input {...registerForm.register('password')} type="password" id="register-password" autoComplete="new-password" className={inputClass} placeholder="至少6位" />
                 {registerForm.formState.errors.password && <p className={errorClass}>{registerForm.formState.errors.password.message}</p>}
               </div>
               <div>
                 <label htmlFor="register-confirmPassword" className={labelClass}>确认密码</label>
-                <input {...registerForm.register('confirmPassword')} type="password" id="register-confirmPassword" className={inputClass} placeholder="再次输入密码" />
+                <input {...registerForm.register('confirmPassword')} type="password" id="register-confirmPassword" autoComplete="new-password" className={inputClass} placeholder="再次输入密码" />
                 {registerForm.formState.errors.confirmPassword && <p className={errorClass}>{registerForm.formState.errors.confirmPassword.message}</p>}
               </div>
               {/* 隐私政策 & 服务条款勾选（勾选状态本地记忆） */}
