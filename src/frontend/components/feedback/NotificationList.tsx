@@ -5,8 +5,19 @@ import { timeAgo } from '@/lib/utils/timeAgo';
 import { CheckCheck, Inbox } from 'lucide-react';
 import type { Notification } from '@/lib/api/feedback';
 
-export default function NotificationList() {
+interface NotificationListProps {
+  query?: string;
+  unreadOnly?: boolean;
+}
+
+export default function NotificationList({ query = '', unreadOnly = false }: NotificationListProps) {
   const { items, isLoading, total, markRead, markAllRead, unreadCount } = useNotificationStore();
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const visibleItems = items.filter((item) => {
+    if (unreadOnly && item.read_at !== null) return false;
+    if (!normalizedQuery) return true;
+    return `${item.title}\n${item.content}`.toLocaleLowerCase().includes(normalizedQuery);
+  });
 
   if (isLoading && items.length === 0) {
     return (
@@ -23,6 +34,15 @@ export default function NotificationList() {
         <p className="text-sm" style={{ color: 'var(--bd-fg-muted)' }}>
           暂无通知
         </p>
+      </div>
+    );
+  }
+
+  if (visibleItems.length === 0) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center px-6 text-center gap-2">
+        <Inbox className="w-10 h-10 text-bd-subtle" />
+        <p className="text-sm text-bd-muted">没有找到符合条件的站内信</p>
       </div>
     );
   }
@@ -45,7 +65,7 @@ export default function NotificationList() {
 
       {/* 列表 */}
       <div className="flex-1 overflow-y-auto px-3 pb-2 space-y-1">
-        {items.map((n) => (
+        {visibleItems.map((n) => (
           <NotificationItem key={n.id} notification={n} onClick={() => markRead(n.id)} />
         ))}
         {items.length < total && (

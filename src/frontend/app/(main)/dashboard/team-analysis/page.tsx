@@ -1,49 +1,48 @@
 'use client';
 
-/**
- * 团队分析页（占位版，2026-08-24 起）
- * /dashboard/team-analysis
- *
- * 团队报告解析能力暂未开放：页面只展示「开发中」占位 + 联系邮箱。
- * 原完整实现保留在同目录 page.impl.tsx，正式上线时用它替换本文件即可。
- * 占位期联系邮箱硬编码为 openlife.lab@outlook.com（2026-09-15 起，
- * 不再走 TEAM_ANALYSIS_EMAIL 统一下发；正式上线恢复 getTeamAnalysisEmail）。
- */
-
-import { Mail, UsersRound } from 'lucide-react';
+import { useState } from 'react';
+import { Mail } from 'lucide-react';
+import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
 import { useLocale } from '@/hooks/useLocale';
 
-/** 团队分析页占位期联系邮箱（硬编码，见文件头注释） */
+/** 团队分析页占位期联系邮箱（保持现有产品口径）。 */
 const CONTACT_EMAIL = 'openlife.lab@outlook.com';
 
 export default function TeamAnalysisPage() {
   const { t } = useLocale();
-  const email = CONTACT_EMAIL;
+  const [showNotice, setShowNotice] = useState(false);
 
   return (
-    <div className="max-w-3xl mx-auto">
-      <div className="bg-bd-card/80 backdrop-blur-lg border border-bd-border rounded-2xl shadow-sm p-16 text-center space-y-5">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-bd-overlay-md">
-          <UsersRound className="h-8 w-8 text-bd-muted" />
+    <div className="ol-profile-content">
+      <DashboardPageHeader
+        kicker="TEAM INSIGHT"
+        title={t('dashboard.teamAnalysis')}
+        description="在尊重个人隐私的前提下，看见团队的优势组合与协作方式。"
+      />
+
+      <section className="ol-profile-team-card ol-profile-surface">
+        <div className="ol-profile-team-visual" aria-hidden="true">
+          <i /><i /><i /><i /><i />
         </div>
-        <div className="space-y-2">
-          <span className="inline-block rounded-full border border-amber-300 bg-amber-50 px-3 py-0.5 text-xs font-medium text-amber-700">
-            {t('team.comingSoonBadge')}
-          </span>
-          <h1 className="text-2xl font-bold text-bd-fg">{t('team.comingSoonTitle')}</h1>
-          <p className="mx-auto max-w-md text-sm text-bd-muted">{t('team.comingSoonDesc')}</p>
+        <div>
+          <span>团队版 · 开发中</span>
+          <h3>把不同的人，放在更合适的位置</h3>
+          <p>{t('team.comingSoonDesc')}</p>
+          <p>团队报告解析能力暂未开放。如需了解后续计划或申请团队服务，可先通过邮箱联系我们。</p>
+          <button type="button" className="ol-profile-primary" onClick={() => setShowNotice(true)}>
+            创建团队
+          </button>
+          {showNotice && (
+            <div className="ol-team-notice" role="status">
+              <strong>{t('team.comingSoonTitle')}</strong>
+              <span>
+                <Mail aria-hidden="true" />
+                <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+              </span>
+            </div>
+          )}
         </div>
-        <p className="inline-flex items-center gap-2 text-sm text-bd-muted">
-          <Mail className="h-4 w-4" />
-          {t('team.comingSoonContact')}
-          <a
-            href={`mailto:${email}`}
-            className="font-medium text-bd-ui-accent hover:underline"
-          >
-            {email}
-          </a>
-        </p>
-      </div>
+      </section>
     </div>
   );
 }

@@ -35,11 +35,22 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, _hasHydrated, recoveryMode } = useAuthStore();
   const openAuthModal = useAuthModalStore((s) => s.openAuthModal);
 
-  const isPublic = PUBLIC_PATHS.has(pathname);
+  /**
+   * 本地 UI 开发专用：允许界面预览在没有登录态时渲染。
+   * NODE_ENV 条件会在生产构建中固定为 false，查询参数本身不能绕过正式鉴权。
+   */
+  const isLocalUiPreview =
+    process.env.NODE_ENV === 'development' &&
+    (pathname.startsWith('/explore/chat/') ||
+      pathname === '/explore/activate' ||
+      pathname.startsWith('/dashboard')) &&
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('ui_preview') === '1';
+  const isPublic = PUBLIC_PATHS.has(pathname) || isLocalUiPreview;
   const needsAuth = !isPublic && _hasHydrated && !isAuthenticated;
   // 账户恢复会话（受限 token）：只允许停留在恢复页，且跳过 /auth/me 校验
   // （受限 token 调 /auth/me 必 401，会触发拦截器误登出）
-  const needsRecovery = _hasHydrated && isAuthenticated && recoveryMode;
+  const needsRecovery = !isLocalUiPreview && _hasHydrated && isAuthenticated && recoveryMode;
 
   useEffect(() => {
     if (needsRecovery) {
@@ -53,10 +64,10 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       openAuthModal('/');
       return;
     }
-    if (_hasHydrated && isAuthenticated && !recoveryMode) {
+    if (_hasHydrated && isAuthenticated && !recoveryMode && !isLocalUiPreview) {
       validateSessionOnce();
     }
-  }, [needsAuth, needsRecovery, _hasHydrated, isAuthenticated, recoveryMode, router, openAuthModal]);
+  }, [needsAuth, needsRecovery, _hasHydrated, isAuthenticated, recoveryMode, isLocalUiPreview, router, openAuthModal]);
 
   // 未登录时不渲染受保护内容，避免内容闪现和触发带缓存的 API 请求
   if (needsAuth) return null;

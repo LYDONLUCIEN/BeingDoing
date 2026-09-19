@@ -1,0 +1,189 @@
+/*
+ * OpenLife chat default skin
+ *
+ * The selectors in this file intentionally target only the exploration chat
+ * and rumination workbench. Landing-page and payment surfaces are not in scope.
+ */
+
+.flow-light.careering-matte {
+  --ol-chat-ink: #202832;
+  --ol-chat-accent: #6f9bd8;
+  --ol-chat-soft: #eef4fb;
+  --ol-chat-wash: #f8fbff;
+  background:
+    radial-gradient(circle at 14% 12%, rgba(111, 155, 216, 0.13), transparent 31%),
+    radial-gradient(circle at 88% 76%, rgba(135, 188, 162, 0.1), transparent 30%),
+    linear-gradient(180deg, #fbfcff 0%, #f6f9fc 56%, #fbfcfb 100%);
+}
+
+.flow-light.careering-matte[data-phase='strengths'] {
+  --ol-chat-accent: #67a98b;
+  --ol-chat-soft: #edf8f2;
+  --ol-chat-wash: #f8fcfa;
+}
+
+.flow-light.careering-matte[data-phase='interests'] {
+  --ol-chat-accent: #d98282;
+  --ol-chat-soft: #fdf0f0;
+  --ol-chat-wash: #fff9f8;
+}
+
+.flow-light.careering-matte[data-phase='purpose'] {
+  --ol-chat-accent: #c7a554;
+  --ol-chat-soft: #fbf6e8;
+  --ol-chat-wash: #fffdf7;
+}
+
+.flow-light.careering-matte[data-phase='rumination'],
+.rumination-beautiful-root.flow-light {
+  --ol-chat-accent: #8474c9;
+  --ol-chat-soft: #f0edfb;
+  --ol-chat-wash: #faf9ff;
+}
+
+/* AI: a quiet phase-tinted surface, without the older hard left stripe. */
+.flow-light.careering-matte .flow-msg-ai-content,
+.rumination-beautiful-root .rumination-beautiful-chat-panel .flow-msg-ai-content--rumination-wb {
+  border: 1px solid rgba(111, 155, 216, 0.22) !important;
+  border-color: color-mix(in srgb, var(--ol-chat-accent) 28%, white) !important;
+  border-left-width: 1px !important;
+  background: #eef4fb !important;
+  background: color-mix(in srgb, var(--ol-chat-accent) 10%, white) !important;
+  color: var(--ol-chat-ink, #202832) !important;
+  box-shadow: 0 8px 24px rgba(35, 48, 62, 0.065) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(1.04) !important;
+  backdrop-filter: blur(14px) saturate(1.04) !important;
+}
+
+/* User: the single dark-ink voice used across every phase. */
+.flow-light.careering-matte .flow-msg-user-content,
+.flow-light.careering-matte[data-phase='values'] .flow-msg-user-content,
+.flow-light.careering-matte[data-phase='strengths'] .flow-msg-user-content,
+.flow-light.careering-matte[data-phase='interests'] .flow-msg-user-content,
+.flow-light.careering-matte[data-phase='purpose'] .flow-msg-user-content,
+.rumination-beautiful-root.flow-light[data-phase='rumination'] .flow-msg-user-content {
+  border: 1px solid #202832 !important;
+  background: #202832 !important;
+  color: #f8fafc !important;
+  box-shadow: 0 8px 22px rgba(20, 29, 38, 0.09) !important;
+}
+
+.flow-light.careering-matte .flow-msg-user-content *,
+.rumination-beautiful-root.flow-light[data-phase='rumination'] .flow-msg-user-content * {
+  color: inherit !important;
+}
+
+/* Action: dark ink, stable in all phase themes. */
+.flow-light.careering-matte .flow-send-btn,
+.rumination-beautiful-root.flow-light .flow-send-btn {
+  border-color: #202832 !important;
+  background: #202832 !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 20px rgba(25, 35, 45, 0.12) !important;
+}
+
+.flow-light.careering-matte .flow-send-btn:hover,
+.rumination-beautiful-root.flow-light .flow-send-btn:hover {
+  background: #131a21 !important;
+  box-shadow: 0 11px 25px rgba(25, 35, 45, 0.18) !important;
+}
+
+/* Conclusion: phase-coloured mist gradient rather than a flat white card. */
+.flow-light.careering-matte .flow-conclusion-card {
+  border: 1px solid rgba(111, 155, 216, 0.25) !important;
+  border-color: color-mix(in srgb, var(--ol-chat-accent) 27%, #dfe6ed) !important;
+  background: linear-gradient(135deg, #eef4fb, #f8fbff 52%, #f3f7fc) !important;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--ol-chat-accent) 14%, white),
+    color-mix(in srgb, var(--ol-chat-soft) 78%, white) 50%,
+    color-mix(in srgb, var(--ol-chat-wash) 30%, white)
+  ) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 18px 44px rgba(35, 48, 62, 0.075) !important;
+}
+
+.flow-light.careering-matte .flow-conclusion-card.values {
+  --ol-chat-accent: #6f9bd8;
+  --ol-chat-soft: #eef4fb;
+  --ol-chat-wash: #f8fbff;
+}
+
+.flow-light.careering-matte .flow-conclusion-card.strength {
+  --ol-chat-accent: #67a98b;
+  --ol-chat-soft: #edf8f2;
+  --ol-chat-wash: #f8fcfa;
+}
+
+.flow-light.careering-matte .flow-conclusion-card.interest {
+  --ol-chat-accent: #d98282;
+  --ol-chat-soft: #fdf0f0;
+  --ol-chat-wash: #fff9f8;
+}
+
+.flow-light.careering-matte .flow-conclusion-card.purpose {
+  --ol-chat-accent: #c7a554;
+  --ol-chat-soft: #fbf6e8;
+  --ol-chat-wash: #fffdf7;
+}
+
+.flow-light.careering-matte .flow-conclusion-card.rumination {
+  --ol-chat-accent: #8474c9;
+  --ol-chat-soft: #f0edfb;
+  --ol-chat-wash: #faf9ff;
+}
+
+.flow-light.careering-matte .flow-conclusion-tag,
+.flow-light.careering-matte .flow-conclusion-tag-sm {
+  border: 1px solid rgba(255, 255, 255, 0.64);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.6);
+  background: color-mix(in srgb, var(--ol-chat-accent) 13%, white);
+  color: #43505c;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+.flow-light.careering-matte .flow-conclusion-tag::before,
+.flow-light.careering-matte .flow-conclusion-tag-sm::before {
+  background: var(--ol-chat-accent);
+}
+
+/* Rumination keeps the current combination-unlock workbench and receives only the skin. */
+.rumination-v4-root {
+  background:
+    radial-gradient(circle at 10% 8%, rgba(132, 116, 201, 0.11), transparent 29%),
+    radial-gradient(circle at 92% 76%, rgba(111, 155, 216, 0.09), transparent 31%),
+    linear-gradient(180deg, #fbfbfe 0%, #f7f7fc 58%, #fcfbfd 100%);
+}
+
+.rumination-v4-root .rumination-beautiful-card,
+.rumination-v4-root .rumination-beautiful-card--chat {
+  border-color: rgba(132, 116, 201, 0.14);
+  background: rgba(255, 255, 255, 0.58);
+  -webkit-backdrop-filter: blur(18px) saturate(1.04);
+  backdrop-filter: blur(18px) saturate(1.04);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.86), 0 16px 44px rgba(49, 44, 75, 0.055);
+}
+
+.rumination-v4-root .conclusion-card-v4 {
+  border-color: rgba(132, 116, 201, 0.22) !important;
+  background: linear-gradient(135deg, #f3f0fc 0%, #fbfaff 52%, #edf3fb 100%) !important;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, #8474c9 14%, white),
+    color-mix(in srgb, #f0edfb 78%, white) 52%,
+    color-mix(in srgb, #dbe7f6 34%, white)
+  ) !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.9), 0 13px 34px rgba(49, 44, 75, 0.07) !important;
+}
+
+.rumination-v4-root .conclusion-card-v4 [class*='rounded-full'] {
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.68);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-light.careering-matte .flow-msg-ai-content,
+  .flow-light.careering-matte .flow-msg-user-content,
+  .flow-light.careering-matte .flow-conclusion-card {
+    transition: none !important;
+  }
+}

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { User, BookOpen, HelpCircle, Trash2, Settings, Ticket, UsersRound } from 'lucide-react';
+import { ArrowLeft, User, BookOpen, CalendarCheck, HelpCircle, Trash2, Settings, Ticket, UsersRound } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useLocale } from '@/hooks/useLocale';
 
@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { path: '/dashboard/help', icon: HelpCircle, labelKey: 'dashboard.helpCenter' },
   { path: '/dashboard/recycle', icon: Trash2, labelKey: 'dashboard.recycleBin' },
   { path: '/dashboard/codes', icon: Ticket, labelKey: 'dashboard.myCodes' },
+  { path: '/dashboard/consultation', icon: CalendarCheck, label: '报告解读' },
   { path: '/dashboard/team-analysis', icon: UsersRound, labelKey: 'dashboard.teamAnalysis' },
   { path: '/dashboard/settings', icon: Settings, labelKey: 'dashboard.setting' },
 ];
@@ -30,6 +31,8 @@ export default function DashboardLayout({
   // 首帧统一占位，避免 SSR/客户端 auth 状态不一致导致 React 418/423 水合错误
   useEffect(() => {
     setMounted(true);
+    document.documentElement.setAttribute('data-profile-page', 'true');
+    return () => document.documentElement.removeAttribute('data-profile-page');
   }, []);
 
   if (!mounted) {
@@ -44,50 +47,88 @@ export default function DashboardLayout({
   const initials = (user?.username || user?.email || 'U')
     .slice(0, 2)
     .toUpperCase();
+  const previewSuffix =
+    process.env.NODE_ENV === 'development' &&
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('ui_preview') === '1'
+      ? '?ui_preview=1'
+      : '';
 
   return (
-    <div className="flex min-h-[calc(100vh-3.5rem)] bg-bd-bg">
-      <aside className="w-64 bg-bd-card/80 backdrop-blur-lg border-r border-bd-border fixed left-0 top-14 bottom-0 flex flex-col items-center pt-8 px-4 z-20">
-        <div
-          className="w-20 h-20 rounded-full flex items-center justify-center text-white text-2xl font-semibold mb-3 overflow-hidden ring-2 ring-black/20 ring-offset-2 ring-offset-bd-card shadow-[0_2px_8px_rgba(0,0,0,0.15)]"
-          style={{
-            background: user?.avatar_url
-              ? `url(${user.avatar_url}) center/cover`
-              : 'linear-gradient(135deg, var(--bd-phase-values), var(--bd-phase-strengths))',
-          }}
-        >
-          {!user?.avatar_url && initials}
-        </div>
-        <h3 className="font-medium text-bd-fg mb-8 truncate max-w-full px-2 text-center">
-          {displayName}
-        </h3>
+    <div className="ol-profile-app">
+      <div className="ol-profile-backdrop" aria-hidden="true">
+        <span className="ol-profile-glow ol-profile-glow-blue" />
+        <span className="ol-profile-glow ol-profile-glow-green" />
+        <span className="ol-profile-glow ol-profile-glow-gold" />
+        <span className="ol-profile-glow ol-profile-glow-coral" />
+      </div>
+      <svg className="ol-profile-line-art" viewBox="0 0 520 260" aria-hidden="true">
+        <path d="M6 248C94 236 135 172 204 179c66 7 72 75 146 55 54-15 68-76 126-88" />
+        <path className="ol-profile-leaf" d="M396 187c-4-40 12-73 44-96M417 139c-18-16-37-16-55-3 19 18 38 18 55 3ZM430 111c7-22 22-35 45-37-4 25-19 38-45 37Z" />
+        <circle cx="204" cy="179" r="4" />
+        <circle cx="350" cy="234" r="4" />
+      </svg>
 
-        <nav className="w-full space-y-2">
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const isActive =
-              item.path === '/dashboard'
-                ? pathname === '/dashboard'
-                : pathname.startsWith(item.path);
-            return (
-              <Link
-                key={item.path}
-                href={item.path}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                  isActive
-                    ? 'bg-bd-ui-accent text-bd-ui-accent-fg'
-                    : 'text-bd-muted hover:text-bd-fg hover:bg-bd-overlay-md'
-                }`}
+      <div className="ol-profile-page">
+        <header className="ol-profile-masthead">
+          <div>
+            <p className="ol-profile-kicker">PERSONAL SPACE</p>
+            <h1>我的空间</h1>
+            <p>回看走过的路，也从这里继续。</p>
+          </div>
+          <Link href="/" className="ol-profile-back">
+            <ArrowLeft aria-hidden="true" />
+            返回首页
+          </Link>
+        </header>
+
+        <div className="ol-profile-layout">
+          <aside className="ol-profile-sidebar" aria-label="个人空间导航">
+            <section className="ol-profile-identity">
+              <span
+                className="ol-profile-avatar"
+                style={{
+                  background: user?.avatar_url
+                    ? `url(${user.avatar_url}) center/cover`
+                    : 'linear-gradient(145deg, #79a9e0, #72b7a1)',
+                }}
               >
-                <Icon className="w-5 h-5 flex-shrink-0" />
-                <span className="text-sm">{t(item.labelKey)}</span>
-              </Link>
-            );
-          })}
-        </nav>
-      </aside>
+                {!user?.avatar_url && initials}
+              </span>
+              <div>
+                <strong>{displayName}</strong>
+                <small>{user?.email || user?.phone || 'OpenLife 探索者'}</small>
+              </div>
+              <Link href={`/dashboard/settings${previewSuffix}`}>编辑资料</Link>
+            </section>
 
-      <main className="ml-64 flex-1 p-8 min-w-0">{children}</main>
+            <nav className="ol-profile-nav">
+              {NAV_ITEMS.map((item) => {
+                const Icon = item.icon;
+                const isActive = item.path === '/dashboard'
+                  ? pathname === '/dashboard'
+                  : pathname.startsWith(item.path);
+                return (
+                  <Link
+                    key={item.path}
+                    href={`${item.path}${previewSuffix}`}
+                    aria-current={isActive ? 'page' : undefined}
+                  >
+                    <Icon aria-hidden="true" />
+                    <span>{'label' in item ? item.label : t(item.labelKey)}</span>
+                  </Link>
+                );
+              })}
+            </nav>
+            <p className="ol-profile-side-note">
+              你的记录只属于你。<br />
+              随时可以回看、导出或删除。
+            </p>
+          </aside>
+
+          <main className="ol-profile-main">{children}</main>
+        </div>
+      </div>
     </div>
   );
 }

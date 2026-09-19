@@ -1,0 +1,423 @@
+/* Personal space — a quiet archive rather than a management dashboard. */
+.ol-profile-app {
+  --profile-blue: #5e91e6;
+  --profile-green: #5eb48f;
+  --profile-coral: #eb7f84;
+  --profile-gold: #dda83b;
+  --profile-violet: #8f78d8;
+  --bd-bg: #f8fafb;
+  --bd-bg-card: #fff;
+  --bd-bg-overlay: rgba(255,255,255,.62);
+  --bd-bg-overlay-md: rgba(255,255,255,.82);
+  --bd-bg-surface-2: #f6f8fa;
+  --bd-border: #e1e7ec;
+  --bd-border-strong: #d7e0e7;
+  --bd-fg: #24313e;
+  --bd-fg-muted: #72808d;
+  --bd-fg-subtle: #929da8;
+  --bd-ui-accent: #315f9f;
+  --bd-ui-accent-fg: #fff;
+  position: relative;
+  z-index: 4;
+  min-height: calc(100vh - 3.5rem);
+  min-height: calc(100dvh - 3.5rem);
+  overflow: clip;
+  isolation: isolate;
+  color: #24313e;
+  background: #f8fafb;
+}
+
+.ol-profile-backdrop {
+  position: fixed;
+  z-index: -2;
+  inset: 3.5rem 0 0;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(54% 56% at -8% 5%, rgba(94,145,230,.13), transparent 70%),
+    radial-gradient(42% 46% at 105% 4%, rgba(221,168,59,.105), transparent 72%),
+    radial-gradient(46% 50% at 102% 102%, rgba(94,180,143,.11), transparent 70%),
+    radial-gradient(42% 44% at -5% 105%, rgba(235,127,132,.075), transparent 72%),
+    linear-gradient(145deg,#fbfdff 0%,#f8fafb 52%,#fcfbf8 100%);
+}
+
+.ol-profile-backdrop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: .02;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.8'/%3E%3C/svg%3E");
+}
+
+.ol-profile-glow {
+  position: absolute;
+  width: min(38vw, 560px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  filter: blur(78px);
+  opacity: .13;
+  animation: ol-profile-glow 28s ease-in-out infinite alternate;
+}
+
+.ol-profile-glow-blue { top: -28%; left: -12%; background: var(--profile-blue); }
+.ol-profile-glow-green { right: -18%; bottom: -30%; background: var(--profile-green); animation-delay: -9s; }
+.ol-profile-glow-gold { top: -32%; right: -14%; background: var(--profile-gold); animation-delay: -17s; }
+.ol-profile-glow-coral { left: 26%; bottom: -42%; background: var(--profile-coral); opacity: .07; animation-delay: -5s; }
+
+@keyframes ol-profile-glow {
+  from { transform: translate3d(-1%,-1%,0) scale(.96); }
+  to { transform: translate3d(2%,1.5%,0) scale(1.08); }
+}
+
+.ol-profile-line-art {
+  position: fixed;
+  z-index: -1;
+  right: -28px;
+  bottom: -4px;
+  width: min(31vw,520px);
+  color: #73aa94;
+  opacity: .12;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.ol-profile-line-art path,
+.ol-profile-line-art circle { fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+.ol-profile-leaf { transform-origin: 396px 187px; animation: ol-profile-leaf-sway 18s ease-in-out infinite; }
+
+@keyframes ol-profile-leaf-sway {
+  0%,72%,100% { transform: rotate(0); }
+  80% { transform: rotate(-2.8deg); }
+  90% { transform: rotate(1.8deg); }
+}
+
+.ol-profile-page { width: min(1320px, calc(100% - 48px)); margin: 0 auto; padding: 34px 0 82px; }
+.ol-profile-masthead { display: flex; align-items: end; justify-content: space-between; gap: 24px; padding: 15px 2px 31px; }
+.ol-profile-kicker { margin: 0; color: #6c7b89; font-size: 10px; font-weight: 650; letter-spacing: .16em; text-transform: uppercase; }
+.ol-profile-masthead h1 { margin: 5px 0; color: #1d2835; font-size: clamp(32px,3.1vw,46px); font-weight: 690; line-height: 1.15; letter-spacing: -.04em; }
+.ol-profile-masthead > div > p:last-child { color: #71808f; font-size: 15px; }
+
+.ol-profile-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 9px 16px;
+  border: 1px solid rgba(214,222,229,.86);
+  border-radius: 999px;
+  color: #657381;
+  background: rgba(255,255,255,.62);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  font-size: 12px;
+  transition: color .2s, border-color .2s, background .2s;
+}
+
+.ol-profile-back svg { width: 16px; height: 16px; }
+.ol-profile-back:hover { border-color: #bdc9d3; background: rgba(255,255,255,.92); color: #202c38; }
+.ol-profile-layout { display: grid; grid-template-columns: 238px minmax(0,1fr); align-items: start; gap: 28px; }
+
+.ol-profile-sidebar {
+  position: sticky;
+  top: calc(3.5rem + 22px);
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid rgba(221,227,232,.78);
+  border-radius: 22px;
+  background: rgba(255,255,255,.56);
+  box-shadow: 0 16px 44px rgba(35,50,64,.04);
+  -webkit-backdrop-filter: blur(20px) saturate(108%);
+  backdrop-filter: blur(20px) saturate(108%);
+}
+
+.ol-profile-identity { display: grid; grid-template-columns: 54px minmax(0,1fr); gap: 12px; align-items: center; padding: 8px 7px 19px; border-bottom: 1px solid rgba(216,224,230,.72); }
+.ol-profile-avatar { grid-row: span 2; display: grid; place-items: center; width: 54px; height: 54px; overflow: hidden; border: 2px solid rgba(255,255,255,.94); border-radius: 50%; color: #fff; font-size: 17px; font-weight: 650; box-shadow: 0 0 0 1px rgba(95,139,165,.24),0 7px 18px rgba(67,100,117,.12); }
+.ol-profile-identity strong { display: block; overflow: hidden; color: #23303d; font-size: 15px; font-weight: 660; text-overflow: ellipsis; white-space: nowrap; }
+.ol-profile-identity small { display: block; overflow: hidden; margin-top: 2px; color: #8a96a2; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.ol-profile-identity > a { grid-column: 2; justify-self: start; color: #71859a; font-size: 11px; }
+.ol-profile-identity > a:hover { color: #315f9f; }
+
+.ol-profile-nav { display: flex; flex-direction: column; gap: 5px; padding: 14px 0 5px; }
+.ol-profile-nav a { position: relative; display: flex; align-items: center; gap: 11px; width: 100%; min-height: 43px; padding: 9px 12px; border: 1px solid transparent; border-radius: 12px; color: #687786; text-align: left; transition: background .2s,border-color .2s,color .2s,transform .2s; }
+.ol-profile-nav a::before { content: ''; position: absolute; left: -1px; top: 12px; bottom: 12px; width: 2px; border-radius: 2px; background: transparent; }
+.ol-profile-nav a:hover { background: rgba(255,255,255,.72); color: #273441; transform: translateX(1px); }
+.ol-profile-nav a[aria-current='page'] { border-color: rgba(94,145,230,.13); background: rgba(94,145,230,.09); color: #2b527f; font-weight: 620; }
+.ol-profile-nav a[aria-current='page']::before { background: var(--profile-blue); }
+.ol-profile-nav svg { width: 19px; height: 19px; flex: 0 0 auto; stroke-width: 1.55; }
+.ol-profile-nav span { font-size: 13px; }
+.ol-profile-side-note { margin: 20px 9px 7px; color: #98a2ac; font-size: 10px; line-height: 1.8; }
+.ol-profile-main { min-width: 0; }
+.ol-profile-content { width: 100%; max-width: none !important; }
+
+.ol-profile-panel-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; min-height: 88px; padding: 5px 4px 23px; }
+.ol-profile-panel-heading h2 { margin: 4px 0 6px; color: #202c38; font-size: clamp(27px,2.5vw,35px); font-weight: 680; line-height: 1.15; letter-spacing: -.035em; }
+.ol-profile-panel-heading > div:first-child > p:last-child { color: #778492; font-size: 14px; }
+.ol-profile-heading-action { flex: 0 0 auto; }
+.ol-profile-heading-button { min-height: 42px; padding: 9px 17px; border: 1px solid #222b35; border-radius: 999px; color: #fff; background: #222b35; box-shadow: 0 9px 22px rgba(27,37,47,.12); font-size: 12px; font-weight: 620; }
+
+.ol-profile-surface,
+.ol-profile-content [class~='bg-bd-card/80'] {
+  border: 1px solid rgba(218,226,232,.82) !important;
+  background: rgba(255,255,255,.72) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.88), 0 14px 42px rgba(39,54,68,.045) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(108%) !important;
+  backdrop-filter: blur(18px) saturate(108%) !important;
+}
+
+.ol-profile-overview { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin-bottom: 14px; }
+.ol-profile-overview article { display: flex; align-items: center; gap: 15px; min-height: 84px; padding: 16px 20px; border: 1px solid rgba(222,228,233,.7); border-radius: 17px; background: rgba(255,255,255,.48); }
+.ol-profile-overview article:nth-child(1) > span { color: var(--profile-blue); }
+.ol-profile-overview article:nth-child(2) > span { color: var(--profile-green); }
+.ol-profile-overview article:nth-child(3) > span { color: var(--profile-violet); }
+.ol-profile-overview article > span { min-width: 40px; font-size: 27px; font-weight: 660; letter-spacing: -.04em; }
+.ol-profile-overview p { color: #33414e; font-size: 13px; font-weight: 620; }
+.ol-profile-overview small { display: block; margin-top: 3px; color: #929da8; font-size: 10px; font-weight: 400; }
+
+.ol-profile-summary { padding: 24px 27px; border-radius: 20px; }
+.ol-profile-summary > header { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.ol-profile-section-mark { color: var(--profile-blue); font-size: 11px; letter-spacing: .08em; }
+.ol-profile-edit-link { min-height: 34px; padding: 7px 12px; border: 1px solid #e0e6eb; border-radius: 9px; color: #6e7e8e; background: rgba(255,255,255,.7); font-size: 11px; }
+.ol-profile-fields { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 21px 34px; margin-top: 24px; }
+.ol-profile-summary-groups { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; padding-top: 18px; }
+.ol-profile-summary-group { min-width: 0; padding: 17px 18px; border: 1px solid rgba(218,226,232,.78); border-radius: 16px; background: rgba(255,255,255,.5); box-shadow: inset 0 1px rgba(255,255,255,.86); }
+.ol-profile-summary-group.is-wide { grid-column: 1 / -1; }
+.ol-profile-summary-group h3 { margin: 0 0 14px; color: #7e8c98; font-size: 9px; font-weight: 650; letter-spacing: .13em; text-transform: uppercase; }
+.ol-profile-summary-items { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px 22px; }
+.ol-profile-summary-group.is-wide .ol-profile-summary-items { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.ol-profile-summary-items > div { min-width: 0; }
+.ol-profile-summary-items p { margin: 0 0 4px; color: #9aa5ae; font-size: 9px; }
+.ol-profile-summary-items strong { display: block; overflow: hidden; color: #34424e; font-size: 12px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
+.ol-profile-journey-list { display: grid; gap: 15px; }
+
+.ol-profile-journey-card { overflow: hidden; padding: 25px 27px 22px; border-radius: 21px; }
+.ol-profile-journey-card.is-featured { padding: 29px 31px 25px; }
+.ol-profile-journey-eyebrow { margin-bottom: 4px; color: #8492a0; font-size: 10px; letter-spacing: .08em; }
+.ol-profile-status { flex: 0 0 auto; padding: 4px 10px; border: 1px solid rgba(94,145,230,.2); border-radius: 999px; color: #5276a3; background: rgba(94,145,230,.07); font-size: 10px; }
+.ol-profile-status.is-complete { border-color: rgba(94,180,143,.22); color: #3e886d; background: rgba(94,180,143,.075); }
+.ol-profile-stage-scroll { margin: 20px 0 17px; padding: 7px 0 8px; overscroll-behavior-inline: contain; scrollbar-width: thin; scrollbar-color: rgba(135,151,165,.22) transparent; }
+.ol-profile-journey-card > footer { display: flex; align-items: center; justify-content: flex-end; gap: 20px; padding-top: 17px; border-top: 1px solid rgba(218,225,231,.7); }
+
+.ol-profile-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 10px 18px;
+  border: 1px solid #222b35;
+  border-radius: 999px;
+  color: #fff !important;
+  background: #222b35 !important;
+  box-shadow: 0 9px 22px rgba(27,37,47,.13);
+  font-size: 12px;
+  font-weight: 620;
+  transition: transform .2s, box-shadow .2s, opacity .2s;
+}
+.ol-profile-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 12px 27px rgba(27,37,47,.18); }
+.ol-profile-primary:disabled { opacity: .45; cursor: not-allowed; }
+.ol-profile-purchase-card { margin-top: 4px; padding: 21px 24px; border-radius: 19px; }
+
+.ol-profile-guide-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+.ol-profile-guide-grid article { min-height: 240px; padding: 26px; border: 1px solid rgba(218,226,232,.82); border-radius: 20px; background: rgba(255,255,255,.7); box-shadow: 0 14px 42px rgba(39,54,68,.04); transition: transform .24s ease, box-shadow .24s ease, border-color .24s ease; }
+.ol-profile-guide-grid article:hover { transform: translateY(-4px); border-color: rgba(94,145,230,.3); box-shadow: 0 20px 50px rgba(39,54,68,.09); }
+.ol-profile-guide-grid article > span { color: var(--guide-color); font-size: 12px; }
+.ol-profile-guide-grid h3 { margin: 42px 0 10px; color: #273541; font-size: 19px; }
+.ol-profile-guide-grid p { color: #74818e; font-size: 13px; line-height: 1.8; }
+.ol-profile-guide-grid a { display: inline-block; margin-top: 22px; color: var(--guide-color); font-size: 12px; }
+
+.ol-support-count { display: inline-flex; align-items: center; padding: 6px 11px; border: 1px solid #dfe5ea; border-radius: 999px; color: #72808d; background: rgba(255,255,255,.6); font-size: 10px; }
+.ol-support-count b { color: #315f9f; font-size: 12px; }
+.ol-support-root { overflow: hidden; border-radius: 22px; }
+.ol-support-intro { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 22px 25px; border-bottom: 1px solid #e1e7ec; }
+.ol-support-intro > div { display: flex; align-items: center; gap: 12px; }
+.ol-support-intro-icon { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid rgba(94,145,230,.18); border-radius: 13px; color: #527cb4; background: rgba(94,145,230,.08); }
+.ol-support-intro-icon svg { width: 20px; height: 20px; }
+.ol-support-intro strong { display: block; color: #273541; font-size: 15px; }
+.ol-support-intro small { display: block; margin-top: 3px; color: #8a96a2; font-size: 10px; }
+.ol-support-grid { display: grid; grid-template-columns: minmax(0,1.35fr) minmax(300px,.65fr); min-height: 590px; }
+.ol-support-card { min-width: 0; padding: 22px; }
+.ol-support-card + .ol-support-card { border-left: 1px solid #e1e7ec; }
+.ol-support-card-head { display: grid; grid-template-columns: 38px minmax(0,1fr) auto; align-items: center; gap: 11px; margin-bottom: 16px; }
+.ol-support-card-head > span:first-child { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; color: #527cb4; background: #f0f5fb; }
+.ol-support-card-head svg { width: 18px; height: 18px; }
+.ol-support-card-head h3 { color: #2c3945; font-size: 15px; font-weight: 650; }
+.ol-support-card-head p { margin-top: 2px; color: #929da8; font-size: 10px; }
+.ol-support-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.ol-support-search { display: flex; align-items: center; gap: 8px; flex: 1; min-height: 40px; padding: 0 12px; border: 1px solid #dfe5ea; border-radius: 11px; color: #94a0aa; background: rgba(255,255,255,.76); }
+.ol-support-search svg { width: 15px; height: 15px; flex: 0 0 auto; }
+.ol-support-search input { width: 100%; min-width: 0; border: 0; outline: 0; color: #33414e; background: transparent; font-size: 11px; }
+.ol-support-filters { display: flex; padding: 3px; border: 1px solid #e1e6ea; border-radius: 10px; background: rgba(255,255,255,.55); }
+.ol-support-filters button { min-height: 31px; padding: 5px 9px; border: 0; border-radius: 7px; color: #82909c; background: transparent; font-size: 10px; }
+.ol-support-filters button[aria-pressed='true'] { color: #2f537d; background: #fff; box-shadow: 0 3px 9px rgba(40,55,70,.07); }
+.ol-support-message-list { height: 465px; overflow: hidden; border: 1px solid #e7ebee; border-radius: 14px; background: rgba(255,255,255,.42); }
+.ol-support-faq-list { max-height: 465px; margin-top: 10px; overflow-y: auto; }
+.ol-support-faq-list details { border-top: 1px solid #e2e7eb; }
+.ol-support-faq-list details:first-child { border-top: 0; }
+.ol-support-faq-list summary { display: flex; justify-content: space-between; gap: 14px; padding: 18px 2px; list-style: none; color: #34424f; font-size: 12px; font-weight: 610; cursor: pointer; }
+.ol-support-faq-list summary::-webkit-details-marker { display: none; }
+.ol-support-faq-list summary span { flex: 0 0 auto; color: #84919d; transition: transform .2s; }
+.ol-support-faq-list details[open] summary span { transform: rotate(45deg); }
+.ol-support-faq-list details p { padding: 0 28px 18px 2px; color: #778491; font-size: 11px; line-height: 1.85; }
+.ol-support-empty { padding: 40px 0; color: #8a96a2; text-align: center; font-size: 12px; }
+.ol-support-feedback { min-height: 620px; }
+
+.ol-profile-empty { display: grid; place-items: center; min-height: 370px; padding: 50px; border-radius: 21px; text-align: center; }
+.ol-profile-empty > span { display: grid; place-items: center; width: 66px; height: 66px; border: 1px solid #dce3e8; border-radius: 50%; color: #95a3ae; }
+.ol-profile-empty > span svg { width: 24px; height: 24px; }
+.ol-profile-empty h3 { margin: 19px 0 7px; color: #33414d; }
+.ol-profile-empty p { max-width: 46ch; color: #8995a0; font-size: 13px; }
+
+.ol-codes-page > .mb-6.flex { margin-bottom: 20px; padding: 4px; border: 1px solid #e0e6eb; border-radius: 12px; background: rgba(255,255,255,.55); }
+.ol-profile-code-entry { display: grid; grid-template-columns: minmax(240px,.72fr) minmax(340px,1.28fr); gap: 50px; margin-top: 20px; padding: 32px 36px; border-radius: 21px; }
+.ol-profile-code-entry h3 { margin: 34px 0 8px; color: #263440; font-size: 21px; }
+.ol-profile-code-entry > div > p:last-child { color: #778491; font-size: 12px; line-height: 1.8; }
+.ol-profile-code-entry form { align-self: center; }
+.ol-profile-code-entry label { display: block; margin-bottom: 8px; color: #8995a0; font-size: 11px; }
+.ol-profile-code-entry form > div { display: flex; gap: 9px; }
+.ol-profile-code-entry input { min-width: 0; flex: 1; height: 46px; padding: 0 15px; border: 1px solid #dce3e8; border-radius: 12px; outline: 0; color: #263440; background: rgba(255,255,255,.88); letter-spacing: .06em; text-transform: uppercase; }
+.ol-profile-code-entry input:focus { border-color: var(--profile-blue); box-shadow: 0 0 0 3px rgba(94,145,230,.08); }
+.ol-profile-code-entry form > p { min-height: 24px; padding-top: 7px; font-size: 10px; }
+.ol-profile-code-entry form > p.is-error { color: #a23e4d; }
+.ol-profile-code-entry form > p.is-success { color: #23745e; }
+
+.ol-profile-team-card { display: grid; grid-template-columns: minmax(260px,.85fr) minmax(360px,1.15fr); align-items: center; gap: 52px; padding: 42px; border-radius: 21px; }
+.ol-profile-team-visual { position: relative; min-height: 250px; border-radius: 18px; background: radial-gradient(circle at center,rgba(94,145,230,.14),transparent 42%); }
+.ol-profile-team-visual::before,.ol-profile-team-visual::after { content: ''; position: absolute; inset: 24%; border: 1px solid rgba(110,130,149,.15); border-radius: 50%; }
+.ol-profile-team-visual::after { inset: 38%; }
+.ol-profile-team-visual i { position: absolute; width: 34px; height: 34px; border: 6px solid rgba(255,255,255,.9); border-radius: 50%; background: var(--profile-blue); box-shadow: 0 6px 17px rgba(44,66,85,.1); }
+.ol-profile-team-visual i:nth-child(1) { left: 47%; top: 15%; }
+.ol-profile-team-visual i:nth-child(2) { right: 19%; top: 41%; background: var(--profile-green); }
+.ol-profile-team-visual i:nth-child(3) { right: 31%; bottom: 15%; background: var(--profile-coral); }
+.ol-profile-team-visual i:nth-child(4) { left: 25%; bottom: 18%; background: var(--profile-gold); }
+.ol-profile-team-visual i:nth-child(5) { left: 15%; top: 38%; background: var(--profile-violet); }
+.ol-profile-team-card > div:last-child > span { color: var(--profile-violet); font-size: 10px; letter-spacing: .12em; }
+.ol-profile-team-card h3 { margin: 36px 0 10px; color: #263440; font-size: 23px; }
+.ol-profile-team-card p { margin-top: 8px; color: #778491; font-size: 13px; line-height: 1.85; }
+.ol-profile-team-card .ol-profile-primary { margin-top: 24px; }
+.ol-team-notice { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 16px; padding: 12px 14px; border: 1px solid rgba(221,168,59,.28); border-radius: 12px; color: #725d31; background: rgba(255,248,229,.7); font-size: 11px; }
+.ol-team-notice > span { display: inline-flex; align-items: center; gap: 6px; }
+.ol-team-notice svg { width: 14px; height: 14px; }
+.ol-team-notice a { color: #315f9f; }
+
+.ol-settings-page > section { border-color: rgba(218,226,232,.82) !important; border-radius: 22px !important; background: rgba(255,255,255,.7) !important; box-shadow: inset 0 1px rgba(255,255,255,.94), 0 16px 46px rgba(35,51,65,.05) !important; }
+.ol-settings-page input,.ol-settings-page textarea,.ol-settings-page select { color: #263440 !important; background-color: rgba(255,255,255,.82) !important; }
+.ol-settings-security-section { padding: 28px !important; }
+.ol-settings-section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 26px; margin-bottom: 19px; padding: 0 2px; }
+.ol-settings-section-heading span,.ol-settings-dialog header span { color: #6685ae; font-size: 9px; font-weight: 680; letter-spacing: .16em; }
+.ol-settings-section-heading h2 { margin: 5px 0 0; color: #273540; font-size: 20px; font-weight: 660; }
+.ol-settings-section-heading > p { max-width: 48ch; color: #8a97a2; font-size: 10px; line-height: 1.7; text-align: right; }
+.ol-account-security-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+.ol-account-security-card { position: relative; min-height: 244px; overflow: hidden; padding: 27px; border: 1px solid rgba(211,221,228,.84); border-radius: 22px; background: rgba(255,255,255,.7); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); box-shadow: inset 0 1px rgba(255,255,255,.94), 0 16px 46px rgba(35,51,65,.05); }
+.ol-account-security-card::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(circle at 4% 0%,rgba(95,145,230,.13),transparent 42%),radial-gradient(circle at 100% 100%,rgba(98,175,145,.08),transparent 38%); }
+.ol-account-security-card > * { position: relative; }
+.ol-account-security-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.ol-account-security-title { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.ol-account-security-icon { display: grid; place-items: center; width: 39px; height: 39px; flex: 0 0 auto; border: 1px solid rgba(95,145,230,.2); border-radius: 13px; color: #4f80bf; background: rgba(239,245,253,.86); }
+.ol-account-security-icon svg { width: 19px; height: 19px; stroke-width: 1.7; }
+.ol-account-security-title h3 { margin: 1px 0 5px; color: #273540; font-size: 17px; font-weight: 670; }
+.ol-account-security-title p { max-width: 38ch; color: #84919d; font-size: 10px; line-height: 1.65; }
+.ol-account-security-status { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; flex: 0 0 auto; padding: 4px 9px; border: 1px solid rgba(135,150,163,.2); border-radius: 999px; color: #74828e; background: rgba(255,255,255,.62); font-size: 9px; white-space: nowrap; }
+.ol-account-security-status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #a0aab3; }
+.ol-account-security-status.is-verified { border-color: rgba(66,155,121,.2); color: #3c8267; background: rgba(231,247,240,.78); }
+.ol-account-security-status.is-verified::before { background: #54aa88; }
+.ol-account-security-body { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-top: 44px; padding-top: 20px; border-top: 1px solid rgba(218,225,230,.72); }
+.ol-account-security-value { min-width: 0; }
+.ol-account-security-value small { display: block; margin-bottom: 6px; color: #9aa5ae; font-size: 9px; }
+.ol-account-security-value strong { display: block; max-width: 260px; overflow: hidden; color: #34424e; font-size: 12px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
+.ol-account-security-value p { max-width: 35ch; margin-top: 5px; color: #8a97a2; font-size: 9px; line-height: 1.55; }
+.ol-account-security-action { min-height: 39px; flex: 0 0 auto; padding: 8px 14px; border: 1px solid #202a34; border-radius: 999px; color: #fff; background: #202a34; box-shadow: 0 8px 20px rgba(29,40,50,.12); font-size: 10px; font-weight: 620; transition: transform .18s,box-shadow .18s; }
+.ol-account-security-action:hover { transform: translateY(-1px); box-shadow: 0 11px 24px rgba(29,40,50,.18); }
+.ol-account-security-action:disabled { transform: none; opacity: .48; box-shadow: none; }
+.ol-settings-dialog-shell { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 22px; }
+.ol-settings-dialog-backdrop { position: absolute; inset: 0; border: 0; background: rgba(31,39,47,.27); -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); }
+.ol-settings-dialog { position: relative; width: min(100%,470px); padding: 26px; border: 1px solid rgba(211,221,228,.9); border-radius: 24px; background: rgba(252,253,254,.94); -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); box-shadow: inset 0 1px rgba(255,255,255,.94),0 28px 80px rgba(29,40,50,.18); }
+.ol-settings-dialog > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.ol-settings-dialog > header h3 { margin-top: 5px; color: #273540; font-size: 21px; font-weight: 670; }
+.ol-settings-dialog > header button { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid #dfe5ea; border-radius: 50%; color: #73808b; background: rgba(255,255,255,.7); }
+.ol-settings-dialog > header button svg { width: 16px; height: 16px; }
+.ol-settings-dialog-description { margin: 13px 0 21px; color: #84919d; font-size: 10px; line-height: 1.7; }
+.ol-settings-password-fields { display: grid; gap: 13px; }
+.ol-settings-password-fields label > span { display: block; margin: 0 0 7px 2px; color: #73818d; font-size: 10px; }
+.ol-settings-password-fields input { width: 100%; min-height: 44px; padding: 10px 13px; border: 1px solid #dce3e8; border-radius: 12px; outline: 0; font-size: 12px; }
+.ol-settings-password-fields input:focus { border-color: #6f9bd8; box-shadow: 0 0 0 3px rgba(95,145,230,.1); }
+.ol-settings-lock-note { margin-top: 12px; color: #b25360; font-size: 10px; }
+.ol-settings-dialog > footer { display: flex; justify-content: flex-end; gap: 9px; margin-top: 23px; }
+.ol-settings-dialog > footer button { min-height: 39px; padding: 8px 16px; border: 1px solid #dce3e8; border-radius: 999px; color: #687581; background: rgba(255,255,255,.72); font-size: 10px; font-weight: 620; }
+.ol-settings-dialog > footer button[type='submit'] { border-color: #202a34; color: #fff; background: #202a34; box-shadow: 0 8px 20px rgba(29,40,50,.12); }
+.ol-settings-dialog > footer button:disabled { opacity: .5; }
+
+@media (max-width: 1040px) {
+  .ol-profile-page { width: min(100% - 28px, 900px); }
+  .ol-profile-layout { grid-template-columns: 1fr; gap: 18px; }
+  .ol-profile-sidebar { position: static; padding: 11px; }
+  .ol-profile-identity { grid-template-columns: 46px minmax(0,1fr) auto; padding: 5px 7px 13px; }
+  .ol-profile-avatar { grid-row: 1; width: 46px; height: 46px; }
+  .ol-profile-identity > a { grid-column: 3; grid-row: 1; }
+  .ol-profile-nav { flex-direction: row; overflow-x: auto; padding: 10px 0 2px; scrollbar-width: thin; }
+  .ol-profile-nav a { width: auto; min-width: max-content; }
+  .ol-profile-nav a::before { left: 12px; right: 12px; top: auto; bottom: -1px; width: auto; height: 2px; }
+  .ol-profile-side-note { display: none; }
+}
+
+@media (max-width: 760px) {
+  .ol-profile-page { width: min(100% - 22px, 660px); padding-top: 22px; }
+  .ol-profile-masthead { align-items: center; padding: 8px 2px 20px; }
+  .ol-profile-masthead h1 { font-size: 31px; }
+  .ol-profile-masthead > div > p:last-child { font-size: 12px; }
+  .ol-profile-back { width: 42px; padding: 9px; justify-content: center; }
+  .ol-profile-back:not(:focus) { font-size: 0; gap: 0; }
+  .ol-profile-panel-heading { min-height: 0; align-items: start; padding: 8px 2px 19px; }
+  .ol-profile-panel-heading h2 { font-size: 27px; }
+  .ol-profile-panel-heading > div:first-child > p:last-child { font-size: 12px; line-height: 1.6; }
+  .ol-profile-overview { grid-template-columns: 1fr; gap: 8px; }
+  .ol-profile-overview article { min-height: 68px; }
+  .ol-profile-summary,.ol-profile-journey-card,.ol-profile-journey-card.is-featured { padding: 20px 18px; }
+  .ol-profile-summary > header { align-items: flex-start; }
+  .ol-profile-fields { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+  .ol-profile-summary-groups { grid-template-columns: 1fr; }
+  .ol-profile-summary-group.is-wide { grid-column: auto; }
+  .ol-profile-summary-group.is-wide .ol-profile-summary-items { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .ol-profile-guide-grid { grid-template-columns: 1fr; }
+  .ol-profile-guide-grid article { min-height: 210px; }
+  .ol-support-intro { align-items: flex-start; padding: 18px; }
+  .ol-support-intro small { max-width: 30ch; }
+  .ol-support-intro .ol-profile-primary { padding-inline: 12px; }
+  .ol-support-grid { grid-template-columns: 1fr; }
+  .ol-support-card + .ol-support-card { border-left: 0; border-top: 1px solid #e1e7ec; }
+  .ol-support-message-list { height: 390px; }
+  .ol-support-faq-list { max-height: none; }
+  .ol-profile-code-entry { grid-template-columns: 1fr; gap: 22px; padding: 25px 21px; }
+  .ol-profile-code-entry h3 { margin-top: 13px; }
+  .ol-profile-team-card { grid-template-columns: 1fr; gap: 18px; padding: 26px 21px; }
+  .ol-profile-team-visual { min-height: 210px; }
+  .ol-team-notice { align-items: flex-start; flex-direction: column; }
+  .ol-settings-section-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .ol-settings-section-heading > p { text-align: left; }
+  .ol-account-security-grid { grid-template-columns: 1fr; }
+  .ol-account-security-card { min-height: 0; padding: 22px 18px; }
+  .ol-account-security-body { align-items: stretch; flex-direction: column; margin-top: 28px; }
+  .ol-account-security-action { width: 100%; }
+}
+
+@media (max-width: 520px) {
+  .ol-profile-identity > div small { max-width: 150px; }
+  .ol-profile-nav a { padding-inline: 10px; }
+  .ol-profile-nav a span { font-size: 11px; }
+  .ol-profile-panel-heading { flex-direction: column; }
+  .ol-profile-heading-action { align-self: stretch; }
+  .ol-profile-heading-button { width: 100%; }
+  .ol-support-intro { flex-direction: column; }
+  .ol-support-intro .ol-profile-primary { width: 100%; }
+  .ol-support-toolbar { align-items: stretch; flex-direction: column; }
+  .ol-support-filters { align-self: flex-start; }
+  .ol-profile-code-entry form > div { flex-direction: column; }
+  .ol-profile-code-entry .ol-profile-primary { width: 100%; }
+  .ol-settings-page > section { padding: 22px 18px !important; }
+  .ol-settings-security-section { padding: 18px !important; }
+  .ol-profile-summary-items,.ol-profile-summary-group.is-wide .ol-profile-summary-items { grid-template-columns: 1fr; }
+  .ol-settings-dialog { padding: 22px 18px; border-radius: 20px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ol-profile-glow,.ol-profile-leaf { animation: none !important; }
+}

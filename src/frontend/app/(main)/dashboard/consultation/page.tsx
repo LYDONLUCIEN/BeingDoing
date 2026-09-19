@@ -26,6 +26,7 @@ import {
   type ConsultationBooking,
   type ConsultationStatus,
 } from '@/lib/api/consultation';
+import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
 
 const STATUS_ICON: Record<ConsultationStatus, typeof Clock> = {
   pending_survey: PenLine,
@@ -78,11 +79,12 @@ export default function ConsultationListPage() {
   }, [load]);
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <header>
-        <h1 className="text-2xl font-bold text-bd-fg">{t('consultation.listTitle')}</h1>
-        <p className="text-sm text-bd-muted mt-1">{t('consultation.listSubtitle')}</p>
-      </header>
+    <div className="ol-profile-content space-y-6">
+      <DashboardPageHeader
+        kicker="REPORT CONSULTATION"
+        title={t('consultation.listTitle')}
+        description={t('consultation.listSubtitle')}
+      />
 
       {loading ? (
         <div className="flex justify-center py-16">

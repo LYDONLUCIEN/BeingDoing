@@ -1,0 +1,336 @@
+/* 本地 Chat UI 预览控制台。仅在 ?ui_preview=1 且 development 模式下渲染。 */
+
+.ol-chat-preview-bar {
+  position: relative;
+  z-index: 40;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 7px 18px;
+  border-bottom: 1px solid rgba(43, 54, 66, 0.08);
+  background: rgba(249, 250, 249, 0.78);
+  box-shadow: 0 8px 28px rgba(28, 39, 50, 0.055);
+  backdrop-filter: blur(20px) saturate(1.1);
+  -webkit-backdrop-filter: blur(20px) saturate(1.1);
+  color: #4d5965;
+  font-size: 12px;
+}
+
+.ol-chat-preview-badge,
+.ol-chat-preview-bar label,
+.ol-chat-preview-bar button {
+  display: inline-flex;
+  align-items: center;
+}
+
+.ol-chat-preview-badge {
+  gap: 7px;
+  margin-right: 4px;
+  color: #283542;
+  white-space: nowrap;
+}
+
+.ol-chat-preview-badge strong {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+}
+
+.ol-chat-preview-badge span {
+  color: #89939c;
+  font-size: 10px;
+}
+
+.ol-chat-preview-bar label {
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.ol-chat-preview-bar label > span {
+  color: #8a949e;
+}
+
+.ol-chat-preview-bar select,
+.ol-chat-preview-bar button {
+  min-height: 32px;
+  border: 1px solid rgba(48, 61, 72, 0.11);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.84);
+  color: #33404d;
+  box-shadow: 0 3px 12px rgba(37, 49, 61, 0.04);
+}
+
+.ol-chat-preview-bar select {
+  max-width: 170px;
+  padding: 0 28px 0 10px;
+  outline: none;
+}
+
+.ol-chat-preview-bar button {
+  gap: 6px;
+  padding: 0 11px;
+  transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ol-chat-preview-bar button:hover {
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(37, 49, 61, 0.08);
+  transform: translateY(-1px);
+}
+
+.ol-chat-preview-loading {
+  display: flex;
+  justify-content: center;
+  gap: 7px;
+  padding: 80px 0;
+}
+
+.ol-chat-preview-loading span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8d98a2;
+  animation: ol-preview-loading 1.1s ease-in-out infinite;
+}
+
+.ol-chat-preview-loading span:nth-child(2) { animation-delay: 0.16s; }
+.ol-chat-preview-loading span:nth-child(3) { animation-delay: 0.32s; }
+
+@keyframes ol-preview-loading {
+  0%, 100% { opacity: 0.25; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-4px); }
+}
+
+.ol-chat-preview-empty {
+  max-width: 440px;
+  margin: 12vh auto 0;
+  padding: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.66);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.46);
+  box-shadow: 0 18px 48px rgba(32, 45, 58, 0.06);
+  text-align: center;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.ol-chat-preview-empty span {
+  display: block;
+  margin-bottom: 9px;
+  color: #2d3945;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.ol-chat-preview-empty p {
+  margin: 0;
+  color: #74808b;
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+.ol-chat-preview-user-avatar {
+  background: linear-gradient(135deg, #657c91, #9aaaba) !important;
+}
+
+.ol-chat-preview-rumination-header {
+  position: relative;
+  z-index: 12;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 14px 28px 12px;
+  text-align: left;
+}
+
+.ol-chat-preview-rumination-header span {
+  color: #8b7e98;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+}
+
+.ol-chat-preview-rumination-header h1 {
+  margin: 1px 0 0;
+  color: #272130;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.ol-chat-preview-rumination-header p {
+  margin: 3px 0 0;
+  color: #776f7d;
+  font-size: 12px;
+}
+
+.ol-chat-preview-rumination-header > button {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: #25222a;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 650;
+  box-shadow: 0 8px 20px rgba(32, 27, 38, 0.16);
+}
+
+.ol-chat-preview-rumination-workbench {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  gap: 20px;
+  padding: 0 22px 18px;
+}
+
+.ol-chat-preview-table-card,
+.ol-chat-preview-rumination-chat {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ol-chat-preview-table-card {
+  flex: 1.12;
+  padding: 18px 16px;
+}
+
+.ol-chat-preview-rumination-chat {
+  flex: 0.88;
+  padding: 18px 18px 0;
+}
+
+.ol-chat-preview-chat-caption {
+  flex-shrink: 0;
+  padding: 0 5px 10px;
+  border-bottom: 1px solid rgba(41, 32, 50, 0.07);
+}
+
+.ol-chat-preview-chat-caption h2 {
+  margin: 0;
+  color: #2d2733;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.ol-chat-preview-chat-caption p {
+  margin: 2px 0 0;
+  color: #8a818f;
+  font-size: 11px;
+}
+
+.ol-chat-preview-rumination-chat .careering-chat-messages-inner {
+  --careering-msg-left-edge: 0px;
+  --careering-msg-right-edge: 0px;
+  padding: 0 6px;
+}
+
+.ol-chat-preview-rumination-chat .flow-chat-body {
+  padding: 16px 0 100px;
+}
+
+@media (max-width: 800px) {
+  .ol-chat-preview-bar {
+    justify-content: flex-start;
+    gap: 8px;
+    min-height: 46px;
+    padding: 6px 10px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .ol-chat-preview-bar::-webkit-scrollbar { display: none; }
+  .ol-chat-preview-badge span,
+  .ol-chat-preview-bar label > span,
+  .ol-chat-preview-bar button span { display: none; }
+  .ol-chat-preview-bar select { max-width: 142px; }
+
+  .ol-chat-preview-rumination-header {
+    padding: 11px 14px 10px;
+  }
+
+  .ol-chat-preview-rumination-header p { display: none; }
+  .ol-chat-preview-rumination-header h1 { font-size: 20px; }
+  .ol-chat-preview-rumination-header > button { padding: 8px 11px; font-size: 10px; }
+
+  .ol-chat-preview-rumination-workbench {
+    flex-direction: column;
+    gap: 12px;
+    padding: 0 10px 12px;
+    overflow-y: auto;
+  }
+
+  .ol-chat-preview-table-card {
+    min-height: 390px;
+    flex: none;
+  }
+
+  .ol-chat-preview-rumination-chat {
+    min-height: 500px;
+    flex: none;
+  }
+}
+
+@media (max-width: 639px) {
+  .ol-chat-preview-badge {
+    margin-right: 0;
+  }
+
+  .ol-chat-preview-badge strong {
+    display: none;
+  }
+
+  .ol-chat-preview-bar select {
+    max-width: 118px;
+  }
+
+  /* 预览页在窄屏聚焦单个聊天画布，避免桌面侧栏把消息压成狭长文字列。 */
+  .ol-chat-preview-shell .careering-sidebar {
+    display: none !important;
+  }
+
+  .ol-chat-preview-shell .careering-chat-header {
+    min-height: 62px;
+    padding: 10px 14px !important;
+  }
+
+  .ol-chat-preview-shell .careering-chat-phase-title {
+    position: static;
+    max-width: none;
+    margin-right: auto;
+    padding: 0;
+    transform: none;
+    text-align: left;
+  }
+
+  .ol-chat-preview-shell .careering-chat-messages-inner {
+    --careering-msg-left-edge: 10px;
+    --careering-msg-right-edge: 10px;
+    padding-right: 10px !important;
+    padding-left: 10px !important;
+  }
+
+  .ol-chat-preview-shell .flow-msg-ai-content,
+  .ol-chat-preview-shell .flow-msg-user-anchor,
+  .ol-chat-preview-shell .flow-msg-user-content {
+    max-width: 100%;
+  }
+
+  .ol-chat-preview-shell .careering-input-dock {
+    padding: 12px 12px 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ol-chat-preview-loading span { animation: none; }
+  .ol-chat-preview-bar button { transition: none; }
+}

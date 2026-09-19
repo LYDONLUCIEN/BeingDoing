@@ -53,6 +53,10 @@ const RuminationV4Page = dynamic(
   () => import('@/components/explore/ruminationV4/RuminationV4Page'),
   { ssr: false },
 );
+const ChatUiPreview = dynamic(
+  () => import('@/components/explore/ChatUiPreview'),
+  { ssr: false },
+);
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { apiClient, getApiErrorMessage } from '@/lib/api/client';
 import { fetchRuminationVersion } from '@/lib/explore/ruminationV4Api';
@@ -317,6 +321,23 @@ function RuminationTableSubmitPortal({
 }
 
 export default function ChatPhasePage() {
+  const params = useParams();
+  const searchParams = useSearchParams();
+  const phase = params.phase as PhaseKey;
+  const uiPreviewEnabled =
+    process.env.NODE_ENV === 'development' &&
+    searchParams.get('ui_preview') === '1' &&
+    PHASES.some((item) => item.key === phase);
+
+  if (uiPreviewEnabled) {
+    const previewState = searchParams.get('preview_state') || 'conversation';
+    return <ChatUiPreview key={`${phase}:${previewState}`} phase={phase} previewState={previewState} />;
+  }
+
+  return <LiveChatPhasePage />;
+}
+
+function LiveChatPhasePage() {
   const router = useRouter();
   const params = useParams();
   const pathname = usePathname();

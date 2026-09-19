@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState, useEffect } from 'react';
+import { Suspense, useState, useEffect, type CSSProperties } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { apiClient, getApiErrorMessage } from '@/lib/api/client';
@@ -32,6 +32,17 @@ function useActivateBg() {
   }, []);
 }
 
+type TransitionBackground = 'mist' | 'botanical' | 'paper' | 'path';
+
+const TRANSITION_BACKGROUNDS: Array<{ key: TransitionBackground; label: string }> = [
+  { key: 'mist', label: '柔雾留白' },
+  { key: 'botanical', label: '细线生长' },
+  { key: 'paper', label: '半透明纸层' },
+  { key: 'path', label: '路径坐标' },
+];
+
+const TRANSITION_APPEARANCE_KEY = 'openlife-transition-appearance-v2';
+
 function ActivatePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -42,7 +53,37 @@ function ActivatePageContent() {
   const [error, setError] = useState<string | null>(null);
   const [showReport, setShowReport] = useState(false);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [transitionBg, setTransitionBg] = useState<TransitionBackground>('paper');
+  const [transitionBlur, setTransitionBlur] = useState(10);
   const { user, setUser, isAuthenticated } = useAuthStore();
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(TRANSITION_APPEARANCE_KEY) || '{}') as {
+        background?: TransitionBackground;
+        blur?: number;
+      };
+      if (TRANSITION_BACKGROUNDS.some((item) => item.key === saved.background)) {
+        setTransitionBg(saved.background as TransitionBackground);
+      }
+      if (Number.isFinite(saved.blur)) {
+        setTransitionBlur(Math.max(0, Math.min(24, Number(saved.blur))));
+      }
+    } catch {
+      // 外观偏好损坏时回退到推荐组合。
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        TRANSITION_APPEARANCE_KEY,
+        JSON.stringify({ background: transitionBg, blur: transitionBlur })
+      );
+    } catch {
+      // 隐私模式可能禁止 localStorage；不影响激活流程。
+    }
+  }, [transitionBg, transitionBlur]);
 
   // 从后端同步 email_verified 到本地 store
   // 注意：必须以 getState() 取最新 user 并保留 avatar_url，否则会抹掉已上传的头像
@@ -236,119 +277,156 @@ function ActivatePageContent() {
   };
 
   return (
-    <div className="activate-page-wrap relative min-h-screen text-bd-fg flex items-center justify-center px-4">
-      {/* 首页 mesh 背景 */}
-      <div className="landing-mesh-bg fixed inset-0 z-0" aria-hidden>
-        <div className="landing-mesh-blob landing-mesh-blob-1" />
-        <div className="landing-mesh-blob landing-mesh-blob-2" />
-        <div className="landing-mesh-blob landing-mesh-blob-3" />
-        <div className="landing-mesh-blob landing-mesh-blob-4" />
+    <main
+      className="ol-transition-app"
+      data-transition-bg={transitionBg}
+      style={{
+        '--transition-blur': `${transitionBlur}px`,
+        '--transition-veil': String(0.045 + transitionBlur * 0.0045),
+      } as CSSProperties}
+    >
+      <div className="ol-transition-background" aria-hidden="true">
+        <span className="ol-transition-image" />
+        <span className="ol-transition-filter" />
+        <span className="ol-transition-noise" />
       </div>
-      <div className="landing-mesh-noise fixed inset-0 z-[1]" aria-hidden />
-      <motion.div
-        className="relative z-[2] w-full max-w-md space-y-8"
-        initial={{ opacity: 0, y: 20 }}
+
+      <details className="ol-transition-appearance">
+        <summary>页面质感</summary>
+        <div className="ol-transition-panel">
+          <div className="ol-transition-panel-head">
+            <strong>选择背景</strong>
+            <small>自动记住选择</small>
+          </div>
+          <div className="ol-transition-options" aria-label="承接页背景">
+            {TRANSITION_BACKGROUNDS.map((item) => (
+              <button
+                key={item.key}
+                className="ol-transition-option"
+                type="button"
+                data-transition-bg-option={item.key}
+                aria-pressed={transitionBg === item.key}
+                onClick={() => setTransitionBg(item.key)}
+              >
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+          <div className="ol-transition-blur-control">
+            <label className="ol-transition-blur-label" htmlFor="transition-blur">
+              <span>背景毛玻璃</span>
+              <output htmlFor="transition-blur">{transitionBlur}px</output>
+            </label>
+            <input
+              id="transition-blur"
+              type="range"
+              min="0"
+              max="24"
+              step="1"
+              value={transitionBlur}
+              onChange={(event) => setTransitionBlur(Number(event.target.value))}
+              aria-valuetext={`${transitionBlur} 像素`}
+            />
+            <p>只柔化背景，不影响文字和输入内容。</p>
+          </div>
+        </div>
+      </details>
+
+      <motion.section
+        className="ol-transition-stage"
+        aria-labelledby="activation-title"
+        initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
+        transition={{ duration: 0.58, ease: [0.22, 1, 0.36, 1] }}
       >
-        {/* Back */}
-        <button
-          type="button"
-          onClick={() => router.push('/')}
-          className="text-sm text-bd-subtle hover:text-bd-muted transition-colors"
-        >
-          ← {t('explore.intro.back')}
+        <button type="button" onClick={() => router.push('/')} className="ol-transition-back">
+          <span>←</span> {t('explore.intro.back')}
         </button>
 
-        {/* Header */}
-        <div className="space-y-2">
-          <p className="text-xs tracking-widest uppercase text-neutral-600">{t('explore.activate.step')}</p>
-          <h1 className="text-3xl font-bold text-bd-fg">{t('explore.activate.title')}</h1>
-          <p className="text-bd-muted text-sm leading-relaxed">{t('explore.activate.desc')}</p>
-        </div>
+        <div className="ol-transition-card">
+          <p className="ol-transition-kicker">STEP 0 · OPENLIFE ACCESS</p>
+          <h1 id="activation-title">{t('explore.activate.title')}</h1>
+          <p className="ol-transition-intro">{t('explore.activate.desc')}</p>
 
-        {/* Email verification gate */}
-        {user && !user.email_verified && (
-          <div className="rounded-xl border border-amber-300/40 bg-amber-50/80 p-6 text-center space-y-4">
-            <p className="text-sm font-medium" style={{ color: 'var(--bd-fg)' }}>
-              {t('auth.needVerifyFirst')}
-            </p>
-            <button
-              type="button"
-              onClick={() => router.push('/dashboard/settings')}
-              className="bd-btn-black px-5 py-2.5 rounded-xl text-sm font-medium text-white transition-all"
-            >
-              {t('auth.goToVerify')}
+          {user && !user.email_verified && (
+            <div className="ol-transition-verify">
+              <p>{t('auth.needVerifyFirst')}</p>
+              <button type="button" onClick={() => router.push('/dashboard/settings')}>
+                {t('auth.goToVerify')}
+              </button>
+            </div>
+          )}
+
+          {(!user || user.email_verified !== false) && (
+            <div className="ol-transition-form">
+              <div className="ol-transition-field">
+                <label htmlFor="activation-code">激活码</label>
+                <input
+                  id="activation-code"
+                  type="text"
+                  value={code}
+                  onChange={(event) => setCode(event.target.value.toUpperCase())}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !loading) void handleActivate();
+                  }}
+                  placeholder={t('explore.activate.placeholder')}
+                  autoComplete="one-time-code"
+                  autoCapitalize="characters"
+                  spellCheck={false}
+                  aria-invalid={Boolean(error)}
+                  aria-describedby="activation-help activation-status"
+                />
+              </div>
+              <p className="ol-transition-help" id="activation-help">
+                {t('explore.activate.findCodeHint')}
+              </p>
+              <button
+                type="button"
+                onClick={() => void handleActivate()}
+                disabled={loading || !code.trim()}
+                aria-busy={loading}
+                className="ol-transition-submit"
+              >
+                <span>{loading ? t('explore.activate.validating') : t('explore.activate.submit')}</span>
+              </button>
+              <p
+                className={`ol-transition-status${error ? ' is-error' : ''}`}
+                id="activation-status"
+                role="status"
+                aria-live="polite"
+              >
+                {error || ''}
+              </p>
+              {showReport && (
+                <button
+                  type="button"
+                  onClick={() => router.push('/explore/report/view')}
+                  className="ol-transition-report"
+                >
+                  {t('common.viewReport')} →
+                </button>
+              )}
+            </div>
+          )}
+
+          <div className="ol-transition-links">
+            <button type="button" onClick={() => setPurchaseOpen(true)}>
+              {t('explore.activate.buyCta')}
+            </button>
+            <span aria-hidden="true">·</span>
+            <button type="button" onClick={() => router.push('/dashboard/codes')}>
+              {t('explore.activate.viewAllCodes')}
             </button>
           </div>
-        )}
-
-        {/* Input — only shown when email is verified */}
-        {!user || user.email_verified !== false && (
-        <div className="space-y-3">
-          <input
-            type="text"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !loading) handleActivate(); }}
-            placeholder={t('explore.activate.placeholder')}
-            className="w-full rounded-xl border bg-bd-overlay px-4 py-3.5 text-base outline-none transition-colors focus:border-neutral-400 focus:ring-2 focus:ring-neutral-300 focus:ring-opacity-50"
-            style={{
-              color: 'var(--bd-fg)',
-              borderColor: 'var(--bd-border)',
-            }}
-          />
-          <p className="text-xs text-bd-subtle leading-relaxed">
-            {t('explore.activate.findCodeHint')}
-          </p>
-          {error && <p className="text-sm text-bd-err">{error}</p>}
-          <button
-            type="button"
-            onClick={handleActivate}
-            disabled={loading || !code.trim()}
-            className="bd-btn-black w-full rounded-xl px-4 py-3.5 text-base font-semibold text-white transition-all disabled:opacity-40"
-          >
-            {loading ? t('explore.activate.validating') : t('explore.activate.submit')}
-          </button>
-          {showReport && (
-            <button
-              type="button"
-              onClick={() => router.push('/explore/report/view')}
-              className="bd-btn-report w-full rounded-xl px-4 py-3 text-base font-medium flex items-center justify-center gap-2"
-            >
-              {t('common.viewReport')}
-            </button>
-          )}
         </div>
-        )}
+      </motion.section>
 
-        {/* 购买入口 + 我的激活码 */}
-        <div className="flex items-center justify-center gap-4 text-sm">
-          <button
-            type="button"
-            onClick={() => setPurchaseOpen(true)}
-            className="text-bd-subtle hover:text-bd-fg transition-colors underline-offset-4 hover:underline"
-          >
-            {t('explore.activate.buyCta')}
-          </button>
-          <span className="text-bd-subtle/40">·</span>
-          <button
-            type="button"
-            onClick={() => router.push('/dashboard/codes')}
-            className="text-bd-subtle hover:text-bd-fg transition-colors underline-offset-4 hover:underline"
-          >
-            {t('explore.activate.viewAllCodes')}
-          </button>
-        </div>
-
-        <PurchaseModal
-          open={purchaseOpen}
-          onClose={() => setPurchaseOpen(false)}
-          onSuccess={(newCode) => setCode(newCode)}
-        />
-
-      </motion.div>
-    </div>
+      <PurchaseModal
+        open={purchaseOpen}
+        onClose={() => setPurchaseOpen(false)}
+        onSuccess={(newCode) => setCode(newCode)}
+      />
+    </main>
   );
 }
 

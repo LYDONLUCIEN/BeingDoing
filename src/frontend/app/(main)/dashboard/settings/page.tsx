@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import type { AxiosError } from 'axios';
 import { useAuthStore } from '@/stores/authStore';
 import { useLocale } from '@/hooks/useLocale';
@@ -12,11 +12,16 @@ import { authApi } from '@/lib/api/auth';
 import { usersApi } from '@/lib/api/users';
 import SurveyFormBd from '@/components/survey/SurveyFormBd';
 import type { SurveyData } from '@/lib/survey/schema';
+import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
+import { LockKeyhole, Mail, X } from 'lucide-react';
 
 export default function DashboardSettingsPage() {
   const { t } = useLocale();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, setUser, isAuthenticated, logout } = useAuthStore();
+  const isLocalUiPreview =
+    process.env.NODE_ENV === 'development' && searchParams.get('ui_preview') === '1';
   const [nickname, setNickname] = useState(user?.username || user?.email || '');
   const [avatarPreview, setAvatarPreview] = useState<string | null>(user?.avatar_url || null);
   const [introData, setIntroData] = useState<Partial<SurveyData>>({});
@@ -43,6 +48,7 @@ export default function DashboardSettingsPage() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [pwdSaving, setPwdSaving] = useState(false);
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   // 防爆破锁定倒计时（秒，后端 423 login_locked 下发）
   const [pwdLockSeconds, setPwdLockSeconds] = useState(0);
   const pwdLockRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -84,6 +90,11 @@ export default function DashboardSettingsPage() {
   useEffect(() => {
     const code = getLastActivationCode();
     setActivationCode(code);
+    if (isLocalUiPreview) {
+      setIntroData({});
+      setIntroLoading(false);
+      return;
+    }
     // 始终按用户维度加载问卷数据（不依赖激活码）
     setIntroLoading(true);
     surveyApi
@@ -91,7 +102,7 @@ export default function DashboardSettingsPage() {
       .then((r) => setIntroData(r.data?.survey_data || {}))
       .catch(() => setIntroData({}))
       .finally(() => setIntroLoading(false));
-  }, []);
+  }, [isLocalUiPreview]);
 
   // Cooldown timer for email verification
   useEffect(() => {
@@ -193,6 +204,14 @@ export default function DashboardSettingsPage() {
     } finally {
       setPwdSaving(false);
     }
+  };
+
+  const closePasswordDialog = () => {
+    if (pwdSaving) return;
+    setPasswordDialogOpen(false);
+    setOldPassword('');
+    setNewPassword('');
+    setConfirmNewPassword('');
   };
 
   const openDeleteDialog = () => {
@@ -304,10 +323,16 @@ export default function DashboardSettingsPage() {
 
   const displayName = user?.username || user?.email || t('common.user');
   const initials = (displayName || 'U').slice(0, 2).toUpperCase();
+  const accountEmail = user?.email || (isLocalUiPreview ? 'preview@openlife.cn' : null);
+  const emailVerified = user?.email_verified ?? isLocalUiPreview;
 
   return (
-    <div className="max-w-3xl space-y-10">
-      <h1 className="text-2xl font-semibold text-bd-fg">{t('dashboard.setting')}</h1>
+    <div className="ol-profile-content ol-settings-page space-y-10">
+      <DashboardPageHeader
+        kicker="ACCOUNT & PROFILE"
+        title={t('dashboard.setting')}
+        description="管理个人资料、探索背景与账户安全设置。"
+      />
 
       {/* 基本信息修改 */}
       <section className="rounded-2xl border border-bd-border bg-bd-card/80 backdrop-blur-lg p-8 shadow-sm">
@@ -354,111 +379,81 @@ export default function DashboardSettingsPage() {
         </div>
       </section>
 
-      {/* 邮箱验证 */}
-      {user?.email && (
-        <section className="rounded-2xl border border-bd-border bg-bd-card/80 backdrop-blur-lg p-8 shadow-sm">
-          <h2 className="text-lg font-medium text-bd-fg mb-1">{t('auth.emailVerify')}</h2>
-          <p className="text-sm text-bd-muted mb-6">{t('auth.verifyEmailDesc')}</p>
-          <div className="flex items-center gap-4">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-bd-fg">{user.email}</p>
-              <p className="text-xs mt-1" style={{ color: 'var(--bd-fg-muted)' }}>
-                {t('dashboard.setting')}
-              </p>
-            </div>
-            {user.email_verified ? (
-              <span
-                className="inline-block px-3 py-1 rounded-full text-xs font-medium"
-                style={{ background: 'rgba(34,197,94,0.12)', color: '#16a34a' }}
-              >
-                {t('auth.emailVerified')}
-              </span>
-            ) : (
-              <div className="flex items-center gap-3">
-                <span
-                  className="inline-block px-3 py-1 rounded-full text-xs font-medium"
-                  style={{ background: 'rgba(239,68,68,0.12)', color: '#dc2626' }}
-                >
-                  {t('auth.emailNotVerified')}
+      {/* 账号安全：保留原邮箱验证与修改密码接口，仅重排交互入口 */}
+      <section className="ol-settings-security-section rounded-2xl border border-bd-border bg-bd-card/80 backdrop-blur-lg p-8 shadow-sm">
+        <div className="ol-settings-section-heading">
+          <div>
+            <span>SECURITY</span>
+            <h2>账号安全</h2>
+          </div>
+          <p>集中管理登录凭证与安全通知，不改变现有验证流程。</p>
+        </div>
+        <div className="ol-account-security-grid">
+          {accountEmail && (
+            <article className="ol-account-security-card">
+              <header className="ol-account-security-head">
+                <div className="ol-account-security-title">
+                  <span className="ol-account-security-icon" aria-hidden><Mail /></span>
+                  <div>
+                    <h3>{t('auth.emailVerify')}</h3>
+                    <p>用于账户安全提醒、密码找回与重要服务通知。</p>
+                  </div>
+                </div>
+                <span className={`ol-account-security-status ${emailVerified ? 'is-verified' : ''}`}>
+                  {emailVerified ? t('auth.emailVerified') : t('auth.emailNotVerified')}
                 </span>
-                <button
-                  type="button"
-                  onClick={handleSendVerifyEmail}
-                  disabled={verifySending || verifyCooldown > 0}
-                  className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-all bd-btn-black disabled:opacity-50"
-                >
-                  {verifyCooldown > 0
-                    ? `${Math.floor(verifyCooldown / 60)}:${String(verifyCooldown % 60).padStart(2, '0')}`
-                    : verifySending
-                      ? '...'
-                      : t('auth.sendVerifyEmail')}
-                </button>
+              </header>
+              <div className="ol-account-security-body">
+                <div className="ol-account-security-value">
+                  <small>账户邮箱</small>
+                  <strong title={accountEmail}>{accountEmail}</strong>
+                  <p>{emailVerified ? '该邮箱已完成验证，可用于安全通知与密码找回。' : '验证邮件只会发送到当前账户邮箱。'}</p>
+                </div>
+                {!emailVerified && (
+                  <button
+                    type="button"
+                    onClick={handleSendVerifyEmail}
+                    disabled={verifySending || verifyCooldown > 0}
+                    className="ol-account-security-action"
+                  >
+                    {verifyCooldown > 0
+                      ? `${Math.floor(verifyCooldown / 60)}:${String(verifyCooldown % 60).padStart(2, '0')}`
+                      : verifySending
+                        ? '发送中…'
+                        : t('auth.sendVerifyEmail')}
+                  </button>
+                )}
               </div>
-            )}
-          </div>
-        </section>
-      )}
+            </article>
+          )}
 
-      {/* 账号安全：修改密码 */}
-      <section className="rounded-2xl border border-bd-border bg-bd-card/80 backdrop-blur-lg p-8 shadow-sm">
-        <h2 className="text-lg font-medium text-bd-fg mb-1">修改密码</h2>
-        <p className="text-sm text-bd-muted mb-6">
-          修改成功后所有设备将退出登录，需使用新密码重新登录；忘记旧密码可通过登录弹窗的「忘记密码」重置。
-        </p>
-        <div className="space-y-4 max-w-sm">
-          <div>
-            <label className="block text-sm font-medium text-bd-muted mb-1.5">旧密码</label>
-            <input
-              type="password"
-              value={oldPassword}
-              onChange={(e) => setOldPassword(e.target.value)}
-              placeholder="请输入当前密码"
-              autoComplete="current-password"
-              disabled={pwdSaving || pwdLockSeconds > 0}
-              className="w-full rounded-xl border border-bd-border bg-bd-overlay px-4 py-2.5 text-bd-fg placeholder:text-bd-subtle focus:border-bd-ui-accent focus:ring-2 focus:ring-bd-ui-accent/20 outline-none transition-colors disabled:opacity-50"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-bd-muted mb-1.5">新密码</label>
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="至少 6 位"
-              autoComplete="new-password"
-              disabled={pwdSaving || pwdLockSeconds > 0}
-              className="w-full rounded-xl border border-bd-border bg-bd-overlay px-4 py-2.5 text-bd-fg placeholder:text-bd-subtle focus:border-bd-ui-accent focus:ring-2 focus:ring-bd-ui-accent/20 outline-none transition-colors disabled:opacity-50"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-bd-muted mb-1.5">确认新密码</label>
-            <input
-              type="password"
-              value={confirmNewPassword}
-              onChange={(e) => setConfirmNewPassword(e.target.value)}
-              placeholder="再次输入新密码"
-              autoComplete="new-password"
-              disabled={pwdSaving || pwdLockSeconds > 0}
-              className="w-full rounded-xl border border-bd-border bg-bd-overlay px-4 py-2.5 text-bd-fg placeholder:text-bd-subtle focus:border-bd-ui-accent focus:ring-2 focus:ring-bd-ui-accent/20 outline-none transition-colors disabled:opacity-50"
-            />
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => void handleChangePassword()}
-              disabled={pwdSaving || pwdLockSeconds > 0}
-              className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-all bd-btn-black disabled:opacity-50"
-            >
-              {pwdLockSeconds > 0
-                ? `已锁定 ${Math.floor(pwdLockSeconds / 60)}:${String(pwdLockSeconds % 60).padStart(2, '0')}`
-                : pwdSaving
-                  ? '提交中…'
-                  : '确认修改'}
-            </button>
-            {pwdLockSeconds > 0 && (
-              <p className="text-xs text-bd-subtle">尝试次数过多，账号已临时锁定</p>
-            )}
-          </div>
+          <article className="ol-account-security-card">
+            <header className="ol-account-security-head">
+              <div className="ol-account-security-title">
+                <span className="ol-account-security-icon" aria-hidden><LockKeyhole /></span>
+                <div>
+                  <h3>登录密码</h3>
+                  <p>定期更新密码，避免与其他产品使用相同的登录凭证。</p>
+                </div>
+              </div>
+              <span className="ol-account-security-status is-verified">已设置</span>
+            </header>
+            <div className="ol-account-security-body">
+              <div className="ol-account-security-value">
+                <small>密码安全</small>
+                <strong aria-label="密码已隐藏">••••••••••••</strong>
+                <p>修改成功后，所有设备都需要使用新密码重新登录。</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPasswordDialogOpen(true)}
+                disabled={pwdSaving}
+                className="ol-account-security-action"
+              >
+                修改密码
+              </button>
+            </div>
+          </article>
         </div>
       </section>
 
@@ -491,6 +486,88 @@ export default function DashboardSettingsPage() {
           注销账户
         </button>
       </section>
+
+      {/* 修改密码弹窗：提交仍复用原 handleChangePassword 与安全锁定逻辑 */}
+      {passwordDialogOpen && (
+        <div className="ol-settings-dialog-shell">
+          <button
+            type="button"
+            className="ol-settings-dialog-backdrop"
+            aria-label="关闭修改密码弹窗"
+            onClick={closePasswordDialog}
+          />
+          <form
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="password-dialog-title"
+            className="ol-settings-dialog"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleChangePassword();
+            }}
+          >
+            <header>
+              <div>
+                <span>SECURITY</span>
+                <h3 id="password-dialog-title">修改登录密码</h3>
+              </div>
+              <button type="button" aria-label="关闭" onClick={closePasswordDialog} disabled={pwdSaving}>
+                <X />
+              </button>
+            </header>
+            <p className="ol-settings-dialog-description">
+              修改成功后所有设备将退出登录；忘记旧密码可通过登录弹窗的「忘记密码」重置。
+            </p>
+            <div className="ol-settings-password-fields">
+              <label>
+                <span>旧密码</span>
+                <input
+                  type="password"
+                  value={oldPassword}
+                  onChange={(event) => setOldPassword(event.target.value)}
+                  placeholder="请输入当前密码"
+                  autoComplete="current-password"
+                  disabled={pwdSaving || pwdLockSeconds > 0}
+                  autoFocus
+                />
+              </label>
+              <label>
+                <span>新密码</span>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  placeholder="至少 6 位"
+                  autoComplete="new-password"
+                  disabled={pwdSaving || pwdLockSeconds > 0}
+                />
+              </label>
+              <label>
+                <span>确认新密码</span>
+                <input
+                  type="password"
+                  value={confirmNewPassword}
+                  onChange={(event) => setConfirmNewPassword(event.target.value)}
+                  placeholder="再次输入新密码"
+                  autoComplete="new-password"
+                  disabled={pwdSaving || pwdLockSeconds > 0}
+                />
+              </label>
+            </div>
+            {pwdLockSeconds > 0 && (
+              <p className="ol-settings-lock-note">
+                尝试次数过多，账号已临时锁定 {Math.floor(pwdLockSeconds / 60)}:{String(pwdLockSeconds % 60).padStart(2, '0')}
+              </p>
+            )}
+            <footer>
+              <button type="button" onClick={closePasswordDialog} disabled={pwdSaving}>取消</button>
+              <button type="submit" disabled={pwdSaving || pwdLockSeconds > 0}>
+                {pwdSaving ? '提交中…' : '确认修改'}
+              </button>
+            </footer>
+          </form>
+        </div>
+      )}
 
       {/* 注销账户二次确认弹窗 */}
       {deleteDialogOpen && (

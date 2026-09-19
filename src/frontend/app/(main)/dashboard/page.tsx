@@ -13,6 +13,7 @@ import { formatUTC } from '@/lib/utils/formatTime';
 import { useAuthStore } from '@/stores/authStore';
 import type { SurveyData } from '@/lib/survey/schema';
 import PurchaseModal from '@/components/payment/PurchaseModal';
+import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
 
 const PHASE_COLORS = [
   'var(--bd-phase-values)',
@@ -143,23 +144,35 @@ const SURVEY_DISPLAY_LABELS: Record<string, string> = {
   salary_level: '薪资水平',
 };
 
-/**
- * 从问卷数据中提取关键展示字段（最多显示 6 个非空项）。
- * 优先级：昵称 > 职业状态 > 行业 > 学历 > 城市 > 岗位。
- */
-function extractSurveyDisplayItems(data: SurveyData): { label: string; value: string }[] {
-  const priorityKeys = ['nickname', 'career_status', 'industry', 'education_degree', 'city', 'position'];
-  const items: { label: string; value: string }[] = [];
+type SurveyDisplayItem = { label: string; value: string };
+type SurveyDisplayGroup = { title: string; items: SurveyDisplayItem[]; wide?: boolean };
 
-  for (const key of priorityKeys) {
-    const val = data[key as keyof SurveyData];
-    if (!val || (Array.isArray(val) && val.length === 0)) continue;
-    const displayVal = Array.isArray(val) ? val.join('、') : String(val);
-    if (!displayVal.trim()) continue;
-    items.push({ label: SURVEY_DISPLAY_LABELS[key] || key, value: displayVal });
-    if (items.length >= 6) break;
-  }
-  return items;
+/** 按个人空间的信息阅读顺序分组；只展示后端已有且非空的问卷字段。 */
+function extractSurveyDisplayGroups(data: SurveyData): SurveyDisplayGroup[] {
+  const definitions: Array<{ title: string; keys: string[]; wide?: boolean }> = [
+    { title: '基本信息', keys: ['nickname', 'gender', 'age'] },
+    { title: '教育与生活', keys: ['education_degree', 'education_school', 'education_major', 'city'] },
+    {
+      title: '职业背景',
+      keys: ['career_status', 'industry', 'position', 'work_years_total', 'salary_level'],
+      wide: true,
+    },
+  ];
+
+  return definitions
+    .map(({ title, keys, wide }) => {
+      const items = keys.reduce<SurveyDisplayItem[]>((result, key) => {
+        const val = data[key as keyof SurveyData];
+        if (!val || (Array.isArray(val) && val.length === 0)) return result;
+        const displayVal = Array.isArray(val) ? val.join('、') : String(val);
+        if (displayVal.trim()) {
+          result.push({ label: SURVEY_DISPLAY_LABELS[key] || key, value: displayVal });
+        }
+        return result;
+      }, []);
+      return { title, items, wide };
+    })
+    .filter((group) => group.items.length > 0);
 }
 
 /** 用户档案卡片：展示问卷基本信息 */
@@ -170,29 +183,42 @@ function UserSurveyCard({
   survey: UserSurveyInfo;
   t: (k: string) => string;
 }) {
-  const items = extractSurveyDisplayItems(survey.survey_data);
-  if (items.length === 0) return null;
+  const groups = extractSurveyDisplayGroups(survey.survey_data);
+  if (groups.length === 0) return null;
 
   return (
-    <div className="bg-bd-card/80 backdrop-blur-lg border border-bd-border rounded-2xl shadow-sm p-6">
-      <div className="flex items-center gap-2 mb-4">
-        <User className="h-5 w-5 text-bd-muted" />
-        <h2 className="font-medium text-bd-fg text-base">{t('dashboard.profileInfo') || '个人信息'}</h2>
-        {survey.completed && (
-          <span className="ml-auto rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-[10px] text-green-700 dark:border-green-800 dark:bg-green-900/30 dark:text-green-400">
-            已填写
-          </span>
-        )}
-      </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        {items.map((item) => (
-          <div key={item.label} className="space-y-0.5">
-            <p className="text-[10px] text-bd-muted">{item.label}</p>
-            <p className="text-sm font-medium text-bd-fg truncate">{item.value}</p>
-          </div>
+    <section className="ol-profile-summary ol-profile-surface">
+      <header>
+        <div className="flex items-center gap-2">
+          <span className="ol-profile-section-mark">01</span>
+          <User className="h-5 w-5 text-bd-muted" />
+          <h2 className="font-medium text-bd-fg text-base">{t('dashboard.profileInfo') || '个人信息'}</h2>
+        </div>
+        <div className="flex items-center gap-2">
+          {survey.completed && (
+            <span className="rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-[10px] text-green-700 dark:border-green-800 dark:bg-green-900/30 dark:text-green-400">
+              已填写
+            </span>
+          )}
+          <Link href="/dashboard/settings" className="ol-profile-edit-link">编辑</Link>
+        </div>
+      </header>
+      <div className="ol-profile-summary-groups">
+        {groups.map((group) => (
+          <section key={group.title} className={`ol-profile-summary-group ${group.wide ? 'is-wide' : ''}`}>
+            <h3>{group.title}</h3>
+            <div className="ol-profile-summary-items">
+              {group.items.map((item) => (
+                <div key={item.label}>
+                  <p>{item.label}</p>
+                  <strong title={item.value}>{item.value}</strong>
+                </div>
+              ))}
+            </div>
+          </section>
         ))}
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -216,12 +242,15 @@ function JourneyCard({
   const half = nodePx / 2;
 
   return (
-    <div className={`bg-bd-card/80 backdrop-blur-lg border border-bd-border rounded-2xl shadow-sm ${featured ? 'p-8' : 'p-5'}`}>
+    <article className={`ol-profile-journey-card ol-profile-surface ${featured ? 'is-featured' : ''}`}>
       <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
-        <h2 className={`font-medium text-bd-fg ${featured ? 'text-xl' : 'text-base'}`}>
-          {featured ? t('dashboard.journeyTitle') : `旅程 ${journey.activation_code.slice(-6)}`}
-        </h2>
-        <span className="shrink-0 rounded-full border border-bd-border bg-bd-surface-2 px-2.5 py-0.5 text-xs text-bd-muted">
+        <div>
+          <p className="ol-profile-journey-eyebrow">{reportUnlocked ? '历史归档' : featured ? '正在探索' : '职业旅程'}</p>
+          <h2 className={`font-medium text-bd-fg ${featured ? 'text-xl' : 'text-base'}`}>
+            {featured ? t('dashboard.journeyTitle') : `旅程 ${journey.activation_code.slice(-6)}`}
+          </h2>
+        </div>
+        <span className={`ol-profile-status ${reportUnlocked ? 'is-complete' : ''}`}>
           {journeyStatusLabel(journey)}
         </span>
       </div>
@@ -246,7 +275,7 @@ function JourneyCard({
       </div>
 
       {/* pt-3 预留 badge 上溢空间，防止 overflow 裁切 */}
-      <div className="overflow-x-auto overflow-y-visible [-webkit-overflow-scrolling:touch] pb-1 pt-3">
+      <div className="ol-profile-stage-scroll overflow-x-auto overflow-y-visible [-webkit-overflow-scrolling:touch] pb-1 pt-3">
         <div
           className="relative flex min-w-min items-start gap-0"
           style={{
@@ -370,12 +399,12 @@ function JourneyCard({
       </div>
 
       {/* 主按钮：所有旅程卡常驻；报告已解锁时变为「查看报告」 */}
-      <div className={`flex gap-3 ${featured ? 'mt-6' : 'mt-4'}`}>
+      <footer className={`flex gap-3 ${featured ? 'mt-6' : 'mt-4'}`}>
         {reportUnlocked ? (
           <button
             type="button"
             onClick={() => onViewReport(journey.activation_code)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-bd-ui-accent text-bd-ui-accent-fg hover:opacity-90"
+            className="ol-profile-primary"
           >
             {t('dashboard.viewReport')} →
           </button>
@@ -383,20 +412,20 @@ function JourneyCard({
           <button
             type="button"
             onClick={() => onNavigate(journey.activation_code, resumePhase)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-bd-ui-accent text-bd-ui-accent-fg hover:opacity-90"
+            className="ol-profile-primary"
           >
             继续探索 →
           </button>
         )}
-      </div>
-    </div>
+      </footer>
+    </article>
   );
 }
 
 /** 购买套餐卡片：展示季度/年度价格入口，点击打开购买弹窗 */
 function PurchaseCard({ onBuy, t }: { onBuy: () => void; t: (k: string) => string }) {
   return (
-    <div className="bg-bd-card/80 backdrop-blur-lg border border-bd-border rounded-2xl shadow-sm p-6">
+    <div className="ol-profile-purchase-card ol-profile-surface">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-bd-overlay-md">
@@ -437,6 +466,57 @@ export default function DashboardCurrentProgressPage() {
   const fetchJourneys = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
+      const isUiPreview =
+        process.env.NODE_ENV === 'development' &&
+        typeof window !== 'undefined' &&
+        new URLSearchParams(window.location.search).get('ui_preview') === '1';
+      if (isUiPreview) {
+        const previewJourneys: JourneyItem[] = [
+          {
+            activation_code: 'OPENLIFE-2026',
+            code_type: 'full',
+            expires_at: '2027-06-18T08:30:00Z',
+            mode: 'simple',
+            status: 'active',
+            created_at: '2026-08-25T09:06:00Z',
+            last_activity_at: new Date().toISOString(),
+            explore_resume: {
+              resume_phase: 'interests',
+              unlocked_phases: ['values', 'strengths', 'interests'],
+              report_unlocked: false,
+            },
+            is_latest: true,
+          },
+          {
+            activation_code: 'ARCHIVE-0915',
+            code_type: 'full',
+            expires_at: '2027-03-15T08:30:00Z',
+            mode: 'simple',
+            status: 'active',
+            created_at: '2026-08-24T09:06:00Z',
+            last_activity_at: '2026-09-15T10:20:00Z',
+            explore_resume: {
+              resume_phase: 'rumination',
+              unlocked_phases: ['values', 'strengths', 'interests', 'purpose', 'rumination'],
+              report_unlocked: true,
+            },
+          },
+        ];
+        setJourneys(previewJourneys);
+        setUserSurvey({
+          completed: true,
+          survey_data: {
+            nickname: '小路',
+            career_status: '职业转型中',
+            industry: '互联网与人工智能',
+            education_degree: '硕士学历',
+            city: '北京',
+            position: '产品经理',
+          } as SurveyData,
+        });
+        setFetchError(null);
+        return;
+      }
       const res = await apiClient.get('/simple-auth/journeys');
       const resp = (res.data ?? {}) as JourneysResponse;
       const list = (resp.journeys ?? []) as JourneyItem[];
@@ -508,6 +588,12 @@ export default function DashboardCurrentProgressPage() {
   }, [fetchJourneys]);
 
   const handleNavigate = async (code: string, phase: string) => {
+    const previewSuffix =
+      process.env.NODE_ENV === 'development' &&
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('ui_preview') === '1'
+        ? '?ui_preview=1'
+        : '';
     setLastActivationCode(code);
     let resume = journeys.find((j) => j.activation_code === code)?.explore_resume;
     try {
@@ -524,16 +610,16 @@ export default function DashboardCurrentProgressPage() {
     // 清除线程缓存，确保进入聊天页时从后端拉取最新数据（跨设备一致性）
     clearThreadCache(code);
     if (phase === 'report') {
-      router.push('/explore/report');
+      router.push(`/explore/report${previewSuffix}`);
       return;
     }
     // 校验目标 phase 是否已解锁：优先跳用户点击的 phase，未解锁则降级到 resume_phase
     const effective = effectiveResumeForNodes(resume);
     if (phase !== 'report' && !effective.unlocked_phases.includes(phase as PhaseKey)) {
-      router.push(`/explore/chat/${effective.resume_phase}`);
+      router.push(`/explore/chat/${effective.resume_phase}${previewSuffix}`);
       return;
     }
-    router.push(`/explore/chat/${phase}`);
+    router.push(`/explore/chat/${phase}${previewSuffix}`);
   };
 
   /** 查看报告：写入「上次激活码」并走 /explore/report 中枢页（保留其埋点与状态检查） */
@@ -544,17 +630,39 @@ export default function DashboardCurrentProgressPage() {
 
   const featured = journeys[0]; // 最近使用的排第一
   const others = journeys.slice(1);
+  const reportCount = journeys.filter((journey) => journey.explore_resume?.report_unlocked).length;
 
   return (
-    <div className="max-w-4xl">
-      <h1 className="text-2xl font-semibold text-bd-fg mb-8">{t('dashboard.currentProgress')}</h1>
+    <div className="ol-profile-content">
+      <DashboardPageHeader
+        kicker="YOUR JOURNEY"
+        title={t('dashboard.currentProgress')}
+        description="你的每一次对话，都会在这里留下可以继续的线索。"
+      />
+
+      {!loading && (
+        <div className="ol-profile-overview" aria-label="探索概览">
+          <article>
+            <span>{String(journeys.length).padStart(2, '0')}</span>
+            <p>职业旅程<small>{journeys.length ? '正在记录你的探索路径' : '从第一次探索开始'}</small></p>
+          </article>
+          <article>
+            <span>05</span>
+            <p>探索阶段<small>从认识自己到沉淀方向</small></p>
+          </article>
+          <article>
+            <span>{String(reportCount).padStart(2, '0')}</span>
+            <p>已生成报告<small>{reportCount ? '可以随时回看' : '完成旅程后生成'}</small></p>
+          </article>
+        </div>
+      )}
 
       {loading ? (
         <div className="bg-bd-card/80 backdrop-blur-lg border border-bd-border rounded-2xl p-8 text-center">
           <p className="text-bd-muted">加载中...</p>
         </div>
       ) : featured ? (
-        <div className="space-y-4">
+        <div className="ol-profile-journey-list">
           {/* 用户级问卷信息：登录后即可见 */}
           {userSurvey && userSurvey.completed && (
             <UserSurveyCard survey={userSurvey} t={t} />
@@ -579,7 +687,7 @@ export default function DashboardCurrentProgressPage() {
           </button>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="ol-profile-journey-list">
           {/* 无旅程时仍显示用户问卷信息 */}
           {userSurvey && userSurvey.completed && (
             <UserSurveyCard survey={userSurvey} t={t} />

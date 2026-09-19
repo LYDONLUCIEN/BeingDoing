@@ -32,6 +32,10 @@
 @import '../styles/components/rumination-beautiful.css';
 @import '../styles/components/openlife-journey.css';
 @import '../styles/components/openlife-reference-home.css';
+@import '../styles/components/chat-ui-preview.css';
+@import '../styles/components/openlife-transition.css';
+@import '../styles/components/openlife-profile.css';
+@import '../styles/components/openlife-chat-defaults.css';
 
 /* ── Tailwind (must come after @import) ─────────────── */
 @tailwind base;

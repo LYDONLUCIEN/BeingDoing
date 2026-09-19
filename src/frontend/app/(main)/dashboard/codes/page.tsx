@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Check, Copy, Gift, Ticket } from 'lucide-react';
-import { getApiErrorMessage, isRequestCanceled } from '@/lib/api/client';
+import { apiClient, getApiErrorMessage, isRequestCanceled } from '@/lib/api/client';
 import { listMyCodes, type CodeType, type MyCodeItem } from '@/lib/api/activation';
 import { setLastActivationCode } from '@/lib/explore/session';
 import { fetchMyPurchasedCodes, type PurchasedCodeItem } from '@/lib/api/teamAnalysis';
@@ -14,6 +14,7 @@ import FreeRenewalClaimModal from '@/components/payment/FreeRenewalClaimModal';
 import OrdersSection from '@/components/dashboard/OrdersSection';
 import CouponsSection from '@/components/dashboard/CouponsSection';
 import { useLocale } from '@/hooks/useLocale';
+import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
 
 type CodesTab = 'codes' | 'orders' | 'coupons';
 
@@ -233,10 +234,42 @@ export default function DashboardCodesPage() {
   const [activeTab, setActiveTab] = useState<CodesTab>('codes');
   /** 购买激活码弹窗（页面标题右侧入口） */
   const [purchaseOpen, setPurchaseOpen] = useState(false);
+  /** 页面内直接绑定新激活码（复用 /simple-auth/activate）。 */
+  const [bindCode, setBindCode] = useState('');
+  const [binding, setBinding] = useState(false);
+  const [bindStatus, setBindStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const isUiPreview =
+    process.env.NODE_ENV === 'development' && searchParams.get('ui_preview') === '1';
 
   const loadCodes = useCallback(async () => {
     setLoading(true);
     try {
+      if (isUiPreview) {
+        setCodes([
+          {
+            code: 'OPENLIFE-2026',
+            code_type: 'full',
+            status: 'active',
+            expires_at: '2027-06-18T08:30:00Z',
+            created_at: '2026-08-25T09:06:00Z',
+            source: 'purchase',
+            has_report: false,
+            report_status: 'not_started',
+          },
+          {
+            code: 'TRIAL-0919',
+            code_type: 'trial',
+            status: 'active',
+            expires_at: null,
+            created_at: '2026-09-19T09:06:00Z',
+            source: 'trial_gift',
+            has_report: false,
+            report_status: 'not_started',
+          },
+        ]);
+        setError(null);
+        return;
+      }
       const items = await listMyCodes();
       setCodes(items);
       setError(null);
@@ -247,7 +280,7 @@ export default function DashboardCodesPage() {
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [isUiPreview, t]);
 
   useEffect(() => {
     void loadCodes();
@@ -291,18 +324,40 @@ export default function DashboardCodesPage() {
     router.push(`/explore/activate?code=${encodeURIComponent(code)}`);
   };
 
+  const handleBindCode = async () => {
+    const value = bindCode.trim().toUpperCase();
+    if (!value || binding) return;
+    setBinding(true);
+    setBindStatus(null);
+    try {
+      const response = await apiClient.post('/simple-auth/activate', { code: value });
+      const activatedCode = String(response.data?.activation_code || value);
+      setLastActivationCode(activatedCode);
+      setBindCode('');
+      setBindStatus({ type: 'success', message: `激活码 ${activatedCode} 已绑定到当前账号。` });
+      await loadCodes();
+      setPurchasedRefreshKey((key) => key + 1);
+    } catch (err: unknown) {
+      if (!isRequestCanceled(err)) {
+        setBindStatus({ type: 'error', message: getApiErrorMessage(err, '绑定失败，请检查激活码是否正确') });
+      }
+    } finally {
+      setBinding(false);
+    }
+  };
+
   return (
-    <div className="max-w-4xl">
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold text-bd-fg">{t('dashboard.myCodes')}</h1>
-        <button
-          type="button"
-          onClick={() => setPurchaseOpen(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-bd-ui-accent text-bd-ui-accent-fg hover:opacity-90"
-        >
-          {t('dashboard.ordersPage.buy')}
-        </button>
-      </div>
+    <div className="ol-profile-content ol-codes-page">
+      <DashboardPageHeader
+        kicker="ACTIVATION ARCHIVE"
+        title={t('dashboard.myCodes')}
+        description="在这里查看权益、订单与可转赠的激活码；你的对话内容始终只对你可见。"
+        action={(
+          <button type="button" onClick={() => setPurchaseOpen(true)} className="ol-profile-heading-button">
+            {t('dashboard.ordersPage.buy')}
+          </button>
+        )}
+      />
 
       {/* 页签：激活码 / 订单记录（样式与 AuthModal tab 一致） */}
       <div className="mb-6 flex bg-bd-overlay rounded-lg p-1 max-w-xs">
@@ -363,6 +418,37 @@ export default function DashboardCodesPage() {
           ))}
         </div>
       )}
+          <section className="ol-profile-code-entry ol-profile-surface">
+            <div>
+              <p className="ol-profile-kicker">BIND A NEW CODE</p>
+              <h3>绑定新的激活码</h3>
+              <p>新激活码会与当前账号关联，可用于开启旅程或升级权益。</p>
+            </div>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleBindCode();
+              }}
+            >
+              <label htmlFor="dashboard-bind-code">激活码</label>
+              <div>
+                <input
+                  id="dashboard-bind-code"
+                  value={bindCode}
+                  onChange={(event) => setBindCode(event.target.value.toUpperCase())}
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  placeholder="例如：OPEN-LIFE-2026"
+                />
+                <button className="ol-profile-primary" type="submit" disabled={!bindCode.trim() || binding}>
+                  {binding ? '绑定中…' : '立即激活'}
+                </button>
+              </div>
+              <p className={bindStatus?.type === 'error' ? 'is-error' : 'is-success'} role="status">
+                {bindStatus?.message || ''}
+              </p>
+            </form>
+          </section>
           {/* 我购买的激活码：每码去向/使用情况（订单详情见「订单记录」tab） */}
           <PurchasedCodesSection
             t={t}
@@ -370,14 +456,23 @@ export default function DashboardCodesPage() {
             onCopy={(text) => void copyText(text)}
             onUse={handleUse}
             refreshKey={purchasedRefreshKey}
+            uiPreview={isUiPreview}
           />
         </>
       ) : activeTab === 'coupons' ? (
         // 折扣券 tab：可用 / 已使用 / 已过期 三组
-        <CouponsSection />
+        isUiPreview ? (
+          <PreviewTabPlaceholder title="折扣券" description="预览模式不会请求账号数据；登录后会显示真实折扣券。" />
+        ) : (
+          <CouponsSection />
+        )
       ) : (
         // 订单记录 tab：仅订单详情 + 本单交付的激活码列表（码的去向见「激活码」tab）
-        <OrdersSection />
+        isUiPreview ? (
+          <PreviewTabPlaceholder title="订单记录" description="预览模式不会请求账号数据；登录后会显示真实订单。" />
+        ) : (
+          <OrdersSection />
+        )
       )}
 
       {/* 购买激活码：标题右侧「购买激活码」按钮入口 */}
@@ -430,6 +525,7 @@ function PurchasedCodesSection({
   onCopy,
   onUse,
   refreshKey = 0,
+  uiPreview = false,
 }: {
   t: (k: string, params?: Record<string, string>) => string;
   copiedText: string | null;
@@ -437,11 +533,18 @@ function PurchasedCodesSection({
   onUse: (code: string) => void;
   /** 递增触发重新拉取（升级/延期后码去向会变） */
   refreshKey?: number;
+  /** 本地视觉预览不访问登录态接口，避免触发全局登录弹窗。 */
+  uiPreview?: boolean;
 }) {
   const [items, setItems] = useState<PurchasedCodeItem[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    if (uiPreview) {
+      setItems([]);
+      setLoaded(true);
+      return;
+    }
     fetchMyPurchasedCodes()
       .then(setItems)
       .catch((e: unknown) => {
@@ -450,7 +553,7 @@ function PurchasedCodesSection({
         setItems([]);
       })
       .finally(() => setLoaded(true));
-  }, [refreshKey]);
+  }, [refreshKey, uiPreview]);
 
   if (!loaded || items.length === 0) return null;
 
@@ -542,6 +645,16 @@ function PurchasedCodesSection({
       <div className="bg-bd-card/80 backdrop-blur-lg border border-bd-border rounded-2xl shadow-sm overflow-hidden">
         <div className="divide-y divide-bd-border">{sorted.map(renderCodeRow)}</div>
       </div>
+    </section>
+  );
+}
+
+function PreviewTabPlaceholder({ title, description }: { title: string; description: string }) {
+  return (
+    <section className="ol-profile-surface p-8 text-center">
+      <Ticket className="mx-auto mb-3 h-7 w-7 text-bd-muted" />
+      <h3 className="text-base font-semibold text-bd-fg">{title}</h3>
+      <p className="mt-2 text-sm text-bd-muted">{description}</p>
     </section>
   );
 }
