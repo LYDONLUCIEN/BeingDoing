@@ -12,7 +12,7 @@ export default function MainLayout({
     <div className="bd-aurora-bg bd-eff-bg min-h-screen bg-bd-bg" suppressHydrationWarning>
       <TopNavbar />
       <SiteNoticeBanner />
-      <main className="relative pt-14">
+      <main className="bd-main-content relative pt-14">
         <AuthGate>{children}</AuthGate>
       </main>
       <FloatingFeedbackWidget />

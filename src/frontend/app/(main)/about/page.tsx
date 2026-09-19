@@ -46,7 +46,7 @@ export default function AboutPage() {
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
-          className="bd-glass-card rounded-2xl p-6 md:p-8 space-y-5 text-bd-muted leading-loose text-sm md:text-base"
+          className="bd-glass-card ol-reading-glass rounded-2xl p-6 md:p-8 space-y-5 text-bd-muted leading-loose text-sm md:text-base"
         >
           {ABOUT_PARAGRAPHS.map((p, i) => (
             <p key={i}>{p}</p>

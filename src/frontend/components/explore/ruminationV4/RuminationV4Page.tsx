@@ -19,10 +19,6 @@ import TopComboBar from './TopComboBar';
 import V4FinalSelectionModal from './V4FinalSelectionModal';
 import V4IntroModal from './V4IntroModal';
 
-const ExploreLandingMeshLayers = dynamic(
-  () => import('@/components/explore/ExploreLandingMeshLayers'),
-  { ssr: false }
-);
 const V4MatrixLeftPanel = dynamic(() => import('./V4MatrixLeftPanel'), { ssr: false });
 
 interface Props {
@@ -33,20 +29,20 @@ interface Props {
 }
 
 const outerShellStyle: CSSProperties = {
-  borderRadius: '28px',
-  border: '1px solid rgba(255,255,255,0.72)',
-  background: 'rgba(255,255,255,0.42)',
-  boxShadow: '0 16px 40px rgba(33,48,79,0.08)',
-  backdropFilter: 'blur(18px)',
-  WebkitBackdropFilter: 'blur(18px)', /* 老 WebKit 内核需前缀（ADR-0020） */
+  borderRadius: '26px',
+  border: '1px solid rgba(100, 91, 122, 0.12)',
+  background: 'rgba(255,255,255,0.66)',
+  boxShadow: '0 24px 64px rgba(49, 43, 65, 0.09)',
+  backdropFilter: 'blur(22px) saturate(1.08)',
+  WebkitBackdropFilter: 'blur(22px) saturate(1.08)', /* 老 WebKit 内核需前缀（ADR-0020） */
   padding: '14px 16px 16px',
 };
 
 const innerPaneStyle: CSSProperties = {
-  borderRadius: '18px',
-  border: '1px solid rgba(255,255,255,0.42)',
-  background: 'rgba(255,255,255,0.38)',
-  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.55)',
+  borderRadius: '20px',
+  border: '1px solid rgba(100, 91, 122, 0.1)',
+  background: 'rgba(255,255,255,0.74)',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72), 0 10px 28px rgba(49,43,65,0.04)',
   padding: '12px',
 };
 
@@ -160,7 +156,10 @@ export default function RuminationV4Page({
       }`}
       data-phase="rumination"
     >
-      <ExploreLandingMeshLayers />
+      <div className="rumination-journey-backdrop" aria-hidden>
+        <div className="rumination-journey-ribbon" />
+        <img src="/assets/openlife-journey/sticker-rumination.webp" alt="" />
+      </div>
 
       <div className="relative z-10 flex min-h-0 w-full flex-col px-3 pb-3 pt-1 sm:px-4">
         <div
@@ -168,12 +167,12 @@ export default function RuminationV4Page({
           style={outerShellStyle}
         >
           {/* 顶栏：居中标题 + 右上完成并继续 */}
-          <header className="hero mb-2.5 grid shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-[rgba(80,94,145,0.08)] pb-3 pt-1 text-center">
+          <header className="hero journey-rumination-header mb-2.5 grid shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-[rgba(80,94,145,0.08)] pb-3 pt-1 text-center">
             <div />
             <div className="px-4 sm:px-8">
-              <h1 className="m-0 text-[26px] font-[850] leading-tight tracking-wide text-[#1f2a44] sm:text-[42px]">
+              <h1 className="m-0 text-[24px] font-[760] leading-tight tracking-[-0.02em] text-[#282331] sm:text-[32px]">
                 05 沉淀
-                <span className="ml-2 inline-block text-[#ff987b]" style={{ fontSize: '0.85em' }}>
+                <span className="ml-2 inline-block text-[#8f78d8]" style={{ fontSize: '0.72em' }}>
                   ✦
                 </span>
               </h1>

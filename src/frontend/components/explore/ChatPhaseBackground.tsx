@@ -45,6 +45,13 @@ const SILK_THEME_KEY: Partial<Record<PhaseKey, 'blue' | 'yellow' | 'green' | 'pi
   purpose: 'yellow',
 };
 
+const JOURNEY_STICKER: Partial<Record<PhaseKey, string>> = {
+  values: '/assets/openlife-journey/sticker-values.webp',
+  strengths: '/assets/openlife-journey/sticker-strengths.webp',
+  interests: '/assets/openlife-journey/sticker-interests.webp',
+  purpose: '/assets/openlife-journey/sticker-purpose.webp',
+};
+
 interface ChatPhaseBackgroundProps {
   phase: PhaseKey;
   /** mesh：原四球；silk：newchat6 苍蓝/奶黄/薄荷/樱红 + 涟漪面（仅前四维） */
@@ -61,9 +68,16 @@ export default function ChatPhaseBackground({ phase, engine = 'mesh' }: ChatPhas
         aria-hidden
       >
         <div className="careering-bg-solid" />
+        <div className="careering-journey-ribbon" />
         <div className="careering-silk-blob careering-silk-blob--1" />
         <div className="careering-silk-blob careering-silk-blob--2" />
         <div className="careering-silk-blob careering-silk-blob--3" />
+        <img
+          src={JOURNEY_STICKER[phase]}
+          alt=""
+          className="careering-journey-sticker"
+          aria-hidden
+        />
       </div>
     );
   }

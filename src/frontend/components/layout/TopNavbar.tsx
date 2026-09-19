@@ -30,6 +30,7 @@ export default function TopNavbar() {
   const isAdmin = mounted && !!isAuthenticated && !!(user?.is_super_admin);
   const isDark = mounted ? colorScheme === 'dark' : false;
   const displayLocale = mounted ? locale : 'zh';
+  const isJourneySurface = pathname === '/' || pathname.startsWith('/explore/chat/');
   const { isOpen: authModalOpen, redirectTo, openAuthModal, closeAuthModal } = useAuthModalStore();
   // 「定价方案」购买弹窗（全站导航入口，2026-09-14 起替代首页定价区块）
   const [purchaseOpen, setPurchaseOpen] = useState(false);
@@ -148,7 +149,7 @@ export default function TopNavbar() {
       </div>
     )}
     <nav
-      className="bd-nav-glass fixed top-0 left-0 right-0 z-50 isolate h-14"
+      className={`bd-nav-glass fixed top-0 left-0 right-0 z-50 isolate h-14${isJourneySurface ? ' journey-navbar' : ''}`}
       style={{ backgroundColor: 'var(--bd-nav-bg)', borderBottom: '1px solid var(--bd-nav-border)' }}
       suppressHydrationWarning
     >
@@ -161,19 +162,19 @@ export default function TopNavbar() {
               e.preventDefault();
               router.push('/');
             }}
-            className="relative z-[60] pointer-events-auto cursor-pointer flex items-center gap-2 text-lg font-bold whitespace-nowrap tracking-tight text-bd-fg"
+            className="journey-navbar-brand relative z-[60] pointer-events-auto cursor-pointer flex items-center gap-2 text-lg font-bold whitespace-nowrap tracking-tight text-bd-fg"
           >
             <img
-              src="/assets/lulu-logo.webp"
+              src={isJourneySurface ? '/assets/openlife-journey/logo.svg' : '/assets/lulu-logo.webp'}
               alt=""
-              className="w-7 h-7 rounded-full object-cover shrink-0"
+              className={`w-7 h-7 object-cover shrink-0${isJourneySurface ? ' journey-navbar-logo' : ' rounded-full'}`}
             />
             {t('nav.brand')}
           </Link>
         </div>
 
         {/* 中间：导航项正中间居中 */}
-        <div className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center gap-1">
+        <div className="journey-navbar-links hidden md:flex absolute left-1/2 -translate-x-1/2 items-center gap-1">
           {NAV_ITEMS.map((item) => {
             const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
             return (
@@ -181,7 +182,7 @@ export default function TopNavbar() {
                 key={item.href}
                 href={item.href}
                 onClick={(e) => handleNavClick(item, e)}
-                className={`${linkBase} ${isActive ? linkActive : linkInactive}`}
+                className={`journey-nav-link ${linkBase} ${isActive ? `is-active ${linkActive}` : linkInactive}`}
               >
                 {t(item.labelKey)}
               </Link>
@@ -190,7 +191,7 @@ export default function TopNavbar() {
           <button
             type="button"
             onClick={handlePricingClick}
-            className={`${linkBase} ${linkInactive}`}
+            className={`journey-nav-link ${linkBase} ${linkInactive}`}
           >
             {t('nav.pricing')}
           </button>
@@ -276,7 +277,7 @@ export default function TopNavbar() {
         <button
           type="button"
           onClick={() => setMobileOpen(!mobileOpen)}
-          className="md:hidden ml-auto p-2 text-bd-muted hover:text-bd-fg"
+          className="journey-mobile-menu-button md:hidden ml-auto p-2 text-bd-muted hover:text-bd-fg"
         >
           {mobileOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
@@ -285,7 +286,7 @@ export default function TopNavbar() {
       {/* Mobile menu */}
       {mobileOpen && (
         <div
-          className="bd-nav-glass md:hidden px-4 pb-4 space-y-1"
+          className={`bd-nav-glass md:hidden px-4 pb-4 space-y-1${isJourneySurface ? ' journey-mobile-menu' : ''}`}
           style={{ backgroundColor: 'var(--bd-nav-bg)', borderBottom: '1px solid var(--bd-nav-border)' }}
         >
           {NAV_ITEMS.map((item) => {

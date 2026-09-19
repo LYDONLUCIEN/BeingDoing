@@ -1,0 +1,965 @@
+/* ════════════════════════════════════════════════════════
+   OpenLife Journey UI
+   视觉来源：用户提供的 openlife-journey 参考稿。
+   仅覆盖首页、四阶段聊天和沉淀 v4，不改变业务状态与数据流。
+   ════════════════════════════════════════════════════════ */
+
+:root {
+  --journey-paper: #fbfcfb;
+  --journey-paper-warm: #f7f5f0;
+  --journey-ink: #17212d;
+  --journey-muted: #6f7b88;
+  --journey-hair: #e3e8ec;
+  --journey-blue: #5e91e6;
+  --journey-green: #5eb48f;
+  --journey-coral: #eb7f84;
+  --journey-gold: #dda83b;
+  --journey-violet: #8f78d8;
+  --journey-serif: 'Noto Serif SC', 'Songti SC', 'STSong', Georgia, serif;
+  --journey-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'PingFang SC',
+    'Microsoft YaHei', sans-serif;
+}
+
+/* ── Shared navigation ─────────────────────────────── */
+.journey-navbar {
+  background-color: rgba(251, 252, 251, 0.86) !important;
+  border-bottom-color: rgba(23, 33, 45, 0.08) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(1.16) !important;
+  backdrop-filter: blur(16px) saturate(1.16) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.68);
+  font-family: var(--journey-sans);
+}
+
+.journey-navbar .journey-navbar-brand {
+  color: var(--journey-ink) !important;
+  font-weight: 720;
+  letter-spacing: -0.025em;
+}
+
+.journey-navbar .journey-navbar-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.journey-navbar .journey-navbar-links {
+  gap: 10px;
+}
+
+.journey-navbar .journey-nav-link {
+  position: relative;
+  border-radius: 0;
+  background: transparent !important;
+  color: #697582 !important;
+  font-size: 13px;
+  font-weight: 540;
+}
+
+.journey-navbar .journey-nav-link::after {
+  content: '';
+  position: absolute;
+  right: 12px;
+  bottom: -5px;
+  left: 12px;
+  height: 1px;
+  background: var(--journey-ink);
+  opacity: 0;
+  transform: scaleX(0.45);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.journey-navbar .journey-nav-link:hover,
+.journey-navbar .journey-nav-link.is-active {
+  color: var(--journey-ink) !important;
+}
+
+.journey-navbar .journey-nav-link:hover::after,
+.journey-navbar .journey-nav-link.is-active::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+.journey-navbar select {
+  color: var(--journey-muted) !important;
+}
+
+.journey-navbar .journey-mobile-menu,
+.journey-mobile-menu {
+  background-color: rgba(251, 252, 251, 0.96) !important;
+}
+
+/* ── Homepage shell + hero ─────────────────────────── */
+html[data-landing='true']:not([data-color-scheme='dark']) [class*='bd-aurora-bg'],
+html[data-landing='true']:not([data-color-scheme='dark']) [class*='bd-eff-bg'] {
+  background: var(--journey-paper) !important;
+}
+
+.openlife-journey-home {
+  min-height: 100%;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 84% 22%, rgba(143, 120, 216, 0.055), transparent 28%),
+    radial-gradient(circle at 12% 52%, rgba(94, 180, 143, 0.045), transparent 30%),
+    var(--journey-paper);
+  color: var(--journey-ink);
+  font-family: var(--journey-sans);
+}
+
+.openlife-journey-home .landing-mesh-bg,
+.openlife-journey-home .landing-mesh-noise {
+  display: none;
+}
+
+.openlife-journey-home .landing-mesh-content {
+  position: relative;
+  z-index: 1;
+}
+
+.openlife-journey-home .landing-mesh-content::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  top: 660px;
+  right: -220px;
+  width: 760px;
+  height: 260px;
+  background: url('/assets/openlife-journey/botanical-line.webp') center / contain no-repeat;
+  opacity: 0.3;
+  transform: rotate(4deg);
+  pointer-events: none;
+}
+
+.journey-hero {
+  min-height: max(700px, calc(100vh - 3.5rem));
+  padding-top: 90px;
+  padding-bottom: 112px;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.journey-hero::before {
+  content: '';
+  position: absolute;
+  z-index: -2;
+  inset: 0;
+  background: url('/assets/openlife-journey/home-watercolor.webp') center top / cover no-repeat;
+  opacity: 0.96;
+}
+
+.journey-hero::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(251, 252, 251, 0.08) 0%,
+    rgba(251, 252, 251, 0.03) 50%,
+    rgba(251, 252, 251, 0.78) 88%,
+    var(--journey-paper) 100%
+  );
+}
+
+.journey-hero-eyebrow {
+  margin: 0 0 20px;
+  padding: 8px 14px;
+  border: 1px solid rgba(23, 33, 45, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.34);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  color: rgba(23, 33, 45, 0.72);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.journey-hero-title {
+  margin: 0 0 22px;
+  color: var(--journey-ink);
+  font-family: var(--journey-sans) !important;
+  font-size: clamp(56px, 6vw, 88px);
+  font-weight: 760;
+  letter-spacing: -0.058em;
+  line-height: 0.98;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+.openlife-journey-home .journey-hero-slogan {
+  max-width: 700px;
+  margin: 0 0 38px;
+  color: rgba(23, 33, 45, 0.82) !important;
+  font-family: var(--journey-serif) !important;
+  font-size: clamp(20px, 2vw, 29px);
+  font-weight: 500;
+  letter-spacing: 0.035em;
+}
+
+.journey-primary-button,
+.openlife-journey-home .bd-report-cta-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 54px;
+  padding: 0 30px;
+  border: 1px solid rgba(0, 0, 0, 0.82);
+  border-radius: 999px;
+  background: #17212d !important;
+  box-shadow: 0 12px 30px rgba(23, 33, 45, 0.18);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.journey-primary-button:hover,
+.openlife-journey-home .bd-report-cta-btn:hover {
+  transform: translateY(-2px);
+  background: #0d151f !important;
+  box-shadow: 0 16px 38px rgba(23, 33, 45, 0.24);
+}
+
+/* ── Journey phases ────────────────────────────────── */
+.journey-path-section {
+  position: relative;
+  z-index: 2;
+  width: min(1320px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 90px 0 40px;
+}
+
+.journey-section-heading {
+  max-width: 760px;
+  margin: 0 auto 48px;
+  text-align: center;
+}
+
+.journey-section-heading > p {
+  margin: 0 0 14px;
+  color: var(--journey-muted);
+  font-size: 12px;
+  font-weight: 680;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.journey-section-heading h2 {
+  margin: 0 0 20px;
+  color: var(--journey-ink);
+  font-family: var(--journey-serif);
+  font-size: clamp(36px, 4vw, 58px);
+  font-weight: 620;
+  letter-spacing: -0.045em;
+  line-height: 1.15;
+}
+
+.journey-heading-copy {
+  color: var(--journey-muted);
+  font-size: 15px;
+  line-height: 1.9;
+}
+
+.journey-heading-copy strong {
+  color: var(--journey-ink);
+  font-weight: 680;
+}
+
+.journey-phase-track {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+  padding: 18px 0 86px;
+}
+
+.journey-phase-line {
+  position: absolute;
+  z-index: -1;
+  right: 7%;
+  bottom: 49px;
+  left: 7%;
+  border-top: 1px dashed rgba(23, 33, 45, 0.2);
+}
+
+.journey-phase-card {
+  --phase-color: var(--journey-blue);
+  --phase-soft: rgba(94, 145, 230, 0.1);
+  position: relative;
+  display: flex;
+  min-height: 294px;
+  flex-direction: column;
+  align-items: flex-start;
+  overflow: visible;
+  padding: 24px 22px 28px;
+  border: 1px solid rgba(23, 33, 45, 0.085);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.73);
+  -webkit-backdrop-filter: blur(18px) saturate(1.1);
+  backdrop-filter: blur(18px) saturate(1.1);
+  box-shadow: 0 16px 38px rgba(23, 33, 45, 0.055), inset 0 1px 0 rgba(255, 255, 255, 0.84);
+  color: var(--journey-ink);
+  text-align: left;
+  transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+}
+
+.journey-phase-card--strengths {
+  --phase-color: var(--journey-green);
+  --phase-soft: rgba(94, 180, 143, 0.1);
+}
+
+.journey-phase-card--interests {
+  --phase-color: var(--journey-coral);
+  --phase-soft: rgba(235, 127, 132, 0.1);
+}
+
+.journey-phase-card--purpose {
+  --phase-color: var(--journey-gold);
+  --phase-soft: rgba(221, 168, 59, 0.1);
+}
+
+.journey-phase-card--rumination {
+  --phase-color: var(--journey-violet);
+  --phase-soft: rgba(143, 120, 216, 0.1);
+}
+
+.journey-phase-card:hover,
+.journey-phase-card.is-selected {
+  transform: translateY(-9px);
+  border-color: var(--phase-color);
+  border-color: color-mix(in srgb, var(--phase-color) 38%, transparent);
+  box-shadow: 0 24px 54px rgba(23, 33, 45, 0.09), 0 0 0 5px var(--phase-soft);
+}
+
+.journey-phase-step {
+  color: var(--phase-color);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.journey-phase-sticker {
+  width: 76px;
+  height: 60px;
+  margin: 12px 0 8px -4px;
+  object-fit: contain;
+  object-position: left center;
+  filter: saturate(0.88);
+}
+
+.journey-phase-title {
+  margin-bottom: 12px;
+  font-family: var(--journey-serif);
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+}
+
+.journey-phase-desc {
+  color: #68737e;
+  font-size: 13px;
+  line-height: 1.72;
+}
+
+.journey-phase-dot {
+  position: absolute;
+  bottom: -43px;
+  left: 50%;
+  width: 11px;
+  height: 11px;
+  border: 3px solid var(--journey-paper);
+  border-radius: 50%;
+  background: var(--phase-color);
+  box-shadow: 0 0 0 1px rgba(23, 33, 45, 0.1);
+  transform: translateX(-50%);
+}
+
+/* ── Report / stories / references / FAQ ───────────── */
+.journey-report-section {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  margin: 40px auto 100px;
+}
+
+.openlife-journey-home .journey-report-card {
+  overflow: hidden;
+  padding: clamp(28px, 5vw, 66px);
+  border: 1px solid rgba(23, 33, 45, 0.085);
+  border-radius: 34px;
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.58)),
+    radial-gradient(circle at 92% 8%, rgba(94, 145, 230, 0.12), transparent 40%);
+  -webkit-backdrop-filter: blur(22px);
+  backdrop-filter: blur(22px);
+  box-shadow: 0 30px 80px rgba(23, 33, 45, 0.07);
+}
+
+.openlife-journey-home .bd-report-showcase-title {
+  color: var(--journey-ink);
+  font-family: var(--journey-serif);
+  font-size: clamp(30px, 3.5vw, 48px);
+  font-weight: 640;
+  letter-spacing: -0.035em;
+  line-height: 1.2;
+}
+
+.openlife-journey-home .bd-report-showcase-subtitle {
+  color: #506074;
+}
+
+.openlife-journey-home .bd-report-showcase-intro,
+.openlife-journey-home .bd-report-showcase-list {
+  color: #68737e;
+}
+
+.openlife-journey-home .bd-report-preview-single {
+  border-radius: 22px;
+  box-shadow: 0 24px 54px rgba(23, 33, 45, 0.14);
+  transform: rotate(1.2deg);
+}
+
+.journey-stories-section {
+  background:
+    linear-gradient(180deg, transparent 0%, rgba(238, 242, 246, 0.54) 26%, rgba(247, 245, 240, 0.48) 100%);
+}
+
+.journey-stories-section h2,
+.journey-references-section h2,
+.journey-faq-section h2 {
+  color: var(--journey-ink) !important;
+  font-family: var(--journey-serif);
+  font-size: clamp(34px, 4vw, 52px) !important;
+  font-weight: 620 !important;
+  letter-spacing: -0.035em !important;
+}
+
+.journey-stories-section .bd-testimonial-card {
+  border: 1px solid rgba(23, 33, 45, 0.075);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.7);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 18px 46px rgba(23, 33, 45, 0.055);
+}
+
+.journey-stories-section .bd-testimonial-quote {
+  color: #485461;
+  font-family: var(--journey-serif);
+}
+
+.journey-references-section {
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.42)),
+    repeating-linear-gradient(0deg, transparent, transparent 31px, rgba(23, 33, 45, 0.025) 32px);
+}
+
+.journey-references-section .bd-ref-paper {
+  border-color: rgba(23, 33, 45, 0.1);
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 30px 70px rgba(23, 33, 45, 0.085);
+}
+
+.journey-faq-section {
+  padding-top: 110px !important;
+  padding-bottom: 110px !important;
+}
+
+.journey-faq-section .journey-faq-item {
+  margin: 0;
+  border: 0 !important;
+  border-bottom: 1px solid var(--journey-hair) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+.journey-faq-section .journey-faq-item:has(button[aria-expanded='true']) {
+  margin: 8px 0;
+  border: 1px solid rgba(23, 33, 45, 0.07) !important;
+  border-radius: 18px !important;
+  background: rgba(255, 255, 255, 0.74) !important;
+  box-shadow: 0 16px 36px rgba(23, 33, 45, 0.045) !important;
+}
+
+.journey-faq-section .journey-faq-item button {
+  padding-top: 20px;
+  padding-bottom: 20px;
+}
+
+.journey-footer {
+  border-color: rgba(23, 33, 45, 0.08) !important;
+  background: rgba(247, 245, 240, 0.54);
+}
+
+/* ── Chat background ───────────────────────────────── */
+.careering-bg-root[data-careering-theme='blue'] {
+  --journey-chat-accent: var(--journey-blue);
+  --journey-chat-soft: #eef4fd;
+}
+
+.careering-bg-root[data-careering-theme='green'] {
+  --journey-chat-accent: var(--journey-green);
+  --journey-chat-soft: #eef8f3;
+}
+
+.careering-bg-root[data-careering-theme='pink'] {
+  --journey-chat-accent: var(--journey-coral);
+  --journey-chat-soft: #fdf0f1;
+}
+
+.careering-bg-root[data-careering-theme='yellow'] {
+  --journey-chat-accent: var(--journey-gold);
+  --journey-chat-soft: #fbf5e7;
+}
+
+.careering-bg-root .careering-bg-solid {
+  background:
+    linear-gradient(180deg, rgba(251, 252, 251, 0.86), rgba(247, 245, 240, 0.92)),
+    var(--journey-chat-soft) !important;
+}
+
+.careering-journey-ribbon {
+  position: absolute;
+  inset: -10% -6%;
+  background: url('/assets/openlife-journey/chat-ribbon.webp') center / cover no-repeat;
+  opacity: 0.62;
+  filter: saturate(0.82) contrast(0.96);
+  transform: scale(1.06);
+}
+
+.careering-bg-root .careering-silk-blob {
+  opacity: 0.12;
+  filter: blur(120px);
+  animation-duration: 38s;
+}
+
+.careering-journey-sticker {
+  position: absolute;
+  top: 6%;
+  right: 3%;
+  width: clamp(100px, 13vw, 190px);
+  height: auto;
+  opacity: 0.4;
+  filter: saturate(0.82);
+}
+
+.flow-light.careering-matte {
+  --journey-chat-accent: var(--journey-blue);
+  --journey-chat-soft: #eef4fd;
+  --flow-text-body: #27313d;
+  --flow-text-muted: #84909c;
+  font-family: var(--journey-sans);
+}
+
+.flow-light.careering-matte[data-phase='strengths'] {
+  --journey-chat-accent: var(--journey-green);
+  --journey-chat-soft: #eef8f3;
+}
+
+.flow-light.careering-matte[data-phase='interests'] {
+  --journey-chat-accent: var(--journey-coral);
+  --journey-chat-soft: #fdf0f1;
+}
+
+.flow-light.careering-matte[data-phase='purpose'] {
+  --journey-chat-accent: var(--journey-gold);
+  --journey-chat-soft: #fbf5e7;
+}
+
+.flow-light.careering-matte .careering-sidebar {
+  width: 248px !important;
+  border-right: 1px solid rgba(23, 33, 45, 0.075) !important;
+  background: rgba(251, 252, 251, 0.68) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.04) !important;
+  backdrop-filter: blur(24px) saturate(1.04) !important;
+  box-shadow: 14px 0 34px rgba(23, 33, 45, 0.035) !important;
+}
+
+.flow-light.careering-matte .careering-sidebar-header {
+  padding: 18px 15px 14px;
+  border-bottom-color: rgba(23, 33, 45, 0.065) !important;
+}
+
+.flow-light.careering-matte .careering-sidebar-header button {
+  min-height: 42px;
+  border: 1px solid rgba(0, 0, 0, 0.86);
+  background: var(--journey-ink) !important;
+  box-shadow: 0 8px 22px rgba(23, 33, 45, 0.14) !important;
+  font-size: 13px;
+}
+
+.flow-light.careering-matte .careering-sidebar .flow-sidebar-threads {
+  padding: 12px 10px;
+}
+
+.flow-light.careering-matte .careering-sidebar .flow-sidebar-threads div.space-y-2 > div[role='button'],
+.flow-light.careering-matte .careering-sidebar .flow-sidebar-threads div.space-y-1\.5 > div > div > div[role='button'] {
+  border: 1px solid transparent !important;
+  border-radius: 13px !important;
+  background: transparent !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+.flow-light.careering-matte .careering-sidebar .flow-sidebar-threads div[role='button'].shadow-md {
+  border-color: rgba(23, 33, 45, 0.075) !important;
+  background: rgba(255, 255, 255, 0.7) !important;
+  box-shadow: 0 8px 22px rgba(23, 33, 45, 0.055) !important;
+}
+
+.careering-chat-header {
+  min-height: 76px;
+  padding: 14px 28px 12px !important;
+  border-bottom: 1px solid rgba(23, 33, 45, 0.055);
+  background: rgba(251, 252, 251, 0.34);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+.careering-chat-phase-title {
+  color: var(--journey-ink);
+  font-family: var(--journey-serif);
+  font-size: 19px !important;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.careering-chat-header-actions .bd-btn-black {
+  min-height: 40px;
+  border: 1px solid rgba(0, 0, 0, 0.84);
+  background: var(--journey-ink);
+  box-shadow: 0 8px 20px rgba(23, 33, 45, 0.13);
+  font-size: 12px;
+}
+
+.flow-light.careering-matte .flow-chat-body {
+  --careering-scroll-fade-top: 1.25rem;
+  padding-top: 26px;
+  gap: 28px;
+}
+
+.careering-chat-messages-inner {
+  --careering-msg-left-edge: clamp(22px, 4vw, 68px);
+  --careering-msg-right-edge: clamp(22px, 4vw, 68px);
+}
+
+.flow-light.careering-matte .flow-msg-ai-content {
+  padding: 17px 21px;
+  border: 1px solid rgba(23, 33, 45, 0.07) !important;
+  border-left: 3px solid var(--journey-chat-accent, var(--journey-blue)) !important;
+  border-radius: 18px 18px 18px 5px;
+  background: rgba(255, 255, 255, 0.88) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+  backdrop-filter: blur(14px) !important;
+  box-shadow: 0 14px 34px rgba(23, 33, 45, 0.06) !important;
+  color: #303a45;
+  font-family: var(--journey-sans) !important;
+  line-height: 1.76;
+}
+
+.flow-light.careering-matte .flow-msg-user-content,
+.flow-light.careering-matte[data-phase='values'] .flow-msg-user-content,
+.flow-light.careering-matte[data-phase='strengths'] .flow-msg-user-content,
+.flow-light.careering-matte[data-phase='interests'] .flow-msg-user-content,
+.flow-light.careering-matte[data-phase='purpose'] .flow-msg-user-content {
+  padding: 15px 20px;
+  border: 1px solid rgba(23, 33, 45, 0.055) !important;
+  border-radius: 18px 18px 5px 18px;
+  background: var(--journey-chat-soft, #eef4fd) !important;
+  box-shadow: 0 10px 26px rgba(23, 33, 45, 0.055);
+  color: var(--journey-ink) !important;
+}
+
+.flow-light.careering-matte .flow-msg-careering-avatar--user {
+  background: var(--journey-chat-accent, var(--journey-ink));
+}
+
+.flow-light.careering-matte .flow-conclusion-card {
+  border: 1px solid rgba(23, 33, 45, 0.085) !important;
+  border-radius: 21px;
+  background: rgba(255, 255, 255, 0.82) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(1.08) !important;
+  backdrop-filter: blur(20px) saturate(1.08) !important;
+  box-shadow: 0 18px 44px rgba(23, 33, 45, 0.07) !important;
+}
+
+.careering-input-dock {
+  padding: 18px 30px 24px;
+  background: linear-gradient(to top, rgba(251, 252, 251, 0.92) 0%, rgba(251, 252, 251, 0) 100%);
+}
+
+.flow-light.careering-matte .careering-input-dock .flow-input-box {
+  min-height: 54px;
+  border: 1px solid rgba(23, 33, 45, 0.085);
+  border-radius: 27px;
+  background: rgba(255, 255, 255, 0.92);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 13px 34px rgba(23, 33, 45, 0.08);
+}
+
+.flow-light.careering-matte .careering-input-dock .flow-input-box:focus-within {
+  border-color: var(--journey-chat-accent, var(--journey-blue));
+  box-shadow: 0 16px 40px rgba(23, 33, 45, 0.11);
+}
+
+/* ── Rumination v4 ─────────────────────────────────── */
+.rumination-v4-root {
+  background: var(--journey-paper-warm);
+  font-family: var(--journey-sans);
+}
+
+.rumination-journey-backdrop {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.rumination-journey-backdrop::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 10% 22%, rgba(94, 145, 230, 0.12), transparent 28%),
+    radial-gradient(circle at 88% 74%, rgba(143, 120, 216, 0.14), transparent 30%),
+    linear-gradient(180deg, rgba(251, 252, 251, 0.68), rgba(247, 245, 240, 0.88));
+}
+
+.rumination-journey-ribbon {
+  position: absolute;
+  inset: -10%;
+  background: url('/assets/openlife-journey/chat-ribbon.webp') center / cover no-repeat;
+  opacity: 0.55;
+  filter: hue-rotate(22deg) saturate(0.76);
+}
+
+.rumination-journey-backdrop img {
+  position: absolute;
+  right: 1.5%;
+  bottom: 3%;
+  width: clamp(110px, 15vw, 210px);
+  opacity: 0.38;
+}
+
+.rumination-v4-root .journey-rumination-header {
+  border-bottom-color: rgba(23, 33, 45, 0.07) !important;
+}
+
+.rumination-v4-root .journey-rumination-header p {
+  color: var(--journey-muted) !important;
+  font-family: var(--journey-serif);
+}
+
+.rumination-v4-root .rumination-workbench,
+.rumination-v4-root .rumination-toolbar-wrap {
+  width: calc(100% - 24px);
+  max-width: calc(100vw - 48px);
+}
+
+.rumination-v4-root .complete-btn {
+  border: 1px solid rgba(0, 0, 0, 0.84);
+  background: var(--journey-ink) !important;
+  box-shadow: 0 8px 22px rgba(23, 33, 45, 0.15) !important;
+}
+
+.rumination-v4-root .rumination-beautiful-card,
+.rumination-v4-root .rumination-beautiful-card--chat {
+  border: 1px solid rgba(23, 33, 45, 0.075);
+  background: rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 14px 38px rgba(23, 33, 45, 0.055);
+}
+
+/* ── Responsive ─────────────────────────────────────── */
+@media (max-width: 1023px) {
+  .journey-phase-track {
+    grid-template-columns: repeat(5, 255px);
+    margin-right: -24px;
+    margin-left: -24px;
+    padding-right: 24px;
+    padding-left: 24px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+
+  .journey-phase-track::-webkit-scrollbar {
+    display: none;
+  }
+
+  .journey-phase-card {
+    min-height: 270px;
+    scroll-snap-align: center;
+  }
+
+  .journey-phase-line,
+  .journey-phase-dot {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .journey-navbar .journey-navbar-brand {
+    font-size: 16px;
+  }
+
+  .journey-navbar .journey-navbar-logo {
+    width: 28px;
+    height: 28px;
+  }
+
+  .journey-hero {
+    min-height: 660px;
+    padding: 78px 20px 96px;
+  }
+
+  .journey-hero::before {
+    background-position: 48% top;
+  }
+
+  .journey-hero-title {
+    font-size: clamp(42px, 14vw, 58px);
+    letter-spacing: -0.05em;
+  }
+
+  .openlife-journey-home .journey-hero-slogan {
+    font-size: 19px;
+  }
+
+  .journey-primary-button {
+    min-height: 50px;
+    padding: 0 25px;
+  }
+
+  .journey-path-section {
+    width: calc(100% - 32px);
+    padding-top: 64px;
+  }
+
+  .journey-section-heading {
+    margin-bottom: 28px;
+  }
+
+  .journey-section-heading h2 {
+    font-size: 36px;
+  }
+
+  .journey-heading-copy {
+    font-size: 14px;
+  }
+
+  .journey-phase-track {
+    grid-template-columns: repeat(5, min(78vw, 278px));
+    gap: 13px;
+    padding-bottom: 48px;
+  }
+
+  .journey-report-section {
+    margin-top: 10px;
+    margin-bottom: 64px;
+  }
+
+  .openlife-journey-home .journey-report-card {
+    padding: 28px 22px;
+    border-radius: 24px;
+  }
+
+  .journey-stories-section,
+  .journey-references-section {
+    padding-top: 72px !important;
+    padding-bottom: 72px !important;
+  }
+
+  .journey-faq-section {
+    padding-top: 80px !important;
+    padding-bottom: 80px !important;
+  }
+
+  .journey-stories-section h2,
+  .journey-references-section h2,
+  .journey-faq-section h2 {
+    font-size: 34px !important;
+  }
+
+  .flow-light.careering-matte .careering-sidebar {
+    width: 220px !important;
+  }
+
+  .careering-chat-header {
+    min-height: 66px;
+    padding: 10px 12px !important;
+  }
+
+  .careering-chat-phase-title {
+    max-width: calc(100% - 142px);
+    font-size: 16px !important;
+  }
+
+  .careering-chat-header-actions .bd-btn-black {
+    padding: 8px 12px;
+  }
+
+  .careering-chat-messages-inner {
+    --careering-msg-left-edge: 14px;
+    --careering-msg-right-edge: 14px;
+  }
+
+  .flow-light.careering-matte .flow-msg-ai-content,
+  .flow-light.careering-matte .flow-msg-user-content {
+    padding: 14px 16px;
+  }
+
+  .careering-input-dock {
+    padding: 14px 14px 18px;
+  }
+
+  .careering-journey-sticker {
+    right: -10px;
+    opacity: 0.24;
+  }
+
+  .rumination-v4-root .rumination-workbench,
+  .rumination-v4-root .rumination-toolbar-wrap {
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 639px) {
+  .flow-light.careering-matte .careering-sidebar {
+    width: 176px !important;
+  }
+
+  .flow-light.careering-matte .careering-sidebar-header {
+    padding: 12px 10px;
+  }
+
+  .careering-chat-header-actions .bd-btn-black span {
+    max-width: 72px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .rumination-v4-root .journey-rumination-header {
+    grid-template-columns: 0 minmax(0, 1fr) auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .journey-phase-card,
+  .journey-primary-button,
+  .careering-bg-root .careering-silk-blob {
+    transition: none !important;
+    animation: none !important;
+  }
+}

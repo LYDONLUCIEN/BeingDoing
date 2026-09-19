@@ -30,6 +30,8 @@
 @import '../styles/components/references-paper.css';
 @import '../styles/components/explore-intro.css';
 @import '../styles/components/rumination-beautiful.css';
+@import '../styles/components/openlife-journey.css';
+@import '../styles/components/openlife-reference-home.css';
 
 /* ── Tailwind (must come after @import) ─────────────── */
 @tailwind base;
