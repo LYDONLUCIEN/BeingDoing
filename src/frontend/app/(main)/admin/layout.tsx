@@ -105,7 +105,7 @@ export default function AdminLayout({
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-3.5rem)] bg-bd-bg">
+    <div className="ol-admin-root flex min-h-[calc(100vh-3.5rem)] bg-bd-bg">
       <aside className="w-64 bg-bd-card/90 backdrop-blur-2xl border-r border-bd-border fixed left-0 top-14 bottom-0 flex flex-col items-center pt-8 px-5 z-30">
         <div
           className="w-16 h-16 rounded-2xl flex items-center justify-center text-white text-lg font-semibold mb-3 overflow-hidden ring-2 ring-black/15 ring-offset-2 ring-offset-bd-card shadow-[0_4px_16px_rgba(15,23,42,0.28)]"

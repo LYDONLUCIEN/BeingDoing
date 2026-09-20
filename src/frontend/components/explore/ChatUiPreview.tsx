@@ -9,6 +9,8 @@ import DimensionConclusionCard, {
   type DimensionConclusionData,
 } from '@/components/explore/DimensionConclusionCard';
 import ExploreLandingMeshLayers from '@/components/explore/ExploreLandingMeshLayers';
+import ChatAppearancePopover from '@/components/explore/ChatAppearancePopover';
+import { useChatAppearanceStore } from '@/stores/chatAppearanceStore';
 import FlowAiMessage from '@/components/explore/FlowAiMessage';
 import RuminationTableWidget, {
   type RuminationTablePayload,
@@ -354,6 +356,7 @@ export default function ChatUiPreview({
   previewState: string;
 }) {
   const router = useRouter();
+  const chatAppearance = useChatAppearanceStore();
   const previewState = normalizePreviewState(rawPreviewState);
   const copy = PHASE_COPY[phase];
   const [threads, setThreads] = useState<ChatThread[]>(() => buildThreads(phase, previewState));
@@ -612,7 +615,13 @@ export default function ChatUiPreview({
   }
 
   return (
-    <div className="flow-light careering-matte chat-shell-h ol-chat-preview-shell relative flex min-h-0 flex-col overflow-hidden" data-phase={phase}>
+    <div
+      className="flow-light careering-matte chat-shell-h ol-chat-preview-shell relative flex min-h-0 flex-col overflow-hidden"
+      data-phase={phase}
+      data-chat-density={chatAppearance.density}
+      data-chat-sidebar-art={chatAppearance.sidebarArt ? 'on' : 'off'}
+      data-chat-newbtn={chatAppearance.newChatStyle}
+    >
       <ChatPhaseBackground phase={phase} engine="silk" />
       {toolbar}
       <div className="relative z-10 flex min-h-0 flex-1 overflow-hidden">
@@ -625,6 +634,7 @@ export default function ChatUiPreview({
           canNewChat={threads.length < 5}
           phaseTitle={copy.label}
           careeringMatte
+          phaseStickerSrc={`/assets/openlife-journey/sticker-${phase}.webp`}
           streamBlocksSessionSwitch={streaming}
           threadsLoading={previewState === 'loading'}
         />
@@ -632,6 +642,7 @@ export default function ChatUiPreview({
           <header className="careering-chat-header">
             <h1 className="careering-chat-phase-title">{copy.num} {copy.label}</h1>
             <div className="careering-chat-header-actions">
+              <ChatAppearancePopover />
               <button type="button" className="bd-btn-black inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold text-white sm:px-5" title="预览模式下不会跳转">
                 <FileText size={15} strokeWidth={2} className="hidden sm:inline" aria-hidden />
                 <span>完成并继续</span>

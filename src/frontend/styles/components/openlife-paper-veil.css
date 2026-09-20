@@ -1,0 +1,48 @@
+/* ══════════════════════════════════════════
+   半透明纸层 + 毛玻璃 6px 页面背景层
+   用于：/explore/intro、/community、/about
+   （激活码页同款配方在 openlife-transition.css，
+   这里抽出供内容页复用；数值以 HTML 设计稿
+   openlife-journey (21).html 的 transition-app
+   paper 模式为准，模糊按产品决策固定 6px）
+   ══════════════════════════════════════════ */
+
+.ol-paper-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* 纸层底图：外扩 22px + 放大 1.025 防止模糊后边缘露馅 */
+.ol-paper-bg-image {
+  position: absolute;
+  inset: -22px;
+  background-image: url('/assets/openlife-transition/paper.webp');
+  background-size: cover;
+  background-position: center;
+  transform: scale(1.025);
+}
+
+/* 白纱罩层 + 6px 毛玻璃（alpha 公式同激活页：0.045 + 6 × 0.0045 ≈ .072） */
+.ol-paper-bg-veil {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.072);
+  backdrop-filter: blur(6px) saturate(106%);
+  -webkit-backdrop-filter: blur(6px) saturate(106%);
+}
+
+[data-color-scheme='dark'] .ol-paper-bg-image {
+  filter: brightness(0.42) saturate(0.8);
+}
+[data-color-scheme='dark'] .ol-paper-bg-veil {
+  background: rgba(14, 16, 20, 0.38);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ol-paper-bg-image {
+    transform: none;
+  }
+}

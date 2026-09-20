@@ -196,7 +196,7 @@ function UserSurveyCard({
         </div>
         <div className="flex items-center gap-2">
           {survey.completed && (
-            <span className="rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-[10px] text-green-700 dark:border-green-800 dark:bg-green-900/30 dark:text-green-400">
+            <span className="ol-pill ol-pill--green">
               已填写
             </span>
           )}
@@ -260,10 +260,10 @@ function JourneyCard({
           <span className="font-mono text-[11px] text-bd-fg/80">{journey.activation_code}</span>
           {journey.code_type && (
             <span
-              className={`rounded-full border px-1.5 py-px text-[10px] font-medium ${
+              className={`ol-pill ${
                 journey.code_type === 'trial'
-                  ? 'bg-sky-100 text-sky-700 border-sky-200'
-                  : 'bg-amber-100 text-amber-700 border-amber-200'
+                  ? 'ol-pill--blue'
+                  : 'ol-pill--amber'
               }`}
             >
               {t(`dashboard.codeType.${journey.code_type}`)}

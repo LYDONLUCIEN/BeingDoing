@@ -54,7 +54,7 @@ function ActivatePageContent() {
   const [showReport, setShowReport] = useState(false);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [transitionBg, setTransitionBg] = useState<TransitionBackground>('paper');
-  const [transitionBlur, setTransitionBlur] = useState(10);
+  const [transitionBlur, setTransitionBlur] = useState(6);
   const { user, setUser, isAuthenticated } = useAuthStore();
 
   useEffect(() => {

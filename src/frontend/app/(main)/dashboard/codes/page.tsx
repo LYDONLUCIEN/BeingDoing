@@ -18,19 +18,19 @@ import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
 
 type CodesTab = 'codes' | 'orders' | 'coupons';
 
-/** 状态 badge 配色：active 绿 / inactive 橙 / expired 灰 / revoked 红 / consumed 灰 / 其他 灰 */
+/** 状态 badge：统一走 .ol-pill 柔和胶囊体系（active 绿 / inactive 琥珀 / expired·consumed 灰 / revoked 红） */
 const STATUS_COLOR: Record<string, string> = {
-  active: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-  inactive: 'bg-orange-100 text-orange-700 border-orange-200',
-  expired: 'bg-neutral-200 text-neutral-600 border-neutral-300',
-  revoked: 'bg-red-100 text-red-700 border-red-200',
-  consumed: 'bg-neutral-200 text-neutral-600 border-neutral-300',
+  active: 'ol-pill--green',
+  inactive: 'ol-pill--amber',
+  expired: 'ol-pill--gray',
+  revoked: 'ol-pill--red',
+  consumed: 'ol-pill--gray',
 };
 
-/** 类型 badge 配色：trial 蓝 / full 金 */
+/** 类型 badge：trial 蓝 / full 琥珀 */
 const TYPE_COLOR: Record<CodeType, string> = {
-  trial: 'bg-sky-100 text-sky-700 border-sky-200',
-  full: 'bg-amber-100 text-amber-700 border-amber-200',
+  trial: 'ol-pill--blue',
+  full: 'ol-pill--amber',
 };
 
 function CodeCard({
@@ -99,20 +99,16 @@ function CodeCard({
             </>
           )}
         </button>
-        <span
-          className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${TYPE_COLOR[codeType]}`}
-        >
+        <span className={`ol-pill ${TYPE_COLOR[codeType]}`}>
           {t(`dashboard.codesPage.type.${codeType}`)}
         </span>
         <span
-          className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${
-            STATUS_COLOR[item.status] ?? STATUS_COLOR.expired
-          }`}
+          className={`ol-pill ${STATUS_COLOR[item.status] ?? 'ol-pill--gray'}`}
         >
           {statusLabel}
         </span>
         {item.upgraded_from_code && (
-          <span className="rounded-full border px-2 py-0.5 text-[11px] font-medium bg-amber-500 text-white border-amber-500">
+          <span className="ol-pill ol-pill--amber">
             {t('dashboard.codesPage.paidUpgradeBadge')}
           </span>
         )}
@@ -120,7 +116,7 @@ function CodeCard({
           <button
             type="button"
             onClick={() => onClaimFree(item.code)}
-            className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50"
+            className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-[rgba(79,167,128,.35)] px-3 py-1.5 text-xs font-medium text-[#378866] transition hover:bg-[rgba(203,244,223,.35)]"
           >
             <Gift className="h-3 w-3" />
             {t('dashboard.codesPage.claimFreeRenewal')}
@@ -139,7 +135,7 @@ function CodeCard({
           <button
             type="button"
             onClick={onUpgrade}
-            className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 transition hover:bg-amber-50"
+            className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-[rgba(240,179,59,.45)] px-3 py-1.5 text-xs font-medium text-[#8a6414] transition hover:bg-[rgba(255,247,232,.9)]"
           >
             {t('dashboard.codesPage.upgradeTrial')}
           </button>
@@ -568,7 +564,7 @@ function PurchasedCodesSection({
     return (
       <div key={item.code} className="p-4 flex flex-wrap items-center gap-3">
         <span className="font-mono text-sm text-bd-fg">{item.code}</span>
-        <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs ${STATUS_COLOR[item.status] || 'bg-neutral-100 text-neutral-500 border-neutral-200'}`}>
+        <span className={`ol-pill ${STATUS_COLOR[item.status] || 'ol-pill--gray'}`}>
           {t(`dashboard.codesPage.status.${item.status}`)}
         </span>
         <span className="text-xs text-bd-muted">

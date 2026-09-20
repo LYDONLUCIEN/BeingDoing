@@ -1,0 +1,38 @@
+/* ══════════════════════════════════════════
+   Admin 控制台换肤（迁移决策记录 #13）
+   原则：功能零改动，只统一视觉语言——
+   紫 accent → 深墨主操作；侧栏 → 纸感毛玻璃；
+   作用域 .ol-admin-root，不外溢到主站。
+   ══════════════════════════════════════════ */
+
+/* 深墨主操作：Tailwind 的 bg/text-bd-ui-accent 全部走变量，scoped 覆盖即全局生效 */
+.ol-admin-root {
+  --bd-ui-accent: #222b35;
+  --bd-ui-accent-fg: #ffffff;
+}
+
+/* 侧栏：纸感毛玻璃（对齐 ol-glass 配方） */
+.ol-admin-root > aside {
+  background: rgba(255, 255, 255, 0.72) !important;
+  backdrop-filter: blur(18px) saturate(108%);
+  -webkit-backdrop-filter: blur(18px) saturate(108%);
+  border-right-color: rgba(218, 226, 232, 0.82) !important;
+}
+
+/* 导航选中态：深墨 pill，投影收敛（原紫色 + 重阴影） */
+.ol-admin-root aside nav a {
+  transition: background 140ms cubic-bezier(0.2, 0.8, 0.2, 1), color 140ms;
+}
+.ol-admin-root aside nav a.bg-bd-ui-accent {
+  box-shadow: 0 6px 16px rgba(27, 37, 47, 0.16) !important;
+}
+
+/* 侧栏头像：重投影收敛 */
+.ol-admin-root aside [class*='ring-2'] {
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.14) !important;
+}
+
+[data-color-scheme='dark'] .ol-admin-root > aside {
+  background: rgba(24, 27, 33, 0.82) !important;
+  border-right-color: rgba(255, 255, 255, 0.08) !important;
+}

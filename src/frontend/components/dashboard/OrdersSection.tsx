@@ -19,15 +19,15 @@ import PurchaseModal from '@/components/payment/PurchaseModal';
 
 const PAGE_SIZE = 10;
 
-/** 状态 badge 配色：pending 黄 / paid 青 / granted 绿 / closed cancelled 灰 / refunding 橙 / refunded 紫 */
+/** 状态 badge：统一走 .ol-pill 体系（pending 琥珀 / paid 青 / granted 绿 / closed·cancelled 灰 / refunding 红 / refunded 紫） */
 const STATUS_COLOR: Record<OrderStatus, string> = {
-  pending: 'bg-amber-100 text-amber-700 border-amber-200',
-  paid: 'bg-cyan-100 text-cyan-700 border-cyan-200',
-  granted: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-  closed: 'bg-neutral-200 text-neutral-600 border-neutral-300',
-  cancelled: 'bg-neutral-200 text-neutral-600 border-neutral-300',
-  refunding: 'bg-orange-100 text-orange-700 border-orange-200',
-  refunded: 'bg-purple-100 text-purple-700 border-purple-200',
+  pending: 'ol-pill--amber',
+  paid: 'ol-pill--cyan',
+  granted: 'ol-pill--green',
+  closed: 'ol-pill--gray',
+  cancelled: 'ol-pill--gray',
+  refunding: 'ol-pill--red',
+  refunded: 'ol-pill--purple',
 };
 
 /** 订单列表（原 /dashboard/orders 页主体）：分页、继续支付/取消订单、交付码展示、咨询订单入口 */
@@ -146,8 +146,8 @@ export default function OrdersSection() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="font-medium text-bd-fg text-base">{productName(order.product_type)}</h2>
                 <span
-                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full border text-xs font-medium ${
-                    STATUS_COLOR[order.status] || 'bg-bd-overlay-md text-bd-subtle border-bd-border'
+                  className={`ol-pill ${
+                    STATUS_COLOR[order.status] || 'ol-pill--gray'
                   }`}
                 >
                   {t(`payment.status.${order.status}`)}

@@ -112,6 +112,8 @@ interface ChatPhaseSidebarProps {
   streamBlocksSessionSwitch?: boolean;
   /** 线程列表是否正在从后端加载（为 true 时隐藏空列表提示，显示加载态） */
   threadsLoading?: boolean;
+  /** 侧栏底部阶段植物贴纸（data-chat-sidebar-art 控制显隐）；不传用默认贴纸 */
+  phaseStickerSrc?: string;
 }
 
 export default function ChatPhaseSidebar({
@@ -126,6 +128,7 @@ export default function ChatPhaseSidebar({
   showAutoSaveHint = true,
   streamBlocksSessionSwitch = false,
   threadsLoading = false,
+  phaseStickerSrc = '/assets/openlife-journey/sticker-values.webp',
 }: ChatPhaseSidebarProps) {
   const { t } = useLocale();
   const [deleteTarget, setDeleteTarget] = useState<ChatThread | null>(null);
@@ -416,6 +419,12 @@ export default function ChatPhaseSidebar({
           <p className="text-center text-xs text-neutral-500">{t('explore.chat.autoSave')}</p>
         </div>
       )}
+
+      {/* 侧栏底部阶段植物贴纸（HTML .sidebar-art）：由根节点 data-chat-sidebar-art 控制显隐 */}
+      <div className="careering-sidebar-art shrink-0" aria-hidden>
+        <img src={phaseStickerSrc} alt="" />
+        <p>给每一个想法，留一个位置。</p>
+      </div>
 
       {deleteTarget && (
         <div

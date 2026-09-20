@@ -249,7 +249,7 @@
 .ol-support-filters { display: flex; padding: 3px; border: 1px solid #e1e6ea; border-radius: 10px; background: rgba(255,255,255,.55); }
 .ol-support-filters button { min-height: 31px; padding: 5px 9px; border: 0; border-radius: 7px; color: #82909c; background: transparent; font-size: 10px; }
 .ol-support-filters button[aria-pressed='true'] { color: #2f537d; background: #fff; box-shadow: 0 3px 9px rgba(40,55,70,.07); }
-.ol-support-message-list { height: 465px; overflow: hidden; border: 1px solid #e7ebee; border-radius: 14px; background: rgba(255,255,255,.42); }
+.ol-support-message-list { height: 465px; overflow: hidden; border: 1px solid #e7ebee; border-radius: 14px; background: rgba(255,255,255,.42); display: flex; flex-direction: column; }
 .ol-support-faq-list { max-height: 465px; margin-top: 10px; overflow-y: auto; }
 .ol-support-faq-list details { border-top: 1px solid #e2e7eb; }
 .ol-support-faq-list details:first-child { border-top: 0; }
@@ -421,3 +421,24 @@
 @media (prefers-reduced-motion: reduce) {
   .ol-profile-glow,.ol-profile-leaf { animation: none !important; }
 }
+
+/* ── 状态 pill 体系（对齐 HTML .ol-pill：柔和胶囊，替代硬编码 Tailwind 色块） ── */
+.ol-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.ol-pill--green { border-color: rgba(79, 167, 128, 0.26); background: rgba(203, 244, 223, 0.48); color: #378866; }
+.ol-pill--blue { border-color: rgba(94, 145, 230, 0.2); background: rgba(94, 145, 230, 0.07); color: #5276a3; }
+.ol-pill--cyan { border-color: rgba(94, 180, 200, 0.25); background: rgba(207, 240, 246, 0.5); color: #3d7a8c; }
+.ol-pill--gray { border-color: rgba(214, 220, 226, 0.7); background: rgba(228, 231, 235, 0.45); color: #7b838a; }
+.ol-pill--red { border-color: rgba(250, 221, 217, 0.48); background: rgba(250, 221, 217, 0.48); color: #ac564b; }
+.ol-pill--amber { border-color: rgba(240, 179, 59, 0.32); background: rgba(255, 247, 232, 0.85); color: #8a6414; }
+.ol-pill--purple { border-color: rgba(136, 109, 220, 0.24); background: rgba(243, 240, 255, 0.8); color: #5f4ba8; }

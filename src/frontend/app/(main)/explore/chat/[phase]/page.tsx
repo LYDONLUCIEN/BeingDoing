@@ -28,6 +28,8 @@ import PurchaseModal from '@/components/payment/PurchaseModal';
 import ChatPhaseBackground from '@/components/explore/ChatPhaseBackground';
 import ExploreLandingMeshLayers from '@/components/explore/ExploreLandingMeshLayers';
 import LegacyBrowserNotice from '@/components/layout/LegacyBrowserNotice';
+import ChatAppearancePopover from '@/components/explore/ChatAppearancePopover';
+import { useChatAppearanceStore } from '@/stores/chatAppearanceStore';
 const PhaseCelebrateBurst = dynamic(
   () => import('@/components/explore/PhaseCelebrateBurst'),
   { ssr: false },
@@ -343,6 +345,8 @@ function LiveChatPhasePage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { t, locale } = useLocale();
+  // Chat 外观（气泡间距 / 侧栏装饰 / 新建对话样式），见 ChatAppearancePopover
+  const chatAppearance = useChatAppearanceStore();
   const phase = (params.phase as string) as PhaseKey;
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
@@ -4265,6 +4269,9 @@ function LiveChatPhasePage() {
           : 'flow-light careering-matte chat-shell-h flex min-h-0 flex-col overflow-hidden'
       }
       data-phase={phase}
+      data-chat-density={chatAppearance.density}
+      data-chat-sidebar-art={chatAppearance.sidebarArt ? 'on' : 'off'}
+      data-chat-newbtn={chatAppearance.newChatStyle}
     >
       {/* 旧内核浏览器提示（ADR-0020）：「不再提示」前每个 phase 页都弹 */}
       <LegacyBrowserNotice />
@@ -4286,6 +4293,7 @@ function LiveChatPhasePage() {
             phaseTitle={phaseLabel}
             phaseInteractionLocked={phaseInteractionLocked}
             careeringMatte
+            phaseStickerSrc={`/assets/openlife-journey/sticker-${phase}.webp`}
             streamBlocksSessionSwitch={sending || anyGuideBusy}
             threadsLoading={!threadsFetched || initLoading}
           />
@@ -4564,6 +4572,7 @@ function LiveChatPhasePage() {
                     {phaseInfo.num} {phaseLabel}
                   </h2>
                   <div className="careering-chat-header-actions">
+                    <ChatAppearancePopover />
                     <button
                       type="button"
                       onClick={handleRequestCompleteAndContinue}

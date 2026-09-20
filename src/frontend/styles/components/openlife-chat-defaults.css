@@ -41,31 +41,60 @@
   --ol-chat-wash: #faf9ff;
 }
 
-/* AI: a quiet phase-tinted surface, without the older hard left stripe. */
+/* AI: 深墨气泡（2026-09-19 起按 HTML 设计稿 RECOMMENDED_APPEARANCE：aiBubble=ink，
+   覆盖 0919-newui §6.3 的旧浅色方案；迁移决策记录 #10） */
 .flow-light.careering-matte .flow-msg-ai-content,
-.rumination-beautiful-root .rumination-beautiful-chat-panel .flow-msg-ai-content--rumination-wb {
-  border: 1px solid rgba(111, 155, 216, 0.22) !important;
-  border-color: color-mix(in srgb, var(--ol-chat-accent) 28%, white) !important;
-  border-left-width: 1px !important;
-  background: #eef4fb !important;
-  background: color-mix(in srgb, var(--ol-chat-accent) 10%, white) !important;
-  color: var(--ol-chat-ink, #202832) !important;
-  box-shadow: 0 8px 24px rgba(35, 48, 62, 0.065) !important;
-  -webkit-backdrop-filter: blur(14px) saturate(1.04) !important;
-  backdrop-filter: blur(14px) saturate(1.04) !important;
+.rumination-beautiful-root .flow-msg-ai-content--rumination-wb {
+  border: 1px solid #202832 !important;
+  background: #202832 !important;
+  color: #f4f7fa !important;
+  box-shadow: 0 8px 24px rgba(20, 29, 38, 0.1) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+/* 墨底气泡内的可读性：markdown.css 用 !important 锁了深色文字，这里必须同级 !important 压回浅色 */
+.flow-light.careering-matte .flow-msg-ai-content .message-content .wmde-markdown,
+.flow-light.careering-matte .flow-msg-ai-content .wmde-markdown,
+.flow-light.careering-matte .flow-msg-ai-content .wmde-markdown *,
+.rumination-beautiful-root .flow-msg-ai-content--rumination-wb .wmde-markdown,
+.rumination-beautiful-root .flow-msg-ai-content--rumination-wb .wmde-markdown * {
+  color: #f4f7fa !important;
+}
+.rumination-beautiful-root .flow-msg-ai-content--rumination-wb .wmde-markdown a {
+  color: #a9c6f5 !important;
+}
+.flow-light.careering-matte .flow-msg-ai-content .wmde-markdown a {
+  color: #a9c6f5 !important;
+}
+.flow-light.careering-matte .flow-msg-ai-content .wmde-markdown code {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #e8eef5 !important;
+}
+.flow-light.careering-matte .flow-msg-ai-content .wmde-markdown pre {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+.flow-light.careering-matte .flow-msg-ai-content .wmde-markdown pre code {
+  background: transparent !important;
+}
+.flow-light.careering-matte .flow-msg-ai-content .wmde-markdown blockquote {
+  border-left-color: rgba(255, 255, 255, 0.35) !important;
+  color: rgba(244, 247, 250, 0.82) !important;
+}
+.flow-light.careering-matte .flow-msg-ai-content .wmde-markdown hr {
+  border-color: rgba(255, 255, 255, 0.16) !important;
 }
 
-/* User: the single dark-ink voice used across every phase. */
+/* User: 纸白气泡（HTML userBubble=white，替代旧深墨方案） */
 .flow-light.careering-matte .flow-msg-user-content,
 .flow-light.careering-matte[data-phase='values'] .flow-msg-user-content,
 .flow-light.careering-matte[data-phase='strengths'] .flow-msg-user-content,
 .flow-light.careering-matte[data-phase='interests'] .flow-msg-user-content,
 .flow-light.careering-matte[data-phase='purpose'] .flow-msg-user-content,
 .rumination-beautiful-root.flow-light[data-phase='rumination'] .flow-msg-user-content {
-  border: 1px solid #202832 !important;
-  background: #202832 !important;
-  color: #f8fafc !important;
-  box-shadow: 0 8px 22px rgba(20, 29, 38, 0.09) !important;
+  border: 1px solid #dde3e9 !important;
+  background: #ffffff !important;
+  color: #202832 !important;
+  box-shadow: 0 8px 24px rgba(24, 38, 52, 0.05) !important;
 }
 
 .flow-light.careering-matte .flow-msg-user-content *,

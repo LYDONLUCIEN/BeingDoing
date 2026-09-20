@@ -3,10 +3,10 @@
 import { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Users, MessageCircle } from 'lucide-react';
-import ExploreLandingMeshLayers from '@/components/explore/ExploreLandingMeshLayers';
+import PaperVeilLayers from '@/components/explore/PaperVeilLayers';
 
 export default function CommunityPage() {
-  // 与 /explore/intro 同款 mesh 背景：置 data-mesh-page 统一布局底色
+  // 与 /explore/intro 同款纸层背景：置 data-mesh-page 统一布局底色
   useEffect(() => {
     document.documentElement.setAttribute('data-mesh-page', 'true');
     return () => document.documentElement.removeAttribute('data-mesh-page');
@@ -14,7 +14,7 @@ export default function CommunityPage() {
 
   return (
     <div className="bd-mesh-page min-h-screen text-bd-fg">
-      <ExploreLandingMeshLayers />
+      <PaperVeilLayers />
       <div className="relative z-[2] max-w-3xl mx-auto px-4 py-16 space-y-10">
         <motion.div
           initial={{ opacity: 0, y: 20 }}

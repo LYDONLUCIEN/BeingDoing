@@ -272,8 +272,12 @@ Chat 支持的 `preview_state`：`conversation`、`streaming`、`conclusion`、`
 |---|---|
 | 首页 | `app/(main)/page.tsx`、`styles/components/openlife-reference-home.css` |
 | 激活与过渡 | `app/(main)/explore/activate/page.tsx`、`styles/components/openlife-transition.css` |
+| 纸层背景（intro/社区/关于） | `components/explore/PaperVeilLayers.tsx`、`styles/components/openlife-paper-veil.css`（6px 毛玻璃，2026-09-19） |
+| 站内信 | `components/feedback/FloatingFeedbackWidget.tsx`（抽屉形态）、`components/feedback/NotificationList.tsx`（卡片+详情视图）、`styles/components/openlife-support.css` |
 | Chat | `app/(main)/explore/chat/[phase]/page.tsx`、`components/explore/ChatUiPreview.tsx`、`styles/components/openlife-chat-defaults.css` |
-| Rumination | `components/explore/ruminationV4/`、`styles/components/rumination-beautiful.css` |
-| 个人空间 | `app/(main)/dashboard/`、`components/dashboard/DashboardPageHeader.tsx`、`styles/components/openlife-profile.css` |
+| Chat 外观弹层 | `components/explore/ChatAppearancePopover.tsx`、`stores/chatAppearanceStore.ts`、`styles/components/openlife-chat-appearance.css`（A/B 三开关，定稿后删落选分支） |
+| Rumination | `components/explore/ruminationV4/`、`styles/components/rumination-beautiful.css`（2026-09-19 起紫色主题+HTML 面板配方） |
+| 个人空间 | `app/(main)/dashboard/`、`components/dashboard/DashboardPageHeader.tsx`、`styles/components/openlife-profile.css`（含 `.ol-pill` 状态胶囊体系） |
+| Admin 换肤 | `styles/components/openlife-admin.css`（scoped `.ol-admin-root`，功能零改动） |
 | FAQ 内容 | `lib/content/faq.ts` |
 | 全局样式入口 | `app/globals.css` |

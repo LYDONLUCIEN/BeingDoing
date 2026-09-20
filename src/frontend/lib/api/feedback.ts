@@ -10,7 +10,12 @@ export type NotificationType =
   | 'feedback_status_changed'
   | 'feedback_overdue'
   | 'llm_balance_low'
-  | 'announcement';
+  | 'announcement'
+  | 'team_analysis_notice'
+  | 'activation_expired'
+  | 'report_recheck_done'
+  | 'report_recheck_rejected'
+  | 'password_changed';
 
 export interface Feedback {
   id: string;

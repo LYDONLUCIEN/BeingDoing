@@ -1,0 +1,444 @@
+/* ══════════════════════════════════════════
+   站内信 · 反馈（抽屉形态）
+   视觉以 wiki/开发文档/0919/openlife-journey (21).html
+   的 .support-* 组件为准：右下固定 pill 悬浮球 +
+   右侧 456px 抽屉（blur 28px）+ 消息卡 + 详情视图。
+   作用域：.ol-msg-* 前缀，只被 FloatingFeedbackWidget /
+   NotificationList / dashboard help 页使用。
+   ══════════════════════════════════════════ */
+
+/* ── 右下固定 pill 悬浮球 ── */
+.ol-msg-launcher {
+  position: fixed;
+  right: max(18px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(18px) saturate(112%);
+  -webkit-backdrop-filter: blur(18px) saturate(112%);
+  box-shadow: 0 12px 32px rgba(28, 42, 53, 0.14);
+  color: #293644;
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: transform 140ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.ol-msg-launcher:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 38px rgba(28, 42, 53, 0.17);
+}
+/* chat 页输入区在底部，上浮避开 */
+.ol-msg-launcher--chat {
+  bottom: 86px;
+}
+.ol-msg-launcher-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #5f91e6;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 650;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── 遮罩 + 抽屉 ── */
+.ol-msg-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(33, 45, 55, 0.14);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: olMsgFade 240ms both;
+}
+.ol-msg-drawer {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  width: min(456px, calc(100vw - 24px));
+  z-index: 71;
+  display: flex;
+  flex-direction: column;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: rgba(249, 251, 252, 0.93);
+  box-shadow: 0 28px 90px rgba(28, 42, 53, 0.22), inset 0 1px rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(28px) saturate(112%);
+  -webkit-backdrop-filter: blur(28px) saturate(112%);
+  animation: olMsgSlide 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes olMsgSlide {
+  from { transform: translateX(28px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes olMsgFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.ol-msg-drawer-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 18px 12px;
+}
+.ol-msg-drawer-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(95, 145, 230, 0.12);
+  color: #426fa9;
+  flex-shrink: 0;
+}
+.ol-msg-drawer-head h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+  color: #24313e;
+  flex: 1;
+}
+.ol-msg-close {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid rgba(214, 222, 228, 0.9);
+  background: rgba(255, 255, 255, 0.7);
+  color: #778390;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 140ms;
+}
+.ol-msg-close:hover { background: #fff; }
+
+/* ── 双 tab：站内信 / 提交反馈 ── */
+.ol-msg-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 18px 12px;
+  padding: 4px;
+  border-radius: 12px;
+  background: rgba(228, 233, 238, 0.55);
+}
+.ol-msg-tabs button {
+  flex: 1;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: #66727f;
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: background 160ms, color 160ms, box-shadow 160ms;
+}
+.ol-msg-tabs button[aria-selected='true'] {
+  background: #fff;
+  color: #24313e;
+  box-shadow: 0 2px 8px rgba(28, 42, 53, 0.08);
+}
+
+/* ── 工具栏：搜索 + 全部/未读 ── */
+.ol-msg-toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 0 18px 10px;
+}
+.ol-msg-search {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid #e1e7eb;
+  background: rgba(255, 255, 255, 0.72);
+  color: #99a3af;
+}
+.ol-msg-search:focus-within {
+  border-color: #5f91e6;
+  box-shadow: 0 0 0 3px rgba(95, 145, 230, 0.14);
+}
+.ol-msg-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 12.5px;
+  color: #293644;
+}
+.ol-msg-seg {
+  display: flex;
+  border-radius: 10px;
+  border: 1px solid #e1e7eb;
+  background: rgba(255, 255, 255, 0.55);
+  overflow: hidden;
+}
+.ol-msg-seg button {
+  padding: 0 12px;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  color: #66727f;
+  cursor: pointer;
+  transition: background 140ms, color 140ms;
+}
+.ol-msg-seg button[aria-pressed='true'] {
+  background: #fff;
+  color: #24313e;
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(225, 231, 235, 0.9);
+}
+
+/* ── 消息列表 ── */
+.ol-msg-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2px 18px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ol-msg-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 14px;
+  min-height: 92px;
+  padding: 14px 15px;
+  border: 1px solid #e1e7eb;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.58);
+  text-align: left;
+  cursor: pointer;
+  transition: background 160ms, border-color 160ms, transform 140ms;
+}
+.ol-msg-card:hover {
+  background: rgba(255, 255, 255, 0.86);
+  transform: translateY(-1px);
+}
+/* 未读：浅蓝渐变底 + 左侧 2px 蓝条 + 标题加粗 */
+.ol-msg-card.is-unread {
+  border-color: rgba(95, 145, 230, 0.25);
+  background: linear-gradient(112deg, rgba(236, 243, 253, 0.92), rgba(255, 255, 255, 0.76));
+}
+.ol-msg-card.is-unread::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 18px;
+  bottom: 18px;
+  width: 2px;
+  border-radius: 0 3px 3px 0;
+  background: #5f91e6;
+}
+.ol-msg-card.is-unread .ol-msg-card-title {
+  font-weight: 710;
+}
+.ol-msg-card-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.ol-msg-kind {
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  color: #5276a3;
+  background: rgba(95, 145, 230, 0.09);
+  border: 1px solid rgba(95, 145, 230, 0.16);
+  border-radius: 999px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+.ol-msg-unread-dot {
+  font-size: 9px;
+  color: #426fa9;
+  white-space: nowrap;
+}
+.ol-msg-time {
+  font-size: 10px;
+  color: #99a3af;
+  white-space: nowrap;
+  align-self: start;
+  padding-top: 2px;
+}
+.ol-msg-card-title {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #24313e;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ol-msg-card-preview {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.65;
+  color: #66727f;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── 列表底部 ── */
+.ol-msg-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 18px 14px;
+  border-top: 1px solid rgba(225, 231, 235, 0.8);
+  font-size: 11px;
+  color: #99a3af;
+}
+.ol-msg-footer button {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 11px;
+  color: #426fa9;
+  cursor: pointer;
+}
+.ol-msg-footer button:hover { text-decoration: underline; }
+.ol-msg-footer button:disabled { color: #b6bfc8; cursor: default; text-decoration: none; }
+
+/* ── 空态 / 加载 ── */
+.ol-msg-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  color: #84919d;
+  font-size: 13px;
+}
+
+/* ── 详情视图 ── */
+.ol-msg-detail {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 22px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ol-msg-back {
+  align-self: flex-start;
+  border: none;
+  background: none;
+  padding: 4px 0;
+  font-size: 12px;
+  color: #5276a3;
+  cursor: pointer;
+}
+.ol-msg-back:hover { text-decoration: underline; }
+.ol-msg-detail-title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 680;
+  line-height: 1.4;
+  color: #202832;
+}
+.ol-msg-detail-time {
+  font-size: 11px;
+  color: #99a3af;
+}
+.ol-msg-detail-body {
+  margin: 6px 0 0;
+  font-size: 14px;
+  line-height: 1.9;
+  color: #3c4855;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── 反馈表单容器 ── */
+.ol-msg-feedback {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 18px 16px;
+}
+
+/* ── 深色模式 ── */
+[data-color-scheme='dark'] .ol-msg-launcher {
+  background: rgba(24, 27, 33, 0.86);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #dde3e9;
+}
+[data-color-scheme='dark'] .ol-msg-drawer {
+  background: rgba(22, 25, 31, 0.94);
+  border-color: rgba(255, 255, 255, 0.09);
+}
+[data-color-scheme='dark'] .ol-msg-drawer-head h3,
+[data-color-scheme='dark'] .ol-msg-detail-title { color: #e8edf2; }
+[data-color-scheme='dark'] .ol-msg-tabs { background: rgba(255, 255, 255, 0.06); }
+[data-color-scheme='dark'] .ol-msg-tabs button { color: #97a2ae; }
+[data-color-scheme='dark'] .ol-msg-tabs button[aria-selected='true'] {
+  background: rgba(255, 255, 255, 0.12);
+  color: #e8edf2;
+}
+[data-color-scheme='dark'] .ol-msg-search,
+[data-color-scheme='dark'] .ol-msg-seg {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+[data-color-scheme='dark'] .ol-msg-search input { color: #dde3e9; }
+[data-color-scheme='dark'] .ol-msg-seg button { color: #97a2ae; }
+[data-color-scheme='dark'] .ol-msg-seg button[aria-pressed='true'] {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e8edf2;
+  box-shadow: none;
+}
+[data-color-scheme='dark'] .ol-msg-card {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+[data-color-scheme='dark'] .ol-msg-card:hover { background: rgba(255, 255, 255, 0.08); }
+[data-color-scheme='dark'] .ol-msg-card.is-unread {
+  background: linear-gradient(112deg, rgba(95, 145, 230, 0.16), rgba(255, 255, 255, 0.05));
+  border-color: rgba(95, 145, 230, 0.35);
+}
+[data-color-scheme='dark'] .ol-msg-card-title { color: #e8edf2; }
+[data-color-scheme='dark'] .ol-msg-card-preview,
+[data-color-scheme='dark'] .ol-msg-detail-body { color: #aab4bf; }
+[data-color-scheme='dark'] .ol-msg-close {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #97a2ae;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ol-msg-drawer,
+  .ol-msg-scrim,
+  .ol-msg-launcher {
+    animation: none;
+    transition: none;
+  }
+}

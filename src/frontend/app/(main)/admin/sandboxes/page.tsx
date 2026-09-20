@@ -611,7 +611,7 @@ export default function AdminSandboxesPage() {
             type="button"
             disabled={working || !sourceCode.trim()}
             onClick={() => void handleFork()}
-            className="rounded-xl px-4 py-2 text-sm font-medium bg-violet-600 text-white hover:bg-violet-500 disabled:opacity-50"
+            className="rounded-xl px-4 py-2 text-sm font-medium bg-[#222b35] text-white hover:bg-[#303b46] disabled:opacity-50"
           >
             {working ? '处理中…' : 'Fork 沙箱'}
           </button>

@@ -34,6 +34,10 @@
 @import '../styles/components/openlife-reference-home.css';
 @import '../styles/components/chat-ui-preview.css';
 @import '../styles/components/openlife-transition.css';
+@import '../styles/components/openlife-paper-veil.css';
+@import '../styles/components/openlife-support.css';
+@import '../styles/components/openlife-chat-appearance.css';
+@import '../styles/components/openlife-admin.css';
 @import '../styles/components/openlife-profile.css';
 @import '../styles/components/openlife-chat-defaults.css';
 

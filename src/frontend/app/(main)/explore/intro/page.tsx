@@ -7,7 +7,10 @@ import { useLocale } from '@/hooks/useLocale';
 import { getByPath } from '@/lib/i18n';
 import { useAuthStore } from '@/stores/authStore';
 import { useAuthModalStore } from '@/stores/authModalStore';
-import { listMyCodes } from '@/lib/api/activation';
+import PaperVeilLayers from '@/components/explore/PaperVeilLayers';
+
+/** 首次看过引导页后不再展示，之后点「开始探索」直达激活页 */
+const INTRO_SEEN_KEY = 'openlife-explore-intro-seen';
 
 const STEPS = [
   { key: 'step1', cls: 'blue' as const },
@@ -37,44 +40,28 @@ export default function ExploreIntroPage() {
   const isZh = locale === 'zh';
   const [accelerated, setAccelerated] = useState(false);
   const isRevealed = useIntroReveal(accelerated);
-  const { isAuthenticated, _hasHydrated } = useAuthStore();
+  const { isAuthenticated } = useAuthStore();
   const { openAuthModal } = useAuthModalStore();
-  /** full 码分流判定中：不渲染卡片，避免引导内容闪现 */
-  const [checkingFullCode, setCheckingFullCode] = useState(true);
+  /** 入口判定中（localStorage 已读标记）：不渲染卡片，避免引导内容闪现 */
+  const [checkingEntry, setCheckingEntry] = useState(true);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-explore-intro', 'true');
     return () => document.documentElement.removeAttribute('data-explore-intro');
   }, []);
 
-  // 统一分流：有「已绑定」的完整码（active；expired 也跳过——activate 页有续期引导）
-  // 的用户不再看引导页，直达激活页续聊；trial / 无码 / full 全未绑定则正常展示
+  // 仅首次展示：已看过引导页的用户直达激活页；未看过的（含完整码用户）先看一遍引导
   useEffect(() => {
-    if (!_hasHydrated) return;
-    if (!isAuthenticated) {
-      setCheckingFullCode(false);
-      return;
+    try {
+      if (window.localStorage.getItem(INTRO_SEEN_KEY) === '1') {
+        router.replace('/explore/activate');
+        return;
+      }
+    } catch {
+      // 隐私模式禁用 localStorage 时照常展示引导页
     }
-    let cancelled = false;
-    listMyCodes()
-      .then((items) => {
-        if (cancelled) return;
-        const hasBoundFull = items.some(
-          (it) => it.code_type === 'full' && (it.status === 'active' || it.status === 'expired')
-        );
-        if (hasBoundFull) {
-          router.replace('/explore/activate');
-        } else {
-          setCheckingFullCode(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setCheckingFullCode(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [_hasHydrated, isAuthenticated, router]);
+    setCheckingEntry(false);
+  }, [router]);
 
   const handleAccelerate = useCallback(() => {
     if (accelerated) return;
@@ -82,18 +69,27 @@ export default function ExploreIntroPage() {
   }, [accelerated]);
 
   const canNavigate = isRevealed(6); /* 最后一块（开启探索）已展示即可进入 */
+  const markIntroSeen = useCallback(() => {
+    try {
+      window.localStorage.setItem(INTRO_SEEN_KEY, '1');
+    } catch {
+      // 隐私模式禁用 localStorage 时忽略，下次仍会展示引导页
+    }
+  }, []);
   const handleBegin = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
       if (!canNavigate) {
         setAccelerated(true);
       } else if (!isAuthenticated) {
+        markIntroSeen(); // 先标记已看，登录回来不再重复播放引导
         openAuthModal('/explore/intro');
       } else {
+        markIntroSeen();
         router.push('/explore/activate');
       }
     },
-    [canNavigate, isAuthenticated, openAuthModal, router]
+    [canNavigate, isAuthenticated, openAuthModal, router, markIntroSeen]
   );
 
   return (
@@ -105,15 +101,9 @@ export default function ExploreIntroPage() {
       onKeyDown={(e) => e.key === 'Enter' || e.key === ' ' ? handleAccelerate() : null}
       aria-label={t('explore.intro.clickHint')}
     >
-      {/* 首页 mesh 背景（略增不透明度） */}
-      <div className="landing-mesh-bg fixed inset-0 z-0" aria-hidden>
-        <div className="landing-mesh-blob landing-mesh-blob-1" />
-        <div className="landing-mesh-blob landing-mesh-blob-2" />
-        <div className="landing-mesh-blob landing-mesh-blob-3" />
-        <div className="landing-mesh-blob landing-mesh-blob-4" />
-      </div>
-      <div className="landing-mesh-noise fixed inset-0 z-[1]" aria-hidden />
-      {!checkingFullCode && (
+      {/* 半透明纸层 + 6px 毛玻璃背景（与激活码页 paper 模式同配方） */}
+      <PaperVeilLayers />
+      {!checkingEntry && (
       <div className="relative z-[2] w-full max-w-[460px] flex flex-col items-center">
         {/* 返回 */}
         <motion.button
@@ -216,7 +206,7 @@ export default function ExploreIntroPage() {
 
       {/* 点击提示 */}
       <AnimatePresence>
-        {!accelerated && !checkingFullCode && (
+        {!accelerated && !checkingEntry && (
           <motion.div
             className="bd-intro-click-hint"
             initial={{ opacity: 0 }}

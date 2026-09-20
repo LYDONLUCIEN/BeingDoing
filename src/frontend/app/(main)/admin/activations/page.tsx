@@ -544,7 +544,7 @@ export default function AdminActivationsPage() {
                 onClick={() => setActivationType(key)}
                 className={`px-3 py-1.5 rounded-full border text-[11px] ${
                   activationType === key
-                    ? 'bg-violet-600 text-white border-transparent'
+                    ? 'bg-[#222b35] text-white border-transparent'
                     : 'text-bd-muted border-bd-border hover:text-bd-fg hover:bg-bd-overlay-md'
                 }`}
               >
@@ -697,7 +697,7 @@ export default function AdminActivationsPage() {
                     <td className="px-2 py-2">
                       {tab === 'active' && 'activation_type' in item ? (
                         (item as AdminActivationItem).activation_type === 'fork' ? (
-                          <span className="inline-flex items-center rounded-full border border-violet-300 bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-700 px-2 py-0.5 text-[10px] font-medium">
+                          <span className="ol-pill ol-pill--blue">
                             Fork
                           </span>
                         ) : (

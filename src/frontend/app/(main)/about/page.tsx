@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { motion } from 'framer-motion';
-import ExploreLandingMeshLayers from '@/components/explore/ExploreLandingMeshLayers';
+import PaperVeilLayers from '@/components/explore/PaperVeilLayers';
 
 // 文案来源：wiki/开发文档/0907-关于我们.md
 // 关于我们页对外联系邮箱（单独设置，与 TEAM_ANALYSIS_EMAIL 无关）
@@ -24,7 +24,7 @@ export default function AboutPage() {
 
   return (
     <div className="bd-mesh-page min-h-screen text-bd-fg">
-      <ExploreLandingMeshLayers />
+      <PaperVeilLayers />
       <div className="relative z-[2] max-w-3xl mx-auto px-4 py-16 space-y-10">
         <motion.div
           initial={{ opacity: 0, y: 20 }}

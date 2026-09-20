@@ -26,28 +26,44 @@ html[data-rumination-mesh-page='true']:not([data-color-scheme='dark'])
 }
 
 .rumination-beautiful-root .landing-mesh-blob {
-  opacity: 1;
+  opacity: 0.55;
+}
+/* HTML .flow-clear 口径：中心白雾留白，四色柔光只在边缘呼吸 */
+.rumination-beautiful-root .landing-mesh-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at 50% 43%,
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(255, 255, 255, 0.6) 22%,
+    transparent 55%
+  );
 }
 .rumination-beautiful-root .landing-mesh-noise {
   opacity: 0.06;
 }
 
-/* 表格内行高亮与对话区用户气泡同色（#91C2FF 系） */
+/* 表格内行高亮与对话区用户气泡同色——2026-09-19 起按 HTML 沉淀阶段紫色主题（#886ddc 系） */
 .rumination-beautiful-table-widget {
-  --flow-rumination: #91c2ff;
+  --flow-rumination: #886ddc;
 }
 
+/* 卡片表面对齐 HTML flow 模式面板：rgba(255,255,255,.77) + blur(10px) + 白描边 */
 .rumination-beautiful-card {
-  background: rgba(255, 255, 255, 0.52);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  background: rgba(255, 255, 255, 0.77);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   border-radius: 20px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.82);
 }
 
 .rumination-beautiful-card--chat {
-  background: rgba(255, 255, 255, 0.38);
+  background: rgba(255, 255, 255, 0.77);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   border-radius: 18px;
 }
 
@@ -436,22 +452,25 @@ html[data-rumination-mesh-page='true']:not([data-color-scheme='dark'])
   cursor: default;
 }
 
-/* ── 矩阵模式左面板：组合卡片 ── */
+/* ── 矩阵模式左面板：组合卡片（选中态按 HTML .choice-face：accent 浅底+描边+柔影） ── */
 .rumination-combo-card {
   background: rgba(255, 255, 255, 0.6);
   backdrop-filter: blur(4px);
+  border: 1px solid #e7ebef;
   transition: all 0.2s ease;
 }
 .rumination-combo-card:hover {
-  background: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.86);
 }
 .rumination-combo-card--selected {
-  background: rgba(204, 251, 241, 0.4);
-  border-color: rgba(94, 234, 212, 0.6);
-  box-shadow: 0 2px 8px rgba(94, 234, 212, 0.15);
+  background: #f3eefd;
+  background: color-mix(in srgb, #886ddc 10%, white);
+  border-color: #b9a6ea;
+  border-color: color-mix(in srgb, #886ddc 55%, white);
+  box-shadow: 0 6px 18px rgba(136, 109, 220, 0.14);
 }
 
-/* ── 矩阵模式进度条 ── */
+/* ── 矩阵模式进度条（紫色主题） ── */
 .rumination-matrix-progress-bar {
   height: 4px;
   border-radius: 2px;
@@ -461,7 +480,7 @@ html[data-rumination-mesh-page='true']:not([data-color-scheme='dark'])
 .rumination-matrix-progress-bar-fill {
   height: 100%;
   border-radius: 2px;
-  background: linear-gradient(90deg, #5eead4, #14b8a6);
+  background: linear-gradient(90deg, #a58fe8, #6f52c7);
   transition: width 0.3s ease;
 }
 

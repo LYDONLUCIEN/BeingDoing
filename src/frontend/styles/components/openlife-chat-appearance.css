@@ -1,0 +1,182 @@
+/* ══════════════════════════════════════════
+   Chat 外观覆盖层（A/B 对比期）
+   决策（wiki/开发文档/0919/迁移决策记录.md #8/#9/#10）：
+   - 气泡配色按 HTML 默认：AI 深墨 #202832 / 用户纸白，
+     不对称小切角（AI 4px 19px 19px 19px，用户反向），无左色条
+   - 三开关矩阵（data-chat-* 挂在 chat 根节点，localStorage 持久化）：
+     data-chat-density: compact(HTML 近) | roomy(现状远)
+     data-chat-sidebar-art: on(HTML 带图) | off
+     data-chat-newbtn: dashed(HTML 虚线浅底) | solid(现状深墨)
+   定稿后删除落选分支。仅作用于 .careering-matte（前四维 chat）。
+   ══════════════════════════════════════════ */
+
+/* 气泡配色规则已并入 openlife-chat-defaults.css（最终覆盖层），本文件只负责三开关矩阵与弹层。 */
+
+/* ── 气泡间距：compact = HTML 紧凑（消息更靠近） ── */
+.flow-light.careering-matte[data-chat-density='compact'] .flow-chat-body {
+  gap: 0.7rem;
+  padding-top: 0.75rem;
+}
+@media (min-width: 640px) {
+  .flow-light.careering-matte[data-chat-density='compact'] .flow-chat-body {
+    gap: 0.7rem;
+    padding-top: 0.9rem;
+  }
+}
+.flow-light.careering-matte[data-chat-density='compact'] .flow-msg-ai-content,
+.flow-light.careering-matte[data-chat-density='compact'] .flow-msg-user-content {
+  padding: 0.8rem 1.15rem;
+}
+
+/* ── 侧栏底部植物贴纸（默认隐藏=不带图；on=HTML 带图） ── */
+.careering-sidebar-art {
+  display: none;
+  margin-top: auto;
+  padding: 12px 16px 14px;
+  text-align: center;
+}
+.careering-sidebar-art img {
+  width: 118px;
+  margin: 0 auto;
+  opacity: 0.85;
+  display: block;
+}
+.careering-sidebar-art p {
+  margin: 6px 0 0;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--flow-text-muted, #98a2ad);
+}
+.flow-light.careering-matte[data-chat-sidebar-art='on'] .careering-sidebar-art {
+  display: block;
+}
+
+/* ── 新建对话按钮：dashed = HTML 虚线浅底（覆盖内联深墨样式） ── */
+.flow-light.careering-matte[data-chat-newbtn='dashed'] .careering-sidebar-header > button {
+  background: rgba(255, 255, 255, 0.55) !important;
+  color: #426fa9 !important;
+  border: 1px dashed #c9d4de !important;
+  box-shadow: none !important;
+}
+.flow-light.careering-matte[data-chat-newbtn='dashed'] .careering-sidebar-header > button:hover {
+  background: #ffffff !important;
+  border-color: #5e91e6 !important;
+}
+
+/* ── 外观设置弹层（齿轮 + 小浮层，对齐 HTML #appearance-popover） ── */
+.ol-chat-appearance {
+  position: relative;
+  display: inline-flex;
+}
+.ol-chat-appearance-toggle {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid rgba(214, 222, 228, 0.9);
+  background: rgba(255, 255, 255, 0.72);
+  color: #66727f;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 140ms, color 140ms, transform 140ms;
+}
+.ol-chat-appearance-toggle:hover {
+  background: #fff;
+  color: #24313e;
+  transform: translateY(-1px);
+}
+.ol-chat-appearance-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  width: 232px;
+  padding: 14px 16px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 16px 40px rgba(24, 33, 48, 0.14), inset 0 1px rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(20px) saturate(112%);
+  -webkit-backdrop-filter: blur(20px) saturate(112%);
+  animation: olChatAppear 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes olChatAppear {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+.ol-chat-appearance-title {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 650;
+  color: #24313e;
+  letter-spacing: 0.04em;
+}
+.ol-chat-appearance-group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 0;
+}
+.ol-chat-appearance-group + .ol-chat-appearance-group {
+  border-top: 1px solid rgba(231, 235, 238, 0.8);
+}
+.ol-chat-appearance-label {
+  font-size: 12px;
+  color: #66727f;
+  white-space: nowrap;
+}
+.ol-chat-appearance-seg {
+  display: flex;
+  border-radius: 9px;
+  border: 1px solid #e1e7eb;
+  background: rgba(238, 241, 244, 0.6);
+  overflow: hidden;
+}
+.ol-chat-appearance-seg button {
+  padding: 4px 9px;
+  border: none;
+  background: transparent;
+  font-size: 11px;
+  color: #66727f;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 140ms, color 140ms;
+}
+.ol-chat-appearance-seg button[aria-pressed='true'] {
+  background: #fff;
+  color: #24313e;
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(28, 42, 53, 0.1);
+}
+
+/* 深色模式 */
+[data-color-scheme='dark'] .ol-chat-appearance-toggle {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #aab4bf;
+}
+[data-color-scheme='dark'] .ol-chat-appearance-panel {
+  background: rgba(24, 27, 33, 0.95);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+[data-color-scheme='dark'] .ol-chat-appearance-title { color: #e8edf2; }
+[data-color-scheme='dark'] .ol-chat-appearance-label { color: #97a2ae; }
+[data-color-scheme='dark'] .ol-chat-appearance-seg {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+[data-color-scheme='dark'] .ol-chat-appearance-seg button { color: #97a2ae; }
+[data-color-scheme='dark'] .ol-chat-appearance-seg button[aria-pressed='true'] {
+  background: rgba(255, 255, 255, 0.14);
+  color: #e8edf2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ol-chat-appearance-panel,
+  .ol-chat-appearance-toggle {
+    animation: none;
+    transition: none;
+  }
+}

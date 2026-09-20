@@ -13,10 +13,10 @@ import {
 import { toDate } from '@/lib/utils/formatTime';
 import { useLocale } from '@/hooks/useLocale';
 
-/** 来源 badge 配色：email_auto 邮件赠送（蓝） / admin 活动发放（金） */
+/** 来源 badge：统一走 .ol-pill 体系（email_auto 邮件赠送 蓝 / admin 活动发放 琥珀） */
 const SOURCE_COLOR: Record<CouponSource, string> = {
-  email_auto: 'bg-sky-100 text-sky-700 border-sky-200',
-  admin: 'bg-amber-100 text-amber-700 border-amber-200',
+  email_auto: 'ol-pill--blue',
+  admin: 'ol-pill--amber',
 };
 
 /** 有效期至 YYYY-MM-DD（本地时区） */
@@ -92,7 +92,7 @@ export default function CouponsSection() {
           )}
         </button>
         <span
-          className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${SOURCE_COLOR[item.source]}`}
+          className={`ol-pill ${SOURCE_COLOR[item.source]}`}
         >
           {t(`dashboard.couponsSection.source.${item.source}`)}
         </span>
