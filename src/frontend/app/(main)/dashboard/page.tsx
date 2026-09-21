@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Check, Lock, ChevronRight, BookOpen, ShoppingCart } from 'lucide-react';
+import { Check, Lock, BookOpen, ShoppingCart } from 'lucide-react';
 import { PHASES, loadSession, saveSession, setLastActivationCode, applyExploreResumeToSession, setUserSurveyCompleted, type PhaseKey } from '@/lib/explore/session';
 import { clearThreadCache } from '@/lib/explore/threads';
 import { useLocale } from '@/hooks/useLocale';
@@ -144,8 +144,6 @@ function JourneyCard({
   const nodes = buildNodes(journey.explore_resume);
   const resumePhase = effectiveResumeForNodes(journey.explore_resume).resume_phase;
   const reportUnlocked = Boolean(journey.explore_resume?.report_unlocked);
-  const nodePx = featured ? 52 : 40;
-  const half = nodePx / 2;
 
   return (
     <article className={`ol-profile-journey-card ol-profile-surface ${featured ? 'is-featured' : ''}`}>
@@ -180,29 +178,11 @@ function JourneyCard({
         <p>最后编辑：{formatJourneyDateTime(journey.last_activity_at)}</p>
       </div>
 
-      {/* pt-3 预留 badge 上溢空间，防止 overflow 裁切 */}
-      <div className="ol-profile-stage-scroll overflow-x-auto overflow-y-visible [-webkit-overflow-scrolling:touch] pb-1 pt-3">
-        <div
-          className="relative flex min-w-min items-start gap-0"
-          style={{
-            paddingLeft: half,
-            paddingRight: half,
-          }}
-        >
-          <div
-            className="pointer-events-none absolute z-0 bg-bd-border-strong"
-            style={{
-              left: half,
-              right: half,
-              top: half,
-              height: 1,
-              transform: 'translateY(-0.5px)',
-            }}
-            aria-hidden
-          />
-          {nodes.map((node, index) => (
-            <div key={node.id} className="relative z-[1] flex shrink-0 items-start">
-              <div className="flex flex-col items-center" style={{ width: nodePx }}>
+      {/* 阶段轨道：HTML .profile-stage-track——6 列等分 grid + 轨道线，无箭头 */}
+      <div className="ol-profile-stage-scroll overflow-x-auto overflow-y-visible [-webkit-overflow-scrolling:touch]">
+        <div className={`ol-profile-stage-track ${featured ? 'is-featured' : ''}`} role="list" aria-label="旅程进度">
+          {nodes.map((node) => (
+            <div key={node.id} className="ol-profile-stage" role="listitem">
                 {node.id === 'report' ? (
                   <button
                     type="button"
@@ -244,23 +224,16 @@ function JourneyCard({
                     )}
                   </button>
                 )}
-                <span
-                  className={`mt-1 max-w-[4rem] text-center font-medium leading-tight text-bd-fg ${
-                    featured ? 'text-[11px]' : 'text-[10px]'
-                  }`}
-                >
-                  {node.label}
-                </span>
-              </div>
-              {index < nodes.length - 1 && (
-                <div
-                  className="flex shrink-0 items-center justify-center text-bd-muted"
-                  style={{ width: featured ? 20 : 14, height: nodePx }}
-                  aria-hidden
-                >
-                  <ChevronRight className={featured ? 'h-4 w-4' : 'h-3 w-3'} strokeWidth={2} />
-                </div>
-              )}
+                <b>{node.label}</b>
+                <small>
+                  {node.status === 'completed'
+                    ? node.id === 'report'
+                      ? '已生成'
+                      : '已完成'
+                    : node.status === 'in-progress'
+                      ? '进行中'
+                      : '未开始'}
+                </small>
             </div>
           ))}
         </div>

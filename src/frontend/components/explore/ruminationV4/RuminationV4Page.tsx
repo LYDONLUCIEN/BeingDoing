@@ -8,12 +8,14 @@
  * → 左选择器/结论 + 右对话（内部分区）
  */
 
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { FileText, Lock } from 'lucide-react';
 import { useRuminationV4Store } from '@/stores/ruminationV4Store';
 import { markV4IntroShown } from '@/lib/explore/ruminationV4Api';
+import { useChatAppearanceAttrs } from '@/lib/explore/useChatAppearanceAttrs';
+import ChatAppearancePopover from '@/components/explore/ChatAppearancePopover';
 import V4ChatPanel from './V4ChatPanel';
 import TopComboBar from './TopComboBar';
 import V4FinalSelectionModal from './V4FinalSelectionModal';
@@ -28,24 +30,6 @@ interface Props {
   continueDisabledHint?: string;
 }
 
-const outerShellStyle: CSSProperties = {
-  borderRadius: '26px',
-  border: '1px solid rgba(100, 91, 122, 0.12)',
-  background: 'rgba(255,255,255,0.66)',
-  boxShadow: '0 24px 64px rgba(49, 43, 65, 0.09)',
-  backdropFilter: 'blur(22px) saturate(1.08)',
-  WebkitBackdropFilter: 'blur(22px) saturate(1.08)', /* 老 WebKit 内核需前缀（ADR-0020） */
-  padding: '14px 16px 16px',
-};
-
-const innerPaneStyle: CSSProperties = {
-  borderRadius: '20px',
-  border: '1px solid rgba(100, 91, 122, 0.1)',
-  background: 'rgba(255,255,255,0.74)',
-  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72), 0 10px 28px rgba(49,43,65,0.04)',
-  padding: '12px',
-};
-
 export default function RuminationV4Page({
   activationCode,
   onCompleteAndContinue,
@@ -53,6 +37,8 @@ export default function RuminationV4Page({
   continueDisabledHint = '',
 }: Props) {
   const { state, init } = useRuminationV4Store();
+  // Chat 外观配置 → 根节点 data-* 属性（背景/气泡/布局/皮肤/矩阵等）
+  const { dataAttrs: chatAppearanceAttrs, style: chatAppearanceStyle } = useChatAppearanceAttrs();
   const [finalModalOpen, setFinalModalOpen] = useState(false);
   const [introOpen, setIntroOpen] = useState(false);
   const introCheckedRef = useRef(false);
@@ -155,6 +141,8 @@ export default function RuminationV4Page({
         stacked ? 'block overflow-y-auto' : 'flex overflow-hidden'
       }`}
       data-phase="rumination"
+      {...chatAppearanceAttrs}
+      style={chatAppearanceStyle}
     >
       <div className="rumination-journey-backdrop" aria-hidden>
         <div className="rumination-journey-ribbon" />
@@ -163,8 +151,7 @@ export default function RuminationV4Page({
 
       <div className="relative z-10 flex min-h-0 w-full flex-col px-3 pb-3 pt-1 sm:px-4">
         <div
-          className={`flex w-full flex-col ${stacked ? 'flex-none' : 'min-h-0 flex-1 overflow-hidden'}`}
-          style={outerShellStyle}
+          className={`v4-outer-shell flex w-full flex-col ${stacked ? 'flex-none' : 'min-h-0 flex-1 overflow-hidden'}`}
         >
           {/* 顶栏：居中标题 + 右上完成并继续 */}
           <header className="hero journey-rumination-header mb-2.5 grid shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-[rgba(80,94,145,0.08)] pb-3 pt-1 text-center">
@@ -180,7 +167,9 @@ export default function RuminationV4Page({
                 把热爱与优势组成方向，和我深入聊一聊，留下你的假设结论
               </p>
             </div>
-            <div className="flex justify-end pr-1">
+            <div className="flex items-center justify-end gap-2 pr-1">
+              {/* 外观弹层：沉淀页无会话侧栏，隐藏「对话排版」组 */}
+              <ChatAppearancePopover hideSidebarOptions />
               {onCompleteAndContinue && (
                 <button
                   type="button"
@@ -230,10 +219,9 @@ export default function RuminationV4Page({
             }`}
           >
             <div
-              className={`flex min-w-0 flex-col ${
+              className={`v4-inner-pane flex min-w-0 flex-col ${
                 stacked ? 'w-full flex-none' : 'min-h-0 flex-[1.05] overflow-hidden'
               }`}
-              style={innerPaneStyle}
             >
               <V4MatrixLeftPanel stacked={stacked} />
             </div>

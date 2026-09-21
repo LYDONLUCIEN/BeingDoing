@@ -16,11 +16,20 @@ const LAUNCHER_POS_KEY = 'ol-msg-launcher-pos';
 
 type LauncherPos = { x: number; y: number };
 
+// 水平方向允许最多露出半边（左右各半），垂直方向不出屏
 function clampPos(x: number, y: number, w: number, h: number): LauncherPos {
   return {
-    x: Math.min(Math.max(x, 4), Math.max(4, window.innerWidth - w - 4)),
+    x: Math.min(Math.max(x, -w / 2), window.innerWidth - w / 2),
     y: Math.min(Math.max(y, 4), Math.max(4, window.innerHeight - h - 4)),
   };
+}
+
+// 松手吸附：越过右边界 → 只露左半边贴右缘；越过左边界 → 只露右半边贴左缘；未越界保持原位
+function snapToEdge(p: LauncherPos, w: number, h: number): LauncherPos {
+  const c = clampPos(p.x, p.y, w, h);
+  if (c.x + w > window.innerWidth) return { x: window.innerWidth - w / 2, y: c.y };
+  if (c.x < 0) return { x: -w / 2, y: c.y };
+  return c;
 }
 
 /**
@@ -48,6 +57,7 @@ export default function FloatingFeedbackWidget() {
   const [pos, setPos] = useState<LauncherPos | null>(null);
   const launcherRef = useRef<HTMLButtonElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number; moved: boolean } | null>(null);
+  const posRef = useRef<LauncherPos | null>(null); // 拖拽中的最新位置（pointerup 时取它吸附，避开 state 闭包旧值）
   // 拖拽结束的 pointerup 后浏览器仍会补发 click，用它抑制「拖拽误触发打开抽屉」
   const suppressClickRef = useRef(false);
 
@@ -58,6 +68,7 @@ export default function FloatingFeedbackWidget() {
       if (raw) {
         const saved = JSON.parse(raw) as LauncherPos;
         if (typeof saved?.x === 'number' && typeof saved?.y === 'number') {
+          posRef.current = saved;
           setPos(saved); // 元素未挂载无法量尺寸，越界钳制交给 resize 效应与下次拖拽
         }
       }
@@ -135,7 +146,9 @@ export default function FloatingFeedbackWidget() {
     const dy = e.clientY - d.startY;
     if (!d.moved && Math.hypot(dx, dy) < 6) return;
     d.moved = true;
-    setPos(clampPos(d.baseX + dx, d.baseY + dy, el.offsetWidth, el.offsetHeight));
+    const next = clampPos(d.baseX + dx, d.baseY + dy, el.offsetWidth, el.offsetHeight);
+    posRef.current = next;
+    setPos(next);
   };
 
   const handlePointerUp = () => {
@@ -143,12 +156,13 @@ export default function FloatingFeedbackWidget() {
     dragRef.current = null;
     if (!d?.moved) return;
     suppressClickRef.current = true;
-    setPos((p) => {
-      if (p) {
-        try { localStorage.setItem(LAUNCHER_POS_KEY, JSON.stringify(p)); } catch { /* 存储失败不影响拖拽 */ }
-      }
-      return p;
-    });
+    const el = launcherRef.current;
+    const latest = posRef.current;
+    if (!el || !latest) return;
+    const snapped = snapToEdge(latest, el.offsetWidth, el.offsetHeight);
+    posRef.current = snapped;
+    setPos(snapped);
+    try { localStorage.setItem(LAUNCHER_POS_KEY, JSON.stringify(snapped)); } catch { /* 存储失败不影响拖拽 */ }
   };
 
   // chat 页底部有输入区，悬浮球上浮避让

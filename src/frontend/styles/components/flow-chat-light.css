@@ -303,16 +303,13 @@
   background: transparent !important;
 }
 
-/* AI 工具栏：复制、重新生成、点赞 */
+/* AI 工具栏：复制、重新生成、点赞（2026-09-21 起常显，原 hover 才显示导致触屏不可见） */
 .flow-light .flow-msg-ai-toolbar {
   display: flex;
   align-items: center;
   gap: 2px;
   padding-left: 6px;
-  opacity: 0;
-  transition: opacity 0.2s;
 }
-.flow-light .flow-msg-ai-wrap:hover .flow-msg-ai-toolbar { opacity: 1; }
 
 .flow-light .flow-toolbar-btn {
   display: flex;

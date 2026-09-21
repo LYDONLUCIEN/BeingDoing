@@ -374,12 +374,9 @@ function ActivatePageContent() {
                   autoCapitalize="characters"
                   spellCheck={false}
                   aria-invalid={Boolean(error)}
-                  aria-describedby="activation-help activation-status"
+                  aria-describedby="activation-status"
                 />
               </div>
-              <p className="ol-transition-help" id="activation-help">
-                {t('explore.activate.findCodeHint')}
-              </p>
               <button
                 type="button"
                 onClick={() => void handleActivate()}

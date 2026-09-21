@@ -1,18 +1,22 @@
 /* ══════════════════════════════════════════
-   Chat 外观覆盖层（A/B 对比期）
-   决策（wiki/开发文档/0919/迁移决策记录.md #8/#9/#10）：
-   - 气泡配色按 HTML 默认：AI 深墨 #202832 / 用户纸白，
-     不对称小切角（AI 4px 19px 19px 19px，用户反向），无左色条
-   - 三开关矩阵（data-chat-* 挂在 chat 根节点，localStorage 持久化）：
-     data-chat-density: compact(HTML 近) | roomy(现状远)
-     data-chat-sidebar-art: on(HTML 带图) | off
-     data-chat-newbtn: dashed(HTML 虚线浅底) | solid(现状深墨)
-   定稿后删除落选分支。仅作用于 .careering-matte（前四维 chat）。
+   Chat 页外观配置系统（复刻 wiki/开发文档/0919/openlife-journey (21).html #appearance-popover）
+
+   数据流：stores/chatAppearanceStore.ts（persist v1）
+     → lib/explore/useChatAppearanceAttrs.ts（根节点 data-* 属性 + --chat-wash-opacity）
+     → 本文件 `.flow-light[data-xxx='...']` 作用域规则
+
+   挂载根节点：
+   - 前四阶段 chat：.flow-light.careering-matte[data-phase=values|strengths|interests|purpose]
+   - 沉淀 v4：.rumination-v4-root.flow-light[data-phase=rumination]
+
+   主题色一律用代码库现有阶段变量 var(--ol-chat-accent)（openlife-chat-defaults.css
+   按 data-phase 定义），color-mix 先写静态近似值回退（ADR-0020）。
+
+   注意加载顺序：本文件在 globals.css 中先于 openlife-chat-defaults.css（最终覆盖层，
+   大量 !important），因此本文件的覆盖规则统一「更高优先级选择器 + !important」。
    ══════════════════════════════════════════ */
 
-/* 气泡配色规则已并入 openlife-chat-defaults.css（最终覆盖层），本文件只负责三开关矩阵与弹层。 */
-
-/* ── 气泡间距：compact = HTML 紧凑（消息更靠近） ── */
+/* ── 对话排版：气泡间距 compact（A/B 保留项） ── */
 .flow-light.careering-matte[data-chat-density='compact'] .flow-chat-body {
   gap: 0.7rem;
   padding-top: 0.75rem;
@@ -37,7 +41,24 @@
   padding: 0.8rem 1.15rem;
 }
 
-/* ── 侧栏底部植物贴纸（默认隐藏=不带图；on=HTML 带图） ── */
+/* ── 对话排版：新建对话按钮 dashed（A/B 保留项，覆盖内联深墨样式） ── */
+.flow-light.careering-matte[data-chat-newbtn='dashed'] .careering-sidebar-header > button {
+  background: rgba(255, 255, 255, 0.55) !important;
+  color: #426fa9 !important;
+  border: 1px dashed #c9d4de !important;
+  box-shadow: none !important;
+}
+.flow-light.careering-matte[data-chat-newbtn='dashed'] .careering-sidebar-header > button:hover {
+  background: #ffffff !important;
+  border-color: #5e91e6 !important;
+}
+
+/* ══════════════════════════════════════════
+   贴图位置 data-placement：both / sidebar / edge / off
+   （取代旧 data-chat-sidebar-art；sidebarArt 字段仅供 migrate）
+   ══════════════════════════════════════════ */
+
+/* 侧栏底部植物贴纸：默认隐藏，placement=both/sidebar 时显示 */
 .careering-sidebar-art {
   display: none;
   margin-top: auto;
@@ -56,23 +77,640 @@
   letter-spacing: 0.06em;
   color: var(--flow-text-muted, #98a2ad);
 }
-.flow-light.careering-matte[data-chat-sidebar-art='on'] .careering-sidebar-art {
+.flow-light.careering-matte[data-placement='both'] .careering-sidebar-art,
+.flow-light.careering-matte[data-placement='sidebar'] .careering-sidebar-art {
   display: block;
 }
+/* 仅侧栏 / 全隐藏：去掉右上边缘贴纸（前四阶段）与 v4 backdrop 贴纸 */
+.flow-light.careering-matte[data-placement='sidebar'] .careering-journey-sticker,
+.flow-light.careering-matte[data-placement='off'] .careering-journey-sticker {
+  display: none;
+}
+.rumination-v4-root.flow-light[data-placement='sidebar'] .rumination-journey-backdrop img,
+.rumination-v4-root.flow-light[data-placement='off'] .rumination-journey-backdrop img {
+  display: none;
+}
 
-/* ── 新建对话按钮：dashed = HTML 虚线浅底（覆盖内联深墨样式） ── */
-.flow-light.careering-matte[data-chat-newbtn='dashed'] .careering-sidebar-header > button {
-  background: rgba(255, 255, 255, 0.55) !important;
-  color: #426fa9 !important;
-  border: 1px dashed #c9d4de !important;
+/* ══════════════════════════════════════════
+   聊天背景 data-background：white / tint / flow(默认现状) / illustration
+   ══════════════════════════════════════════ */
+
+/* white：隐藏所有 blob/ribbon/sticker + 纯白底 */
+.flow-light.careering-matte[data-background='white'] {
+  background: #ffffff !important;
+}
+.flow-light.careering-matte[data-background='white'] .careering-silk-blob,
+.flow-light.careering-matte[data-background='white'] .careering-journey-ribbon,
+.flow-light.careering-matte[data-background='white'] .careering-journey-sticker {
+  display: none !important;
+}
+.flow-light.careering-matte[data-background='white'] .careering-bg-root .careering-bg-solid {
+  background: #ffffff !important;
+}
+.flow-light.careering-matte[data-background='white'] .careering-sidebar-art {
+  display: none !important;
+}
+.rumination-v4-root.flow-light[data-background='white'] {
+  background: #ffffff !important;
+}
+.rumination-v4-root.flow-light[data-background='white'] .rumination-journey-backdrop {
+  display: none;
+}
+
+/* tint：隐藏 blob/ribbon/sticker，保留按阶段的浅色纯色底（--cbg / --ol-chat-soft） */
+.flow-light.careering-matte[data-background='tint'] .careering-silk-blob,
+.flow-light.careering-matte[data-background='tint'] .careering-journey-ribbon,
+.flow-light.careering-matte[data-background='tint'] .careering-journey-sticker {
+  display: none !important;
+}
+.rumination-v4-root.flow-light[data-background='tint'] .rumination-journey-ribbon,
+.rumination-v4-root.flow-light[data-background='tint'] .rumination-journey-backdrop img {
+  display: none;
+}
+.rumination-v4-root.flow-light[data-background='tint'] .rumination-journey-backdrop::before {
+  background: #f4f2fb;
+  background: linear-gradient(180deg, #fbfaff 0%, var(--ol-chat-soft, #f0edfb) 100%);
+}
+
+/* illustration：flow 基础上贴纸放大 / 不透明度增强 */
+.flow-light.careering-matte[data-background='illustration'] .careering-journey-sticker {
+  width: clamp(150px, 18vw, 270px);
+  opacity: 0.8;
+  filter: saturate(1.05);
+}
+.rumination-v4-root.flow-light[data-background='illustration'] .rumination-journey-backdrop img {
+  width: clamp(150px, 20vw, 300px);
+  opacity: 0.62;
+}
+
+/* ── 晕染浓度：--chat-wash-opacity（strength/100，默认 0.22） ──
+   系数按现状反推：silk blob 现状 0.12（×0.55），ribbon 0.62（×2.8），v4 ribbon 0.55（×2.5） */
+.flow-light .careering-bg-root .careering-silk-blob {
+  opacity: calc(var(--chat-wash-opacity, 0.22) * 0.55);
+}
+.flow-light .careering-bg-root .careering-journey-ribbon {
+  opacity: calc(var(--chat-wash-opacity, 0.22) * 2.8);
+}
+.rumination-v4-root .rumination-journey-backdrop .rumination-journey-ribbon {
+  opacity: calc(var(--chat-wash-opacity, 0.22) * 2.5);
+}
+
+/* ── 动效 data-motion='off'：暂停背景 blob/ribbon 动画 ── */
+.flow-light[data-motion='off'] .careering-silk-blob,
+.flow-light[data-motion='off'] .flow-phase-blob,
+.flow-light[data-motion='off'] .landing-mesh-blob {
+  animation-play-state: paused !important;
+}
+
+/* ══════════════════════════════════════════
+   AI / 用户气泡 data-ai-bubble / data-user-bubble
+   ink+白字为现有默认（openlife-chat-defaults.css），这里实现 soft/theme/white
+   ══════════════════════════════════════════ */
+
+/* AI 气泡 · soft：阶段色 10% 混白底深字 */
+.flow-light.careering-matte[data-ai-bubble='soft'] .flow-msg-ai-content,
+.rumination-beautiful-root.flow-light[data-ai-bubble='soft'] .flow-msg-ai-content--rumination-wb {
+  border: 1px solid #e3e9f2 !important;
+  border-color: color-mix(in srgb, var(--ol-chat-accent, #8474c9) 28%, white) !important;
+  background: #f3f7fc !important;
+  background: color-mix(in srgb, var(--ol-chat-accent, #8474c9) 10%, white) !important;
+  color: #202832 !important;
+  box-shadow: 0 8px 24px rgba(35, 48, 62, 0.06) !important;
+}
+/* AI 气泡 · white：纸白 */
+.flow-light.careering-matte[data-ai-bubble='white'] .flow-msg-ai-content,
+.rumination-beautiful-root.flow-light[data-ai-bubble='white'] .flow-msg-ai-content--rumination-wb {
+  border: 1px solid #e2e7ec !important;
+  background: #ffffff !important;
+  color: #202832 !important;
+  box-shadow: 0 8px 28px rgba(24, 38, 52, 0.05) !important;
+}
+/* soft/white 浅底气泡：把 defaults 为墨底写的白色 !important 文字压回深色 */
+.flow-light.careering-matte[data-ai-bubble='soft'] .flow-msg-ai-content .wmde-markdown,
+.flow-light.careering-matte[data-ai-bubble='soft'] .flow-msg-ai-content .wmde-markdown *,
+.flow-light.careering-matte[data-ai-bubble='white'] .flow-msg-ai-content .wmde-markdown,
+.flow-light.careering-matte[data-ai-bubble='white'] .flow-msg-ai-content .wmde-markdown *,
+.rumination-beautiful-root.flow-light[data-ai-bubble='soft'] .flow-msg-ai-content--rumination-wb .wmde-markdown,
+.rumination-beautiful-root.flow-light[data-ai-bubble='soft'] .flow-msg-ai-content--rumination-wb .wmde-markdown *,
+.rumination-beautiful-root.flow-light[data-ai-bubble='white'] .flow-msg-ai-content--rumination-wb .wmde-markdown,
+.rumination-beautiful-root.flow-light[data-ai-bubble='white'] .flow-msg-ai-content--rumination-wb .wmde-markdown * {
+  color: #2a3340 !important;
+}
+.flow-light.careering-matte[data-ai-bubble='soft'] .flow-msg-ai-content .wmde-markdown a,
+.flow-light.careering-matte[data-ai-bubble='white'] .flow-msg-ai-content .wmde-markdown a,
+.rumination-beautiful-root.flow-light[data-ai-bubble='soft'] .flow-msg-ai-content--rumination-wb .wmde-markdown a,
+.rumination-beautiful-root.flow-light[data-ai-bubble='white'] .flow-msg-ai-content--rumination-wb .wmde-markdown a {
+  color: #3569d4 !important;
+}
+.flow-light.careering-matte[data-ai-bubble='soft'] .flow-msg-ai-content .wmde-markdown code,
+.flow-light.careering-matte[data-ai-bubble='white'] .flow-msg-ai-content .wmde-markdown code,
+.rumination-beautiful-root.flow-light[data-ai-bubble='soft'] .flow-msg-ai-content--rumination-wb .wmde-markdown code,
+.rumination-beautiful-root.flow-light[data-ai-bubble='white'] .flow-msg-ai-content--rumination-wb .wmde-markdown code {
+  background: rgba(20, 30, 40, 0.06) !important;
+  color: #2a3340 !important;
+}
+.flow-light.careering-matte[data-ai-bubble='soft'] .flow-msg-ai-content .wmde-markdown pre,
+.flow-light.careering-matte[data-ai-bubble='white'] .flow-msg-ai-content .wmde-markdown pre {
+  background: rgba(20, 30, 40, 0.05) !important;
+}
+.flow-light.careering-matte[data-ai-bubble='soft'] .flow-msg-ai-content .wmde-markdown blockquote,
+.flow-light.careering-matte[data-ai-bubble='white'] .flow-msg-ai-content .wmde-markdown blockquote {
+  border-left-color: rgba(42, 51, 64, 0.25) !important;
+  color: rgba(42, 51, 64, 0.8) !important;
+}
+.flow-light.careering-matte[data-ai-bubble='soft'] .flow-msg-ai-content .wmde-markdown hr,
+.flow-light.careering-matte[data-ai-bubble='white'] .flow-msg-ai-content .wmde-markdown hr {
+  border-color: rgba(20, 30, 40, 0.12) !important;
+}
+/* AI 气泡 · theme：当前阶段实色底白字（文字沿用 defaults 墨底气泡的白色规则） */
+.flow-light.careering-matte[data-ai-bubble='theme'] .flow-msg-ai-content,
+.rumination-beautiful-root.flow-light[data-ai-bubble='theme'] .flow-msg-ai-content--rumination-wb {
+  border-color: var(--ol-chat-accent, #8474c9) !important;
+  background: var(--ol-chat-accent, #8474c9) !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 24px rgba(60, 70, 90, 0.14) !important;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--ol-chat-accent, #8474c9) 30%, transparent) !important;
+}
+
+/* 用户气泡 · soft：阶段色 12% 混白底深字 */
+.flow-light.careering-matte[data-user-bubble='soft'] .flow-msg-user-content.flow-msg-user-content,
+.rumination-beautiful-root.flow-light[data-user-bubble='soft'] .flow-msg-user-content.flow-msg-user-content {
+  border-color: #e3e9f2 !important;
+  border-color: color-mix(in srgb, var(--ol-chat-accent, #8474c9) 26%, white) !important;
+  background: #f4f8fd !important;
+  background: color-mix(in srgb, var(--ol-chat-accent, #8474c9) 12%, white) !important;
+  color: #202832 !important;
   box-shadow: none !important;
 }
-.flow-light.careering-matte[data-chat-newbtn='dashed'] .careering-sidebar-header > button:hover {
-  background: #ffffff !important;
-  border-color: #5e91e6 !important;
+/* 用户气泡 · theme：阶段实色底白字 */
+.flow-light.careering-matte[data-user-bubble='theme'] .flow-msg-user-content.flow-msg-user-content,
+.rumination-beautiful-root.flow-light[data-user-bubble='theme'] .flow-msg-user-content.flow-msg-user-content {
+  border-color: var(--ol-chat-accent, #8474c9) !important;
+  background: var(--ol-chat-accent, #8474c9) !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 22px rgba(60, 70, 90, 0.12) !important;
+}
+/* 用户气泡 · ink：深墨底白字 */
+.flow-light.careering-matte[data-user-bubble='ink'] .flow-msg-user-content.flow-msg-user-content,
+.rumination-beautiful-root.flow-light[data-user-bubble='ink'] .flow-msg-user-content.flow-msg-user-content {
+  border-color: #202832 !important;
+  background: #202832 !important;
+  color: #f8fafc !important;
+  box-shadow: 0 8px 22px rgba(20, 29, 38, 0.1) !important;
+}
+/* 用户气泡 · white = 现状默认，无需规则 */
+
+/* ══════════════════════════════════════════
+   发送与主要按钮 data-action-style（ink=现状默认；theme=阶段实色）
+   ══════════════════════════════════════════ */
+.flow-light.careering-matte[data-action-style='theme'] .flow-send-btn,
+.rumination-beautiful-root.flow-light[data-action-style='theme'] .flow-send-btn {
+  border-color: var(--ol-chat-accent, #8474c9) !important;
+  background: var(--ol-chat-accent, #8474c9) !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 20px rgba(60, 70, 90, 0.14) !important;
+}
+.flow-light.careering-matte[data-action-style='theme'] .flow-send-btn:hover,
+.rumination-beautiful-root.flow-light[data-action-style='theme'] .flow-send-btn:hover {
+  background: var(--ol-chat-accent, #8474c9) !important;
+  filter: brightness(0.94);
+}
+/* 前四阶段顶栏「完成并继续」（.bd-btn-black） */
+.flow-light.careering-matte[data-action-style='theme'] .careering-chat-header-actions .bd-btn-black {
+  background-color: var(--ol-chat-accent, #8474c9) !important;
+}
+/* v4 顶栏「完成并继续」（.complete-btn 为内联渐变样式，必须 !important） */
+.rumination-v4-root.flow-light[data-action-style='theme'] .complete-btn {
+  border-color: transparent !important;
+  background: var(--ol-chat-accent, #8474c9) !important;
+  box-shadow: 0 8px 20px rgba(60, 70, 90, 0.16) !important;
 }
 
-/* ── 外观设置弹层（齿轮 + 小浮层，对齐 HTML #appearance-popover） ── */
+/* ══════════════════════════════════════════
+   沉淀页面布局 data-rumination-layout（仅 v4）
+   classic=现状（左选择器右对话）；guided=左右互换；studio=hero 化 + 等宽双栏
+   ══════════════════════════════════════════ */
+.rumination-v4-root.flow-light[data-rumination-layout='guided'] .rumination-workbench:not(.flex-col) {
+  flex-direction: row-reverse;
+}
+.rumination-v4-root.flow-light[data-rumination-layout='studio'] .rumination-workbench:not(.flex-col) > .v4-inner-pane {
+  flex: 1 1 0%;
+}
+.rumination-v4-root.flow-light[data-rumination-layout='studio'] .journey-rumination-header {
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.6);
+  background:
+    radial-gradient(ellipse at 12% 55%, rgba(143, 120, 216, 0.1), transparent 42%),
+    radial-gradient(ellipse at 88% 38%, rgba(234, 181, 82, 0.1), transparent 42%),
+    rgba(255, 255, 255, 0.6);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.94), 0 12px 34px rgba(38, 52, 66, 0.04);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  padding: 14px 12px;
+  margin-bottom: 12px;
+}
+.rumination-v4-root.flow-light[data-rumination-layout='studio'] .journey-rumination-header h1 {
+  font-size: 30px;
+  letter-spacing: 0.02em;
+}
+@media (min-width: 640px) {
+  .rumination-v4-root.flow-light[data-rumination-layout='studio'] .journey-rumination-header h1 {
+    font-size: 40px;
+  }
+}
+/* studio：TopComboBar 视觉强化（覆盖其内联样式，需 !important） */
+.rumination-v4-root.flow-light[data-rumination-layout='studio'] .combo-toolbar {
+  background: rgba(255, 255, 255, 0.82) !important;
+  border-color: rgba(255, 255, 255, 0.9) !important;
+  box-shadow: 0 14px 36px rgba(38, 53, 69, 0.08) !important;
+}
+
+/* ══════════════════════════════════════════
+   沉淀界面层级（皮肤） data-rumination-skin（仅 v4）
+   mist=现状默认（.v4-outer-shell / .v4-inner-pane 基础类即 mist，见文件末尾 v4 壳基础样式）
+   ══════════════════════════════════════════ */
+
+/* folio 静谧双页：左冷白右暖白双页感 */
+.rumination-v4-root.flow-light[data-rumination-skin='folio'] .v4-outer-shell {
+  background: linear-gradient(115deg, rgba(238, 245, 252, 0.6), rgba(255, 255, 255, 0.78) 46%, rgba(253, 247, 238, 0.6));
+  border-color: #dfe6ec;
+}
+.rumination-v4-root.flow-light[data-rumination-skin='folio'] .v4-inner-pane {
+  background: rgba(248, 251, 254, 0.94);
+  border-color: #dce5ec;
+  border-top: 3px solid #b3c8ea;
+  border-top-color: color-mix(in srgb, var(--ol-chat-accent, #8474c9) 55%, white);
+}
+.rumination-v4-root.flow-light[data-rumination-skin='folio'] .rumination-beautiful-card--chat {
+  background: rgba(255, 253, 250, 0.92);
+  border-color: #e3e0da;
+  border-top: 3px solid #303944;
+}
+
+/* modules 模块编辑：卡片白底 + 清晰边框 + 无模糊任务块感 */
+.rumination-v4-root.flow-light[data-rumination-skin='modules'] .v4-outer-shell {
+  background: rgba(243, 246, 248, 0.9);
+  border-color: #e0e6eb;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.rumination-v4-root.flow-light[data-rumination-skin='modules'] .v4-inner-pane {
+  background: rgba(237, 242, 245, 0.9);
+  border-color: #e0e6eb;
+  box-shadow: none;
+}
+.rumination-v4-root.flow-light[data-rumination-skin='modules'] .v4-inner-pane .selection-block {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #dfe5ea;
+  border-radius: 14px;
+  padding: 14px;
+  box-shadow: 0 7px 18px rgba(41, 55, 68, 0.045);
+}
+.rumination-v4-root.flow-light[data-rumination-skin='modules'] .rumination-beautiful-card--chat {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: #dfe5ea;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.rumination-v4-root.flow-light[data-rumination-skin='modules'] .combo-toolbar {
+  background: #ffffff !important;
+  border-color: #dfe5ea !important;
+  box-shadow: 0 5px 18px rgba(33, 48, 62, 0.045) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* editorial 编辑长卷：纸张底 + 左侧竖线文档感 */
+.rumination-v4-root.flow-light[data-rumination-skin='editorial'] .v4-outer-shell {
+  background: rgba(246, 246, 243, 0.9);
+  border-color: #d8ddda;
+  border-radius: 14px;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.rumination-v4-root.flow-light[data-rumination-skin='editorial'] .v4-inner-pane {
+  background: rgba(251, 251, 248, 0.94);
+  border: 1px solid #d7ddda;
+  border-left: 4px solid #8474c9;
+  border-left-color: var(--ol-chat-accent, #8474c9);
+  border-radius: 12px;
+  box-shadow: none;
+}
+.rumination-v4-root.flow-light[data-rumination-skin='editorial'] .rumination-beautiful-card--chat {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #d7ddda;
+  border-left: 4px solid #303944;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.rumination-v4-root.flow-light[data-rumination-skin='editorial'] .combo-toolbar {
+  background: #fbfbf8 !important;
+  border-color: #d8ddda !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* ══════════════════════════════════════════
+   沉淀氛围 data-palette（仅 v4，lavender=现状默认不写规则）
+   按 HTML PALETTES 调整根节点背景晕染色调
+   ══════════════════════════════════════════ */
+.rumination-v4-root.flow-light[data-palette='sage'] {
+  background:
+    radial-gradient(circle at 10% 8%, rgba(100, 196, 167, 0.12), transparent 29%),
+    radial-gradient(circle at 92% 76%, rgba(111, 155, 216, 0.1), transparent 31%),
+    linear-gradient(180deg, #fafcfe 0%, #f4faf7 58%, #fbfdfb 100%);
+}
+.rumination-v4-root.flow-light[data-palette='sage'] .rumination-journey-backdrop::before {
+  background:
+    radial-gradient(circle at 10% 22%, rgba(94, 145, 230, 0.13), transparent 28%),
+    radial-gradient(circle at 88% 74%, rgba(100, 196, 167, 0.15), transparent 30%),
+    linear-gradient(180deg, rgba(250, 252, 252, 0.68), rgba(244, 250, 247, 0.88));
+}
+.rumination-v4-root.flow-light[data-palette='slate'] {
+  background:
+    radial-gradient(circle at 10% 8%, rgba(237, 138, 153, 0.1), transparent 29%),
+    radial-gradient(circle at 92% 76%, rgba(234, 181, 82, 0.11), transparent 31%),
+    linear-gradient(180deg, #fcfbfa 0%, #faf6ef 58%, #fcfaf6 100%);
+}
+.rumination-v4-root.flow-light[data-palette='slate'] .rumination-journey-backdrop::before {
+  background:
+    radial-gradient(circle at 10% 22%, rgba(237, 138, 153, 0.12), transparent 28%),
+    radial-gradient(circle at 88% 74%, rgba(234, 181, 82, 0.14), transparent 30%),
+    linear-gradient(180deg, rgba(252, 251, 248, 0.68), rgba(250, 246, 238, 0.88));
+}
+
+/* ══════════════════════════════════════════
+   选择矩阵 data-matrix-style / data-matrix-palette（仅 v4，V4ComboMatrixSelector 单元格）
+   duo=现状（热爱橙渐变 × 优势绿柔填），不写默认规则；
+   样式与配色经 --matrix-* 变量正交组合（style 规则须排在 palette 规则之后）。
+   ══════════════════════════════════════════ */
+.rumination-v4-root.flow-light {
+  --matrix-love-a: #ff9835;
+  --matrix-love-b: #ff3e4f;
+  --matrix-love-ink: #c8455a;
+  --matrix-strength: #08aa7e;
+  --matrix-strength-ink: #008f6a;
+}
+/* violet：统一紫 */
+.rumination-v4-root.flow-light[data-matrix-palette='violet'] {
+  --matrix-love-a: #9d86ec;
+  --matrix-love-b: #7a5fd0;
+  --matrix-love-ink: #6f52c7;
+  --matrix-strength: #886ddc;
+  --matrix-strength-ink: #5b3fb8;
+}
+.rumination-v4-root.flow-light[data-matrix-palette='violet'] .choice-card.love-card.selected {
+  background: linear-gradient(135deg, #9d86ec, #7a5fd0) !important;
+  border-color: #c9baef !important;
+}
+.rumination-v4-root.flow-light[data-matrix-palette='violet'] .choice-card.strength-card.selected {
+  background: #efebfa !important;
+  background: color-mix(in srgb, #886ddc 12%, white) !important;
+  border-color: #c9baef !important;
+  color: #5b3fb8 !important;
+}
+.rumination-v4-root.flow-light[data-matrix-palette='violet'] .choice-card .selected-mark {
+  background: #886ddc !important;
+}
+.rumination-v4-root.flow-light[data-matrix-palette='violet'] .choice-card.love-card .round-icon {
+  color: #886ddc !important;
+}
+.rumination-v4-root.flow-light[data-matrix-palette='violet'] .selection-block .section-title,
+.rumination-v4-root.flow-light[data-matrix-palette='violet'] .selected-count strong {
+  color: #6f52c7 !important;
+}
+/* multi：多色循环（热爱 3 列 / 优势 5 列各按位取色） */
+.rumination-v4-root.flow-light[data-matrix-palette='multi'] .love-cards .choice-card {
+  --matrix-card-a: #ff9835;
+  --matrix-card-b: #ff3e4f;
+  --matrix-card-ink: #c8455a;
+}
+.rumination-v4-root.flow-light[data-matrix-palette='multi'] .love-cards .choice-card:nth-child(3n + 2) {
+  --matrix-card-a: #7ba3ec;
+  --matrix-card-b: #3569d4;
+  --matrix-card-ink: #3569d4;
+}
+.rumination-v4-root.flow-light[data-matrix-palette='multi'] .love-cards .choice-card:nth-child(3n) {
+  --matrix-card-a: #9d86ec;
+  --matrix-card-b: #6f52c7;
+  --matrix-card-ink: #6f52c7;
+}
+.rumination-v4-root.flow-light[data-matrix-palette='multi'] .strength-cards .choice-card {
+  --matrix-card-a: #4cc79f;
+  --matrix-card-b: #08aa7e;
+  --matrix-card-ink: #008f6a;
+}
+.rumination-v4-root.flow-light[data-matrix-palette='multi'] .strength-cards .choice-card:nth-child(5n + 2) {
+  --matrix-card-a: #7ba3ec;
+  --matrix-card-b: #3569d4;
+  --matrix-card-ink: #3569d4;
+}
+.rumination-v4-root.flow-light[data-matrix-palette='multi'] .strength-cards .choice-card:nth-child(5n + 3) {
+  --matrix-card-a: #ff9835;
+  --matrix-card-b: #ff3e4f;
+  --matrix-card-ink: #c8455a;
+}
+.rumination-v4-root.flow-light[data-matrix-palette='multi'] .strength-cards .choice-card:nth-child(5n + 4) {
+  --matrix-card-a: #f5c65c;
+  --matrix-card-b: #d99b18;
+  --matrix-card-ink: #a3740a;
+}
+.rumination-v4-root.flow-light[data-matrix-palette='multi'] .strength-cards .choice-card:nth-child(5n) {
+  --matrix-card-a: #9d86ec;
+  --matrix-card-b: #6f52c7;
+  --matrix-card-ink: #6f52c7;
+}
+/* multi · soft（柔和填充）选中态按各自卡色 */
+.rumination-v4-root.flow-light[data-matrix-palette='multi'][data-matrix-style='soft'] .choice-card.selected {
+  background: #fdeee9 !important;
+  background: color-mix(in srgb, var(--matrix-card-a) 14%, white) !important;
+  border-color: #f0b9a8 !important;
+  border-color: color-mix(in srgb, var(--matrix-card-ink) 45%, white) !important;
+  color: var(--matrix-card-ink) !important;
+  box-shadow: 0 6px 18px rgba(60, 50, 40, 0.06) !important;
+}
+.rumination-v4-root.flow-light[data-matrix-palette='multi'] .choice-card .selected-mark {
+  background: var(--matrix-card-b) !important;
+}
+.rumination-v4-root.flow-light[data-matrix-palette='multi'] .choice-card.love-card .round-icon {
+  color: var(--matrix-card-ink) !important;
+}
+/* outline：空心描边（选中态白底 + 2px 描边） */
+.rumination-v4-root.flow-light[data-matrix-style='outline'] .choice-card.love-card.selected {
+  background: rgba(255, 255, 255, 0.88) !important;
+  border: 2px solid var(--matrix-card-ink, var(--matrix-love-ink)) !important;
+  color: #202832 !important;
+  box-shadow: 0 0 0 3px rgba(200, 69, 90, 0.08) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--matrix-card-ink, var(--matrix-love-ink)) 9%, transparent) !important;
+}
+.rumination-v4-root.flow-light[data-matrix-style='outline'] .choice-card.strength-card.selected {
+  background: rgba(255, 255, 255, 0.88) !important;
+  border: 2px solid var(--matrix-card-ink, var(--matrix-strength-ink)) !important;
+  color: #202832 !important;
+  box-shadow: 0 0 0 3px rgba(8, 170, 126, 0.08) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--matrix-card-ink, var(--matrix-strength-ink)) 9%, transparent) !important;
+}
+/* solid：实心高亮 */
+.rumination-v4-root.flow-light[data-matrix-style='solid'] .choice-card.love-card.selected {
+  background: linear-gradient(135deg, var(--matrix-card-a, #ff9835), var(--matrix-card-b, #ff3e4f)) !important;
+  border-color: transparent !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 22px rgba(255, 62, 79, 0.2) !important;
+}
+.rumination-v4-root.flow-light[data-matrix-style='solid'] .choice-card.strength-card.selected {
+  background: var(--matrix-card-b, #08aa7e) !important;
+  border-color: var(--matrix-card-b, #08aa7e) !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 22px rgba(8, 170, 126, 0.2) !important;
+}
+.rumination-v4-root.flow-light[data-matrix-style='solid'] .choice-card.strength-card.selected .label {
+  color: #ffffff !important;
+}
+
+/* ══════════════════════════════════════════
+   结论卡 data-conclusion-tone（仅前四阶段 .flow-conclusion-card；
+   v4 的 .conclusion-card-v4 不在范围）
+   theme-mist=现状默认不写规则
+   ══════════════════════════════════════════ */
+/* theme-paper：纸感白 */
+.flow-light.careering-matte[data-conclusion-tone='theme-paper'] .flow-conclusion-card {
+  border-color: #e5e2d9 !important;
+  border-color: color-mix(in srgb, var(--ol-chat-accent, #6f9bd8) 15%, #e0e5ea) !important;
+  background: #fbfaf6 !important;
+  background: color-mix(in srgb, var(--ol-chat-soft, #eef4fb) 45%, white) !important;
+  box-shadow: inset 0 1px #ffffff, 0 11px 34px rgba(31, 48, 66, 0.05) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+/* theme-gradient：阶段色渐层（加重） */
+.flow-light.careering-matte[data-conclusion-tone='theme-gradient'] .flow-conclusion-card {
+  border-color: #d4dff0 !important;
+  border-color: color-mix(in srgb, var(--ol-chat-accent, #6f9bd8) 35%, white) !important;
+  background: linear-gradient(135deg, #dce8f7, #f0f6fd 55%, #e8f0f9) !important;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--ol-chat-accent, #6f9bd8) 25%, white),
+    color-mix(in srgb, var(--ol-chat-soft, #eef4fb) 85%, white) 55%,
+    color-mix(in srgb, var(--ol-chat-accent, #6f9bd8) 12%, white)
+  ) !important;
+}
+/* theme-outline：阶段色描边白底 */
+.flow-light.careering-matte[data-conclusion-tone='theme-outline'] .flow-conclusion-card {
+  border: 1px solid #c9d8ee !important;
+  border-color: color-mix(in srgb, var(--ol-chat-accent, #6f9bd8) 45%, white) !important;
+  background: rgba(255, 255, 255, 0.94) !important;
+  box-shadow: inset 3px 0 #9db9e2, 0 12px 34px rgba(35, 48, 62, 0.05) !important;
+  box-shadow:
+    inset 3px 0 color-mix(in srgb, var(--ol-chat-accent, #6f9bd8) 70%, white),
+    0 12px 34px rgba(35, 48, 62, 0.05) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+/* theme-solid：阶段实色底（内部文字整体压白） */
+.flow-light.careering-matte[data-conclusion-tone='theme-solid'] .flow-conclusion-card {
+  border-color: #5b84c9 !important;
+  border-color: color-mix(in srgb, var(--ol-chat-accent, #6f9bd8) 82%, black) !important;
+  background: var(--ol-chat-accent, #6f9bd8) !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.18), 0 18px 45px rgba(35, 48, 62, 0.14) !important;
+}
+.flow-light.careering-matte[data-conclusion-tone='theme-solid'] .flow-conclusion-card,
+.flow-light.careering-matte[data-conclusion-tone='theme-solid'] .flow-conclusion-card *,
+.flow-light.careering-matte[data-conclusion-tone='theme-solid'] .flow-conclusion-card .wmde-markdown,
+.flow-light.careering-matte[data-conclusion-tone='theme-solid'] .flow-conclusion-card .wmde-markdown * {
+  color: rgba(255, 255, 255, 0.94) !important;
+}
+.flow-light.careering-matte[data-conclusion-tone='theme-solid'] .flow-conclusion-card .flow-conclusion-icon-box {
+  background: rgba(255, 255, 255, 0.16) !important;
+}
+.flow-light.careering-matte[data-conclusion-tone='theme-solid'] .flow-conclusion-card .flow-conclusion-tag,
+.flow-light.careering-matte[data-conclusion-tone='theme-solid'] .flow-conclusion-card .flow-conclusion-tag-sm {
+  background: rgba(255, 255, 255, 0.16) !important;
+  border-color: rgba(255, 255, 255, 0.24) !important;
+}
+.flow-light.careering-matte[data-conclusion-tone='theme-solid'] .flow-conclusion-card .flow-conclusion-tag::before,
+.flow-light.careering-matte[data-conclusion-tone='theme-solid'] .flow-conclusion-card .flow-conclusion-tag-sm::before {
+  background: rgba(255, 255, 255, 0.85) !important;
+}
+.flow-light.careering-matte[data-conclusion-tone='theme-solid'] .flow-conclusion-card .flow-conclusion-tag-marker,
+.flow-light.careering-matte[data-conclusion-tone='theme-solid'] .flow-conclusion-card .flow-conclusion-ev-table th {
+  background: rgba(255, 255, 255, 0.14) !important;
+}
+.flow-light.careering-matte[data-conclusion-tone='theme-solid'] .flow-conclusion-card .flow-conclusion-ev-table th,
+.flow-light.careering-matte[data-conclusion-tone='theme-solid'] .flow-conclusion-card .flow-conclusion-ev-table td {
+  border-color: rgba(255, 255, 255, 0.22) !important;
+}
+
+/* ══════════════════════════════════════════
+   结论标签 data-conclusion-tags（.flow-conclusion-tag / -sm）
+   soft=现状胶囊默认不写规则
+   ══════════════════════════════════════════ */
+/* outline：清晰描边 */
+.flow-light.careering-matte[data-conclusion-tags='outline'] .flow-conclusion-tag,
+.flow-light.careering-matte[data-conclusion-tags='outline'] .flow-conclusion-tag-sm {
+  background: transparent !important;
+  border: 1px solid #c3d2e8 !important;
+  border-color: color-mix(in srgb, var(--ol-chat-accent, #6f9bd8) 40%, white) !important;
+  box-shadow: none !important;
+  color: #3c4653 !important;
+}
+.flow-light.careering-matte[data-conclusion-tags='outline'] .flow-conclusion-tag::before,
+.flow-light.careering-matte[data-conclusion-tags='outline'] .flow-conclusion-tag-sm::before {
+  display: none;
+}
+/* editorial：报告短线（下方短横线装饰） */
+.flow-light.careering-matte[data-conclusion-tags='editorial'] .flow-conclusion-tag,
+.flow-light.careering-matte[data-conclusion-tags='editorial'] .flow-conclusion-tag-sm {
+  position: relative;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 2px !important;
+  box-shadow: none !important;
+  padding: 2px 2px 9px !important;
+  color: #3d4d60 !important;
+}
+.flow-light.careering-matte[data-conclusion-tags='editorial'] .flow-conclusion-tag::before,
+.flow-light.careering-matte[data-conclusion-tags='editorial'] .flow-conclusion-tag-sm::before {
+  position: absolute;
+  left: 2px;
+  bottom: 2px;
+  width: 26px;
+  height: 2px;
+  border-radius: 2px;
+  background: #6f9bd8;
+  background: var(--ol-chat-accent, #6f9bd8);
+}
+
+/* ══════════════════════════════════════════
+   v4 壳基础样式（mist 皮肤 = 现状；原 RuminationV4Page 内联样式搬入，
+   供 data-rumination-skin 覆盖）
+   ══════════════════════════════════════════ */
+.v4-outer-shell {
+  border-radius: 26px;
+  border: 1px solid rgba(100, 91, 122, 0.12);
+  background: rgba(255, 255, 255, 0.66);
+  box-shadow: 0 24px 64px rgba(49, 43, 65, 0.09);
+  backdrop-filter: blur(22px) saturate(1.08);
+  -webkit-backdrop-filter: blur(22px) saturate(1.08); /* 老 WebKit 内核需前缀（ADR-0020） */
+  padding: 14px 16px 16px;
+}
+.v4-inner-pane {
+  border-radius: 20px;
+  border: 1px solid rgba(100, 91, 122, 0.1);
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 10px 28px rgba(49, 43, 65, 0.04);
+  padding: 12px;
+}
+
+/* ══════════════════════════════════════════
+   外观设置弹层（齿轮 + 下弹浮层，复刻 HTML #appearance-popover）
+   ══════════════════════════════════════════ */
 .ol-chat-appearance {
   position: relative;
   display: inline-flex;
@@ -100,8 +738,10 @@
   top: calc(100% + 8px);
   right: 0;
   z-index: 60;
-  width: 232px;
-  padding: 14px 16px 16px;
+  width: 300px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 14px 16px 12px;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.9);
   background: rgba(255, 255, 255, 0.94);
@@ -115,52 +755,159 @@
   to { opacity: 1; transform: none; }
 }
 .ol-chat-appearance-title {
-  margin: 0 0 10px;
-  font-size: 12px;
+  margin: 0;
+  font-size: 13px;
   font-weight: 650;
   color: #24313e;
   letter-spacing: 0.04em;
 }
-.ol-chat-appearance-group {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 7px 0;
+.ol-chat-appearance-subtitle {
+  margin: 3px 0 4px;
+  font-size: 10px;
+  color: #98a2ad;
 }
-.ol-chat-appearance-group + .ol-chat-appearance-group {
+.ol-chat-appearance-section {
+  padding: 8px 0 10px;
   border-top: 1px solid rgba(231, 235, 238, 0.8);
 }
-.ol-chat-appearance-label {
-  font-size: 12px;
-  color: #66727f;
-  white-space: nowrap;
+.ol-chat-appearance-section-title {
+  margin: 0 0 2px;
+  font-size: 11px;
+  font-weight: 650;
+  color: #667481;
+  letter-spacing: 0.04em;
 }
-.ol-chat-appearance-seg {
+.ol-chat-appearance-row {
   display: flex;
-  border-radius: 9px;
-  border: 1px solid #e1e7eb;
-  background: rgba(238, 241, 244, 0.6);
-  overflow: hidden;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 0;
 }
-.ol-chat-appearance-seg button {
-  padding: 4px 9px;
-  border: none;
-  background: transparent;
+.ol-chat-appearance-label {
   font-size: 11px;
   color: #66727f;
-  cursor: pointer;
   white-space: nowrap;
-  transition: background 140ms, color 140ms;
 }
-.ol-chat-appearance-seg button[aria-pressed='true'] {
+.ol-chat-appearance-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ol-chat-appearance-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid #e1e6ea;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.7);
+  color: #6d7883;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 140ms, color 140ms, border-color 140ms, box-shadow 140ms;
+}
+.ol-chat-appearance-option:hover {
+  border-color: #bdc8d1;
   background: #fff;
-  color: #24313e;
+}
+.ol-chat-appearance-option[aria-pressed='true'] {
+  border-color: #303b46;
+  background: #fff;
+  color: #202b37;
   font-weight: 600;
-  box-shadow: 0 1px 4px rgba(28, 42, 53, 0.1);
+  box-shadow: 0 0 0 1px #303b46, 0 7px 16px rgba(31, 44, 56, 0.07);
+}
+/* 色块（swatch） */
+.ol-swatch {
+  display: block;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  border-radius: 5px;
+  border: 1px solid rgba(33, 45, 57, 0.12);
+}
+.ol-swatch-ink { background: #202832; }
+.ol-swatch-white { background: #fff; box-shadow: inset 0 0 0 1px #e1e6ea; }
+.ol-swatch-soft { background: linear-gradient(135deg, #eef4fb, #f3edfb); }
+.ol-swatch-theme { background: linear-gradient(135deg, #6f9bd8 0%, #67a98b 55%, #d98282 100%); }
+.ol-swatch-bg-white { background: #fff; box-shadow: inset 0 0 0 1px #eef1f3; }
+.ol-swatch-bg-tint { background: linear-gradient(145deg, #ffffff 30%, #eef4fb); }
+.ol-swatch-bg-flow {
+  background:
+    radial-gradient(circle at 25% 75%, rgba(111, 155, 216, 0.75), transparent 52%),
+    radial-gradient(circle at 82% 20%, #e8f0fa, transparent 50%),
+    #ffffff;
+}
+.ol-swatch-bg-illustration {
+  position: relative;
+  background: linear-gradient(145deg, #ffffff 25%, #f3efff);
+}
+.ol-swatch-bg-illustration::after {
+  content: '';
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 5px;
+  height: 5px;
+  border: 1.5px solid #886ddc;
+  border-radius: 80% 0 80% 0;
+  transform: rotate(30deg);
+}
+.ol-swatch-palette-lavender { background: linear-gradient(130deg, #6c9eea, #64c4a7, #ed8a99, #eab552); }
+.ol-swatch-palette-sage { background: linear-gradient(130deg, #6c9eea, #64c4a7); }
+.ol-swatch-palette-slate { background: linear-gradient(130deg, #ed8a99, #eab552); }
+.ol-swatch-matrix-soft { background: #e9e4f8; border-color: #b6a7e6; }
+.ol-swatch-matrix-outline { background: #fff; border: 2px solid #886ddc; }
+.ol-swatch-matrix-solid { background: #886ddc; }
+.ol-swatch-matrix-duo { background: linear-gradient(135deg, #ff9835 0 48%, #08aa7e 52%); }
+.ol-swatch-matrix-violet { background: #886ddc; }
+.ol-swatch-matrix-multi { background: conic-gradient(#5b84e6, #e86f7e, #f0b33b, #886ddc, #5b84e6); }
+.ol-swatch-tone-mist { background: linear-gradient(135deg, #d9d1f2, #f3f0ff); }
+.ol-swatch-tone-paper { background: #fbfaf6; box-shadow: inset 0 0 0 1px #e8e5dc; }
+.ol-swatch-tone-gradient { background: linear-gradient(145deg, #c9bdf0, #f3f0ff); }
+.ol-swatch-tone-outline { background: #fff; border: 2px solid #886ddc; }
+.ol-swatch-tone-solid { background: #886ddc; }
+/* 晕染浓度滑块 */
+.ol-chat-appearance-range {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ol-chat-appearance-range input[type='range'] {
+  flex: 1;
+  min-width: 0;
+  accent-color: #5e91e6;
+  cursor: pointer;
+}
+.ol-chat-appearance-range-value {
+  min-width: 2ch;
+  text-align: right;
+  font-size: 11px;
+  color: #66727f;
+  font-variant-numeric: tabular-nums;
+}
+/* 页脚 */
+.ol-chat-appearance-foot {
+  padding-top: 10px;
+  border-top: 1px solid rgba(231, 235, 238, 0.8);
+  text-align: right;
+}
+.ol-chat-appearance-foot button {
+  padding: 4px 0;
+  border: none;
+  background: none;
+  color: #7e8b96;
+  font-size: 11px;
+  cursor: pointer;
+}
+.ol-chat-appearance-foot button:hover {
+  color: #202b37;
 }
 
-/* 深色模式 */
+/* 深色模式兜底：面板与控件可读（气泡配色为固定色，深浅模式下均可读） */
 [data-color-scheme='dark'] .ol-chat-appearance-toggle {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.14);
@@ -171,21 +918,42 @@
   border-color: rgba(255, 255, 255, 0.1);
 }
 [data-color-scheme='dark'] .ol-chat-appearance-title { color: #e8edf2; }
+[data-color-scheme='dark'] .ol-chat-appearance-subtitle { color: #7d8894; }
+[data-color-scheme='dark'] .ol-chat-appearance-section,
+[data-color-scheme='dark'] .ol-chat-appearance-foot {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+[data-color-scheme='dark'] .ol-chat-appearance-section-title { color: #97a2ae; }
 [data-color-scheme='dark'] .ol-chat-appearance-label { color: #97a2ae; }
-[data-color-scheme='dark'] .ol-chat-appearance-seg {
+[data-color-scheme='dark'] .ol-chat-appearance-option {
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(255, 255, 255, 0.1);
+  color: #97a2ae;
 }
-[data-color-scheme='dark'] .ol-chat-appearance-seg button { color: #97a2ae; }
-[data-color-scheme='dark'] .ol-chat-appearance-seg button[aria-pressed='true'] {
+[data-color-scheme='dark'] .ol-chat-appearance-option:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+[data-color-scheme='dark'] .ol-chat-appearance-option[aria-pressed='true'] {
   background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.4);
   color: #e8edf2;
+  box-shadow: none;
 }
+[data-color-scheme='dark'] .ol-chat-appearance-range-value { color: #97a2ae; }
+[data-color-scheme='dark'] .ol-chat-appearance-foot button { color: #7d8894; }
+[data-color-scheme='dark'] .ol-chat-appearance-foot button:hover { color: #e8edf2; }
 
 @media (prefers-reduced-motion: reduce) {
   .ol-chat-appearance-panel,
   .ol-chat-appearance-toggle {
     animation: none;
     transition: none;
+  }
+  /* 系统减动效：背景动画直接停掉（与 data-motion='off' 并列兜底） */
+  .flow-light .careering-silk-blob,
+  .flow-light .flow-phase-blob,
+  .flow-light .landing-mesh-blob {
+    animation: none !important;
   }
 }

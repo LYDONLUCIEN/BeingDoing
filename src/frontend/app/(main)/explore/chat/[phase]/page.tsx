@@ -29,7 +29,7 @@ import ChatPhaseBackground from '@/components/explore/ChatPhaseBackground';
 import ExploreLandingMeshLayers from '@/components/explore/ExploreLandingMeshLayers';
 import LegacyBrowserNotice from '@/components/layout/LegacyBrowserNotice';
 import ChatAppearancePopover from '@/components/explore/ChatAppearancePopover';
-import { useChatAppearanceStore } from '@/stores/chatAppearanceStore';
+import { useChatAppearanceAttrs } from '@/lib/explore/useChatAppearanceAttrs';
 const PhaseCelebrateBurst = dynamic(
   () => import('@/components/explore/PhaseCelebrateBurst'),
   { ssr: false },
@@ -366,8 +366,8 @@ function LiveChatPhasePage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { t, locale } = useLocale();
-  // Chat 外观（气泡间距 / 侧栏装饰 / 新建对话样式），见 ChatAppearancePopover
-  const chatAppearance = useChatAppearanceStore();
+  // Chat 外观（背景/气泡/排版等 data 属性），见 ChatAppearancePopover + openlife-chat-appearance.css
+  const { dataAttrs: chatAppearanceAttrs, style: chatAppearanceStyle } = useChatAppearanceAttrs();
   const phase = (params.phase as string) as PhaseKey;
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
@@ -4368,9 +4368,8 @@ function LiveChatPhasePage() {
           : 'flow-light careering-matte chat-shell-h flex min-h-0 flex-col overflow-hidden'
       }
       data-phase={phase}
-      data-chat-density={chatAppearance.density}
-      data-chat-sidebar-art={chatAppearance.sidebarArt ? 'on' : 'off'}
-      data-chat-newbtn={chatAppearance.newChatStyle}
+      {...chatAppearanceAttrs}
+      style={chatAppearanceStyle}
     >
       {/* 旧内核浏览器提示（ADR-0020）：「不再提示」前每个 phase 页都弹 */}
       <LegacyBrowserNotice />

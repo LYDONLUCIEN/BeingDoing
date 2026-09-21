@@ -5,6 +5,12 @@
 **维护机制**：脚本只切 `/www/sites/zhiyinapp/maintenance.flag` 文件存在与否，nginx 配置一次性加好后不再动。
 
 > **⚠️ dev/prod 不要混用配置**：这是 **dev 机**（career / zhiyinapp）的配置。
+> - **2026-09-21 站点变更**：zhiyinapp 站点已删除，dev 现为 `career.beyondego.me`
+>   （配置已按本文 1.5 节实际应用并验证通过 ✅，实际文件以服务器
+>   `conf.d/career.beyondego.me.conf` 为准，路径中的 `zhiyinapp` 读作 `career.beyondego.me`）。
+> - **2026-09-21 prod 站点变更**：`xunlu.soulhappylab.com` 已改为**静态页面站**（不再反代 Next），
+>   prod 的 Next 反代站是 **`openlife.beyondego.me`**——prod 配置改动以
+>   [`0705-nginx-prod.md`](./0705-nginx-prod.md) 顶部「站点变更」一节为准，xunlu 部分仅作历史留档。
 > - dev 容器名：`1Panel-openresty-hjWm`，宿主机 www 路径：`/opt/1panel/apps/openresty/openresty/www`
 > - prod 容器名：`1Panel-openresty-UpQ6`，宿主机 www 路径：`/opt/1panel/www`（**无中间层**，1Panel 版本不同）
 > - prod（xunlu）配置见 [`0705-nginx-prod.md`](./0705-nginx-prod.md)，**不要把本文档的路径模板直接搬到 prod**。
@@ -62,11 +68,12 @@ server {
         add_header Cache-Control "public, max-age=31536000, immutable" always;
     }
 
-    # 1.5) public 静态资源：长缓存（2026-09-21 起）
+# 1.5) public 静态资源：长缓存（2026-09-21 起）
     # 此前 /assets/、/fonts/ 落入 location / 被强制 no-store，
     # 每次刷新重下全部图片/字体（约 7.7MB）。
     # 口径：文件名不带哈希，前端引用必须带 ?v=yyyymmdd 版本号，
     # 更新资源时递增版本号即击穿缓存。与 deploy/nginx-static-cache.conf 同步。
+    # 注意：不要加 expires 指令（会跟 add_header 叠加成双 Cache-Control 头）。
     location ^~ /assets/ {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
@@ -76,7 +83,6 @@ server {
         proxy_set_header X-Forwarded-Proto https;
 
         proxy_hide_header Cache-Control;
-        expires 30d;
         add_header Cache-Control "public, max-age=2592000, immutable" always;
     }
 
@@ -89,7 +95,6 @@ server {
         proxy_set_header X-Forwarded-Proto https;
 
         proxy_hide_header Cache-Control;
-        expires 30d;
         add_header Cache-Control "public, max-age=2592000, immutable" always;
     }
 

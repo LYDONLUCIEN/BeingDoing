@@ -116,7 +116,6 @@ export const zh = {
       missionQ: '你想为谁而做？',
       buyCta: '没有激活码？去购买',
       viewAllCodes: '查看我的全部激活码 →',
-      findCodeHint: '忘记激活码？点击右上角头像，在「个人空间 → 我的激活码」中查看。',
       expiredGuide: '激活码已过期，当前仅可查看历史记录。可购买新的激活码继续探索；如需续期，请联系管理员。',
     },
     survey: {

@@ -585,3 +585,50 @@
   .ol-stage-mark,
   .ol-report-book { transition: none; }
 }
+
+/* ── 旅程轨道布局（对齐 HTML .profile-stage-track：6 列等分 grid + 轨道线，无箭头） ── */
+.ol-profile-stage-track {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(6, 86px);
+  min-width: 516px;
+}
+.ol-profile-stage-track::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  top: 20px;
+  left: 43px;
+  right: 43px;
+  height: 1px;
+  background: #dfe5ea;
+}
+/* featured（主旅程卡）节点 52px，轨道线下移 */
+.ol-profile-stage-track.is-featured::before { top: 26px; }
+.ol-profile-stage {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+.ol-profile-stage b {
+  margin-top: 7px;
+  color: #63717f;
+  font-size: 11px;
+  font-weight: 580;
+}
+.ol-profile-stage small {
+  margin-top: 1px;
+  color: #a2abb4;
+  font-size: 9px;
+}
+.ol-profile-stage:has(.ol-stage-mark.is-in-progress) b,
+.ol-profile-stage:has(.ol-report-book.is-ready) b {
+  color: #25323f;
+  font-weight: 670;
+}
+.ol-profile-stage:has(.ol-stage-mark.is-in-progress) small { color: #5e91e6; }
+[data-color-scheme='dark'] .ol-profile-stage-track::before { background: #3a4149; }
+[data-color-scheme='dark'] .ol-profile-stage b { color: #97a2ae; }

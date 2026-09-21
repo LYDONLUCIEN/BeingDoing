@@ -121,7 +121,6 @@ export const en = {
       missionQ: 'Who do you want to serve?',
       buyCta: 'No activation code? Buy one',
       viewAllCodes: 'View all my codes →',
-      findCodeHint: 'Forgot your code? Click your avatar at the top right and find it under "Personal Space → My Codes".',
       expiredGuide: 'This activation code has expired and only history is available. Purchase a new code to continue exploring, or contact the admin to renew.',
     },
     survey: {

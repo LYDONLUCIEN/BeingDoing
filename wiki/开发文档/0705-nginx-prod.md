@@ -6,7 +6,59 @@
 
 ---
 
-## ⚠ prod 配置的特殊性
+## ⚠ 2026-09-21 站点变更（先读这里）
+
+**`xunlu.soulhappylab.com` 已改为静态页面站**（不再反代 Next，下面文件 1-3 的 xunlu 反代配置仅作历史留档，不要再往 xunlu 上改）。
+prod 的 Next 反代站现在是 **`openlife.beyondego.me`**（1Panel 里网站类型为「反向代理」）。
+
+静态资源长缓存（2026-09-21 性能优化）要改的是 **openlife.beyondego.me**，方法：
+
+1Panel → 网站 → `openlife.beyondego.me` → 配置 → 在 server 块内、
+`include .../proxy/*.conf;` 一行**之前**，插入下面两段（片段源文件：`deploy/nginx-static-cache.conf`）：
+
+```nginx
+# public 静态资源：长缓存（文件名不带哈希，前端引用必须带 ?v=yyyymmdd 版本号）
+# 注意：不要加 expires 指令（会跟 add_header 叠加成双 Cache-Control 头）
+location ^~ /assets/ {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-Proto https;
+
+    proxy_hide_header Cache-Control;
+    add_header Cache-Control "public, max-age=2592000, immutable" always;
+}
+
+location ^~ /fonts/ {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-Proto https;
+
+    proxy_hide_header Cache-Control;
+    add_header Cache-Control "public, max-age=2592000, immutable" always;
+}
+```
+
+说明：即使反代规则在 include 的 proxy/*.conf 里，`^~ /assets/` 前缀比 `^~ /` 长，
+必定优先命中，与书写顺序无关；proxy_pass 端口以该站现有反代配置为准（一般是 3000）。
+
+验证（改完保存后执行）：
+
+```bash
+curl -sI "https://openlife.beyondego.me/assets/openlife-journey/home-scene.webp?v=20260921" | grep -i cache-control
+# 期望：cache-control: public, max-age=2592000, immutable
+curl -sI "https://openlife.beyondego.me/" | grep -i cache-control
+# 期望：HTML 页面依然 no-store（不被长缓存）
+```
+
+---
+
+## ⚠ prod 配置的特殊性（历史留档：xunlu 反代时期）
 
 xunlu 这个站点的反代 location(`location /` 和 `location ^~ /api/`)**不在主配置里**，而是通过：
 
@@ -106,7 +158,7 @@ server {
 
 ### 与原版差异（只加了 1 段）
 
-在 `error_log` 之后、`location ~ ^/(\.user\.ini...)` 之前，加了维护检测块：
+**新增 1**：在 `error_log` 之后、`location ~ ^/(\.user\.ini...)` 之前，加了维护检测块：
 
 ```nginx
 set $maintenance_on 0;

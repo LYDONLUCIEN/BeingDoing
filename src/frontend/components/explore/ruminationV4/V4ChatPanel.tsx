@@ -406,7 +406,7 @@ function MessageRow({
               <span className={textClass}>{s}</span>
             </div>
           </div>
-          <div className="flow-msg-user-toolbar opacity-0 transition-opacity hover:opacity-100">
+          <div className="flow-msg-user-toolbar">
             <button
               type="button"
               className="flow-toolbar-btn"
