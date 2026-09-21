@@ -12,6 +12,7 @@ import {
   setLastActivationCode,
 } from '@/lib/explore/session';
 import LikedContentSection from '@/components/explore/LikedContentSection';
+import PaperVeilLayers from '@/components/explore/PaperVeilLayers';
 import ReportRecheckModal from '@/components/explore/ReportRecheckModal';
 import PurchaseModal from '@/components/payment/PurchaseModal';
 import { useLocale } from '@/hooks/useLocale';
@@ -146,7 +147,8 @@ function ReportViewContent() {
   // 审核状态查询中：避免先闪现报告内容再切换到占位
   if (infoLoading || !infoSettled) {
     return (
-      <div className="min-h-screen bg-bd-gradient text-bd-fg flex items-center justify-center px-4 py-12">
+      <div className="ol-report-shell min-h-screen text-bd-fg flex items-center justify-center px-4 py-12">
+        <PaperVeilLayers />
         <Loader2 size={24} className="animate-spin text-bd-subtle" />
       </div>
     );
@@ -155,7 +157,8 @@ function ReportViewContent() {
   // 403：当前账号无权查看该报告，引导从个人空间重新进入
   if (forbidden) {
     return (
-      <div className="min-h-screen bg-bd-gradient text-bd-fg flex items-center justify-center px-4 py-12">
+      <div className="ol-report-shell min-h-screen text-bd-fg flex items-center justify-center px-4 py-12">
+        <PaperVeilLayers />
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
@@ -171,7 +174,7 @@ function ReportViewContent() {
           </div>
           <Link
             href="/dashboard"
-            className="inline-flex items-center gap-2 rounded-xl bg-[var(--bd-ui-accent)] text-bd-ui-accent-fg px-6 py-3 text-sm font-medium hover:opacity-90 transition-opacity"
+            className="inline-flex items-center gap-2 rounded-xl bg-[#222b35] text-white px-6 py-3 text-sm font-medium hover:opacity-90 transition-opacity"
           >
             {t('explore.report.gotoMyReports')}
           </Link>
@@ -183,7 +186,8 @@ function ReportViewContent() {
   // 报告审核中：全页占位，不渲染报告内容与下载按钮
   if (isPendingReview) {
     return (
-      <div className="min-h-screen bg-bd-gradient text-bd-fg flex items-center justify-center px-4 py-12">
+      <div className="ol-report-shell min-h-screen text-bd-fg flex items-center justify-center px-4 py-12">
+        <PaperVeilLayers />
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
@@ -230,7 +234,8 @@ function ReportViewContent() {
   // 五阶段未完成：报告尚未解锁（完成五阶段后首次进入本页即开始审核计时）
   if (isNotStarted) {
     return (
-      <div className="min-h-screen bg-bd-gradient text-bd-fg flex items-center justify-center px-4 py-12">
+      <div className="ol-report-shell min-h-screen text-bd-fg flex items-center justify-center px-4 py-12">
+        <PaperVeilLayers />
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
@@ -270,7 +275,8 @@ function ReportViewContent() {
   // 无激活码（或查询后仍无报告信息）：引导空态，不再渲染 approved 空壳
   if (!reportInfo) {
     return (
-      <div className="min-h-screen bg-bd-gradient text-bd-fg flex items-center justify-center px-4 py-12">
+      <div className="ol-report-shell min-h-screen text-bd-fg flex items-center justify-center px-4 py-12">
+        <PaperVeilLayers />
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
@@ -286,7 +292,7 @@ function ReportViewContent() {
           </div>
           <Link
             href="/dashboard"
-            className="inline-flex items-center gap-2 rounded-xl bg-[var(--bd-ui-accent)] text-bd-ui-accent-fg px-6 py-3 text-sm font-medium hover:opacity-90 transition-opacity"
+            className="inline-flex items-center gap-2 rounded-xl bg-[#222b35] text-white px-6 py-3 text-sm font-medium hover:opacity-90 transition-opacity"
           >
             {t('explore.report.gotoMyReports')}
           </Link>
@@ -296,7 +302,8 @@ function ReportViewContent() {
   }
 
   return (
-    <div className="min-h-screen bg-bd-gradient text-bd-fg flex items-center justify-center px-4 py-12">
+    <div className="ol-report-shell min-h-screen text-bd-fg flex items-center justify-center px-4 py-12">
+      <PaperVeilLayers />
       <motion.div
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
@@ -312,8 +319,8 @@ function ReportViewContent() {
           {t('explore.report.back')}
         </button>
 
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-bd-ui-accent/20 border-2 border-[var(--bd-ui-accent)]">
-          <FileText className="w-7 h-7" style={{ color: 'var(--bd-ui-accent)' }} />
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-white/70 border border-[#e3e8ec]">
+          <FileText className="w-7 h-7" style={{ color: '#426fa9' }} />
         </div>
 
         <div className="space-y-3">
@@ -341,7 +348,7 @@ function ReportViewContent() {
                   type="button"
                   onClick={handleDownloadPdf}
                   disabled={downloading}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[var(--bd-ui-accent)] text-bd-ui-accent-fg px-6 py-3 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#222b35] text-white px-6 py-3 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {downloading ? (
                     <>
@@ -380,7 +387,7 @@ function ReportViewContent() {
               <button
                 type="button"
                 disabled
-                className="inline-flex items-center gap-2 rounded-xl bg-[var(--bd-ui-accent)] text-bd-ui-accent-fg px-6 py-3 text-sm font-medium opacity-60"
+                className="inline-flex items-center gap-2 rounded-xl bg-[#222b35] text-white px-6 py-3 text-sm font-medium opacity-60"
               >
                 <Loader2 size={16} className="animate-spin" />
                 报告生成中…
@@ -396,7 +403,7 @@ function ReportViewContent() {
                   <button
                     type="button"
                     onClick={handleGenerate}
-                    className="inline-flex items-center gap-2 rounded-xl bg-[var(--bd-ui-accent)] text-bd-ui-accent-fg px-5 py-2.5 text-sm font-medium hover:opacity-90 transition-opacity"
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#222b35] text-white px-5 py-2.5 text-sm font-medium hover:opacity-90 transition-opacity"
                   >
                     <FileText size={16} />
                     重新尝试生成
@@ -422,7 +429,7 @@ function ReportViewContent() {
                   type="button"
                   onClick={() => setRecheckOpen(true)}
                   disabled={recheckInProgress}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--bd-ui-accent)] text-bd-ui-accent-fg px-5 py-2.5 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#222b35] text-white px-5 py-2.5 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {recheckInProgress ? '复核处理中' : '申请复核'}
                 </button>
@@ -445,9 +452,9 @@ function ReportViewContent() {
         </div>
 
         {/* 报告解读咨询购买卡（P-D） */}
-        <div className="rounded-xl border border-[var(--bd-ui-accent)]/40 bg-bd-card p-6 text-left space-y-3">
+        <div className="rounded-xl border border-[#e3e8ec] bg-bd-card p-6 text-left space-y-3">
           <div className="flex items-center gap-2">
-            <Headphones className="w-5 h-5" style={{ color: 'var(--bd-ui-accent)' }} />
+            <Headphones className="w-5 h-5" style={{ color: '#426fa9' }} />
             <h3 className="font-semibold text-bd-fg">{t('explore.report.consultTitle')}</h3>
             <span className="ml-auto text-lg font-bold text-bd-fg">¥298</span>
           </div>
@@ -455,7 +462,7 @@ function ReportViewContent() {
           <button
             type="button"
             onClick={() => setConsultOpen(true)}
-            className="inline-flex items-center gap-2 rounded-xl bg-[var(--bd-ui-accent)] text-bd-ui-accent-fg px-5 py-2.5 text-sm font-medium hover:opacity-90 transition-opacity"
+            className="inline-flex items-center gap-2 rounded-xl bg-[#222b35] text-white px-5 py-2.5 text-sm font-medium hover:opacity-90 transition-opacity"
           >
             {t('explore.report.consultCta')}
           </button>
@@ -584,7 +591,8 @@ export default function ReportViewPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-bd-gradient text-bd-fg flex items-center justify-center px-4 py-12">
+        <div className="ol-report-shell min-h-screen text-bd-fg flex items-center justify-center px-4 py-12">
+        <PaperVeilLayers />
           <Loader2 size={24} className="animate-spin text-bd-subtle" />
         </div>
       }

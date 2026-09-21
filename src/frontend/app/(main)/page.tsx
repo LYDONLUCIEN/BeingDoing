@@ -7,6 +7,7 @@ import { useLocale } from '@/hooks/useLocale';
 import LegalDocLink from '@/components/legal/LegalDocLink';
 import LegacyBrowserNotice from '@/components/layout/LegacyBrowserNotice';
 import { FAQ_ITEMS } from '@/lib/content/faq';
+import { QrCode, X } from 'lucide-react';
 
 const TESTIMONIALS: Array<{
   quote: string;
@@ -117,7 +118,7 @@ function JourneyHero({ onStart, t }: { onStart: () => void; t: (key: string) => 
     <>
       <section className="ol-hero ol-home-section" aria-label="寻路 OpenLife 首页">
         <div className="ol-home-scene">
-          <img className="ol-home-scene-bg" src="/assets/openlife-journey/home-scene.png" alt="" />
+          <img className="ol-home-scene-bg" src="/assets/openlife-journey/home-scene.webp?v=20260921" alt="" fetchPriority="high" decoding="async" />
           <div className="ol-hero-copy">
             <p className="ol-eyebrow"><span />{t('home.tagline')}<span /></p>
             <h1>{t('home.heroTitle')}</h1>
@@ -171,7 +172,7 @@ function JourneyHero({ onStart, t }: { onStart: () => void; t: (key: string) => 
 function FloatingBotanical() {
   return (
     <div className="ol-floating-botanical" aria-hidden>
-      <img src="/assets/openlife-journey/botanical-scene.png" alt="" />
+      <img src="/assets/openlife-journey/botanical-scene.webp?v=20260921" alt="" loading="lazy" decoding="async" />
       <span className="ol-botanical-halo ol-botanical-halo--blue" />
       <span className="ol-botanical-halo ol-botanical-halo--gold" />
       <span className="ol-botanical-mote ol-botanical-mote--coral" />
@@ -201,9 +202,9 @@ function ReportSection({ onStart, t }: { onStart: () => void; t: (key: string) =
           <h2 className="ol-report-preview-title">{t('home.reportCard.titleLine1')}</h2>
           <figure className="ol-report-preview" aria-label={t('home.reportCard.previewAlt')}>
             <div className="ol-report-fan">
-              <img className="ol-report-page ol-report-page--left" src="/assets/openlife-journey/report-preview-2.webp" alt="职业探索报告：热爱分析章节预览" />
-              <img className="ol-report-page ol-report-page--center" src="/assets/openlife-journey/report-preview-1.webp" alt="职业探索报告：报告内容预览" />
-              <img className="ol-report-page ol-report-page--right" src="/assets/openlife-journey/report-preview-3.webp" alt="职业探索报告：最终选择章节预览" />
+              <img className="ol-report-page ol-report-page--left" src="/assets/openlife-journey/report-preview-2.webp?v=20260921" alt="职业探索报告：热爱分析章节预览" loading="lazy" decoding="async" />
+              <img className="ol-report-page ol-report-page--center" src="/assets/openlife-journey/report-preview-1.webp?v=20260921" alt="职业探索报告：报告内容预览" loading="lazy" decoding="async" />
+              <img className="ol-report-page ol-report-page--right" src="/assets/openlife-journey/report-preview-3.webp?v=20260921" alt="职业探索报告：最终选择章节预览" loading="lazy" decoding="async" />
             </div>
             <figcaption>{t('home.reportCard.previewCaption')}</figcaption>
           </figure>
@@ -325,6 +326,16 @@ function FaqSection() {
 function LandingFooter() {
   const { t } = useLocale();
   const year = new Date().getFullYear();
+  // 小红书二维码：footer 小图标，点击弹窗显示完整卡片（2026-09-21 起）
+  const [qrOpen, setQrOpen] = useState(false);
+
+  useEffect(() => {
+    if (!qrOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') setQrOpen(false); };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [qrOpen]);
+
   return (
     <footer className="ol-footer">
       <div className="ol-footer-brand"><img src="/assets/openlife-journey/logo.svg" alt="" /><strong>{t('nav.brand')}</strong></div>
@@ -333,8 +344,40 @@ function LandingFooter() {
         <Link href="/about">{t('footer.aboutUs')}</Link>
         <LegalDocLink type="privacy" className="ol-footer-link" />
         <LegalDocLink type="terms" className="ol-footer-link" />
-        <span className="ol-footer-qr" title={t('footer.qrCode')}>QR</span>
+        <button
+          type="button"
+          className="ol-footer-qr"
+          title={t('footer.qrCode')}
+          aria-label={t('footer.qrCode')}
+          onClick={() => setQrOpen(true)}
+        >
+          <QrCode size={15} strokeWidth={1.8} />
+        </button>
       </div>
+      {qrOpen && (
+        <div
+          className="ol-qr-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('footer.qrCode')}
+          onClick={() => setQrOpen(false)}
+        >
+          <div className="ol-qr-modal" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className="ol-qr-modal-close"
+              aria-label={t('common.close')}
+              onClick={() => setQrOpen(false)}
+            >
+              <X size={18} />
+            </button>
+            <img
+              src="/assets/openlife-journey/xiaohongshu-qr.webp?v=20260921"
+              alt={t('footer.qrCode')}
+            />
+          </div>
+        </div>
+      )}
     </footer>
   );
 }

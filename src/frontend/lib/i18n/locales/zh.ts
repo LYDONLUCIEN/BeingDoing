@@ -13,6 +13,7 @@ export const zh = {
     back: '返回',
     confirm: '确认',
     cancel: '取消',
+    close: '关闭',
     submit: '提交',
     loading: '加载中…',
     retry: '重试',
@@ -27,7 +28,8 @@ export const zh = {
     uploadAvatar: '上传头像',
     explore: '开始探索',
     dashboard: '个人空间',
-    community: '社区',
+    career: '职业成长',
+    community: '交流社区',
     about: '关于我们',
     pricing: '定价方案',
     colors: '配色',
@@ -257,6 +259,10 @@ export const zh = {
       networkError: '网络连接失败，若后端正在重启请稍后刷新页面',
       initTimeout: '准备时间较长，请刷新页面后重试',
       retry: '重新尝试',
+      /** 空回复自动重试告知（后端 retrying 事件） */
+      retrying: '刚才没有组织好语言，我再想想…',
+      /** 自动重试后仍空回复的错误文案（显示在错误条，配「重新尝试」按钮） */
+      emptyResponseError: '这次没能给出回复，请点击重新尝试',
       scrollToBottom: '滚动到底部',
       streamAuthExpired: '登录状态已失效，请重新登录后继续对话',
       messageToolbar: {
@@ -786,7 +792,7 @@ export const zh = {
   },
   footer: {
     aboutUs: '关于我们',
-    qrCode: '二维码',
+    qrCode: '小红书二维码',
     privacyPolicy: '隐私政策',
     termsOfService: '服务条款',
     privacyBody: privacyPolicyZh,

@@ -12,6 +12,7 @@ import { fetchExploreResumeFromJourneys } from '@/lib/explore/journeyResume';
 import { formatUTC } from '@/lib/utils/formatTime';
 import { useAuthStore } from '@/stores/authStore';
 import type { SurveyData } from '@/lib/survey/schema';
+import { computeSurveyCompletion } from '@/lib/survey/completion';
 import PurchaseModal from '@/components/payment/PurchaseModal';
 import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
 
@@ -184,6 +185,7 @@ function UserSurveyCard({
   t: (k: string) => string;
 }) {
   const groups = extractSurveyDisplayGroups(survey.survey_data);
+  const completion = computeSurveyCompletion(survey.survey_data);
   if (groups.length === 0) return null;
 
   return (
@@ -200,9 +202,19 @@ function UserSurveyCard({
               已填写
             </span>
           )}
-          <Link href="/dashboard/settings" className="ol-profile-edit-link">编辑</Link>
+          <Link href="/dashboard/profile/edit" className="ol-profile-edit-link">编辑</Link>
         </div>
       </header>
+      {/* 资料完成度（HTML 当前进度「01 个人信息」卡同款进度条） */}
+      <div className="mb-4">
+        <div className="ol-profile-progress-meta">
+          <span>资料完成度</span>
+          <strong>{completion.filled}/{completion.total} · {completion.percent}%</strong>
+        </div>
+        <div className="ol-profile-progress-track" role="progressbar" aria-valuenow={completion.percent} aria-valuemin={0} aria-valuemax={100} aria-label="资料完成度">
+          <div className="ol-profile-progress-fill" style={{ width: `${completion.percent}%` }} />
+        </div>
+      </div>
       <div className="ol-profile-summary-groups">
         {groups.map((group) => (
           <section key={group.title} className={`ol-profile-summary-group ${group.wide ? 'is-wide' : ''}`}>
@@ -347,30 +359,51 @@ function JourneyCard({
                       node.status !== 'incomplete' && onNavigate(journey.activation_code, node.id)
                     }
                     disabled={node.status === 'incomplete'}
-                    className={`relative flex shrink-0 items-center justify-center rounded-full text-white transition-[box-shadow,border-color] duration-200 ${
+                    className={`relative flex shrink-0 items-center justify-center rounded-full transition-[box-shadow,border-color] duration-200 ${
                       featured ? 'h-[52px] w-[52px]' : 'h-[40px] w-[40px]'
                     } ${
-                      node.status !== 'incomplete'
-                        ? 'cursor-pointer border-2 border-white/60 hover:border-white hover:shadow-[0_4px_14px_-2px_rgba(0,0,0,0.25)]'
-                        : 'cursor-not-allowed opacity-55'
+                      node.status === 'completed'
+                        ? 'text-white cursor-pointer border-2 border-white/60 hover:border-white hover:shadow-[0_4px_14px_-2px_rgba(0,0,0,0.25)]'
+                        : node.status === 'in-progress'
+                          ? 'cursor-pointer hover:scale-[1.04]'
+                          : 'cursor-not-allowed'
                     }`}
-                    style={{
-                      backgroundColor: node.color,
-                      filter: node.status === 'incomplete' ? 'grayscale(1) brightness(0.92)' : 'none',
-                    }}
+                    style={
+                      node.status === 'completed'
+                        ? { backgroundColor: node.color }
+                        : node.status === 'in-progress'
+                          ? {
+                              /* HTML 当前节点：白底 + 2px 阶段色描边 + 发光 */
+                              backgroundColor: '#ffffff',
+                              border: `2px solid ${node.color}`,
+                              boxShadow: `0 0 0 4px ${node.color}26, 0 2px 10px ${node.color}59`,
+                            }
+                          : { backgroundColor: '#e8ecf0' }
+                    }
                   >
-                    {node.status !== 'incomplete' && (
+                    {node.status === 'in-progress' && (
+                      <span
+                        className="h-2 w-2 rounded-full"
+                        style={{ backgroundColor: node.color }}
+                        aria-hidden
+                      />
+                    )}
+                    {node.status === 'completed' && (
                       <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full border-2 border-white bg-green-500">
-                        {node.status === 'completed' ? (
-                          <Check className="h-1.5 w-1.5 text-white" strokeWidth={3.5} />
-                        ) : (
-                          <span className="h-1 w-1 animate-pulse rounded-full bg-white" />
-                        )}
+                        <Check className="h-1.5 w-1.5 text-white" strokeWidth={3.5} />
+                      </span>
+                    )}
+                    {node.status === 'in-progress' && (
+                      <span
+                        className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full border-2 border-white"
+                        style={{ backgroundColor: node.color }}
+                      >
+                        <span className="h-1 w-1 animate-pulse rounded-full bg-white" />
                       </span>
                     )}
                     {node.status === 'incomplete' && (
                       <Lock
-                        className={`${featured ? 'h-4 w-4' : 'h-3 w-3'} text-white/85`}
+                        className={`${featured ? 'h-4 w-4' : 'h-3 w-3'} text-neutral-400`}
                         aria-hidden
                       />
                     )}

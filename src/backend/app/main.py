@@ -408,6 +408,26 @@ def _start_bounce_scheduler() -> None:
             max_instances=1,
             misfire_grace_time=600,
         )
+        # LLM per-turn 诊断日志保留期清理（每日）：删除 data/logs/llm_turns/ 超期文件
+        from app.services.llm_turn_log_service import cleanup_expired_logs
+
+        async def _llm_turn_log_cleanup_safe() -> None:
+            try:
+                cleanup_expired_logs(settings.LLM_TURN_LOG_RETENTION_DAYS)
+            except Exception as job_err:
+                logging.getLogger(__name__).error(
+                    "llm turn log cleanup job failed: %s", job_err
+                )
+
+        sched.add_job(
+            _llm_turn_log_cleanup_safe,
+            CronTrigger.from_crontab(settings.LLM_TURN_LOG_CLEANUP_CRON),
+            id="llm_turn_log_cleanup",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=3600,
+        )
         sched.start()
         _bounce_scheduler = sched
         logging.getLogger(__name__).info(
@@ -433,6 +453,11 @@ def _start_bounce_scheduler() -> None:
             "llm balance scan scheduler started, interval=%dmin, threshold=%.2f",
             settings.LLM_BALANCE_SCAN_INTERVAL_MINUTES,
             settings.LLM_BALANCE_ALERT_THRESHOLD,
+        )
+        logging.getLogger(__name__).info(
+            "llm turn log cleanup scheduler started, cron='%s', retention=%dd",
+            settings.LLM_TURN_LOG_CLEANUP_CRON,
+            settings.LLM_TURN_LOG_RETENTION_DAYS,
         )
     except Exception as e:
         # APScheduler 不可用不能阻断启动，只警告

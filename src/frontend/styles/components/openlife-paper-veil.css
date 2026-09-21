@@ -41,6 +41,13 @@
   background: rgba(14, 16, 20, 0.38);
 }
 
+/* 报告预览页等：纸层背景（z-0）后的直接内容抬到纸层之上，
+   否则 position:fixed 的纸层会盖住 position:static 的内容 */
+.ol-report-shell > *:not(.ol-paper-bg) {
+  position: relative;
+  z-index: 2;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ol-paper-bg-image {
     transform: none;

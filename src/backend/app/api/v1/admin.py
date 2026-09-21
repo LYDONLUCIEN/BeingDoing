@@ -424,6 +424,53 @@ async def get_llm_usage_calls(
     return {"code": 200, "message": "success", "data": data}
 
 
+@router.get("/analytics/llm-turns")
+async def get_llm_turn_logs(
+    start: Optional[str] = Query(None, description="开始日期 YYYY-MM-DD，默认不限"),
+    end: Optional[str] = Query(None, description="结束日期 YYYY-MM-DD（含当天），默认不限"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    activation_code: Optional[str] = Query(None),
+    session_id: Optional[str] = Query(None, description="按 session_id 或 thread_id 匹配"),
+    outcome: Optional[str] = Query(None, description="ok/length/empty_content_retried_ok/empty_content_failed/partial/error/disconnected"),
+    user_id: Optional[str] = Query(None),
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """LLM per-turn 诊断日志列表（摘要视图，仅 super_admin）"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    from app.services.llm_turn_log_service import query_turn_logs
+
+    start_d, end_d = _parse_usage_date_range(start, end)
+    data = query_turn_logs(
+        start=start_d,
+        end=end_d,
+        activation_code=activation_code,
+        session_id=session_id,
+        outcome=outcome,
+        user_id=user_id,
+        page=page,
+        page_size=page_size,
+    )
+    return {"code": 200, "message": "success", "data": data}
+
+
+@router.get("/analytics/llm-turns/{log_id}")
+async def get_llm_turn_log_detail(
+    log_id: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """LLM per-turn 诊断日志详情（含 CoT / 正文全文，仅 super_admin）"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    from app.services.llm_turn_log_service import get_turn_detail
+
+    data = get_turn_detail(log_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="日志不存在或已超保留期被清理")
+    return {"code": 200, "message": "success", "data": data}
+
+
 @router.get("/llm-balance")
 async def get_llm_balance(
     current_user: Optional[dict] = Depends(get_current_user),

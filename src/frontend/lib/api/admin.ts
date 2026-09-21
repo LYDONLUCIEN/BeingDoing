@@ -1956,6 +1956,60 @@ export async function fetchAdminLlmUsageCalls(params?: {
   return (res.data ?? { records: [], total: 0, page: 1, page_size: 50 }) as any;
 }
 
+/** LLM per-turn 诊断日志（2026-09-21 空回复事故复盘体系；列表为摘要视图，详情含 CoT 全文） */
+export interface AdminLlmTurnLogItem {
+  id: string;
+  ts: string | null;
+  user_id: string | null;
+  activation_code: string | null;
+  session_id: string | null;
+  thread_id: string | null;
+  phase: string | null;
+  scene: string | null;
+  provider: string | null;
+  model: string | null;
+  outcome: string;
+  finish_reason: string | null;
+  retry_count: number;
+  duration_ms?: number | null;
+  usage?: Record<string, number> | null;
+  attempts?: Array<Record<string, unknown>>;
+  reasoning_chars?: number;
+  content_chars?: number;
+  content_preview?: string;
+  error?: string | null;
+}
+
+export interface AdminLlmTurnLogDetail extends AdminLlmTurnLogItem {
+  reasoning_content?: string;
+  content?: string;
+}
+
+export async function fetchAdminLlmTurns(params?: {
+  start?: string;
+  end?: string;
+  page?: number;
+  page_size?: number;
+  activation_code?: string;
+  session_id?: string;
+  outcome?: string;
+  user_id?: string;
+}): Promise<{ records: AdminLlmTurnLogItem[]; total: number; page: number; page_size: number }> {
+  const res = await apiClient.get('/admin/analytics/llm-turns', { params });
+  const d = res.data ?? {};
+  return {
+    records: (d.items ?? []) as AdminLlmTurnLogItem[],
+    total: Number(d.total ?? 0),
+    page: Number(d.page ?? 1),
+    page_size: Number(d.page_size ?? 50),
+  };
+}
+
+export async function fetchAdminLlmTurnDetail(logId: string): Promise<AdminLlmTurnLogDetail> {
+  const res = await apiClient.get(`/admin/analytics/llm-turns/${logId}`);
+  return (res.data ?? {}) as AdminLlmTurnLogDetail;
+}
+
 /** LLM 余额监控（DeepSeek）：GET /admin/llm-balance */
 export interface AdminLlmBalance {
   available: boolean;

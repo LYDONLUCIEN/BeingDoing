@@ -442,3 +442,31 @@
 .ol-pill--red { border-color: rgba(250, 221, 217, 0.48); background: rgba(250, 221, 217, 0.48); color: #ac564b; }
 .ol-pill--amber { border-color: rgba(240, 179, 59, 0.32); background: rgba(255, 247, 232, 0.85); color: #8a6414; }
 .ol-pill--purple { border-color: rgba(136, 109, 220, 0.24); background: rgba(243, 240, 255, 0.8); color: #5f4ba8; }
+
+/* ── 资料完成度进度条（HTML：linear-gradient(90deg,#6c9ddd,#70b9a1)） ── */
+.ol-profile-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--bd-fg-muted, #66727f);
+  margin-bottom: 8px;
+}
+.ol-profile-progress-meta strong {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--bd-fg, #24313e);
+}
+.ol-profile-progress-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.18);
+  overflow: hidden;
+}
+.ol-profile-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #6c9ddd, #70b9a1);
+  transition: width 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}

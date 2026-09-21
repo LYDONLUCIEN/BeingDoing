@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 import uuid
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -121,6 +122,16 @@ from app.domain.rumination_step_guidance import (
     render_fixed_opening_zh,
 )
 from app.services.analytics_service import AnalyticsService
+from app.services.llm_turn_log_service import (
+    OUTCOME_DISCONNECTED,
+    OUTCOME_EMPTY_FAILED,
+    OUTCOME_EMPTY_RETRIED_OK,
+    OUTCOME_ERROR,
+    OUTCOME_LENGTH,
+    OUTCOME_OK,
+    OUTCOME_PARTIAL,
+    append_turn_log,
+)
 from app.services.rumination_finalize import append_post_table_finalize_message
 from app.services.rumination_init_greeting import synthesize_rumination_entry_greeting
 from app.utils.activation_audit import (
@@ -6002,12 +6013,32 @@ async def simple_chat_stream(
             # 与 combo_id 正交：combo_id 标识组合，rumination_sub_step 标识子步阶段。
             if phase_step == "rumination" and rumination_filter_step_val == 3 and step3_sub_step:
                 user_msg_kw["rumination_sub_step"] = step3_sub_step
-            # 先保存用户消息
-            await conv_manager.append_message(
-                session_id=session_id,
-                category=category,
-                message=user_msg_kw,
-            )
+            # 先保存用户消息（重试去重：前端「重新尝试」会原样重发最后一条用户消息；
+            # 若历史最后一条就是相同 user 消息且距今 <5 分钟，视为同一次发送不重复落盘，
+            # 避免对话 JSON 出现连续两条相同 user——2026-09-21 空回复事故排查时的干扰项）
+            _dup_skip = False
+            if history_messages:
+                _last = history_messages[-1]
+                if (
+                    _last.get("role") == "user"
+                    and _last.get("event") == "user_message"
+                    and (_last.get("content") or "") == llm_user_content
+                ):
+                    try:
+                        _last_ts = datetime.fromisoformat(str(_last.get("created_at") or ""))
+                        if _last_ts.tzinfo is None:
+                            _last_ts = _last_ts.replace(tzinfo=timezone.utc)
+                        _dup_skip = (
+                            datetime.now(timezone.utc) - _last_ts
+                        ).total_seconds() < 300
+                    except (ValueError, TypeError):
+                        _dup_skip = False
+            if not _dup_skip:
+                await conv_manager.append_message(
+                    session_id=session_id,
+                    category=category,
+                    message=user_msg_kw,
+                )
 
         full_reply = ""
 
@@ -6371,13 +6402,68 @@ async def simple_chat_stream(
 
         # 2) 无 pending 时，不再走额外同步完成检测；仅依赖模型输出的 STATE_JSON 驱动 pending。
 
+        # 空可见正文自动重试（2026-09-21 空回复事故）：DeepSeek V4 thinking 偶发
+        # 「只吐思维链、content 为空」（HTTP 200 + finish_reason=stop），空回复必须当失败——
+        # 原样重试 1 次并推 retrying 告知前端；仍空推 error(type=empty_response)，
+        # 不落助手消息、不推 done，前端出错误条+手动重试。
+        _EMPTY_REPLY_MAX_RETRY = 1
+        turn_attempts: List[Dict[str, Any]] = []  # 每次尝试摘要（turn 日志用）
+        turn_started_at = time.monotonic()
+
+        def _snapshot_attempt() -> Dict[str, Any]:
+            return {
+                "usage": _normalize_token_usage(getattr(llm, "_last_stream_usage", None)),
+                "finish_reason": getattr(llm, "_last_stream_finish_reason", None),
+                "think_chars": len(full_think or ""),
+                "reply_chars": len(full_reply or ""),
+            }
+
+        def _record_turn_log(
+            outcome: str,
+            *,
+            finish_reason: Optional[str] = None,
+            error: Optional[str] = None,
+        ) -> None:
+            """per-turn 诊断日志（含 CoT/正文全文；尽力而为，绝不阻断主流程）"""
+            try:
+                _usage: Dict[str, Any] = {}
+                for _att in turn_attempts:
+                    for _k, _v in (_att.get("usage") or {}).items():
+                        if isinstance(_v, (int, float)):
+                            _usage[_k] = int(_usage.get(_k, 0) or 0) + int(_v)
+                append_turn_log(
+                    {
+                        "user_id": (current_user or {}).get("user_id"),
+                        "activation_code": request.activation_code,
+                        "session_id": session_id,
+                        "thread_id": logical_session_id,
+                        "phase": phase_step,
+                        "scene": (
+                            "rumination"
+                            if "rumination" in (request.phase or "").lower()
+                            else "chat"
+                        ),
+                        "provider": getattr(llm, "provider_name", None),
+                        "model": getattr(llm, "model", None),
+                        "outcome": outcome,
+                        "finish_reason": finish_reason,
+                        "retry_count": max(0, len(turn_attempts) - 1),
+                        "duration_ms": int((time.monotonic() - turn_started_at) * 1000),
+                        "usage": _usage,
+                        "attempts": turn_attempts,
+                        "reasoning_content": full_think or "",
+                        "content": full_reply or "",
+                        **({"error": error} if error else {}),
+                    }
+                )
+            except Exception:
+                pass
+
         try:
             sem = _get_llm_semaphore()
-            stream_coro = llm.chat_stream(
-                llm_messages, temperature=0.7, max_tokens=SIMPLE_CHAT_STREAM_MAX_TOKENS
-            )
 
             full_think = ""
+            visible_acc = ""  # 已推给前端的可见正文（stream_hidden_filter 之后）
             rfs_stream = (
                 int(request.rumination_filter_step or 0) if phase_step == "rumination" else 0
             )
@@ -6396,7 +6482,7 @@ async def simple_chat_stream(
             stream_hidden_filter = _build_stream_hidden_block_filter(block_markers=stream_markers)
 
             def _process_chunk(c):
-                nonlocal full_reply, full_think
+                nonlocal full_reply, full_think, visible_acc
                 out = []
                 if isinstance(c, dict):
                     t = c.get("_t")
@@ -6418,24 +6504,58 @@ async def simple_chat_stream(
                     full_reply += c
                     delta = stream_hidden_filter(full_reply)
                     if delta:
+                        visible_acc += delta
                         out.append(
                             f'data: {{"chunk": {json.dumps(delta, ensure_ascii=False)} }}\n\n'
                         )
                 return out
 
-            if sem:
-                async with sem:
+            empty_retry_count = 0
+            while True:
+                full_reply = ""
+                full_think = ""
+                visible_acc = ""
+                stream_coro = llm.chat_stream(
+                    llm_messages, temperature=0.7, max_tokens=SIMPLE_CHAT_STREAM_MAX_TOKENS
+                )
+                if sem:
+                    async with sem:
+                        async for chunk in stream_coro:
+                            for ev in _process_chunk(chunk):
+                                yield ev
+                else:
                     async for chunk in stream_coro:
                         for ev in _process_chunk(chunk):
                             yield ev
-            else:
-                async for chunk in stream_coro:
-                    for ev in _process_chunk(chunk):
-                        yield ev
+                _attempt = _snapshot_attempt()
+                if not visible_acc.strip():
+                    # 空轮次保留全文，供 turn 日志复盘「模型到底想了什么」
+                    _attempt["reasoning_content"] = full_think or ""
+                    _attempt["content"] = full_reply or ""
+                turn_attempts.append(_attempt)
+                if visible_acc.strip():
+                    break  # 有可见正文，正常
+                if empty_retry_count >= _EMPTY_REPLY_MAX_RETRY:
+                    break  # 重试额度用完，走下方空回复 error 出口
+                empty_retry_count += 1
+                logger.warning(
+                    "[llm_stream] 可见正文为空，原样重试 session=%s attempt=%d finish=%s think_chars=%d",
+                    session_id,
+                    len(turn_attempts),
+                    _attempt.get("finish_reason"),
+                    _attempt.get("think_chars"),
+                )
+                yield f"data: {json.dumps({'retrying': True, 'reason': 'empty_content'}, ensure_ascii=False)}\n\n"
+        except asyncio.CancelledError:
+            # 客户端断开（刷新/导航）：记 disconnected 后原样抛出（CancelledError 不是 Exception）
+            logger.warning("[llm_stream] 客户端断开，流式中断 session=%s", session_id)
+            _record_turn_log(OUTCOME_DISCONNECTED)
+            raise
         except Exception as e:
             err = str(e)
             logger.warning("[llm_stream] 流式输出异常中断 session=%s: %s", session_id, err)
             # 尽力落盘已流出的部分回复（剥离协议块），避免用户刷新后整条丢失
+            partial_saved = False
             try:
                 partial_raw = (full_reply or "").strip()
                 if partial_raw:
@@ -6465,10 +6585,39 @@ async def simple_chat_stream(
                                 "event": "assistant_reply_partial",
                             },
                         )
+                        partial_saved = True
             except Exception:
                 pass
+            _record_turn_log(
+                OUTCOME_PARTIAL if partial_saved else OUTCOME_ERROR,
+                finish_reason=getattr(llm, "_last_stream_finish_reason", None),
+                error=err,
+            )
             yield f'data: {{"error": {json.dumps(err, ensure_ascii=False)} }}\n\n'
             return
+
+        # 重试后可见正文仍为空：推 error（前端错误条+手动重试），不落助手消息、不推 done
+        if not visible_acc.strip():
+            logger.warning(
+                "[llm_stream] 重试后可见正文仍为空 session=%s attempts=%d",
+                session_id,
+                len(turn_attempts),
+            )
+            _record_turn_log(
+                OUTCOME_EMPTY_FAILED,
+                finish_reason=getattr(llm, "_last_stream_finish_reason", None),
+            )
+            # error 值为 JSON 字符串，与前端 parseTrialBlock 等 detail 解析口径一致
+            yield (
+                "data: "
+                + json.dumps(
+                    {"error": json.dumps({"type": "empty_response"}, ensure_ascii=False)},
+                    ensure_ascii=False,
+                )
+                + "\n\n"
+            )
+            return
+
         stream_finish_reason = getattr(llm, "_last_stream_finish_reason", None)
         if stream_finish_reason == "length":
             logger.warning(
@@ -6488,6 +6637,14 @@ async def simple_chat_stream(
                 stream_usage.get("prompt_cache_miss_tokens", 0),
                 stream_usage.get("prompt_tokens"),
             )
+
+        # 主对话模型流式输出已结束，正常落 turn 日志（含 CoT/正文全文）
+        _record_turn_log(
+            OUTCOME_LENGTH
+            if stream_finish_reason == "length"
+            else (OUTCOME_EMPTY_RETRIED_OK if len(turn_attempts) > 1 else OUTCOME_OK),
+            finish_reason=stream_finish_reason,
+        )
 
         # 主对话模型流式输出已结束；后续为解析、落盘、结论卡与埋点，前端可切换「后台处理中」占位提示
         yield f"data: {json.dumps({'llm_stream_end': True}, ensure_ascii=False)}\n\n"

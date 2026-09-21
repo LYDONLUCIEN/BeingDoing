@@ -27,6 +27,15 @@
 .flow-light.careering-matte[data-chat-density='compact'] .flow-msg-user-content {
   padding: 0.8rem 1.15rem;
 }
+/* rumination（V4 工作台）对话区同样支持紧凑间距 */
+.rumination-beautiful-root[data-chat-density='compact'] .flow-chat-body {
+  gap: 0.7rem;
+  padding-top: 0.75rem;
+}
+.rumination-beautiful-root[data-chat-density='compact'] .flow-msg-ai-content,
+.rumination-beautiful-root[data-chat-density='compact'] .flow-msg-user-content {
+  padding: 0.8rem 1.15rem;
+}
 
 /* ── 侧栏底部植物贴纸（默认隐藏=不带图；on=HTML 带图） ── */
 .careering-sidebar-art {

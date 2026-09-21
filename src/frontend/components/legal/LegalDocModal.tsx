@@ -76,9 +76,11 @@ export default function LegalDocModal({ open, title, body, onClose }: LegalDocMo
                 </svg>
               </button>
             </div>
-            {/* 正文（滚动） */}
-            <div className="overflow-y-auto px-7 py-6">
-              <p className="whitespace-pre-line text-[14px] leading-[1.75] text-bd-muted">{body}</p>
+            {/* 正文（滚动）：内嵌白纸阅读面——边缘毛玻璃、中间白色 */}
+            <div className="overflow-y-auto px-5 py-5">
+              <div className="legal-doc-pane">
+                <p className="whitespace-pre-line text-left text-[14px] leading-[1.9] text-bd-muted">{body}</p>
+              </div>
             </div>
           </motion.div>
         </motion.div>

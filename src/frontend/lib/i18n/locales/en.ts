@@ -14,6 +14,7 @@ export const en = {
     back: 'Back',
     confirm: 'Confirm',
     cancel: 'Cancel',
+    close: 'Close',
     submit: 'Submit',
     loading: 'Loading…',
     retry: 'Retry',
@@ -29,6 +30,7 @@ export const en = {
     uploadAvatar: 'Upload Avatar',
     explore: 'Explore',
     dashboard: 'Dashboard',
+    career: 'Career Growth',
     community: 'Community',
     about: 'About',
     pricing: 'Pricing',
@@ -262,6 +264,10 @@ export const en = {
       networkError: 'Network error. If the server is restarting, refresh in a moment.',
       initTimeout: 'This is taking a while. Please refresh the page.',
       retry: 'Retry',
+      /** Auto retry notice when model returns empty content (backend `retrying` event) */
+      retrying: 'I lost my train of thought — thinking again…',
+      /** Error text when retry still returns empty (shown with the Retry button) */
+      emptyResponseError: 'No response this time. Please tap Retry.',
       scrollToBottom: 'Scroll to bottom',
       streamAuthExpired: 'Session expired. Please sign in again to continue.',
       messageToolbar: {
@@ -793,7 +799,7 @@ export const en = {
 
   footer: {
     aboutUs: 'About Us',
-    qrCode: 'QR Code',
+    qrCode: 'Xiaohongshu QR Code',
     privacyPolicy: 'Privacy Policy',
     termsOfService: 'Terms of Service',
     privacyBody: privacyPolicyEn,

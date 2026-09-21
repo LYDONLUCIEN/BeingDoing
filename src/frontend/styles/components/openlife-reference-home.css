@@ -958,7 +958,7 @@ html[data-landing='true'] .journey-navbar .journey-nav-link.is-active::after {
   flex: 0 0 42px;
   border: 2px solid rgba(255, 255, 255, 0.94);
   background-color: #f6f1e7;
-  background-image: url('/assets/openlife-journey/testimonial-avatars.png');
+  background-image: url('/assets/openlife-journey/testimonial-avatars.webp?v=20260921');
   background-position: var(--avatar-position);
   background-size: 300% 300%;
   box-shadow: 0 4px 13px rgba(39, 57, 69, 0.13);
@@ -1408,12 +1408,61 @@ html[data-landing='true'] .journey-navbar .journey-nav-link.is-active::after {
   place-items: center;
   width: 27px;
   height: 27px;
+  padding: 0;
   border: 1px solid #dfe5e8;
   border-radius: 5px;
+  background: transparent;
   color: #83909c;
-  font-size: 8px;
-  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease;
 }
+
+.ol-footer-qr:hover { color: #394b5c; border-color: #b8c4cc; }
+
+/* 小红书二维码弹窗（footer 小图标点击展开，2026-09-21 起） */
+.ol-qr-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(24, 34, 44, 0.55);
+}
+
+.ol-qr-modal {
+  position: relative;
+  width: min(340px, 88vw);
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 24px 60px rgba(15, 25, 35, 0.28);
+  overflow: hidden;
+}
+
+.ol-qr-modal img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.ol-qr-modal-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  color: #5a6672;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(15, 25, 35, 0.16);
+}
+
+.ol-qr-modal-close:hover { color: #243444; }
 
 @media (min-width: 721px) {
   .ol-scrolling-content > .ol-reviews.ol-section-shell,

@@ -2,11 +2,11 @@
 
 import { useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Users, MessageCircle } from 'lucide-react';
+import { TrendingUp, Compass } from 'lucide-react';
 import PaperVeilLayers from '@/components/explore/PaperVeilLayers';
 
-export default function CommunityPage() {
-  // 与 /explore/intro 同款纸层背景：置 data-mesh-page 统一布局底色
+export default function CareerPage() {
+  // 与 /community 同款纸层背景：置 data-mesh-page 统一布局底色
   useEffect(() => {
     document.documentElement.setAttribute('data-mesh-page', 'true');
     return () => document.documentElement.removeAttribute('data-mesh-page');
@@ -21,9 +21,9 @@ export default function CommunityPage() {
           animate={{ opacity: 1, y: 0 }}
           className="text-center space-y-4"
         >
-          <Users className="w-12 h-12 text-bd-primary mx-auto" />
-          <h1 className="text-3xl md:text-4xl font-bold">交流社区</h1>
-          <p className="text-bd-muted text-lg">与志同道合的探索者交流心得，分享你的发现</p>
+          <TrendingUp className="w-12 h-12 text-bd-primary mx-auto" />
+          <h1 className="text-3xl md:text-4xl font-bold">职业成长</h1>
+          <p className="text-bd-muted text-lg">把探索结果落成行动，陪你走好职业成长的每一步</p>
         </motion.div>
 
         <motion.div
@@ -32,10 +32,10 @@ export default function CommunityPage() {
           transition={{ delay: 0.15 }}
           className="bd-glass-card rounded-2xl p-8 text-center space-y-4"
         >
-          <MessageCircle className="w-10 h-10 text-bd-subtle mx-auto" />
-          <p className="text-bd-muted">社区功能正在开发中，敬请期待</p>
+          <Compass className="w-10 h-10 text-bd-subtle mx-auto" />
+          <p className="text-bd-muted">职业成长功能正在开发中，敬请期待</p>
           <p className="text-sm text-bd-subtle">
-            我们正在打造一个安全、温暖的社区空间，让每位探索者都能找到共鸣和支持。
+            我们正在打造围绕职业目标的成长陪伴能力，让探索成果真正转化为持续前进的动力。
           </p>
         </motion.div>
       </div>

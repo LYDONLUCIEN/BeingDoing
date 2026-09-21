@@ -9,7 +9,12 @@ import { useChatAppearanceStore } from '@/stores/chatAppearanceStore';
  * 齿轮按钮 → 小浮层，三组独立开关（气泡间距 / 侧栏装饰 / 新建对话样式），
  * 选择持久化到 localStorage（openlife-chat-appearance）。
  */
-export default function ChatAppearancePopover() {
+export default function ChatAppearancePopover({
+  hideSidebarOptions = false,
+}: {
+  /** rumination 等无侧栏页面：隐藏「侧栏装饰 / 新建对话按钮」两组无效开关 */
+  hideSidebarOptions?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const { density, sidebarArt, newChatStyle, setDensity, setSidebarArt, setNewChatStyle } =
@@ -69,45 +74,49 @@ export default function ChatAppearancePopover() {
             </div>
           </div>
 
-          <div className="ol-chat-appearance-group">
-            <span className="ol-chat-appearance-label">侧栏装饰</span>
-            <div className="ol-chat-appearance-seg" role="group" aria-label="侧栏装饰">
-              <button
-                type="button"
-                aria-pressed={sidebarArt}
-                onClick={() => setSidebarArt(true)}
-              >
-                带植物图
-              </button>
-              <button
-                type="button"
-                aria-pressed={!sidebarArt}
-                onClick={() => setSidebarArt(false)}
-              >
-                不带图
-              </button>
+          {!hideSidebarOptions && (
+            <div className="ol-chat-appearance-group">
+              <span className="ol-chat-appearance-label">侧栏装饰</span>
+              <div className="ol-chat-appearance-seg" role="group" aria-label="侧栏装饰">
+                <button
+                  type="button"
+                  aria-pressed={sidebarArt}
+                  onClick={() => setSidebarArt(true)}
+                >
+                  带植物图
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={!sidebarArt}
+                  onClick={() => setSidebarArt(false)}
+                >
+                  不带图
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="ol-chat-appearance-group">
-            <span className="ol-chat-appearance-label">新建对话按钮</span>
-            <div className="ol-chat-appearance-seg" role="group" aria-label="新建对话按钮样式">
-              <button
-                type="button"
-                aria-pressed={newChatStyle === 'dashed'}
-                onClick={() => setNewChatStyle('dashed')}
-              >
-                虚线浅底
-              </button>
-              <button
-                type="button"
-                aria-pressed={newChatStyle === 'solid'}
-                onClick={() => setNewChatStyle('solid')}
-              >
-                深墨实心
-              </button>
+          {!hideSidebarOptions && (
+            <div className="ol-chat-appearance-group">
+              <span className="ol-chat-appearance-label">新建对话按钮</span>
+              <div className="ol-chat-appearance-seg" role="group" aria-label="新建对话按钮样式">
+                <button
+                  type="button"
+                  aria-pressed={newChatStyle === 'dashed'}
+                  onClick={() => setNewChatStyle('dashed')}
+                >
+                  虚线浅底
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={newChatStyle === 'solid'}
+                  onClick={() => setNewChatStyle('solid')}
+                >
+                  深墨实心
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>

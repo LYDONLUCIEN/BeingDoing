@@ -543,6 +543,33 @@
   color: inherit;
 }
 
+/* 空回复自动重试告知：温和的琥珀色提示条（区别于红色错误条） */
+.flow-light .flow-msg-retrying {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(217, 119, 6, 0.06);
+  border: 1px solid rgba(217, 119, 6, 0.2);
+  border-left: 3px solid rgba(217, 119, 6, 0.5);
+  border-radius: 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #92400e;
+}
+.flow-light .flow-msg-retrying-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #d97706;
+  flex-shrink: 0;
+  animation: flow-msg-retrying-pulse 1.2s ease-in-out infinite;
+}
+@keyframes flow-msg-retrying-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
 /* 维度探索结论卡片 — 对齐 uidesign/beautiful/conclusion_card5.html（Flat Pastel / Notion 白卡） */
 .flow-light .flow-conclusion-card {
   --n-bg: #f1f5f9;

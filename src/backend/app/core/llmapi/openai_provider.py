@@ -162,11 +162,16 @@ class OpenAIProvider(BaseLLMProvider):
             raise LLMError(f"OpenAI API调用失败: {str(e)}")
     
     def _is_reasoning_model(self) -> bool:
-        """是否启用思维链：需要模型支持 + 全局开关开启"""
+        """是否启用思维链：需要模型支持 + 全局开关开启
+
+        DeepSeek V4 全系（flash/pro）默认 thinking=on，都会吐 reasoning_content，
+        必须统一走思维链分流——否则 flash 偶发「只吐思维链、content 为空」时
+        思维链被静默丢弃，空回复无法检测也无法展示（2026-09-21 空回复事故根因）。
+        """
         if not settings.LLM_THINKING_ENABLED:
             return False
         m = (self.model or "").lower()
-        return "reasoner" in m or "v4-pro" in m
+        return "reasoner" in m or m.startswith("deepseek-v4")
 
     async def chat_stream(
         self,

@@ -41,3 +41,8 @@ def get_debug_logs_dir() -> Path:
 def get_logs_dir() -> Path:
     """data/logs/ - 按 user/session 维度的运行日志"""
     return get_project_data_dir() / "logs"
+
+
+def get_llm_turn_logs_dir() -> Path:
+    """data/logs/llm_turns/ - LLM per-turn 诊断日志（按天 jsonl，敏感：含 CoT 全文）"""
+    return get_project_data_dir() / "logs" / "llm_turns"

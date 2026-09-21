@@ -59,6 +59,7 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" data-theme="ideal" data-color-scheme="light" className={`${inter.variable} ${playfair.variable} ${notoSansSC.variable} ${notoSerifSC.variable}`} suppressHydrationWarning>
       <head>
+        <link rel="preconnect" href="https://cdn.jsdelivr.net" crossOrigin="anonymous" />
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-lite-webfont@1.1.0/style.css" />
         {/* Apply saved theme before first paint to avoid FOUC and hydration mismatch */}
         <script

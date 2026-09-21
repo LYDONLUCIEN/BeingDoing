@@ -9,6 +9,28 @@ from email.utils import formataddr
 
 from app.config.settings import settings
 
+# 统一注脚（2026-09-21 起）：163 发送邮箱不接收回复，咨询统一引导到 Outlook 邮箱。
+# 在 send_email 一处注入，覆盖全部邮件（验证码/支付交付/续期/群发等），新邮件自动带上。
+NOREPLY_NOTICE_TEXT = (
+    "\n——\n"
+    "本邮箱为系统发送邮箱，不接收回复。如有任何问题，请联系：openlife.lab@outlook.com\n"
+)
+NOREPLY_NOTICE_HTML = (
+    '<hr style="border:none;border-top:1px solid #e5e5e5;margin:16px 0;">'
+    '<p style="font-size:12px;color:#999;">本邮箱为系统发送邮箱，不接收回复。'
+    '如有任何问题，请联系：<a href="mailto:openlife.lab@outlook.com" '
+    'style="color:#999;">openlife.lab@outlook.com</a></p>'
+)
+
+
+def _append_noreply_notice_html(body_html: str) -> str:
+    """把注脚插到 </body> 前（无 </body> 时直接追加），保证出现在邮件最下方。"""
+    lower = body_html.lower()
+    idx = lower.rfind("</body>")
+    if idx != -1:
+        return body_html[:idx] + NOREPLY_NOTICE_HTML + body_html[idx:]
+    return body_html + NOREPLY_NOTICE_HTML
+
 
 class EmailService:
     """基于 SMTP 的邮件发送服务。"""
@@ -105,6 +127,11 @@ class EmailService:
 
         from_email = settings.SMTP_FROM_EMAIL or settings.SMTP_USER
         from_name = settings.SMTP_FROM_NAME or "OpenLife"
+
+        # 统一追加「不接收回复」注脚（纯文本 + HTML 都加）
+        body_text = body_text + NOREPLY_NOTICE_TEXT
+        if body_html:
+            body_html = _append_noreply_notice_html(body_html)
 
         msg = EmailMessage()
         msg["Subject"] = subject

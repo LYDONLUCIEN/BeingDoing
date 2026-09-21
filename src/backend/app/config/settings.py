@@ -166,6 +166,11 @@ class Settings(BaseSettings):
     LLM_BALANCE_ALERT_THRESHOLD: float = 10.0        # 告警阈值（元）
     LLM_BALANCE_SCAN_INTERVAL_MINUTES: int = 60      # 扫描间隔（分钟）
 
+    # LLM per-turn 诊断日志（2026-09-21 起，data/logs/llm_turns/，含 CoT 全文属敏感数据）
+    # 每日 job 删除超保留期的按天 jsonl 文件；查询走 admin「轮次诊断」（仅 super_admin）
+    LLM_TURN_LOG_RETENTION_DAYS: int = 30            # 保留天数
+    LLM_TURN_LOG_CLEANUP_CRON: str = "0 5 * * *"     # 默认每日 05:00 清理
+
     # ========== 支付模块（计划见 tasks/payment-module-plan.md）==========
     # 旧商品：全程激活码（单一 SKU，已下架；配置保留供历史订单展示）
     ACTIVATION_CODE_PRICE: int = 9900  # 99 元

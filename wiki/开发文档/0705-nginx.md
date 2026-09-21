@@ -62,6 +62,37 @@ server {
         add_header Cache-Control "public, max-age=31536000, immutable" always;
     }
 
+    # 1.5) public 静态资源：长缓存（2026-09-21 起）
+    # 此前 /assets/、/fonts/ 落入 location / 被强制 no-store，
+    # 每次刷新重下全部图片/字体（约 7.7MB）。
+    # 口径：文件名不带哈希，前端引用必须带 ?v=yyyymmdd 版本号，
+    # 更新资源时递增版本号即击穿缓存。与 deploy/nginx-static-cache.conf 同步。
+    location ^~ /assets/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+
+        proxy_hide_header Cache-Control;
+        expires 30d;
+        add_header Cache-Control "public, max-age=2592000, immutable" always;
+    }
+
+    location ^~ /fonts/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+
+        proxy_hide_header Cache-Control;
+        expires 30d;
+        add_header Cache-Control "public, max-age=2592000, immutable" always;
+    }
+
     # 2) API 直接走后端（关键，避免 /api 在 Next 链路里绕）
     location ^~ /api/ {
         if ($maintenance_on = 1) { return 503; }
@@ -159,6 +190,23 @@ if ($maintenance_on = 1) { return 503; }
 ### 不动：`location ^~ /_next/static/`
 
 维护页是纯静态 HTML，不依赖 Next 资源，无需拦截。
+
+### 新增 4（2026-09-21）：`location ^~ /assets/` 与 `location ^~ /fonts/`
+
+public 静态资源长缓存（30d + immutable），修复「每次刷新重下全部图片/字体」。
+约束：前端引用这些资源必须带 `?v=yyyymmdd` 版本号，更新资源时递增。
+片段文件：`deploy/nginx-static-cache.conf`。
+
+### 建议（2026-09-21）：开启 gzip
+
+面板全局或 http 块确认开启（对 CSS/JS/JSON 收益大，图片/woff2 本身已压缩无需重复）：
+
+```nginx
+gzip on;
+gzip_comp_level 5;
+gzip_min_length 1k;
+gzip_types text/plain text/css application/json application/javascript text/xml application/xml image/svg+xml;
+```
 
 ---
 

@@ -198,6 +198,27 @@ function isEmailNotVerifiedBlock(detail: unknown): boolean {
   return (obj as { type?: unknown } | null)?.type === 'email_not_verified';
 }
 
+/**
+ * 解析空回复失败（后端自动重试后仍空 content 下发的 error，2026-09-21 空回复事故修复）。
+ * 兼容两种下发形态：payload 顶层带 type，或 payload.error 为 JSON 字符串/对象。
+ */
+function isEmptyResponseBlock(detail: unknown): boolean {
+  const check = (obj: unknown): boolean => {
+    let o = obj;
+    if (typeof o === 'string') {
+      try {
+        o = JSON.parse(o);
+      } catch {
+        return false;
+      }
+    }
+    return (o as { type?: unknown } | null)?.type === 'empty_response';
+  };
+  if (check(detail)) return true;
+  const err = (detail as { error?: unknown } | null)?.error;
+  return err !== undefined && err !== null ? check(err) : false;
+}
+
 /** 待确认结论仅存 metadata、无 conclusion_card 消息行时，从历史 meta 补一条卡，避免必须刷新才看见 */
 function mergePendingDraftIntoMessagesFromMeta(
   msgs: ThreadMessage[],
@@ -378,6 +399,8 @@ function LiveChatPhasePage() {
   const deleteInProgressRef = useRef(false);
   const [threadsFetched, setThreadsFetched] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  /** 空回复自动重试告知（后端推 retrying 事件时显示，流结束/出错即清除） */
+  const [autoRetryNotice, setAutoRetryNotice] = useState(false);
   const [backendSessionId, setBackendSessionId] = useState<string | null>(null);
   const [conclusionLoading, setConclusionLoading] = useState(false);
   /** 后端已推送 llm_stream_end：主模型流式输出结束，尚在同一条 SSE 内做落盘/埋点等 */
@@ -2018,11 +2041,26 @@ function LiveChatPhasePage() {
                 setTrialBlock(block);
               } else if (isEmailNotVerifiedBlock(payload)) {
                 router.replace('/explore/survey');
+              } else if (isEmptyResponseBlock(payload)) {
+                // 后端自动重试后仍空回复：友好文案 + 手动重试按钮
+                setChatError(t('explore.chat.emptyResponseError'));
               } else {
                 setChatError(String(payload.error));
               }
+              setAutoRetryNotice(false);
               reader.cancel();
               break;
+            }
+            if (payload.retrying) {
+              // 空回复自动重试告知：重置当前气泡 + 显示「再想想」提示
+              setAutoRetryNotice(true);
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? { ...m, content: '', thinkStreaming: false, thinkChunkContent: undefined }
+                    : m
+                )
+              );
             }
             if (payload.think_start) {
               setMessages((prev) =>
@@ -2161,6 +2199,7 @@ function LiveChatPhasePage() {
               fullReply = payload.response;
               if (String(payload.response || '').trim()) assistantHasVisibleOutput = true;
               const doneAt = Date.now();
+              setAutoRetryNotice(false);
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === assistantId
@@ -2187,6 +2226,7 @@ function LiveChatPhasePage() {
       setConclusionLoading(false);
       setPostLlmTailActive(false);
       setWaitingForConclusionCardUi(false);
+      setAutoRetryNotice(false);
       setMessages((prev) => {
         const normalized = prev.map((m) =>
           m.id === assistantId && m.thinkStreaming
@@ -3536,9 +3576,50 @@ function LiveChatPhasePage() {
             try {
               const payload = JSON.parse(line.slice(6));
               if (payload.error) {
-                setChatError(String(payload.error));
+                if (isEmptyResponseBlock(payload)) {
+                  setChatError(t('explore.chat.emptyResponseError'));
+                } else {
+                  setChatError(String(payload.error));
+                }
+                setAutoRetryNotice(false);
                 reader.cancel();
                 break;
+              }
+              if (payload.retrying) {
+                setAutoRetryNotice(true);
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? { ...m, content: '', thinkStreaming: false, thinkChunkContent: undefined }
+                      : m
+                  )
+                );
+              }
+              if (payload.think_start) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId ? { ...m, thinkStreaming: true, thinkChunkContent: '' } : m
+                  )
+                );
+              }
+              if (payload.think_chunk) {
+                const chunk = typeof payload.think_chunk === 'string' ? payload.think_chunk : '';
+                if (chunk) {
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantId ? { ...m, thinkChunkContent: chunk } : m
+                    )
+                  );
+                }
+              }
+              if (payload.think_end != null) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? { ...m, thinkStreaming: false, thinkChunkContent: undefined }
+                      : m
+                  )
+                );
               }
               if (payload.chunk) {
                 fullReply += payload.chunk;
@@ -3613,6 +3694,7 @@ function LiveChatPhasePage() {
         setSending(false);
         setPostLlmTailActive(false);
         setHypRetryActive(false);
+        setAutoRetryNotice(false);
         setStep3RegeneratingRowIndex(null);
         setMessages((prev) => {
           if (!assistantHasVisibleOutput) {
@@ -3824,9 +3906,24 @@ function LiveChatPhasePage() {
             try {
               const payload = JSON.parse(line.slice(6));
               if (payload.error) {
-                setChatError(String(payload.error));
+                if (isEmptyResponseBlock(payload)) {
+                  setChatError(t('explore.chat.emptyResponseError'));
+                } else {
+                  setChatError(String(payload.error));
+                }
+                setAutoRetryNotice(false);
                 reader.cancel();
                 break;
+              }
+              if (payload.retrying) {
+                setAutoRetryNotice(true);
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? { ...m, content: '', thinkStreaming: false, thinkChunkContent: undefined }
+                      : m
+                  )
+                );
               }
               if (payload.think_start) {
                 setMessages((prev) =>
@@ -3873,6 +3970,7 @@ function LiveChatPhasePage() {
                 setRuminationProgressState((prev) => (prev ? { ...prev, ...(payload.rumination_progress as RuminationProgress) } : payload.rumination_progress as RuminationProgress));
               }
               if (payload.done && payload.response != null) {
+                setAutoRetryNotice(false);
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === assistantId
@@ -3908,6 +4006,7 @@ function LiveChatPhasePage() {
         })
         .finally(() => {
           setSending(false);
+          setAutoRetryNotice(false);
           // Clean up empty assistant messages
           setMessages((prev) =>
             prev.filter(
@@ -4309,18 +4408,22 @@ function LiveChatPhasePage() {
                   {phaseMeta.desc} {phaseMeta.hint}
                 </p>
                 {!hideRuminationHeaderComplete && (
-                  <button
-                    type="button"
-                    onClick={handleCompleteAndContinue}
-                    disabled={!canContinue}
-                    title={continueDisabledHint}
-                    className="bd-btn-black absolute right-2 top-2 flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold text-white sm:right-6 sm:top-3 sm:px-4 sm:py-2.5 sm:text-sm disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <FileText size={15} strokeWidth={2} className="hidden shrink-0 sm:inline" />
-                    <span className="max-w-[9rem] truncate sm:max-w-none">
-                      {t('explore.chat.completeAndContinue')}
-                    </span>
-                  </button>
+                  <div className="absolute right-2 top-2 flex items-center gap-2 sm:right-6 sm:top-3">
+                    {/* 外观弹层：rumination 无侧栏，隐藏侧栏相关两组开关 */}
+                    <ChatAppearancePopover hideSidebarOptions />
+                    <button
+                      type="button"
+                      onClick={handleCompleteAndContinue}
+                      disabled={!canContinue}
+                      title={continueDisabledHint}
+                      className="bd-btn-black flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold text-white sm:px-4 sm:py-2.5 sm:text-sm disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <FileText size={15} strokeWidth={2} className="hidden shrink-0 sm:inline" />
+                      <span className="max-w-[9rem] truncate sm:max-w-none">
+                        {t('explore.chat.completeAndContinue')}
+                      </span>
+                    </button>
+                  </div>
                 )}
               </header>
               {activationCode && (
@@ -4934,6 +5037,12 @@ function LiveChatPhasePage() {
                       <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                       <span>{t('explore.chat.hypRetryLoading')}</span>
                     </div>
+                  </div>
+                )}
+                {autoRetryNotice && !chatError && (
+                  <div className="flow-msg-retrying">
+                    <span className="flow-msg-retrying-dot" aria-hidden />
+                    <span>{t('explore.chat.retrying')}</span>
                   </div>
                 )}
                 {chatError && (
