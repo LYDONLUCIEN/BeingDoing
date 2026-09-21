@@ -10,8 +10,8 @@ import { surveyApi } from '@/lib/api/survey';
 import { apiClient, getApiErrorMessage, isRequestCanceled } from '@/lib/api/client';
 import { authApi } from '@/lib/api/auth';
 import { usersApi } from '@/lib/api/users';
-import SurveyFormBd from '@/components/survey/SurveyFormBd';
 import type { SurveyData } from '@/lib/survey/schema';
+import { computeSurveyCompletion } from '@/lib/survey/completion';
 import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
 import { LockKeyhole, Mail, X } from 'lucide-react';
 
@@ -25,9 +25,6 @@ export default function DashboardSettingsPage() {
   const [nickname, setNickname] = useState(user?.username || user?.email || '');
   const [avatarPreview, setAvatarPreview] = useState<string | null>(user?.avatar_url || null);
   const [introData, setIntroData] = useState<Partial<SurveyData>>({});
-  const [introLoading, setIntroLoading] = useState(false);
-  const [introSaving, setIntroSaving] = useState(false);
-  const [introError, setIntroError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [activationCode, setActivationCode] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -92,16 +89,13 @@ export default function DashboardSettingsPage() {
     setActivationCode(code);
     if (isLocalUiPreview) {
       setIntroData({});
-      setIntroLoading(false);
       return;
     }
     // 始终按用户维度加载问卷数据（不依赖激活码）
-    setIntroLoading(true);
     surveyApi
       .getUserSurveyStatus()
       .then((r) => setIntroData(r.data?.survey_data || {}))
-      .catch(() => setIntroData({}))
-      .finally(() => setIntroLoading(false));
+      .catch(() => setIntroData({}));
   }, [isLocalUiPreview]);
 
   // Cooldown timer for email verification
@@ -301,25 +295,8 @@ export default function DashboardSettingsPage() {
     }
   };
 
-  const handleIntroSubmit = async (data: SurveyData) => {
-    setIntroSaving(true);
-    setIntroError(null);
-    try {
-      if (activationCode) {
-        await surveyApi.saveForActivation(activationCode, data);
-      } else {
-        await surveyApi.saveForUser(data);
-      }
-      setIntroData(data);
-      setToast({ type: 'success', msg: '保存成功' });
-    } catch (e: any) {
-      const msg = e?.message || '保存失败';
-      setIntroError(msg);
-      setToast({ type: 'error', msg });
-    } finally {
-      setIntroSaving(false);
-    }
-  };
+  // 资料完成度（卡片展示用，编辑在 /dashboard/profile/edit 独立页）
+  const introCompletion = computeSurveyCompletion(introData as SurveyData);
 
   const displayName = user?.username || user?.email || t('common.user');
   const initials = (displayName || 'U').slice(0, 2).toUpperCase();
@@ -457,19 +434,35 @@ export default function DashboardSettingsPage() {
         </div>
       </section>
 
-      {/* 个人简介信息 */}
+      {/* 个人简介信息：不在此摊开表单，点开进入独立编辑页（含填写进度） */}
       <section className="rounded-2xl border border-bd-border bg-bd-card/80 backdrop-blur-lg p-8 shadow-sm">
         <h2 className="text-lg font-medium text-bd-fg mb-1">{t('dashboard.personalIntro')}</h2>
         <p className="text-sm text-bd-muted mb-6">{t('dashboard.personalIntroDesc')}</p>
-        {introError && <p className="text-sm text-bd-err mb-4">{introError}</p>}
-        <SurveyFormBd
-          initialData={introData}
-          loading={introLoading}
-          saving={introSaving}
-          submitLabel="保存修改"
-          showSkip={false}
-          onSubmit={handleIntroSubmit}
-        />
+        <div className="mb-5">
+          <div className="ol-profile-progress-meta">
+            <span>资料完成度</span>
+            <strong>
+              {introCompletion.filled}/{introCompletion.total} · {introCompletion.percent}%
+            </strong>
+          </div>
+          <div
+            className="ol-profile-progress-track"
+            role="progressbar"
+            aria-valuenow={introCompletion.percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="资料完成度"
+          >
+            <div className="ol-profile-progress-fill" style={{ width: `${introCompletion.percent}%` }} />
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => router.push('/dashboard/profile/edit')}
+          className="inline-flex items-center gap-2 rounded-full bg-[#222b35] px-5 py-2.5 text-sm font-medium text-white transition-all hover:bg-[#303b46] hover:-translate-y-px"
+        >
+          编辑个人资料 →
+        </button>
       </section>
 
       {/* 危险区：注销账户 */}

@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import PaperVeilLayers from '@/components/explore/PaperVeilLayers';
+import XiaohongshuQrEntry from '@/components/common/XiaohongshuQrEntry';
 
 // 文案来源：wiki/开发文档/0907-关于我们.md
 // 关于我们页对外联系邮箱（单独设置，与 TEAM_ANALYSIS_EMAIL 无关）
@@ -58,8 +59,10 @@ export default function AboutPage() {
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
-          className="bd-glass-card ol-reading-glass rounded-2xl p-6 md:p-8 space-y-5 text-bd-muted leading-loose text-sm md:text-base"
+          className="bd-glass-card ol-reading-glass relative rounded-2xl p-6 md:p-8 space-y-5 text-bd-muted leading-loose text-sm md:text-base"
         >
+          {/* 小红书二维码入口：文字面板右上角（2026-09-21 起，与首页 footer 同款） */}
+          <XiaohongshuQrEntry className="ol-about-qr" />
           {ABOUT_PARAGRAPHS.map((p, i) => (
             <p key={i}>{p}</p>
           ))}

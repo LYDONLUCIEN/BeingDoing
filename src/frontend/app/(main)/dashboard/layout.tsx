@@ -99,7 +99,7 @@ export default function DashboardLayout({
                 <strong>{displayName}</strong>
                 <small>{user?.email || user?.phone || 'OpenLife 探索者'}</small>
               </div>
-              <Link href={`/dashboard/settings${previewSuffix}`}>编辑资料</Link>
+              <Link href={`/dashboard/profile/edit${previewSuffix}`}>编辑资料</Link>
             </section>
 
             <nav className="ol-profile-nav">

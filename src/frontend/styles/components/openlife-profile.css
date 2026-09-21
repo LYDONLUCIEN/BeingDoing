@@ -470,3 +470,118 @@
   background: linear-gradient(90deg, #6c9ddd, #70b9a1);
   transition: width 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
+
+/* ── 旅程阶段轨道（2026-09-20 对齐 HTML .stage-mark / .report-book） ── */
+/* 未开始：白底灰边灰锁 */
+.ol-stage-mark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid #dfe5ea;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.94);
+  color: #9aa5af;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+}
+.ol-stage-mark.is-featured { width: 52px; height: 52px; }
+.ol-stage-mark.is-incomplete { cursor: not-allowed; background: rgba(255, 255, 255, 0.7); }
+.ol-stage-lock { width: 14px; height: 14px; color: #b4bcc5; }
+/* 完成：阶段色浅底 + 彩边 + 阶段色 ✓ 角标（非实心填充） */
+.ol-stage-mark.is-completed {
+  border-color: #c3d4e4;
+  border-color: color-mix(in srgb, var(--stage) 38%, white);
+  background: #eef4fa;
+  background: color-mix(in srgb, var(--stage) 12%, white);
+  color: var(--stage);
+}
+.ol-stage-mark.is-completed:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 7px 16px rgba(45, 62, 78, 0.09);
+}
+.ol-stage-badge {
+  position: absolute;
+  right: -2px;
+  top: -3px;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--stage);
+  color: #fff;
+}
+.ol-stage-badge svg { width: 8px; height: 8px; }
+/* 当前：白底 + 2px 阶段色描边 + 发光 */
+.ol-stage-mark.is-in-progress {
+  border: 2px solid var(--stage);
+  background: #ffffff;
+  color: var(--stage);
+  box-shadow: 0 7px 16px rgba(45, 62, 78, 0.1);
+  box-shadow: 0 7px 16px color-mix(in srgb, var(--stage) 22%, transparent);
+}
+.ol-stage-mark.is-in-progress:hover { transform: translateY(-2px); }
+.ol-stage-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--stage); }
+
+/* 报告书本：羊皮纸圆角方块 + 页线，ready 时露出棕色书签带 */
+.ol-report-book {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid #e3d7c3;
+  border-radius: 12px;
+  background: #f7f1e6;
+  color: #8a6a48;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
+}
+.ol-report-book.is-featured { width: 52px; height: 52px; }
+.ol-report-book::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 7px;
+  top: 10px;
+  height: 12px;
+  border-top: 1px solid rgba(180, 140, 95, 0.35);
+  border-bottom: 1px solid rgba(180, 140, 95, 0.2);
+}
+.ol-report-book.is-ready { box-shadow: 2px 2px 0 #eadfcf; }
+.ol-report-book.is-ready::after {
+  content: '';
+  position: absolute;
+  right: 6px;
+  top: -1px;
+  width: 5px;
+  height: 29px;
+  background: #c48559;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 76%, 0 100%);
+}
+.ol-report-book.is-ready:hover {
+  transform: translateY(-2px) rotate(-1deg);
+  box-shadow: 4px 5px 0 #e8d6b7, 7px 7px 0 #f6ecdb, 0 13px 22px rgba(86, 59, 39, 0.16);
+}
+.ol-report-book.is-locked { opacity: 0.45; filter: grayscale(0.42); cursor: not-allowed; }
+.ol-report-book-lock { width: 14px; height: 14px; color: #a3937d; }
+.ol-report-book-icon { width: 15px; height: 15px; position: relative; z-index: 1; }
+
+[data-color-scheme='dark'] .ol-stage-mark {
+  background: rgba(30, 33, 40, 0.92);
+  border-color: #3a4149;
+}
+[data-color-scheme='dark'] .ol-stage-mark.is-completed {
+  background: rgba(70, 90, 110, 0.35);
+  color: #cdd8e4;
+}
+[data-color-scheme='dark'] .ol-stage-mark.is-in-progress { background: #1e2128; }
+[data-color-scheme='dark'] .ol-report-book { background: #2e2a24; border-color: #4a4234; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ol-stage-mark,
+  .ol-report-book { transition: none; }
+}

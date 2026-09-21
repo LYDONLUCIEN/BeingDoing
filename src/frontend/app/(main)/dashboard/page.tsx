@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Check, Lock, ChevronRight, BookOpen, User, ShoppingCart } from 'lucide-react';
+import { Check, Lock, ChevronRight, BookOpen, ShoppingCart } from 'lucide-react';
 import { PHASES, loadSession, saveSession, setLastActivationCode, applyExploreResumeToSession, setUserSurveyCompleted, type PhaseKey } from '@/lib/explore/session';
 import { clearThreadCache } from '@/lib/explore/threads';
 import { useLocale } from '@/hooks/useLocale';
@@ -12,7 +12,6 @@ import { fetchExploreResumeFromJourneys } from '@/lib/explore/journeyResume';
 import { formatUTC } from '@/lib/utils/formatTime';
 import { useAuthStore } from '@/stores/authStore';
 import type { SurveyData } from '@/lib/survey/schema';
-import { computeSurveyCompletion } from '@/lib/survey/completion';
 import PurchaseModal from '@/components/payment/PurchaseModal';
 import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
 
@@ -129,111 +128,6 @@ function journeyStatusLabel(journey: JourneyItem): string {
   return journey.status;
 }
 
-/** 问卷字段中文标签映射 */
-const SURVEY_DISPLAY_LABELS: Record<string, string> = {
-  nickname: '昵称',
-  gender: '性别',
-  age: '年龄',
-  education_school: '院校',
-  education_degree: '学历',
-  education_major: '专业',
-  city: '城市',
-  career_status: '职业状态',
-  industry: '行业',
-  position: '岗位',
-  work_years_total: '工作年限',
-  salary_level: '薪资水平',
-};
-
-type SurveyDisplayItem = { label: string; value: string };
-type SurveyDisplayGroup = { title: string; items: SurveyDisplayItem[]; wide?: boolean };
-
-/** 按个人空间的信息阅读顺序分组；只展示后端已有且非空的问卷字段。 */
-function extractSurveyDisplayGroups(data: SurveyData): SurveyDisplayGroup[] {
-  const definitions: Array<{ title: string; keys: string[]; wide?: boolean }> = [
-    { title: '基本信息', keys: ['nickname', 'gender', 'age'] },
-    { title: '教育与生活', keys: ['education_degree', 'education_school', 'education_major', 'city'] },
-    {
-      title: '职业背景',
-      keys: ['career_status', 'industry', 'position', 'work_years_total', 'salary_level'],
-      wide: true,
-    },
-  ];
-
-  return definitions
-    .map(({ title, keys, wide }) => {
-      const items = keys.reduce<SurveyDisplayItem[]>((result, key) => {
-        const val = data[key as keyof SurveyData];
-        if (!val || (Array.isArray(val) && val.length === 0)) return result;
-        const displayVal = Array.isArray(val) ? val.join('、') : String(val);
-        if (displayVal.trim()) {
-          result.push({ label: SURVEY_DISPLAY_LABELS[key] || key, value: displayVal });
-        }
-        return result;
-      }, []);
-      return { title, items, wide };
-    })
-    .filter((group) => group.items.length > 0);
-}
-
-/** 用户档案卡片：展示问卷基本信息 */
-function UserSurveyCard({
-  survey,
-  t,
-}: {
-  survey: UserSurveyInfo;
-  t: (k: string) => string;
-}) {
-  const groups = extractSurveyDisplayGroups(survey.survey_data);
-  const completion = computeSurveyCompletion(survey.survey_data);
-  if (groups.length === 0) return null;
-
-  return (
-    <section className="ol-profile-summary ol-profile-surface">
-      <header>
-        <div className="flex items-center gap-2">
-          <span className="ol-profile-section-mark">01</span>
-          <User className="h-5 w-5 text-bd-muted" />
-          <h2 className="font-medium text-bd-fg text-base">{t('dashboard.profileInfo') || '个人信息'}</h2>
-        </div>
-        <div className="flex items-center gap-2">
-          {survey.completed && (
-            <span className="ol-pill ol-pill--green">
-              已填写
-            </span>
-          )}
-          <Link href="/dashboard/profile/edit" className="ol-profile-edit-link">编辑</Link>
-        </div>
-      </header>
-      {/* 资料完成度（HTML 当前进度「01 个人信息」卡同款进度条） */}
-      <div className="mb-4">
-        <div className="ol-profile-progress-meta">
-          <span>资料完成度</span>
-          <strong>{completion.filled}/{completion.total} · {completion.percent}%</strong>
-        </div>
-        <div className="ol-profile-progress-track" role="progressbar" aria-valuenow={completion.percent} aria-valuemin={0} aria-valuemax={100} aria-label="资料完成度">
-          <div className="ol-profile-progress-fill" style={{ width: `${completion.percent}%` }} />
-        </div>
-      </div>
-      <div className="ol-profile-summary-groups">
-        {groups.map((group) => (
-          <section key={group.title} className={`ol-profile-summary-group ${group.wide ? 'is-wide' : ''}`}>
-            <h3>{group.title}</h3>
-            <div className="ol-profile-summary-items">
-              {group.items.map((item) => (
-                <div key={item.label}>
-                  <p>{item.label}</p>
-                  <strong title={item.value}>{item.value}</strong>
-                </div>
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function JourneyCard({
   journey,
   featured,
@@ -317,39 +211,14 @@ function JourneyCard({
                     }
                     disabled={node.status === 'incomplete'}
                     aria-label="报告"
-                    className={`relative flex shrink-0 flex-col items-center justify-center border border-amber-900/20 bg-gradient-to-br from-[#fffdf7] via-[#fef3c7] to-[#fbbf24] text-amber-950 shadow-[inset_3px_0_10px_rgba(146,64,14,0.14),inset_0_1px_0_rgba(255,255,255,0.88)] transition-[border-color,box-shadow] duration-200 dark:border-amber-700/35 dark:from-amber-950/90 dark:via-amber-900/85 dark:to-amber-800/70 dark:text-amber-100 dark:shadow-[inset_3px_0_10px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.06)] ${
-                      featured
-                        ? 'h-[52px] w-[2.15rem] rounded-l-md rounded-r-lg'
-                        : 'h-[40px] w-[1.7rem] rounded-l rounded-r-md'
-                    } ${
-                      node.status !== 'incomplete'
-                        ? 'cursor-pointer hover:border-amber-700/50 hover:shadow-[inset_3px_0_10px_rgba(146,64,14,0.12),0_4px_12px_-2px_rgba(180,83,9,0.3)]'
-                        : 'cursor-not-allowed opacity-[0.58]'
+                    className={`ol-report-book ${featured ? 'is-featured' : ''} ${
+                      node.status === 'incomplete' ? 'is-locked' : 'is-ready'
                     }`}
-                    style={{
-                      filter: node.status === 'incomplete' ? 'grayscale(0.35) brightness(0.97)' : undefined,
-                    }}
                   >
-                    {node.status !== 'incomplete' && (
-                      <span className="absolute -right-0.5 -top-0.5 z-[2] flex h-3.5 w-3.5 items-center justify-center rounded-full border-2 border-amber-50 bg-green-600 shadow-sm dark:border-amber-900">
-                        {node.status === 'completed' ? (
-                          <Check className="h-1.5 w-1.5 text-white" strokeWidth={3.5} />
-                        ) : (
-                          <span className="h-1 w-1 animate-pulse rounded-full bg-white" />
-                        )}
-                      </span>
-                    )}
                     {node.status === 'incomplete' ? (
-                      <Lock
-                        className={`${featured ? 'h-4 w-4' : 'h-3 w-3'} text-amber-900/45 dark:text-amber-200/50`}
-                        aria-hidden
-                      />
+                      <Lock className="ol-report-book-lock" aria-hidden />
                     ) : (
-                      <BookOpen
-                        className={featured ? 'h-5.5 w-5.5' : 'h-4 w-4'}
-                        strokeWidth={featured ? 1.65 : 1.5}
-                        aria-hidden
-                      />
+                      <BookOpen className="ol-report-book-icon" aria-hidden />
                     )}
                   </button>
                 ) : (
@@ -359,53 +228,19 @@ function JourneyCard({
                       node.status !== 'incomplete' && onNavigate(journey.activation_code, node.id)
                     }
                     disabled={node.status === 'incomplete'}
-                    className={`relative flex shrink-0 items-center justify-center rounded-full transition-[box-shadow,border-color] duration-200 ${
-                      featured ? 'h-[52px] w-[52px]' : 'h-[40px] w-[40px]'
-                    } ${
-                      node.status === 'completed'
-                        ? 'text-white cursor-pointer border-2 border-white/60 hover:border-white hover:shadow-[0_4px_14px_-2px_rgba(0,0,0,0.25)]'
-                        : node.status === 'in-progress'
-                          ? 'cursor-pointer hover:scale-[1.04]'
-                          : 'cursor-not-allowed'
-                    }`}
-                    style={
-                      node.status === 'completed'
-                        ? { backgroundColor: node.color }
-                        : node.status === 'in-progress'
-                          ? {
-                              /* HTML 当前节点：白底 + 2px 阶段色描边 + 发光 */
-                              backgroundColor: '#ffffff',
-                              border: `2px solid ${node.color}`,
-                              boxShadow: `0 0 0 4px ${node.color}26, 0 2px 10px ${node.color}59`,
-                            }
-                          : { backgroundColor: '#e8ecf0' }
-                    }
+                    aria-label={node.label}
+                    className={`ol-stage-mark ${featured ? 'is-featured' : ''} is-${node.status}`}
+                    style={{ '--stage': node.color } as CSSProperties}
                   >
-                    {node.status === 'in-progress' && (
-                      <span
-                        className="h-2 w-2 rounded-full"
-                        style={{ backgroundColor: node.color }}
-                        aria-hidden
-                      />
-                    )}
+                    {node.status === 'incomplete' ? (
+                      <Lock className="ol-stage-lock" aria-hidden />
+                    ) : node.status === 'in-progress' ? (
+                      <span className="ol-stage-dot" aria-hidden />
+                    ) : null}
                     {node.status === 'completed' && (
-                      <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full border-2 border-white bg-green-500">
-                        <Check className="h-1.5 w-1.5 text-white" strokeWidth={3.5} />
+                      <span className="ol-stage-badge" aria-hidden>
+                        <Check strokeWidth={3.5} />
                       </span>
-                    )}
-                    {node.status === 'in-progress' && (
-                      <span
-                        className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full border-2 border-white"
-                        style={{ backgroundColor: node.color }}
-                      >
-                        <span className="h-1 w-1 animate-pulse rounded-full bg-white" />
-                      </span>
-                    )}
-                    {node.status === 'incomplete' && (
-                      <Lock
-                        className={`${featured ? 'h-4 w-4' : 'h-3 w-3'} text-neutral-400`}
-                        aria-hidden
-                      />
                     )}
                   </button>
                 )}
@@ -696,10 +531,6 @@ export default function DashboardCurrentProgressPage() {
         </div>
       ) : featured ? (
         <div className="ol-profile-journey-list">
-          {/* 用户级问卷信息：登录后即可见 */}
-          {userSurvey && userSurvey.completed && (
-            <UserSurveyCard survey={userSurvey} t={t} />
-          )}
           <JourneyCard journey={featured} featured onNavigate={handleNavigate} onViewReport={handleViewReport} t={t} />
           {others.map((j) => (
             <JourneyCard key={j.activation_code} journey={j} onNavigate={handleNavigate} onViewReport={handleViewReport} t={t} />
@@ -721,10 +552,6 @@ export default function DashboardCurrentProgressPage() {
         </div>
       ) : (
         <div className="ol-profile-journey-list">
-          {/* 无旅程时仍显示用户问卷信息 */}
-          {userSurvey && userSurvey.completed && (
-            <UserSurveyCard survey={userSurvey} t={t} />
-          )}
           <div className="bg-bd-card/80 backdrop-blur-lg border border-bd-border rounded-2xl p-8 text-center">
             <p className="text-bd-muted mb-6">尚未开始探索，或未激活当前会话</p>
             <Link

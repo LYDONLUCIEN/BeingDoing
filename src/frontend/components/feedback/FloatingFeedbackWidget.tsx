@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useNotificationStore } from '@/stores/notificationStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -9,6 +9,19 @@ import FeedbackForm from './FeedbackForm';
 import { Bell, X, Search } from 'lucide-react';
 
 type View = 'notifications' | 'feedback';
+
+// 悬浮球自定义位置（2026-09-21 起支持拖拽）：left/top 视口坐标（px），持久化到 localStorage；
+// 未拖过时为 null，走 CSS 默认定位（右下角，chat 页上浮避让）
+const LAUNCHER_POS_KEY = 'ol-msg-launcher-pos';
+
+type LauncherPos = { x: number; y: number };
+
+function clampPos(x: number, y: number, w: number, h: number): LauncherPos {
+  return {
+    x: Math.min(Math.max(x, 4), Math.max(4, window.innerWidth - w - 4)),
+    y: Math.min(Math.max(y, 4), Math.max(4, window.innerHeight - h - 4)),
+  };
+}
 
 /**
  * 站内信 · 反馈入口（对齐 HTML 设计稿 .support-*）：
@@ -31,10 +44,39 @@ export default function FloatingFeedbackWidget() {
   const [mounted, setMounted] = useState(false);
   const [query, setQuery] = useState('');
   const [unreadOnly, setUnreadOnly] = useState(false);
+  // 拖拽：pos 非 null 时以内联 left/top 覆盖 CSS 默认 right/bottom 定位
+  const [pos, setPos] = useState<LauncherPos | null>(null);
+  const launcherRef = useRef<HTMLButtonElement>(null);
+  const dragRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number; moved: boolean } | null>(null);
+  // 拖拽结束的 pointerup 后浏览器仍会补发 click，用它抑制「拖拽误触发打开抽屉」
+  const suppressClickRef = useRef(false);
 
   useEffect(() => {
     setMounted(true);
+    try {
+      const raw = localStorage.getItem(LAUNCHER_POS_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as LauncherPos;
+        if (typeof saved?.x === 'number' && typeof saved?.y === 'number') {
+          setPos(saved); // 元素未挂载无法量尺寸，越界钳制交给 resize 效应与下次拖拽
+        }
+      }
+    } catch {
+      // 解析失败视为无自定义位置
+    }
   }, []);
+
+  // 窗口尺寸变化时把已拖过的悬浮球钳回可视区
+  useEffect(() => {
+    if (!pos) return;
+    const onResize = () => {
+      const el = launcherRef.current;
+      if (!el) return;
+      setPos((p) => (p ? clampPos(p.x, p.y, el.offsetWidth, el.offsetHeight) : p));
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [pos != null]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 已登录 + 页面可见时，刷新未读数
   useEffect(() => {
@@ -64,12 +106,49 @@ export default function FloatingFeedbackWidget() {
   if (!mounted || !isAuthenticated) return null;
 
   const handleToggle = () => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
     if (isOpen) {
       closeWidget();
     } else {
       setView('notifications');
       void openWidget();
     }
+  };
+
+  // 拖拽：pointerdown 记起点，移动超过 6px 阈值才判定为拖拽（保留单击打开抽屉）
+  const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const el = launcherRef.current;
+    if (!el || e.pointerType === 'mouse' && e.button !== 0) return;
+    const rect = el.getBoundingClientRect();
+    dragRef.current = { startX: e.clientX, startY: e.clientY, baseX: rect.left, baseY: rect.top, moved: false };
+    el.setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const d = dragRef.current;
+    const el = launcherRef.current;
+    if (!d || !el) return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (!d.moved && Math.hypot(dx, dy) < 6) return;
+    d.moved = true;
+    setPos(clampPos(d.baseX + dx, d.baseY + dy, el.offsetWidth, el.offsetHeight));
+  };
+
+  const handlePointerUp = () => {
+    const d = dragRef.current;
+    dragRef.current = null;
+    if (!d?.moved) return;
+    suppressClickRef.current = true;
+    setPos((p) => {
+      if (p) {
+        try { localStorage.setItem(LAUNCHER_POS_KEY, JSON.stringify(p)); } catch { /* 存储失败不影响拖拽 */ }
+      }
+      return p;
+    });
   };
 
   // chat 页底部有输入区，悬浮球上浮避让
@@ -165,8 +244,14 @@ export default function FloatingFeedbackWidget() {
       {!isOpen && (
         <button
           type="button"
+          ref={launcherRef}
           className={launcherClass}
           onClick={handleToggle}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          style={pos ? { left: pos.x, top: pos.y, right: 'auto', bottom: 'auto' } : undefined}
           aria-label="打开站内信与反馈"
         >
           <Bell className="w-4 h-4" aria-hidden />

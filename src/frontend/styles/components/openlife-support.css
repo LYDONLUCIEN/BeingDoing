@@ -26,9 +26,16 @@
   color: #293644;
   font-size: 13px;
   font-weight: 550;
-  cursor: pointer;
+  cursor: grab;
+  /* 拖拽需要独占触摸手势，并防止拖动时选中文字（2026-09-21 起支持拖拽） */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
   transition: transform 140ms cubic-bezier(0.2, 0.8, 0.2, 1),
     box-shadow 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.ol-msg-launcher:active {
+  cursor: grabbing;
 }
 .ol-msg-launcher:hover {
   transform: translateY(-1px);

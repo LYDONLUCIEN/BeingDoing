@@ -1419,6 +1419,26 @@ html[data-landing='true'] .journey-navbar .journey-nav-link.is-active::after {
 
 .ol-footer-qr:hover { color: #394b5c; border-color: #b8c4cc; }
 
+/* /about 文字面板右上角的小红书二维码入口（复用 footer 小图标观感，2026-09-21 起） */
+.ol-about-qr {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  padding: 0;
+  border: 1px solid var(--bd-border, #dfe5e8);
+  border-radius: 5px;
+  background: transparent;
+  color: #83909c;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.ol-about-qr:hover { color: #394b5c; border-color: #b8c4cc; }
+
 /* 小红书二维码弹窗（footer 小图标点击展开，2026-09-21 起） */
 .ol-qr-modal-overlay {
   position: fixed;

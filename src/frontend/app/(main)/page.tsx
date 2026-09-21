@@ -7,7 +7,7 @@ import { useLocale } from '@/hooks/useLocale';
 import LegalDocLink from '@/components/legal/LegalDocLink';
 import LegacyBrowserNotice from '@/components/layout/LegacyBrowserNotice';
 import { FAQ_ITEMS } from '@/lib/content/faq';
-import { QrCode, X } from 'lucide-react';
+import XiaohongshuQrEntry from '@/components/common/XiaohongshuQrEntry';
 
 const TESTIMONIALS: Array<{
   quote: string;
@@ -326,58 +326,17 @@ function FaqSection() {
 function LandingFooter() {
   const { t } = useLocale();
   const year = new Date().getFullYear();
-  // 小红书二维码：footer 小图标，点击弹窗显示完整卡片（2026-09-21 起）
-  const [qrOpen, setQrOpen] = useState(false);
-
-  useEffect(() => {
-    if (!qrOpen) return;
-    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') setQrOpen(false); };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [qrOpen]);
-
   return (
     <footer className="ol-footer">
       <div className="ol-footer-brand"><img src="/assets/openlife-journey/logo.svg" alt="" /><strong>{t('nav.brand')}</strong></div>
       <p>{t('footer.copyright').replace('{year}', String(year))}</p>
       <div className="ol-footer-links">
+        {/* 小红书二维码入口在「关于我们」左侧（2026-09-21 起） */}
+        <XiaohongshuQrEntry className="ol-footer-qr" />
         <Link href="/about">{t('footer.aboutUs')}</Link>
         <LegalDocLink type="privacy" className="ol-footer-link" />
         <LegalDocLink type="terms" className="ol-footer-link" />
-        <button
-          type="button"
-          className="ol-footer-qr"
-          title={t('footer.qrCode')}
-          aria-label={t('footer.qrCode')}
-          onClick={() => setQrOpen(true)}
-        >
-          <QrCode size={15} strokeWidth={1.8} />
-        </button>
       </div>
-      {qrOpen && (
-        <div
-          className="ol-qr-modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label={t('footer.qrCode')}
-          onClick={() => setQrOpen(false)}
-        >
-          <div className="ol-qr-modal" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              className="ol-qr-modal-close"
-              aria-label={t('common.close')}
-              onClick={() => setQrOpen(false)}
-            >
-              <X size={18} />
-            </button>
-            <img
-              src="/assets/openlife-journey/xiaohongshu-qr.webp?v=20260921"
-              alt={t('footer.qrCode')}
-            />
-          </div>
-        </div>
-      )}
     </footer>
   );
 }
