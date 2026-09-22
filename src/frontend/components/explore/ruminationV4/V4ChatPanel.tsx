@@ -25,6 +25,8 @@ const FlowAiMessage = dynamic(() => import('@/components/explore/FlowAiMessage')
 
 interface Props {
   comboId: string | null;
+  /** guided 布局时草稿锁屏由 RuminationV4Page 的 guided 锁屏卡接管，隐藏内置提示（避免双遮罩+方向文案错误） */
+  hideDraftHint?: boolean;
 }
 
 function formatMsgTime(ts?: string): string {
@@ -32,7 +34,7 @@ function formatMsgTime(ts?: string): string {
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 }
 
-export default function V4ChatPanel({ comboId }: Props) {
+export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
   const {
     comboCache,
     beginDiscussion,
@@ -333,7 +335,7 @@ export default function V4ChatPanel({ comboId }: Props) {
         </div>
       </div>
 
-      {isDraft && (
+      {isDraft && !hideDraftHint && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-6">
           <div
             className="rounded-2xl px-5 py-3.5 text-center text-[13px] font-[700] text-[#536184]"

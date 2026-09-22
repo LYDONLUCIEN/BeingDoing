@@ -624,10 +624,13 @@ html[data-landing='true']:not([data-color-scheme='dark']) [class*='bd-eff-bg'] {
 
 .careering-chat-phase-title {
   color: var(--journey-ink);
-  font-family: var(--journey-serif);
+  /* 用站点统一字体栈：next/font 加载的 Noto Serif SC 只能经变量引用，
+     直接写 'Noto Serif SC' 会落空到系统 serif；字重 600 对应已加载的 SemiBold，
+     避免 650 触发合成加粗发虚；中文标题用正字距，不用英文式负字距 */
+  font-family: var(--font-serif-cn);
   font-size: 19px !important;
-  font-weight: 650;
-  letter-spacing: -0.02em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .careering-chat-header-actions .bd-btn-black {

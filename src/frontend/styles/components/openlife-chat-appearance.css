@@ -286,13 +286,10 @@
   box-shadow: 0 8px 20px rgba(60, 70, 90, 0.16) !important;
 }
 
-/* ══════════════════════════════════════════
-   沉淀页面布局 data-rumination-layout（仅 v4）
-   classic=现状（左选择器右对话）；guided=左右互换；studio=hero 化 + 等宽双栏
-   ══════════════════════════════════════════ */
-.rumination-v4-root.flow-light[data-rumination-layout='guided'] .rumination-workbench:not(.flex-col) {
-  flex-direction: row-reverse;
-}
+/* 沉淀页面布局 data-rumination-layout（仅 v4）
+   classic=现状（左选择器右对话）；guided=结构性三栏（左组合列表/中对话锁定解锁/右选择器，
+   由 RuminationV4Page JSX 实现，见 V4ComboSidebar）；studio=hero 化 + 等宽双栏 */
+
 .rumination-v4-root.flow-light[data-rumination-layout='studio'] .rumination-workbench:not(.flex-col) > .v4-inner-pane {
   flex: 1 1 0%;
 }
@@ -448,15 +445,40 @@
 
 /* ══════════════════════════════════════════
    选择矩阵 data-matrix-style / data-matrix-palette（仅 v4，V4ComboMatrixSelector 单元格）
-   duo=现状（热爱橙渐变 × 优势绿柔填），不写默认规则；
+   duo=默认（热爱珊瑚 #e86f7e × 优势雾蓝 #5b84e6，对齐 HTML 原型 guided 选择区）；
    样式与配色经 --matrix-* 变量正交组合（style 规则须排在 palette 规则之后）。
    ══════════════════════════════════════════ */
 .rumination-v4-root.flow-light {
-  --matrix-love-a: #ff9835;
-  --matrix-love-b: #ff3e4f;
+  --matrix-love-a: #e86f7e;
+  --matrix-love-b: #c8455a;
   --matrix-love-ink: #c8455a;
-  --matrix-strength: #08aa7e;
-  --matrix-strength-ink: #008f6a;
+  --matrix-strength: #5b84e6;
+  --matrix-strength-ink: #3569d4;
+}
+/* duo · soft（默认选中态，纯文字小卡：浅底色 + 彩色描边；color-mix 前写静态近似值回退） */
+.rumination-v4-root.flow-light .choice-card.love-card.selected {
+  background: #fdeef1;
+  background: color-mix(in srgb, var(--matrix-love-a) 13%, white);
+  border-color: #f0aeb9;
+  border-color: color-mix(in srgb, var(--matrix-love-a) 72%, white);
+  color: #202832;
+  box-shadow: 0 6px 18px rgba(232, 111, 126, 0.11);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--matrix-love-a) 11%, transparent);
+}
+.rumination-v4-root.flow-light .choice-card.strength-card.selected {
+  background: #eef3fd;
+  background: color-mix(in srgb, var(--matrix-strength) 13%, white);
+  border-color: #aec4f3;
+  border-color: color-mix(in srgb, var(--matrix-strength) 72%, white);
+  color: #202832;
+  box-shadow: 0 6px 18px rgba(91, 132, 230, 0.11);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--matrix-strength) 11%, transparent);
+}
+.rumination-v4-root.flow-light .choice-card.love-card .selected-mark {
+  background: var(--matrix-love-b);
+}
+.rumination-v4-root.flow-light .choice-card.strength-card .selected-mark {
+  background: var(--matrix-strength-ink);
 }
 /* violet：统一紫 */
 .rumination-v4-root.flow-light[data-matrix-palette='violet'] {
@@ -467,8 +489,10 @@
   --matrix-strength-ink: #5b3fb8;
 }
 .rumination-v4-root.flow-light[data-matrix-palette='violet'] .choice-card.love-card.selected {
-  background: linear-gradient(135deg, #9d86ec, #7a5fd0) !important;
+  background: #efebfa !important;
+  background: color-mix(in srgb, #886ddc 12%, white) !important;
   border-color: #c9baef !important;
+  color: #5b3fb8 !important;
 }
 .rumination-v4-root.flow-light[data-matrix-palette='violet'] .choice-card.strength-card.selected {
   background: #efebfa !important;
@@ -479,21 +503,18 @@
 .rumination-v4-root.flow-light[data-matrix-palette='violet'] .choice-card .selected-mark {
   background: #886ddc !important;
 }
-.rumination-v4-root.flow-light[data-matrix-palette='violet'] .choice-card.love-card .round-icon {
-  color: #886ddc !important;
-}
 .rumination-v4-root.flow-light[data-matrix-palette='violet'] .selection-block .section-title,
 .rumination-v4-root.flow-light[data-matrix-palette='violet'] .selected-count strong {
   color: #6f52c7 !important;
 }
 /* multi：多色循环（热爱 3 列 / 优势 5 列各按位取色） */
 .rumination-v4-root.flow-light[data-matrix-palette='multi'] .love-cards .choice-card {
-  --matrix-card-a: #ff9835;
-  --matrix-card-b: #ff3e4f;
+  --matrix-card-a: #e86f7e;
+  --matrix-card-b: #c8455a;
   --matrix-card-ink: #c8455a;
 }
 .rumination-v4-root.flow-light[data-matrix-palette='multi'] .love-cards .choice-card:nth-child(3n + 2) {
-  --matrix-card-a: #7ba3ec;
+  --matrix-card-a: #5b84e6;
   --matrix-card-b: #3569d4;
   --matrix-card-ink: #3569d4;
 }
@@ -503,19 +524,19 @@
   --matrix-card-ink: #6f52c7;
 }
 .rumination-v4-root.flow-light[data-matrix-palette='multi'] .strength-cards .choice-card {
-  --matrix-card-a: #4cc79f;
-  --matrix-card-b: #08aa7e;
-  --matrix-card-ink: #008f6a;
-}
-.rumination-v4-root.flow-light[data-matrix-palette='multi'] .strength-cards .choice-card:nth-child(5n + 2) {
-  --matrix-card-a: #7ba3ec;
+  --matrix-card-a: #5b84e6;
   --matrix-card-b: #3569d4;
   --matrix-card-ink: #3569d4;
 }
-.rumination-v4-root.flow-light[data-matrix-palette='multi'] .strength-cards .choice-card:nth-child(5n + 3) {
-  --matrix-card-a: #ff9835;
-  --matrix-card-b: #ff3e4f;
+.rumination-v4-root.flow-light[data-matrix-palette='multi'] .strength-cards .choice-card:nth-child(5n + 2) {
+  --matrix-card-a: #e86f7e;
+  --matrix-card-b: #c8455a;
   --matrix-card-ink: #c8455a;
+}
+.rumination-v4-root.flow-light[data-matrix-palette='multi'] .strength-cards .choice-card:nth-child(5n + 3) {
+  --matrix-card-a: #9d86ec;
+  --matrix-card-b: #6f52c7;
+  --matrix-card-ink: #6f52c7;
 }
 .rumination-v4-root.flow-light[data-matrix-palette='multi'] .strength-cards .choice-card:nth-child(5n + 4) {
   --matrix-card-a: #f5c65c;
@@ -523,9 +544,9 @@
   --matrix-card-ink: #a3740a;
 }
 .rumination-v4-root.flow-light[data-matrix-palette='multi'] .strength-cards .choice-card:nth-child(5n) {
-  --matrix-card-a: #9d86ec;
+  --matrix-card-a: #886ddc;
   --matrix-card-b: #6f52c7;
-  --matrix-card-ink: #6f52c7;
+  --matrix-card-ink: #5b3fb8;
 }
 /* multi · soft（柔和填充）选中态按各自卡色 */
 .rumination-v4-root.flow-light[data-matrix-palette='multi'][data-matrix-style='soft'] .choice-card.selected {
@@ -539,9 +560,6 @@
 .rumination-v4-root.flow-light[data-matrix-palette='multi'] .choice-card .selected-mark {
   background: var(--matrix-card-b) !important;
 }
-.rumination-v4-root.flow-light[data-matrix-palette='multi'] .choice-card.love-card .round-icon {
-  color: var(--matrix-card-ink) !important;
-}
 /* outline：空心描边（选中态白底 + 2px 描边） */
 .rumination-v4-root.flow-light[data-matrix-style='outline'] .choice-card.love-card.selected {
   background: rgba(255, 255, 255, 0.88) !important;
@@ -554,7 +572,7 @@
   background: rgba(255, 255, 255, 0.88) !important;
   border: 2px solid var(--matrix-card-ink, var(--matrix-strength-ink)) !important;
   color: #202832 !important;
-  box-shadow: 0 0 0 3px rgba(8, 170, 126, 0.08) !important;
+  box-shadow: 0 0 0 3px rgba(53, 105, 212, 0.08) !important;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--matrix-card-ink, var(--matrix-strength-ink)) 9%, transparent) !important;
 }
 /* solid：实心高亮 */
@@ -562,13 +580,13 @@
   background: linear-gradient(135deg, var(--matrix-card-a, var(--matrix-love-a)), var(--matrix-card-b, var(--matrix-love-b))) !important;
   border-color: transparent !important;
   color: #ffffff !important;
-  box-shadow: 0 8px 22px rgba(255, 62, 79, 0.2) !important;
+  box-shadow: 0 8px 22px rgba(200, 69, 90, 0.2) !important;
 }
 .rumination-v4-root.flow-light[data-matrix-style='solid'] .choice-card.strength-card.selected {
   background: var(--matrix-card-b, var(--matrix-strength)) !important;
   border-color: var(--matrix-card-b, var(--matrix-strength)) !important;
   color: #ffffff !important;
-  box-shadow: 0 8px 22px rgba(8, 170, 126, 0.2) !important;
+  box-shadow: 0 8px 22px rgba(53, 105, 212, 0.2) !important;
 }
 .rumination-v4-root.flow-light[data-matrix-style='solid'] .choice-card.strength-card.selected .label {
   color: #ffffff !important;
@@ -862,7 +880,7 @@
 .ol-swatch-matrix-soft { background: #e9e4f8; border-color: #b6a7e6; }
 .ol-swatch-matrix-outline { background: #fff; border: 2px solid #886ddc; }
 .ol-swatch-matrix-solid { background: #886ddc; }
-.ol-swatch-matrix-duo { background: linear-gradient(135deg, #ff9835 0 48%, #08aa7e 52%); }
+.ol-swatch-matrix-duo { background: linear-gradient(135deg, #e86f7e 0 48%, #5b84e6 52%); }
 .ol-swatch-matrix-violet { background: #886ddc; }
 .ol-swatch-matrix-multi { background: conic-gradient(#5b84e6, #e86f7e, #f0b33b, #886ddc, #5b84e6); }
 .ol-swatch-tone-mist { background: linear-gradient(135deg, #d9d1f2, #f3f0ff); }

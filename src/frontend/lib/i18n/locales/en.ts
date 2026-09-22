@@ -174,6 +174,7 @@ export const en = {
     },
     transition: {
       badge: 'Step complete',
+      back: 'Back',
       titlePhaseDone: '{dim} complete',
       titleRuminationDone: 'Filtering complete',
       blurbGeneric: 'Take a short break, then continue when you feel ready.',

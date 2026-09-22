@@ -169,6 +169,7 @@ export const zh = {
     },
     transition: {
       badge: '阶段完成',
+      back: '返回',
       titlePhaseDone: '{dim}探索完成',
       titleRuminationDone: '沉淀筛选已全部完成',
       blurbGeneric: '可以稍作休息，准备好后进入下一步。',

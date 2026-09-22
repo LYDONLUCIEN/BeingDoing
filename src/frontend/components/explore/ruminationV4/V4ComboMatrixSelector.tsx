@@ -2,14 +2,17 @@
 
 /**
  * v4 选择器 — 块状网格：热爱一行三列 / 优势一行五列
- * 视觉对齐 preview.html：橙热爱 / 绿优势、数字圆圈标题、已选计数
+ * 视觉对齐 openlife-journey (21).html guided 选择区：纯文字小卡（无 emoji/字符图标），
+ * duo 柔色（热爱珊瑚 #e86f7e × 优势雾蓝 #5b84e6），选中态 = 浅底色 + 彩色描边。
+ * 颜色全部经 --matrix-* CSS 变量驱动（openlife-chat-appearance.css），
+ * 外观面板「选择矩阵样式 soft/outline/solid × 配色 duo/violet/multi」可整体切换。
  */
 
 import { useEffect, useState } from 'react';
 
 export interface DimensionOption {
   name: string;
-  /** 语义化维度图标；未提供时用类型默认值 */
+  /** 已废弃：选择卡改为纯文字卡，不再渲染图标（保留字段仅为兼容旧调用方） */
   glyph?: string;
 }
 
@@ -75,19 +78,19 @@ export default function V4ComboMatrixSelector({
     <div>
       {/* ① 热爱 — 一行三列 */}
       <div className="selection-block mb-4">
-        <div className="section-title mb-4 flex items-center gap-2.5 text-[16px] font-extrabold text-[#ff6426]">
-          <span
-            className="flex h-[25px] w-[25px] items-center justify-center rounded-full border-2 border-current text-[15px]"
-          >
+        <div
+          className="section-title mb-2.5 flex items-center gap-2 text-[13px] font-semibold"
+          style={{ color: 'var(--matrix-love-ink)' }}
+        >
+          <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.5px] border-current text-[10.5px] font-semibold">
             1
           </span>
-          <span>选择 1 项热爱</span>
-          <small className="text-[13px] font-semibold text-[#78849a]">（单选）</small>
+          <span>选择一项热爱</span>
+          <small className="text-[11px] font-normal text-[#98a1ad]">单选</small>
         </div>
-        <div className="cards-row love-cards grid grid-cols-3 gap-[18px]">
+        <div className="cards-row love-cards grid grid-cols-3 gap-2.5">
           {passionOpts.map((p) => {
             const isActive = p.name === activePassion;
-            const glyph = p.glyph || (isActive ? '♥' : '♡');
             return (
               <button
                 key={p.name}
@@ -95,42 +98,24 @@ export default function V4ComboMatrixSelector({
                 disabled={locked}
                 onClick={() => !locked && setSelPassion(p.name)}
                 className={`
-                  choice-card love-card relative flex min-h-[106px] flex-col items-center justify-center gap-2.5
-                  rounded-[14px] border px-2 py-3 text-center font-semibold transition-all duration-200
+                  choice-card love-card relative flex min-h-[64px] flex-col items-center justify-center
+                  rounded-[12px] border px-2 py-2.5 text-center transition-all duration-200
                   ${locked ? 'cursor-default' : 'cursor-pointer hover:-translate-y-0.5'}
                   ${
                     isActive
-                      ? 'selected border-[#ff6b36] text-white shadow-[0_12px_25px_rgba(255,90,51,0.23)]'
-                      : 'border-[#dfe5ee] bg-white/70 text-[#334563] shadow-[0_4px_12px_rgba(18,40,75,0.04)] hover:border-[#c7d7ef] hover:shadow-[0_8px_20px_rgba(18,40,75,0.08)]'
+                      ? 'selected'
+                      : 'border-[#e7ebef] bg-white/70 text-[#33415c] shadow-[0_4px_12px_rgba(18,40,75,0.04)] hover:border-[#c7d7ef] hover:shadow-[0_8px_20px_rgba(18,40,75,0.08)]'
                   }
                 `}
-                style={
-                  isActive
-                    ? {
-                        background:
-                          'linear-gradient(135deg, #ff9835 0%, #ff722e 52%, #ff3e4f 100%)',
-                      }
-                    : undefined
-                }
               >
                 {isActive && (
-                  <span
-                    className="selected-mark absolute right-2 top-2 grid h-5 w-5 place-items-center rounded-full text-[11px] text-white"
-                    style={{ background: '#ff7041', border: '2px solid rgba(255,255,255,0.9)' }}
-                  >
+                  <span className="selected-mark absolute right-1 top-1 grid h-4 w-4 place-items-center rounded-full text-[9px] leading-none text-white">
                     ✓
                   </span>
                 )}
-                <span
-                  className={`round-icon flex h-[42px] w-[42px] items-center justify-center rounded-full border text-[24px] ${
-                    isActive
-                      ? 'border-0 bg-white text-[#ff6037]'
-                      : 'border-[#dbe1eb] bg-white/82 text-[#ff6037]'
-                  }`}
-                >
-                  {glyph}
+                <span className="label line-clamp-2 px-2 text-[13px] font-medium leading-snug">
+                  {p.name}
                 </span>
-                <span className="label line-clamp-2 px-1 text-[15px] leading-snug">{p.name}</span>
               </button>
             );
           })}
@@ -144,16 +129,20 @@ export default function V4ComboMatrixSelector({
 
       {/* ② 优势 — 一行五列 */}
       <div className="selection-block">
-        <div className="section-title mb-4 flex items-center gap-2.5 text-[16px] font-extrabold text-[#00a878]">
-          <span
-            className="flex h-[25px] w-[25px] items-center justify-center rounded-full border-2 border-current text-[15px]"
-          >
+        <div
+          className="section-title mb-2.5 flex items-center gap-2 text-[13px] font-semibold"
+          style={{ color: 'var(--matrix-strength-ink)' }}
+        >
+          <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.5px] border-current text-[10.5px] font-semibold">
             2
           </span>
           <span>选择你的优势</span>
-          <small className="text-[13px] font-semibold text-[#78849a]">（可多选）</small>
+          <small className="text-[11px] font-normal text-[#98a1ad]">多选</small>
         </div>
-        <div className="cards-row strength-cards grid grid-cols-5 gap-4">
+        <div
+          className="cards-row strength-cards grid gap-2"
+          style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(92px, 1fr))' }}
+        >
           {strengthOpts.map((s) => {
             const isActive = activeStrengths.includes(s.name);
             return (
@@ -163,34 +152,23 @@ export default function V4ComboMatrixSelector({
                 disabled={locked}
                 onClick={() => toggleStrength(s.name)}
                 className={`
-                  choice-card strength-card relative flex min-h-[110px] flex-col items-center justify-center gap-1.5
-                  rounded-[14px] border px-1.5 py-2.5 text-center font-semibold transition-all duration-200
+                  choice-card strength-card relative flex min-h-[56px] flex-col items-center justify-center
+                  rounded-[12px] border px-1.5 py-2 text-center transition-all duration-200
                   ${locked ? 'cursor-default' : 'cursor-pointer hover:-translate-y-0.5'}
                   ${
                     isActive
-                      ? 'selected border-[#9ee4d0] text-[#008f6a] shadow-[0_9px_20px_rgba(11,179,132,0.09)]'
-                      : 'border-[#dfe5ee] bg-white/70 text-[#354768] shadow-[0_4px_12px_rgba(18,40,75,0.04)] hover:border-[#c7d7ef] hover:shadow-[0_8px_20px_rgba(18,40,75,0.08)]'
+                      ? 'selected'
+                      : 'border-[#e7ebef] bg-white/70 text-[#33415c] shadow-[0_4px_12px_rgba(18,40,75,0.04)] hover:border-[#c7d7ef] hover:shadow-[0_8px_20px_rgba(18,40,75,0.08)]'
                   }
                 `}
-                style={
-                  isActive
-                    ? {
-                        background:
-                          'linear-gradient(145deg, rgba(232,253,247,0.96), rgba(235,248,244,0.86))',
-                      }
-                    : undefined
-                }
               >
                 {isActive && (
-                  <span
-                    className="selected-mark absolute right-1.5 top-1.5 grid h-4 w-4 place-items-center rounded-full text-[10px] text-white"
-                    style={{ background: '#08aa7e', border: '2px solid rgba(255,255,255,0.9)' }}
-                  >
+                  <span className="selected-mark absolute right-1 top-1 grid h-4 w-4 place-items-center rounded-full text-[9px] leading-none text-white">
                     ✓
                   </span>
                 )}
                 <span
-                  className="label line-clamp-2 px-0.5 text-base leading-snug"
+                  className="label line-clamp-2 px-0.5 text-[12.5px] font-medium leading-snug"
                   dangerouslySetInnerHTML={{
                     __html: s.name.replace(/\n/g, '<br>'),
                   }}
@@ -199,13 +177,18 @@ export default function V4ComboMatrixSelector({
             );
           })}
           {strengthOpts.length === 0 && (
-            <div className="col-span-5 py-3 text-center text-[12px] text-[#9ca3af]">
+            <div className="col-span-full py-3 text-center text-[12px] text-[#9ca3af]">
               暂无可选优势
             </div>
           )}
         </div>
-        <div className="selected-count mt-3.5 text-center text-[13px] text-[#7a8598]">
-          <strong className="mr-1.5 text-[#03a878]">✓</strong>
+        <div className="selected-count mt-2.5 text-center text-[12px] text-[#7a8598]">
+          <strong
+            className="mr-1"
+            style={{ color: 'var(--matrix-strength)' }}
+          >
+            ✓
+          </strong>
           已选择 {activeStrengths.length} 项优势
         </div>
       </div>
@@ -216,12 +199,12 @@ export default function V4ComboMatrixSelector({
             type="button"
             disabled={!canCreate}
             onClick={handleCreate}
-            className="mt-4 flex w-full min-h-[52px] items-center justify-center gap-3 rounded-[15px] border-0 transition-all duration-200 ease-out"
+            className="mt-3.5 flex min-h-[46px] w-full items-center justify-center gap-2 rounded-[13px] border-0 transition-all duration-200 ease-out"
             style={
               canCreate
                 ? {
                     background: 'linear-gradient(110deg,#826aff,#553df2 80%,#6a51ff)',
-                    boxShadow: '0 14px 25px rgba(91,65,240,.22)',
+                    boxShadow: '0 10px 20px rgba(91,65,240,.2)',
                     cursor: 'pointer',
                   }
                 : {
@@ -230,12 +213,12 @@ export default function V4ComboMatrixSelector({
                   }
             }
           >
-            <span className="text-[26px] leading-none text-white">✦</span>
+            <span className="text-[13px] leading-none text-white">✦</span>
             <span className="flex flex-col items-start">
-              <span className="text-[16px] font-[760] leading-tight text-white">
+              <span className="text-[14px] font-[700] leading-tight text-white">
                 {creating ? '创建中…' : '开始探索'}
               </span>
-              <span className="mt-0.5 text-[12px] text-white/86">解锁你的组合洞察</span>
+              <span className="mt-0.5 text-[11px] text-white/85">解锁你的组合洞察</span>
             </span>
           </button>
           {!canCreate && !creating && (
@@ -252,7 +235,7 @@ export default function V4ComboMatrixSelector({
 
       {locked && (
         <div className="mt-3 flex items-center justify-center gap-1.5 text-[12px] text-[#9ca3af]">
-          <span className="text-[#3ca56c]">✓</span>
+          <span style={{ color: 'var(--matrix-strength)' }}>✓</span>
           组合已固定；改方向请点「新建组合」
         </div>
       )}

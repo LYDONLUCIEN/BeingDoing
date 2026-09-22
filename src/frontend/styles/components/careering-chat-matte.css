@@ -159,9 +159,11 @@
   max-width: min(320px, calc(100% - 11rem));
   padding: 0 0.5rem;
   font-size: 1.35rem;
-  font-weight: 700;
-  color: #1d1d1f;
-  letter-spacing: -0.02em;
+  /* 字重 600 对应已加载的 Noto Sans/Serif SC SemiBold（700 会触发合成加粗发虚）；
+     颜色走主题 token 而非硬编码（实际生效的字体/字号见 openlife-journey.css 覆盖层） */
+  font-weight: 600;
+  color: var(--bd-fg, #1d1d1f);
+  letter-spacing: 0.01em;
   line-height: 1.2;
   text-align: center;
   white-space: nowrap;

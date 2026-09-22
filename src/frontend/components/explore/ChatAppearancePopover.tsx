@@ -202,7 +202,7 @@ export default function ChatAppearancePopover({
               <SwatchOption pressed={s.matrixStyle === 'solid'} onClick={() => s.setMatrixStyle('solid')} swatch="ol-swatch-matrix-solid">实心高亮</SwatchOption>
             </Row>
             <Row label="选择矩阵配色">
-              <SwatchOption pressed={s.matrixPalette === 'duo'} onClick={() => s.setMatrixPalette('duo')} swatch="ol-swatch-matrix-duo">热爱橙 × 优势绿</SwatchOption>
+              <SwatchOption pressed={s.matrixPalette === 'duo'} onClick={() => s.setMatrixPalette('duo')} swatch="ol-swatch-matrix-duo">珊瑚 × 雾蓝</SwatchOption>
               <SwatchOption pressed={s.matrixPalette === 'violet'} onClick={() => s.setMatrixPalette('violet')} swatch="ol-swatch-matrix-violet">统一紫</SwatchOption>
               <SwatchOption pressed={s.matrixPalette === 'multi'} onClick={() => s.setMatrixPalette('multi')} swatch="ol-swatch-matrix-multi">多色区分</SwatchOption>
             </Row>

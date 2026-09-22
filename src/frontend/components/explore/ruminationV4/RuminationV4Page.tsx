@@ -11,12 +11,14 @@
 import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import { FileText, Lock } from 'lucide-react';
+import { ChevronsLeft, ChevronsRight, FileText, Lock } from 'lucide-react';
 import { useRuminationV4Store } from '@/stores/ruminationV4Store';
 import { markV4IntroShown } from '@/lib/explore/ruminationV4Api';
 import { useChatAppearanceAttrs } from '@/lib/explore/useChatAppearanceAttrs';
+import { useChatAppearanceStore } from '@/stores/chatAppearanceStore';
 import ChatAppearancePopover from '@/components/explore/ChatAppearancePopover';
 import V4ChatPanel from './V4ChatPanel';
+import V4ComboSidebar, { enterComboDraft } from './V4ComboSidebar';
 import TopComboBar from './TopComboBar';
 import V4FinalSelectionModal from './V4FinalSelectionModal';
 import V4IntroModal from './V4IntroModal';
@@ -39,6 +41,8 @@ export default function RuminationV4Page({
   const { state, init } = useRuminationV4Store();
   // Chat 外观配置 → 根节点 data-* 属性（背景/气泡/布局/皮肤/矩阵等）
   const { dataAttrs: chatAppearanceAttrs, style: chatAppearanceStyle } = useChatAppearanceAttrs();
+  /** 页面布局（外观面板）：guided = 左组合列表 / 中对话 / 右选择器（stacked 时回退 classic 堆叠） */
+  const ruminationLayout = useChatAppearanceStore((s) => s.ruminationLayout);
   const [finalModalOpen, setFinalModalOpen] = useState(false);
   const [introOpen, setIntroOpen] = useState(false);
   const introCheckedRef = useRef(false);
@@ -75,6 +79,18 @@ export default function RuminationV4Page({
 
   /** 终选已提交：顶栏按钮变为「查看报告」直达报告页（报告下载页除个人空间外的另一入口） */
   const finalSubmitted = !!state?.final_selection?.submitted;
+  /** guided 布局（外观面板「组合解锁」）：左组合列表 / 中对话 / 右选择器；stacked 窄屏回退 classic 堆叠 */
+  const isGuided = ruminationLayout === 'guided' && !stacked;
+  const activeComboId = state?.active_combo_id ?? null;
+  /**
+   * guided 选择器收拢（2026-09-22）：确认组合（开始探索）后自动收拢，对话区/输入框自动伸展；
+   * 回到草稿态（新建组合、无激活组合）强制展开。收拢后右缘留 « 边条可手动展开/收拢。
+   */
+  const [selectorCollapsed, setSelectorCollapsed] = useState(false);
+  useEffect(() => {
+    if (!isGuided) return;
+    setSelectorCollapsed(!!activeComboId);
+  }, [isGuided, activeComboId]);
   const gotoReport = () => {
     router.push(`/explore/report?code=${encodeURIComponent(activationCode)}`);
   };
@@ -157,7 +173,11 @@ export default function RuminationV4Page({
           <header className="hero journey-rumination-header mb-2.5 grid shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-[rgba(80,94,145,0.08)] pb-3 pt-1 text-center">
             <div />
             <div className="px-4 sm:px-8">
-              <h1 className="m-0 text-[24px] font-[760] leading-tight tracking-[-0.02em] text-[#282331] sm:text-[32px]">
+              {/* 标题字体与前四阶段顶栏一致：衬线栈 + SemiBold 600（避免合成加粗）+ 中文正字距 */}
+              <h1
+                className="m-0 text-[24px] font-semibold leading-tight tracking-[0.02em] text-[#282331] sm:text-[32px]"
+                style={{ fontFamily: 'var(--font-serif-cn)' }}
+              >
                 05 沉淀
                 <span className="ml-2 inline-block text-[#8f78d8]" style={{ fontSize: '0.72em' }}>
                   ✦
@@ -191,10 +211,12 @@ export default function RuminationV4Page({
             </div>
           </header>
 
-          {/* 组合 tabs + 新建组合 */}
-          <div className="rumination-toolbar-wrap mb-2.5 min-w-0 shrink-0">
-            <TopComboBar />
-          </div>
+          {/* 组合 tabs + 新建组合（guided 布局下组合管理移到左侧 V4ComboSidebar） */}
+          {!isGuided && (
+            <div className="rumination-toolbar-wrap mb-2.5 min-w-0 shrink-0">
+              <TopComboBar />
+            </div>
+          )}
 
           {/* 提交后回看模式：轻量锁定说明条 */}
           {finalSubmitted && (
@@ -211,26 +233,85 @@ export default function RuminationV4Page({
             </div>
           )}
 
-          {/* 左选择器 / 右对话（stacked 时上下堆叠，页面纵向滚动） */}
+          {/* classic/studio：左选择器 / 右对话；guided：左组合列表 / 中对话（未确认组合时锁定） / 右选择器 */}
           <div
             ref={workbenchRef}
             className={`rumination-workbench flex gap-3 ${
               stacked ? 'w-full flex-none flex-col' : 'min-h-0 flex-1 overflow-hidden'
             }`}
           >
+            {isGuided && <V4ComboSidebar />}
+            {/* guided 选择器可收拢；展开宽度上限 min(430px, 50% - 侧栏220px - 间距24px)，保证对话区至少占半页 */}
+            {(!isGuided || !selectorCollapsed) && (
+              <div
+                className={`v4-inner-pane flex min-w-0 flex-col ${
+                  stacked ? 'w-full flex-none' : 'min-h-0 overflow-hidden'
+                } ${isGuided ? 'order-3 flex-none' : 'flex-[1.05]'}`}
+                style={
+                  isGuided && !stacked
+                    ? { width: 'max(280px, min(430px, calc(50% - 244px)))' }
+                    : undefined
+                }
+              >
+                <V4MatrixLeftPanel stacked={stacked} />
+              </div>
+            )}
+            {/* guided 收拢/展开边条（仅已有激活组合时可收拢；草稿态强制展开） */}
+            {isGuided && !stacked && !!activeComboId && (
+              <button
+                type="button"
+                onClick={() => setSelectorCollapsed((v) => !v)}
+                className="order-4 flex h-[96px] w-[22px] shrink-0 items-center justify-center self-center rounded-full text-[#8b84a8] transition-colors hover:text-[#6f52c7]"
+                style={{
+                  background: 'rgba(255,255,255,0.6)',
+                  border: '1px solid rgba(100,91,122,0.12)',
+                  boxShadow: '0 6px 16px rgba(49,43,65,0.08)',
+                }}
+                aria-expanded={!selectorCollapsed}
+                aria-label={selectorCollapsed ? '展开组合选择器' : '收拢组合选择器'}
+                title={selectorCollapsed ? '展开组合选择器' : '收拢组合选择器'}
+              >
+                {selectorCollapsed ? (
+                  <ChevronsLeft size={13} strokeWidth={2.2} />
+                ) : (
+                  <ChevronsRight size={13} strokeWidth={2.2} />
+                )}
+              </button>
+            )}
             <div
-              className={`v4-inner-pane flex min-w-0 flex-col ${
-                stacked ? 'w-full flex-none' : 'min-h-0 flex-[1.05] overflow-hidden'
-              }`}
-            >
-              <V4MatrixLeftPanel stacked={stacked} />
-            </div>
-            <div
-              className={`flex min-w-0 flex-col overflow-hidden ${
+              className={`relative flex min-w-0 flex-col overflow-hidden ${
                 stacked ? 'h-[min(58vh,560px)] w-full flex-none' : 'min-h-0 flex-1'
               }`}
             >
-              <V4ChatPanel comboId={state.active_combo_id} />
+              <V4ChatPanel comboId={state.active_combo_id} hideDraftHint={isGuided} />
+              {/* guided 锁屏：未确认组合时对话区锁定（对齐 HTML .guided-chat-lock） */}
+              {isGuided && !state.active_combo_id && !finalSubmitted && (
+                <div
+                  className="absolute inset-0 z-20 flex items-center justify-center rounded-[20px] border border-white/60 bg-white/55 p-6"
+                  style={{
+                    backdropFilter: 'blur(14px) saturate(1.05)',
+                    WebkitBackdropFilter: 'blur(14px) saturate(1.05)',
+                  }}
+                  role="status"
+                >
+                  <div className="flex max-w-[340px] flex-col items-center gap-3 rounded-2xl border border-[rgba(100,91,122,0.12)] bg-white/90 px-8 py-7 text-center shadow-[0_18px_46px_rgba(49,43,65,0.12)]">
+                    <span className="text-[22px] leading-none text-[#886ddc]" aria-hidden>
+                      ⌁
+                    </span>
+                    <h3 className="m-0 text-[16px] font-bold text-[#282331]">先创建一个新的组合</h3>
+                    <p className="m-0 text-[12.5px] leading-relaxed text-[#657198]">
+                      从左侧新建组合，再在右侧选择一项热爱与至少一项优势。确认组合后，对话会自动解锁。
+                    </p>
+                    <button
+                      type="button"
+                      onClick={enterComboDraft}
+                      className="mt-1 rounded-full bg-[#202832] px-5 py-2 text-[13px] font-semibold text-white transition-transform hover:-translate-y-0.5"
+                    >
+                      ＋ 新建组合
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

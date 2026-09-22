@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { CheckCircle2 } from 'lucide-react';
+import PaperVeilLayers from '@/components/explore/PaperVeilLayers';
 import { PHASES, getLastActivationCode, loadSession } from '@/lib/explore/session';
 import { useLocale } from '@/hooks/useLocale';
 
@@ -15,9 +16,10 @@ function TransitionContent() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
+  // 与 关于我们/社区 同款纸层背景：置 data-mesh-page 统一布局底色
   useEffect(() => {
-    document.documentElement.setAttribute('data-explore-intro', 'true');
-    return () => document.documentElement.removeAttribute('data-explore-intro');
+    document.documentElement.setAttribute('data-mesh-page', 'true');
+    return () => document.documentElement.removeAttribute('data-mesh-page');
   }, []);
 
   const code = mounted ? getLastActivationCode() : '';
@@ -46,17 +48,9 @@ function TransitionContent() {
   const ruminationFilterDone = from === 'rumination';
 
   return (
-    <div
-      className="explore-intro-wrap min-h-screen flex flex-col items-center justify-center px-6 py-16"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div className="landing-mesh-bg fixed inset-0 z-0" aria-hidden>
-        <div className="landing-mesh-blob landing-mesh-blob-1" />
-        <div className="landing-mesh-blob landing-mesh-blob-2" />
-        <div className="landing-mesh-blob landing-mesh-blob-3" />
-        <div className="landing-mesh-blob landing-mesh-blob-4" />
-      </div>
-      <div className="landing-mesh-noise fixed inset-0 z-[1]" aria-hidden />
+    <div className="bd-mesh-page min-h-screen text-bd-fg flex flex-col items-center justify-center px-6 py-16">
+      {/* 半透明纸层 + 毛玻璃背景（与 关于我们/社区/引导页 同款） */}
+      <PaperVeilLayers />
 
       <div className="relative z-[2] w-full max-w-[460px] flex flex-col items-center">
         <motion.button
@@ -67,41 +61,39 @@ function TransitionContent() {
           onClick={() => router.push(`/explore/chat/${from}`)}
           className="text-sm text-bd-subtle hover:text-bd-fg transition-colors self-start mb-6"
         >
-          ← 返回
+          ← {t('explore.transition.back')}
         </motion.button>
 
         <motion.div
-          className="bd-intro-card"
+          className="bd-glass-card w-full rounded-2xl p-8 md:p-10"
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: [0.25, 0.8, 0.35, 1] }}
         >
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-12 h-12 rounded-full flex items-center justify-center bg-emerald-100 text-emerald-600">
-              <CheckCircle2 size={24} />
+          {/* 头部：完成图标 + 徽标 + 标题（居中排版，与关于我们页同款） */}
+          <div className="flex flex-col items-center text-center mb-8">
+            <div className="w-14 h-14 rounded-full flex items-center justify-center bg-bd-success-dim text-bd-success mb-4">
+              <CheckCircle2 size={26} />
             </div>
-            <div>
-              <p className="text-xs tracking-widest uppercase text-bd-primary font-medium">
-                {t('explore.transition.badge')}
-              </p>
-              <h1 className="text-xl font-semibold text-bd-fg">
-                {ruminationFilterDone
-                  ? t('explore.transition.titleRuminationDone')
-                  : t('explore.transition.titlePhaseDone', { dim: fromLabel })}
-              </h1>
-            </div>
+            <p className="text-xs tracking-widest uppercase text-bd-primary font-medium mb-2">
+              {t('explore.transition.badge')}
+            </p>
+            <h1 className="text-xl md:text-2xl font-semibold text-bd-fg">
+              {ruminationFilterDone
+                ? t('explore.transition.titleRuminationDone')
+                : t('explore.transition.titlePhaseDone', { dim: fromLabel })}
+            </h1>
           </div>
 
-          <div className="bd-intro-rule-full mb-6" />
-
-          <p className="bd-intro-premise mb-6">
+          <p className="text-bd-muted leading-loose text-sm md:text-base text-center mb-8">
             {ruminationFilterDone
               ? t('explore.transition.blurbRuminationDone')
               : t('explore.transition.blurbGeneric')}
           </p>
 
-          <div className="space-y-4 mb-8">
-            <p className="text-xs font-medium text-bd-fg-subtle tracking-wider uppercase">
+          {/* 探索进度 */}
+          <div className="space-y-3 mb-8">
+            <p className="text-xs font-medium text-bd-subtle tracking-wider uppercase">
               {t('explore.transition.progressLabel')}
             </p>
             <div className="flex gap-2">
@@ -111,7 +103,7 @@ function TransitionContent() {
                   <div
                     key={p.key}
                     className={`flex-1 h-1.5 rounded-full transition-colors ${
-                      done ? 'bg-emerald-400' : 'bg-neutral-200'
+                      done ? 'bg-bd-success' : 'bg-bd-subtle opacity-25'
                     }`}
                   />
                 );
@@ -125,13 +117,17 @@ function TransitionContent() {
             </p>
           </div>
 
-          <p className="bd-intro-soul mb-8">
-            {ruminationFilterDone
-              ? t('explore.transition.soulRuminationDone')
-              : nextPhase
-                ? t('explore.transition.soulNext', { next: nextLabel })
-                : t('explore.transition.soulReport')}
-          </p>
+          {/* 灵魂句：沿用引导页呼吸竖条样式 */}
+          <div className="bd-intro-soul-wrap">
+            <div className="bd-intro-soul-bar" aria-hidden />
+            <p className="bd-intro-soul">
+              {ruminationFilterDone
+                ? t('explore.transition.soulRuminationDone')
+                : nextPhase
+                  ? t('explore.transition.soulNext', { next: nextLabel })
+                  : t('explore.transition.soulReport')}
+            </p>
+          </div>
 
           <div className="bd-intro-cta-row">
             <button
@@ -164,7 +160,7 @@ function TransitionContent() {
 export default function ExploreTransitionPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-bd-bg">
+      <div className="bd-mesh-page min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-10 w-10 border-2 border-bd-primary border-t-transparent" />
       </div>
     }>
