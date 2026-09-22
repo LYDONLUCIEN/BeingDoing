@@ -26,14 +26,11 @@ import {
   setActiveThreadId,
   clearThreadCache,
   markSynced,
-  collapseRuminationThreadsToOne,
-  pickCanonicalRuminationThread,
   type ChatThread,
   type ThreadMessage,
 } from './threads';
 import { fetchExploreResumeFromJourneys } from './journeyResume';
 import { surveyApi } from '@/lib/api/survey';
-import { ruminationStepBoundaryKey } from './ruminationStepBoundaries';
 
 // ──────────────────────────────────────────────
 // 类型
@@ -138,22 +135,13 @@ async function fetchBackendHistory(
 function mapBackendMessage(msg: BackendMessage, index: number): ThreadMessage {
   const id = msg.id ?? `m_${index}`;
   const role = msg.role === 'user' ? 'user' : 'assistant';
-  const displayContent =
-    role === 'user' &&
-    typeof (msg as any).rumination_user_query === 'string' &&
-    (msg as any).rumination_user_query.trim()
-      ? (msg as any).rumination_user_query
-      : (msg.content ?? '');
   return {
     id,
     role,
-    content: displayContent,
+    content: msg.content ?? '',
     thinkContent: msg.think_content,
     type: (msg.type as ThreadMessage['type']) ?? 'text',
     conclusionData: msg.conclusion_data as any,
-    tablePayload: msg.table_payload as any,
-    ruminationRowLabel:
-      (msg as any).rumination_row_label ?? msg.rumination_row_label,
     createdAt: msg.created_at
       ? new Date(msg.created_at).getTime()
       : Date.now() - (100 - index) * 1000,
@@ -235,21 +223,7 @@ export async function recoverSessionFromBackend(
     const { threads: backendThreads, stepLocked, selectedThreadId } =
       await fetchBackendThreads(activationCode, phase);
 
-    let threadsToHydrate: BackendThreadMeta[];
-
-    // 沉淀阶段：只取主线程
-    if (phase === 'rumination') {
-      if (backendThreads.length === 0) {
-        threadsToHydrate = [];
-      } else {
-        // 选出 canonical thread（与前端 collapse 逻辑一致）
-        const mapped = backendThreads.map(mapBackendThreadMeta);
-        const canonical = pickCanonicalRuminationThread(mapped);
-        threadsToHydrate = canonical ? [backendThreads.find((t) => t.id === canonical.id)!] : [];
-      }
-    } else {
-      threadsToHydrate = backendThreads;
-    }
+    const threadsToHydrate: BackendThreadMeta[] = backendThreads;
 
     // 并行获取所有线程的完整消息
     const hydratedThreads = await Promise.all(
@@ -311,10 +285,7 @@ export async function recoverSessionFromBackend(
     };
   } catch {
     // 线程同步失败，回退到 localStorage 缓存
-    let cached = getThreads(activationCode, phase as PhaseKey);
-    if (phase === 'rumination' && cached.length > 1) {
-      cached = collapseRuminationThreadsToOne(cached);
-    }
+    const cached = getThreads(activationCode, phase as PhaseKey);
     const activeId = getActiveThreadId(activationCode, phase as PhaseKey);
     return {
       session,
@@ -419,11 +390,6 @@ export async function deleteThreadBackendFirst(
       const nextActiveId = selectedThreadId ?? updatedThreads[0]?.id ?? null;
       setActiveThreadId(activationCode, phase as PhaseKey, nextActiveId);
     }
-
-    // 清除已删除线程的 rumination 步骤边界缓存
-    try {
-      localStorage.removeItem(ruminationStepBoundaryKey(activationCode, threadId));
-    } catch {}
 
     return { remainingThreadIds, selectedThreadId, stepLocked };
   } catch {

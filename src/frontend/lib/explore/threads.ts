@@ -5,21 +5,6 @@
 
 import type { PhaseKey } from './session';
 
-/** Rumination 表格 Widget 载荷 */
-export interface RuminationTablePayload {
-  columns: { key: string; label: string; options?: string[] }[];
-  rows: Record<string, unknown>[];
-  editableCols: string[];
-  guideText?: string;
-  step?: number;
-  rowCursor?: number;
-  totalRows?: number;
-  /** step3 子步标识：matrix / discussion。discussion 模式下不自动清行选中 */
-  subStep?: string;
-  /** 价值观关键词来源标签（step 4 专用：confirmed_card / report_anchor / prior_text / none） */
-  valuesSource?: string;
-}
-
 export interface ThreadMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -41,33 +26,8 @@ export interface ThreadMessage {
   conclusionConfirmed?: boolean;
   /** 结论卡是否已固化为只读（发送新消息或阶段提交后） */
   conclusionLocked?: boolean;
-  /** 表格 Widget 载荷（type=table_widget 时） */
-  tablePayload?: RuminationTablePayload;
-  /** 沉淀：发送时绑定的表格行摘要（展示在气泡上方） */
-  ruminationRowLabel?: string;
-  /** 沉淀：消息所属的筛选子步（1-7），用于按子步隔离对话展示 */
-  filterStep?: number | null;
-  /** 子步 3：AI 生成的假设候选列表，渲染为可点击 chip */
-  hypCandidates?: string[];
-  /** 子步 3：假设应填入的表格行（0-based） */
-  hypTargetRow?: number;
-  /** 子步 3：有候选但未能确定目标行 → 禁用 chip */
-  hypRowUnresolved?: boolean;
-  /** 子步 3：表格操作类型（区分操作消息和文字消息） */
-  tableAction?: 'select_none' | 'fill_hypothesis';
-  /** v3: 组合矩阵模式 — 所属组合 ID（如 "02" = 热爱1×优势3） */
-  comboId?: string;
-  /** v3: 组合矩阵模式引导语生成中的临时占位（固定文案，不轮换） */
-  comboGuidePlaceholder?: boolean;
-  /** 子步开场引导语（rumination step opening）标记。
-   *  discussion 模式下用于特判显示——opening 是 assistant 消息但产生在 user 之前，
-   *  需独立于「首条 user 分界」过滤逻辑。仅前端运行时标记，不持久化。 */
-  isStepOpening?: boolean;
-  /** step3 子步标记（matrix/discussion），由后端 rumination_sub_step 字段映射。
-   *  discussion 模式下 displayMessages 靠此字段精确识别"discussion 阶段消息"，
-   *  与 comboId 正交（comboId 标识组合，ruminationSubStep 标识子步阶段）。
-   *  老消息无此字段（视为未标记，discussion 视图不显示）。 */
-  ruminationSubStep?: 'matrix' | 'discussion';
+  /** 沉淀 v3 专用字段（tablePayload/ruminationRowLabel/filterStep/hypCandidates 等）
+   *  已随 v3 前端一并删除（2026-09，沉淀无条件走 v4）。 */
 }
 
 /** 使命阶段结构化「经历 → 价值观」行（与后端 payload 一致） */
@@ -139,30 +99,6 @@ function saveRaw(code: string, data: PhaseThreads) {
 export function getThreads(code: string, phase: PhaseKey): ChatThread[] {
   const data = loadRaw(code);
   return data[phase] ?? [];
-}
-
-/**
- * 沉淀阶段在多条后端线程中选出唯一「主线程」（与 collapse 规则一致）。
- * 未加载 messages 时各线程 length 视为 0，仍与 collapse 在「全空」时的择优顺序一致。
- */
-export function pickCanonicalRuminationThread(threads: ChatThread[]): ChatThread | null {
-  if (threads.length === 0) return null;
-  const len = (x: ChatThread) => x.messages?.length ?? 0;
-  return threads.reduce((a, b) => {
-    if (b.createdAt > a.createdAt) return b;
-    if (b.createdAt < a.createdAt) return a;
-    return len(b) >= len(a) ? b : a;
-  });
-}
-
-/**
- * 沉淀（rumination）阶段仅保留一条对话线程：取 createdAt 最新；相同时取消息条数更多者。
- * 用于消除历史多条线程与产品设计「单线程」不一致。
- */
-export function collapseRuminationThreadsToOne(threads: ChatThread[]): ChatThread[] {
-  if (threads.length <= 1) return threads;
-  const best = pickCanonicalRuminationThread(threads);
-  return best ? [best] : threads;
 }
 
 /** 批量替换某阶段的线程列表（用于后端同步结果持久化，失败回退时可用） */

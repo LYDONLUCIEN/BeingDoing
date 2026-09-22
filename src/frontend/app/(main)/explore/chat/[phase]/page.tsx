@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { useRouter, useParams, usePathname, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
@@ -9,12 +8,9 @@ import {
   ChevronRight,
   ChevronDown,
   ArrowUp,
-  ArrowLeft,
   Square,
   Copy,
   FileText,
-  ListFilter,
-  Loader2,
 } from 'lucide-react';
 import FlowAiMessage from '@/components/explore/FlowAiMessage';
 import DimensionConclusionCard, { type DimensionConclusionData } from '@/components/explore/DimensionConclusionCard';
@@ -26,7 +22,6 @@ import ContinueConfirmModal from '@/components/explore/ContinueConfirmModal';
 import UpgradeTrialModal from '@/components/payment/UpgradeTrialModal';
 import PurchaseModal from '@/components/payment/PurchaseModal';
 import ChatPhaseBackground from '@/components/explore/ChatPhaseBackground';
-import ExploreLandingMeshLayers from '@/components/explore/ExploreLandingMeshLayers';
 import LegacyBrowserNotice from '@/components/layout/LegacyBrowserNotice';
 import ChatAppearancePopover from '@/components/explore/ChatAppearancePopover';
 import { useChatAppearanceAttrs } from '@/lib/explore/useChatAppearanceAttrs';
@@ -38,21 +33,9 @@ const ChatPhaseSidebar = dynamic(
   () => import('@/components/explore/ChatPhaseSidebar'),
   { ssr: false },
 );
-const RuminationSectionProgress = dynamic(
-  () => import('@/components/explore/RuminationSectionProgress'),
-  { ssr: false },
-);
-const RuminationTableWidget = dynamic(
-  () => import('@/components/explore/RuminationTableWidget'),
-  { ssr: false },
-);
-const Step3MatrixLeftPanel = dynamic(
-  () => import('@/components/explore/step3/Step3MatrixLeftPanel'),
-  { ssr: false },
-);
-// v4 入口(见 wiki/开发文档/0707-tag1.6.0.md):phase=rumination 且 ?v4=1 时启用
-const RuminationV4Page = dynamic(
-  () => import('@/components/explore/ruminationV4/RuminationV4Page'),
+// 沉淀阶段无条件走 v4 独立组件树（v3 前端已删除）
+const RuminationV4Entry = dynamic(
+  () => import('@/components/explore/RuminationV4Entry'),
   { ssr: false },
 );
 const ChatUiPreview = dynamic(
@@ -61,7 +44,6 @@ const ChatUiPreview = dynamic(
 );
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { apiClient, getApiErrorMessage } from '@/lib/api/client';
-import { fetchRuminationVersion } from '@/lib/explore/ruminationV4Api';
 import {
   PHASES,
   PHASE_ESTIMATE_MINUTES,
@@ -94,45 +76,10 @@ import {
   getActiveThreadId,
   setActiveThreadId,
   createThreadId,
-  collapseRuminationThreadsToOne,
-  pickCanonicalRuminationThread,
   isCacheStale,
   type ChatThread,
-  type RuminationTablePayload,
   type ThreadMessage,
 } from '@/lib/explore/threads';
-import {
-  loadRuminationStepBoundaries,
-  saveRuminationStepBoundaries,
-  ensureDefaultStepOne,
-  cutMessagesForRuminationStepRefill,
-  inferRuminationStepBoundaryStart,
-  sliceMessagesForRuminationStep,
-  isRuminationReviewMode,
-} from '@/lib/explore/ruminationStepBoundaries';
-import {
-  computeMaxReachedFromSnapshots,
-  isRuminationFilterStepReachable,
-  resolveReviewStepAfterCompletion,
-  RUMINATION_FILTER_STEP_MAX,
-} from '@/lib/explore/ruminationProgressNav';
-import {
-  ruminationApi,
-  type RuminationProgress,
-  type RuminationStep3SideEffect,
-  type RuminationSubmitData,
-  type ComboItem,
-} from '@/lib/api/rumination';
-import {
-  simulateFixedRuminationOpening,
-  streamRuminationStepOpening,
-} from '@/lib/explore/ruminationStepOpening';
-import {
-  hasRuminationStepOpeningBeenShown,
-  markRuminationStepOpeningShown,
-  clearRuminationStepOpeningShownFromStep,
-} from '@/lib/explore/ruminationStepOpeningFlags';
-import { useComboGuideStream } from '@/lib/explore/useComboGuideStream';
 import { useLocale } from '@/hooks/useLocale';
 import { useAuthStore } from '@/stores/authStore';
 import { createAdminSavepoint, fetchAdminSystemSettings } from '@/lib/api/admin';
@@ -248,101 +195,6 @@ function mergePendingDraftIntoMessagesFromMeta(
   ];
 }
 
-function RuminationTableSubmitPortal({
-  open,
-  lineBefore,
-  lineAfter,
-  step,
-}: {
-  open: boolean;
-  lineBefore: string;
-  lineAfter: string;
-  step?: number;
-}) {
-  const [mounted, setMounted] = useState(false);
-  const [dots, setDots] = useState('');
-  const STEP3_MESSAGES = [
-    '正在分析你的假设…',
-    '请稍等 正在逐条检查假设是否足够具体…',
-    '马上就好，请稍候…',
-    '还在分析中，你的假设比较多…',
-  ];
-  const [step3MsgIndex, setStep3MsgIndex] = useState(0);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-  useEffect(() => {
-    if (!open) {
-      setDots('');
-      return;
-    }
-    let i = 0;
-    const id = window.setInterval(() => {
-      i = (i + 1) % 4;
-      setDots('.'.repeat(i));
-    }, 400);
-    return () => window.clearInterval(id);
-  }, [open]);
-  useEffect(() => {
-    if (!open || step !== 3) {
-      setStep3MsgIndex(0);
-      return;
-    }
-    let i = 0;
-    const id = window.setInterval(() => {
-      i = (i + 1) % STEP3_MESSAGES.length;
-      setStep3MsgIndex(i);
-    }, 6000);
-    return () => window.clearInterval(id);
-  }, [open, step]);
-  const isStep3 = step === 3;
-  if (!mounted || !open) return null;
-  return createPortal(
-    <motion.div
-      className="fixed left-0 right-0 top-14 bottom-0 z-40 flex items-center justify-center bg-black/50 px-4 backdrop-blur-[3px]"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.2 }}
-    >
-      <motion.div
-        className="flex w-full max-w-[20rem] flex-col items-center gap-6 rounded-2xl bg-white px-8 py-10 shadow-[0_25px_80px_-12px_rgba(0,0,0,0.4)] ring-1 ring-neutral-200/90 sm:max-w-[22rem] sm:px-10"
-        role="status"
-        aria-live="polite"
-        aria-busy="true"
-        initial={{ scale: 0.94, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-      >
-        <Loader2
-          className="h-12 w-12 animate-spin text-sky-600 drop-shadow-sm motion-reduce:animate-none"
-          aria-hidden
-        />
-        <p className="text-balance text-center text-[0.95rem] font-semibold leading-relaxed text-neutral-800 sm:text-base">
-          {isStep3 ? (
-            <motion.span
-              key={step3MsgIndex}
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              {STEP3_MESSAGES[step3MsgIndex]}
-            </motion.span>
-          ) : (
-            <>
-              <span>{lineBefore}</span>
-              <span className="inline-block min-w-[1.15em] text-left font-bold tabular-nums tracking-tight text-sky-700">
-                {dots}
-              </span>
-              <span>{lineAfter}</span>
-            </>
-          )}
-        </p>
-      </motion.div>
-    </motion.div>,
-    document.body
-  );
-}
-
 export default function ChatPhasePage() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -355,6 +207,11 @@ export default function ChatPhasePage() {
   if (uiPreviewEnabled) {
     const previewState = searchParams.get('preview_state') || 'conversation';
     return <ChatUiPreview key={`${phase}:${previewState}`} phase={phase} previewState={previewState} />;
+  }
+
+  // 沉淀阶段：无条件走 v4 独立组件树（v3 实现已删除）
+  if (phase === 'rumination') {
+    return <RuminationV4Entry />;
   }
 
   return <LiveChatPhasePage />;
@@ -391,9 +248,6 @@ function LiveChatPhasePage() {
   /** 同一次停留在本页内关闭过说明后不再弹出；离开再进入本阶段对话路由时会清空（见 pathname 逻辑） */
   const phaseLockNoticeShownKeyRef = useRef<string | null>(null);
   const prevPathnameForLockModalRef = useRef<string | null>(null);
-  /** 沉淀：表格确认后自动插入的子步引导语（固定模拟流 / LLM 流）进行中 */
-  const [ruminationGuideBusy, setRuminationGuideBusy] = useState(false);
-  const ruminationGuideAbortRef = useRef<AbortController | null>(null);
   const [initLoading, setInitLoading] = useState(true);
   /** 删除线程进行中：防止 "load messages" effect 在删除后竞态触发新建线程 */
   const deleteInProgressRef = useRef(false);
@@ -405,8 +259,6 @@ function LiveChatPhasePage() {
   const [conclusionLoading, setConclusionLoading] = useState(false);
   /** 后端已推送 llm_stream_end：主模型流式输出结束，尚在同一条 SSE 内做落盘/埋点等 */
   const [postLlmTailActive, setPostLlmTailActive] = useState(false);
-  /** step3 主回复缺 chips，后端正在 retry 生成假设候选（matrix/discussion 通用） */
-  const [hypRetryActive, setHypRetryActive] = useState(false);
   /** 已收到 conclusion_loading、结论卡尚未推送（与消息区 spinner 一致） */
   const [waitingForConclusionCardUi, setWaitingForConclusionCardUi] = useState(false);
   /** 手动出卡按钮（「对话结束无法进行下一步？点击这里」）的请求状态 */
@@ -425,35 +277,6 @@ function LiveChatPhasePage() {
   const [stepLocked, setStepLocked] = useState(false);
   /** 报告里该 step 的 selected_session_id（与 /threads 里 selected: true 对齐），用于已锁定阶段下限制「完成并继续」 */
   const [reportSelectedThreadId, setReportSelectedThreadId] = useState<string | null>(null);
-  /** 沉淀阶段：表格固定在左栏，与右侧消息流解耦 */
-  const [ruminationTablePayload, setRuminationTablePayload] = useState<
-    ThreadMessage['tablePayload'] | null
-  >(null);
-  /** 首次进入 rumination 时等待用户回复开场白后再加载 step1 表格 */
-  const [ruminationAwaitingReady, setRuminationAwaitingReady] = useState(false);
-  /** rumination v3/v4 版本判定：null=加载中，'v3'/'v4'=后端已判定 */
-  const [ruminationVersion, setRuminationVersion] = useState<'v3' | 'v4' | null>(null);
-  /** 标记首次从 awaitingReady 过渡时需要播放 step1 opening */
-  const pendingStep1OpeningRef = useRef(false);
-  /** 表格提交等操作后递增，驱动标题区六段进度条重新拉取 */
-  const [ruminationProgressNonce, setRuminationProgressNonce] = useState(0);
-  /** 与后端 filter_step（1–7）对齐：当前查看的筛选子步、已提交到的最远步、完整 progress（含快照） */
-  const [ruminationProgressState, setRuminationProgressState] =
-    useState<RuminationProgress | null>(null);
-  const [ruminationViewStep, setRuminationViewStep] = useState(1);
-  const [ruminationMaxReached, setRuminationMaxReached] = useState(0);
-  const [ruminationStepBoundaries, setRuminationStepBoundaries] = useState<Record<string, number>>(
-    {}
-  );
-  const ruminationStepBoundariesRef = useRef<Record<string, number>>({});
-  ruminationStepBoundariesRef.current = ruminationStepBoundaries;
-  const [ruminationWorkbenchStacked, setRuminationWorkbenchStacked] = useState(false);
-  const [ruminationTableSubmitting, setRuminationTableSubmitting] = useState(false);
-  const [ruminationNegMorphing, setRuminationNegMorphing] = useState(false);
-  const [ruminationNegConfirmPulseTick, setRuminationNegConfirmPulseTick] = useState(0);
-  const [ruminationTableNavLoading, setRuminationTableNavLoading] = useState(false);
-  const [ruminationRefillConfirmOpen, setRuminationRefillConfirmOpen] = useState(false);
-  const [ruminationStep7FinalizeOpen, setRuminationStep7FinalizeOpen] = useState(false);
   const [phaseCelebrateSignal, setPhaseCelebrateSignal] = useState(0);
   const [phaseCompleteModalOpen, setPhaseCompleteModalOpen] = useState(false);
   /** 前四阶段「完成并继续」二次确认弹层（进入下一阶段后本阶段锁定不可修改） */
@@ -468,33 +291,10 @@ function LiveChatPhasePage() {
   const [fatigueMinutes, setFatigueMinutes] = useState<number | null>(null);
   /** 进入新 phase 的时间预估欢迎卡（首次进入且未 dismiss 时弹出） */
   const [phaseWelcomeOpen, setPhaseWelcomeOpen] = useState(false);
-  const pendingRuminationNavigateRef = useRef(false);
   /** 防止"完成并继续"连点 / 多处导航竞态：导航中置 true，跳转完成后置 false */
   const isNavigatingRef = useRef(false);
   /** 同步 canContinue 到 ref，供异步回调读取最新值 */
   const canContinueRef = useRef(false);
-  const pendingStep7SubmitRef = useRef<{
-    rows: Record<string, unknown>[];
-    payload: NonNullable<ThreadMessage['tablePayload']>;
-    submitThreadId: string;
-  } | null>(null);
-  const ruminationProgressStateRef = useRef<RuminationProgress | null>(null);
-  const ruminationTablePayloadRef = useRef<ThreadMessage['tablePayload'] | null>(null);
-  const [ruminationRowContext, setRuminationRowContext] = useState<{
-    rowIndex: number;
-    label: string;
-  } | null>(null);
-  ruminationProgressStateRef.current = ruminationProgressState;
-  ruminationTablePayloadRef.current = ruminationTablePayload;
-  const ruminationWorkbenchRef = useRef<HTMLDivElement>(null);
-  /** 子步 3：左表内存行，用于 debounce / 发送前 flush 到 rumination-progress */
-  const ruminationLiveRowsRef = useRef<Record<string, unknown>[] | null>(null);
-  /** 子步 3：最近一次生成 hyp_candidates 的目标行（重新生成 / 点选行） */
-  const step3HypTargetRowRef = useRef<number | null>(null);
-  const ruminationStep3SaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** flush 函数 ref：供定义顺序在前的 callback（如 handleRuminationNegDeepEnd）调用，
-   *  避免在 deep_end 前漏存 debounce 窗口内的表格改动。 */
-  const flushRuminationStep3TableRef = useRef<(() => Promise<void>) | null>(null);
   const { user } = useAuthStore();
   const userChatAvatarInitials = (user?.username || user?.email || 'U').slice(0, 2).toUpperCase();
 
@@ -524,10 +324,7 @@ function LiveChatPhasePage() {
   };
   const phaseInfo = PHASES.find((p) => p.key === phase);
   const phaseLabel = t(`explore.chat.phaseLabels.${phase}`);
-  const canCreateMoreThreads =
-    phase === 'rumination'
-      ? false
-      : !stepLocked && (adminDebugBypass || threads.length < 5);
+  const canCreateMoreThreads = !stepLocked && (adminDebugBypass || threads.length < 5);
 
   /** 仅在线程 id 集合变化时触发「加载消息」effect，避免因 threads 引用反复变（persist / save 后 getThreads）而重复 init */
   const threadListSignature = useMemo(() => threads.map((t) => t.id).join('|'), [threads]);
@@ -538,93 +335,13 @@ function LiveChatPhasePage() {
     return threads.map((th) => (th.id === activeThreadId ? { ...th, messages } : th));
   }, [threads, activeThreadId, messages]);
 
-  /** Matrix mode: step3 + filter_sub_step === 'matrix' → use Step3MatrixLeftPanel inside aside */
-  const isStep3MatrixMode = useMemo(
-    () =>
-      phase === 'rumination' &&
-      ruminationViewStep === 3 &&
-      ruminationProgressState?.filter_sub_step === 'matrix' &&
-      !!ruminationProgressState,
-    [phase, ruminationViewStep, ruminationProgressState],
-  );
-
-  /** 3b discussion mode: 全部组合已提交，表格含已确认假设，用户点行讨论。未选行时锁定输入框。 */
-  const isStep3DiscussionMode = useMemo(
-    () =>
-      phase === 'rumination' &&
-      ruminationViewStep === 3 &&
-      ruminationProgressState?.filter_sub_step === 'discussion',
-    [phase, ruminationViewStep, ruminationProgressState],
-  );
-  // 沉淀阶段 step2/4/5/6/7 + step3 discussion：未选行时锁定输入框。
-  // step1（展示组合，整体确认）与 step3 matrix（锁 comboId）不在此列。
-  const discussionNeedsRow =
-    phase === 'rumination' &&
-    [2, 3, 4, 5, 6, 7].includes(ruminationViewStep) &&
-    !isStep3MatrixMode &&
-    !ruminationRowContext;
-
-  /** Matrix mode: which combo is currently selected for chat filtering */
-  const [matrixModeSelectedComboId, setMatrixModeSelectedComboId] = useState<string | null>(null);
-  /** step3 matrix: 右侧 chip 点击后注入到左侧结论卡片的文本 */
-  const [matrixPendingChipText, setMatrixPendingChipText] = useState<string | null>(null);
-
-  /** 沉淀：按筛选子步切片同一线程消息（localStorage 持久化下标，见 ruminationStepBoundaries） */
-  const displayMessages = useMemo(() => {
-    if (phase !== 'rumination') return messages;
-    // Matrix mode: filter by selected comboId
-    if (isStep3MatrixMode) {
-      if (!matrixModeSelectedComboId) return [];
-      return messages.filter(
-        (m) => m.comboId === matrixModeSelectedComboId && m.type !== 'table_widget',
-      );
-    }
-    const fs = ruminationProgressState?.filter_step ?? 0;
-    const inFilterSection =
-      (ruminationProgressState?.main_section === 'filter' && fs > 0) ||
-      /** 管理员：筛选表已结束后仍可回看/改表，聊天区继续按子步切片 */
-      (adminDebugBypass && ruminationProgressState?.main_section === 'final_choice');
-    const sliced = sliceMessagesForRuminationStep(
-      messages,
-      ruminationViewStep,
-      ruminationStepBoundaries,
-      {
-        inFilterSection,
-        activeFilterStep: inFilterSection ? fs : null,
-      }
-    );
-    // step3 discussion 模式：只显示 discussion 阶段的消息。
-    // 后端给每条 step3 消息打 rumination_sub_step 标记（matrix/discussion），
-    // 前端映射为 ruminationSubStep 字段。discussion 模式下严格只显示该字段 === 'discussion' 的消息，
-    // matrix 阶段消息（含漏标 combo_id 的脏数据、matrix 子步 isStepOpening）一律隐藏。
-    // 老消息（无 ruminationSubStep 字段）在 discussion 模式下不显示。
-    if (isStep3DiscussionMode) {
-      return sliced.filter((m) => m.ruminationSubStep === 'discussion');
-    }
-    return sliced;
-  }, [
-    phase,
-    messages,
-    ruminationViewStep,
-    ruminationStepBoundaries,
-    ruminationProgressState?.main_section,
-    ruminationProgressState?.filter_step,
-    adminDebugBypass,
-    isStep3MatrixMode,
-    isStep3DiscussionMode,
-    matrixModeSelectedComboId,
-  ]);
-
   const latestConclusionMessageId = lastDimensionConclusionMessage(messages)?.id;
 
   const mapHistoryToThreadMessages = useCallback(
     (history: any[], meta: any): ThreadMessage[] =>
       history.flatMap((m, i) => {
         // 跳过内部协议消息（system 角色：兜底重试/协议注入），不展示给用户
-        if (m.role === 'system') return [];
-        // 跳过 step3 表格操作消息（用户点选「无」/「填假设」/「重新生成」时后端
-        // 生成给 LLM 看的协议化 user 消息，不应展示给用户）。
-        if (m.event === 'step3_table_action' || m.internal === true) return [];
+        if (m.role === 'system' || m.internal === true) return [];
         const id = `h_${i}_${m.id ?? i}`;
         const createdAt = m.created_at ? new Date(m.created_at).getTime() : undefined;
         if (m.role === 'conclusion_card') {
@@ -650,42 +367,12 @@ function LiveChatPhasePage() {
           } satisfies ThreadMessage;
         }
 
-        const role = (m.role === 'table_widget' ? 'assistant' : m.role) as 'user' | 'assistant';
-        const displayContent =
-          role === 'user' && typeof m.rumination_user_query === 'string' && m.rumination_user_query.trim()
-            ? m.rumination_user_query
-            : (m.content ?? '');
         const base: ThreadMessage = {
           id,
-          role,
-          content: displayContent,
+          role: m.role as 'user' | 'assistant',
+          content: m.content ?? '',
           createdAt,
         };
-        if (role === 'user' && typeof m.rumination_row_label === 'string' && m.rumination_row_label.trim()) {
-          base.ruminationRowLabel = m.rumination_row_label.trim();
-        }
-        if (m.role === 'table_widget' && m.card_payload) {
-          base.type = 'table_widget';
-          base.tablePayload = m.card_payload as ThreadMessage['tablePayload'];
-        }
-        // 沉淀子步标签：后端消息中的 filter_step 用于按子步隔离展示
-        if (m.filter_step != null && typeof m.filter_step === 'number') {
-          base.filterStep = m.filter_step;
-        }
-        // v3: 组合矩阵模式 — 后端 combo_id 映射为前端 comboId
-        if (typeof m.combo_id === 'string' && m.combo_id.trim()) {
-          base.comboId = m.combo_id.trim();
-        }
-        // step3 子步标记：后端 rumination_sub_step 映射为前端 ruminationSubStep
-        // discussion 模式下 displayMessages 靠此字段精确识别 discussion 阶段消息
-        const subStep = typeof m.rumination_sub_step === 'string' ? m.rumination_sub_step.trim() : '';
-        if (subStep === 'matrix' || subStep === 'discussion') {
-          base.ruminationSubStep = subStep;
-        }
-        // v3: combo guide 的假设候选 chips — 后端 hyp_candidates 映射为前端 hypCandidates
-        if (Array.isArray(m.hyp_candidates) && m.hyp_candidates.length > 0) {
-          base.hypCandidates = m.hyp_candidates as string[];
-        }
         return base;
       }),
     []
@@ -719,56 +406,6 @@ function LiveChatPhasePage() {
       cancelled = true;
     };
   }, [user?.is_super_admin]);
-
-  /** 沉淀页 mesh 背景与激活页一致时，统一顶栏/布局底色 */
-  useEffect(() => {
-    if (phase !== 'rumination') return;
-    document.documentElement.setAttribute('data-rumination-mesh-page', 'true');
-    return () => document.documentElement.removeAttribute('data-rumination-mesh-page');
-  }, [phase]);
-
-  /** 子步与消息下标映射：按激活码 + thread 持久化 */
-  useEffect(() => {
-    if (phase !== 'rumination' || !activationCode || !activeThreadId) return;
-    const loaded = ensureDefaultStepOne(
-      loadRuminationStepBoundaries(activationCode, activeThreadId)
-    );
-    setRuminationStepBoundaries(loaded);
-  }, [phase, activationCode, activeThreadId]);
-
-  /** 工作台宽度 < 视口 2/3 时改为上下堆叠（上表下聊） */
-  useLayoutEffect(() => {
-    if (phase !== 'rumination') return;
-    let ro: ResizeObserver | null = null;
-    let update: (() => void) | undefined;
-    const t = window.setTimeout(() => {
-      const el = ruminationWorkbenchRef.current;
-      if (!el) return;
-      update = () => {
-        const vw = window.innerWidth;
-        const w = el.getBoundingClientRect().width;
-        setRuminationWorkbenchStacked(w < (vw * 2) / 3);
-      };
-      update();
-      ro = new ResizeObserver(update);
-      ro.observe(el);
-      window.addEventListener('resize', update);
-    }, 0);
-    return () => {
-      window.clearTimeout(t);
-      ro?.disconnect();
-      if (update) window.removeEventListener('resize', update);
-    };
-  }, [phase, initLoading]);
-
-  // phase 变化时清空 rowContext（跨阶段，如 values → rumination）。
-  // step 切换的清空由 widget 内部 prevStepRef 检测并回调 onRowContextChange(null) 完成。
-  useEffect(() => {
-    if (phase !== 'rumination') {
-      setRuminationRowContext(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase]);
 
   // Auth & redirect — 强制等待 exploreResume 对齐后再做路由准入判断
   // 清缓存后 localStorage 为默认值，必须以后端 resume 为准，避免闪到 values 再跳转
@@ -826,31 +463,6 @@ function LiveChatPhasePage() {
     setPhaseEnterTimestamp(activationCode, phase);
   }, [activationCode, phase]);
 
-  // rumination v3/v4 版本判定：进 rumination 时向后端查询该 report 应走哪个版本。
-  // 后端为权威（配置强制 / AB 随机），结果持久化在 rumination_ab_assignments 表。
-  useEffect(() => {
-    if (phase !== 'rumination' || !activationCode) return;
-    let cancelled = false;
-    setRuminationVersion(null);
-    (async () => {
-      try {
-        const resp = await fetchRuminationVersion(activationCode);
-        if (!cancelled && resp.data?.version) {
-          setRuminationVersion(resp.data.version);
-        } else if (!cancelled) {
-          // 兜底：后端未返回有效版本，默认 v3
-          setRuminationVersion('v3');
-        }
-      } catch {
-        // 兜底：查询失败默认 v3，不阻塞用户
-        if (!cancelled) setRuminationVersion('v3');
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [activationCode, phase]);
-
   // 从后端同步线程列表（主数据源，支持跨设备）
   useEffect(() => {
     if (!activationCode || !phase) return;
@@ -883,8 +495,7 @@ function LiveChatPhasePage() {
           createdAt: t.createdAt,
           dimensionConclusion: t.dimensionConclusion,
         }));
-        // 前四维：为每个会话预加载历史，侧栏显示首行与轮数。
-        // 沉淀（rumination）：产品为单线程、无多会话侧栏，只拉「主线程」一条 history，与 collapse 规则一致。
+        // 为每个会话预加载历史，侧栏显示首行与轮数。
         let lastActivationSessionFromApi: string | undefined;
         const hydrateThreadFromHistory = async (th: ChatThread): Promise<ChatThread> => {
           try {
@@ -898,14 +509,10 @@ function LiveChatPhasePage() {
             }
             const actSid = readActivationSessionIdFromActivationApi(h.data?.activation);
             if (actSid) lastActivationSessionFromApi = actSid;
-            const baseMsgs = mapHistoryToThreadMessages(history, meta);
-            const msgs =
-              phase === 'rumination'
-                ? baseMsgs
-                : mergePendingDraftIntoMessagesFromMeta(
-                    baseMsgs,
-                    meta as Record<string, unknown>
-                  );
+            const msgs = mergePendingDraftIntoMessagesFromMeta(
+              mapHistoryToThreadMessages(history, meta),
+              meta as Record<string, unknown>
+            );
             const concl = meta.dimension_conclusion as DimensionConclusionData | undefined;
             return {
               ...th,
@@ -918,23 +525,7 @@ function LiveChatPhasePage() {
           }
         };
 
-        let hydratedList: ChatThread[];
-        if (phase === 'rumination') {
-          if (list.length === 0) {
-            hydratedList = [];
-          } else {
-            const canonical = pickCanonicalRuminationThread(list);
-            hydratedList =
-              canonical != null ? [await hydrateThreadFromHistory(canonical)] : [];
-          }
-        } else {
-          hydratedList = await Promise.all(list.map((th) => hydrateThreadFromHistory(th)));
-        }
-
-        let mergedList = hydratedList;
-        if (phase === 'rumination' && hydratedList.length > 1) {
-          mergedList = collapseRuminationThreadsToOne(hydratedList);
-        }
+        const mergedList = await Promise.all(list.map((th) => hydrateThreadFromHistory(th)));
         setThreadsForPhase(activationCode, phase, mergedList);
         if (cancelled) return;
         setThreads(mergedList);
@@ -965,11 +556,7 @@ function LiveChatPhasePage() {
         }
         // 网络失败时：仅在缓存未过期时回退到 localStorage（避免使用过期数据）
         if (!isCacheStale(activationCode)) {
-          let list = getThreads(activationCode, phase);
-          if (phase === 'rumination' && list.length > 1) {
-            list = collapseRuminationThreadsToOne(list);
-            setThreadsForPhase(activationCode, phase, list);
-          }
+          const list = getThreads(activationCode, phase);
           setThreads(list);
           const activeId = getActiveThreadId(activationCode, phase);
           setActiveThreadIdState(activeId);
@@ -1032,35 +619,7 @@ function LiveChatPhasePage() {
             createdAt: now,
           };
           if (!cancelled) {
-            // 首次进入 rumination：entry greeting 模拟流式打字效果
-            if (phase === 'rumination' && msgs.length > 0 && msgs[msgs.length - 1].role === 'assistant') {
-              const greetingMsg = msgs[msgs.length - 1];
-              const greetingText = greetingMsg.content;
-              // 先展示空消息，再模拟打字
-              const streamMsgs = [...msgs.slice(0, -1), { ...greetingMsg, content: '' }];
-              addThread(activationCode, phase, { ...thread, messages: msgs });
-              setThreads(getThreads(activationCode, phase));
-              setActiveThreadId(activationCode, phase, tid);
-              setActiveThreadIdState(tid);
-              setBackendSyncedThreadId(tid);
-              setMessages(streamMsgs);
-              setRuminationAwaitingReady(true);
-              // 模拟流式打字
-              const greetingId = greetingMsg.id;
-              const ac = new AbortController();
-              ruminationGuideAbortRef.current = ac;
-              setRuminationGuideBusy(true);
-              void simulateFixedRuminationOpening(greetingText, ac.signal, (acc) => {
-                setMessages((prev) =>
-                  prev.map((m) => (m.id === greetingId ? { ...m, content: acc } : m))
-                );
-              }).then(() => {
-                setRuminationGuideBusy(false);
-                // 同步更新 thread 里的完整内容
-                const fullMsgs = [...msgs.slice(0, -1), { ...greetingMsg, content: greetingText }];
-                saveThread(activationCode, phase, { ...thread, messages: fullMsgs });
-              });
-            } else {
+            {
               addThread(activationCode, phase, thread);
               setThreads(getThreads(activationCode, phase));
               setActiveThreadId(activationCode, phase, tid);
@@ -1123,10 +682,6 @@ function LiveChatPhasePage() {
                 setThreads(getThreads(activationCode, phase));
                 setMessages(msgs);
                 setBackendSyncedThreadId(activeId);
-                // 首次进入 rumination：等待用户回复开场白后再加载表格
-                if (phase === 'rumination' && msgs.length > 0) {
-                  setRuminationAwaitingReady(true);
-                }
               }
             } catch (err: any) {
               if (!cancelled) {
@@ -1202,7 +757,6 @@ function LiveChatPhasePage() {
   );
   /** 末条结论卡未表态：须点「确认」或「再聊聊」；不区分是否管理员 */
   const pendingConclusionChoiceBlocksChat =
-    phase !== 'rumination' &&
     !isSelectedCompleted &&
     (() => {
       const last = lastDimensionConclusionMessage(messages);
@@ -1214,86 +768,21 @@ function LiveChatPhasePage() {
     [messages]
   );
   const showConclusionRequestButton =
-    phase !== 'rumination' &&
     !isSelectedCompleted &&
     !reportUnlocked &&
     !pendingConclusionChoiceBlocksChat &&
     !lastDimensionConclusionMessage(messages)?.conclusionConfirmed &&
     userTurnCount >= 11;
-  /** 回看模式：正在查看历史已提交步骤（只读），不影响当前数据 */
-  const ruminationReviewMode = useMemo(
-    () => isRuminationReviewMode(ruminationViewStep, ruminationProgressState),
-    [ruminationViewStep, ruminationProgressState]
-  );
-
   const isReadOnly =
     // 报告已解锁：探索收口，整页只读（顶部提示条引导查看报告）
     reportUnlocked ||
-    // step3（matrix 或 discussion）需要与 AI 交互，即使 thread 历史被标 completed 也不锁。
-    (isSelectedCompleted && !(isStep3MatrixMode || isStep3DiscussionMode)) ||
+    isSelectedCompleted ||
     (stepLocked && !adminDebugBypass) || // 阶段已锁定，普通用户只读
     (!isBackendSynced && !!activeThreadId) || // 切到其它 thread 时暂不输入（未同步）
-    pendingConclusionChoiceBlocksChat ||
-    ruminationReviewMode; // 回看模式：只读浏览历史步骤
+    pendingConclusionChoiceBlocksChat;
   const selectionMatchesReportForContinue = !stepLocked
     ? true
     : !!reportSelectedThreadId && activeThreadId === reportSelectedThreadId;
-
-  /** 进入 matrix 模式时初始化 combo_matrix 并自动选中第一个组合 */
-  useEffect(() => {
-    if (!isStep3MatrixMode) {
-      setMatrixModeSelectedComboId(null);
-      return;
-    }
-    if (!activationCode) return;
-    // 每次进入 matrix 模式都从后端拉取最新 combo_matrix，
-    // 确保 step2 新标记的不匹配组合（is_non_matching）能及时反映到 UI。
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await ruminationApi.getComboMatrix(activationCode);
-        if (cancelled) return;
-        if (res.data?.progress) {
-          setRuminationProgressState((prev) => (prev ? { ...prev, ...res.data!.progress! } : res.data!.progress!));
-        }
-        if (res.data?.combo_matrix) {
-          const comboMatrix = res.data.combo_matrix as ComboItem[];
-          if (comboMatrix.length > 0) {
-            setMatrixModeSelectedComboId((prev) => prev || comboMatrix[0].combo_id || '00');
-          }
-        }
-      } catch (err) {
-        console.error('Failed to init combo matrix:', err);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [isStep3MatrixMode]);
-
-  /** v4: 进入某个组合时，自动确保右侧已出现固定引导语（支持后端异步队列）。
-   *  通过 useComboGuideStream hook 统一管理：任务生命周期脱离 effect 重跑，
-   *  切走不丢结果，跑完即写入 messages，并支持假流式逐字渲染真实内容。
-   *  combo guide 的 busy 单独维护，与既有 ruminationGuideBusy（表格/step opening）OR 后用于门控。 */
-  const [comboGuideBusy, setComboGuideBusy] = useState(false);
-  const comboGuideStream = useComboGuideStream({
-    enabled:
-      isStep3MatrixMode &&
-      !!matrixModeSelectedComboId &&
-      !!activationCode &&
-      !initLoading &&
-      threadsFetched,
-    activationCode,
-    threadId: backendSyncedThreadId ?? undefined,
-    comboId: matrixModeSelectedComboId,
-    mapGuideMessage: useCallback(
-      (raw: Record<string, unknown>) => mapHistoryToThreadMessages([raw], {})[0] ?? null,
-      [mapHistoryToThreadMessages],
-    ),
-    setMessages,
-    getMessages: useCallback(() => messagesRef.current, []),
-    onBusyChange: setComboGuideBusy,
-  });
-  /** 任一引导流在跑（combo guide / 表格 / step opening）即视为 busy，用于门控 */
-  const anyGuideBusy = ruminationGuideBusy || comboGuideBusy;
 
   /**
    * threadsFetched 未完成前，stepLocked/reportSelectedThreadId 尚未从后端同步，
@@ -1326,13 +815,6 @@ function LiveChatPhasePage() {
     activeThreadId,
     t,
   ]);
-
-  /** 沉淀终步：表格确认后进过渡页；筛选第 7 子步或 final_choice 未完结时隐藏顶栏「完成并继续」 */
-  const hideRuminationHeaderComplete =
-    phase === 'rumination' &&
-    ((!isSelectedCompleted &&
-      ruminationProgressState?.main_section === 'final_choice') ||
-      ruminationViewStep === RUMINATION_FILTER_STEP_MAX);
 
   /** 本阶段已提交：普通用户仅可点「完成并继续」，主输入区与侧栏新建等置灰 */
   const phaseInteractionLocked = stepLocked && !adminDebugBypass;
@@ -1395,10 +877,9 @@ function LiveChatPhasePage() {
   const streamTailInputPlaceholder = useMemo(() => {
     if (!sending) return null;
     if (waitingForConclusionCardUi) return t('explore.chat.streamStatusConclusion');
-    if (postLlmTailActive && ruminationViewStep === 3) return t('explore.chat.streamStatusHypothesis');
     if (postLlmTailActive) return t('explore.chat.streamStatusGeneric');
     return null;
-  }, [sending, waitingForConclusionCardUi, postLlmTailActive, ruminationViewStep, t]);
+  }, [sending, waitingForConclusionCardUi, postLlmTailActive, t]);
 
   useLayoutEffect(() => {
     const prev = prevPathnameForLockModalRef.current;
@@ -1550,7 +1031,7 @@ function LiveChatPhasePage() {
     } else {
       messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
     }
-  }, [messages, displayMessages, sending]);
+  }, [messages, sending]);
 
   useEffect(() => {
     const el = chatBodyRef.current;
@@ -1590,248 +1071,9 @@ function LiveChatPhasePage() {
     return () => window.clearTimeout(timer);
   }, [initLoading, t]);
 
-  useEffect(() => {
-    if (phase !== 'rumination') setRuminationTablePayload(null);
-  }, [phase]);
-
-  const loadRuminationTableStep = useCallback(
-    async (step: number, opts?: { resetInitial?: boolean }): Promise<boolean> => {
-      if (!activationCode || phase !== 'rumination') return false;
-      if (
-        !adminDebugBypass &&
-        !isRuminationFilterStepReachable(step, ruminationProgressState)
-      ) {
-        return false;
-      }
-      setRuminationTableNavLoading(true);
-      try {
-        setChatError(null);
-        const res = await ruminationApi.getTable(activationCode, step, {
-          resetInitial: opts?.resetInitial,
-          threadId: activeThreadId ?? undefined,
-        });
-        if (res.code !== 200) {
-          setChatError(res.message || t('explore.chat.ruminationTableLoadError'));
-          return false;
-        }
-        const p = res.data?.progress;
-        const mr = res.data?.max_reached_filter_step;
-        if (p) setRuminationProgressState(p);
-        if (typeof mr === 'number') setRuminationMaxReached(mr);
-        else if (p) setRuminationMaxReached(computeMaxReachedFromSnapshots(p));
-        const w = res.data?.table_widget;
-        if (w) {
-          const stepKey = String(w.step ?? step);
-          const lenAtApply = messagesRef.current.length;
-          setRuminationTablePayload(w as ThreadMessage['tablePayload']);
-          setRuminationViewStep(w.step ?? step);
-          setRuminationStepBoundaries((b) => {
-            if (b[stepKey] !== undefined) return b;
-            const stepNum = w.step ?? step;
-            const start = inferRuminationStepBoundaryStart(
-              messagesRef.current,
-              stepNum,
-              lenAtApply,
-            );
-            const nb = { ...b, [stepKey]: start };
-            if (activationCode && activeThreadId) {
-              saveRuminationStepBoundaries(activationCode, activeThreadId, nb);
-            }
-            return nb;
-          });
-          return true;
-        }
-        setChatError(
-          opts?.resetInitial
-            ? t('explore.chat.ruminationTableRefillEmpty')
-            : t('explore.chat.ruminationTableMissing')
-        );
-        return false;
-      } catch {
-        setChatError(t('explore.chat.ruminationTableLoadError'));
-        return false;
-      } finally {
-        setRuminationTableNavLoading(false);
-      }
-    },
-    [
-      activationCode,
-      activeThreadId,
-      adminDebugBypass,
-      phase,
-      ruminationProgressState,
-      t,
-    ]
-  );
-
-  /**
-   * 沉淀：单次 GET rumination-progress 更新进度与 max_reached；必要时再 GET get-table 补左栏表。
-   * 原实现拆成两个 effect 会对同一接口连打多次；标题区 RuminationSectionProgress 已 externalProgressOnly，不再重复请求。
-   *
-   * 注意：不把 activeThreadId 列入依赖，避免切换/校正线程时误取消进行中的请求；边界保存用 activeThreadIdRef。
-   * threadsFetched 与 initLoading 齐平后再拉表，避免与线程初始化竞态。
-   * filter_step 与快照不一致时 get-table 可能返回空 widget，此时回退拉第 1 步表。
-   */
-  useEffect(() => {
-    if (
-      phase !== 'rumination' ||
-      !activationCode ||
-      initLoading ||
-      !threadsFetched ||
-      ruminationAwaitingReady
-    ) {
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      type ApplyResult = 'ok' | 'error' | 'empty';
-      const applyTableResponse = (
-        tb: Awaited<ReturnType<typeof ruminationApi.getTable>>,
-        defaultStep: number
-      ): ApplyResult => {
-        if (cancelled) return 'ok';
-        if (tb.code !== 200) {
-          setChatError(tb.message || t('explore.chat.ruminationTableLoadError'));
-          return 'error';
-        }
-        const w = tb.data?.table_widget;
-        if (!w) return 'empty';
-        if (tb.data?.progress) setRuminationProgressState(tb.data.progress);
-        if (typeof tb.data?.max_reached_filter_step === 'number') {
-          setRuminationMaxReached(tb.data.max_reached_filter_step);
-        } else if (tb.data?.progress) {
-          setRuminationMaxReached(computeMaxReachedFromSnapshots(tb.data.progress));
-        }
-        const stepKey = String(w.step ?? defaultStep);
-        const lenAtApply = messagesRef.current.length;
-        setRuminationTablePayload(w as ThreadMessage['tablePayload']);
-        if (w.step != null) setRuminationViewStep(w.step);
-        setRuminationStepBoundaries((b) => {
-          if (b[stepKey] !== undefined) return b;
-          const stepNum = w.step ?? defaultStep;
-          const start = inferRuminationStepBoundaryStart(
-            messagesRef.current,
-            stepNum,
-            lenAtApply,
-          );
-          const nb = { ...b, [stepKey]: start };
-          const tid = activeThreadIdRef.current;
-          if (activationCode && tid) {
-            saveRuminationStepBoundaries(activationCode, tid, nb);
-          }
-          return nb;
-        });
-        return 'ok';
-      };
-
-      try {
-        const res = await ruminationApi.get(activationCode);
-        if (cancelled) return;
-        if (res.code !== 200) {
-          setChatError(res.message || t('explore.chat.ruminationTableLoadError'));
-          return;
-        }
-        const p = res.data?.progress;
-        if (!p) {
-          setChatError(t('explore.chat.ruminationTableLoadError'));
-          return;
-        }
-        const mr =
-          res.data?.max_reached_filter_step ?? computeMaxReachedFromSnapshots(p);
-        setRuminationProgressState(p);
-        setRuminationMaxReached(mr);
-
-        /** 终态（recommend/end）：自动加载 step7 submitted 快照作为只读结果表，无 step7 则回退到 max_reached */
-        const terminalSections = ['recommend', 'end'] as const;
-        const isTerminal = terminalSections.includes(p.main_section as typeof terminalSections[number]);
-        const userFilterTableFlow =
-          !isTerminal &&
-          p.main_section !== 'final_choice' &&
-          ((p.filter_step ?? 0) > 0 ||
-            p.main_section === 'opening' ||
-            p.main_section === 'review' ||
-            (p.main_section === 'filter' && (p.filter_step ?? 0) === 0));
-        /** 管理员在筛选表提交进入 final_choice 后仍应能加载左栏表做调试 */
-        const adminFilterTableAfterDone =
-          adminDebugBypass && p.main_section === 'final_choice';
-        if (!userFilterTableFlow && !adminFilterTableAfterDone && !isTerminal) {
-          return;
-        }
-
-        setChatError(null);
-        /**
-         * 终态回看：优先加载 step7 submitted 快照；无则回退到 max_reached step。
-         * 非终态：走原有逻辑，按后端 filter_step 决定加载哪步。
-         */
-        let stepToLoad: number;
-        if (isTerminal) {
-          const reviewStep = resolveReviewStepAfterCompletion(p);
-          if (reviewStep < 1) return; // 无任何快照可展示
-          stepToLoad = reviewStep;
-        } else {
-          stepToLoad = Math.min(
-            RUMINATION_FILTER_STEP_MAX,
-            Math.max(1, p.filter_step || 1)
-          );
-        }
-        setRuminationViewStep(stepToLoad);
-
-        let tb = await ruminationApi.getTable(activationCode, stepToLoad);
-        if (cancelled) return;
-
-        let r = applyTableResponse(tb, stepToLoad);
-        if (r === 'empty') {
-          /**
-           * 终态回看首次加载为空时，尝试回退到 max_reached 步。
-           * 非终态：原有的回退到第 1 步逻辑。
-           */
-          const fallbackStep = isTerminal
-            ? computeMaxReachedFromSnapshots(p)
-            : (stepToLoad !== 1 ? 1 : 0);
-          if (fallbackStep >= 1 && fallbackStep !== stepToLoad) {
-            stepToLoad = fallbackStep;
-            setRuminationViewStep(stepToLoad);
-            tb = await ruminationApi.getTable(activationCode, stepToLoad);
-            if (cancelled) return;
-            r = applyTableResponse(tb, stepToLoad);
-          }
-        }
-        if (r === 'empty') {
-          setChatError(t('explore.chat.ruminationTableMissing'));
-        }
-        // 首次从 awaitingReady 过渡时，播放 step1 opening
-        if (r === 'ok' && pendingStep1OpeningRef.current && stepToLoad === 1 && activeThreadIdRef.current) {
-          pendingStep1OpeningRef.current = false;
-          const tid1 = activeThreadIdRef.current;
-          queueMicrotask(() => {
-            void playRuminationStepOpeningAfterSubmit(1, tid1);
-          });
-        }
-      } catch {
-        if (!cancelled) {
-          setChatError(t('explore.chat.ruminationTableLoadError'));
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    phase,
-    activationCode,
-    initLoading,
-    threadsFetched,
-    ruminationProgressNonce,
-    ruminationAwaitingReady,
-    adminDebugBypass,
-    t,
-  ]);
-
   const handleSend = async (
     prefill?: string,
-    skipAddUser?: boolean,
-    /** 重新生成时沿用原用户消息的表格行摘要（避免闭包读到旧 messages） */
-    regenerateRowLabel?: string
+    skipAddUser?: boolean
   ) => {
     const text = prefill ?? input.trim();
     if (!activationCode || !text || sending || isReadOnly || conclusionReqState === 'loading')
@@ -1845,69 +1087,14 @@ function LiveChatPhasePage() {
       next[lastIdx] = { ...last, conclusionLocked: true };
       return next;
     });
-    if (phase === 'rumination' && ruminationTableNavLoading) return;
-    // step3 3b discussion 模式：未选行时不允许发送（输入框已 disabled，此处为防御性 guard）
-    if (isStep3DiscussionMode && !ruminationRowContext) return;
-    // 用户回复开场白"准备好了"时：不调 AI 流式接口，直接加载表格 + step1 opening
-    if (ruminationAwaitingReady) {
-      const now2 = Date.now();
-      const userMsgOnly: ThreadMessage = {
-        id: `u_${now2}`,
-        role: 'user',
-        content: text,
-        createdAt: now2,
-        filterStep: 1,
-      };
-      setMessages((prev) => [...prev, userMsgOnly]);
-      if (!prefill) setInput('');
-      setRuminationAwaitingReady(false);
-      pendingStep1OpeningRef.current = true;
-      // 表格 effect 会因 awaitingReady 变化自动重新执行，加载表格后播放 step1 opening
-      return;
-    }
-    if (phase === 'rumination' && (ruminationGuideBusy || comboGuideBusy)) {
-      // 用户主动输入时，优先进入自由问答：终止子步引导流
-      ruminationGuideAbortRef.current?.abort();
-      ruminationGuideAbortRef.current = null;
-      setRuminationGuideBusy(false);
-      // 终止 combo guide 假流式逐字（保留已生成消息，仅停 timer）
-      if (comboGuideBusy) comboGuideStream.stopAll();
-    }
     if (!prefill) setInput('');
     const now = Date.now();
-    const rowSnap =
-      phase === 'rumination'
-        ? skipAddUser
-          ? regenerateRowLabel != null && regenerateRowLabel !== ''
-            ? { label: regenerateRowLabel }
-            : null
-          : ruminationRowContext
-        : null;
     const messageForApi = text;
-    const ruminationFilterForApi =
-      phase === 'rumination'
-        ? Math.max(
-            1,
-            Math.min(
-              7,
-              (ruminationProgressState?.filter_step && ruminationProgressState.filter_step > 0
-                ? ruminationProgressState.filter_step
-                : ruminationViewStep) || 1
-            )
-          )
-        : undefined;
-    if (phase === 'rumination' && ruminationFilterForApi === 3 && activationCode) {
-      await flushRuminationStep3TableToServer();
-    }
     const userMsg: ThreadMessage = {
       id: `u_${now}`,
       role: 'user',
       content: text,
       createdAt: now,
-      ...(rowSnap ? { ruminationRowLabel: rowSnap.label } : {}),
-      ...(phase === 'rumination' && ruminationFilterForApi ? { filterStep: ruminationFilterForApi } : {}),
-      // step3：实时消息打 ruminationSubStep 标记，供 discussion 模式过滤识别。
-      ...(isStep3DiscussionMode ? { ruminationSubStep: 'discussion' as const } : {}),
     };
     const assistantId = `a_${now}`;
     const assistantMsg: ThreadMessage = {
@@ -1915,8 +1102,6 @@ function LiveChatPhasePage() {
       role: 'assistant' as const,
       content: '',
       createdAt: now,
-      ...(phase === 'rumination' && ruminationFilterForApi ? { filterStep: ruminationFilterForApi } : {}),
-      ...(isStep3DiscussionMode ? { ruminationSubStep: 'discussion' as const } : {}),
     };
     const toAdd = skipAddUser
       ? [assistantMsg]
@@ -1964,18 +1149,6 @@ function LiveChatPhasePage() {
             thread_id: effectiveThreadId,
             activation_session_id: getActivationSessionId(session),
             locale: apiLocale,
-            ...(ruminationFilterForApi !== undefined
-              ? { rumination_filter_step: ruminationFilterForApi }
-              : {}),
-            ...(phase === 'rumination' &&
-            rowSnap &&
-            'rowIndex' in rowSnap &&
-            typeof rowSnap.rowIndex === 'number'
-              ? {
-                  rumination_row_index: rowSnap.rowIndex,
-                  rumination_row_label: rowSnap.label,
-                }
-              : {}),
             ...(uiSnap ? { client_conclusion_ui: uiSnap } : {}),
           }),
           signal: controller.signal,
@@ -2129,72 +1302,6 @@ function LiveChatPhasePage() {
                 return [...frozenHistory, conclMsg];
               });
             }
-            if (payload.table_widget) {
-              assistantHasVisibleOutput = true;
-              const tw = payload.table_widget as ThreadMessage['tablePayload'];
-              if (phase === 'rumination') {
-                setRuminationTablePayload(tw ?? null);
-              } else {
-                const tableMsg: ThreadMessage = {
-                  id: `table_${Date.now()}`,
-                  role: 'assistant',
-                  content: '',
-                  type: 'table_widget',
-                  tablePayload: tw ?? undefined,
-                  createdAt: Date.now(),
-                };
-                setMessages((prev) => [...prev, tableMsg]);
-              }
-            }
-            if (payload.rumination_progress && phase === 'rumination' && activationCode) {
-              const rp = payload.rumination_progress as RuminationProgress;
-              setRuminationProgressState((prev) => (prev ? { ...prev, ...rp } : rp));
-              const fs =
-                typeof rp.filter_step === 'number' && rp.filter_step > 0 ? rp.filter_step : 3;
-              if (fs === 3) {
-                void ruminationApi.getTable(activationCode, 3).then((tb) => {
-                  if (tb.code !== 200) return;
-                  if (tb.data?.table_widget) {
-                    setRuminationTablePayload(tb.data.table_widget as ThreadMessage['tablePayload']);
-                  }
-                  if (tb.data?.progress) setRuminationProgressState(tb.data.progress);
-                  if (typeof tb.data?.max_reached_filter_step === 'number') {
-                    setRuminationMaxReached(tb.data.max_reached_filter_step);
-                  }
-                });
-              }
-            }
-            if (payload.rumination_neg_state && phase === 'rumination') {
-              const neg = payload.rumination_neg_state as RuminationProgress['rumination_neg_state'];
-              setRuminationProgressState((prev) =>
-                prev ? { ...prev, rumination_neg_state: neg ?? null } : prev
-              );
-            }
-            if (payload.hyp_candidates && Array.isArray(payload.hyp_candidates)) {
-              const cands = payload.hyp_candidates as string[];
-              const targetRow =
-                typeof payload.hyp_target_row === 'number' ? payload.hyp_target_row : undefined;
-              const rowUnresolved = Boolean(payload.hyp_row_unresolved);
-              if (typeof targetRow === 'number') {
-                step3HypTargetRowRef.current = targetRow;
-              }
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId
-                    ? {
-                        ...m,
-                        hypCandidates: cands,
-                        hypTargetRow: targetRow,
-                        hypRowUnresolved: rowUnresolved,
-                      }
-                    : m
-                )
-              );
-            }
-            // neg gate 推进后的 progress 更新
-            if (payload.rumination_progress && phase === 'rumination') {
-              setRuminationProgressState(payload.rumination_progress as RuminationProgress);
-            }
             if (payload.done && payload.response != null) {
               fullReply = payload.response;
               if (String(payload.response || '').trim()) assistantHasVisibleOutput = true;
@@ -2248,11 +1355,6 @@ function LiveChatPhasePage() {
         return normalized;
       });
       abortControllerRef.current = null;
-      // AI 回复完成后，如果用户刚回复了开场白，现在加载表格 + step1 opening
-      if (ruminationAwaitingReady) {
-        setRuminationAwaitingReady(false);
-        pendingStep1OpeningRef.current = true;
-      }
     }
   };
 
@@ -2276,7 +1378,6 @@ function LiveChatPhasePage() {
           list = list.map((t) => (t.id === leavingId ? updated : t));
         }
         abortControllerRef.current?.abort();
-        ruminationGuideAbortRef.current?.abort();
       }
 
       const resolved = list.find((t) => t.id === targetThread.id) ?? targetThread;
@@ -2293,7 +1394,7 @@ function LiveChatPhasePage() {
     (thread: ChatThread) => {
       if (!activationCode || !phase) return;
       if (thread.id === activeThreadId) return;
-      if (sending || anyGuideBusy) {
+      if (sending) {
         setPendingSwitchThread(thread);
         setThreadSwitchDialogOpen(true);
         return;
@@ -2305,7 +1406,6 @@ function LiveChatPhasePage() {
       phase,
       activeThreadId,
       sending,
-      anyGuideBusy,
       performThreadSwitch,
     ]
   );
@@ -2325,7 +1425,6 @@ function LiveChatPhasePage() {
     const snapMessages = messages;
     const snapThreads = threads;
     abortControllerRef.current?.abort();
-    ruminationGuideAbortRef.current?.abort();
     performThreadSwitch(target, {
       messagesSnapshot: snapMessages,
       threadsSnapshot: snapThreads,
@@ -2336,7 +1435,6 @@ function LiveChatPhasePage() {
 
   const handleNewChat = async () => {
     if (!activationCode || !phase) return;
-    if (phase === 'rumination') return;
     if (stepLocked && !adminDebugBypass) return;
     const list = getThreads(activationCode, phase);
     if (!adminDebugBypass && list.length >= 5) return;
@@ -2394,30 +1492,7 @@ function LiveChatPhasePage() {
     if (activationCode && phase) {
       clearPhaseEnterTimestamp(activationCode, phase);
     }
-    if (!pendingRuminationNavigateRef.current) return;
-    pendingRuminationNavigateRef.current = false;
-    if (!activationCode || !session) return;
-    if (isNavigatingRef.current) {
-      console.warn('[PhaseCompleteModalContinue] 导航中，忽略重复导航');
-      return;
-    }
-    // 去重保护
-    if (session.currentPhase !== phase) {
-      console.warn('[PhaseCompleteModalContinue] session 已前进，跳过');
-      return;
-    }
-    isNavigatingRef.current = true;
-    console.log('[PhaseCompleteModalContinue] 开始导航', { phase });
-    try {
-      const nextSession = unlockNextPhase({ ...session, currentPhase: phase });
-      saveSession(nextSession);
-      setSession(nextSession);
-      router.push('/explore/transition?from=rumination');
-    } catch (err) {
-      console.error('[PhaseCompleteModalContinue] 导航异常', err);
-      isNavigatingRef.current = false;
-    }
-  }, [activationCode, session, phase, router, setSession]);
+  }, [activationCode, phase]);
 
   /** 手动出卡：「对话结束无法进行下一步？点击这里」按钮 → POST /simple-chat/conclusion/request */
   const handleRequestConclusion = async () => {
@@ -2534,7 +1609,7 @@ function LiveChatPhasePage() {
 
     setPhaseCelebrateSignal((n) => n + 1);
 
-    /** 与庆祝粒子一致：本地确认后即弹出祝贺层；是否进过渡页仍由 threadCompleteOk + pendingRuminationNavigateRef 决定 */
+    /** 与庆祝粒子一致：本地确认后即弹出祝贺层 */
     let skipModal = false;
     if (!adminDebugBypass && activationCode) {
       try {
@@ -2557,11 +1632,6 @@ function LiveChatPhasePage() {
       setPhaseCompleteModalOpen(true);
     }
 
-    if (threadCompleteOk) {
-      pendingRuminationNavigateRef.current = phase === 'rumination';
-    } else {
-      pendingRuminationNavigateRef.current = false;
-    }
   };
 
   /**
@@ -2586,102 +1656,6 @@ function LiveChatPhasePage() {
     }
     setPhaseWelcomeOpen(false);
   }, [activationCode, phase]);
-
-  /** 终步表格在弹窗确认后提交，并进过渡页（无结论卡） */
-  const handleRuminationStep7FinalizeConfirmed = useCallback(async () => {
-    const p = pendingStep7SubmitRef.current;
-    if (!p || !activationCode || phase !== 'rumination') return;
-    setRuminationStep7FinalizeOpen(false);
-    pendingStep7SubmitRef.current = null;
-    setRuminationTableSubmitting(true);
-    setChatError(null);
-    try {
-      // 终步提交：提取 __final=true 行作为最终选择，显式传 selected_row_ids 便于后端审计
-      const finalRowIds = p.rows
-        .filter((r) => r.__final === true)
-        .map((r) => String(r.id ?? '').trim())
-        .filter(Boolean);
-      const res = await ruminationApi.submitTable(
-        activationCode,
-        p.submitThreadId,
-        RUMINATION_FILTER_STEP_MAX,
-        p.rows,
-        { mode: 'full_step', selectedRowIds: finalRowIds }
-      );
-      if (res.code !== 200) {
-        setChatError(res.message || t('explore.chat.ruminationUi.tableSubmitError'));
-        return;
-      }
-      const data = res.data as RuminationSubmitData | undefined;
-      if (data?.early_terminated || data?.next_action === 'early_terminated') {
-        setChatError(t('explore.chat.ruminationUi.tableEarlyTerminated'));
-        return;
-      }
-      if (data?.next_action !== 'rumination_finalize_transition') {
-        if (data?.progress) setRuminationProgressState(data.progress);
-        if (typeof data?.max_reached_filter_step === 'number') {
-          setRuminationMaxReached(data.max_reached_filter_step);
-        } else if (data?.progress) {
-          setRuminationMaxReached(computeMaxReachedFromSnapshots(data.progress));
-        }
-        setChatError(t('explore.chat.ruminationUi.tableSubmitError'));
-        return;
-      }
-      /** 不在进过渡页前更新进度条 state：否则 main_section 变为 final_choice 时会闪一帧约 82% */
-      const targetThreadId = p.submitThreadId;
-      const th = threads.find((t) => t.id === targetThreadId) || selectedThread;
-      try {
-        await apiClient.post('/simple-chat/thread/complete', {
-          activation_code: activationCode,
-          phase: BACKEND_PHASE[phase],
-          thread_id: targetThreadId,
-        });
-      } catch (e) {
-        console.warn('thread/complete API failed:', e);
-      }
-      if (th) {
-        const updated: ChatThread = {
-          ...th,
-          status: 'completed',
-          messages,
-        };
-        saveThread(activationCode, phase, updated);
-        setThreads((prev) => {
-          const idx = prev.findIndex((t) => t.id === targetThreadId);
-          if (idx < 0) return [...prev, updated];
-          return prev.map((t) => (t.id === targetThreadId ? updated : t));
-        });
-      }
-      // --- 庆祝：粒子 + 弹窗，rumination 每次必现 ---
-      setPhaseCelebrateSignal((n) => n + 1);
-
-      pendingRuminationNavigateRef.current = true;
-      setPhaseCompleteModalOpen(true);
-    } catch (err) {
-      console.error('[RuminationStep7Finalize] 提交异常', err);
-      setChatError(getApiErrorMessage(err, t('explore.chat.ruminationUi.tableSubmitError')));
-      isNavigatingRef.current = false;
-    } finally {
-      setRuminationTableSubmitting(false);
-    }
-  }, [
-    activationCode,
-    phase,
-    messages,
-    router,
-    session,
-    setChatError,
-    setRuminationMaxReached,
-    setRuminationProgressNonce,
-    setRuminationProgressState,
-    setRuminationTablePayload,
-    setRuminationViewStep,
-    setSession,
-    setThreads,
-    t,
-    threads,
-    selectedThread,
-  ]);
 
   const handleContinueChat = async (conclusionMsg?: ThreadMessage) => {
     if (stepLocked && !adminDebugBypass) return;
@@ -2883,1386 +1857,7 @@ function LiveChatPhasePage() {
 
   const handleStopStream = () => {
     abortControllerRef.current?.abort();
-    ruminationGuideAbortRef.current?.abort();
   };
-
-  /** 沉淀表格提交依赖后端 thread_id；历史恢复占位 id 或竞态时需回退到真实会话 id */
-  const resolveRuminationTableThreadId = useCallback((): string => {
-    if (activeThreadId && !activeThreadId.startsWith('__history_fallback__')) {
-      return activeThreadId;
-    }
-    if (backendSyncedThreadId) return backendSyncedThreadId;
-    const fid = threads[0]?.id;
-    if (fid && !fid.startsWith('__history_fallback__')) return fid;
-    return activeThreadId || '';
-  }, [activeThreadId, backendSyncedThreadId, threads]);
-
-  /** 表格确认成功后：拉取子步引导配置，固定文案前端模拟流式，LLM 走专用流式接口 */
-  const playRuminationStepOpeningAfterSubmit = useCallback(
-    async (
-      newStep: number,
-      threadId: string,
-      openingSubStep?: 'matrix' | 'discussion',
-    ) => {
-      if (!activationCode || phase !== 'rumination') return;
-      const tid = threadId.trim();
-      const subStepForFlag = newStep === 3 ? openingSubStep ?? null : null;
-      if (
-        tid &&
-        hasRuminationStepOpeningBeenShown(activationCode, tid, newStep, subStepForFlag ?? undefined)
-      ) {
-        return;
-      }
-      ruminationGuideAbortRef.current?.abort();
-      const ac = new AbortController();
-      ruminationGuideAbortRef.current = ac;
-      const assistantId = `rum_open_${Date.now()}_${newStep}`;
-      let assistantHasVisibleOutput = false;
-
-      let openingRes;
-      try {
-        openingRes = await ruminationApi.getStepOpening(activationCode, newStep);
-      } catch {
-        return;
-      }
-      if (openingRes.code !== 200 || !openingRes.data) return;
-
-      const cfg = openingRes.data;
-      const shouldStreamLlm = cfg.mode === 'llm';
-      const fixedText = cfg.mode === 'fixed' ? (cfg.text || '').trim() : '';
-      if (!shouldStreamLlm && !fixedText) return;
-
-      const now = Date.now();
-      setRuminationGuideBusy(true);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: assistantId,
-          role: 'assistant',
-          content: '',
-          createdAt: now,
-          filterStep: newStep,
-          isStepOpening: true,
-          ...(newStep === 3 && openingSubStep ? { ruminationSubStep: openingSubStep } : {}),
-        },
-      ]);
-
-      try {
-        if (cfg.mode === 'fixed' && fixedText) {
-          assistantHasVisibleOutput = true;
-          await simulateFixedRuminationOpening(fixedText, ac.signal, (acc) => {
-            setMessages((prev) =>
-              prev.map((m) => (m.id === assistantId ? { ...m, content: acc } : m))
-            );
-          });
-        } else if (shouldStreamLlm) {
-          await streamRuminationStepOpening(
-            activationCode,
-            newStep,
-            threadId,
-            ac.signal,
-            {
-              onChunk: (delta) => {
-                if (String(delta).trim()) assistantHasVisibleOutput = true;
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId ? { ...m, content: (m.content || '') + delta } : m
-                  )
-                );
-              },
-              onThinkStart: () => {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId
-                      ? { ...m, thinkStreaming: true, thinkChunkContent: '' }
-                      : m
-                  )
-                );
-              },
-              onThinkChunk: (chunk) => {
-                if (chunk) {
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === assistantId ? { ...m, thinkChunkContent: chunk } : m
-                    )
-                  );
-                }
-              },
-              onThinkEnd: () => {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId
-                      ? { ...m, thinkStreaming: false, thinkChunkContent: undefined }
-                      : m
-                  )
-                );
-              },
-              onDone: (full) => {
-                const trimmed = (full || '').trim();
-                if (trimmed) assistantHasVisibleOutput = true;
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId
-                      ? {
-                          ...m,
-                          content: trimmed || m.content,
-                          thinkStreaming: false,
-                          thinkChunkContent: undefined,
-                        }
-                      : m
-                  )
-                );
-              },
-              onError: (msg) => setChatError(msg),
-            },
-            t('explore.chat.streamAuthExpired')
-          );
-        }
-      } catch (e: unknown) {
-        const err = e as { name?: string; message?: string };
-        if (err?.name !== 'AbortError') {
-          setChatError(err?.message || t('explore.chat.ruminationUi.openingGuideError'));
-        }
-      } finally {
-        setRuminationGuideBusy(false);
-        ruminationGuideAbortRef.current = null;
-        if (assistantHasVisibleOutput && tid) {
-          markRuminationStepOpeningShown(
-            activationCode,
-            tid,
-            newStep,
-            subStepForFlag ?? undefined,
-          );
-        }
-        if (!assistantHasVisibleOutput) {
-          setMessages((prev) => prev.filter((m) => m.id !== assistantId));
-        } else {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId && m.thinkStreaming
-                ? { ...m, thinkStreaming: false, thinkChunkContent: undefined }
-                : m
-            )
-          );
-        }
-      }
-    },
-    [activationCode, phase, setChatError, setMessages, t]
-  );
-
-  /**
-   * step3 discussion 阶段：右侧空白时自动生成开场引导语。
-   * 覆盖两条路径：① 从 matrix「全部提交」进入 discussion；② 刷新页面恢复到 discussion。
-   * matrix 阶段的 combo 引导消息已被 displayMessages 过滤隐藏（!m.comboId），
-   * 所以 discussion 模式下 displayMessages.length === 0 即代表"需要生成开场"。
-   * playRuminationStepOpeningAfterSubmit 内部 markShown 机制防止重复生成；
-   * 生成失败/中断时 markShown 不会执行，下次进入会自动重试。
-   */
-  useEffect(() => {
-    if (!isStep3DiscussionMode) return;
-    if (ruminationGuideBusy) return;
-    if (!activationCode) return;
-    if (!backendSyncedThreadId) return; // history 还没加载完，等下次触发
-    if (displayMessages.length > 0) return; // 已有 discussion 消息（用户聊过或 history 回填）
-    if (hasRuminationStepOpeningBeenShown(activationCode, backendSyncedThreadId, 3, 'discussion')) {
-      return;
-    }
-    const tid = backendSyncedThreadId;
-    queueMicrotask(() => {
-      void playRuminationStepOpeningAfterSubmit(3, tid, 'discussion');
-    });
-  }, [
-    isStep3DiscussionMode,
-    ruminationGuideBusy,
-    activationCode,
-    backendSyncedThreadId,
-    displayMessages.length,
-    playRuminationStepOpeningAfterSubmit,
-  ]);
-
-  /** 与 rumination-table-submit / rumination-neg-resolve 成功响应对齐的共用收尾 */
-  const ingestRuminationSubmitData = useCallback(
-    (
-      data: RuminationSubmitData | undefined,
-      submitThreadId: string,
-      payload: NonNullable<ThreadMessage['tablePayload']>,
-      msgs: ThreadMessage[]
-    ) => {
-      if (!data) return;
-      if (data.early_terminated || data.next_action === 'early_terminated') {
-        setChatError(t('explore.chat.ruminationUi.tableEarlyTerminated'));
-        return;
-      }
-      const nextTable = data.next_table_widget;
-      if (data.progress) setRuminationProgressState(data.progress);
-      if (typeof data.max_reached_filter_step === 'number') {
-        setRuminationMaxReached(data.max_reached_filter_step);
-      }
-      if (nextTable) {
-        const newStep = nextTable.step ?? (payload.step ?? 1) + 1;
-        const filtered = msgs.filter((m) => m.type !== 'table_widget');
-        setRuminationStepBoundaries((b) => {
-          const nb = ensureDefaultStepOne({ ...b, [String(newStep)]: filtered.length });
-          if (activationCode && submitThreadId) {
-            saveRuminationStepBoundaries(activationCode, submitThreadId, nb);
-          }
-          return nb;
-        });
-        setRuminationTablePayload(nextTable as ThreadMessage['tablePayload']);
-        setRuminationViewStep(newStep);
-        setMessages(filtered);
-        queueMicrotask(() => {
-          const step3SubStep =
-            newStep === 3 && data.progress?.filter_sub_step === 'discussion'
-              ? ('discussion' as const)
-              : newStep === 3
-                ? ('matrix' as const)
-                : undefined;
-          void playRuminationStepOpeningAfterSubmit(newStep, submitThreadId, step3SubStep);
-        });
-      } else if (data.progress?.filter_step != null && data.progress.filter_step >= 1) {
-        setRuminationViewStep(
-          Math.min(RUMINATION_FILTER_STEP_MAX, Math.max(1, data.progress.filter_step))
-        );
-      }
-      setRuminationProgressNonce((n) => n + 1);
-    },
-    [
-      activationCode,
-      t,
-      setChatError,
-      setMessages,
-      setRuminationMaxReached,
-      setRuminationProgressState,
-      setRuminationTablePayload,
-      setRuminationViewStep,
-      playRuminationStepOpeningAfterSubmit,
-    ]
-  );
-
-  /** 有待处理闸门或深入讨论时：禁止任意子步再次点表头确认（与后端 exploring / pending 一致） */
-  const ruminationNegTableSubmitBlocked = useMemo(() => {
-    const s = ruminationProgressState?.rumination_neg_state?.status;
-    return s === 'awaiting_choice' || s === 'exploring';
-  }, [ruminationProgressState?.rumination_neg_state?.status]);
-
-  /** 条带仅在与当前查看子步一致时展示，避免跳步浏览时出现无关提示 */
-  const ruminationNegGateStepMatchesView = useMemo(() => {
-    const gateStep =
-      ruminationProgressState?.rumination_neg_state?.step ??
-      ruminationProgressState?.pending_table_submit?.step;
-    if (gateStep == null || typeof gateStep !== 'number') return true;
-    return gateStep === ruminationViewStep;
-  }, [
-    ruminationProgressState?.rumination_neg_state?.step,
-    ruminationProgressState?.pending_table_submit?.step,
-    ruminationViewStep,
-  ]);
-
-  const ruminationNegHeaderStrip = useMemo(
-    () => ruminationNegTableSubmitBlocked && ruminationNegGateStepMatchesView,
-    [ruminationNegTableSubmitBlocked, ruminationNegGateStepMatchesView]
-  );
-  const ruminationNegAwaitingChoiceModalOpen = useMemo(() => {
-    return (
-      ruminationProgressState?.rumination_neg_state?.status === 'awaiting_choice' &&
-      ruminationNegHeaderStrip
-    );
-  }, [ruminationProgressState?.rumination_neg_state?.status, ruminationNegHeaderStrip]);
-  const isZeroResultsNeg = (ruminationProgressState?.rumination_neg_state?.kind ?? '').startsWith('zero_');
-  /** neg gate 深度讨论时：需要讨论的行 id 集合（用于表格行模糊化） */
-  const ruminationNegActiveItemIds = useMemo(() => {
-    const neg = ruminationProgressState?.rumination_neg_state;
-    if (!neg || neg.status !== 'exploring' || !Array.isArray(neg.items) || neg.items.length === 0) return null;
-    const ids = new Set<string>();
-    for (const item of neg.items) {
-      const id = String(item.id ?? '').trim();
-      if (id) ids.add(id);
-    }
-    return ids.size > 0 ? ids : null;
-  }, [ruminationProgressState?.rumination_neg_state]);
-  const ruminationNegExploringPinned = useMemo(() => {
-    return (
-      ruminationProgressState?.rumination_neg_state?.status === 'exploring' && ruminationNegHeaderStrip
-    );
-  }, [ruminationProgressState?.rumination_neg_state?.status, ruminationNegHeaderStrip]);
-
-  /** 闸门在其它子步时：提示回到对应步（表头确认已全局禁用） */
-  const ruminationNegRemoteStepBanner = useMemo(() => {
-    if (!ruminationNegTableSubmitBlocked || ruminationNegHeaderStrip) return null;
-    const gateStep =
-      ruminationProgressState?.rumination_neg_state?.step ??
-      ruminationProgressState?.pending_table_submit?.step;
-    if (gateStep == null || typeof gateStep !== 'number') return null;
-    return gateStep;
-  }, [
-    ruminationNegTableSubmitBlocked,
-    ruminationNegHeaderStrip,
-    ruminationProgressState?.rumination_neg_state?.step,
-    ruminationProgressState?.pending_table_submit?.step,
-  ]);
-
-  const handleTableConfirm = useCallback(
-    async (
-      _msgId: string,
-      payload: NonNullable<ThreadMessage['tablePayload']>,
-      rows: Record<string, unknown>[]
-    ) => {
-      if (!activationCode || phase !== 'rumination' || sending || anyGuideBusy) return;
-      if (ruminationNegTableSubmitBlocked) return;
-      const submitThreadId = resolveRuminationTableThreadId();
-      if (!submitThreadId.trim()) {
-        setChatError(t('explore.chat.ruminationUi.tableSubmitNoThread'));
-        return;
-      }
-      const rawStep = payload.step;
-      /** 以 payload 为准；缺失时回退当前查看子步，避免闭包/竞态导致误按第 1 步提交 */
-      const stepNum =
-        typeof rawStep === 'number' &&
-        rawStep >= 1 &&
-        rawStep <= RUMINATION_FILTER_STEP_MAX
-          ? rawStep
-          : Math.min(RUMINATION_FILTER_STEP_MAX, Math.max(1, ruminationViewStep || 1));
-      if (stepNum === RUMINATION_FILTER_STEP_MAX) {
-        // step7 终步：必须至少 1 行 __final=true 才能弹出确认提交弹窗
-        const finalCount = rows.filter((r) => r.__final === true).length;
-        if (finalCount < 1) {
-          setChatError(t('explore.chat.ruminationUi.step7NeedFinalSelect'));
-          return;
-        }
-        pendingStep7SubmitRef.current = { rows, payload, submitThreadId };
-        setChatError(null);
-        setRuminationStep7FinalizeOpen(true);
-        return;
-      }
-      setRuminationTableSubmitting(true);
-      try {
-        setChatError(null);
-        /** 必须始终传完整 table_data：后端 RuminationTableSubmitRequest 未实现 single_row/patch，
-         * 若 single 行模式传 null，服务端不会进入任一步的递进分支，表现为「确认后卡住不前进」。 */
-        const res = await ruminationApi.submitTable(
-          activationCode,
-          submitThreadId,
-          stepNum,
-          rows,
-          { mode: 'full_step' }
-        );
-        if (res.code !== 200) {
-          setChatError(res.message || t('explore.chat.ruminationUi.tableSubmitError'));
-          return;
-        }
-        const data = res.data as RuminationSubmitData | undefined;
-        if (data?.next_action === 'rumination_neg_confirm') {
-          if (data.progress) setRuminationProgressState(data.progress);
-          if (typeof data.max_reached_filter_step === 'number') {
-            setRuminationMaxReached(data.max_reached_filter_step);
-          }
-          // 不递增 ruminationProgressNonce：闸门弹窗不影响当前表格，
-          // 递增会触发 effect 重新拉 get-table 覆盖用户编辑
-          return;
-        }
-        ingestRuminationSubmitData(data, submitThreadId, payload, messagesRef.current);
-      } catch (err) {
-        setChatError(getApiErrorMessage(err, t('explore.chat.ruminationUi.tableSubmitError')));
-      } finally {
-        setRuminationTableSubmitting(false);
-      }
-    },
-    [
-      activationCode,
-      phase,
-      sending,
-      router,
-      adminDebugBypass,
-      resolveRuminationTableThreadId,
-      ruminationViewStep,
-      anyGuideBusy,
-      ruminationNegTableSubmitBlocked,
-      playRuminationStepOpeningAfterSubmit,
-      ingestRuminationSubmitData,
-      t,
-    ]
-  );
-
-  /** 闸门弹窗「我再看看」：关闭弹窗，保留 pending，用户可继续编辑表格 */
-  const handleRuminationNegDismiss = useCallback(async () => {
-    if (!activationCode || phase !== 'rumination') return;
-    const submitThreadId = resolveRuminationTableThreadId();
-    if (!submitThreadId.trim()) return;
-    try {
-      const res = await ruminationApi.negResolve(activationCode, submitThreadId, 'dismiss');
-      if (res.code === 200 && res.data?.progress) {
-        setRuminationProgressState(res.data.progress);
-      }
-    } catch {
-      /* dismiss 失败不阻断，弹窗会在 progress 同步后自然消失 */
-    }
-  }, [activationCode, phase, resolveRuminationTableThreadId]);
-
-  const handleRuminationNegContinue = useCallback(async () => {
-    if (!activationCode || phase !== 'rumination') return;
-    const submitThreadId = resolveRuminationTableThreadId();
-    if (!submitThreadId.trim() || !ruminationTablePayload) return;
-    setRuminationTableSubmitting(true);
-    try {
-      const res = await ruminationApi.negResolve(activationCode, submitThreadId, 'continue');
-      if (res.code !== 200 || !res.data) {
-        setChatError(res.message || t('explore.chat.ruminationUi.tableSubmitError'));
-        return;
-      }
-      ingestRuminationSubmitData(
-        res.data as RuminationSubmitData,
-        submitThreadId,
-        ruminationTablePayload,
-        messagesRef.current
-      );
-    } catch (err) {
-      setChatError(getApiErrorMessage(err, t('explore.chat.ruminationUi.tableSubmitError')));
-    } finally {
-      setRuminationTableSubmitting(false);
-    }
-  }, [
-    activationCode,
-    phase,
-    ruminationTablePayload,
-    resolveRuminationTableThreadId,
-    ingestRuminationSubmitData,
-    t,
-  ]);
-
-  const handleRuminationNegDeepStart = useCallback(async () => {
-    if (!activationCode || phase !== 'rumination') return;
-    const submitThreadId = resolveRuminationTableThreadId();
-    if (!submitThreadId.trim()) return;
-    setRuminationTableSubmitting(true);
-    try {
-      const res = await ruminationApi.negResolve(activationCode, submitThreadId, 'deep_start');
-      if (res.code !== 200 || !res.data) {
-        setChatError(res.message || t('explore.chat.ruminationUi.tableSubmitError'));
-        return;
-      }
-      const oz = (res.data as RuminationSubmitData).opening_zh?.trim();
-      if (oz) {
-        const aid = `rum_neg_open_${Date.now()}`;
-        setMessages((prev) => [
-          ...prev,
-          { id: aid, role: 'assistant', content: oz, createdAt: Date.now(), filterStep: ruminationViewStep },
-        ]);
-      }
-      if (res.data.progress) setRuminationProgressState(res.data.progress);
-      // 不递增 nonce：deep_start 不需要重新拉表格
-    } catch (err) {
-      setChatError(getApiErrorMessage(err, t('explore.chat.ruminationUi.tableSubmitError')));
-    } finally {
-      setRuminationTableSubmitting(false);
-    }
-  }, [activationCode, phase, resolveRuminationTableThreadId, ruminationViewStep, t]);
-
-  const handleRuminationNegDeepEnd = useCallback(async () => {
-    if (!activationCode || phase !== 'rumination') return;
-    const submitThreadId = resolveRuminationTableThreadId();
-    if (!submitThreadId.trim()) return;
-    setRuminationTableSubmitting(true);
-    try {
-      // 先 flush 当前表格行到服务端，避免 debounce 窗口内的改动在 deep_end 后丢失。
-      // 通过 ref 调用，规避 flush 定义在后的声明顺序问题。
-      await flushRuminationStep3TableRef.current?.();
-      const res = await ruminationApi.negResolve(activationCode, submitThreadId, 'deep_end');
-      if (res.code !== 200 || !res.data) {
-        setChatError(res.message || t('explore.chat.ruminationUi.tableSubmitError'));
-        return;
-      }
-      const data = res.data as RuminationSubmitData;
-      if (data.progress) setRuminationProgressState(data.progress);
-      if (typeof data.max_reached_filter_step === 'number') {
-        setRuminationMaxReached(data.max_reached_filter_step);
-      }
-      const closeTip = (data.opening_zh || '').trim();
-      if (closeTip) {
-        const aid = `rum_neg_close_${Date.now()}`;
-        setMessages((prev) => [
-          ...prev,
-          { id: aid, role: 'assistant', content: closeTip, createdAt: Date.now(), filterStep: ruminationViewStep },
-        ]);
-      }
-      setRuminationProgressNonce((n) => n + 1);
-    } catch (err) {
-      setChatError(getApiErrorMessage(err, t('explore.chat.ruminationUi.tableSubmitError')));
-    } finally {
-      setRuminationTableSubmitting(false);
-    }
-  }, [
-    activationCode,
-    phase,
-    resolveRuminationTableThreadId,
-    ruminationViewStep,
-    t,
-  ]);
-
-  const handleRuminationNegBlockedConfirmAttempt = useCallback(() => {
-    if (!ruminationNegTableSubmitBlocked) return;
-    setRuminationNegConfirmPulseTick((n) => n + 1);
-  }, [ruminationNegTableSubmitBlocked]);
-
-  const ruminationStepHasSubmitted = useMemo(() => {
-    const k = String(ruminationViewStep);
-    const ent = ruminationProgressState?.filter_step_snapshots?.[k];
-    return ent != null && ent.submitted != null;
-  }, [ruminationViewStep, ruminationProgressState]);
-
-  /** 回看模式下跳回当前活跃步（继续流程） */
-  const handleRuminationReviewContinue = useCallback(() => {
-    const fs = ruminationProgressState?.filter_step ?? 0;
-    // 已在当前活跃步则不跳转
-    if (fs > 0 && fs <= RUMINATION_FILTER_STEP_MAX && fs !== ruminationViewStep) {
-      void loadRuminationTableStep(fs);
-    }
-  }, [ruminationProgressState?.filter_step, loadRuminationTableStep, ruminationViewStep]);
-
-  const handleRuminationFilterPrev = useCallback(() => {
-    if (
-      ruminationViewStep <= 1 ||
-      anyGuideBusy ||
-      ruminationTableNavLoading
-    ) {
-      return;
-    }
-    let t = ruminationViewStep - 1;
-    while (t >= 1 && !isRuminationFilterStepReachable(t, ruminationProgressState)) {
-      t -= 1;
-    }
-    if (t < 1) return;
-    void loadRuminationTableStep(t);
-  }, [
-    ruminationViewStep,
-    ruminationProgressState,
-    loadRuminationTableStep,
-    anyGuideBusy,
-    ruminationTableNavLoading,
-  ]);
-
-  const handleRuminationFilterNext = useCallback(() => {
-    if (anyGuideBusy || ruminationTableNavLoading) {
-      return;
-    }
-    const next = ruminationViewStep + 1;
-    if (next > RUMINATION_FILTER_STEP_MAX) return;
-    if (!isRuminationFilterStepReachable(next, ruminationProgressState)) return;
-    void loadRuminationTableStep(next);
-  }, [
-    ruminationViewStep,
-    ruminationProgressState,
-    loadRuminationTableStep,
-    anyGuideBusy,
-    ruminationTableNavLoading,
-  ]);
-
-  /** 子步 3：将当前左表行同步到服务端（发送消息前须 flush，避免解锁校验读到旧表） */
-  const flushRuminationStep3TableToServer = useCallback(async () => {
-    if (!activationCode) return;
-    if (ruminationStep3SaveTimerRef.current) {
-      clearTimeout(ruminationStep3SaveTimerRef.current);
-      ruminationStep3SaveTimerRef.current = null;
-    }
-    const r = ruminationLiveRowsRef.current;
-    if (!r?.length) return;
-    const cur = ruminationProgressStateRef.current;
-    const tc = ruminationTablePayloadRef.current;
-    const cursor =
-      (typeof cur?.filter_row_cursor === 'number' ? cur.filter_row_cursor : tc?.rowCursor) ?? 0;
-    try {
-      const res = await ruminationApi.save(activationCode, {
-        filter_step: 3,
-        filter_table: r,
-        filter_row_cursor: cursor,
-      });
-      if (res.data?.progress) setRuminationProgressState(res.data.progress);
-    } catch {
-      /* 无声失败：主流程仍继续；解锁失败时用户可重试 */
-    }
-  }, [activationCode]);
-  // 同步到 ref，供声明顺序在前的 callback（deep_end）在调 API 前 flush。
-  useEffect(() => {
-    flushRuminationStep3TableRef.current = flushRuminationStep3TableToServer;
-  }, [flushRuminationStep3TableToServer]);
-
-  /** 子步 3 选「无」后 1s 冷却，防止连点跳过所有行 */
-  const [step3Cooldown, setStep3Cooldown] = useState(false);
-  /** 子步 3：外部填入假设（点击 AI 候选 chip 时） */
-  const [step3ExternalHypFill, setStep3ExternalHypFill] = useState<{ rowIndex: number; text: string } | null>(null);
-  /** 子步 3：表格行「重新生成」进行中 */
-  const [step3RegeneratingRowIndex, setStep3RegeneratingRowIndex] = useState<number | null>(null);
-
-  /** 子步 3：发送表格操作消息到 /message/stream，让 AI 看到完整操作链路 */
-  const sendStep3TableAction = useCallback(
-    async (
-      action: 'select_none' | 'fill_hypothesis' | 'regenerate_hyp',
-      rowIdx: number,
-      hypText?: string
-    ) => {
-      if (!activationCode || sending) return;
-      const now = Date.now();
-      const actionLabel =
-        action === 'select_none'
-          ? `[表格操作] 第 ${rowIdx + 1} 行选择了「无」`
-          : action === 'regenerate_hyp'
-            ? `[表格操作] 第 ${rowIdx + 1} 行请求重新生成假设`
-            : `[表格操作] 第 ${rowIdx + 1} 行填入了假设：「${hypText || ''}」`;
-      // 不插入 user 消息气泡（操作记录仅在 AI 可见的 conversation history 中）
-      // 但插入 assistant 消息占位，接收 AI 回复
-      const assistantId = `a_${now}`;
-      const assistantMsg: ThreadMessage = {
-        id: assistantId,
-        role: 'assistant' as const,
-        content: '',
-        createdAt: now,
-        filterStep: 3,
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
-      setSending(true);
-      if (action === 'regenerate_hyp') {
-        setStep3RegeneratingRowIndex(rowIdx);
-        step3HypTargetRowRef.current = rowIdx;
-      }
-      stickToBottomRef.current = true;
-      let assistantHasVisibleOutput = false;
-      try {
-        const apiBase = (process.env.NEXT_PUBLIC_API_URL || '').trim();
-        const streamUrl = `${apiBase ? apiBase.replace(/\/+$/, '') : ''}/api/v1/simple-chat/message/stream`;
-        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-        const effectiveThreadId =
-          activeThreadId && backendSyncedThreadId && activeThreadId === backendSyncedThreadId
-            ? activeThreadId
-            : undefined;
-        const controller = new AbortController();
-        abortControllerRef.current = controller;
-        const res = await fetch(streamUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({
-            activation_code: activationCode,
-            message: actionLabel,
-            phase: BACKEND_PHASE[phase],
-            thread_id: effectiveThreadId,
-            locale: locale === 'en' ? 'en' : 'zh',
-            rumination_filter_step: 3,
-            step3_table_action: action,
-            step3_action_row: rowIdx,
-            step3_action_hyp_text: action === 'fill_hypothesis' ? hypText : undefined,
-          }),
-          signal: controller.signal,
-        });
-        if (res.status === 401) {
-          try {
-            await apiClient.refreshAccessToken();
-          } catch {}
-        }
-        const reader = res.body?.getReader();
-        if (!reader) { setSending(false); return; }
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let fullReply = '';
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
-            try {
-              const payload = JSON.parse(line.slice(6));
-              if (payload.error) {
-                if (isEmptyResponseBlock(payload)) {
-                  setChatError(t('explore.chat.emptyResponseError'));
-                } else {
-                  setChatError(String(payload.error));
-                }
-                setAutoRetryNotice(false);
-                reader.cancel();
-                break;
-              }
-              if (payload.retrying) {
-                setAutoRetryNotice(true);
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId
-                      ? { ...m, content: '', thinkStreaming: false, thinkChunkContent: undefined }
-                      : m
-                  )
-                );
-              }
-              if (payload.think_start) {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId ? { ...m, thinkStreaming: true, thinkChunkContent: '' } : m
-                  )
-                );
-              }
-              if (payload.think_chunk) {
-                const chunk = typeof payload.think_chunk === 'string' ? payload.think_chunk : '';
-                if (chunk) {
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === assistantId ? { ...m, thinkChunkContent: chunk } : m
-                    )
-                  );
-                }
-              }
-              if (payload.think_end != null) {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId
-                      ? { ...m, thinkStreaming: false, thinkChunkContent: undefined }
-                      : m
-                  )
-                );
-              }
-              if (payload.chunk) {
-                fullReply += payload.chunk;
-                if (String(payload.chunk || '').trim()) assistantHasVisibleOutput = true;
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId ? { ...m, content: (m.content || '') + payload.chunk } : m
-                  )
-                );
-              }
-              if (payload.llm_stream_end) {
-                setPostLlmTailActive(true);
-              }
-              if (payload.hyp_retry_started) {
-                setHypRetryActive(true);
-              }
-              if (payload.rumination_progress && phase === 'rumination') {
-                const rp = payload.rumination_progress as RuminationProgress;
-                setRuminationProgressState((prev) => (prev ? { ...prev, ...rp } : rp));
-                if (activationCode) {
-                  void ruminationApi.getTable(activationCode, 3).then((tb) => {
-                    if (tb.code !== 200) return;
-                    if (tb.data?.table_widget) {
-                      setRuminationTablePayload(tb.data.table_widget as ThreadMessage['tablePayload']);
-                    }
-                    if (tb.data?.progress) setRuminationProgressState(tb.data.progress);
-                    if (typeof tb.data?.max_reached_filter_step === 'number') {
-                      setRuminationMaxReached(tb.data.max_reached_filter_step);
-                    }
-                  });
-                }
-              }
-              if (payload.hyp_candidates && Array.isArray(payload.hyp_candidates)) {
-                const cands = payload.hyp_candidates as string[];
-                const targetRow =
-                  typeof payload.hyp_target_row === 'number' ? payload.hyp_target_row : undefined;
-                const rowUnresolved = Boolean(payload.hyp_row_unresolved);
-                if (typeof targetRow === 'number') {
-                  step3HypTargetRowRef.current = targetRow;
-                }
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId
-                      ? {
-                          ...m,
-                          hypCandidates: cands,
-                          hypTargetRow: targetRow,
-                          hypRowUnresolved: rowUnresolved,
-                        }
-                      : m
-                  )
-                );
-              }
-              if (payload.done && payload.response != null) {
-                fullReply = payload.response;
-                if (String(payload.response || '').trim()) assistantHasVisibleOutput = true;
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId
-                      ? { ...m, content: fullReply, thinkStreaming: false, thinkChunkContent: undefined, createdAt: m.createdAt ?? Date.now() }
-                      : m
-                  )
-                );
-                break;
-              }
-            } catch {}
-          }
-        }
-      } catch (err: any) {
-        if (err?.name !== 'AbortError') setChatError(err?.message || '发送失败，请重试');
-      } finally {
-        setSending(false);
-        setPostLlmTailActive(false);
-        setHypRetryActive(false);
-        setAutoRetryNotice(false);
-        setStep3RegeneratingRowIndex(null);
-        setMessages((prev) => {
-          if (!assistantHasVisibleOutput) {
-            return prev.filter((m) => !(m.id === assistantId && !(m.content || '').trim()));
-          }
-          return prev;
-        });
-        abortControllerRef.current = null;
-      }
-    },
-    [activationCode, sending, phase, activeThreadId, backendSyncedThreadId, locale, apiClient]
-  );
-
-  const applyStep3SideEffect = useCallback(
-    async (effect: RuminationStep3SideEffect) => {
-      const msg = effect.message?.trim();
-      if (msg) {
-        const aid = `rum_s3_${effect.type}_${Date.now()}`;
-        // 先插入一条空的 assistant 消息占位
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: aid,
-            role: 'assistant' as const,
-            content: '',
-            createdAt: Date.now(),
-            filterStep: 3,
-          },
-        ]);
-        stickToBottomRef.current = true;
-        // 模拟流式：每 2~3 个字符一批，间隔 ~40ms，节奏接近 AI 流式
-        const chunkSize = 3;
-        const interval = 40;
-        for (let i = 0; i < msg.length; i += chunkSize) {
-          const partial = msg.slice(0, i + chunkSize);
-          await new Promise<void>((r) => setTimeout(r, interval));
-          setMessages((prev) =>
-            prev.map((m) => (m.id === aid ? { ...m, content: partial } : m))
-          );
-        }
-        // 确保最终内容完整
-        setMessages((prev) =>
-          prev.map((m) => (m.id === aid ? { ...m, content: msg } : m))
-        );
-      }
-      if (effect.type === 'skip_row' || effect.type === 'confirm_prompt') {
-        await loadRuminationTableStep(3);
-      }
-      if (effect.type === 'skip_row') {
-        setStep3Cooldown(true);
-        setTimeout(() => setStep3Cooldown(false), 1000);
-      }
-    },
-    [loadRuminationTableStep]
-  );
-
-  const flushRuminationStep3WithTrigger = useCallback(
-    async (
-      trigger: 'none' | 'hypothesis_commit',
-      rowsSnapshot: Record<string, unknown>[]
-    ) => {
-      if (!activationCode || !rowsSnapshot.length) return;
-      if (ruminationStep3SaveTimerRef.current) {
-        clearTimeout(ruminationStep3SaveTimerRef.current);
-        ruminationStep3SaveTimerRef.current = null;
-      }
-      ruminationLiveRowsRef.current = rowsSnapshot;
-      const cur = ruminationProgressStateRef.current;
-      const tc = ruminationTablePayloadRef.current;
-      const cursor =
-        (typeof cur?.filter_row_cursor === 'number' ? cur.filter_row_cursor : tc?.rowCursor) ?? 0;
-      try {
-        const res = await ruminationApi.save(activationCode, {
-          filter_step: 3,
-          filter_table: rowsSnapshot,
-          filter_row_cursor: cursor,
-          step3_trigger: trigger,
-        });
-        if (res.data?.progress) setRuminationProgressState(res.data.progress);
-        const effect = res.data?.step3_side_effect;
-        if (effect) await applyStep3SideEffect(effect);
-      } catch {
-        /* 无声失败 */
-      }
-    },
-    [activationCode, applyStep3SideEffect]
-  );
-
-  const handleStep3NoneSelected = useCallback(
-    (rowIdx: number, rowsSnapshot: Record<string, unknown>[]) => {
-      const cur =
-        (typeof ruminationProgressStateRef.current?.filter_row_cursor === 'number'
-          ? ruminationProgressStateRef.current.filter_row_cursor
-          : ruminationTablePayloadRef.current?.rowCursor) ?? 0;
-      if (rowIdx !== cur) return;
-      // 保存表格数据到后端（不触发 side effect）
-      ruminationLiveRowsRef.current = rowsSnapshot;
-      void flushRuminationStep3TableToServer();
-      // 发送操作消息给 AI
-      void sendStep3TableAction('select_none', rowIdx);
-      setStep3Cooldown(true);
-      setTimeout(() => setStep3Cooldown(false), 1000);
-    },
-    [flushRuminationStep3TableToServer, sendStep3TableAction]
-  );
-
-  const handleStep3HypothesisCommit = useCallback(
-    (rowIdx: number, text: string, rowsSnapshot: Record<string, unknown>[]) => {
-      if (!text.trim()) return;
-      const cur =
-        (typeof ruminationProgressStateRef.current?.filter_row_cursor === 'number'
-          ? ruminationProgressStateRef.current.filter_row_cursor
-          : ruminationTablePayloadRef.current?.rowCursor) ?? 0;
-      if (rowIdx !== cur) return;
-      // 只在假设超过 8 个字时发操作消息
-      if (text.trim().length > 8) {
-        ruminationLiveRowsRef.current = rowsSnapshot;
-        void flushRuminationStep3TableToServer();
-        void sendStep3TableAction('fill_hypothesis', rowIdx, text);
-      } else {
-        // 短假设只保存，不触发 AI
-        ruminationLiveRowsRef.current = rowsSnapshot;
-        void flushRuminationStep3TableToServer();
-      }
-    },
-    [flushRuminationStep3TableToServer, sendStep3TableAction]
-  );
-
-  const handleStep3HypothesisRegenerate = useCallback(
-    (_rowIdx: number, _rowId: string, rowsSnapshot: Record<string, unknown>[]) => {
-      ruminationLiveRowsRef.current = rowsSnapshot;
-      void sendStep3TableAction('regenerate_hyp', _rowIdx);
-    },
-    [sendStep3TableAction]
-  );
-
-  /**
-   * Send a message for a specific combo in matrix mode (step3).
-   * Tags messages with combo_id and streams via the same simple-chat endpoint.
-   */
-  const handleComboSendMessage = useCallback(
-    (comboId: string, text: string) => {
-      if (!activationCode || sending) return;
-      const now = Date.now();
-      const userMsg: ThreadMessage = {
-        id: `u_combo_${now}`,
-        role: 'user',
-        content: text,
-        createdAt: now,
-        comboId,
-        filterStep: 3,
-      };
-      const assistantId = `a_combo_${now}`;
-      const assistantMsg: ThreadMessage = {
-        id: assistantId,
-        role: 'assistant' as const,
-        content: '',
-        createdAt: now,
-        comboId,
-        filterStep: 3,
-      };
-      setMessages((prev) => [...prev, userMsg, assistantMsg]);
-      setChatError(null);
-      setSending(true);
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
-      const doStream = async (accessToken: string | null) => {
-        const apiBase = (process.env.NEXT_PUBLIC_API_URL || '').trim();
-        const streamUrl = `${apiBase ? apiBase.replace(/\/+$/, '') : ''}/api/v1/simple-chat/message/stream`;
-        const effectiveThreadId =
-          activeThreadId && backendSyncedThreadId && activeThreadId === backendSyncedThreadId
-            ? activeThreadId
-            : undefined;
-        const res = await fetch(streamUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-          },
-          body: JSON.stringify({
-            activation_code: activationCode,
-            message: text,
-            phase: BACKEND_PHASE[phase],
-            thread_id: effectiveThreadId,
-            activation_session_id: getActivationSessionId(session),
-            locale: locale === 'en' ? 'en' : 'zh',
-            rumination_filter_step: 3,
-            combo_id: comboId,
-          }),
-          signal: controller.signal,
-        });
-        if (!res.ok) {
-          let detail = '';
-          try { const p = await res.json(); detail = p?.detail || p?.message || ''; } catch {}
-          throw new Error(detail || `请求失败（${res.status}）`);
-        }
-        if (!res.body) throw new Error('流式接口返回为空');
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
-            try {
-              const payload = JSON.parse(line.slice(6));
-              if (payload.error) {
-                if (isEmptyResponseBlock(payload)) {
-                  setChatError(t('explore.chat.emptyResponseError'));
-                } else {
-                  setChatError(String(payload.error));
-                }
-                setAutoRetryNotice(false);
-                reader.cancel();
-                break;
-              }
-              if (payload.retrying) {
-                setAutoRetryNotice(true);
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId
-                      ? { ...m, content: '', thinkStreaming: false, thinkChunkContent: undefined }
-                      : m
-                  )
-                );
-              }
-              if (payload.think_start) {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId ? { ...m, thinkStreaming: true, thinkChunkContent: '' } : m
-                  )
-                );
-              }
-              if (payload.think_chunk) {
-                const chunk = typeof payload.think_chunk === 'string' ? payload.think_chunk : '';
-                if (chunk) {
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === assistantId ? { ...m, thinkChunkContent: chunk } : m
-                    )
-                  );
-                }
-              }
-              if (payload.think_end != null) {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId
-                      ? { ...m, thinkStreaming: false, thinkChunkContent: undefined }
-                      : m
-                  )
-                );
-              }
-              if (payload.chunk) {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId ? { ...m, content: (m.content || '') + payload.chunk } : m
-                  )
-                );
-              }
-              if (payload.hyp_candidates && Array.isArray(payload.hyp_candidates)) {
-                const cands = payload.hyp_candidates as string[];
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId ? { ...m, hypCandidates: cands } : m
-                  )
-                );
-              }
-              if (payload.rumination_progress && phase === 'rumination') {
-                setRuminationProgressState((prev) => (prev ? { ...prev, ...(payload.rumination_progress as RuminationProgress) } : payload.rumination_progress as RuminationProgress));
-              }
-              if (payload.done && payload.response != null) {
-                setAutoRetryNotice(false);
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId
-                      ? {
-                          ...m,
-                          content: payload.response,
-                          thinkStreaming: false,
-                          thinkChunkContent: undefined,
-                        }
-                      : m
-                  )
-                );
-                break;
-              }
-            } catch {}
-          }
-        }
-      };
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-      doStream(token)
-        .catch(async (err: any) => {
-          if (err?.name === 'AbortError') return;
-          if (err?.message?.includes('401')) {
-            try {
-              const nextToken = await apiClient.refreshAccessToken();
-              if (nextToken) {
-                await doStream(nextToken);
-                return;
-              }
-            } catch {}
-          }
-          setChatError(err?.message || '发送失败，请重试');
-        })
-        .finally(() => {
-          setSending(false);
-          setAutoRetryNotice(false);
-          // Clean up empty assistant messages
-          setMessages((prev) =>
-            prev.filter(
-              (m) => !(m.id === assistantId && !(m.content || '').trim())
-            )
-          );
-          abortControllerRef.current = null;
-        });
-    },
-    [activationCode, sending, phase, activeThreadId, backendSyncedThreadId, session, locale],
-  );
-
-  /** Matrix submit all: calls API to transition from matrix → 3b discussion */
-  const handleMatrixSubmitAll = useCallback(async () => {
-    if (!activationCode) return;
-    try {
-      const res = await ruminationApi.submitComboMatrix(activationCode, backendSyncedThreadId ?? undefined);
-      if (res.data?.progress) {
-        setRuminationProgressState((prev) => (prev ? { ...prev, ...res.data!.progress! } : res.data!.progress!));
-      }
-      if (res.data?.next_table_widget) {
-        setRuminationTablePayload(res.data.next_table_widget as ThreadMessage['tablePayload']);
-      }
-      // 切到 3b 后清除 combo 选择状态，并移除 matrix 阶段聊天（combo 引导 / matrix opening）
-      setMatrixModeSelectedComboId(null);
-      setMessages((prev) =>
-        prev.filter(
-          (m) =>
-            !m.comboId &&
-            !(
-              m.isStepOpening &&
-              (m.ruminationSubStep === 'matrix' ||
-                (m.filterStep === 3 && m.ruminationSubStep !== 'discussion'))
-            ),
-        ),
-      );
-      const tid = backendSyncedThreadId;
-      if (tid) {
-        queueMicrotask(() => {
-          void playRuminationStepOpeningAfterSubmit(3, tid, 'discussion');
-        });
-      }
-    } catch (e) {
-      console.error('Failed to submit combo matrix:', e);
-    }
-  }, [activationCode, backendSyncedThreadId, playRuminationStepOpeningAfterSubmit]);
-
-  /** 子步 3：用户点选表格行时，可作为未绑定行号的假设 chip 填入目标 */
-  const step3SelectedRowForHypFill = useMemo(() => {
-    if (phase !== 'rumination' || ruminationViewStep !== 3) return null;
-    const rowIdx = ruminationRowContext?.rowIndex;
-    if (rowIdx == null || rowIdx < 0) return null;
-    // discussion 模式全表解锁，任何选中行都合法；matrix 模式仍按 cursor 校验。
-    if (isStep3DiscussionMode) return rowIdx;
-    const cursor =
-      (typeof ruminationProgressState?.filter_row_cursor === 'number'
-        ? ruminationProgressState.filter_row_cursor
-        : ruminationTablePayload?.rowCursor) ?? 0;
-    if (rowIdx > cursor) return null;
-    return rowIdx;
-  }, [
-    phase,
-    ruminationViewStep,
-    ruminationRowContext?.rowIndex,
-    ruminationProgressState?.filter_row_cursor,
-    ruminationTablePayload?.rowCursor,
-    isStep3DiscussionMode,
-  ]);
-
-  /** 子步 3：点击 AI 生成的假设候选 chip → 填入消息绑定的目标行 */
-  const handleHypCandidateClick = useCallback(
-    (
-      text: string,
-      meta?: { hypTargetRow?: number; hypRowUnresolved?: boolean }
-    ) => {
-      // matrix 模式：chip 文本注入到左侧结论卡片
-      if (isStep3MatrixMode) {
-        setMatrixPendingChipText(text);
-        return;
-      }
-      const targetRow =
-        meta?.hypTargetRow ??
-        (meta?.hypRowUnresolved ? step3SelectedRowForHypFill : null);
-      if (targetRow == null) {
-        setChatError(
-          '未能确定目标行，请点击左侧表格对应行后再聊，或点该行「重新生成」以生成假设。'
-        );
-        return;
-      }
-      setChatError(null);
-      setStep3ExternalHypFill({ rowIndex: targetRow, text });
-      setTimeout(() => setStep3ExternalHypFill(null), 100);
-    },
-    [step3SelectedRowForHypFill, isStep3MatrixMode]
-  );
-
-  const handleRuminationLiveRowsChange = useCallback(
-    (rows: Record<string, unknown>[]) => {
-      ruminationLiveRowsRef.current = rows;
-      if (
-        phase !== 'rumination' ||
-        ruminationViewStep !== 3 ||
-        !activationCode ||
-        ruminationReviewMode
-      ) {
-        return;
-      }
-      if (ruminationStep3SaveTimerRef.current) {
-        clearTimeout(ruminationStep3SaveTimerRef.current);
-      }
-      ruminationStep3SaveTimerRef.current = setTimeout(() => {
-        ruminationStep3SaveTimerRef.current = null;
-        void flushRuminationStep3TableToServer();
-      }, 450);
-    },
-    [
-      phase,
-      ruminationViewStep,
-      activationCode,
-      ruminationReviewMode,
-      flushRuminationStep3TableToServer,
-    ]
-  );
-
-  useEffect(
-    () => () => {
-      if (ruminationStep3SaveTimerRef.current) {
-        clearTimeout(ruminationStep3SaveTimerRef.current);
-      }
-    },
-    []
-  );
-
-  /** 重新填写：有已提交快照的步骤可触发 */
-  const handleRuminationRefillRequest = useCallback(() => {
-    if (!activationCode || phase !== 'rumination' || !activeThreadId) return;
-    if (
-      ruminationTableNavLoading ||
-      ruminationTableSubmitting
-    ) {
-      return;
-    }
-    setRuminationRefillConfirmOpen(true);
-  }, [
-    activationCode,
-    activeThreadId,
-    phase,
-    ruminationTableNavLoading,
-    ruminationTableSubmitting,
-    ruminationReviewMode,
-  ]);
-
-  const handleRuminationRefillConfirm = useCallback(() => {
-    if (!activationCode || phase !== 'rumination' || !activeThreadId) return;
-    setRuminationRefillConfirmOpen(false);
-    ruminationGuideAbortRef.current?.abort();
-    ruminationGuideAbortRef.current = null;
-    setRuminationGuideBusy(false);
-    setInput('');
-    setChatError(null);
-    void (async () => {
-      const refillStep = ruminationViewStep;
-      const refillThreadId = activeThreadId;
-      // step1 refill：复用首次进入逻辑（展示 entry greeting → 等用户回复 → 加载表格 + opening）
-      if (refillStep === 1) {
-        clearRuminationStepOpeningShownFromStep(activationCode, activeThreadId, 1);
-        const cut = cutMessagesForRuminationStepRefill(
-          messagesRef.current,
-          ruminationViewStep,
-          ruminationStepBoundariesRef.current
-        );
-        setMessages(cut.messages);
-        setRuminationStepBoundaries(cut.boundaries);
-        saveRuminationStepBoundaries(activationCode, activeThreadId, cut.boundaries);
-        // 先调用后端 resetInitial 刷新 progress（清除 submitted 快照，退出 reviewMode）
-        await loadRuminationTableStep(1, { resetInitial: true });
-        // 清除旧表格，避免在 entry greeting 阶段显示
-        setRuminationTablePayload(null);
-        // 请求后端重新生成 entry greeting
-        const th = threads.find((t) => t.id === activeThreadId);
-        if (th) {
-          try {
-            const reopenRes = await apiClient.post('/simple-chat/thread/reopen', {
-              activation_code: activationCode,
-              phase: BACKEND_PHASE[phase],
-              thread_id: activeThreadId,
-            });
-            const entryGreeting = reopenRes?.data?.entry_greeting;
-            if (entryGreeting) {
-              const updated: ChatThread = { ...th, status: 'in-progress', messages: cut.messages };
-              saveThread(activationCode, phase, updated);
-              setThreads((prev) =>
-                prev.map((t) => (t.id === activeThreadId ? updated : t))
-              );
-              // 模拟流式打字展示 entry greeting，与首次进入一致
-              const phaseGreetingId = `rum_phase_greeting_${Date.now()}`;
-              const ac = new AbortController();
-              ruminationGuideAbortRef.current = ac;
-              setRuminationGuideBusy(true);
-              setMessages((prev) => [
-                ...prev,
-                { id: phaseGreetingId, role: 'assistant' as const, content: '', createdAt: Date.now(), filterStep: 1 },
-              ]);
-              void simulateFixedRuminationOpening(entryGreeting, ac.signal, (acc) => {
-                setMessages((prev) =>
-                  prev.map((m) => (m.id === phaseGreetingId ? { ...m, content: acc } : m))
-                );
-              }).then(() => {
-                setRuminationGuideBusy(false);
-              });
-            }
-          } catch {
-            /* 失败不阻断 */
-          }
-        }
-        // 设 awaitingReady：等用户回复后 handleSend 拦截会自动加载表格 + 播放 opening
-        setRuminationAwaitingReady(true);
-        setRuminationProgressNonce((n) => n + 1);
-        return;
-      }
-      // 非 step1 的 refill：resetInitial 清 submitted 快照 → 退出 reviewMode（banner 消失）
-      // step3（matrix / discussion）都会走这里：清空 combo_matrix、combo_conclusions、filter_sub_step，
-      // 按 step2 submitted 重新派生 matrix（保留 step2 不匹配项置灰），step3 所有消息按 boundary 整段删除。
-      const ok = await loadRuminationTableStep(ruminationViewStep, { resetInitial: true });
-      if (!ok) return;
-      clearRuminationStepOpeningShownFromStep(activationCode, activeThreadId, ruminationViewStep);
-      const cut = cutMessagesForRuminationStepRefill(
-        messagesRef.current,
-        ruminationViewStep,
-        ruminationStepBoundariesRef.current
-      );
-      setMessages(cut.messages);
-      setRuminationStepBoundaries(cut.boundaries);
-      saveRuminationStepBoundaries(activationCode, activeThreadId, cut.boundaries);
-      // step3 重置后清空 combo 选中态，让 useEffect 重新派生 matrix 并选中第一个
-      if (refillStep === 3) {
-        setMatrixModeSelectedComboId(null);
-      }
-      if (refillThreadId) {
-        void playRuminationStepOpeningAfterSubmit(
-          refillStep,
-          refillThreadId,
-          refillStep === 3 ? 'matrix' : undefined,
-        );
-      }
-      setRuminationProgressNonce((n) => n + 1);
-    })();
-  }, [
-    activationCode,
-    activeThreadId,
-    loadRuminationTableStep,
-    phase,
-    playRuminationStepOpeningAfterSubmit,
-    ruminationViewStep,
-    threads,
-  ]);
 
   const phaseClass =
     phase === 'values'
@@ -4275,113 +1870,21 @@ function LiveChatPhasePage() {
             ? 'purpose'
             : 'rumination';
 
-  /** 沉淀对话区：助手气泡样式与前四步一致（values 蓝条白底），用户气泡仍用紫色主题 */
-  const flowAiPhaseClass = phase === 'rumination' ? 'values' : phaseClass;
-
-  /** 筛选子步导航：filter 段需已加载左表；完成后（final_choice / recommend / end）可无表显示分段，点击再拉表回看 */
-  const ruminationMainSection = ruminationProgressState?.main_section;
-  const ruminationPostFilterReview =
-    ruminationMainSection === 'final_choice' ||
-    ruminationMainSection === 'recommend' ||
-    ruminationMainSection === 'end';
-  const ruminationShowFilterStepNav =
-    !!ruminationProgressState &&
-    (ruminationMainSection === 'filter' || ruminationPostFilterReview) &&
-    (!!ruminationTablePayload || ruminationPostFilterReview);
-
   if (!session || !phaseMeta || !phaseInfo) return null;
-
-  const useCareeringMatte = phase !== 'rumination';
-
-  // ── v3/v4 版本判定 ──
-  // 优先级：调试覆盖（?v4=1 / ?v3=1，最高）> 后端判定（ruminationVersion）> 兜底 v3。
-  // 见 wiki/开发文档/0707-tag1.6.0.md。后端判定由 rumination_ab_assignments 表持久化。
-  if (phase === 'rumination' && activationCode) {
-    const debugV4 = searchParams?.get('v4') === '1';
-    const debugV3 = searchParams?.get('v3') === '1';
-    const shouldUseV4 = debugV4 || (!debugV3 && ruminationVersion === 'v4');
-
-    // 后端判定还在加载中且无调试覆盖 → 轻量 loading，避免先闪 v3 再切 v4
-    if (ruminationVersion === null && !debugV4 && !debugV3) {
-      return (
-        <div className="chat-shell-h flex min-h-0 flex-col overflow-hidden items-center justify-center text-gray-400">
-          加载中…
-        </div>
-      );
-    }
-
-    if (shouldUseV4) {
-      // v4 暂不依赖 v3 线程 completed 门控；导航逻辑与「完成并继续」一致，仅跳过 thread canContinue。
-      const handleV4CompleteAndContinue = () => {
-        if (!activationCode) {
-          setChatError('激活码上下文丢失，请返回激活页重新进入');
-          return;
-        }
-        let sessionSnapshot = session;
-        if (!sessionSnapshot) {
-          try {
-            sessionSnapshot = loadSession(activationCode);
-            setSession(sessionSnapshot);
-          } catch {
-            setChatError('会话状态读取失败，请刷新页面后重试');
-            return;
-          }
-        }
-        if (isNavigatingRef.current) return;
-        if (sessionSnapshot.currentPhase !== phase) {
-          router.push(`/explore/chat/${sessionSnapshot.currentPhase}`);
-          return;
-        }
-        isNavigatingRef.current = true;
-        try {
-          const updated = unlockNextPhase({ ...sessionSnapshot, currentPhase: phase });
-          setSession(updated);
-          router.push(`/explore/transition?from=${phase}`);
-          window.setTimeout(() => {
-            isNavigatingRef.current = false;
-          }, 1800);
-        } catch (err) {
-          console.error('[V4 CompleteAndContinue] 导航异常', err);
-          isNavigatingRef.current = false;
-          setChatError('跳转失败，请刷新页面后重试');
-        }
-      };
-
-      return (
-        <div className="chat-shell-h flex min-h-0 flex-col overflow-hidden">
-          {/* 旧内核浏览器提示（ADR-0020）：「不再提示」前每个 phase 页都弹 */}
-          <LegacyBrowserNotice />
-          <RuminationV4Page
-            activationCode={activationCode}
-            onCompleteAndContinue={handleV4CompleteAndContinue}
-          />
-        </div>
-      );
-    }
-  }
 
   return (
     <div
-      className={
-        phase === 'rumination'
-          ? 'rumination-beautiful-root flow-light chat-shell-h relative flex min-h-0 flex-col overflow-hidden'
-          : 'flow-light careering-matte chat-shell-h flex min-h-0 flex-col overflow-hidden'
-      }
+      className="flow-light careering-matte chat-shell-h flex min-h-0 flex-col overflow-hidden"
       data-phase={phase}
       {...chatAppearanceAttrs}
       style={chatAppearanceStyle}
     >
       {/* 旧内核浏览器提示（ADR-0020）：「不再提示」前每个 phase 页都弹 */}
       <LegacyBrowserNotice />
-      {phase === 'rumination' ? (
-        <ExploreLandingMeshLayers />
-      ) : (
-        <ChatPhaseBackground phase={phase} engine="silk" />
-      )}
+      <ChatPhaseBackground phase={phase} engine="silk" />
       {/* 顶栏留白由 (main)/layout.tsx 的 pt-14 承担，此处勿再 pt-14，否则侧栏与主区会出现双倍空白 */}
       <div className="flex min-h-0 flex-1 overflow-hidden relative z-10">
-        {phase !== 'rumination' && (
-          <ChatPhaseSidebar
+        <ChatPhaseSidebar
             threads={threadsForSidebar}
             activeThreadId={activeThreadId}
             onSelectThread={handleSelectThread}
@@ -4392,119 +1895,10 @@ function LiveChatPhasePage() {
             phaseInteractionLocked={phaseInteractionLocked}
             careeringMatte
             phaseStickerSrc={`/assets/openlife-journey/sticker-${phase}.webp`}
-            streamBlocksSessionSwitch={sending || anyGuideBusy}
+            streamBlocksSessionSwitch={sending}
             threadsLoading={!threadsFetched || initLoading}
           />
-        )}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {phase === 'rumination' && (
-            <>
-              <header className="relative shrink-0 px-4 pb-2 pt-3 text-center sm:px-8 sm:pb-3 sm:pt-4">
-                <h1 className="pr-10 text-2xl font-bold text-bd-fg sm:pr-0 sm:text-3xl">
-                  {phaseInfo.num} {phaseLabel}
-                </h1>
-                <p className="mx-auto mt-2 max-w-2xl text-sm leading-relaxed text-neutral-600">
-                  {phaseMeta.desc} {phaseMeta.hint}
-                </p>
-                {!hideRuminationHeaderComplete && (
-                  <div className="absolute right-2 top-2 flex items-center gap-2 sm:right-6 sm:top-3">
-                    {/* 外观弹层：rumination 无侧栏，隐藏侧栏相关两组开关 */}
-                    <ChatAppearancePopover hideSidebarOptions />
-                    <button
-                      type="button"
-                      onClick={handleCompleteAndContinue}
-                      disabled={!canContinue}
-                      title={continueDisabledHint}
-                      className="bd-btn-black flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold text-white sm:px-4 sm:py-2.5 sm:text-sm disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <FileText size={15} strokeWidth={2} className="hidden shrink-0 sm:inline" />
-                      <span className="max-w-[9rem] truncate sm:max-w-none">
-                        {t('explore.chat.completeAndContinue')}
-                      </span>
-                    </button>
-                  </div>
-                )}
-              </header>
-              {activationCode && (
-                <div className="shrink-0 px-4 pb-3 pt-0 sm:px-8">
-                  <RuminationSectionProgress
-                    variant="beautiful"
-                    activationCode={activationCode}
-                    refreshNonce={ruminationProgressNonce}
-                    externalProgressOnly
-                    serverProgress={ruminationProgressState}
-                    viewFilterStep={
-                      ruminationShowFilterStepNav ? ruminationViewStep : null
-                    }
-                    filterStepNav={
-                      ruminationShowFilterStepNav
-                        ? {
-                            onPrev: handleRuminationFilterPrev,
-                            onNext: handleRuminationFilterNext,
-                            prevDisabled:
-                              ruminationViewStep <= 1 ||
-                              sending ||
-                              anyGuideBusy ||
-                              ruminationTableNavLoading ||
-                              phaseInteractionLocked,
-                            nextDisabled:
-                              sending ||
-                              anyGuideBusy ||
-                              ruminationTableNavLoading ||
-                              phaseInteractionLocked ||
-                              ruminationViewStep >= RUMINATION_FILTER_STEP_MAX ||
-                              !isRuminationFilterStepReachable(
-                                ruminationViewStep + 1,
-                                ruminationProgressState
-                              ),
-                            hidePrev: ruminationViewStep <= 1,
-                            hideNext: ruminationViewStep >= RUMINATION_FILTER_STEP_MAX,
-                            segmentJump: {
-                              jumpDisabled:
-                                sending ||
-                                anyGuideBusy ||
-                                ruminationTableNavLoading ||
-                                phaseInteractionLocked,
-                              onJump: (step) => {
-                                if (step === ruminationViewStep) return;
-                                void loadRuminationTableStep(step);
-                              },
-                            },
-                          }
-                        : undefined
-                    }
-                  />
-                </div>
-              )}
-              {activationCode && ruminationNegRemoteStepBanner != null && (
-                <div
-                  className="shrink-0 border-y border-neutral-200 bg-neutral-50 px-4 py-2.5 sm:px-8"
-                  role="status"
-                >
-                  <p className="text-xs leading-relaxed text-neutral-700 sm:text-sm">
-                    {t('explore.chat.ruminationUi.negGateRemoteStepHint', {
-                      step: String(ruminationNegRemoteStepBanner),
-                    })}
-                  </p>
-                  <button
-                    type="button"
-                    disabled={
-                      ruminationTableNavLoading ||
-                      anyGuideBusy ||
-                      sending ||
-                      phaseInteractionLocked
-                    }
-                    onClick={() => void loadRuminationTableStep(ruminationNegRemoteStepBanner)}
-                    className="mt-2 rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-900 disabled:cursor-not-allowed disabled:opacity-40 sm:text-sm"
-                  >
-                    {t('explore.chat.ruminationUi.negGateJumpToStep', {
-                      step: String(ruminationNegRemoteStepBanner),
-                    })}
-                  </button>
-                </div>
-              )}
-            </>
-          )}
           {/* 报告已解锁：只读历史模式提示条 + 查看报告入口 */}
           {reportUnlocked && activationCode && (
             <div
@@ -4527,148 +1921,9 @@ function LiveChatPhasePage() {
               </div>
             </div>
           )}
-          {/* 3b discussion: back-to-matrix banner */}
-          {phase === 'rumination' && ruminationViewStep === 3 && ruminationProgressState?.filter_sub_step === 'discussion' && (
-            <div className="shrink-0 border-y border-neutral-200 bg-neutral-50 px-4 py-2 sm:px-8">
-              <button
-                type="button"
-                disabled={sending || ruminationTableNavLoading}
-                onClick={() => {
-                  if (activationCode) {
-                    void ruminationApi.save(activationCode, { filter_sub_step: 'matrix' }).then((res) => {
-                      if (res.data?.progress) {
-                        setRuminationProgressState((prev) => (prev ? { ...prev, ...res.data!.progress! } : res.data!.progress!));
-                      }
-                    });
-                  }
-                }}
-                className="flex items-center gap-1.5 text-sm text-neutral-600 hover:text-teal-600 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <ArrowLeft size={14} />
-                返回组合填写
-              </button>
-            </div>
-          )}
-          <div
-            ref={phase === 'rumination' ? ruminationWorkbenchRef : undefined}
-            className={`flex min-h-0 min-w-0 flex-1 ${
-              phase === 'rumination'
-                ? `relative rumination-workbench flex w-full min-h-0 gap-4 px-3 pb-3 sm:gap-6 sm:px-6 ${ruminationWorkbenchStacked ? 'flex-col' : 'flex-row'}`
-                : 'flex-col'
-            }`}
-          >
-            {phase === 'rumination' && ruminationTableNavLoading && (
-              <div
-                className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 rounded-xl bg-white/45 px-4 text-center text-sm font-medium text-neutral-700 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.6)] backdrop-blur-sm"
-                role="status"
-                aria-live="polite"
-                aria-busy="true"
-              >
-                <Loader2 className="h-8 w-8 shrink-0 animate-spin text-sky-600" aria-hidden />
-                <span className="max-w-xs leading-snug">
-                  {t('explore.chat.ruminationUi.tableNavLoading')}
-                </span>
-              </div>
-            )}
-            {phase === 'rumination' && (
-              <aside
-                className={`rumination-beautiful-card flex min-h-0 min-w-0 flex-col overflow-hidden py-4 pl-4 pr-3 sm:min-h-[min(52vh,560px)] sm:py-5 sm:pl-5 sm:pr-4 ${
-                  ruminationWorkbenchStacked ? 'w-full flex-none' : 'w-full flex-1 sm:w-auto'
-                }`}
-              >
-                {isStep3MatrixMode ? (
-                  <Step3MatrixLeftPanel
-                    progress={ruminationProgressState!}
-                    matrix={ruminationProgressState?.combo_matrix || []}
-                    activationCode={activationCode!}
-                    allMessages={messages}
-                    selectedComboId={matrixModeSelectedComboId}
-                    onSelectComboId={setMatrixModeSelectedComboId}
-                    onSubmitAll={handleMatrixSubmitAll}
-                    onProgressUpdate={(p) => setRuminationProgressState((prev) => (prev ? { ...prev, ...p } : p))}
-                    externalChipText={matrixPendingChipText}
-                    onExternalChipConsumed={() => setMatrixPendingChipText(null)}
-                  />
-                ) : ruminationTablePayload ? (
-                  <RuminationTableWidget
-                    className="min-h-0 flex-1"
-                    uiVariant="glass"
-                    cardTitle={t('explore.chat.ruminationUi.tableCardTitle')}
-                    payload={ruminationTablePayload}
-                    hideConfirmButton={false}
-                    confirmLabel={t('explore.chat.ruminationTable.confirm')}
-                    refillLabel={t('explore.chat.ruminationTable.refill')}
-                    selectPlaceholder={t('explore.chat.ruminationUi.tableSelectPlaceholder')}
-                    inputPlaceholder={t('explore.chat.ruminationUi.tableInputPlaceholder')}
-                    hypothesisRegenerateHint={t(
-                      'explore.chat.ruminationUi.hypothesisRegenerateHint'
-                    )}
-                    hypothesisRegenerateLabel={t(
-                      'explore.chat.ruminationUi.hypothesisRegenerate'
-                    )}
-                    hypothesisRegeneratingLabel={t(
-                      'explore.chat.ruminationUi.hypothesisRegenerating'
-                    )}
-                    hypothesisRegeneratingRowIndex={step3RegeneratingRowIndex}
-                    onHypothesisRegenerate={handleStep3HypothesisRegenerate}
-                    hypothesisPreviewTitle={t('explore.chat.ruminationUi.hypothesisPreviewTitle')}
-                    hypothesisPreviewHint={t('explore.chat.ruminationUi.hypothesisPreviewHint')}
-                    hypothesisTagFreelanceLabel={t(
-                      'explore.chat.ruminationUi.hypothesisTagFreelance'
-                    )}
-                    hypothesisTagCompanyLabel={t(
-                      'explore.chat.ruminationUi.hypothesisTagCompany'
-                    )}
-                    hypothesisTagExtraLabel={t('explore.chat.ruminationUi.hypothesisTagExtra')}
-                    hypothesisPendingLabel={t('explore.chat.ruminationUi.hypothesisPendingOption')}
-                    hypothesisOtherLabel={t('explore.chat.ruminationUi.hypothesisCustomOption')}
-                    confirmDisabledAfterCommit={ruminationStepHasSubmitted}
-                    tableRefillMode={ruminationStepHasSubmitted}
-                    onRefill={handleRuminationRefillRequest}
-                    reviewReadOnly={ruminationReviewMode}
-                    onRowContextChange={setRuminationRowContext}
-                    onLiveRowsChange={handleRuminationLiveRowsChange}
-                    onStep3NoneSelected={handleStep3NoneSelected}
-                    onStep3HypothesisCommit={handleStep3HypothesisCommit}
-                    step3Cooldown={step3Cooldown}
-                    step3ExternalHypFill={step3ExternalHypFill}
-                    submitting={ruminationTableSubmitting}
-                    confirmSoftBlocked={ruminationNegTableSubmitBlocked}
-                    confirmSoftBlockedPulseTick={ruminationNegConfirmPulseTick}
-                    onConfirmSoftBlocked={handleRuminationNegBlockedConfirmAttempt}
-                    confirmError={!ruminationNegTableSubmitBlocked ? chatError : null}
-                    onConfirm={(rows) =>
-                      handleTableConfirm('rumination_left_panel', ruminationTablePayload, rows)
-                    }
-                    disabled={
-                      sending ||
-                      ruminationTableSubmitting ||
-                      anyGuideBusy ||
-                      ruminationTableNavLoading ||
-                      phaseInteractionLocked
-                    }
-                    activeItemIds={ruminationNegActiveItemIds}
-                    negGateExploring={ruminationNegTableSubmitBlocked}
-                  />
-                ) : (
-                  <div className="flex min-h-0 flex-1 flex-col items-center justify-center py-10 text-center">
-                    <p className="px-2 text-sm text-neutral-500">
-                      {t('explore.chat.ruminationUi.tableEmptyHint')}
-                    </p>
-                  </div>
-                )}
-              </aside>
-            )}
-            <div
-              className={`flex min-h-0 min-w-0 flex-col overflow-hidden ${
-                phase === 'rumination'
-                  ? ruminationWorkbenchStacked
-                    ? 'w-full flex-none min-h-[min(40vh,420px)]'
-                    : 'w-full flex-1 sm:w-auto'
-                  : 'flex-1'
-              }`}
-            >
-              {phase !== 'rumination' && (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+
                 <header className="careering-chat-header">
                   <h2 className="careering-chat-phase-title">
                     {phaseInfo.num} {phaseLabel}
@@ -4690,109 +1945,15 @@ function LiveChatPhasePage() {
                     </button>
                   </div>
                 </header>
-              )}
-              {phase === 'rumination' && ruminationReviewMode && (
-                <div className="shrink-0 border-b border-amber-200/60 bg-amber-50/80 px-4 py-2.5 sm:px-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs leading-relaxed text-amber-800 sm:text-sm">
-                      {t('explore.chat.ruminationUi.reviewModeBanner', {
-                        step: String(ruminationViewStep),
-                      })}
-                    </p>
-                    <button
-                      type="button"
-                      disabled={ruminationTableNavLoading || sending || anyGuideBusy}
-                      onClick={handleRuminationReviewContinue}
-                      className="shrink-0 rounded-full bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-40 sm:text-sm"
-                    >
-                      {t('explore.chat.ruminationUi.reviewModeContinue')}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div
-                className={
-                  phase === 'rumination'
-                    ? 'rumination-beautiful-card rumination-beautiful-card--chat flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden py-4 px-3 sm:px-5 sm:py-5'
-                    : 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
-                }
-              >
-                {phase === 'rumination' && (
-                  <div className="mb-2 shrink-0 border-b border-black/[0.06] pb-2">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h2 className="text-lg font-semibold text-bd-fg">
-                          {isStep3MatrixMode && matrixModeSelectedComboId
-                            ? (() => {
-                                const combo = ruminationProgressState?.combo_matrix?.find(
-                                  (m) => m.combo_id === matrixModeSelectedComboId,
-                                );
-                                return combo
-                                  ? `${combo.passion_name} × ${combo.strength_name}`
-                                  : t('explore.chat.ruminationUi.chatTitle');
-                              })()
-                            : t('explore.chat.ruminationUi.chatTitle')}
-                        </h2>
-                        <p className="mt-0.5 text-xs text-neutral-500">
-                          {isStep3MatrixMode
-                            ? matrixModeSelectedComboId
-                              ? '与我探讨这个组合的假设方向'
-                              : '请从左侧选择一个组合开始探索'
-                            : ruminationNegExploringPinned &&
-                                (ruminationProgressState?.rumination_neg_state?.progress_header_zh || '').trim()
-                              ? ruminationProgressState?.rumination_neg_state?.progress_header_zh
-                              : t('explore.chat.ruminationUi.chatSubtitle')}
-                        </p>
-                      </div>
-                      {ruminationNegExploringPinned && (
-                        <button
-                          type="button"
-                          disabled={ruminationTableSubmitting}
-                          onClick={() => void handleRuminationNegDeepEnd()}
-                          className="rumination-neg-end-pill shrink-0 rounded-full bg-neutral-900 px-3.5 py-1.5 text-xs font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          {t('explore.chat.ruminationUi.negGateEndDeep')}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-                <div
-                  className={`flex min-h-0 flex-1 flex-col overflow-hidden ${
-                    phase === 'rumination' ? 'py-1' : useCareeringMatte ? 'py-4' : 'px-6 py-4'
-                  }`}
-                >
-                  {/* 对话区：沉淀阶段表格在左侧栏，此处仅文本与结论卡 */}
-                  <div
-                    className={`flow-chat-box relative flex min-h-0 min-w-0 flex-1 flex-col ${
-                      phase === 'rumination'
-                        ? 'rumination-beautiful-chat-panel w-full max-w-none'
-                        : useCareeringMatte
-                          ? 'w-full max-w-none'
-                          : 'mx-auto w-full max-w-3xl'
-                    }`}
-                  >
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden py-4">
+                  {/* 对话区 */}
+                  <div className="flow-chat-box relative flex min-h-0 min-w-0 flex-1 flex-col w-full max-w-none">
               <div
                 ref={chatBodyRef}
-                className={`flow-chat-body min-h-0 flex-1 overflow-y-auto ${
-                  useCareeringMatte || phase === 'rumination' ? 'min-w-0 w-full' : ''
-                } ${phase === 'rumination' ? 'rumination-chat-body-fade' : ''}`}
+                className="flow-chat-body min-h-0 min-w-0 w-full flex-1 overflow-y-auto"
               >
-                <div
-                  className={
-                    useCareeringMatte || phase === 'rumination'
-                      ? 'careering-chat-messages-inner min-w-0 w-full max-w-none px-4 sm:px-6 lg:px-12'
-                      : 'contents'
-                  }
-                >
-                {!useCareeringMatte && phase !== 'rumination' && (
-                  <div className="flow-dimension-label">
-                    <span className="flow-dimension-dot" />
-                    {t('explore.chat.exploringWithDim', { dim: phaseLabel })}
-                  </div>
-                )}
-
+                <div className="careering-chat-messages-inner min-w-0 w-full max-w-none px-4 sm:px-6 lg:px-12">
                 {initLoading || !exploreResumeSynced ? (
                   <div className="flex justify-center py-12">
                     <div className="flex gap-1.5">
@@ -4806,14 +1967,12 @@ function LiveChatPhasePage() {
                       ))}
                     </div>
                   </div>
-                ) : displayMessages.length === 0 ? (
+                ) : messages.length === 0 ? (
                   <p className="flow-progress-text text-center py-8 text-sm">
-                    {phase === 'rumination'
-                      ? t('explore.chat.ruminationUi.chatEmptyHint')
-                      : t('explore.chat.preparingFirstQuestion')}
+                    {t('explore.chat.preparingFirstQuestion')}
                   </p>
                 ) : (
-                  displayMessages.map((m, idx) => {
+                  messages.map((m, idx) => {
                     const msgIdxInFull = messages.findIndex((x) => x.id === m.id);
                     const aiIndexForHandlers = msgIdxInFull >= 0 ? msgIdxInFull : idx;
                     return (
@@ -4856,7 +2015,7 @@ function LiveChatPhasePage() {
                         </div>
                       ) : m.role === 'user' ? (
                         <div className="flow-msg-user-wrap">
-                          {(useCareeringMatte || phase === 'rumination') && m.createdAt !== undefined && (
+                          {m.createdAt !== undefined && (
                             <div className="flow-msg-careering-meta flow-msg-careering-meta--user">
                               <div
                                 className="flow-msg-careering-avatar flow-msg-careering-avatar--user text-xs font-semibold text-white"
@@ -4880,59 +2039,19 @@ function LiveChatPhasePage() {
                               </span>
                             </div>
                           )}
-                          {!useCareeringMatte && phase !== 'rumination' && m.createdAt !== undefined && (
-                            <span className="flow-msg-time text-[10px] text-[var(--flow-text-muted)] mb-1 block">
-                              {`${new Date(m.createdAt).getHours().toString().padStart(2, '0')}:${new Date(m.createdAt).getMinutes().toString().padStart(2, '0')}`}
-                            </span>
-                          )}
-                          <div
-                            className={`flow-msg-user-anchor${m.ruminationRowLabel ? ' has-row-context' : ''}`}
-                          >
-                            {m.tableAction ? (
-                              <div className="flow-msg-user-context-bar">
-                                <Square
-                                  size={14}
-                                  strokeWidth={2}
-                                  className="flow-msg-user-context-icon shrink-0"
-                                  aria-hidden
-                                />
-                                <span className="flow-msg-user-context-text">
-                                  {m.tableAction === 'select_none' ? '选择了「无」' : '填入了假设'}
-                                </span>
-                              </div>
-                            ) : null}
-                            {m.ruminationRowLabel ? (
-                              <div
-                                className="flow-msg-user-context-bar"
-                                title={m.ruminationRowLabel}
-                              >
-                                <ListFilter
-                                  size={14}
-                                  strokeWidth={2}
-                                  className="flow-msg-user-context-icon shrink-0"
-                                  aria-hidden
-                                />
-                                <span className="flow-msg-user-context-text">
-                                  {m.ruminationRowLabel}
-                                </span>
-                              </div>
-                            ) : null}
+                          <div className="flow-msg-user-anchor">
                             <div className="flow-msg-user-content" lang="zh-CN">
                               {(() => {
                                 const s = (m.content || '').replace(/\r\n/g, '\n');
                                 const charCount = [...s].length;
                                 const hasManualBreak = s.includes('\n');
                                 // 仅超短文本保留单行；稍长句子必须允许自动换行，避免窄屏溢出。
-                                const compactSingleLineThreshold =
-                                  useCareeringMatte || phase === 'rumination' ? 8 : 25;
+                                const compactSingleLineThreshold = 8;
                                 const compact =
                                   charCount > 0 &&
                                   charCount <= compactSingleLineThreshold &&
                                   !hasManualBreak;
-                                const textClass =
-                                  useCareeringMatte || phase === 'rumination'
-                                    ? `flow-msg-user-text flow-msg-user-text--careering-plain${compact ? ' flow-msg-user-text--compact' : ''}`
-                                    : `flow-msg-user-text${compact ? ' flow-msg-user-text--compact' : ''}`;
+                                const textClass = `flow-msg-user-text flow-msg-user-text--careering-plain${compact ? ' flow-msg-user-text--compact' : ''}`;
                                 return <span className={textClass}>{s}</span>;
                               })()}
                             </div>
@@ -4953,41 +2072,23 @@ function LiveChatPhasePage() {
                       ) : (
                         <FlowAiMessage
                           content={m.content}
-                          phase={flowAiPhaseClass}
-                          variant={
-                            phase === 'rumination'
-                              ? 'ruminationWorkbench'
-                              : useCareeringMatte
-                                ? 'careeringMatte'
-                                : undefined
-                          }
+                          phase={phaseClass}
+                          variant="careeringMatte"
                           careeringAiRoleLabel={t('explore.chat.careeringAiRole')}
                           contentMode={
                             'markdown'
                           }
-                          streaming={
-                            (sending ||
-                              anyGuideBusy) &&
-                            idx === displayMessages.length - 1
-                          }
+                          streaming={sending && idx === messages.length - 1}
                           thinkStreaming={m.thinkStreaming}
                           thinkChunkContent={m.thinkChunkContent}
-                          thinkPlaceholders={
-                            m.comboGuidePlaceholder
-                              ? [
-                                  t('explore.chat.thinkComboMatrixPlaceholder'),
-                                  t('explore.chat.thinkComboMatrixPlaceholder2'),
-                                  t('explore.chat.thinkComboMatrixPlaceholder3'),
-                                ]
-                              : [
-                                  t('explore.chat.thinkInProgress1'),
-                                  t('explore.chat.thinkInProgress2'),
-                                  t('explore.chat.thinkInProgress3'),
-                                  t('explore.chat.thinkInProgress4'),
-                                  t('explore.chat.thinkInProgress5'),
-                                  t('explore.chat.thinkInProgress6'),
-                                ]
-                          }
+                          thinkPlaceholders={[
+                            t('explore.chat.thinkInProgress1'),
+                            t('explore.chat.thinkInProgress2'),
+                            t('explore.chat.thinkInProgress3'),
+                            t('explore.chat.thinkInProgress4'),
+                            t('explore.chat.thinkInProgress5'),
+                            t('explore.chat.thinkInProgress6'),
+                          ]}
                           timestamp={m.createdAt}
                           toolbarCopyTitle={t('explore.chat.messageToolbar.copy')}
                           toolbarLikeTitle={t('explore.chat.messageToolbar.like')}
@@ -5010,12 +2111,6 @@ function LiveChatPhasePage() {
                           hideToolbar={
                             phaseInteractionLocked
                           }
-                          hypCandidates={m.hypCandidates || undefined}
-                          hypTargetRow={m.hypTargetRow}
-                          hypRowUnresolved={m.hypRowUnresolved}
-                          selectedRowFallback={step3SelectedRowForHypFill}
-                          onHypCandidateClick={handleHypCandidateClick}
-                          comboMatrixMode={isStep3MatrixMode || isStep3DiscussionMode}
                         />
                       )}
                     </div>
@@ -5027,14 +2122,6 @@ function LiveChatPhasePage() {
                     <div className="rounded-xl border border-[var(--flow-border)] bg-[var(--flow-card-bg)] p-4 flex items-center gap-3 text-[var(--flow-text-muted)] text-sm animate-pulse">
                       <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                       <span>{t('explore.chat.conclusionLoading')}</span>
-                    </div>
-                  </div>
-                )}
-                {hypRetryActive && (
-                  <div className="flow-msg-conclusion-wrap my-3">
-                    <div className="rounded-xl border border-[var(--flow-border)] bg-[var(--flow-card-bg)] p-4 flex items-center gap-3 text-[var(--flow-text-muted)] text-sm animate-pulse">
-                      <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      <span>{t('explore.chat.hypRetryLoading')}</span>
                     </div>
                   </div>
                 )}
@@ -5087,18 +2174,10 @@ function LiveChatPhasePage() {
                 {t('explore.chat.phaseLockedInputBanner')}
               </div>
             )}
-            <div
-              className={`flow-input-area${phase === 'rumination' && ruminationRowContext ? ' rumination-input-focused-context' : ''}`}
-            >
+            <div className="flow-input-area">
               <form onSubmit={(e) => {
                 e.preventDefault();
-                if (isStep3MatrixMode && matrixModeSelectedComboId) {
-                  if (!input.trim() || sending) return;
-                  handleComboSendMessage(matrixModeSelectedComboId, input.trim());
-                  setInput('');
-                } else {
-                  handleSend();
-                }
+                handleSend();
               }} className="w-full">
                 {pendingConclusionChoiceBlocksChat && (
                   <p
@@ -5111,14 +2190,13 @@ function LiveChatPhasePage() {
                 {showConclusionRequestButton && (
                   <ConclusionRequestButton
                     state={conclusionReqState}
-                    idle={!sending && !anyGuideBusy && !input.trim()}
+                    idle={!sending && !input.trim()}
                     onClick={handleRequestConclusion}
                   />
                 )}
                 <div
                   className={`flow-input-box${
-                    (phaseInteractionLocked && !sending && !anyGuideBusy) ||
-                    (phase === 'rumination' && ruminationTableNavLoading && !sending) ||
+                    (phaseInteractionLocked && !sending) ||
                     (pendingConclusionChoiceBlocksChat && !sending)
                       ? ' opacity-40 pointer-events-none'
                       : ''
@@ -5138,9 +2216,7 @@ function LiveChatPhasePage() {
                       waitingForConclusionCardUi ||
                       (sending && conclusionLoading)
                         ? t('explore.chat.streamStatusConclusion')
-                        : ruminationViewStep === 3
-                          ? t('explore.chat.streamStatusHypothesis')
-                          : t('explore.chat.streamStatusGeneric')}
+                        : t('explore.chat.streamStatusGeneric')}
                     </p>
                   )}
                   <div className="flex w-full min-w-0 items-end gap-2.5">
@@ -5151,50 +2227,23 @@ function LiveChatPhasePage() {
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
-                        if (isStep3MatrixMode && matrixModeSelectedComboId) {
-                          if (!input.trim() || sending) return;
-                          handleComboSendMessage(matrixModeSelectedComboId, input.trim());
-                          setInput('');
-                          return;
-                        }
-                        if (
-                          !sending &&
-                          !isReadOnly &&
-                          !(phase === 'rumination' && ruminationTableNavLoading)
-                        ) {
+                        if (!sending && !isReadOnly) {
                           handleSend();
                         }
                       }
                     }}
                     placeholder={
-                      isStep3MatrixMode
-                        ? matrixModeSelectedComboId
-                          ? '输入你的想法...'
-                          : '请先从左侧选择一个组合'
-                        : discussionNeedsRow
-                          ? t('explore.chat.ruminationUi.placeholderDiscussionSelectRow')
-                          : streamTailInputPlaceholder ??
-                          (phaseInteractionLocked
-                            ? t('explore.chat.placeholderPhaseLocked')
-                            : isReadOnly
-                              ? t('explore.chat.placeholderReadOnly')
-                              : hasCollapsedConclusion
-                                ? t('explore.chat.placeholderRefine')
-                                : phase === 'rumination' && ruminationRowContext
-                                  ? t('explore.chat.ruminationUi.placeholderWithRow', {
-                                      label: ruminationRowContext.label,
-                                    })
-                                  : t('explore.chat.inputPlaceholderCareering'))
+                      streamTailInputPlaceholder ??
+                      (phaseInteractionLocked
+                        ? t('explore.chat.placeholderPhaseLocked')
+                        : isReadOnly
+                          ? t('explore.chat.placeholderReadOnly')
+                          : hasCollapsedConclusion
+                            ? t('explore.chat.placeholderRefine')
+                            : t('explore.chat.inputPlaceholderCareering'))
                     }
                     rows={1}
-                    disabled={
-                      sending ||
-                      isReadOnly ||
-                      conclusionReqState === 'loading' ||
-                      (phase === 'rumination' && ruminationTableNavLoading) ||
-                      (isStep3MatrixMode && !matrixModeSelectedComboId) ||
-                      discussionNeedsRow
-                    }
+                    disabled={sending || isReadOnly || conclusionReqState === 'loading'}
                     className="flow-input-field"
                   />
                   <div className="flow-send-btn-wrap">
@@ -5203,27 +2252,11 @@ function LiveChatPhasePage() {
                     )}
                     <button
                       type="button"
-                      onClick={
-                        sending
-                          ? handleStopStream
-                          : () => {
-                              if (isStep3MatrixMode && matrixModeSelectedComboId) {
-                                if (!input.trim()) return;
-                                handleComboSendMessage(matrixModeSelectedComboId, input.trim());
-                                setInput('');
-                              } else {
-                                handleSend();
-                              }
-                            }
-                      }
+                      onClick={sending ? handleStopStream : () => handleSend()}
                       disabled={
-                        (isReadOnly ||
-                          conclusionReqState === 'loading' ||
-                          (isStep3MatrixMode && !matrixModeSelectedComboId) ||
-                          discussionNeedsRow ||
-                          (!sending &&
-                            (!input.trim() ||
-                              (phase === 'rumination' && ruminationTableNavLoading)))) as boolean
+                        isReadOnly ||
+                        conclusionReqState === 'loading' ||
+                        (!sending && !input.trim())
                       }
                       className={`flow-send-btn ${sending ? 'is-stop' : ''}`}
                     >
@@ -5284,76 +2317,6 @@ function LiveChatPhasePage() {
               >
                 {t('explore.chat.threadSwitchWhileStreamingConfirm')}
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {phase === 'rumination' && activationCode && ruminationNegAwaitingChoiceModalOpen && (
-        <div
-          className={`fixed inset-0 z-[62] ${ruminationNegMorphing ? 'pointer-events-none' : ''}`}
-          role="presentation"
-        >
-          <div
-            className={`absolute inset-0 bg-black/35 backdrop-blur-sm transition-opacity duration-250 ${
-              ruminationNegMorphing ? 'opacity-0' : 'opacity-100'
-            }`}
-          />
-          <div
-            className={`pointer-events-none absolute inset-0 ${
-              ruminationNegMorphing ? '' : 'flex items-center justify-center'
-            }`}
-          >
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-label={t('explore.chat.ruminationUi.negGateRegionLabel')}
-              className={`pointer-events-auto ${
-                ruminationNegMorphing
-                  ? 'rumination-neg-gate-morph fixed right-5 top-[7.4rem] w-[min(27rem,calc(100vw-2rem))]'
-                  : 'w-[min(36rem,calc(100vw-2rem))]'
-              } rounded-2xl border border-white/70 bg-[linear-gradient(160deg,rgba(255,255,255,0.98),rgba(248,250,255,0.95))] p-5 shadow-[0_24px_65px_rgba(15,23,42,0.24)] transition-all duration-300`}
-            >
-              <div className="mb-1 text-xs font-semibold tracking-wide text-sky-700">
-                {isZeroResultsNeg
-                  ? t('explore.chat.ruminationUi.negGateZeroTitle')
-                  : t('explore.chat.ruminationUi.negGateModalTitle')}
-              </div>
-              <p className="whitespace-pre-line text-sm leading-relaxed text-neutral-800">
-                {(ruminationProgressState?.rumination_neg_state?.bar_copy_zh || '').trim() ||
-                  t('explore.chat.ruminationUi.negGateDefaultCopy')}
-              </p>
-              <p className="mt-2 text-xs leading-relaxed text-neutral-500">
-                {isZeroResultsNeg
-                  ? t('explore.chat.ruminationUi.negGateZeroHint')
-                  : t('explore.chat.ruminationUi.negGateNoTableEditHint')}
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => void handleRuminationNegDismiss()}
-                  className="rounded-full border border-neutral-200 bg-neutral-50 px-4 py-2 text-xs font-semibold text-neutral-600 transition-colors hover:bg-neutral-100 sm:text-sm"
-                >
-                  {t('explore.chat.ruminationUi.negGateDismiss')}
-                </button>
-                {!isZeroResultsNeg && (
-                <button
-                  type="button"
-                  disabled={ruminationTableSubmitting}
-                  onClick={() => void handleRuminationNegContinue()}
-                  className="rounded-full bg-neutral-900 px-4 py-2 text-xs font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40 sm:text-sm"
-                >
-                  {t('explore.chat.ruminationUi.negGateContinue')}
-                </button>
-                )}
-                <button
-                  type="button"
-                  disabled={ruminationTableSubmitting}
-                  onClick={() => void handleRuminationNegDeepStart()}
-                  className="rounded-full border border-neutral-300 bg-white px-4 py-2 text-xs font-semibold text-neutral-900 transition-opacity disabled:cursor-not-allowed disabled:opacity-40 sm:text-sm"
-                >
-                  {t('explore.chat.ruminationUi.negGateDeep')}
-                </button>
-              </div>
             </div>
           </div>
         </div>
@@ -5467,104 +2430,6 @@ function LiveChatPhasePage() {
             </div>
           </div>
         </div>
-      )}
-      {phase === 'rumination' && ruminationRefillConfirmOpen && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 backdrop-blur-sm"
-          onClick={() => setRuminationRefillConfirmOpen(false)}
-          role="presentation"
-        >
-          <div
-            className="mx-4 max-w-md rounded-2xl bg-white p-6 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="rumination-refill-confirm-title"
-          >
-            <h3
-              id="rumination-refill-confirm-title"
-              className="mb-2 text-lg font-semibold text-[var(--flow-text-body)]"
-            >
-              {t('explore.chat.ruminationTable.refillConfirmTitle')}
-            </h3>
-            <p className="mb-6 text-sm leading-relaxed text-[var(--flow-text-muted)]">
-              {t('explore.chat.ruminationTable.refillConfirmMessage', {
-                from: String(ruminationViewStep),
-              })}
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setRuminationRefillConfirmOpen(false)}
-                className="rounded-xl px-4 py-2 text-sm font-medium text-[var(--flow-text-muted)] transition-colors hover:bg-neutral-100"
-              >
-                {t('common.cancel')}
-              </button>
-              <button
-                type="button"
-                onClick={handleRuminationRefillConfirm}
-                className="rounded-xl bg-red-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-600"
-              >
-                {t('common.confirm')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {phase === 'rumination' && ruminationStep7FinalizeOpen && (
-        <div
-          className="fixed inset-0 z-[61] flex items-center justify-center bg-black/40 backdrop-blur-sm"
-          onClick={() => {
-            setRuminationStep7FinalizeOpen(false);
-            pendingStep7SubmitRef.current = null;
-          }}
-          role="presentation"
-        >
-          <div
-            className="mx-4 max-w-md rounded-2xl bg-white p-6 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="rumination-step7-finalize-title"
-          >
-            <h3
-              id="rumination-step7-finalize-title"
-              className="mb-2 text-lg font-semibold text-[var(--flow-text-body)]"
-            >
-              {t('explore.chat.ruminationTable.step7FinalizeTitle')}
-            </h3>
-            <p className="mb-6 text-sm leading-relaxed text-[var(--flow-text-muted)]">
-              {t('explore.chat.ruminationTable.step7FinalizeMessage')}
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setRuminationStep7FinalizeOpen(false);
-                  pendingStep7SubmitRef.current = null;
-                }}
-                className="rounded-xl px-4 py-2 text-sm font-medium text-[var(--flow-text-muted)] transition-colors hover:bg-neutral-100"
-              >
-                {t('common.cancel')}
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleRuminationStep7FinalizeConfirmed()}
-                className="rounded-xl bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-800"
-              >
-                {t('common.confirm')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {phase === 'rumination' && (
-        <RuminationTableSubmitPortal
-          open={ruminationTableSubmitting}
-          lineBefore={t('explore.chat.ruminationUi.tableSubmittingOrganizing')}
-          lineAfter={t('explore.chat.ruminationUi.tableSubmittingWait')}
-          step={ruminationViewStep}
-        />
       )}
       <PhaseCelebrateBurst playSignal={phaseCelebrateSignal} />
       <PhaseCompleteWarmModal

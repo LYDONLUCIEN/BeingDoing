@@ -475,10 +475,8 @@
   }
 }
 .flow-light .flow-msg-user-toolbar {
-  opacity: 0;
-  transition: opacity 0.2s;
+  /* 常显（2026-09-21 起，同 AI 工具栏口径，原 hover 才显示导致触屏不可见） */
 }
-.flow-light .flow-msg-user-wrap:hover .flow-msg-user-toolbar { opacity: 1; }
 
 /* 结论卡内联展示（与 AI 消息同侧）：卡片式，横向不拉满 */
 .flow-light .flow-msg-conclusion-wrap {

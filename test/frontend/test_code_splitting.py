@@ -16,11 +16,12 @@ SERVER_COMPONENTS = [
 # 应该用 dynamic import 懒加载的组件
 DYNAMIC_IMPORT_SOURCES = [
     # (从 src/frontend/ 开始的相对路径, 被懒加载的组件名)
-    ("app/(main)/explore/chat/[phase]/page.tsx", "RuminationTableWidget"),
-    ("app/(main)/explore/chat/[phase]/page.tsx", "RuminationSectionProgress"),
     ("app/(main)/explore/chat/[phase]/page.tsx", "ChatPhaseSidebar"),
     ("app/(main)/explore/chat/[phase]/page.tsx", "PhaseCelebrateBurst"),
 ]
+
+# 已彻底删除的 rumination v3 组件（2026-09：沉淀无条件走 v4，见 RuminationV4Entry）
+REMOVED_V3_COMPONENTS = ["RuminationTableWidget", "RuminationSectionProgress", "Step3MatrixLeftPanel"]
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "src" / "frontend"
 
@@ -73,3 +74,12 @@ class TestDynamicImports:
             # 应有 dynamic(() => import(...))
             has_dynamic = bool(re.search(rf'dynamic\s*\(', content)) and bool(re.search(rf"import\([^)]*{component_name}", content))
             assert has_dynamic, f"{rel_path} 未找到对 {component_name} 的 dynamic import"
+
+    def test_removed_v3_rumination_components(self):
+        """rumination v3 已删除：page.tsx 不得再引用 v3 组件（沉淀统一走 RuminationV4Entry → v4）"""
+        page = FRONTEND_DIR / "app/(main)/explore/chat/[phase]/page.tsx"
+        assert page.exists(), "chat page.tsx 不存在"
+        content = page.read_text(encoding="utf-8")
+        for name in REMOVED_V3_COMPONENTS:
+            assert name not in content, f"page.tsx 仍引用已删除的 v3 组件: {name}"
+        assert "RuminationV4Entry" in content, "page.tsx 缺少沉淀 v4 入口 RuminationV4Entry"

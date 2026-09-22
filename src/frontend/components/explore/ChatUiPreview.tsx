@@ -8,13 +8,9 @@ import ChatPhaseSidebar from '@/components/explore/ChatPhaseSidebar';
 import DimensionConclusionCard, {
   type DimensionConclusionData,
 } from '@/components/explore/DimensionConclusionCard';
-import ExploreLandingMeshLayers from '@/components/explore/ExploreLandingMeshLayers';
 import ChatAppearancePopover from '@/components/explore/ChatAppearancePopover';
 import { useChatAppearanceStore } from '@/stores/chatAppearanceStore';
 import FlowAiMessage from '@/components/explore/FlowAiMessage';
-import RuminationTableWidget, {
-  type RuminationTablePayload,
-} from '@/components/explore/RuminationTableWidget';
 import type { ChatThread, ThreadMessage } from '@/lib/explore/threads';
 import type { PhaseKey } from '@/lib/explore/session';
 
@@ -220,22 +216,6 @@ function buildThreads(phase: PhaseKey, state: PreviewState): ChatThread[] {
   ];
 }
 
-const RUMINATION_TABLE: RuminationTablePayload = {
-  step: 2,
-  guideText: '为每个方向补充一个最小验证行动。这里的内容只存在于当前预览页面。',
-  columns: [
-    { key: 'direction', label: '候选方向' },
-    { key: 'evidence', label: '已有依据' },
-    { key: 'action', label: '两周验证行动' },
-  ],
-  rows: [
-    { id: '01', direction: '职业内容与工具设计', evidence: '分析、表达、助人动机', action: '访谈 3 位目标用户并完成一份内容原型' },
-    { id: '02', direction: '用户研究与策略', evidence: '倾听、提炼、推动共识', action: '拆解一个真实项目并邀请同行反馈' },
-    { id: '03', direction: '成长型社群运营', evidence: '连接他人、营造安全感', action: '组织一次 6 人主题讨论并记录能量变化' },
-  ],
-  editableCols: ['action'],
-};
-
 function formatTime(ms?: number): string {
   if (!ms) return '';
   const date = new Date(ms);
@@ -325,7 +305,7 @@ function PreviewMessages({
             key={message.id}
             content={message.content}
             phase={theme}
-            variant={phase === 'rumination' ? 'ruminationWorkbench' : 'careeringMatte'}
+            variant="careeringMatte"
             careeringAiRoleLabel="AI 职业教练"
             streaming={streaming && index === messages.length - 1}
             thinkStreaming={message.thinkStreaming}
@@ -568,51 +548,6 @@ export default function ChatUiPreview({
       </div>
     </div>
   );
-
-  if (phase === 'rumination') {
-    return (
-      <div className="rumination-beautiful-root flow-light chat-shell-h relative flex min-h-0 flex-col overflow-hidden" data-phase={phase}>
-        <ExploreLandingMeshLayers />
-        {toolbar}
-        <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden">
-          <header className="ol-chat-preview-rumination-header">
-            <div>
-              <span>REAL-LIFE VALIDATION</span>
-              <h1>{copy.num} {copy.label}</h1>
-              <p>把初步方向放进真实生活中检验，让选择经得起时间沉淀。</p>
-            </div>
-            <button type="button" title="预览模式下不会跳转">
-              <FileText size={15} aria-hidden />
-              完成并继续
-            </button>
-          </header>
-          <div className="ol-chat-preview-rumination-workbench">
-            <aside className="rumination-beautiful-card ol-chat-preview-table-card">
-              <RuminationTableWidget
-                className="min-h-0 flex-1"
-                uiVariant="glass"
-                cardTitle="方向验证表"
-                payload={RUMINATION_TABLE}
-                confirmLabel="确认当前内容"
-                inputPlaceholder="填写验证行动"
-                onConfirm={() => {}}
-              />
-            </aside>
-            <section className="rumination-beautiful-card rumination-beautiful-card--chat ol-chat-preview-rumination-chat">
-              <div className="ol-chat-preview-chat-caption">
-                <div>
-                  <h2>和 AI 一起沉淀</h2>
-                  <p>选中左侧方向后，可以继续梳理验证方式</p>
-                </div>
-              </div>
-              {messagePane}
-              {inputDock}
-            </section>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div

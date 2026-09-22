@@ -559,14 +559,14 @@
 }
 /* solid：实心高亮 */
 .rumination-v4-root.flow-light[data-matrix-style='solid'] .choice-card.love-card.selected {
-  background: linear-gradient(135deg, var(--matrix-card-a, #ff9835), var(--matrix-card-b, #ff3e4f)) !important;
+  background: linear-gradient(135deg, var(--matrix-card-a, var(--matrix-love-a)), var(--matrix-card-b, var(--matrix-love-b))) !important;
   border-color: transparent !important;
   color: #ffffff !important;
   box-shadow: 0 8px 22px rgba(255, 62, 79, 0.2) !important;
 }
 .rumination-v4-root.flow-light[data-matrix-style='solid'] .choice-card.strength-card.selected {
-  background: var(--matrix-card-b, #08aa7e) !important;
-  border-color: var(--matrix-card-b, #08aa7e) !important;
+  background: var(--matrix-card-b, var(--matrix-strength)) !important;
+  border-color: var(--matrix-card-b, var(--matrix-strength)) !important;
   color: #ffffff !important;
   box-shadow: 0 8px 22px rgba(8, 170, 126, 0.2) !important;
 }
