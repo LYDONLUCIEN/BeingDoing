@@ -7,7 +7,7 @@
 3. 解析用户昵称（basic_info nickname → User.username → 探索者）+ 可选拼接用户 profile
 4. Jinja2 渲染提示词（202607 版八章框架）→ LLM 生成 markdown 报告
 5. 缓存 markdown 到文件系统（record.json 存时间戳）
-6. WeasyPrint: markdown → HTML → PDF（含水印）
+6. xunlu 渲染器（Node 子进程 + Chrome headless）：markdown → PDF（ADR-0021 起唯一引擎）
 
 缓存策略：
 - record.json 增加 report_markdown_generated_at 字段
@@ -22,35 +22,22 @@ import json
 import logging
 import os
 import random
-import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import markdown as md_lib
-
 from app.core.llmapi import LLMMessage, get_default_llm_provider
 from app.domain.prompts.loader import _get_loader
-from app.services.report_postprocess import _normalize_role_opener, apply_report_postprocess
+from app.services.report_postprocess import apply_report_postprocess
 from app.utils.report_registry import STEP_IDS, ReportRegistry
 from app.utils.simple_activation_manager import get_simple_base_dir
 from app.utils.survey_storage import load_dimension_conclusions
 
 logger = logging.getLogger(__name__)
 
-# 静态资源路径
-_STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
-_WATERMARK_LOGO = _STATIC_DIR / "assets" / "watermark_logo.png"
-_PAGE_LOGO_HEADER = _STATIC_DIR / "assets" / "openlifelogo_header.png"  # 页眉右上角小 logo
-_PAGE_LOGO_FOOTER = _STATIC_DIR / "assets" / "openlifelogo_footer.png"  # 页脚正中心 logo
-_REPORT_CSS = _STATIC_DIR / "styles" / "report_pdf.css"
-_REPORT_THEME = _STATIC_DIR / "styles" / "report_theme.json"
-_FONT_DIR = _STATIC_DIR / "fonts"  # 随仓库打包的 Noto Sans SC（@font-face 内嵌）
-
 # 报告落款签名（ADR-0012 品牌更名后新增）：首次生成随机分配，持久化到 record.json 的
 # report_signature 字段，保证同一报告再生成时签名不变
 _SIGNATURE_CHOICES = ("signature_1", "signature_2", "signature_3")
-_SIGNATURE_SUFFIX = ".png"
 
 # 缓存文件名
 _REPORT_MARKDOWN_FILENAME = "report_markdown.md"
@@ -59,30 +46,6 @@ _REPORT_MARKDOWN_FILENAME = "report_markdown.md"
 _REPORT_STAGING_FILENAME = "report_markdown.staging.md"
 _REPORT_BACKUP_FILENAME = "report_markdown.bak.md"
 
-# ── 配色主题（report_theme.json）──────────────────────────────────────
-# CSS 中的 {{token}} 占位符渲染时替换；修改配色见
-# wiki/开发文档/0812-报告配色配置说明.md
-_theme_cache: Optional[Dict[str, str]] = None
-
-
-def _load_report_theme() -> Dict[str, str]:
-    """加载报告配色主题（带进程内缓存）；失败时返回空 dict 并告警（占位符将保留原样）。"""
-    global _theme_cache
-    if _theme_cache is None:
-        try:
-            raw = json.loads(_REPORT_THEME.read_text(encoding="utf-8"))
-            _theme_cache = {k: v for k, v in raw.items() if not k.startswith("_")}
-        except Exception:
-            logger.exception("报告配色主题加载失败: %s", _REPORT_THEME)
-            _theme_cache = {}
-    return _theme_cache
-
-
-def _apply_theme(css: str, theme: Dict[str, str]) -> str:
-    """将 CSS 中的 {{token}} 占位符替换为主题色值。"""
-    for key, value in theme.items():
-        css = css.replace("{{" + key + "}}", value)
-    return css
 
 # 对话全文注入配置（conversation_block）：与批量导出 md 同口径，只保留 user/assistant
 _CONVERSATION_ROLES_KEEP = {"user", "assistant"}
@@ -131,16 +94,6 @@ def is_generation_inflight(report_id: str) -> bool:
 def list_generation_inflight() -> List[str]:
     """当前所有在生成中的 report_id（admin 页面刷新后恢复「生成中」按钮态用，ADR-0019）。"""
     return sorted(_generation_inflight)
-
-
-def _image_data_uri(path: Path) -> str:
-    """读取图片并返回 data URI（用于 CSS @page 边距盒 content: url(...)）；文件缺失时返回空串。"""
-    import base64
-
-    if not path.is_file():
-        logger.warning("报告页眉页脚 logo 缺失: %s", path)
-        return ""
-    return f"data:image/png;base64,{base64.b64encode(path.read_bytes()).decode('ascii')}"
 
 
 class ReportPdfService:
@@ -938,228 +891,11 @@ class ReportPdfService:
             logger.exception("报告生成日期读取失败: report_id=%s", report_id)
             return None
 
-    def _signature_block_html(self, report_id: Optional[str]) -> str:
-        """报告末尾的落款签名区块；无 report_id 或签名图缺失时返回空串。"""
-        if not report_id:
-            return ""
-        sig = self._get_or_assign_signature(report_id)
-        if not sig:
-            return ""
-        sig_path = _STATIC_DIR / "assets" / f"{sig}{_SIGNATURE_SUFFIX}"
-        data_uri = _image_data_uri(sig_path)
-        if not data_uri:
-            return ""
-        return (
-            '<div class="report-signature">'
-            '<div class="signature-label">—— 你的寻路探索引导师</div>'
-            f'<img class="signature-img" src="{data_uri}" alt="引导师签名" />'
-            "</div>"
-        )
-
-    # ── 报告总览页（预览页）──────────────────────────────────
-
-    def _overview_page_html(self, theme: Dict[str, str]) -> str:
-        """封面之后的「报告内容总览」页（设计来源 uidesign/beautiful/report Figma 稿）。
-
-        8 个章节卡与报告实际章节一一对应；卡片头色按主题 4 色轮换。
-        2026-08-16 起：去掉「日期/版本/密级」档案头，标题由「报告模块总览」改为「报告内容总览」。
-        """
-        modules = [
-            ("01", "职业角色", "CAREER ROLE DEFINITION", "基础框架"),
-            ("02", "价值观分析", "VALUES ANALYSIS", "价值锚点"),
-            ("03", "优势分析", "STRENGTHS & ROLE FIT", "能力图谱"),
-            ("04", "热爱分析", "PASSION ANALYSIS", "动力来源"),
-            ("05", "使命分析", "MISSION ANALYSIS", "长期愿景"),
-            ("06", "最终选择", "FINAL CHOICE & MVP", "行动决策"),
-            ("07", "关键洞察与方向推荐", "KEY INSIGHTS & RECOMMENDATIONS", "综合结论"),
-            ("08", "谁与你最接近", "ARCHETYPE PORTRAITS", "参照原型"),
-        ]
-        palette = [
-            theme.get("overview_card_color_1", "#8B4513"),
-            theme.get("overview_card_color_2", "#6B3A2A"),
-            theme.get("overview_card_color_3", "#5C4033"),
-            theme.get("overview_card_color_4", "#7A5C3A"),
-        ]
-
-        def _card(idx: int, num: str, title: str, subtitle: str, tag: str) -> str:
-            color = palette[idx % len(palette)]
-            return (
-                '<div class="ov-card">'
-                f'<div class="ov-card-head" style="background: {color};">'
-                f'<span class="ov-card-tag">{tag}</span>'
-                f'<span class="ov-card-num">{num}</span>'
-                f'<span class="ov-card-title">{title}</span>'
-                "</div>"
-                f'<div class="ov-card-sub"><p class="ov-card-subtitle">{subtitle}</p></div>'
-                "</div>"
-            )
-
-        cards = [_card(i, *m) for i, m in enumerate(modules)]
-        rows = "".join(
-            f"<tr><td>{cards[i]}</td><td>{cards[i + 1]}</td></tr>"
-            for i in range(0, len(cards), 2)
-        )
-        return f"""<div class="overview">
-  <div class="overview-toprule"></div>
-  <table class="overview-header">
-    <tr>
-      <td>
-        <p class="overview-kicker">CAREER INTELLIGENCE REPORT · 职业发展深度报告</p>
-        <p class="overview-title">报告内容总览</p>
-        <p class="overview-desc">本报告共包含 8 个章节内容，从职业角色到名人画像，通过提升自我认知，提供结构化的行动参考。</p>
-      </td>
-    </tr>
-  </table>
-  <div class="overview-divider"></div>
-  <div class="overview-section"><span class="overview-section-bar"></span><span class="overview-section-label">内容章节 · CONTENTS</span></div>
-  <table class="overview-grid">
-    {rows}
-  </table>
-  <div class="overview-footer"><p class="overview-footer-text">本文件为个人职业发展专属报告，请妥善保管，勿外传。</p></div>
-  <div class="overview-bottomrule"></div>
-</div>"""
-
     # ── PDF 生成 ─────────────────────────────────────────────
 
     def _markdown_to_pdf(self, markdown_text: str, report_id: Optional[str] = None) -> bytes:
-        """markdown → HTML → PDF（含水印），返回 bytes。
+        """markdown → PDF（xunlu 渲染器，ADR-0021 起唯一引擎），返回 bytes。
 
-        RENDER_ENGINE=xunlu 时分流到 xunlu 精简渲染器（ADR-0019），其余走内置 WeasyPrint。
-        引擎取值：admin 运行时配置（report_render_config）> env RENDER_ENGINE > 默认。
+        元数据（昵称/日期/签名方案）由 _markdown_to_pdf_via_xunlu 按报告动态组装。
         """
-        from app.services.report_render_config import get_render_engine
-
-        if get_render_engine() == "xunlu":
-            return self._markdown_to_pdf_via_xunlu(markdown_text, report_id=report_id)
-        from weasyprint import HTML
-
-        # 1. markdown → HTML
-        #    先跑确定性的职业角色开篇规范化：兜底保证「开篇：职业角色」标题存在，
-        #    让生成时未过新管线的存量缓存 markdown 下载时也能补齐（ADR-0017）
-        markdown_text = _normalize_role_opener(markdown_text)
-        extensions = ["extra", "nl2br"]
-        html_body = md_lib.markdown(markdown_text, extensions=extensions)
-
-        # 1.5 剥掉正文末尾的分页符（兼容旧式内联 style 与新式 class="pb" 两种）：
-        #     模板要求每章末尾插分页符，若最后一章/信件末尾也带了，
-        #     会把落款签名单独挤到一张空页上
-        html_body = re.sub(
-            r'(?:<div[^>]*(?:page-break-after\s*:\s*always|class="pb")[^>]*>\s*</div>\s*)+$',
-            "",
-            html_body.rstrip(),
-            flags=re.IGNORECASE,
-        )
-
-        # 2. 读 CSS，注入配色主题 token + 字体 URI + 页眉/页脚 logo（data URI 替换占位符）
-        theme = _load_report_theme()
-        css_content = _apply_theme(_REPORT_CSS.read_text(encoding="utf-8"), theme)
-        css_content = css_content.replace(
-            "__FONT_DIR_URL__", _FONT_DIR.as_uri()
-        ).replace(
-            "__PAGE_LOGO_HEADER_URL__", _image_data_uri(_PAGE_LOGO_HEADER)
-        ).replace(
-            "__PAGE_LOGO_FOOTER_URL__", _image_data_uri(_PAGE_LOGO_FOOTER)
-        )
-
-        # 3. 水印 logo base64 编码（嵌入 HTML）
-        logo_b64 = ""
-        if _WATERMARK_LOGO.is_file():
-            import base64
-
-            logo_bytes = _WATERMARK_LOGO.read_bytes()
-            logo_b64 = base64.b64encode(logo_bytes).decode("ascii")
-
-        # 4. 构建水印 HTML（上中下 3 条斜 45 度水印带，覆盖整页）
-        #    水印图本身含品牌文字；图缺失时退化为纯文字水印
-        strip_content = (
-            f'<img src="data:image/png;base64,{logo_b64}" alt="logo" />'
-            if logo_b64
-            else '<div class="watermark-text">寻路·OpenLife</div>'
-        )
-        watermark_strips = "".join(
-            f'<div class="watermark-strip strip-{i}">{strip_content}</div>' for i in (1, 2, 3)
-        )
-        watermark_html = f'<div class="watermark-layer">{watermark_strips}</div>'
-
-        # 2.5 信件容器包裹：从「致 xxx 的一封信」标题到文末包进 <div class="letter">，
-        #     落款签名一并纳入容器（CSS 收紧排版 + page-break-inside:avoid，
-        #     保证信+签名稳定一页内）。找不到信件标题时签名维持文末追加。
-        signature_html = self._signature_block_html(report_id)
-        letter_m = re.search(r"<h[1-6][^>]*>\s*致.{0,30}一封信\s*</h[1-6]>", html_body)
-        if letter_m:
-            html_body = (
-                html_body[: letter_m.start()]
-                + '<div class="letter">'
-                + html_body[letter_m.start():]
-                + signature_html
-                + "</div>"
-            )
-            signature_html = ""
-
-        # 3. 页面顺序拼装（2026-08-16 起）：封面 → 阅读指南 → 报告模块总览 → 其余正文
-        #    阅读指南是 LLM 输出的正文第一章，以第一个分页符结尾；
-        #    在第一个分页符处切开正文，把总览页插到阅读指南之后。
-        #    找不到分页符（异常/旧版 markdown）时降级为旧顺序：总览页在正文之前。
-        overview_html = self._overview_page_html(theme)
-        pb_m = re.search(
-            r'<div[^>]*(?:class="pb"|page-break-after\s*:\s*always)[^>]*>\s*</div>',
-            html_body,
-            flags=re.IGNORECASE,
-        )
-        if pb_m:
-            guide_html = html_body[: pb_m.end()]
-            rest_html = html_body[pb_m.end() :]
-            body_block = f"""<!-- 阅读指南（正文第一章） -->
-<div class="content">
-{guide_html}
-</div>
-
-<!-- 报告内容总览（预览页） -->
-{overview_html}
-
-<!-- 正文（其余章节） -->
-<div class="content">
-{rest_html}
-{signature_html}
-</div>"""
-        else:
-            body_block = f"""<!-- 报告内容总览（预览页） -->
-{overview_html}
-
-<!-- 正文 -->
-<div class="content">
-{html_body}
-{signature_html}
-</div>"""
-
-        # 4. 拼装完整 HTML
-        full_html = f"""<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8" />
-<style>
-{css_content}
-</style>
-</head>
-<body>
-{watermark_html}
-
-<!-- 封面 -->
-<div class="cover">
-  <div class="cover-title">寻路·OpenLife 报告</div>
-  <div class="cover-divider"></div>
-  <div class="cover-subtitle">OPENLIFE</div>
-  <div class="cover-info">
-    所有热爱，都值得成为事业<br/>
-    <br/>
-    {datetime.now(timezone.utc).strftime("%Y 年 %m 月 %d 日")}
-  </div>
-</div>
-
-{body_block}
-</body>
-</html>"""
-
-        # 6. WeasyPrint 渲染
-        pdf_bytes = HTML(string=full_html).write_pdf()
-        return pdf_bytes
+        return self._markdown_to_pdf_via_xunlu(markdown_text, report_id=report_id)

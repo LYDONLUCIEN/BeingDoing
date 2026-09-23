@@ -1,4 +1,4 @@
-"""xunlu 精简渲染器桥接与 RENDER_ENGINE 分流测试（ADR-0019）。"""
+"""xunlu 渲染器桥接测试（ADR-0019；ADR-0021 起唯一报告渲染引擎，无分流开关）。"""
 
 from pathlib import Path
 from unittest.mock import patch
@@ -32,18 +32,8 @@ def report_service(tmp_path):
     return ReportPdfService(base_dir=str(tmp_path))
 
 
-def test_render_engine_default_is_weasyprint():
-    from app.config.settings import settings
-
-    # 未设置环境变量时必须是 weasyprint（现状行为不变）
-    assert settings.RENDER_ENGINE == "weasyprint"
-
-
 def test_dispatch_to_xunlu_with_meta(report_service, monkeypatch):
-    """运行时引擎=xunlu 时 _markdown_to_pdf 分流，且签名/日期元数据正确映射。"""
-    monkeypatch.setattr(
-        "app.services.report_render_config.get_render_engine", lambda: "xunlu"
-    )
+    """_markdown_to_pdf 走 xunlu 渲染器，且签名/日期元数据正确映射。"""
     captured = {}
 
     def fake_render(md, **kwargs):
@@ -56,27 +46,6 @@ def test_dispatch_to_xunlu_with_meta(report_service, monkeypatch):
     # record.json 的 signature_2 → 渲染器方案 02；生成时间 → 中文日期
     assert captured["signature"] == "02"
     assert captured["date"] == "2026 年 07 月 31 日"
-
-
-def test_dispatch_weasyprint_keeps_legacy(report_service, monkeypatch):
-    """运行时引擎=weasyprint 时不触碰 xunlu 渲染器。"""
-    monkeypatch.setattr(
-        "app.services.report_render_config.get_render_engine", lambda: "weasyprint"
-    )
-    called = []
-    monkeypatch.setattr(
-        report_xunlu_renderer,
-        "render_pdf_with_xunlu",
-        lambda *a, **k: called.append(1) or b"",
-    )
-    # 不实际调 WeasyPrint（重依赖），只验证分流判断发生在 weasyprint 分支之前
-    with patch.object(report_service, "_markdown_to_pdf_via_xunlu") as spy:
-        try:
-            report_service._markdown_to_pdf(SAMPLE_MD, report_id="rid-1")
-        except Exception:
-            pass  # weasyprint 渲染本身可能在测试环境失败，与本测试无关
-    spy.assert_not_called()
-    assert not called
 
 
 def test_render_entry_missing_raises(monkeypatch, tmp_path):
@@ -131,44 +100,12 @@ def test_render_from_md_empty_400():
     assert res.status_code == 400
 
 
-# ── 渲染引擎运行时配置（ADR-0019）─────────────────────────────────
+# ── admin 权限边界 ─────────────────────────────────────────────────
 
 
-def test_render_config_set_and_get(tmp_path, monkeypatch):
-    from app.services import report_render_config as cfg
-
-    monkeypatch.setattr(cfg, "_config_path", lambda: tmp_path / "report_render_config.json")
-    # 无配置文件时回退 env 默认 weasyprint
-    assert cfg.get_render_engine() == "weasyprint"
-    cfg.set_render_engine("xunlu")
-    assert cfg.get_render_engine() == "xunlu"
-    cfg.set_render_engine("weasyprint")
-    assert cfg.get_render_engine() == "weasyprint"
-    with pytest.raises(ValueError):
-        cfg.set_render_engine("unknown")
-
-
-def test_render_config_endpoints(tmp_path, monkeypatch):
-    from app.services import report_render_config as cfg
-
-    monkeypatch.setattr(cfg, "_config_path", lambda: tmp_path / "report_render_config.json")
-    client = _client("admin-1")
-    with patch("app.api.v1.admin._is_super_admin", return_value=True):
-        res = client.get("/api/v1/admin/report-render-config")
-        assert res.status_code == 200
-        assert res.json()["data"]["engine"] == "weasyprint"
-        res = client.post("/api/v1/admin/report-render-config", json={"engine": "xunlu"})
-        assert res.status_code == 200
-        assert res.json()["data"]["engine"] == "xunlu"
-        res = client.post("/api/v1/admin/report-render-config", json={"engine": "bad"})
-        assert res.status_code == 400
-
-
-def test_render_config_non_super_admin_403():
+def test_admin_generating_non_super_admin_403():
     client = _client("user-1")
     with patch("app.api.v1.admin._is_super_admin", return_value=False):
-        assert client.get("/api/v1/admin/report-render-config").status_code == 403
-        assert client.post("/api/v1/admin/report-render-config", json={"engine": "xunlu"}).status_code == 403
         assert client.get("/api/v1/admin/reports/generating").status_code == 403
 
 

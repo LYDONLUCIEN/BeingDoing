@@ -110,11 +110,7 @@ class Settings(BaseSettings):
     # 为空时回退 SECRET_KEY；轮换会让历史密文不可解密，需重新填写 api_key
     MODEL_CONFIG_ENC_KEY: Optional[str] = None
 
-    # 报告 PDF 渲染引擎（ADR-0019）：
-    # - weasyprint（默认）：内置 Python 渲染，现状行为不变
-    # - xunlu：src/report-renderer 精简 Node 渲染器（子进程调用，需先 npm install && npm run build）
-    # 作用于用户下载与 admin staging 预览两处（report_pdf_service._markdown_to_pdf 单点分流）
-    RENDER_ENGINE: str = "weasyprint"
+    # 报告 PDF 渲染：统一走 xunlu 设计版渲染器（ADR-0021 移除 weasyprint 简洁版）
     # xunlu 渲染器目录（内含 dist/render-pdf.mjs、assets/）
     REPORT_RENDERER_DIR: str = str(get_project_root() / "src" / "report-renderer")
     # Node 可执行文件

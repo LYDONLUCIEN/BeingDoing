@@ -11,8 +11,6 @@ import {
   approveAdminReport,
   renderAdminReportPdf,
   fetchGeneratingReports,
-  fetchReportRenderConfig,
-  updateReportRenderConfig,
   type AdminReportItem,
   type AdminReportReviewStatus,
   type ConversationStatsResult,
@@ -59,31 +57,6 @@ export default function AdminReportsPage() {
     prepare,
     saveNow,
   } = useReportPdfDownload();
-
-  // 渲染引擎配置（ADR-0019，全局即时生效）
-  const [renderEngine, setRenderEngine] = useState<string>('weasyprint');
-  const [engineSaving, setEngineSaving] = useState(false);
-  useEffect(() => {
-    fetchReportRenderConfig()
-      .then((cfg) => setRenderEngine(cfg.engine))
-      .catch(() => { /* 读取失败用默认 */ });
-  }, []);
-  const handleEngineChange = async (engine: string) => {
-    if (engine === renderEngine || engineSaving) return;
-    setEngineSaving(true);
-    try {
-      const saved = await updateReportRenderConfig(engine);
-      setRenderEngine(saved);
-      setToast({
-        type: 'success',
-        msg: saved === 'xunlu' ? '已切换为设计版渲染器（版式精，PDF 较大）' : '已切换为简洁版渲染器（PDF 体积小）',
-      });
-    } catch (e: any) {
-      setToast({ type: 'error', msg: e?.message || '切换渲染引擎失败' });
-    } finally {
-      setEngineSaving(false);
-    }
-  };
 
   // 生成中状态（真源在后端单轨锁）：定时拉取，刷新页面也能恢复按钮态
   const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
@@ -319,37 +292,6 @@ export default function AdminReportsPage() {
           查看所有 report_id，支持按关键字搜索并查看五步骤绑定详情。
         </p>
       </header>
-
-      {/* PDF 渲染引擎配置（ADR-0019，全局即时生效）：简洁版体积小 / 设计版版式精 */}
-      <section className="rounded-2xl bg-bd-card border border-bd-border px-6 py-4 shadow-sm flex flex-wrap items-center gap-4 text-xs">
-        <span className="font-medium" style={{ color: 'var(--bd-fg)' }}>
-          PDF 渲染引擎
-        </span>
-        <label className="inline-flex items-center gap-1.5 cursor-pointer">
-          <input
-            type="radio"
-            name="render-engine"
-            checked={renderEngine === 'weasyprint'}
-            onChange={() => handleEngineChange('weasyprint')}
-            disabled={engineSaving}
-          />
-          简洁版（WeasyPrint，体积小约 1MB）
-        </label>
-        <label className="inline-flex items-center gap-1.5 cursor-pointer">
-          <input
-            type="radio"
-            name="render-engine"
-            checked={renderEngine === 'xunlu'}
-            onChange={() => handleEngineChange('xunlu')}
-            disabled={engineSaving}
-          />
-          设计版（xunlu，版式精，体积大约 9MB）
-        </label>
-        {engineSaving && <span style={{ color: 'var(--bd-fg-muted)' }}>保存中...</span>}
-        <span style={{ color: 'var(--bd-fg-muted)' }}>
-          全局即时生效，无需重启；作用于用户下载与 admin 下载
-        </span>
-      </section>
 
       <section className="rounded-2xl bg-bd-card border border-bd-border px-6 py-4 shadow-sm flex flex-wrap items-center gap-3 text-xs">
         <input

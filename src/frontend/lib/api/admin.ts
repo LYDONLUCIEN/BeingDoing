@@ -365,23 +365,6 @@ export async function fetchGeneratingReports(): Promise<string[]> {
   return ((res.data as any)?.report_ids as string[]) || [];
 }
 
-/** 报告渲染引擎配置（ADR-0019）：weasyprint 简洁版 / xunlu 设计版。 */
-export interface ReportRenderConfig {
-  engine: string;
-  env_default: string;
-  available: string[];
-}
-
-export async function fetchReportRenderConfig(): Promise<ReportRenderConfig> {
-  const res = await apiClient.get('/admin/report-render-config');
-  return res.data as ReportRenderConfig;
-}
-
-export async function updateReportRenderConfig(engine: string): Promise<string> {
-  const res = await apiClient.post('/admin/report-render-config', { engine });
-  return ((res.data as any)?.engine as string) || engine;
-}
-
 /** 下载 staging 新稿渲染的 PDF（admin 预览）。 */
 export async function downloadAdminRecheckStagingPdf(reportId: string): Promise<void> {
   const res = await apiClient.raw.get(
@@ -394,9 +377,8 @@ export async function downloadAdminRecheckStagingPdf(reportId: string): Promise<
 }
 
 /**
- * 用 xunlu 精简渲染器重新渲染正式报告 PDF（ADR-0019）。
- * 不重新生成内容（不动 LLM/markdown），仅按新版式出 PDF；强制 xunlu 引擎，
- * 不受 RENDER_ENGINE 全局开关影响，供灰度验证新版式。
+ * 用 xunlu 渲染器重新渲染正式报告 PDF（ADR-0019）。
+ * 不重新生成内容（不动 LLM/markdown），仅把现有 markdown 缓存按当前版式出 PDF。
  */
 export async function renderAdminReportPdf(reportId: string): Promise<void> {
   const res = await apiClient.raw.get(

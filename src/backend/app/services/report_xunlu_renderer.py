@@ -1,7 +1,7 @@
-"""xunlu 精简渲染器桥接（ADR-0019）。
+"""xunlu 精简渲染器桥接（ADR-0019；ADR-0021 起为唯一报告渲染引擎）。
 
 子进程调用 src/report-renderer 的 Node 渲染脚本（markdown → A4 HTML → Chrome headless
-打印 PDF），与内置 WeasyPrint 渲染器通过 RENDER_ENGINE 开关共存。
+打印 PDF）。
 
 契约：
 - 输入：报告 markdown 文本 + 可选元数据（昵称/日期/签名方案）

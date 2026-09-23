@@ -1350,58 +1350,14 @@ async def list_generating_reports(
     return {"code": 200, "message": "success", "data": {"report_ids": list_generation_inflight()}}
 
 
-class ReportRenderConfigRequest(BaseModel):
-    """报告渲染引擎配置（ADR-0019）：weasyprint 简洁版 / xunlu 设计版。"""
-
-    engine: str
-
-
-@router.get("/report-render-config")
-async def get_report_render_config(
-    current_user: Optional[dict] = Depends(get_current_user),
-):
-    """读取报告渲染引擎配置（运行时 > env > 默认）。"""
-    if not _is_super_admin(current_user):
-        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
-    from app.services.report_render_config import VALID_ENGINES, get_render_engine
-
-    return {
-        "code": 200,
-        "message": "success",
-        "data": {
-            "engine": get_render_engine(),
-            "env_default": settings.RENDER_ENGINE,
-            "available": list(VALID_ENGINES),
-        },
-    }
-
-
-@router.post("/report-render-config")
-async def put_report_render_config(
-    body: ReportRenderConfigRequest,
-    current_user: Optional[dict] = Depends(get_current_user),
-):
-    """切换报告渲染引擎（即时生效、无需重启；作用于用户下载与 admin 下载/staging 预览）。"""
-    if not _is_super_admin(current_user):
-        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
-    from app.services.report_render_config import get_render_engine, set_render_engine
-
-    try:
-        set_render_engine(body.engine)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return {"code": 200, "message": "success", "data": {"engine": get_render_engine()}}
-
-
 @router.get("/reports/{report_id}/render-pdf")
 async def admin_render_report_pdf(
     report_id: str,
     current_user: Optional[dict] = Depends(get_current_user),
 ):
-    """用 xunlu 精简渲染器重新渲染正式报告 PDF（ADR-0019）。
+    """用 xunlu 渲染器重新渲染正式报告 PDF（ADR-0019）。
 
-    与「重新生成」的区别：不重跑 LLM、内容不变，仅把现有 markdown 缓存按新版式出 PDF。
-    强制走 xunlu 渲染器（不受 RENDER_ENGINE 全局开关影响），供 admin 灰度验证新版式；
+    与「重新生成」的区别：不重跑 LLM、内容不变，仅把现有 markdown 缓存按当前版式出 PDF；
     无 markdown 缓存时 409。
     """
     if not _is_super_admin(current_user):
@@ -1446,9 +1402,9 @@ async def render_pdf_from_markdown(
     body: RenderPdfFromMdRequest,
     current_user: Optional[dict] = Depends(get_current_user),
 ):
-    """直接由 markdown 渲染 PDF（xunlu 精简渲染器；不经过报告生成流程）。
+    """直接由 markdown 渲染 PDF（xunlu 渲染器；不经过报告生成流程）。
 
-    供 admin 调试渲染效果/验证素材替换；强制走 xunlu 渲染器，不受 RENDER_ENGINE 开关影响。
+    供 admin 调试渲染效果/验证素材替换。
     """
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
