@@ -8,7 +8,6 @@ import ChatPhaseSidebar from '@/components/explore/ChatPhaseSidebar';
 import DimensionConclusionCard, {
   type DimensionConclusionData,
 } from '@/components/explore/DimensionConclusionCard';
-import ChatAppearancePopover from '@/components/explore/ChatAppearancePopover';
 import { useChatAppearanceStore } from '@/stores/chatAppearanceStore';
 import FlowAiMessage from '@/components/explore/FlowAiMessage';
 import type { ChatThread, ThreadMessage } from '@/lib/explore/threads';
@@ -577,7 +576,6 @@ export default function ChatUiPreview({
           <header className="careering-chat-header">
             <h1 className="careering-chat-phase-title">{copy.num} {copy.label}</h1>
             <div className="careering-chat-header-actions">
-              <ChatAppearancePopover />
               <button type="button" className="bd-btn-black inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold text-white sm:px-5" title="预览模式下不会跳转">
                 <FileText size={15} strokeWidth={2} className="hidden sm:inline" aria-hidden />
                 <span>完成并继续</span>

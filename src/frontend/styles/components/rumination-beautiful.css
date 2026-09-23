@@ -157,32 +157,32 @@
 
 /*
  * 底部输入：与 .flow-light.careering-matte .careering-input-dock 完全一致（白胶囊）。
- * 全局 .careering-input-dock 的渐变在毛玻璃右卡上会多出一层半透明矩形色块，此处关掉底色即可融入卡片。
+ * 0923：聊天卡已拆除（对话直接落在背景上），输入区作用域去掉 .rumination-beautiful-card--chat
+ * 依赖，对齐前四阶段：胶囊居中 max-1000 + 27px 圆角 + 轻毛玻璃；底部融底渐变沿用全局
+ * .careering-input-dock（前四阶段同款）。
  */
-.rumination-beautiful-root.flow-light .rumination-beautiful-card--chat .careering-input-dock {
-  background: transparent !important;
-}
-.rumination-beautiful-root.flow-light .rumination-beautiful-card--chat .careering-input-dock .flow-input-area {
+.rumination-beautiful-root.flow-light .careering-input-dock .flow-input-area {
   padding-top: 0;
   padding-bottom: 0;
   max-width: 1000px;
   margin-left: auto;
   margin-right: auto;
 }
-.rumination-beautiful-root.flow-light .rumination-beautiful-card--chat .careering-input-dock .flow-input-box {
+.rumination-beautiful-root.flow-light .careering-input-dock .flow-input-box {
   display: flex;
   align-items: flex-end;
   gap: 10px;
-  background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 30px;
+  min-height: 54px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(23, 33, 45, 0.085);
+  border-radius: 27px;
   padding: 10px 10px 10px 22px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  box-shadow: 0 13px 34px rgba(23, 33, 45, 0.08);
   transition: border-color 0.3s, box-shadow 0.3s;
 }
-.rumination-beautiful-root.flow-light .rumination-beautiful-card--chat .careering-input-dock .flow-input-box:focus-within {
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-  border-color: rgba(0, 0, 0, 0.08);
+.rumination-beautiful-root.flow-light .careering-input-dock .flow-input-box:focus-within {
+  box-shadow: 0 16px 40px rgba(23, 33, 45, 0.11);
+  border-color: var(--ol-chat-accent, #8474c9);
 }
 
 /* 假设悬浮气泡内容区滚动条：轻量、不抢视觉焦点 */

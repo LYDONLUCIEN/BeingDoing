@@ -1,7 +1,9 @@
 'use client';
 
+import { useEffect } from 'react';
 import type { CSSProperties } from 'react';
 import { useChatAppearanceStore } from '@/stores/chatAppearanceStore';
+import { fetchGlobalChatAppearance } from '@/lib/api/chatAppearance';
 
 /**
  * 把 chat 外观 store 折算成挂在页面根节点上的 data-* 属性与 CSS 变量，
@@ -13,11 +15,27 @@ import { useChatAppearanceStore } from '@/stores/chatAppearanceStore';
  *
  * zustand persist 客户端水合后自动重渲染，与现有 chatAppearance 用法同一模式。
  */
+
+/** 全局外观配置是否已同步过（会话级一次；admin 配置覆盖 localStorage，用户侧无修改入口） */
+let globalAppearanceSynced = false;
+
 export function useChatAppearanceAttrs(): {
   dataAttrs: Record<string, string>;
   style: CSSProperties;
 } {
   const s = useChatAppearanceStore();
+
+  useEffect(() => {
+    if (globalAppearanceSynced) return;
+    globalAppearanceSynced = true;
+    fetchGlobalChatAppearance()
+      .then((cfg) => {
+        useChatAppearanceStore.getState().applyGlobalConfig(cfg as Record<string, unknown>);
+      })
+      .catch(() => {
+        /* 公开接口失败（离线/后端未起）静默回落本地默认 */
+      });
+  }, []);
 
   const dataAttrs: Record<string, string> = {
     // 对话排版（A/B 保留项）

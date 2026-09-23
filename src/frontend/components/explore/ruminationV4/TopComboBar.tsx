@@ -380,10 +380,9 @@ export default function TopComboBar({ onManageChange }: TopComboBarProps) {
               type="button"
               disabled={atLimit || finalSubmitted}
               onClick={enterDraft}
-              className="new-btn flex h-9 items-center gap-2 rounded-full border border-dashed bg-white/60 px-3.5 text-[12px] font-semibold transition-all disabled:opacity-50"
+              className="new-btn flex h-9 items-center gap-2 rounded-full px-3.5 text-[12px] font-semibold text-white transition-all hover:scale-[0.98] disabled:opacity-50"
               style={{
-                borderColor: atLimit || finalSubmitted ? '#d5d9e0' : '#cdbdf2',
-                color: atLimit || finalSubmitted ? '#b0b8c4' : '#6f52c7',
+                background: 'var(--journey-ink,#17212d)',
                 cursor: atLimit || finalSubmitted ? 'not-allowed' : 'pointer',
               }}
               title={

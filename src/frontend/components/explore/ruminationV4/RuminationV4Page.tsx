@@ -19,7 +19,6 @@ import { useRuminationV4Store } from '@/stores/ruminationV4Store';
 import { markV4IntroShown } from '@/lib/explore/ruminationV4Api';
 import { useChatAppearanceAttrs } from '@/lib/explore/useChatAppearanceAttrs';
 import { useChatAppearanceStore } from '@/stores/chatAppearanceStore';
-import ChatAppearancePopover from '@/components/explore/ChatAppearancePopover';
 import V4ChatPanel from './V4ChatPanel';
 import V4ComboSidebar, { enterComboDraft } from './V4ComboSidebar';
 import TopComboBar from './TopComboBar';
@@ -86,13 +85,19 @@ export default function RuminationV4Page({
   const isGuided = ruminationLayout === 'guided' && !stacked;
   const activeComboId = state?.active_combo_id ?? null;
   /**
-   * guided 选择器收拢（2026-09-22）：确认组合（开始探索）后自动收拢，对话区/输入框自动伸展；
-   * 回到草稿态（新建组合、无激活组合）强制展开。收拢后右缘留 « 边条可手动展开/收拢。
+   * guided 选择器收拢策略：
+   * - 确认新组合（草稿 null → id）后自动收拢，对话区伸展（2026-09-22 拍板）
+   * - 组合间切换（id → 另一 id）改为**展开**选择器，方便对照结论/选择（2026-09-23 拍板）
+   * - 回到草稿态（id → null）强制展开
+   * 收拢条在选择器左侧——展开时随选择器左移，收拢后滑回右缘。
    */
   const [selectorCollapsed, setSelectorCollapsed] = useState(false);
+  const prevComboIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!isGuided) return;
-    setSelectorCollapsed(!!activeComboId);
+    const prev = prevComboIdRef.current;
+    prevComboIdRef.current = activeComboId ?? null;
+    if (!isGuided || prev === (activeComboId ?? null)) return;
+    setSelectorCollapsed(prev ? false : !!activeComboId);
   }, [isGuided, activeComboId]);
   const gotoReport = () => {
     router.push(`/explore/report?code=${encodeURIComponent(activationCode)}`);
@@ -157,12 +162,14 @@ export default function RuminationV4Page({
   /* ── 共享节点（guided / classic 两分支复用，避免 JSX 重复） ─────────── */
 
   const headerNode = (
-    /* 顶栏：居中标题 + 右上完成并继续（guided 下仅横跨对话列，同 HTML conversation-top） */
-    <header className="hero journey-rumination-header mb-2.5 grid shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-[rgba(80,94,145,0.08)] pb-3 pt-1 text-center">
+    /* 顶栏：居中标题 + 右上完成并继续（guided 下仅横跨对话列，同 HTML conversation-top）。
+       relative z-30：毛玻璃 backdrop-filter 会建立层叠上下文把外观弹层困在 header 层级之下，
+       显式置顶保证弹层永远盖住对话/选择器（0923 拍板） */
+    <header className="hero journey-rumination-header relative z-30 mb-2.5 grid shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-[rgba(80,94,145,0.08)] pb-3 pt-1 text-center">
       <div />
       <div className="px-4 sm:px-8">
         {/* 标题与前四阶段 .careering-chat-phase-title 同口径：19px 衬线 + SemiBold 600
-            （避免合成加粗）+ 中文正字距 + journey-ink；仅沉淀页多一行 13px 副标题（HTML 设计稿） */}
+            （避免合成加粗）+ 中文正字距 + journey-ink（0923 拍板：副标题移除；外观配置迁至 admin） */}
         <h1
           className="m-0 text-[19px] font-semibold leading-tight tracking-[0.02em] text-[var(--journey-ink,#17212d)]"
           style={{ fontFamily: 'var(--font-serif-cn)' }}
@@ -172,13 +179,8 @@ export default function RuminationV4Page({
             ✦
           </span>
         </h1>
-        <p className="mx-auto mt-1.5 max-w-[520px] text-[13px] font-[500] leading-relaxed">
-          把热爱与优势组成方向，和我深入聊一聊，留下你的假设结论
-        </p>
       </div>
       <div className="flex items-center justify-end gap-2 pr-1">
-        {/* 外观弹层：沉淀页无会话侧栏，隐藏「对话排版」组 */}
-        <ChatAppearancePopover hideSidebarOptions />
         {onCompleteAndContinue && (
           <button
             type="button"
@@ -213,36 +215,41 @@ export default function RuminationV4Page({
     </div>
   ) : null;
 
-  /* 选择器列：guided 无 v4-inner-pane 壳（透出背景流光），classic 保留（皮肤依赖）；
-     guided 展开宽度上限 min(430px, 50% - 侧栏238px - 间距24px)，保证对话区至少占半页 */
-  const selectorNode =
-    !isGuided || !selectorCollapsed ? (
-      <div
-        className={`flex min-w-0 flex-col ${
-          stacked ? 'w-full flex-none' : 'min-h-0 overflow-hidden'
-        } ${isGuided ? 'flex-none' : 'v4-inner-pane flex-[1.05]'}`}
-        style={
-          isGuided && !stacked
-            ? { width: 'max(280px, min(430px, calc(50% - 262px)))' }
-            : undefined
-        }
-      >
-        <V4MatrixLeftPanel stacked={stacked} />
-      </div>
-    ) : null;
+  /* 选择器列：guided 无 v4-inner-pane 壳（透出背景流光），classic 保留（皮肤依赖）。
+     guided 展开宽度上限 min(430px, 50% - 侧栏238px - 间距24px)，保证对话区至少占半页；
+     开合带 0.4s 精简动画（宽度/透明度，收起时负 margin 抵消 gap，0923 拍板） */
+  const selectorNode = (
+    <div
+      className={`flex min-h-0 min-w-0 flex-col overflow-hidden ${
+        stacked ? 'w-full flex-none' : ''
+      } ${
+        isGuided
+          ? `flex-none transition-[width,opacity,margin] duration-[400ms] ease-[cubic-bezier(0.2,0.8,0.2,1)] motion-reduce:transition-none ${
+              selectorCollapsed ? 'pointer-events-none' : ''
+            }`
+          : 'v4-inner-pane flex-[1.05]'
+      }`}
+      style={
+        isGuided && !stacked
+          ? selectorCollapsed
+            ? { width: 0, opacity: 0, marginLeft: '-12px' }
+            : { width: 'max(280px, min(430px, calc(50% - 262px)))', opacity: 1, marginLeft: 0 }
+          : undefined
+      }
+      aria-hidden={isGuided && !stacked && selectorCollapsed ? true : undefined}
+    >
+      <V4MatrixLeftPanel stacked={stacked} />
+    </div>
+  );
 
-  /* guided 收拢/展开边条（仅已有激活组合时可收拢；草稿态强制展开） */
+  /* guided 收拢/展开边条（仅已有激活组合时可收拢；草稿态强制展开）。
+     hover 有浅紫底+描边的「被选中」反馈（0923 拍板） */
   const collapseNode =
     isGuided && !stacked && !!activeComboId ? (
       <button
         type="button"
         onClick={() => setSelectorCollapsed((v) => !v)}
-        className="flex h-[96px] w-[22px] shrink-0 items-center justify-center self-center rounded-full text-[#8b84a8] transition-colors hover:text-[#6f52c7]"
-        style={{
-          background: 'rgba(255,255,255,0.6)',
-          border: '1px solid rgba(100,91,122,0.12)',
-          boxShadow: '0 6px 16px rgba(49,43,65,0.08)',
-        }}
+        className="flex h-[96px] w-[22px] shrink-0 items-center justify-center self-center rounded-full border border-[rgba(100,91,122,0.12)] bg-white/60 text-[#8b84a8] shadow-[0_6px_16px_rgba(49,43,65,0.08)] transition-all duration-200 hover:border-[#b9a6ec] hover:bg-[#f3f0fc] hover:text-[#6f52c7] hover:shadow-[0_6px_16px_rgba(111,82,199,0.15)]"
         aria-expanded={!selectorCollapsed}
         aria-label={selectorCollapsed ? '展开组合选择器' : '收拢组合选择器'}
         title={selectorCollapsed ? '展开组合选择器' : '收拢组合选择器'}
@@ -284,7 +291,7 @@ export default function RuminationV4Page({
             <button
               type="button"
               onClick={enterComboDraft}
-              className="mt-1 rounded-full bg-[#202832] px-5 py-2 text-[13px] font-semibold text-white transition-transform hover:-translate-y-0.5"
+              className="mt-1 rounded-full bg-[var(--journey-ink,#17212d)] px-5 py-2 text-[13px] font-semibold text-white transition-transform hover:-translate-y-0.5"
             >
               ＋ 新建组合
             </button>
@@ -319,7 +326,7 @@ export default function RuminationV4Page({
         <>
           {/* guided（默认）：组合栏直接挂根级、全高左栏（同前四阶段会话侧栏 / HTML .sidebar），
               不再包进 outer-shell；header/对话/选择器落在内容列，流光背景直接可见 */}
-          <V4ComboSidebar />
+          <V4ComboSidebar onExpandSelector={() => setSelectorCollapsed(false)} />
           <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col py-2 pr-3 sm:pr-4">
             {headerNode}
             {lockBannerNode}
@@ -328,8 +335,9 @@ export default function RuminationV4Page({
               className="rumination-workbench flex min-h-0 flex-1 gap-3 overflow-hidden"
             >
               {chatNode}
-              {selectorNode}
+              {/* 0923 拍板：收拢条放在选择器左侧——展开时跟随选择器往左移动，点击收起滑回右缘 */}
               {collapseNode}
+              {selectorNode}
             </div>
           </div>
         </>

@@ -2,9 +2,8 @@
 
 /**
  * v4 左栏：选择器网格 + 当前结论卡
- * 2026-09-23：两个包装 div 改为纯布局（透明、无边框无阴影）——层级透明化，
- * 选择卡/结论卡自带表面直接落在流光背景上；classic 布局的毛玻璃由外层
- * .v4-inner-pane 提供（guided 无壳，透出背景）。
+ * 2026-09-23 拍板：矩阵 + 结论卡同包一张卡片（局部玻璃白 0.5 + blur10），
+ * 内部以细线划分两段；卡片是局部表面，流光背景在卡片外可见。
  */
 
 import { useMemo, useState } from 'react';
@@ -43,7 +42,7 @@ export default function V4MatrixLeftPanel({ stacked = false }: { stacked?: boole
 
   return (
     <div
-      className={`flex flex-col gap-2.5 ${stacked ? 'h-auto' : 'h-full min-h-0 overflow-hidden'}`}
+      className={`flex min-w-[280px] flex-col gap-2.5 ${stacked ? 'h-auto' : 'h-full min-h-0 overflow-hidden'}`}
     >
       {error && (
         <div
@@ -67,25 +66,39 @@ export default function V4MatrixLeftPanel({ stacked = false }: { stacked?: boole
         </div>
       )}
 
-      {/* 选择器面板（纯布局容器）：双栏模式下空间不足时允许收缩并内部滚动（修复低高度视口裁切），
-          堆叠模式下自然高度由页面滚动承载；无边框无底色——卡片自带表面 */}
+      {/* 0923 拍板：选项矩阵 + 结论卡同包一张卡片（局部玻璃表面，非整页罩），内部以细线划分；
+          双栏模式下两段各自内部滚动（修复低高度视口裁切），堆叠模式自然高度由页面滚动承载 */}
       <div
-        className={`px-0.5 ${stacked ? 'shrink-0' : 'min-h-0 shrink overflow-y-auto rumination-hyp-preview-scroll'}`}
+        className={`flex flex-col overflow-hidden rounded-[18px] border border-[rgba(100,91,122,0.12)] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_12px_32px_rgba(49,43,65,0.05)] ${
+          stacked ? '' : 'min-h-0 flex-1'
+        }`}
+        style={{
+          background: 'rgba(255,255,255,0.5)',
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
+        }}
       >
-        <V4ComboMatrixSelector
-          passions={passions}
-          strengths={strengths}
-          onCreateCombo={handleCreate}
-          creating={creating}
-          locked={isLocked}
-          lockedPassion={activeCombo?.passion || null}
-          lockedStrengths={activeCombo?.strengths || []}
-        />
-      </div>
+        <div
+          className={`${
+            stacked ? 'shrink-0' : 'min-h-0 shrink overflow-y-auto rumination-hyp-preview-scroll'
+          }`}
+        >
+          <V4ComboMatrixSelector
+            passions={passions}
+            strengths={strengths}
+            onCreateCombo={handleCreate}
+            creating={creating}
+            locked={isLocked}
+            lockedPassion={activeCombo?.passion || null}
+            lockedStrengths={activeCombo?.strengths || []}
+          />
+        </div>
 
-      <div className={`flex flex-col px-0.5 ${stacked ? 'flex-none' : 'min-h-0 flex-1 overflow-hidden'}`}>
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto rumination-hyp-preview-scroll">
-          <div className="mb-2 flex shrink-0 items-center gap-2 px-1">
+        {/* 线条划分：矩阵与结论卡的分隔 */}
+        <div className="my-3 h-px shrink-0 bg-[rgba(100,91,122,0.14)]" aria-hidden />
+
+        <div className={`flex flex-col ${stacked ? 'flex-none' : 'min-h-0 flex-1 overflow-hidden'}`}>
+          <div className="mb-2 flex shrink-0 items-center gap-2">
             <span className="text-[14px] font-[760] text-[#4b5563]">结论卡</span>
             {activeCombo && (
               <span className="text-[12px] font-[500] text-[#9ca3af]">
@@ -95,7 +108,11 @@ export default function V4MatrixLeftPanel({ stacked = false }: { stacked?: boole
           </div>
 
           {!activeCombo ? (
-            <div className="flex flex-1 items-center justify-center px-4 py-6 text-center text-[13px] font-[700] text-[#9ca3af]">
+            <div
+              className={`flex text-center text-[13px] font-[700] text-[#9ca3af] ${
+                stacked ? 'px-4 py-6' : 'min-h-0 flex-1 items-center justify-center px-4 py-6'
+              }`}
+            >
               选择热爱与优势后，点击「开始探索」
             </div>
           ) : (

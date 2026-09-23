@@ -134,17 +134,18 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      {/* 与 v3 右栏一致的毛玻璃聊天卡 */}
-      <div className="rumination-beautiful-card rumination-beautiful-card--chat flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden py-4 px-3 sm:px-5 sm:py-5">
+      {/* 0923 拍板：不再包毛玻璃聊天卡——对话直接落在流光背景上（同前四阶段/HTML conversation），
+          气泡与输入胶囊自带表面；仅保留顶部组合名 + 状态行（细线分隔，同 conversation-top） */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div className="mb-2 shrink-0 border-b border-black/[0.06] pb-2">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-bd-fg">
+              <h2 className="text-[15px] font-semibold text-bd-fg">
                 {combo ? `${combo.passion} × ${combo.strengths.join('、')}` : '探索对话'}
               </h2>
               <p className="mt-0.5 text-xs text-neutral-500">
                 {isDraft
-                  ? '请先在左侧选点并点击「开始探索」'
+                  ? '请先在选择器选点并点击「开始探索」'
                   : combo
                     ? finalSubmitted
                       ? '最终选择已提交，内容已锁定，仅供回看'
@@ -152,12 +153,12 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
                       ? '结论卡分析中，完成后可继续探讨'
                       : isReadOnly
                         ? combo.status === 'concluded'
-                          ? '结论已确认，点左侧结论卡上的「再聊聊」可继续探讨'
-                          : '该组合已跳过，点左侧结论卡可恢复'
+                          ? '结论已确认，点结论卡上的「再聊聊」可继续探讨'
+                          : '该组合已跳过，点结论卡的「再聊聊」可恢复'
                         : hasOpening
                           ? '与我探讨这个组合的假设方向'
                           : '点击下方开始讨论'
-                    : '请从左侧选择或创建一个组合开始探索'}
+                    : '请从组合列表选择或创建一个组合开始探索'}
               </p>
             </div>
           </div>
@@ -302,8 +303,8 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
                                 ? '正在分析中，请稍后…'
                                 : isReadOnly
                                   ? combo.status === 'concluded'
-                                    ? '已确认，点左侧结论卡「再聊聊」继续探讨'
-                                    : '已跳过，点左侧结论卡可恢复'
+                                    ? '已确认，点结论卡「再聊聊」继续探讨'
+                                    : '已跳过，点结论卡「再聊聊」可恢复'
                                   : '输入你的想法...'
                         }
                         rows={1}
@@ -346,7 +347,7 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
               backdropFilter: 'blur(8px)',
             }}
           >
-            左侧选完热爱与优势后
+            在选择器选完热爱与优势后
             <br />
             点击「开始探索」解锁对话
           </div>

@@ -221,6 +221,11 @@ class ApiClient {
     return response.data;
   }
 
+  async put<T = any>(url: string, data?: any, config?: any): Promise<ApiResponse<T>> {
+    const response = await this.client.put<ApiResponse<T>>(url, data, config);
+    return response.data;
+  }
+
   async delete<T = any>(url: string, config?: any): Promise<ApiResponse<T>> {
     const response = await this.client.delete<ApiResponse<T>>(url, config);
     return response.data;

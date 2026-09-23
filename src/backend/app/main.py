@@ -14,6 +14,7 @@ from app.api.middleware import AudioModeMiddleware, ErrorHandlerMiddleware
 from app.api.v1 import admin_bounces  # 新增：退信黑名单管理
 from app.api.v1 import admin_notifications  # 新增：通知邮件群发
 from app.api.v1 import site_notices  # 新增：站内公告（banner / 维护通知）
+from app.api.v1 import chat_appearance  # 新增：Chat 外观全局默认配置（admin 配置，全局生效）
 from app.api.v1 import admin_maintenance  # 新增：维护模式切换
 from app.api.v1 import admin_model_config  # 新增：LLM 模型配置后台
 from app.api.v1 import chat_optimized  # 新增：优化的对话API
@@ -533,6 +534,7 @@ app.include_router(analytics.router, prefix="/api/v1")
 app.include_router(admin_notifications.router, prefix="/api/v1")  # 通知邮件群发
 app.include_router(admin_bounces.router, prefix="/api/v1")  # 退信黑名单
 app.include_router(site_notices.router, prefix="/api/v1")  # 站内公告（公开 + admin）
+app.include_router(chat_appearance.router, prefix="/api/v1")  # Chat 外观全局默认（公开读 + admin 写）
 app.include_router(admin_maintenance.router, prefix="/api/v1")  # 维护模式切换（admin）
 app.include_router(admin_model_config.router, prefix="/api/v1")  # LLM 模型配置（admin）
 app.include_router(feedbacks.router, prefix="/api/v1")  # 用户反馈（提反馈、传截图）

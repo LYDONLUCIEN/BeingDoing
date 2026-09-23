@@ -3,14 +3,14 @@
 /**
  * v4 结论卡（2026-08-06 版，ADR-0015：用户主导填写 + 独立后台平衡点判定）
  *
- * 状态机：
- * - 草稿（无卡/未确认）：textarea 可直接编辑，[确认]（≥5 字）触发后台判定；[跳过]（有内容时）
+ * 状态机（2026-09-23 拍板简化：去掉「重新编辑」，「再聊聊」是唯一再编辑入口）：
+ * - 草稿（无卡/未确认）：textarea 直接编辑，[确认]（≥5 字）触发后台判定；[跳过]（有内容时）
  * - 分析中（balance_analysis.status=analyzing）：整卡锁定，显示「正在分析中…」
  * - 分析失败（failed）：错误提示 + [点击重试]
- * - 已判定（done）：判定灯（推荐=绿 / 不推荐=琥珀+理由 / 证据不足=灰），[重新编辑][再聊聊]
- * - 已跳过（user_skipped）：删除线 + 灰色，[确认（恢复）] 走正常确认+判定流程
- *
- * 聊/改即作废：重新编辑后再确认 = 新一轮判定；再聊聊 = 回对话继续打磨（旧判定作废）。
+ * - 已判定（done）/已跳过（user_skipped）：**只读展示**，状态标签置顶，底部唯一动作 [再聊聊]
+ * - [再聊聊]：concluded/abandoned → discussing（后端作废旧判定、清跳过标记），并进入编辑态；
+ *   跳过的组合由此恢复（修复「跳过后无法恢复」）
+ * - 编辑态：底部 [取消][确认]；点取消退出编辑（底部动作收起，回到只读展示）
  */
 
 import { useEffect, useState } from 'react';
@@ -40,32 +40,35 @@ function getToken(): string | undefined {
 }
 
 export default function ConclusionCardEditable({ comboId, card, analysis, userSkipped }: Props) {
-  const { patchCard, confirmCard, setStatus } = useRuminationV4Store();
+  const { confirmCard, setStatus } = useRuminationV4Store();
   /** 终选已提交：整页回看模式，结论卡只读、操作按钮全部隐藏 */
   const finalSubmitted = useRuminationV4Store(
     (s) => !!s.state?.final_selection?.submitted
   );
   const [localHypothesis, setLocalHypothesis] = useState<string>(hypToString(card?.hypothesis));
   const [saving, setSaving] = useState(false);
-  /** 已判定态下点「重新编辑」进入的编辑模式 */
-  const [reediting, setReediting] = useState(false);
+  /** 已保存卡点「再聊聊」进入的编辑模式；取消则退出（底部动作随之收起） */
+  const [editingMode, setEditingMode] = useState(false);
 
   useEffect(() => {
     setLocalHypothesis(hypToString(card?.hypothesis));
   }, [card?.hypothesis, card?.updated_at]);
 
+  const savedText = hypToString(card?.hypothesis);
   const analysisStatus = analysis?.status || null;
   const isAnalyzing = analysisStatus === 'analyzing';
   const isFailed = analysisStatus === 'failed';
   const isJudged = analysisStatus === 'done';
   const canConfirm = localHypothesis.trim().length >= 5;
+  /** 已有保存内容且未进入编辑模式 → 只读展示（已判定/已跳过/判定已作废的旧卡；失败态保持可编辑改稿） */
+  const idleSaved = !!savedText.trim() && !editingMode && !isFailed;
 
   const handleConfirm = async () => {
     if (!canConfirm || saving) return;
     setSaving(true);
     try {
       await confirmCard(comboId, localHypothesis.trim(), getToken());
-      setReediting(false);
+      setEditingMode(false);
     } finally {
       setSaving(false);
     }
@@ -89,18 +92,24 @@ export default function ConclusionCardEditable({ comboId, card, analysis, userSk
     }
   };
 
-  const handleReopen = async () => {
+  /** 再聊聊 = 唯一再编辑入口：已判定/已跳过先回对话态（后端作废判定、清跳过标记），随后进入编辑 */
+  const handleReopenAndEdit = async () => {
+    if (saving) return;
     setSaving(true);
     try {
-      await setStatus(comboId, 'discussing');
+      if (isJudged || userSkipped) {
+        await setStatus(comboId, 'discussing');
+      }
+      setLocalHypothesis(hypToString(card?.hypothesis));
+      setEditingMode(true);
     } finally {
       setSaving(false);
     }
   };
 
-  const handleReeditCancel = () => {
-    setLocalHypothesis(hypToString(card?.hypothesis));
-    setReediting(false);
+  const handleCancelEdit = () => {
+    setLocalHypothesis(savedText);
+    setEditingMode(false);
   };
 
   // ── 判定灯(已判定态)────────────────────────────────────────────
@@ -139,7 +148,47 @@ export default function ConclusionCardEditable({ comboId, card, analysis, userSk
     );
   };
 
-  const editing = !finalSubmitted && (!isJudged || reediting); // 草稿/跳过/重新编辑 = textarea 可编辑；提交后只读
+  // ── 顶部状态标签（0923 拍板：已跳过/已确认等状态从底部上移到卡顶） ──
+  const renderStatusBadge = () => {
+    if (userSkipped) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-[#e5e7eb] px-2.5 py-1 text-[12px] font-[700] text-[#6b7280]">
+          已跳过
+        </span>
+      );
+    }
+    if (isAnalyzing) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-[#fff6e5] px-2.5 py-1 text-[12px] font-[700] text-[#b57908]">
+          分析中
+        </span>
+      );
+    }
+    if (isFailed) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-[#fee2e2] px-2.5 py-1 text-[12px] font-[700] text-red-600">
+          分析失败
+        </span>
+      );
+    }
+    if (isJudged) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-[#e8faf3] px-2.5 py-1 text-[12px] font-[700] text-[#02a475]">
+          ✓ 已确认
+        </span>
+      );
+    }
+    if (savedText.trim()) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-[#fff6e5] px-2.5 py-1 text-[12px] font-[700] text-[#b57908]">
+          待确认
+        </span>
+      );
+    }
+    return null;
+  };
+
+  const editing = !finalSubmitted && !idleSaved && !isAnalyzing; // 草稿/编辑模式/失败改稿 = textarea 可编辑；提交后只读
   const locked = isAnalyzing || finalSubmitted;
 
   return (
@@ -172,11 +221,11 @@ export default function ConclusionCardEditable({ comboId, card, analysis, userSk
         <Briefcase size={28} strokeWidth={1.6} />
       </div>
 
-      {/* 中间内容（2026-08-25 起不再显示选中优势徽章：只取前 2 个显示不全、视觉杂乱，
-          标题行仅在已有判定灯/保存提示时出现） */}
+      {/* 中间内容：顶部状态行（状态标签 + 判定灯）→ 假设方向 → 文本 */}
       <div className="min-w-0">
-        {(isJudged || (saving && !isAnalyzing)) && (
-          <div className="conclusion-title mb-1.5 flex flex-wrap items-center gap-2 text-[14px] font-[800] text-[#1f2937]">
+        {(renderStatusBadge() || isJudged || (saving && !isAnalyzing)) && (
+          <div className="conclusion-title mb-1.5 flex flex-wrap items-center gap-2">
+            {renderStatusBadge()}
             {renderJudgeLight()}
             <span className="ml-auto text-[11px] font-[500] text-[#9ca3af]">
               {saving && !isAnalyzing ? '保存中…' : ''}
@@ -211,7 +260,7 @@ export default function ConclusionCardEditable({ comboId, card, analysis, userSk
                 : 'border-[rgba(109,121,176,0.10)] bg-[rgba(250,251,255,0.65)] text-[#334163]'
             }`}
           >
-            {hypToString(card?.hypothesis)}
+            {savedText}
           </div>
         )}
 
@@ -239,37 +288,13 @@ export default function ConclusionCardEditable({ comboId, card, analysis, userSk
       {/* 右侧占位（保持 grid 三列结构对齐） */}
       <div className="card-actions flex flex-shrink-0 flex-col items-end gap-4 text-[12px] text-[#77829f]" />
 
-      {/* 底部操作区 */}
+      {/* 底部操作区（状态标签已上移；只放动作按钮，右对齐） */}
       <div
-        className="col-span-full mt-1 flex items-center justify-between gap-2"
+        className="col-span-full mt-1 flex items-center justify-end gap-2"
         style={{ gridColumn: '1 / 4' }}
       >
-        {/* 左:状态标签 */}
-        {userSkipped ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-[#e5e7eb] px-2.5 py-1 text-[12px] font-[700] text-[#6b7280]">
-            已跳过
-          </span>
-        ) : isAnalyzing ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-[#fff6e5] px-2.5 py-1 text-[12px] font-[700] text-[#b57908]">
-            分析中
-          </span>
-        ) : isFailed ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-[#fee2e2] px-2.5 py-1 text-[12px] font-[700] text-red-600">
-            分析失败
-          </span>
-        ) : isJudged ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-[#e8faf3] px-2.5 py-1 text-[12px] font-[700] text-[#02a475]">
-            ✓ 已确认
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1 rounded-full bg-[#fff6e5] px-2.5 py-1 text-[12px] font-[700] text-[#b57908]">
-            待确认
-          </span>
-        )}
-
-        {/* 右:动作按钮（提交后回看模式全部隐藏） */}
         <div className="flex items-center gap-2">
-          {finalSubmitted ? null : isAnalyzing ? null : isFailed ? (
+          {finalSubmitted || isAnalyzing ? null : isFailed ? (
             <button
               type="button"
               onClick={handleRetry}
@@ -279,40 +304,31 @@ export default function ConclusionCardEditable({ comboId, card, analysis, userSk
             >
               {saving ? '重试中…' : '点击重试'}
             </button>
-          ) : isJudged && !reediting ? (
-            <>
-              <button
-                type="button"
-                onClick={() => setReediting(true)}
-                disabled={saving}
-                className="small-btn rounded-[10px] border border-[rgba(109,121,176,0.20)] bg-white px-[14px] py-2 text-[13px] font-[700] text-[#77829f] transition-transform hover:-translate-y-px disabled:opacity-50"
-              >
-                ✎ 重新编辑
-              </button>
-              <button
-                type="button"
-                onClick={handleReopen}
-                disabled={saving}
-                title="回到对话,和 AI 继续打磨这个方向(原判定作废)"
-                className="small-btn rounded-[10px] border-0 px-[18px] py-2 text-[13px] font-[700] text-white transition-transform hover:-translate-y-px disabled:opacity-50"
-                style={{ background: 'linear-gradient(135deg,#7a64ff,#5d49ef)' }}
-              >
-                {saving ? '解锁中…' : '再聊聊'}
-              </button>
-            </>
+          ) : idleSaved && !editingMode ? (
+            /* 已判定/已跳过/判定作废的旧卡：唯一动作 = 再聊聊（进入编辑 + 回对话） */
+            <button
+              type="button"
+              onClick={handleReopenAndEdit}
+              disabled={saving}
+              title="回到对话继续打磨这个方向，旧判定作废，可直接编辑"
+              className="small-btn rounded-[10px] border-0 px-[18px] py-2 text-[13px] font-[700] text-white transition-transform hover:-translate-y-px disabled:opacity-50"
+              style={{ background: 'linear-gradient(135deg,#7a64ff,#5d49ef)' }}
+            >
+              {saving ? '解锁中…' : '再聊聊'}
+            </button>
           ) : (
             <>
-              {reediting && (
+              {editingMode && (
                 <button
                   type="button"
-                  onClick={handleReeditCancel}
+                  onClick={handleCancelEdit}
                   disabled={saving}
                   className="small-btn rounded-[10px] border border-[rgba(109,121,176,0.20)] bg-white px-[18px] py-2 text-[13px] font-[700] text-[#77829f] transition-transform hover:-translate-y-px disabled:opacity-50"
                 >
                   取消
                 </button>
               )}
-              {!userSkipped && !reediting && hypToString(card?.hypothesis) && (
+              {!userSkipped && !editingMode && savedText && (
                 <button
                   type="button"
                   onClick={handleSkip}
@@ -332,7 +348,7 @@ export default function ConclusionCardEditable({ comboId, card, analysis, userSk
                   background: canConfirm ? 'linear-gradient(135deg,#7a64ff,#5d49ef)' : undefined,
                 }}
               >
-                {saving ? '提交中…' : userSkipped ? '确认（恢复）' : reediting ? '重新确认' : '确认'}
+                {saving ? '提交中…' : editingMode ? '重新确认' : '确认'}
               </button>
             </>
           )}

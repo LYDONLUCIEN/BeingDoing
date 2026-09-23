@@ -85,3 +85,51 @@
 | `rumination-beautiful.css` | 小高度媒体查询删 `hero h1{font-size:24px}`（保持 19px 对齐前四阶段） |
 
 验收：`git diff --check` ✓ `npm run lint` ✓ `npm run build` ✓（0923）
+
+## 0923 反馈修复轮 · 第二批
+
+| 文件 | 改动 |
+|---|---|
+| `V4ChatPanel.tsx` | **拆除毛玻璃聊天卡**（方案 A）：对话直接落在流光背景（同前四阶段/HTML conversation）；保留组合名+状态行细线头；气泡与输入胶囊自带表面 |
+| `V4MatrixLeftPanel.tsx` | 矩阵+结论卡同包**一张局部玻璃卡**（白 0.5+blur10+顶部高光），内部细线划分两段，两段各自内部滚动 |
+| `V4ComboMatrixSelector.tsx` | 优势五卡 auto-fit 网格 → **居中 flex-wrap**（一行 5 个 w≈20%，窄时 3+2/2+2+1 居中对称）；空状态 col-span-full→w-full |
+| `V4ComboSidebar.tsx` / `TopComboBar.tsx` / `RuminationV4Page.tsx` | 新建组合三处 + 锁屏 CTA → **实心深墨 pill**（`--journey-ink`） |
+| `chatAppearanceStore.ts` | persist v2→v3：存量 `newChatStyle:'dashed'` → `solid`（用户拍板统一实心深墨；开关保留） |
+
+验收：`git diff --check` ✓ `npm run lint` ✓ `npm run build` ✓（0923 第二批）
+
+## 0923 反馈修复轮 · 第三批
+
+| 文件 | 改动 |
+|---|---|
+| `V4ComboMatrixSelector.tsx` | 优势五卡改**上三下二**（w≈1/3 居中 flex-wrap）；热爱/优势卡加 `title` 悬停显示全名 |
+| `V4ComboSidebar.tsx` | chips 换**紫系**：热爱实底紫 `#6f52c7` 白字、优势浅紫 `#f1edfb`/`#5b3fb8` |
+| `RuminationV4Page.tsx` | 收拢条移到选择器左侧——展开时跟随左移，收起滑回右缘 |
+| `ConclusionCardEditable.tsx`（重构） | 删「重新编辑」；「再聊聊」= 唯一再编辑入口（judged/skipped → discussing 后端作废判定+清跳过 → 进编辑态，**跳过可恢复**）；状态标签上移卡顶（与判定灯同行）；编辑态底部 [取消][重新确认]，取消即收起；失败态可编辑+重试 |
+| `V4ChatPanel.tsx` | 状态文案去方向词（guided 里结论卡在右侧） |
+
+状态机（简化后）：草稿=[跳过][确认] · 分析中=锁定 · 失败=[点击重试]（可改稿） · 已判定/已跳过/判定作废=[再聊聊] → 编辑态=[取消][重新确认]。
+
+验收：`npm run lint` ✓ `npm run build` ✓（0923 第三批）
+
+## 0923 反馈修复轮 · 第四批
+
+| 文件 | 改动 |
+|---|---|
+| `RuminationV4Page.tsx` | ①选择器常驻 + 0.4s 开合动画（width/opacity/margin，motion-reduce 关）；②header `relative z-30` 修复外观弹层被锁屏/对话盖住（毛玻璃层叠上下文陷阱）；③收拢条 hover 浅紫反馈；④锁屏 CTA 浅 duo；⑤传 onExpandSelector 给侧栏 |
+| `V4ComboSidebar.tsx` | 下段新增当前组合**结论摘要只读小卡** + 「编辑」→展开右侧选择器；新建组合改浅 duo 渐变（#fdeef1→#eef3fd） |
+| `TopComboBar.tsx` | 新建组合同步浅 duo |
+| `V4MatrixLeftPanel.tsx` | 根 min-w-[280px]（动画收拢时内容不重排） |
+| `rumination-beautiful.css` | 输入区作用域去掉已删除的聊天卡依赖：胶囊居中 max-1000、27px 圆角、白 0.92、焦点紫描边（对齐前四阶段） |
+
+验收：`git diff --check` ✓ `npm run lint` ✓ `npm run build` ✓（0923 第四批）
+
+## 0923 反馈修复轮 · 第五批
+
+| 位置 | 改动 |
+|---|---|
+| 沉淀页 | ①新建组合三处恢复实心深墨；②左栏结论摘要区固定 1/3 高+独立滚动；③05 沉淀副标题删除；④组合间切换自动展开选择器（新建确认仍收拢、回草稿展开） |
+| **外观配置迁 admin（架构）** | 后端 `app/api/v1/chat_appearance.py`（公开 GET /chat-appearance + 超管 GET/PUT /admin/chat-appearance，白名单校验，存 admin_runtime_config.json）+ main.py 注册；前端 `lib/api/chatAppearance.ts`、store `applyGlobalConfig`、`useChatAppearanceAttrs` 全局同步（覆盖 localStorage）、chat 页齿轮删除（组件删除）、新页 `/admin/appearance`（复用 ol-chat-appearance 样式）+ admin 导航；apiClient 补 put |
+| 实测 | `GET /chat-appearance` → `{}` ✓；`PUT /admin/...` 未登录 → 401 ✓；后端模块导入 ✓；前端 lint/build ✓（52 页，+1 admin appearance） |
+
+验收：`git diff --check` ✓ `npm run lint` ✓ `npm run build` ✓ `curl` 路由 ✓（0923 第五批）

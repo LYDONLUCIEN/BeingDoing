@@ -98,6 +98,7 @@ export default function V4ComboMatrixSelector({
                 type="button"
                 disabled={locked}
                 onClick={() => !locked && setSelPassion(p.name)}
+                title={p.name}
                 className={`
                   choice-card love-card relative flex min-h-[64px] flex-col items-center justify-center
                   rounded-[12px] border px-2 py-2.5 text-center transition-all duration-200
@@ -140,10 +141,9 @@ export default function V4ComboMatrixSelector({
           <span>选择你的优势</span>
           <small className="text-[11px] font-normal text-[#98a1ad]">多选</small>
         </div>
-        <div
-          className="cards-row strength-cards grid gap-2"
-          style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(92px, 1fr))' }}
-        >
+        {/* 0923 拍板：优势五卡「上三下二」——每卡 w≈1/3，第二行 2 张居中；
+            卡名放不下时悬停 title 显示全名 */}
+        <div className="cards-row strength-cards flex flex-wrap justify-center gap-2">
           {strengthOpts.map((s) => {
             const isActive = activeStrengths.includes(s.name);
             return (
@@ -152,8 +152,9 @@ export default function V4ComboMatrixSelector({
                 type="button"
                 disabled={locked}
                 onClick={() => toggleStrength(s.name)}
+                title={s.name.replace(/\n/g, ' ')}
                 className={`
-                  choice-card strength-card relative flex min-h-[56px] flex-col items-center justify-center
+                  choice-card strength-card relative flex min-h-[56px] w-[calc(33.333%-5.33px)] flex-col items-center justify-center
                   rounded-[12px] border px-1.5 py-2 text-center transition-all duration-200
                   ${locked ? 'cursor-default' : 'cursor-pointer hover:-translate-y-0.5'}
                   ${
@@ -178,7 +179,7 @@ export default function V4ComboMatrixSelector({
             );
           })}
           {strengthOpts.length === 0 && (
-            <div className="col-span-full py-3 text-center text-[12px] text-[#9ca3af]">
+            <div className="w-full py-3 text-center text-[12px] text-[#9ca3af]">
               暂无可选优势
             </div>
           )}

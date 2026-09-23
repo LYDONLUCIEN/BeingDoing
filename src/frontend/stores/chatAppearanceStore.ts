@@ -108,7 +108,30 @@ interface ChatAppearanceState {
   setConclusionTags: (v: ConclusionTagsStyle) => void;
   /** 重置 14 个新字段为推荐组合；不动 density / newChatStyle / sidebarArt */
   resetToRecommended: () => void;
+  /** 应用 admin 下发的全局默认配置（0923：用户侧无修改入口，全局配置覆盖本地持久化）；
+      只接受白名单字段，非法/缺省字段保持现状 */
+  applyGlobalConfig: (cfg: Record<string, unknown>) => void;
 }
+
+/** applyGlobalConfig 接受的字段白名单（与后端 chat_appearance FIELD_ENUMS 对齐） */
+const GLOBAL_CONFIG_FIELDS = [
+  'density',
+  'newChatStyle',
+  'background',
+  'placement',
+  'strength',
+  'motionPaused',
+  'aiBubble',
+  'userBubble',
+  'actionStyle',
+  'ruminationLayout',
+  'ruminationSkin',
+  'palette',
+  'matrixStyle',
+  'matrixPalette',
+  'conclusionTone',
+  'conclusionTags',
+] as const;
 
 export const useChatAppearanceStore = create<ChatAppearanceState>()(
   persist(
@@ -137,10 +160,20 @@ export const useChatAppearanceStore = create<ChatAppearanceState>()(
       setConclusionTone: (conclusionTone) => set({ conclusionTone }),
       setConclusionTags: (conclusionTags) => set({ conclusionTags }),
       resetToRecommended: () => set({ ...RECOMMENDED_CHAT_APPEARANCE }),
+      applyGlobalConfig: (cfg) => {
+        const patch: Record<string, unknown> = {};
+        for (const key of GLOBAL_CONFIG_FIELDS) {
+          const val = cfg?.[key];
+          if (val !== undefined && val !== null) patch[key] = val;
+        }
+        if (Object.keys(patch).length > 0) {
+          set(patch as unknown as Partial<ChatAppearanceState>);
+        }
+      },
     }),
     {
       name: 'openlife-chat-appearance',
-      version: 2,
+      version: 3,
       storage: typeof window !== 'undefined' ? createJSONStorage(() => localStorage) : undefined,
       migrate: (persisted, version) => {
         if (!persisted || typeof persisted !== 'object') return persisted;
@@ -166,6 +199,11 @@ export const useChatAppearanceStore = create<ChatAppearanceState>()(
           if (!next.ruminationLayout || next.ruminationLayout === 'classic') {
             next.ruminationLayout = 'guided';
           }
+        }
+        // v2 → v3（2026-09-23 拍板）：新建对话/新建组系统一实心深墨；
+        // 存量 dashed 一并升级 solid，外观面板开关保留可切回
+        if (version < 3 && next.newChatStyle === 'dashed') {
+          next.newChatStyle = 'solid';
         }
         return next;
       },

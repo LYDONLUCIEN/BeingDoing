@@ -23,7 +23,6 @@ import UpgradeTrialModal from '@/components/payment/UpgradeTrialModal';
 import PurchaseModal from '@/components/payment/PurchaseModal';
 import ChatPhaseBackground from '@/components/explore/ChatPhaseBackground';
 import LegacyBrowserNotice from '@/components/layout/LegacyBrowserNotice';
-import ChatAppearancePopover from '@/components/explore/ChatAppearancePopover';
 import { useChatAppearanceAttrs } from '@/lib/explore/useChatAppearanceAttrs';
 const PhaseCelebrateBurst = dynamic(
   () => import('@/components/explore/PhaseCelebrateBurst'),
@@ -223,7 +222,7 @@ function LiveChatPhasePage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { t, locale } = useLocale();
-  // Chat 外观（背景/气泡/排版等 data 属性），见 ChatAppearancePopover + openlife-chat-appearance.css
+  // Chat 外观（背景/气泡/排版等 data 属性），全局配置见 admin「外观配置」+ openlife-chat-appearance.css
   const { dataAttrs: chatAppearanceAttrs, style: chatAppearanceStyle } = useChatAppearanceAttrs();
   const phase = (params.phase as string) as PhaseKey;
   const phaseRef = useRef(phase);
@@ -1929,7 +1928,6 @@ function LiveChatPhasePage() {
                     {phaseInfo.num} {phaseLabel}
                   </h2>
                   <div className="careering-chat-header-actions">
-                    <ChatAppearancePopover />
                     <button
                       type="button"
                       onClick={handleRequestCompleteAndContinue}
