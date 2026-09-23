@@ -119,14 +119,16 @@ class OpenAIProvider(BaseLLMProvider):
                 for msg in messages
             ]
             
-            # 调用OpenAI API
-            response = await self.client.chat.completions.create(
+            # 调用OpenAI API（thinking 开启时不发 temperature——V4 思维链模式下会被
+            # 静默忽略；关闭时对 V4 系显式发 extra_body thinking disabled，见 _apply_thinking_kwargs）
+            create_kwargs = dict(
                 model=self.model,
                 messages=openai_messages,
-                temperature=temperature,
                 max_tokens=max_tokens,
                 **kwargs
             )
+            self._apply_thinking_kwargs(create_kwargs, temperature)
+            response = await self.client.chat.completions.create(**create_kwargs)
             
             # 解析响应
             choice = response.choices[0]
@@ -161,17 +163,48 @@ class OpenAIProvider(BaseLLMProvider):
             # 错误处理
             raise LLMError(f"OpenAI API调用失败: {str(e)}")
     
-    def _is_reasoning_model(self) -> bool:
-        """是否启用思维链：需要模型支持 + 全局开关开启
+    def _model_supports_thinking(self) -> bool:
+        """模型本身是否支持思维链（DeepSeek V4 全系 flash/pro / 历史 reasoner 名）。
 
         DeepSeek V4 全系（flash/pro）默认 thinking=on，都会吐 reasoning_content，
         必须统一走思维链分流——否则 flash 偶发「只吐思维链、content 为空」时
         思维链被静默丢弃，空回复无法检测也无法展示（2026-09-21 空回复事故根因）。
         """
-        if not settings.LLM_THINKING_ENABLED:
-            return False
         m = (self.model or "").lower()
         return "reasoner" in m or m.startswith("deepseek-v4")
+
+    def _thinking_enabled(self) -> bool:
+        """当前调用是否启用思维链：模型支持 × 场景开关。
+
+        2026-09-23 起 chat/rumination/report 三场景由 admin 场景配置控制
+        （scene_config.is_scene_thinking_enabled）；其余场景（team_analysis/unknown）
+        兜底全局 settings.LLM_THINKING_ENABLED。scene 取自 usage_context（contextvar，
+        请求内设置的 scene 对流式生成器同样可见）。
+        """
+        if not self._model_supports_thinking():
+            return False
+        try:
+            from app.core.llmapi.usage_context import get_llm_usage_context
+            from app.core.llmapi.scene_config import is_scene_thinking_enabled
+
+            scene = (get_llm_usage_context().get("scene") or "unknown").strip()
+            return is_scene_thinking_enabled(scene)
+        except Exception:
+            return bool(settings.LLM_THINKING_ENABLED)
+
+    def _apply_thinking_kwargs(self, create_kwargs: Dict, temperature: float) -> None:
+        """按 thinking 开关补齐请求参数（chat / chat_stream 共用）：
+
+        - 开：不发 temperature（V4 思维链模式下该参数会被静默忽略）
+        - 关（模型支持）：发 temperature，并显式关闭思维链——
+          extra_body={"thinking": {"type": "disabled"}}（DeepSeek V4 官方参数）
+        - 关（模型不支持，如 kimi/qwen/gpt）：只发 temperature（历史行为）
+        """
+        if self._thinking_enabled():
+            return
+        create_kwargs["temperature"] = temperature
+        if self._model_supports_thinking():
+            create_kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
 
     async def chat_stream(
         self,
@@ -205,12 +238,11 @@ class OpenAIProvider(BaseLLMProvider):
                 stream_options={"include_usage": True},
                 **kwargs
             )
-            if not self._is_reasoning_model():
-                create_kwargs["temperature"] = temperature
+            self._apply_thinking_kwargs(create_kwargs, temperature)
 
             stream = await self.client.chat.completions.create(**create_kwargs)
 
-            if not self._is_reasoning_model():
+            if not self._thinking_enabled():
                 # 普通模型：直接 yield 字符串
                 async for chunk in stream:
                     if chunk.usage:

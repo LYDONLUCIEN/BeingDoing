@@ -21,6 +21,7 @@ import {
   CreditCard,
   Headphones,
   Palette,
+  Shuffle,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useLocale } from '@/hooks/useLocale';
@@ -42,6 +43,7 @@ const ADMIN_NAV_ITEMS = [
   { path: '/admin/analytics', icon: Activity, label: '埋点与 Token 统计' },
   { path: '/admin/logs', icon: TerminalSquare, label: '日志与调试' },
   { path: '/admin/model-config', icon: Cpu, label: 'LLM 模型配置' },
+  { path: '/admin/llm-scene', icon: Shuffle, label: 'AI 模型分流' },
   { path: '/admin/appearance', icon: Palette, label: 'Chat 外观配置' },
   { path: '/admin/system', icon: Settings, label: '系统设置' },
 ] as const;

@@ -1,11 +1,11 @@
 """
-模型场景分流测试（2026-08-19）
+模型场景分流测试（2026-08-19；2026-09-23 起三场景改由 admin 场景配置接管）
 
 deepseek provider 的模型由 usage_context 的 scene 确定性决定：
-- scene=chat（前四 phase values/strengths/interests/purpose 的对话+结论卡）→ flash
-- scene=rumination / report / team_analysis / 未设置 → pro
-- LLM_FLASH_MODEL / LLM_PRO_MODEL 可覆盖默认值
-  （2026-08-23 起 .env 将 LLM_FLASH_MODEL 覆盖为 deepseek-v4-pro，即全部场景统一 pro）
+- chat / rumination / report：读 admin 场景配置（scene_config，档位固定映射
+  flash→deepseek-v4-flash / pro→deepseek-v4-pro），不受 .env 覆盖影响——
+  详见 test_llm_scene_config.py
+- team_analysis / 未设置 → pro（LLM_PRO_MODEL 可覆盖）
 - 非 deepseek provider 不受 scene 影响
 
 注意：默认值断言需先把 settings 覆盖回 None，否则会被 .env 中的显式配置影响。
@@ -21,6 +21,7 @@ from app.core.llmapi.usage_context import (
     reset_llm_usage_context,
     set_llm_usage_context,
 )
+from app.utils import admin_config as admin_config_mod
 
 
 @pytest.fixture(autouse=True)
@@ -30,6 +31,14 @@ def _clean_scene_ctx():
     # 无 token 可复位时直接再 set 一个 unknown 兜底（contextvar 测试间隔离兜底）
     token = set_llm_usage_context(scene="unknown")
     reset_llm_usage_context(token)
+
+
+@pytest.fixture(autouse=True)
+def _tmp_store(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    """隔离 admin 场景配置存储（2026-09-23 起 chat/rumination/report 读该配置，
+    未保存时与默认值一致），避免开发机真实 data/ 影响断言。"""
+    path = tmp_path / "admin_runtime_config.json"
+    monkeypatch.setattr(admin_config_mod, "_config_path", lambda: path)
 
 
 @pytest.fixture
@@ -67,11 +76,16 @@ class TestSceneModel:
     def test_unknown_scene_uses_pro(self) -> None:
         assert _model_for_scene("unknown") == "deepseek-v4-pro"
 
-    def test_env_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(settings, "LLM_FLASH_MODEL", "deepseek-v4-flash-x")
+    def test_env_override_only_uncovered_scenes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """2026-09-23 起 chat/rumination/report 由 admin 场景配置接管（档位固定映射，
+        不受 .env 影响，见 test_llm_scene_config.py）；.env 覆盖仅对未覆盖场景生效。"""
         monkeypatch.setattr(settings, "LLM_PRO_MODEL", "deepseek-v4-pro-x")
-        assert _model_for_scene("chat") == "deepseek-v4-flash-x"
-        assert _model_for_scene("report") == "deepseek-v4-pro-x"
+        assert _model_for_scene("team_analysis") == "deepseek-v4-pro-x"
+        assert _model_for_scene("unknown") == "deepseek-v4-pro-x"
+        # 三场景保持固定映射，.env 覆盖不生效
+        monkeypatch.setattr(settings, "LLM_FLASH_MODEL", "deepseek-v4-flash-x")
+        assert _model_for_scene("chat") == "deepseek-v4-flash"
+        assert _model_for_scene("report") == "deepseek-v4-pro"
 
 
 @pytest.mark.usefixtures("_default_models")

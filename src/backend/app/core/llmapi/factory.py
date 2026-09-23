@@ -18,7 +18,10 @@ _FLASH_SCENES = {"chat"}
 def _scene_model() -> str:
     """按当前 usage_context 的 scene 确定性选择 deepseek 模型。
 
-    chat → flash（LLM_FLASH_MODEL）；其余（rumination/report/team_analysis/unknown）→ pro。
+    2026-09-23 起：chat/rumination/report 三场景优先读 admin 场景配置
+    （scene_config：flash|pro 档位固定映射，不受 .env 覆盖影响）；
+    未覆盖场景（team_analysis/unknown）沿用 .env 分流：
+    chat → flash（LLM_FLASH_MODEL）；其余 → pro（LLM_PRO_MODEL）。
     usage_context 为无依赖的 contextvar 模块，各入口在 LLM 调用前已设置 scene。
     """
     try:
@@ -27,6 +30,14 @@ def _scene_model() -> str:
         scene = (get_llm_usage_context().get("scene") or "unknown").strip()
     except Exception:
         scene = "unknown"
+    try:
+        from app.core.llmapi.scene_config import get_scene_tier_model
+
+        configured = get_scene_tier_model(scene)
+        if configured:
+            return configured
+    except Exception:
+        pass  # admin 配置读取异常 → 回退 .env 分流
     if scene in _FLASH_SCENES:
         return settings.LLM_FLASH_MODEL or "deepseek-v4-flash"
     return settings.LLM_PRO_MODEL or "deepseek-v4-pro"
