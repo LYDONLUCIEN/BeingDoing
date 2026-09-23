@@ -7,7 +7,7 @@
  * 数据与 TopComboBar 同源（ruminationV4Store.state.combo_sessions）：
  * - 「＋ 新建组合」= 进入草稿态（active_combo_id=null + main_section='matrix'，与 TopComboBar 一致）
  * - 点击行切换组合（switchCombo）；hover 出现删除（二次确认，至少保留一个）
- * - 终选已提交后整列只读（不渲染新建/删除），入选组合加紫色描边环
+ * - 终选已提交后整列只读：新建按钮保留但置灰（0923 拍板：不可用≠消失），删除不渲染，入选组合加紫色描边环
  *
  * 2026-09-23 结构对齐前四阶段：本栏直接挂在页面根级（全高、右边线分隔的扁平左栏，
  * 同 HTML .sidebar / 前四阶段会话侧栏），不再是被 outer-shell 包住的浮动圆角卡；
@@ -72,17 +72,21 @@ export default function V4ComboSidebar({ onExpandSelector }: SidebarProps) {
         方向组合
       </p>
 
-      {!finalSubmitted && (
-        <button
-          type="button"
-          onClick={enterComboDraft}
-          disabled={atLimit}
-          title={atLimit ? `最多 ${MAX_COMBOS} 个组合` : '新建一个组合'}
-          className="mb-2 flex min-h-[40px] shrink-0 items-center justify-center gap-1.5 rounded-full bg-[var(--journey-ink,#17212d)] px-4 text-[13px] font-semibold text-white transition-all hover:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <Plus size={14} strokeWidth={2.2} aria-hidden /> 新建组合
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={enterComboDraft}
+        disabled={atLimit || finalSubmitted}
+        title={
+          finalSubmitted
+            ? '最终选择已提交，组合已锁定'
+            : atLimit
+              ? `最多 ${MAX_COMBOS} 个组合`
+              : '新建一个组合'
+        }
+        className="mb-2 flex min-h-[40px] shrink-0 items-center justify-center gap-1.5 rounded-full bg-[var(--journey-ink,#17212d)] px-4 text-[13px] font-semibold text-white transition-all hover:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <Plus size={14} strokeWidth={2.2} aria-hidden /> 新建组合
+      </button>
 
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
         {combos.length === 0 && (

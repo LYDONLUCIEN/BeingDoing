@@ -57,7 +57,7 @@ function ReportViewContent() {
 
   // 报告页加载后（approved）先查一次生成状态：
   // - 已有缓存（含提交时/审核期后台预生成完成）→ 直接显示「下载 PDF 报告」
-  // - 生成失败 → 警示块（重试 / 申请复核）；无缓存且从未生成 → 「报告异常」警示块
+  // - 生成失败 / 无缓存且从未生成 → 警示块（自助生成重试 / 申请复核，两分支同权）
   // statusChecked：首次 check 返回前不渲染异常警示块，避免 idle 闪现误报
   const [statusChecked, setStatusChecked] = useState(false);
   const reportId = reportInfo?.report_id ?? null;
@@ -419,20 +419,32 @@ function ReportViewContent() {
                 </div>
               </div>
             ) : statusChecked && status === 'none' ? (
-              /* approved 但无可用 markdown 且从未生成：报告异常警示块，仅留复核入口 */
+              /* approved 但无缓存且从未生成：与 error 分支同权——允许自助生成（trigger 幂等，
+                 只补 markdown 缓存不改内容），保留复核入口；不再只有预约可点 */
               <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-4 space-y-3">
-                <p className="text-sm font-medium text-red-500">报告异常</p>
+                <p className="text-sm font-medium text-red-500">报告尚未生成</p>
                 <p className="text-xs text-red-500/80 leading-relaxed">
-                  报告内容尚未就绪，请提交复核申请，我们会尽快为你处理。
+                  报告内容尚未就绪。你可以点击下方按钮生成（通常需要 1-5 分钟），
+                  生成仍有问题再提交复核申请，由管理员处理。
                 </p>
-                <button
-                  type="button"
-                  onClick={() => setRecheckOpen(true)}
-                  disabled={recheckInProgress}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#222b35] text-white px-5 py-2.5 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {recheckInProgress ? '复核处理中' : '申请复核'}
-                </button>
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleGenerate}
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#222b35] text-white px-5 py-2.5 text-sm font-medium hover:opacity-90 transition-opacity"
+                  >
+                    <FileText size={16} />
+                    生成报告
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRecheckOpen(true)}
+                    disabled={recheckInProgress}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-bd-border bg-bd-card px-4 py-2.5 text-xs font-medium text-bd-muted hover:bg-bd-overlay-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-bd-card"
+                  >
+                    {recheckInProgress ? '复核处理中' : '申请复核'}
+                  </button>
+                </div>
               </div>
             ) : null}
             {isGenerating && (

@@ -53,3 +53,9 @@ export async function fetchAdminChatAppearance(): Promise<ChatAppearanceConfig> 
 export async function putAdminChatAppearance(config: ChatAppearanceConfig): Promise<void> {
   await apiClient.put('/admin/chat-appearance', { config });
 }
+
+/** admin 恢复默认：一键写回出厂默认（后端 DEFAULT_CHAT_APPEARANCE）并生效 */
+export async function resetAdminChatAppearance(): Promise<ChatAppearanceConfig> {
+  const res = await apiClient.post('/admin/chat-appearance/reset');
+  return unwrap(res);
+}

@@ -7,6 +7,7 @@ Chat 外观全局默认配置（2026-09-23 拍板：配置入口迁 admin，全�
 Admin 接口（super admin 守卫）：
 - GET /api/v1/admin/chat-appearance    读取全局配置
 - PUT /api/v1/admin/chat-appearance    校验白名单后整体写入
+- POST /api/v1/admin/chat-appearance/reset  一键恢复默认并保存生效（2026-09-23）
 
 存储：data/admin_runtime_config.json 的 `chat_appearance` 键（app.utils.admin_config），
 字段与前端 stores/chatAppearanceStore.ts 一一对应。
@@ -25,6 +26,25 @@ public_router = APIRouter(prefix="/chat-appearance", tags=["Chat-Appearance"])
 admin_router = APIRouter(prefix="/admin/chat-appearance", tags=["Admin-Chat-Appearance"])
 
 CONFIG_KEY = "chat_appearance"
+
+# 出厂默认（= 前端 RECOMMENDED_CHAT_APPEARANCE，stores/chatAppearanceStore.ts；
+# 两处须保持同步，恢复默认以本表为准写入）
+DEFAULT_CHAT_APPEARANCE: Dict[str, Any] = {
+    "background": "flow",
+    "placement": "both",
+    "strength": 22,
+    "motionPaused": False,
+    "aiBubble": "ink",
+    "userBubble": "white",
+    "actionStyle": "ink",
+    "ruminationLayout": "guided",
+    "ruminationSkin": "mist",
+    "palette": "lavender",
+    "matrixStyle": "soft",
+    "matrixPalette": "duo",
+    "conclusionTone": "theme-mist",
+    "conclusionTags": "soft",
+}
 
 # 字段白名单 + 枚举（与前端 chatAppearanceStore 类型对齐；density/newChatStyle 为 A/B 保留项）
 FIELD_ENUMS: Dict[str, tuple] = {
@@ -114,6 +134,14 @@ async def admin_put_chat_appearance(
     cleaned = _validate(req.config or {})
     set_admin_config(CONFIG_KEY, cleaned)
     return {"code": 200, "message": "success", "data": cleaned}
+
+
+@admin_router.post("/reset")
+async def admin_reset_chat_appearance(current_user: Optional[dict] = Depends(get_current_user)):
+    """一键恢复出厂默认并保存生效（前端「恢复默认」按钮直接调用）。"""
+    _require_super_admin(current_user)
+    set_admin_config(CONFIG_KEY, DEFAULT_CHAT_APPEARANCE)
+    return {"code": 200, "message": "success", "data": DEFAULT_CHAT_APPEARANCE}
 
 
 router = APIRouter()
