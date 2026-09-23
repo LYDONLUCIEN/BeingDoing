@@ -179,7 +179,7 @@
 /* Rumination keeps the current combination-unlock workbench and receives only the skin. */
 .rumination-v4-root {
   background:
-    radial-gradient(circle at 10% 8%, rgba(132, 116, 201, 0.11), transparent 29%),
+    radial-gradient(circle at 10% 8%, rgba(132, 116, 201, 0.14), transparent 29%),
     radial-gradient(circle at 92% 76%, rgba(111, 155, 216, 0.09), transparent 31%),
     linear-gradient(180deg, #fbfbfe 0%, #f7f7fc 58%, #fcfbfd 100%);
 }
@@ -187,9 +187,10 @@
 .rumination-v4-root .rumination-beautiful-card,
 .rumination-v4-root .rumination-beautiful-card--chat {
   border-color: rgba(132, 116, 201, 0.14);
-  background: rgba(255, 255, 255, 0.58);
-  -webkit-backdrop-filter: blur(18px) saturate(1.04);
-  backdrop-filter: blur(18px) saturate(1.04);
+  /* 0922 拷问拍板：白度 0.55 + blur 12（原 0.58/18 偏闷，透不出背景流光） */
+  background: rgba(255, 255, 255, 0.55);
+  -webkit-backdrop-filter: blur(12px) saturate(1.04);
+  backdrop-filter: blur(12px) saturate(1.04);
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.86), 0 16px 44px rgba(49, 44, 75, 0.055);
 }
 
@@ -207,6 +208,23 @@
 
 .rumination-v4-root .conclusion-card-v4 [class*='rounded-full'] {
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.68);
+}
+
+/* 0922 拷问拍板：选择矩阵卡 3D 质感 — 对齐结论卡做法
+   （对角渐变浅底 + 顶部 inset 高光 + 分层阴影），替换 V4ComboMatrixSelector
+   的纯平 bg-white/70；hover 抬升阴影，选中态由 openlife-chat-appearance.css
+   的 palette/style 规则接管（未写阴影的变体回落到本规则） */
+.rumination-v4-root .choice-card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(246, 248, 252, 0.86));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 5px 14px rgba(18, 40, 75, 0.05);
+}
+
+.rumination-v4-root .choice-card:not(.selected):not(:disabled):hover {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 8px 20px rgba(18, 40, 75, 0.08);
 }
 
 @media (prefers-reduced-motion: reduce) {

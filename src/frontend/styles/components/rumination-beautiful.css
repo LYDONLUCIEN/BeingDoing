@@ -236,9 +236,7 @@
     padding-bottom: 8px;
     margin-bottom: 8px;
   }
-  .rumination-v4-root .hero h1 {
-    font-size: 24px;
-  }
+  /* 0923：标题已对齐前四阶段 19px，小高度视口不再放大 */
   /* 副标题在小高度视口下隐藏，释放约 40px */
   .rumination-v4-root .hero p {
     display: none;

@@ -6,6 +6,7 @@
  * duo 柔色（热爱珊瑚 #e86f7e × 优势雾蓝 #5b84e6），选中态 = 浅底色 + 彩色描边。
  * 颜色全部经 --matrix-* CSS 变量驱动（openlife-chat-appearance.css），
  * 外观面板「选择矩阵样式 soft/outline/solid × 配色 duo/violet/multi」可整体切换。
+ * 卡片基础 3D 质感（对角渐变浅底 + 顶部高光，对齐结论卡）见 openlife-chat-defaults.css。
  */
 
 import { useEffect, useState } from 'react';
@@ -104,7 +105,7 @@ export default function V4ComboMatrixSelector({
                   ${
                     isActive
                       ? 'selected'
-                      : 'border-[#e7ebef] bg-white/70 text-[#33415c] shadow-[0_4px_12px_rgba(18,40,75,0.04)] hover:border-[#c7d7ef] hover:shadow-[0_8px_20px_rgba(18,40,75,0.08)]'
+                      : 'border-[#e7ebef] text-[#33415c] hover:border-[#c7d7ef]'
                   }
                 `}
               >
@@ -158,7 +159,7 @@ export default function V4ComboMatrixSelector({
                   ${
                     isActive
                       ? 'selected'
-                      : 'border-[#e7ebef] bg-white/70 text-[#33415c] shadow-[0_4px_12px_rgba(18,40,75,0.04)] hover:border-[#c7d7ef] hover:shadow-[0_8px_20px_rgba(18,40,75,0.08)]'
+                      : 'border-[#e7ebef] text-[#33415c] hover:border-[#c7d7ef]'
                   }
                 `}
               >

@@ -731,9 +731,119 @@ html[data-landing='true']:not([data-color-scheme='dark']) [class*='bd-eff-bg'] {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at 10% 22%, rgba(94, 145, 230, 0.12), transparent 28%),
-    radial-gradient(circle at 88% 74%, rgba(143, 120, 216, 0.14), transparent 30%),
-    linear-gradient(180deg, rgba(251, 252, 251, 0.68), rgba(247, 245, 240, 0.88));
+    radial-gradient(circle at 10% 22%, rgba(94, 145, 230, 0.1), transparent 28%),
+    radial-gradient(circle at 88% 74%, rgba(143, 120, 216, 0.18), transparent 32%),
+    linear-gradient(180deg, rgba(251, 252, 251, 0.3), rgba(247, 245, 240, 0.42));
+}
+
+/* ── HTML .rumination-flow 四色淡流光（0922 拷问拍板：按 HTML 还原）──
+   柔和淡彩 blob（非设计系统高纯 accent）+ 30s 错相漂移；浓度挂 --chat-wash-opacity
+   （0.22×1.6≈HTML mix-opacity 0.35），中心留白、紫色仍由 ::before radial 主导 */
+.rumination-journey-backdrop .rumination-flow {
+  position: absolute;
+  inset: 0;
+  opacity: calc(var(--chat-wash-opacity, 0.22) * 1.6);
+  transition: opacity 0.7s;
+}
+
+.rumination-journey-backdrop .rumination-flow-blob {
+  position: absolute;
+  width: 67vw;
+  height: 86vh;
+  min-height: 430px;
+  background: radial-gradient(ellipse at center, var(--rumination-flow-color) 0%, transparent 66%);
+  will-change: transform;
+  animation-duration: 30s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+.rumination-journey-backdrop .rumination-flow-blue {
+  --rumination-flow-color: #9fcaff;
+  left: -27%;
+  top: -29%;
+  opacity: 0.38;
+  animation-name: rumination-flow-drift-blue;
+  animation-delay: -4s;
+}
+
+.rumination-journey-backdrop .rumination-flow-green {
+  --rumination-flow-color: #acead4;
+  right: -34%;
+  bottom: -21%;
+  opacity: 0.27;
+  animation-name: rumination-flow-drift-green;
+  animation-delay: -16s;
+}
+
+.rumination-journey-backdrop .rumination-flow-coral {
+  --rumination-flow-color: #ffc8d1;
+  left: 7%;
+  bottom: -45%;
+  opacity: 0.27;
+  animation-name: rumination-flow-drift-coral;
+  animation-delay: -9s;
+}
+
+.rumination-journey-backdrop .rumination-flow-gold {
+  --rumination-flow-color: #ffe6a6;
+  right: -13%;
+  top: -42%;
+  opacity: 0.35;
+  animation-name: rumination-flow-drift-gold;
+  animation-delay: -22s;
+}
+
+@keyframes rumination-flow-drift-blue {
+  0%,
+  100% {
+    transform: translate3d(-4vw, -5vh, 0) scale(0.92);
+  }
+  38% {
+    transform: translate3d(13vw, 15vh, 0) scale(1.11);
+  }
+  72% {
+    transform: translate3d(0, 23vh, 0) scale(0.83);
+  }
+}
+
+@keyframes rumination-flow-drift-green {
+  0%,
+  100% {
+    transform: translate3d(4vw, 5vh, 0) scale(0.95);
+  }
+  35% {
+    transform: translate3d(-13vw, -5vh, 0) scale(0.81);
+  }
+  72% {
+    transform: translate3d(-4vw, -19vh, 0) scale(1.11);
+  }
+}
+
+@keyframes rumination-flow-drift-coral {
+  0%,
+  100% {
+    transform: translate3d(-9vw, 6vh, 0) scale(0.86);
+  }
+  40% {
+    transform: translate3d(9vw, -12vh, 0) scale(1.09);
+  }
+  75% {
+    transform: translate3d(-9vw, -3vh, 0) scale(0.88);
+  }
+}
+
+@keyframes rumination-flow-drift-gold {
+  0%,
+  100% {
+    transform: translate3d(5vw, 0, 0) scale(1.03);
+  }
+  36% {
+    transform: translate3d(-11vw, 10vh, 0) scale(0.82);
+  }
+  70% {
+    transform: translate3d(0, 19vh, 0) scale(1.1);
+  }
 }
 
 .rumination-journey-ribbon {
@@ -754,6 +864,10 @@ html[data-landing='true']:not([data-color-scheme='dark']) [class*='bd-eff-bg'] {
 
 .rumination-v4-root .journey-rumination-header {
   border-bottom-color: rgba(23, 33, 45, 0.07) !important;
+  /* 顶栏底与前四阶段 .careering-chat-header 同款：半透纸白 + 12px 毛玻璃 */
+  background: rgba(251, 252, 251, 0.34);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
 }
 
 .rumination-v4-root .journey-rumination-header p {
@@ -761,8 +875,9 @@ html[data-landing='true']:not([data-color-scheme='dark']) [class*='bd-eff-bg'] {
   font-family: var(--journey-serif);
 }
 
-.rumination-v4-root .rumination-workbench,
-.rumination-v4-root .rumination-toolbar-wrap {
+/* 0923：guided 无 outer-shell（workbench 直接在内容列内），宽度覆盖仅限 classic 结构 */
+.rumination-v4-root:not([data-rumination-layout='guided']) .rumination-workbench,
+.rumination-v4-root:not([data-rumination-layout='guided']) .rumination-toolbar-wrap {
   width: calc(100% - 24px);
   max-width: calc(100vw - 48px);
 }
@@ -776,9 +891,10 @@ html[data-landing='true']:not([data-color-scheme='dark']) [class*='bd-eff-bg'] {
 .rumination-v4-root .rumination-beautiful-card,
 .rumination-v4-root .rumination-beautiful-card--chat {
   border: 1px solid rgba(23, 33, 45, 0.075);
-  background: rgba(255, 255, 255, 0.72);
-  -webkit-backdrop-filter: blur(18px);
-  backdrop-filter: blur(18px);
+  /* 0922 拷问拍板：白度减薄 + blur 12，透出背景流光（HTML 卡片区间 0.33–0.74） */
+  background: rgba(255, 255, 255, 0.55);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
   box-shadow: 0 14px 38px rgba(23, 33, 45, 0.055);
 }
 

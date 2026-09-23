@@ -2,30 +2,15 @@
 
 /**
  * v4 左栏：选择器网格 + 当前结论卡
- * 视觉对齐 new-rumination-v4.html：选择器与结论卡共用同一个毛玻璃外壳，
- * 内部仅通过轻微背景/边框区分 panel。
+ * 2026-09-23：两个包装 div 改为纯布局（透明、无边框无阴影）——层级透明化，
+ * 选择卡/结论卡自带表面直接落在流光背景上；classic 布局的毛玻璃由外层
+ * .v4-inner-pane 提供（guided 无壳，透出背景）。
  */
 
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useMemo, useState } from 'react';
 import { useRuminationV4Store } from '@/stores/ruminationV4Store';
 import V4ComboMatrixSelector from './V4ComboMatrixSelector';
 import ConclusionCardEditable from './ConclusionCardEditable';
-
-const selectionPanelStyle: CSSProperties = {
-  borderRadius: '16px',
-  border: '1px solid rgba(118,135,192,0.09)',
-  background: 'rgba(255,255,255,0.46)',
-  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.65)',
-  padding: '16px 16px 14px',
-};
-
-const conclusionPanelStyle: CSSProperties = {
-  borderRadius: '16px',
-  border: '1px solid rgba(118,135,192,0.09)',
-  background: 'rgba(255,255,255,0.46)',
-  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.65)',
-  padding: '14px 16px 12px',
-};
 
 export default function V4MatrixLeftPanel({ stacked = false }: { stacked?: boolean }) {
   const { state, createAndStart, comboCache, error, clearError } = useRuminationV4Store();
@@ -82,10 +67,10 @@ export default function V4MatrixLeftPanel({ stacked = false }: { stacked?: boole
         </div>
       )}
 
-      {/* 选择器面板：双栏模式下空间不足时允许收缩并内部滚动（修复低高度视口裁切），堆叠模式下自然高度由页面滚动承载 */}
+      {/* 选择器面板（纯布局容器）：双栏模式下空间不足时允许收缩并内部滚动（修复低高度视口裁切），
+          堆叠模式下自然高度由页面滚动承载；无边框无底色——卡片自带表面 */}
       <div
-        className={stacked ? 'shrink-0' : 'min-h-0 shrink overflow-y-auto rumination-hyp-preview-scroll'}
-        style={selectionPanelStyle}
+        className={`px-0.5 ${stacked ? 'shrink-0' : 'min-h-0 shrink overflow-y-auto rumination-hyp-preview-scroll'}`}
       >
         <V4ComboMatrixSelector
           passions={passions}
@@ -98,13 +83,8 @@ export default function V4MatrixLeftPanel({ stacked = false }: { stacked?: boole
         />
       </div>
 
-      <div
-        className={`flex flex-col ${stacked ? 'flex-none' : 'min-h-0 flex-1 overflow-hidden'}`}
-      >
-        <div
-          className="flex min-h-0 flex-1 flex-col overflow-y-auto rumination-hyp-preview-scroll"
-          style={conclusionPanelStyle}
-        >
+      <div className={`flex flex-col px-0.5 ${stacked ? 'flex-none' : 'min-h-0 flex-1 overflow-hidden'}`}>
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto rumination-hyp-preview-scroll">
           <div className="mb-2 flex shrink-0 items-center gap-2 px-1">
             <span className="text-[14px] font-[760] text-[#4b5563]">结论卡</span>
             {activeCombo && (

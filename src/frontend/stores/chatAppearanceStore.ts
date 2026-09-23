@@ -45,7 +45,7 @@ export const RECOMMENDED_CHAT_APPEARANCE = {
   aiBubble: 'ink',
   userBubble: 'white',
   actionStyle: 'ink',
-  ruminationLayout: 'classic',
+  ruminationLayout: 'guided',
   ruminationSkin: 'mist',
   palette: 'lavender',
   matrixStyle: 'soft',
@@ -140,26 +140,34 @@ export const useChatAppearanceStore = create<ChatAppearanceState>()(
     }),
     {
       name: 'openlife-chat-appearance',
-      version: 1,
+      version: 2,
       storage: typeof window !== 'undefined' ? createJSONStorage(() => localStorage) : undefined,
       migrate: (persisted, version) => {
         if (!persisted || typeof persisted !== 'object') return persisted;
         // v0（三开关时代）→ v1：保留 density/newChatStyle；
         // sidebarArt=true→placement=both，false→placement=edge；新字段由默认浅合并补齐
+        let next: Record<string, unknown> = { ...(persisted as Record<string, unknown>) };
         if (version < 1) {
           const old = persisted as {
             density?: unknown;
             newChatStyle?: unknown;
             sidebarArt?: unknown;
           };
-          return {
+          next = {
             density: old.density === 'compact' ? 'compact' : 'roomy',
             newChatStyle: old.newChatStyle === 'dashed' ? 'dashed' : 'solid',
             sidebarArt: old.sidebarArt === true,
             placement: old.sidebarArt === true ? 'both' : 'edge',
           };
         }
-        return persisted;
+        // v1 → v2（2026-09-22 拷问拍板）：沉淀页 guided 三栏（HTML 唯一视觉准绳）设为默认；
+        // 存量 'classic' 为旧默认值（无法与显式选择区分），一并升级，可在外观面板切回
+        if (version < 2) {
+          if (!next.ruminationLayout || next.ruminationLayout === 'classic') {
+            next.ruminationLayout = 'guided';
+          }
+        }
+        return next;
       },
     }
   )

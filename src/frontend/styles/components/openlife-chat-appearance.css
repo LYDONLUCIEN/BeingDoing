@@ -124,7 +124,8 @@
   display: none !important;
 }
 .rumination-v4-root.flow-light[data-background='tint'] .rumination-journey-ribbon,
-.rumination-v4-root.flow-light[data-background='tint'] .rumination-journey-backdrop img {
+.rumination-v4-root.flow-light[data-background='tint'] .rumination-journey-backdrop img,
+.rumination-v4-root.flow-light[data-background='tint'] .rumination-flow {
   display: none;
 }
 .rumination-v4-root.flow-light[data-background='tint'] .rumination-journey-backdrop::before {
@@ -158,8 +159,16 @@
 /* ── 动效 data-motion='off'：暂停背景 blob/ribbon 动画 ── */
 .flow-light[data-motion='off'] .careering-silk-blob,
 .flow-light[data-motion='off'] .flow-phase-blob,
-.flow-light[data-motion='off'] .landing-mesh-blob {
+.flow-light[data-motion='off'] .landing-mesh-blob,
+.rumination-v4-root[data-motion='off'] .rumination-flow-blob {
   animation-play-state: paused !important;
+}
+
+/* 系统级 reduced-motion：流光 blob 同样静止（位置回落到关键帧 0%） */
+@media (prefers-reduced-motion: reduce) {
+  .rumination-journey-backdrop .rumination-flow-blob {
+    animation: none !important;
+  }
 }
 
 /* ══════════════════════════════════════════
@@ -455,15 +464,16 @@
   --matrix-strength: #5b84e6;
   --matrix-strength-ink: #3569d4;
 }
-/* duo · soft（默认选中态，纯文字小卡：浅底色 + 彩色描边；color-mix 前写静态近似值回退） */
+/* duo · soft（默认选中态，纯文字小卡：浅底色 + 彩色描边；color-mix 前写静态近似值回退）
+   0922：阴影补顶部 inset 高光，与结论卡 3D 质感同款 */
 .rumination-v4-root.flow-light .choice-card.love-card.selected {
   background: #fdeef1;
   background: color-mix(in srgb, var(--matrix-love-a) 13%, white);
   border-color: #f0aeb9;
   border-color: color-mix(in srgb, var(--matrix-love-a) 72%, white);
   color: #202832;
-  box-shadow: 0 6px 18px rgba(232, 111, 126, 0.11);
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--matrix-love-a) 11%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 6px 18px rgba(232, 111, 126, 0.11);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 6px 18px color-mix(in srgb, var(--matrix-love-a) 11%, transparent);
 }
 .rumination-v4-root.flow-light .choice-card.strength-card.selected {
   background: #eef3fd;
@@ -471,8 +481,8 @@
   border-color: #aec4f3;
   border-color: color-mix(in srgb, var(--matrix-strength) 72%, white);
   color: #202832;
-  box-shadow: 0 6px 18px rgba(91, 132, 230, 0.11);
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--matrix-strength) 11%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 6px 18px rgba(91, 132, 230, 0.11);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 6px 18px color-mix(in srgb, var(--matrix-strength) 11%, transparent);
 }
 .rumination-v4-root.flow-light .choice-card.love-card .selected-mark {
   background: var(--matrix-love-b);
