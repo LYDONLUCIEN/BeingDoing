@@ -382,7 +382,7 @@ export default function LandingPage() {
           reportFan.style.setProperty('--report-left-rotate', `${(-9.5 * reportProgress).toFixed(2)}deg`);
           reportFan.style.setProperty('--report-right-rotate', `${(9.5 * reportProgress).toFixed(2)}deg`);
           reportFan.style.setProperty('--report-center-y', `${(-12 * reportProgress).toFixed(1)}px`);
-          reportFan.style.setProperty('--report-side-y', `${(10 * reportProgress).toFixed(1)}px`);
+          reportFan.style.setProperty('--report-side-y', `${(-6 * reportProgress).toFixed(1)}px`);
         }
 
         if (!hero || !plant) {

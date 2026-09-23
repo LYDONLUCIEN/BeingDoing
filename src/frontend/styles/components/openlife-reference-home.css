@@ -799,7 +799,7 @@ html[data-landing='true'] .journey-navbar .journey-nav-link.is-active::after {
   position: absolute;
   z-index: 0;
   right: 8%;
-  bottom: 22px;
+  bottom: 12px;
   left: 8%;
   height: 46px;
   border-radius: 50%;
@@ -811,7 +811,7 @@ html[data-landing='true'] .journey-navbar .journey-nav-link.is-active::after {
 
 .ol-report-page {
   position: absolute;
-  bottom: 48px;
+  bottom: 30px;
   left: 50%;
   display: block;
   width: min(53%, 372px);
@@ -958,7 +958,7 @@ html[data-landing='true'] .journey-navbar .journey-nav-link.is-active::after {
   flex: 0 0 42px;
   border: 2px solid rgba(255, 255, 255, 0.94);
   background-color: #f6f1e7;
-  background-image: url('/assets/openlife-journey/testimonial-avatars.webp?v=20260921');
+  background-image: url('/assets/openlife-journey/testimonial-avatars.webp?v=20260923');
   background-position: var(--avatar-position);
   background-size: 300% 300%;
   box-shadow: 0 4px 13px rgba(39, 57, 69, 0.13);
@@ -1575,7 +1575,7 @@ html[data-landing='true'] .journey-navbar .journey-nav-link.is-active::after {
   .ol-report .ol-report-preview-title { margin-bottom: 10px; font-size: clamp(18px, 5.5vw, 24px); letter-spacing: -0.045em; }
   .ol-report-preview { width: calc(100% + 24px); margin: 0 -12px; }
   .ol-report-fan { --report-left-x: -98px; --report-right-x: 98px; height: clamp(390px, 116vw, 470px); }
-  .ol-report-page { bottom: 38px; width: min(66%, 286px); border-radius: 3px; }
+  .ol-report-page { bottom: 20px; width: min(66%, 286px); border-radius: 3px; }
   .ol-report-preview figcaption { margin-top: 0; font-size: 10px; }
   .ol-review-stage { grid-template-columns: 1fr; }
   .ol-round-arrow { display: none; }
