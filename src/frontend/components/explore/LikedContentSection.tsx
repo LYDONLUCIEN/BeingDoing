@@ -10,6 +10,8 @@ import { formatDate } from '@/lib/utils/formatTime';
 interface LikedContentSectionProps {
   /** 激活码（用于筛选该用户的点赞） */
   activationCode?: string;
+  /** 为 true 时无点赞也渲染模块（显示「暂无点赞」），用于旅程卡点赞精选弹窗等独立入口 */
+  showEmptyState?: boolean;
 }
 
 /** 阶段标签映射 */
@@ -21,7 +23,7 @@ const PHASE_LABELS: Record<string, string> = {
   rumination: '沉淀',
 };
 
-export default function LikedContentSection({ activationCode }: LikedContentSectionProps) {
+export default function LikedContentSection({ activationCode, showEmptyState = false }: LikedContentSectionProps) {
   const { t } = useLocale();
   const [records, setRecords] = useState<LikedRecord[]>([]);
   const [total, setTotal] = useState(0);
@@ -77,8 +79,8 @@ export default function LikedContentSection({ activationCode }: LikedContentSect
     }
   };
 
-  // 无点赞内容时不展示模块
-  if (!loading && total === 0) return null;
+  // 无点赞内容时不展示模块（独立入口场景除外，由 showEmptyState 强制渲染空态）
+  if (!loading && total === 0 && !showEmptyState) return null;
 
   return (
     <motion.div

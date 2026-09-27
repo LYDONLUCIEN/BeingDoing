@@ -262,6 +262,12 @@ export const zh = {
         copy: '复制',
         regenerate: '重新生成',
         like: '点赞',
+        /** 复制成功反馈小气泡 */
+        copied: '已复制',
+        /** 点赞成功反馈小气泡（点赞内容可在报告页「点赞精选」查看） */
+        likedFeedback: '已加入点赞精选',
+        /** 取消点赞反馈小气泡 */
+        unlikedFeedback: '已取消点赞',
       },
       tokenExpired: '登录已失效，请重新登录后刷新页面',
       sidebarNewChat: '新建对话',
@@ -372,6 +378,8 @@ export const zh = {
     viewDetails: '查看详情',
     previousEntries: '之前的进度记录',
     viewReport: '查看报告',
+    /** 旅程卡入口：查看该旅程探索过程中点赞过的内容 */
+    likedPicks: '点赞精选',
     ordersPage: {
       buy: '购买激活码',
       empty: '暂无订单',

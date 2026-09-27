@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Check, Lock, BookOpen, ShoppingCart } from 'lucide-react';
+import { Check, Lock, BookOpen, ShoppingCart, Heart } from 'lucide-react';
 import { PHASES, loadSession, saveSession, setLastActivationCode, applyExploreResumeToSession, setUserSurveyCompleted, type PhaseKey } from '@/lib/explore/session';
 import { clearThreadCache } from '@/lib/explore/threads';
 import { useLocale } from '@/hooks/useLocale';
@@ -14,6 +14,7 @@ import { useAuthStore } from '@/stores/authStore';
 import type { SurveyData } from '@/lib/survey/schema';
 import PurchaseModal from '@/components/payment/PurchaseModal';
 import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
+import LikedContentModal from '@/components/explore/LikedContentModal';
 
 const PHASE_COLORS = [
   'var(--bd-phase-values)',
@@ -133,12 +134,15 @@ function JourneyCard({
   featured,
   onNavigate,
   onViewReport,
+  onShowLikes,
   t,
 }: {
   journey: JourneyItem;
   featured?: boolean;
   onNavigate: (code: string, phase: string) => void;
   onViewReport: (code: string) => void;
+  /** 打开该旅程的「点赞精选」弹窗（过程中点赞的内容，报告未解锁也可看） */
+  onShowLikes: (code: string) => void;
   t: (k: string) => string;
 }) {
   const nodes = buildNodes(journey.explore_resume);
@@ -240,7 +244,7 @@ function JourneyCard({
       </div>
 
       {/* 主按钮：所有旅程卡常驻；报告已解锁时变为「查看报告」 */}
-      <footer className={`flex gap-3 ${featured ? 'mt-6' : 'mt-4'}`}>
+      <footer className={`flex flex-wrap gap-3 ${featured ? 'mt-6' : 'mt-4'}`}>
         {reportUnlocked ? (
           <button
             type="button"
@@ -258,6 +262,15 @@ function JourneyCard({
             继续探索 →
           </button>
         )}
+        {/* 点赞精选入口：查看本旅程探索过程中点赞过的内容 */}
+        <button
+          type="button"
+          onClick={() => onShowLikes(journey.activation_code)}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-bd-border px-4 py-2 text-sm font-medium text-bd-muted transition-colors hover:bg-bd-overlay-md hover:text-bd-fg"
+        >
+          <Heart size={14} className="text-rose-400" />
+          {t('dashboard.likedPicks')}
+        </button>
       </footer>
     </article>
   );
@@ -303,6 +316,8 @@ export default function DashboardCurrentProgressPage() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
+  /** 「点赞精选」弹窗当前展示的旅程激活码；null=关闭 */
+  const [likesModalCode, setLikesModalCode] = useState<string | null>(null);
 
   const fetchJourneys = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -504,9 +519,9 @@ export default function DashboardCurrentProgressPage() {
         </div>
       ) : featured ? (
         <div className="ol-profile-journey-list">
-          <JourneyCard journey={featured} featured onNavigate={handleNavigate} onViewReport={handleViewReport} t={t} />
+          <JourneyCard journey={featured} featured onNavigate={handleNavigate} onViewReport={handleViewReport} onShowLikes={setLikesModalCode} t={t} />
           {others.map((j) => (
-            <JourneyCard key={j.activation_code} journey={j} onNavigate={handleNavigate} onViewReport={handleViewReport} t={t} />
+            <JourneyCard key={j.activation_code} journey={j} onNavigate={handleNavigate} onViewReport={handleViewReport} onShowLikes={setLikesModalCode} t={t} />
           ))}
         </div>
       ) : fetchError ? (
@@ -545,6 +560,7 @@ export default function DashboardCurrentProgressPage() {
       )}
 
       <PurchaseModal open={purchaseOpen} onClose={() => setPurchaseOpen(false)} />
+      <LikedContentModal activationCode={likesModalCode} onClose={() => setLikesModalCode(null)} />
     </div>
   );
 }

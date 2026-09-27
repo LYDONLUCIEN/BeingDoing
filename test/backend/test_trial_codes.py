@@ -4,7 +4,7 @@
 覆盖：
 - 试用码创建（不过期 / vip_level=1 / code_type=trial）
 - 存量 JSON 兼容（无新字段一律 full）
-- 注册送码（含送码失败不阻断注册）
+- 注册不再送码（2026-09-27 起改为「邮箱验证通过后发放」，端点不再调用发码钩子）
 - 老用户懒补发（0 码用户调 journeys 自动获得且不重复）
 - 10 轮门控（9/10/11 条场景，402 结构与 type 断言，internal 消息不计轮）
 - 阶段锁（非 values 写请求 402 trial_phase_locked）
@@ -172,11 +172,19 @@ def test_legacy_record_defaults_to_full(manager: SimpleActivationManager, prod_b
 
 
 # ──────────────────────────────────────────────────────────────────
-# 3. 注册送码
+# 3. 注册不再送码（2026-09-27 起改为「邮箱验证通过后发放」，
+#    验证发码的测试见 test_register_email_verification.py）
 # ──────────────────────────────────────────────────────────────────
 
 
-async def test_register_grants_trial_code(patched_roots, prod_base: Path, monkeypatch):
+class _FakeRequest:
+    """直接调用端点函数时的最小 Request 替身（IP 频控需要 headers/client）"""
+
+    headers: dict = {}
+    client = None
+
+
+async def test_register_no_longer_grants_trial_code(patched_roots, prod_base: Path, monkeypatch):
     fake = {
         "user_id": "u-reg-1",
         "email": "reg@example.com",
@@ -190,34 +198,31 @@ async def test_register_grants_trial_code(patched_roots, prod_base: Path, monkey
     monkeypatch.setattr(auth_module.AuthService, "register", staticmethod(fake_register))
 
     req = auth_module.RegisterRequest(email="reg@example.com", password="pw123456")
-    out = await auth_module.register(req, Response())
+    out = await auth_module.register(req, Response(), _FakeRequest())
     assert out.code == 200
 
+    # 注册端点不再发放任何激活码
     mgr = SimpleActivationManager(base_dir=str(prod_base))
     owned = [r for r in mgr.list_activations().values() if r.owner_user_id == "u-reg-1"]
-    assert len(owned) == 1
-    rec = owned[0]
-    assert rec.code_type == "trial"
-    assert rec.expires_at is None
-    assert rec.vip_level == 1
-    assert rec.claimed_at is not None  # 已自动绑定
+    assert owned == []
 
 
-async def test_register_survives_trial_grant_failure(
+async def test_register_endpoint_never_calls_create_trial_activation(
     patched_roots, prod_base: Path, monkeypatch
 ):
+    """注册端点已摘除发码钩子：即使钩子会炸，注册也不应调用它"""
     async def fake_register(**kwargs):
         return {"user_id": "u-reg-2", "email": "reg2@example.com", "refresh_token": None}
 
-    def boom(user):
-        raise RuntimeError("disk full")
+    def boom(user, manager=None):
+        raise AssertionError("注册端点不应再调用 create_trial_activation_for_user")
 
     monkeypatch.setattr(auth_module.AuthService, "register", staticmethod(fake_register))
     monkeypatch.setattr(trial_codes, "create_trial_activation_for_user", boom)
 
     req = auth_module.RegisterRequest(email="reg2@example.com", password="pw123456")
-    out = await auth_module.register(req, Response())
-    assert out.code == 200  # 送码失败不阻断注册
+    out = await auth_module.register(req, Response(), _FakeRequest())
+    assert out.code == 200
 
 
 # ──────────────────────────────────────────────────────────────────

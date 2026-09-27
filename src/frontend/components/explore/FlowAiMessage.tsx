@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { BookmarkPlus, Copy, Heart } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { BookmarkPlus, Heart } from 'lucide-react';
 import MessageContent from './MessageContent';
-import { copyToClipboard } from '@/lib/utils/clipboard';
+import ToolbarCopyButton from './ToolbarCopyButton';
 import { toggleLike } from '@/lib/api/analytics';
 import { useLocale } from '@/hooks/useLocale';
 
@@ -115,6 +115,9 @@ export default function FlowAiMessage({
 }: FlowAiMessageProps) {
   const { t } = useLocale();
   const [liked, setLiked] = useState(false);
+  /** 点赞操作反馈小气泡（null=不显示），1.6s 自动消失 */
+  const [likeFeedback, setLikeFeedback] = useState<string | null>(null);
+  const likeFeedbackTimerRef = useRef<number | null>(null);
   const [thinkPlaceholderIdx, setThinkPlaceholderIdx] = useState(0);
   const placeholders = thinkPlaceholders.length > 0 ? thinkPlaceholders : ['请稍等…'];
   const thinkLine = thinkChunkSingleLine(thinkChunkContent || '');
@@ -134,13 +137,25 @@ export default function FlowAiMessage({
     return () => clearInterval(timer);
   }, [showThinkRow, placeholders.length]);
 
-  const handleCopy = () => {
-    copyToClipboard(content).then((ok) => ok && onCopy?.());
-  };
+  // 卸载时清理反馈气泡定时器
+  useEffect(
+    () => () => {
+      if (likeFeedbackTimerRef.current) window.clearTimeout(likeFeedbackTimerRef.current);
+    },
+    []
+  );
 
   const handleLike = () => {
     const next = !liked;
     setLiked(next);
+    // 乐观反馈：告知点赞去向（报告页「点赞精选」），与 LikedContentSection 同名
+    setLikeFeedback(
+      next
+        ? t('explore.chat.messageToolbar.likedFeedback')
+        : t('explore.chat.messageToolbar.unlikedFeedback')
+    );
+    if (likeFeedbackTimerRef.current) window.clearTimeout(likeFeedbackTimerRef.current);
+    likeFeedbackTimerRef.current = window.setTimeout(() => setLikeFeedback(null), 1600);
     if (sessionId) {
       toggleLike({
         session_id: sessionId,
@@ -243,22 +258,32 @@ export default function FlowAiMessage({
       )}
       {!hideToolbar && (
         <div className="flow-msg-ai-toolbar">
-          <button type="button" className="flow-toolbar-btn" title={copyTitle} onClick={handleCopy}>
-            <Copy size={14} strokeWidth={1.6} />
-          </button>
-          <button
-            type="button"
-            className={`flow-toolbar-btn flow-toolbar-like-btn ${liked ? 'liked' : ''}`}
-            title={likeTitle}
-            onClick={handleLike}
-            aria-pressed={liked}
-          >
-            <Heart
-              size={14}
-              strokeWidth={1.6}
-              className={`flow-toolbar-like-icon ${liked ? 'filled' : ''}`}
-            />
-          </button>
+          <ToolbarCopyButton
+            text={content}
+            title={copyTitle}
+            feedback={t('explore.chat.messageToolbar.copied')}
+            onCopied={onCopy}
+          />
+          <span className="flow-toolbar-btn-wrap">
+            <button
+              type="button"
+              className={`flow-toolbar-btn flow-toolbar-like-btn ${liked ? 'liked' : ''}`}
+              title={likeTitle}
+              onClick={handleLike}
+              aria-pressed={liked}
+            >
+              <Heart
+                size={14}
+                strokeWidth={1.6}
+                className={`flow-toolbar-like-icon ${liked ? 'filled' : ''}`}
+              />
+            </button>
+            {likeFeedback && (
+              <span className="flow-toolbar-feedback" role="status">
+                {likeFeedback}
+              </span>
+            )}
+          </span>
           {onSavepoint && (
             <button
               type="button"

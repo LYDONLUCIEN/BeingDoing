@@ -300,10 +300,13 @@ async def list_user_journeys(
         return None
 
     # P-A 老用户懒补发：名下 0 个可用码时自动发一个试用码并绑定（防并发重复发：绑定后复查）
-    try:
-        ensure_trial_code_for_user({"user_id": user_id, "email": email})
-    except Exception as e:
-        logger.warning("journeys 懒补发试用码失败（不影响列表返回）: %s", e)
+    # 2026-09-27 起：试用码改为「邮箱验证通过后发放」——未验证用户不懒补发，
+    # 否则 verify_email_token 发码的口径会被这里旁路。
+    if current_user.get("email_verified", True):
+        try:
+            ensure_trial_code_for_user({"user_id": user_id, "email": email})
+        except Exception as e:
+            logger.warning("journeys 懒补发试用码失败（不影响列表返回）: %s", e)
 
     # 合并生产 + 测试/沙箱索引（管理员 ADM/SBX、fork、resident 仅在 test 根）
     merged: dict[str, tuple] = {}  # code -> (last_activity_at str, ActivationRecord)

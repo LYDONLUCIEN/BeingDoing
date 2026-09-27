@@ -128,7 +128,7 @@ export default function AdminLayout({
           {displayName}
         </h3>
 
-        <nav className="w-full space-y-1">
+        <nav className="w-full flex-1 min-h-0 space-y-1 overflow-y-auto pb-2">
           {ADMIN_NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isActive =

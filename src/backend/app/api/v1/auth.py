@@ -4,7 +4,7 @@
 import json
 import logging
 
-from fastapi import APIRouter, HTTPException, Depends, status, Header, Response, Cookie
+from fastapi import APIRouter, HTTPException, Depends, Request, status, Header, Response, Cookie
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 from app.services.auth_service import AuthService, LoginLockedError
@@ -14,6 +14,51 @@ from app.utils.super_admin import is_super_admin_user
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["认证"])
+
+
+# ── 注册 IP 频控（2026-09-27 起）────────────────────────────────
+# 注册会自动发送验证邮件，无频控等于开放发信中继（可被用来轰炸任意邮箱）。
+# 进程内内存计数（对齐登录防爆破模式，重启失效）：单 IP 每小时最多 5 次。
+REGISTER_RATE_LIMIT_PER_HOUR = 5
+_REGISTER_ATTEMPTS: dict = {}  # ip -> {"count": int, "window_start": datetime}
+
+
+def _client_ip(request: Request) -> str:
+    """提取客户端 IP（优先 X-Forwarded-For，与 simple_auth._client_ip 同口径）。"""
+    forwarded = (request.headers.get("x-forwarded-for") or "").split(",")
+    if forwarded and forwarded[0].strip():
+        return forwarded[0].strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return ""
+
+
+def _check_register_rate_limit(ip: str) -> None:
+    """超限抛 429；未超限则计数。IP 为空（拿不到）时不限。"""
+    if not ip:
+        return
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    rec = _REGISTER_ATTEMPTS.get(ip)
+    if rec and (now - rec["window_start"]).total_seconds() >= 3600:
+        rec = None  # 整窗过期，重新起窗
+    if rec is None:
+        rec = {"count": 0, "window_start": now}
+        _REGISTER_ATTEMPTS[ip] = rec
+    rec["count"] += 1
+    if rec["count"] > REGISTER_RATE_LIMIT_PER_HOUR:
+        logger.warning("注册 IP 频控拦截: ip=%s count=%d", ip, rec["count"])
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=json.dumps(
+                {
+                    "type": "register_rate_limited",
+                    "message": "注册过于频繁，请 1 小时后再试",
+                },
+                ensure_ascii=False,
+            ),
+        )
 
 
 class RegisterRequest(BaseModel):
@@ -208,7 +253,7 @@ def _is_debug_admin(user: Optional[dict]) -> bool:
 
 
 @router.post("/register", response_model=AuthResponse)
-async def register(request: RegisterRequest, response: Response):
+async def register(request: RegisterRequest, response: Response, raw_request: Request):
     """
     用户注册
     
@@ -218,6 +263,7 @@ async def register(request: RegisterRequest, response: Response):
     Returns:
         注册结果
     """
+    _check_register_rate_limit(_client_ip(raw_request))
     try:
         result = await AuthService.register(
             email=request.email,
@@ -226,19 +272,8 @@ async def register(request: RegisterRequest, response: Response):
             password=request.password
         )
 
-        # P-A 试用激活码（ADR-0008）：注册即送、自动绑定。
-        # 用户已落库后赠送；送码失败只记日志，不阻断注册。
-        try:
-            from app.utils.trial_codes import create_trial_activation_for_user
-
-            create_trial_activation_for_user(
-                {"user_id": result.get("user_id"), "email": result.get("email")}
-            )
-        except Exception:
-            logger.exception(
-                "注册赠送试用激活码失败（不阻断注册）: user_id=%s",
-                (result or {}).get("user_id"),
-            )
+        # 2026-09-27 起：试用码改为「邮箱验证通过后发放」（见 verify_email_token），
+        # 此处不再注册即送；验证邮件由 AuthService.register 自动发送（失败不阻断注册）。
 
         refresh_token = (result or {}).pop("refresh_token", None)
         if refresh_token:

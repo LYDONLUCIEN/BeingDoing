@@ -36,9 +36,23 @@ async def _record_auth_active(user_id: str) -> None:
 def _friendly_email_send_error(exc: Exception, scene: str) -> ValueError:
     """把 SMTP 发送异常翻译成用户可读的 ValueError（接口统一转为 400）。
 
-    550（收件人不存在/被服务器拒收）单独提示并引导联系管理员；
-    其余 SMTP/网络故障提示稍后重试。真实异常只记日志，不暴露给用户。
+    分类口径（2026-09-27 起，认证失败单独分类）：
+    - 认证失败（SMTPAuthenticationError，注意 163 授权码失效/被风控时返回的
+      「550 User has no permission」也属此类，而非收件人拒收）→ 明确提示邮件
+      服务账号异常，避免误导用户以为自己邮箱不存在；
+    - 550（收件人不存在/被服务器拒收）→ 提示邮箱可能失效并引导联系管理员；
+    - 其余 SMTP/网络故障 → 提示稍后重试。真实异常只记日志，不暴露给用户。
     """
+    if isinstance(exc, smtplib.SMTPAuthenticationError):
+        logger.error(
+            "%s邮件发送失败：SMTP 账号认证被拒(%s)，请检查 SMTP_USER/SMTP_PASS（授权码）配置: %s",
+            scene,
+            exc.smtp_code,
+            exc,
+        )
+        return ValueError(
+            f"{scene}邮件发送失败：邮件服务账号认证异常，请联系管理员协助处理"
+        )
     refused = isinstance(exc, smtplib.SMTPRecipientsRefused) or (
         isinstance(exc, smtplib.SMTPResponseException) and exc.smtp_code == 550
     )
@@ -856,6 +870,16 @@ class AuthService:
                 return {"user_id": user.id, "email": user.email, "already_verified": True}
             await user_db.update_user(user_id, email_verified=True)
 
+        # 验证通过才发试用码（2026-09-27 起，原「注册即送」口径废止；
+        # journeys 懒补发仅限已验证用户）。ensure_* 自带「0 码才发 + 并发回收」保护，
+        # 幂等安全；发码失败只记日志，不影响验证结果。
+        try:
+            from app.utils.trial_codes import ensure_trial_code_for_user
+
+            ensure_trial_code_for_user({"user_id": user_id, "email": payload.get("email")})
+        except Exception:
+            logger.exception("邮箱验证通过后发放试用码失败: user_id=%s", user_id)
+
         return {"user_id": user_id, "email": payload.get("email"), "already_verified": False}
 
     @staticmethod
@@ -884,8 +908,9 @@ class AuthService:
         phone = _normalize_phone(phone)
         username = (username or "").strip() or None
 
-        if not email and not phone:
-            raise ValueError("邮箱或手机号至少提供一个")
+        if not email:
+            # 2026-09-27 起：关闭纯手机注册（手机验证码通道为假实现，且绕过邮箱验证门控）
+            raise ValueError("请使用邮箱注册")
 
         if not password:
             raise ValueError("密码不能为空")
@@ -916,14 +941,34 @@ class AuthService:
 
             token_pair = await AuthService._issue_token_pair(user)
             await _record_auth_active(user.id)
-            return {
+            # session 关闭后 ORM 对象属性会过期，先在块内取出标量值
+            result = {
                 "user_id": user.id,
                 "email": user.email,
                 "phone": user.phone,
                 "username": user.username,
                 "avatar_url": user.avatar_url,
-                **token_pair,
             }
+
+        # 注册即自动发送验证邮件（2026-09-27 起强制邮箱验证）。
+        # 发信失败不阻断注册：用户已落库、token 正常签发，前端按
+        # verification_email_sent=False 引导稍后重发（避免 SMTP 故障 = 注册挂死）。
+        verification_email_sent = False
+        try:
+            verify_token = AuthService.create_email_verify_token(
+                data={"sub": result["user_id"], "email": email},
+            )
+            await EmailService.send_email_verification(to_email=email, token=verify_token)
+            _email_verify_cooldowns[email] = datetime.now(timezone.utc)
+            verification_email_sent = True
+        except Exception:
+            logger.exception("注册自动发送验证邮件失败（不阻断注册）: email=%s", email)
+
+        return {
+            **result,
+            "verification_email_sent": verification_email_sent,
+            **token_pair,
+        }
 
     @staticmethod
     async def login(

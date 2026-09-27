@@ -344,6 +344,36 @@
   color: #fb7185;
 }
 
+/* 工具栏按钮包装：为反馈小气泡提供定位锚点（2026-09-27 起，复制/点赞操作反馈） */
+.flow-light .flow-toolbar-btn-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+/* 工具栏操作反馈小气泡：浮于按钮上方，1.6s 后由组件移除 */
+.flow-light .flow-toolbar-feedback {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  padding: 3px 9px;
+  border-radius: 8px;
+  background: rgba(23, 33, 45, 0.88);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 14px rgba(23, 33, 45, 0.18);
+  animation: flow-toolbar-feedback-in 0.18s ease-out;
+}
+
+@keyframes flow-toolbar-feedback-in {
+  from { opacity: 0; transform: translate(-50%, 4px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
 /* 用户消息：纯白气泡 + 复制按钮 */
 .flow-light .flow-msg-user {
   display: flex;

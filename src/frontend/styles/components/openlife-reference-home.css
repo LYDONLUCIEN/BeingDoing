@@ -368,6 +368,10 @@ html[data-landing='true'] .journey-navbar .journey-nav-link.is-active::after {
   --ol-phase-soft: #eef4ff;
   position: relative;
   z-index: 1;
+  /* button 元素在 Blink/WebKit 内核对内容做匿名 flex 垂直居中，导致各卡「第 N 步」随描述行数上下漂移；
+     显式 flex column 让内容统一从顶部排布，五张卡标签同高 */
+  display: flex;
+  flex-direction: column;
   min-height: clamp(248px, 28svh, 286px);
   padding: 20px clamp(16px, 1.3vw, 24px) 23px;
   overflow: hidden;

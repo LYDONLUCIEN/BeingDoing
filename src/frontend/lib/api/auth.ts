@@ -25,6 +25,8 @@ export interface AuthResponse {
   email_verified?: boolean;
   /** 已注销账户登录时为 "deleted"，此时 token 为受限 token（仅可调用账户恢复端点） */
   account_status?: string;
+  /** 注册响应：验证邮件是否发送成功（false 时前端引导稍后重发，不影响登录态） */
+  verification_email_sent?: boolean;
 }
 
 export interface DeleteAccountResponse {

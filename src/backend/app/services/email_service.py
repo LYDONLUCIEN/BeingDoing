@@ -167,4 +167,18 @@ class EmailService:
                     server.send_message(msg)
 
         import asyncio
-        await asyncio.to_thread(_send)
+        try:
+            await asyncio.to_thread(_send)
+        except smtplib.SMTPAuthenticationError as e:
+            # 认证失败（授权码失效/账号被风控）：给 super_admin 发站内信告警
+            # （当天幂等，见 smtp_health_monitor），再原样抛出由调用方分类。
+            # 告警本身失败只记日志，不影响原异常。
+            try:
+                from app.services.smtp_health_monitor import notify_smtp_auth_failed
+
+                await notify_smtp_auth_failed(e)
+            except Exception:
+                import logging
+
+                logging.getLogger(__name__).exception("smtp auth failed alert error")
+            raise

@@ -13,10 +13,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { ArrowUp, Square, Copy } from 'lucide-react';
+import { ArrowUp, Square } from 'lucide-react';
 import { useRuminationV4Store } from '@/stores/ruminationV4Store';
 import { useAuthStore } from '@/stores/authStore';
-import { copyToClipboard } from '@/lib/utils/clipboard';
+import ToolbarCopyButton from '@/components/explore/ToolbarCopyButton';
 import type { ComboMessage } from '@/lib/explore/ruminationV4Api';
 
 const FlowAiMessage = dynamic(() => import('@/components/explore/FlowAiMessage'), {
@@ -410,14 +410,7 @@ function MessageRow({
             </div>
           </div>
           <div className="flow-msg-user-toolbar">
-            <button
-              type="button"
-              className="flow-toolbar-btn"
-              title="复制"
-              onClick={() => copyToClipboard(msg.content)}
-            >
-              <Copy size={14} strokeWidth={1.6} />
-            </button>
+            <ToolbarCopyButton text={msg.content} title="复制" feedback="已复制" />
           </div>
         </div>
       </div>

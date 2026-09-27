@@ -9,10 +9,10 @@ import {
   ChevronDown,
   ArrowUp,
   Square,
-  Copy,
   FileText,
 } from 'lucide-react';
 import FlowAiMessage from '@/components/explore/FlowAiMessage';
+import ToolbarCopyButton from '@/components/explore/ToolbarCopyButton';
 import DimensionConclusionCard, { type DimensionConclusionData } from '@/components/explore/DimensionConclusionCard';
 import ConclusionRequestButton, { type ConclusionRequestState } from '@/components/explore/ConclusionRequestButton';
 import PhaseCompleteWarmModal from '@/components/explore/PhaseCompleteWarmModal';
@@ -41,7 +41,6 @@ const ChatUiPreview = dynamic(
   () => import('@/components/explore/ChatUiPreview'),
   { ssr: false },
 );
-import { copyToClipboard } from '@/lib/utils/clipboard';
 import { apiClient, getApiErrorMessage } from '@/lib/api/client';
 import {
   PHASES,
@@ -2056,14 +2055,11 @@ function LiveChatPhasePage() {
                           </div>
                           {!phaseInteractionLocked && (
                             <div className="flow-msg-user-toolbar">
-                              <button
-                                type="button"
-                                className="flow-toolbar-btn"
+                              <ToolbarCopyButton
+                                text={m.content}
                                 title={t('explore.chat.messageToolbar.copy')}
-                                onClick={() => copyToClipboard(m.content)}
-                              >
-                                <Copy size={14} strokeWidth={1.6} />
-                              </button>
+                                feedback={t('explore.chat.messageToolbar.copied')}
+                              />
                             </div>
                           )}
                         </div>

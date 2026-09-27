@@ -267,6 +267,12 @@ export const en = {
         copy: 'Copy',
         regenerate: 'Regenerate',
         like: 'Like',
+        /** Feedback bubble after a successful copy */
+        copied: 'Copied',
+        /** Feedback bubble after liking (viewable in the report's Liked Picks) */
+        likedFeedback: 'Saved to Liked Picks',
+        /** Feedback bubble after removing a like */
+        unlikedFeedback: 'Like removed',
       },
       tokenExpired: 'Session expired. Please sign in again and refresh the page',
       sidebarNewChat: 'New conversation',
@@ -379,6 +385,8 @@ export const en = {
     viewDetails: 'View Details',
     previousEntries: 'Previous Progress',
     viewReport: 'View Report',
+    /** Journey card entry: content liked during this journey */
+    likedPicks: 'Liked Picks',
     ordersPage: {
       buy: 'Buy Activation Code',
       empty: 'No orders yet',
