@@ -24,7 +24,7 @@ from jinja2 import Environment
 from pydantic import BaseModel, ConfigDict
 
 from app.api.v1.auth import _is_debug_admin, get_current_user
-from app.core.llmapi.usage_context import set_llm_usage_context
+from app.core.llmapi.usage_context import reset_llm_usage_context, set_llm_usage_context
 from app.api.v1.simple_chat.context_resolver import assert_step_editable as _assert_step_editable
 from app.api.v1.simple_chat.context_resolver import (
     can_bypass_flow_limits as _can_bypass_flow_limits,
@@ -99,6 +99,7 @@ from app.api.v1.simple_chat.stream_utils import (
 from app.config.settings import settings
 from app.core.dimension_completion_checker import (
     check_dimension_complete,
+    judge_dimension_completion,
 )
 from app.core.llmapi import LLMMessage
 from app.domain.conclusion_card_goals import cap_strengths_keywords_list, get_conclusion_card_goal
@@ -274,6 +275,8 @@ PENDING_JUDGE_TIMEOUT_SECONDS = 20
 # 生产实测长对话（19 轮）生成需 ~26s，25s 必然在写盘前超时 → 503「生成失败」（2026-08-26 事故复盘）。
 # 超过 60s 没有意义：底层客户端届时已自行超时。
 CONCLUSION_GEN_TIMEOUT_SECONDS = 60
+# 手动按钮「点击即判定」的判定超时（秒）：判定是轻量调用，独立于生成超时
+CONCLUSION_JUDGE_TIMEOUT_SECONDS = 30
 # step3 matrix 假设兜底重试的 LLM 超时：同上，对齐客户端 60s（原 25s 同类误杀风险）
 STEP3_FALLBACK_LLM_TIMEOUT_SECONDS = 60.0
 PENDING_HEARTBEAT_SECONDS = 2.0
@@ -291,7 +294,8 @@ CONCLUSION_REJECT_NUDGE_USER_TURNS = 3
 # 任何时候都可输出 STATE_JSON(pending_ready)（2026-09-02 起撤销原 ≤10 轮强制压制门控，
 # 当时为「试用期不出卡促转化」的产品决策，现改由 trial 402 阶段锁承担转化：
 # 试用用户出卡确认后无法进入下一阶段，需付费转正）。admin 调试（_can_bypass_flow_limits）不受限。
-CONCLUSION_MIN_USER_TURNS = 11
+# （已删除）手动出卡 11 轮门槛常量 CONCLUSION_MIN_USER_TURNS：2026-09-27 起
+# 按钮常驻 + 点击即判定（judge_dimension_completion）取代轮数门槛
 
 
 def _trim_history_messages_for_llm(
@@ -4987,19 +4991,54 @@ async def mark_thread_complete(
     )
 
 
+def _build_conclusion_not_ready_guidance(
+    phase_step: str,
+    reason: str,
+    rec,
+    current_user: Optional[dict],
+    report: dict,
+) -> str:
+    """点击出卡按钮但判定未完成时的引导话术（固定模板 + 判定理由 + 试用升级提示）。
+
+    2026-09-27 起手动按钮常驻、点击即判定：判定不通过时不生成卡片，
+    用该话术作为一条 assistant 消息插入对话流，引导用户继续探索。
+    """
+    reason_text = (reason or "").strip().rstrip("。") or "还有部分内容没有聊透"
+    text = (
+        f"离生成本阶段的小结还差一点点——{reason_text}。"
+        "不着急，我们继续聊几句；等你觉得聊透了，再点一次下方的按钮，我会立刻为你整理好本阶段的小结卡。"
+    )
+    # 试用码死路兜底：values 限 10 轮，「继续聊」可能在下一轮被 402 拦截，话术里带升级引导
+    if _is_trial_code(rec) and not _can_bypass_flow_limits(current_user, rec):
+        try:
+            root = get_effective_simple_root(rec)
+            registry = ReportRegistry(base_dir=str(root))
+            used = _count_values_user_messages(registry, report["report_id"])
+            text += (
+                f"另外提醒一下：你当前是试用版，本阶段最多可聊 {TRIAL_VALUES_USER_MESSAGE_LIMIT} 轮"
+                f"（已用 {used} 轮）；如果想不限轮数地深入探索，可以在「我的激活码」页升级完整版。"
+            )
+        except Exception:
+            text += "另外提醒一下：你当前是试用版，对话轮数有限；升级完整版后可不限轮数深入探索。"
+    return text
+
+
 @router.post("/conclusion/request", response_model=SimpleChatResponse)
 async def request_conclusion_card(
     request: ConclusionCardRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """用户主动请求生成结论卡草案（前端「对话结束无法进行下一步？点击这里」按钮）。
+    """用户主动请求生成结论卡草案（前端常驻的「生成阶段小结」按钮）。
 
-    口径（2026-08-25 起）：
-    - 四阶段（values/strengths/interests/purpose）用户消息满 CONCLUSION_MIN_USER_TURNS(11) 轮才允许；
-      admin 调试工作区（_can_bypass_flow_limits）不受轮数限制；
-    - 仅 state=none 时生成；已有 pending/confirmed 直接幂等返回现有卡；
-    - 生成走 check_dimension_complete(skip_completion_check=True)，与 rejected 满 3 轮 retrigger 同链路；
-    - 生成失败抛 503（前端展示「生成失败，点击重试」，不静默）。
+    口径（2026-09-27 起，替代 2026-08-25 的「满 11 轮直接生成」）：
+    - 按钮常驻（不再设最小轮数门槛）；点击后先由裁判模型判定是否具备出卡条件
+      （judge_dimension_completion，走 conclusion 场景分流）；
+    - 判定通过 → 生成草案卡（check_dimension_complete(skip_completion_check=True)，
+      与 rejected 满 3 轮 retrigger 同链路）；
+    - 判定不通过 → 不生成卡片，把判定理由编成引导话术作为 assistant 消息插入对话流
+      （试用码附升级引导，避免「继续聊」被 10 轮 402 拦截成死路）；
+    - 判定本身失败/超时 → 503（前端「判定失败，点击重试」，不静默、不擅自出卡）；
+    - 仅 state=none 时判定生成；已有 pending/confirmed 直接幂等返回现有卡。
     """
     manager = get_activation_manager_for_code(request.activation_code)
     # 试用码阶段锁（预检，保证 402 优先于阶段推进锁的 400）
@@ -5042,11 +5081,6 @@ async def request_conclusion_card(
             data={"dimension_conclusion": existing, "idempotent": True},
         )
     user_count = _count_user_messages(conv_data.get("messages"))
-    if user_count < CONCLUSION_MIN_USER_TURNS and not _can_bypass_flow_limits(current_user, rec):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"对话轮数不足（当前 {user_count} 轮，满 {CONCLUSION_MIN_USER_TURNS} 轮后可生成），继续深入探索后再试",
-        )
     vip_level = getattr(rec, "vip_level", 1) or 1
     conv_history = [
         {"role": m.get("role", "user"), "content": m.get("content", "")}
@@ -5054,37 +5088,116 @@ async def request_conclusion_card(
     ]
     basic_info = _load_basic_info_from_activation(request.activation_code)
     prior_context = _load_prior_context_from_activation(request.activation_code, phase_step, report)
-    reasoning_llm = _get_reasoning_llm_provider(vip_level=vip_level)
-    conclusion = None
+
+    # 判定 + 生成统一挂 conclusion 场景（admin 场景配置可独立于 chat 调档/思维链）
+    ctx_token = set_llm_usage_context(
+        user_id=(current_user or {}).get("user_id"),
+        activation_code=request.activation_code,
+        scene="conclusion",
+    )
     try:
-        conclusion = await asyncio.wait_for(
-            check_dimension_complete(
+        reasoning_llm = _get_reasoning_llm_provider(vip_level=vip_level)
+        try:
+            complete, reason = await asyncio.wait_for(
+                judge_dimension_completion(
+                    phase_step,
+                    conv_history,
+                    llm_provider=reasoning_llm,
+                    vip_level=vip_level,
+                ),
+                timeout=CONCLUSION_JUDGE_TIMEOUT_SECONDS,
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(
+                "[conclusion_request] judge failed/timeout err_type=%s err=%s phase=%s thread=%s",
+                type(e).__name__,
+                e,
                 phase_step,
-                conv_history,
-                prior_conclusion=None,
-                vip_level=vip_level,
-                llm_provider=reasoning_llm,
-                skip_completion_check=True,
-                basic_info=basic_info,
-                prior_context=prior_context,
-            ),
-            timeout=CONCLUSION_GEN_TIMEOUT_SECONDS,
-        )
-    except asyncio.TimeoutError:
-        logger.warning(
-            "[conclusion_request] timeout after %ss phase=%s thread=%s",
-            CONCLUSION_GEN_TIMEOUT_SECONDS,
-            phase_step,
-            logical_session_id,
-        )
-    except Exception as e:
-        logger.warning(
-            "[conclusion_request] failed err_type=%s err=%s phase=%s thread=%s",
-            type(e).__name__,
-            e,
-            phase_step,
-            logical_session_id,
-        )
+                logical_session_id,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="判定失败，请稍后点击重试",
+            )
+
+        if not complete:
+            guidance = _build_conclusion_not_ready_guidance(
+                phase_step, reason, rec, current_user, report
+            )
+            try:
+                await conv_manager.append_message(
+                    session_id=report["report_id"],
+                    category=category,
+                    message={
+                        "role": "assistant",
+                        "content": guidance,
+                        **IDCodec.build_message_ids(
+                            thread_id=logical_session_id,
+                            activation_session_id=rec.session_id,
+                        ),
+                        "step_id": phase_step,
+                        "agent_id": "coach",
+                        "event": "assistant_reply",
+                    },
+                )
+            except Exception as e:
+                logger.warning("[conclusion_request] guidance append_message failed: %s", e)
+            try:
+                await _append_note_json(
+                    conv_manager,
+                    report["report_id"],
+                    category,
+                    "conclusion_request_not_ready",
+                    {
+                        "phase": phase_step,
+                        **IDCodec.build_thread_ref(logical_session_id),
+                        "source": "user_manual_request",
+                        "reason": reason,
+                        "user_count": user_count,
+                    },
+                )
+            except Exception:
+                pass
+            return SimpleChatResponse(
+                code=200,
+                message="success",
+                data={"not_ready": True, "guidance": guidance, "user_count": user_count},
+            )
+
+        conclusion = None
+        try:
+            conclusion = await asyncio.wait_for(
+                check_dimension_complete(
+                    phase_step,
+                    conv_history,
+                    prior_conclusion=None,
+                    vip_level=vip_level,
+                    llm_provider=reasoning_llm,
+                    skip_completion_check=True,
+                    basic_info=basic_info,
+                    prior_context=prior_context,
+                ),
+                timeout=CONCLUSION_GEN_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "[conclusion_request] timeout after %ss phase=%s thread=%s",
+                CONCLUSION_GEN_TIMEOUT_SECONDS,
+                phase_step,
+                logical_session_id,
+            )
+        except Exception as e:
+            logger.warning(
+                "[conclusion_request] failed err_type=%s err=%s phase=%s thread=%s",
+                type(e).__name__,
+                e,
+                phase_step,
+                logical_session_id,
+            )
+    finally:
+        reset_llm_usage_context(ctx_token)
     if not isinstance(conclusion, dict):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -6911,8 +7024,14 @@ async def simple_chat_stream(
                     except Exception:
                         pass
                 refined_conclusion = None
-                reasoning_llm = _get_reasoning_llm_provider(vip_level=vip_level)
+                # 结论卡生成挂 conclusion 场景（可独立于 chat 对话调档/思维链）
+                ctx_token = set_llm_usage_context(
+                    user_id=(current_user or {}).get("user_id"),
+                    activation_code=request.activation_code,
+                    scene="conclusion",
+                )
                 try:
+                    reasoning_llm = _get_reasoning_llm_provider(vip_level=vip_level)
                     refined_conclusion = await asyncio.wait_for(
                         check_dimension_complete(
                             phase_step,
@@ -6943,6 +7062,8 @@ async def simple_chat_stream(
                         logical_session_id,
                     )
                     refined_conclusion = None
+                finally:
+                    reset_llm_usage_context(ctx_token)
                 if isinstance(refined_conclusion, dict):
                     draft_to_save = sanitize_pending_conclusion_draft(
                         phase_step, dict(refined_conclusion)
@@ -6994,8 +7115,14 @@ async def simple_chat_stream(
             and phase_step != "rumination"
             and not cmeta.get("thread_completed")
         ):
-            reasoning_llm = _get_reasoning_llm_provider(vip_level=vip_level)
+            # 结论卡生成挂 conclusion 场景（可独立于 chat 对话调档/思维链）
+            ctx_token = set_llm_usage_context(
+                user_id=(current_user or {}).get("user_id"),
+                activation_code=request.activation_code,
+                scene="conclusion",
+            )
             try:
+                reasoning_llm = _get_reasoning_llm_provider(vip_level=vip_level)
                 retrigger_conclusion = await asyncio.wait_for(
                     check_dimension_complete(
                         phase_step,
@@ -7013,6 +7140,8 @@ async def simple_chat_stream(
                 retrigger_conclusion = None
             except Exception:
                 retrigger_conclusion = None
+            finally:
+                reset_llm_usage_context(ctx_token)
 
             if isinstance(retrigger_conclusion, dict):
                 draft_to_save = sanitize_pending_conclusion_draft(

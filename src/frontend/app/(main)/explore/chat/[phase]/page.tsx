@@ -760,7 +760,8 @@ function LiveChatPhasePage() {
       const last = lastDimensionConclusionMessage(messages);
       return !!(last && !last.conclusionCollapsed && !last.conclusionConfirmed);
     })();
-  /** 手动出卡按钮：四阶段、满 11 轮用户消息、当前无待表态结论卡（从未出过，或已「再聊聊」折叠）时显示 */
+  /** 手动出卡按钮（2026-09-27 起常驻）：四阶段、已有过对话、当前无待表态结论卡时显示；
+   *  点击后后端先判定是否具备出卡条件，不满足则返回引导话术插入对话流 */
   const userTurnCount = useMemo(
     () => messages.filter((m) => m.role === 'user').length,
     [messages]
@@ -770,7 +771,7 @@ function LiveChatPhasePage() {
     !reportUnlocked &&
     !pendingConclusionChoiceBlocksChat &&
     !lastDimensionConclusionMessage(messages)?.conclusionConfirmed &&
-    userTurnCount >= 11;
+    userTurnCount >= 1;
   const isReadOnly =
     // 报告已解锁：探索收口，整页只读（顶部提示条引导查看报告）
     reportUnlocked ||
@@ -1492,7 +1493,7 @@ function LiveChatPhasePage() {
     }
   }, [activationCode, phase]);
 
-  /** 手动出卡：「对话结束无法进行下一步？点击这里」按钮 → POST /simple-chat/conclusion/request */
+  /** 手动出卡：常驻「生成阶段小结」按钮 → POST /simple-chat/conclusion/request（点击即判定） */
   const handleRequestConclusion = async () => {
     if (conclusionReqState === 'loading' || sending) return;
     if (!activationCode || !phase) return;
@@ -1546,8 +1547,22 @@ function LiveChatPhasePage() {
         thread_id: targetThreadId,
       });
       const concl = res.data?.data?.dimension_conclusion as DimensionConclusionData | undefined;
+      const notReady = res.data?.data?.not_ready === true;
+      const guidance = (res.data?.data?.guidance as string | undefined) ?? '';
       if (res.data?.code === 200 && concl) {
         insertConclusionCard(concl);
+        setConclusionReqState('idle');
+      } else if (res.data?.code === 200 && notReady && guidance) {
+        // 判定未满足出卡条件：把引导话术作为一条 AI 消息插入对话流（后端已落盘，本地同步显示）
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `guide_${Date.now()}`,
+            role: 'assistant',
+            content: guidance,
+            createdAt: Date.now(),
+          } as ThreadMessage,
+        ]);
         setConclusionReqState('idle');
       } else {
         setConclusionReqState((await recoverFromHistory()) ? 'idle' : 'error');

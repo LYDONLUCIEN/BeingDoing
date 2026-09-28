@@ -329,6 +329,62 @@ def _validate_keywords_by_goal(
     return normalized[:max_k] if normalized else (locked_keywords or [])
 
 
+async def judge_dimension_completion(
+    phase: str,
+    conversation_history: List[Dict[str, str]],
+    *,
+    llm_provider=None,
+    vip_level: int = 1,
+) -> tuple[bool, str]:
+    """仅判定对话是否已完成该维度探索，返回 (complete, reason)，不生成结论。
+
+    供手动出卡按钮「点击即判定」使用（2026-09-27 起）：判定通过才生成卡片，
+    不通过则把 reason 编进引导话术回复用户。判定失败/超时由调用方兜底。
+    """
+    config = get_dimension_config(phase)
+    if not config:
+        return False, "当前阶段不支持结论判定"
+    if len(conversation_history) < 2:
+        return False, "对话才刚刚开始，还没有可总结的内容"
+
+    conv_text = _build_conclusion_conv_text(conversation_history)
+    llm = llm_provider or get_default_llm_provider(vip_level=vip_level)
+    label = config.get("label", phase)
+    goal = config.get("goal", "")
+    criteria = config.get("completion_criteria", "")
+    check_prompt = f"""你是一位职业咨询师。请判断以下对话是否已经完成「{label}」维度的探索。
+
+该维度的目标：{goal}
+完成标准：{criteria}
+
+请严格依据完成标准判断。只有用户已明确确认、或咨询师已给出清晰总结且用户认可时，才视为完成。
+
+对话内容：
+---
+{conv_text}
+---
+
+请用 JSON 回复，格式：{{"complete": true 或 false, "reason": "简短理由（告知用户时还缺什么，15 字以内）"}}
+只输出 JSON，不要其他内容。"""
+
+    messages = [LLMMessage(role="user", content=check_prompt)]
+    try:
+        response = await llm.chat(
+            messages, temperature=0.1, max_tokens=8192, response_format={"type": "json_object"}
+        )
+    except TypeError:
+        response = await llm.chat(messages, temperature=0.1, max_tokens=8192)
+    text = (response.content or "").strip()
+    if "```json" in text:
+        text = text.split("```json")[1].split("```")[0].strip()
+    elif "```" in text:
+        parts = text.split("```")
+        if len(parts) >= 2:
+            text = parts[1].strip()
+    obj = json.loads(text)  # 解析失败抛给调用方按「判定失败」处理
+    return bool(obj.get("complete")), str(obj.get("reason") or "").strip()
+
+
 async def check_dimension_complete(
     phase: str,
     conversation_history: List[Dict[str, str]],
@@ -361,53 +417,18 @@ async def check_dimension_complete(
     if len(conversation_history) < 2:
         return None
 
-    conv_text = _build_conclusion_conv_text(conversation_history)
-
     llm = llm_provider or get_default_llm_provider(vip_level=vip_level)
-    label = config.get("label", phase)
-    goal = config.get("goal", "")
-    criteria = config.get("completion_criteria", "")
-    # 不再使用正则提取关键词，全部交由 AI 从对话中判断
-    locked_keywords = None
 
     # 若有 prior_conclusion 或 skip_completion_check，则跳过完成判定，直接进入生成
     skip_gate = bool(prior_conclusion) or skip_completion_check
     if not skip_gate:
-        check_prompt = f"""你是一位职业咨询师。请判断以下对话是否已经完成「{label}」维度的探索。
-
-该维度的目标：{goal}
-完成标准：{criteria}
-
-请严格依据完成标准判断。只有用户已明确确认、或咨询师已给出清晰总结且用户认可时，才视为完成。
-
-对话内容：
----
-{conv_text}
----
-
-请用 JSON 回复，格式：{{"complete": true 或 false, "reason": "简短理由"}}
-只输出 JSON，不要其他内容。"""
-
-        messages = [LLMMessage(role="user", content=check_prompt)]
         try:
-            response = await llm.chat(
-                messages, temperature=0.1, max_tokens=8192, response_format={"type": "json_object"}
+            complete, _reason = await judge_dimension_completion(
+                phase, conversation_history, llm_provider=llm, vip_level=vip_level
             )
-        except TypeError:
-            response = await llm.chat(messages, temperature=0.1, max_tokens=8192)
-        text = (response.content or "").strip()
-        text_clean = text
-        if "```json" in text:
-            text_clean = text.split("```json")[1].split("```")[0].strip()
-        elif "```" in text:
-            parts = text.split("```")
-            if len(parts) >= 2:
-                text_clean = parts[1].strip()
-        try:
-            obj = json.loads(text_clean)
-            if not obj.get("complete"):
-                return None
-        except (json.JSONDecodeError, TypeError):
+        except Exception:
+            return None  # 判定异常视为未完成（保持原门控语义：解析失败/调用失败都不生成）
+        if not complete:
             return None
 
     # 已判定完成，生成结论卡片内容（与确认稿流式共用同一套 prompt / 解析）

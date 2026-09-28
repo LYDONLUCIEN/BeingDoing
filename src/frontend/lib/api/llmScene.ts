@@ -1,6 +1,6 @@
 /**
- * LLM 场景分流配置 API（2026-09-23 拍板：admin 可配置 chat/rumination/report
- * 三场景的 flash|pro 档位与 thinking 开关，全局生效）。
+ * LLM 场景分流配置 API（2026-09-23 拍板：admin 可配置场景的 flash|pro 档位与
+ * thinking 开关，全局生效；2026-09-27 起新增 conclusion 场景，chat 不再覆盖结论卡）。
  *
  * 档位固定映射：flash→deepseek-v4-flash，pro→deepseek-v4-pro（后端 scene_config.py）。
  * 存储与消费均在后端（data/admin_runtime_config.json），前端仅 admin 页读写。
@@ -8,7 +8,7 @@
 
 import { apiClient } from '@/lib/api/client';
 
-export type LlmScene = 'chat' | 'rumination' | 'report';
+export type LlmScene = 'chat' | 'rumination' | 'report' | 'conclusion';
 export type LlmTier = 'flash' | 'pro';
 
 export interface LlmSceneItem {
@@ -29,7 +29,7 @@ function unwrap(res: unknown): LlmSceneConfig {
   return data && typeof data === 'object' ? (data as LlmSceneConfig) : ({} as LlmSceneConfig);
 }
 
-/** admin 读：当前场景配置（后端始终返回合并默认后的完整三场景） */
+/** admin 读：当前场景配置（后端始终返回合并默认后的完整场景视图） */
 export async function fetchAdminLlmScene(): Promise<LlmSceneConfig> {
   const res = await apiClient.get('/admin/llm-scene');
   return unwrap(res);

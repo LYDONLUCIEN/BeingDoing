@@ -203,8 +203,8 @@ export const en = {
       conclusionChoiceRequiredBanner:
         'Please use the conclusion card above: tap “Confirm” or “Chat more” before you can type here.',
       /** Manual conclusion-card button shown after 11 user turns without a card */
-      conclusionRequestButton: "Can't move on after the conversation? Click here",
-      conclusionRequestLoading: 'Generating your summary…',
+      conclusionRequestButton: 'Generate phase summary',
+      conclusionRequestLoading: 'Checking and generating…',
       conclusionRequestError: 'Failed. Tap to retry',
       aiDisclaimer: 'AI-generated, for reference only',
       completeStep: 'Complete This Step',

@@ -1,12 +1,12 @@
 """
-LLM 场景分流配置（2026-09-23 拍板：admin 可配置 chat/rumination/report 三场景的
-flash|pro 档位与 thinking 开关，全局生效）。
+LLM 场景分流配置（2026-09-23 拍板：admin 可配置场景的 flash|pro 档位与 thinking 开关，
+全局生效；2026-09-27 起新增 conclusion 场景，chat 不再覆盖结论卡判定/生成）。
 
 - 档位固定映射：flash→deepseek-v4-flash，pro→deepseek-v4-pro，不受 .env 覆盖影响
-- 默认值：chat→flash、rumination/report→pro，thinking 全开（= 代码设计意图；
-  注意默认生效后前四轮 chat 将真正切到 v4-flash）
+- 默认值：chat→flash、rumination/report/conclusion→pro，thinking 全开
+  （conclusion 含结论卡完成判定与卡片生成，质量敏感故默认 pro）
 - 存储：data/admin_runtime_config.json 的 `llm_scene_config` 键（app.utils.admin_config），
-  部分保存的字段逐场景与默认合并
+  部分保存的字段逐场景与默认合并；存量配置无 conclusion 键时自动并入默认值
 - 未覆盖场景（team_analysis/unknown）仍走 settings（.env）兜底，与 2026-08-19 分流行为一致
 """
 
@@ -17,7 +17,7 @@ from app.utils.admin_config import get_admin_config
 CONFIG_KEY = "llm_scene_config"
 
 # 可配置场景（usage_context.scene 的取值；team_analysis 等不在此列，保持 .env 兜底）
-SCENES: Tuple[str, ...] = ("chat", "rumination", "report")
+SCENES: Tuple[str, ...] = ("chat", "rumination", "report", "conclusion")
 
 TIERS: Tuple[str, ...] = ("flash", "pro")
 
@@ -32,6 +32,7 @@ DEFAULT_LLM_SCENE_CONFIG: Dict[str, Dict[str, Any]] = {
     "chat": {"tier": "flash", "thinking": True},
     "rumination": {"tier": "pro", "thinking": True},
     "report": {"tier": "pro", "thinking": True},
+    "conclusion": {"tier": "pro", "thinking": True},
 }
 
 

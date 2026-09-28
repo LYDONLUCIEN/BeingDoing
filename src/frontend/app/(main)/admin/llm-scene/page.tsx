@@ -23,7 +23,8 @@ import {
 } from '@/lib/api/llmScene';
 
 const SCENE_META: { key: LlmScene; title: string; desc: string }[] = [
-  { key: 'chat', title: '前四轮对话', desc: '价值观 / 热情 / 天赋 / 目的四阶段的对话与结论卡' },
+  { key: 'chat', title: '前四轮对话', desc: '价值观 / 热情 / 天赋 / 目的四阶段的对话流' },
+  { key: 'conclusion', title: '结论卡判定与生成', desc: '四阶段结论卡的完成判定（含手动按钮点击判定）与卡片内容生成' },
   { key: 'rumination', title: '沉淀对话', desc: '沉淀工作台的对话、平衡点判定与收尾语' },
   { key: 'report', title: '报告生成', desc: 'PDF 报告的 Markdown 生成与润色压缩' },
 ];

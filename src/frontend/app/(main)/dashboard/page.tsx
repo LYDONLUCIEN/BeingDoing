@@ -486,7 +486,6 @@ export default function DashboardCurrentProgressPage() {
 
   const featured = journeys[0]; // 最近使用的排第一
   const others = journeys.slice(1);
-  const reportCount = journeys.filter((journey) => journey.explore_resume?.report_unlocked).length;
 
   return (
     <div className="ol-profile-content">
@@ -495,23 +494,6 @@ export default function DashboardCurrentProgressPage() {
         title={t('dashboard.currentProgress')}
         description="你的每一次对话，都会在这里留下可以继续的线索。"
       />
-
-      {!loading && (
-        <div className="ol-profile-overview" aria-label="探索概览">
-          <article>
-            <span>{String(journeys.length).padStart(2, '0')}</span>
-            <p>职业旅程<small>{journeys.length ? '正在记录你的探索路径' : '从第一次探索开始'}</small></p>
-          </article>
-          <article>
-            <span>05</span>
-            <p>探索阶段<small>从认识自己到沉淀方向</small></p>
-          </article>
-          <article>
-            <span>{String(reportCount).padStart(2, '0')}</span>
-            <p>已生成报告<small>{reportCount ? '可以随时回看' : '完成旅程后生成'}</small></p>
-          </article>
-        </div>
-      )}
 
       {loading ? (
         <div className="bg-bd-card/80 backdrop-blur-lg border border-bd-border rounded-2xl p-8 text-center">

@@ -1,13 +1,11 @@
 """
-结论卡模型自然出卡（无轮数限制）+ 手动出卡端点轮数门槛测试。
+结论卡模型自然出卡（无轮数限制）+ 手动出卡端点「点击即判定」测试。
 
-口径（2026-09-02 修订，撤销 2026-08-25 的 ≤10 轮强制压制门控）：
+口径（2026-09-27 修订，替代 2026-08-25 的 11 轮门槛）：
 - 模型自然出卡不设最小轮数：任何轮数下模型输出 pending_ready 都正常落库出卡；
-  （原门控是「试用期不出卡促转化」的产品决策，转化现由 trial 402 阶段锁承担：
-  试用用户出卡确认后无法进入下一阶段，需付费转正）
-- 手动兜底按钮维持 11 轮门槛：满 11 轮且 state=none 时才可走
-  POST /simple-chat/conclusion/request 手动生成草案卡（<11 轮 400）；
-- admin 调试工作区（_can_bypass_flow_limits）不受手动端点轮数限制。
+- 手动按钮常驻（不再设轮数门槛）：点击后先由 judge_dimension_completion 判定——
+  通过则生成草案卡置 pending；不通过则返回 not_ready + 引导话术并插入对话流；
+  判定/生成失败均抛 503（不静默）；已有 pending/confirmed 幂等返回。
 """
 
 from __future__ import annotations
@@ -291,9 +289,21 @@ def test_injection_none_state_always_allows_card():
 # ---------------------------------------------------------------- manual endpoint
 
 
-def test_conclusion_request_rejected_before_11_turns(seeded_env):
-    """手动出卡端点：<11 轮返回 400。"""
-    env = seeded_env(5)
+def test_conclusion_request_not_ready_returns_guidance(seeded_env, monkeypatch):
+    """手动出卡端点：判定未通过 → 200 + not_ready + 引导话术（含判定理由），
+    话术作为 assistant 消息落盘进对话流；不生成卡片、不置 pending。"""
+    env = seeded_env(3)  # 3 轮也不再有轮数门槛，由判定把关
+
+    async def fake_judge(*args, **kwargs):
+        return False, "关键词还没有逐个确认"
+
+    async def fail_if_called(*args, **kwargs):
+        raise AssertionError("判定未通过时不应调用结论生成")
+
+    monkeypatch.setattr(simple_chat_api, "judge_dimension_completion", fake_judge)
+    monkeypatch.setattr(simple_chat_api, "check_dimension_complete", fail_if_called)
+    monkeypatch.setattr(simple_chat_api, "_get_reasoning_llm_provider", lambda vip_level=1: object())
+
     resp = env["client"].post(
         "/api/v1/simple-chat/conclusion/request",
         json={
@@ -303,17 +313,79 @@ def test_conclusion_request_rejected_before_11_turns(seeded_env):
         },
         headers=env["headers"],
     )
-    assert resp.status_code == 400
-    assert "轮数不足" in str(resp.json().get("detail", ""))
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data.get("not_ready") is True
+    assert "关键词还没有逐个确认" in data.get("guidance", "")
+
+    thread = _read_json(env["thread_file"])
+    assert thread.get("metadata", {}).get("conclusion_state") == "none"
+    # 引导话术已作为 assistant 消息插入对话流
+    last_msg = thread.get("messages", [])[-1]
+    assert last_msg.get("role") == "assistant"
+    assert "关键词还没有逐个确认" in last_msg.get("content", "")
+
+
+def test_conclusion_request_trial_guidance_with_upgrade_hint(seeded_env, monkeypatch):
+    """试用码判定未通过：引导话术附带升级提示（避免「继续聊」被 10 轮 402 拦截成死路）。"""
+    env = seeded_env(3, code_type="trial")
+
+    async def fake_judge(*args, **kwargs):
+        return False, "还在探索中"
+
+    monkeypatch.setattr(simple_chat_api, "judge_dimension_completion", fake_judge)
+    monkeypatch.setattr(simple_chat_api, "_get_reasoning_llm_provider", lambda vip_level=1: object())
+
+    resp = env["client"].post(
+        "/api/v1/simple-chat/conclusion/request",
+        json={
+            "activation_code": env["activation_code"],
+            "phase": "values",
+            "thread_id": THREAD_ID,
+        },
+        headers=env["headers"],
+    )
+    assert resp.status_code == 200
+    guidance = resp.json()["data"].get("guidance", "")
+    assert "还在探索中" in guidance
+    assert "试用版" in guidance
+
+
+def test_conclusion_request_judge_failure_returns_503(seeded_env, monkeypatch):
+    """判定本身失败/超时：503 可重试，不擅自出卡、不落任何状态。"""
+    env = seeded_env(3)
+
+    async def fake_judge(*args, **kwargs):
+        raise RuntimeError("judge down")
+
+    monkeypatch.setattr(simple_chat_api, "judge_dimension_completion", fake_judge)
+    monkeypatch.setattr(simple_chat_api, "_get_reasoning_llm_provider", lambda vip_level=1: object())
+
+    resp = env["client"].post(
+        "/api/v1/simple-chat/conclusion/request",
+        json={
+            "activation_code": env["activation_code"],
+            "phase": "values",
+            "thread_id": THREAD_ID,
+        },
+        headers=env["headers"],
+    )
+    assert resp.status_code == 503
+    meta = _read_json(env["thread_file"]).get("metadata", {})
+    assert meta.get("conclusion_state") in (None, "none")
 
 
 def test_conclusion_request_generates_card_and_idempotent(seeded_env, monkeypatch):
-    """手动出卡端点：≥11 轮生成草案卡并置 pending；重复调用幂等返回同一张卡。"""
-    env = seeded_env(12)
+    """手动出卡端点：判定通过 → 生成草案卡并置 pending；重复调用幂等返回同一张卡。"""
+    env = seeded_env(3)  # 不再要求 11 轮
+
+    async def fake_judge(*args, **kwargs):
+        return True, "用户已确认最终列表"
 
     async def fake_check(*args, **kwargs):
         return dict(FAKE_CARD)
 
+    monkeypatch.setattr(simple_chat_api, "judge_dimension_completion", fake_judge)
     monkeypatch.setattr(simple_chat_api, "check_dimension_complete", fake_check)
     monkeypatch.setattr(simple_chat_api, "_get_reasoning_llm_provider", lambda vip_level=1: object())
 
@@ -331,10 +403,11 @@ def test_conclusion_request_generates_card_and_idempotent(seeded_env, monkeypatc
     assert meta.get("conclusion_state") == "pending"
     assert meta.get("conclusion_draft", {}).get("summary") == FAKE_CARD["summary"]
 
-    # 幂等：state 已是 pending，直接返回现有卡，不再生成
+    # 幂等：state 已是 pending，直接返回现有卡，不再判定/生成
     async def fail_if_called(*args, **kwargs):
-        raise AssertionError("pending 状态下不应再次调用 LLM 生成")
+        raise AssertionError("pending 状态下不应再次调用 LLM")
 
+    monkeypatch.setattr(simple_chat_api, "judge_dimension_completion", fail_if_called)
     monkeypatch.setattr(simple_chat_api, "check_dimension_complete", fail_if_called)
     resp2 = env["client"].post("/api/v1/simple-chat/conclusion/request", json=payload, headers=env["headers"])
     assert resp2.status_code == 200
@@ -343,12 +416,16 @@ def test_conclusion_request_generates_card_and_idempotent(seeded_env, monkeypatc
 
 
 def test_conclusion_request_llm_failure_returns_503(seeded_env, monkeypatch):
-    """生成失败不静默：端点抛 503，前端据此展示「生成失败，点击重试」。"""
-    env = seeded_env(12)
+    """判定通过但生成失败：不静默，端点抛 503，前端据此展示「失败，点击重试」。"""
+    env = seeded_env(3)
+
+    async def fake_judge(*args, **kwargs):
+        return True, ""
 
     async def fake_check(*args, **kwargs):
         raise RuntimeError("llm down")
 
+    monkeypatch.setattr(simple_chat_api, "judge_dimension_completion", fake_judge)
     monkeypatch.setattr(simple_chat_api, "check_dimension_complete", fake_check)
     monkeypatch.setattr(simple_chat_api, "_get_reasoning_llm_provider", lambda vip_level=1: object())
 

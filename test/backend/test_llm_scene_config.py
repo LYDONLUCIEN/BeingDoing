@@ -1,11 +1,11 @@
 """
-LLM 场景分流配置测试（2026-09-23）
+LLM 场景分流配置测试（2026-09-23；2026-09-27 新增 conclusion 场景）
 
-admin 可配置 chat/rumination/report 三场景的 flash|pro 档位与 thinking 开关：
+admin 可配置 chat/rumination/report/conclusion 四场景的 flash|pro 档位与 thinking 开关：
 - 档位固定映射 flash→deepseek-v4-flash / pro→deepseek-v4-pro，不受 .env 覆盖影响
-- 未保存配置时走默认（chat→flash，rumination/report→pro，thinking 全开）
+- 未保存配置时走默认（chat→flash，rumination/report/conclusion→pro，thinking 全开）
 - team_analysis/unknown 场景仍走 .env 兜底（LLM_FLASH_MODEL/LLM_PRO_MODEL）
-- thinking：三场景读配置；其余场景兜底 settings.LLM_THINKING_ENABLED
+- thinking：四场景读配置；其余场景兜底 settings.LLM_THINKING_ENABLED
 - 关闭 thinking → 发 temperature + extra_body={"thinking":{"type":"disabled"}}（DeepSeek V4）
 
 相关模块：core/llmapi/scene_config.py、api/v1/llm_scene.py、
@@ -59,6 +59,7 @@ class TestSceneConfig:
             "chat": {"tier": "flash", "thinking": True},
             "rumination": {"tier": "pro", "thinking": True},
             "report": {"tier": "pro", "thinking": True},
+            "conclusion": {"tier": "pro", "thinking": True},
         }
 
     def test_partial_save_merged_with_defaults(self, _tmp_store) -> None:
@@ -83,6 +84,7 @@ class TestSceneConfig:
         assert scene_config.get_scene_tier_model("chat") == "deepseek-v4-flash"
         assert scene_config.get_scene_tier_model("rumination") == "deepseek-v4-pro"
         assert scene_config.get_scene_tier_model("report") == "deepseek-v4-pro"
+        assert scene_config.get_scene_tier_model("conclusion") == "deepseek-v4-pro"
         assert scene_config.get_scene_tier_model("team_analysis") is None
         assert scene_config.get_scene_tier_model(None) is None
 
@@ -105,7 +107,7 @@ class TestValidate:
     def test_valid_full(self) -> None:
         cfg = {
             s: {"tier": "pro", "thinking": False}
-            for s in ("chat", "rumination", "report")
+            for s in ("chat", "rumination", "report", "conclusion")
         }
         assert scene_config.validate_scene_config(cfg) == cfg
 
