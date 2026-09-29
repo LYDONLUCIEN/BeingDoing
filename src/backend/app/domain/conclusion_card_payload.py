@@ -18,6 +18,16 @@ REJECTED_DRAFT_SUPERSESSION_LINE = (
     "待用户与当前总结一致并明确认可后，再在回复末输出 pending_ready（STATE_JSON）。"
 )
 
+# 手动出卡按钮判定未通过时插入的「引导话术」消息的事件标记（2026-09-29 起）。
+# 这类消息只是界面提示（与谈话内容无关）：展示给用户，但不进任何 LLM 上下文
+# （主对话流 / 判定与出卡 / 锚点摘要），避免污染模型对对话的理解。
+CONCLUSION_GUIDANCE_EVENT = "conclusion_guidance"
+
+
+def is_conclusion_guidance_message(message: Optional[dict]) -> bool:
+    """判断一条历史消息是否为出卡引导话术（展示用，不进 LLM 上下文）。"""
+    return bool(message) and message.get("event") == CONCLUSION_GUIDANCE_EVENT
+
 
 def format_rejected_conclusion_injection(feedback_excerpt: str, *, max_len: int = 400) -> str:
     """拼主对话用的一条「内部备注」文本（仅给模型看，保留语义并剔除模板噪声）。"""

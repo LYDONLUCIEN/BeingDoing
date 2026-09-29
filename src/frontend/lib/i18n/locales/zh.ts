@@ -199,7 +199,7 @@ export const zh = {
       conclusionChoiceRequiredBanner:
         '请先在上方结论卡片上点击「确认没有问题」或「我想再聊聊」，之后才能继续输入。',
       /** 满 11 轮未出卡时的手动出卡按钮（「对话结束无法进行下一步？点击这里」） */
-      conclusionRequestButton: '生成阶段小结',
+      conclusionRequestButton: '对话结束无法进行下一步?点击这里',
       conclusionRequestLoading: '正在判定与生成…',
       conclusionRequestError: '失败，点击重试',
       aiDisclaimer: 'AI生成，仅供参考',

@@ -99,6 +99,9 @@ const BACKEND_PHASE: Record<PhaseKey, string> = {
   rumination: 'rumination',
 };
 
+/** 手动出卡按钮冷却档位（连点递增）：30s → 2min → 10min（封顶） */
+const CONCLUSION_COOLDOWN_STEPS_MS = [30_000, 120_000, 600_000];
+
 function lastDimensionConclusionMessage<T extends { type?: string }>(msgs: T[]): T | undefined {
   const list = msgs.filter((m) => m.type === 'dimension_conclusion');
   return list.length ? list[list.length - 1] : undefined;
@@ -261,6 +264,10 @@ function LiveChatPhasePage() {
   const [waitingForConclusionCardUi, setWaitingForConclusionCardUi] = useState(false);
   /** 手动出卡按钮（「对话结束无法进行下一步？点击这里」）的请求状态 */
   const [conclusionReqState, setConclusionReqState] = useState<ConclusionRequestState>('idle');
+  /** 手动出卡冷却中（请求完成后一段时间内不可再点，防连点刷屏/重复烧 token） */
+  const [conclusionCooldown, setConclusionCooldown] = useState(false);
+  /** 冷却分级：连点递增（30s → 2min → 10min），用户有新发言或切换对话/阶段后复位 */
+  const [conclusionCooldownLevel, setConclusionCooldownLevel] = useState(0);
   const [adminDebugBypass, setAdminDebugBypass] = useState(false);
   const [savepointBusy, setSavepointBusy] = useState(false);
   const [savepointModalOpen, setSavepointModalOpen] = useState(false);
@@ -760,18 +767,14 @@ function LiveChatPhasePage() {
       const last = lastDimensionConclusionMessage(messages);
       return !!(last && !last.conclusionCollapsed && !last.conclusionConfirmed);
     })();
-  /** 手动出卡按钮（2026-09-27 起常驻）：四阶段、已有过对话、当前无待表态结论卡时显示；
+  /** 手动出卡按钮（2026-09-27 起常驻，2026-09-29 起取消「已有过对话」门槛真正一进页面就显示）：
+   *  四阶段、当前无待表态结论卡时即显示，与是否已发言无关；
    *  点击后后端先判定是否具备出卡条件，不满足则返回引导话术插入对话流 */
-  const userTurnCount = useMemo(
-    () => messages.filter((m) => m.role === 'user').length,
-    [messages]
-  );
   const showConclusionRequestButton =
     !isSelectedCompleted &&
     !reportUnlocked &&
     !pendingConclusionChoiceBlocksChat &&
-    !lastDimensionConclusionMessage(messages)?.conclusionConfirmed &&
-    userTurnCount >= 1;
+    !lastDimensionConclusionMessage(messages)?.conclusionConfirmed;
   const isReadOnly =
     // 报告已解锁：探索收口，整页只读（顶部提示条引导查看报告）
     reportUnlocked ||
@@ -1493,9 +1496,9 @@ function LiveChatPhasePage() {
     }
   }, [activationCode, phase]);
 
-  /** 手动出卡：常驻「生成阶段小结」按钮 → POST /simple-chat/conclusion/request（点击即判定） */
+  /** 手动出卡：常驻按钮 → POST /simple-chat/conclusion/request（点击即判定）；每次请求完成后冷却 30s */
   const handleRequestConclusion = async () => {
-    if (conclusionReqState === 'loading' || sending) return;
+    if (conclusionReqState === 'loading' || sending || conclusionCooldown) return;
     if (!activationCode || !phase) return;
     const targetThreadId = activeThreadId || backendSyncedThreadId;
     if (!targetThreadId) return;
@@ -1546,23 +1549,29 @@ function LiveChatPhasePage() {
         phase: BACKEND_PHASE[phase],
         thread_id: targetThreadId,
       });
-      const concl = res.data?.data?.dimension_conclusion as DimensionConclusionData | undefined;
-      const notReady = res.data?.data?.not_ready === true;
-      const guidance = (res.data?.data?.guidance as string | undefined) ?? '';
-      if (res.data?.code === 200 && concl) {
+      // 注意：apiClient.post 已解包返回响应体 {code, message, data}，此处直接取 res.code / res.data.*
+      const concl = res.data?.dimension_conclusion as DimensionConclusionData | undefined;
+      const notReady = res.data?.not_ready === true;
+      const guidance = (res.data?.guidance as string | undefined) ?? '';
+      if (res.code === 200 && concl) {
         insertConclusionCard(concl);
         setConclusionReqState('idle');
-      } else if (res.data?.code === 200 && notReady && guidance) {
+      } else if (res.code === 200 && notReady && guidance) {
         // 判定未满足出卡条件：把引导话术作为一条 AI 消息插入对话流（后端已落盘，本地同步显示）
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `guide_${Date.now()}`,
-            role: 'assistant',
-            content: guidance,
-            createdAt: Date.now(),
-          } as ThreadMessage,
-        ]);
+        // 去重：上一条已是相同引导话术（连点/冷却期内的重复请求）则不再插入
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role === 'assistant' && last.content === guidance) return prev;
+          return [
+            ...prev,
+            {
+              id: `guide_${Date.now()}`,
+              role: 'assistant',
+              content: guidance,
+              createdAt: Date.now(),
+            } as ThreadMessage,
+          ];
+        });
         setConclusionReqState('idle');
       } else {
         setConclusionReqState((await recoverFromHistory()) ? 'idle' : 'error');
@@ -1570,12 +1579,29 @@ function LiveChatPhasePage() {
     } catch (e) {
       console.warn('[RequestConclusion] failed:', e);
       setConclusionReqState((await recoverFromHistory()) ? 'idle' : 'error');
+    } finally {
+      // 递增冷却：任何结局（出卡/引导话术/失败重试）都冷却，连点逐级拉长，防刷屏与重复烧 token
+      const ms = CONCLUSION_COOLDOWN_STEPS_MS[Math.min(conclusionCooldownLevel, CONCLUSION_COOLDOWN_STEPS_MS.length - 1)];
+      setConclusionCooldownLevel((n) => n + 1);
+      setConclusionCooldown(true);
+      setTimeout(() => setConclusionCooldown(false), ms);
     }
   };
+
+  // 用户有新发言（聊出了新内容，再点是合理诉求）→ 冷却级别复位
+  const userMsgCountForCooldown = useMemo(
+    () => messages.filter((m) => m.role === 'user').length,
+    [messages]
+  );
+  useEffect(() => {
+    setConclusionCooldownLevel(0);
+  }, [userMsgCountForCooldown]);
 
   // 切换对话/阶段时复位手动出卡按钮状态
   useEffect(() => {
     setConclusionReqState('idle');
+    setConclusionCooldown(false);
+    setConclusionCooldownLevel(0);
   }, [activeThreadId, phase]);
 
   const handleConfirmConclusion = async () => {
@@ -1595,7 +1621,7 @@ function LiveChatPhasePage() {
         phase: BACKEND_PHASE[phase],
         thread_id: targetThreadId,
       });
-      threadCompleteOk = res.data?.code === 200;
+      threadCompleteOk = res.code === 200;
       console.log('[ConfirmConclusion] thread/complete API 返回', { ok: threadCompleteOk, phase, threadId: targetThreadId });
     } catch (e) {
       console.warn('[ConfirmConclusion] thread/complete API failed:', e);
@@ -2200,6 +2226,7 @@ function LiveChatPhasePage() {
                   <ConclusionRequestButton
                     state={conclusionReqState}
                     idle={!sending && !input.trim()}
+                    disabled={conclusionCooldown}
                     onClick={handleRequestConclusion}
                   />
                 )}

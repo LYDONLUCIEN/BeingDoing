@@ -12,11 +12,13 @@ interface Props {
   state: ConclusionRequestState;
   /** 是否闲置（非流式、输入框为空、无引导任务），用于触发提醒抖动 */
   idle: boolean;
+  /** 冷却中（请求完成后 30s），禁用点击 */
+  disabled?: boolean;
   onClick: () => void;
 }
 
 /**
- * 「生成阶段小结」手动出卡按钮（2026-09-27 起常驻，点击后后端先判定是否具备出卡条件）。
+ * 「对话结束无法进行下一步?点击这里」手动出卡按钮（2026-09-27 起常驻，点击后后端先判定是否具备出卡条件）。
  *
  * 视觉口径：与输入框胶囊同源（白底 + 1px 浅灰边 rgba(0,0,0,0.06) + 同款柔和投影），
  * 浅色嵌入式，与「结论卡生成中」提示行的中性灰文字一致。
@@ -24,9 +26,10 @@ interface Props {
  * - 首次出现：冒泡长出（spring: opacity + y + scale）；
  * - 闲置提醒：出现 10s 后抖动一次，继续闲置满 60s 再抖一次，每阶段封顶 2 次，
  *   之后永久安静（提醒是告知"多了个东西"，不是催促）；
- * - 失败不静默：error 态浅红文案「失败，点击重试」（判定失败/生成失败共用）。
+ * - 失败不静默：error 态浅红文案「失败，点击重试」（判定失败/生成失败共用）；
+ * - 冷却：每次请求完成后 30s 内禁用（disabled prop），防连点。
  */
-export default function ConclusionRequestButton({ state, idle, onClick }: Props) {
+export default function ConclusionRequestButton({ state, idle, disabled, onClick }: Props) {
   const { t } = useLocale();
   const [shaking, setShaking] = useState(false);
   const [shakesUsed, setShakesUsed] = useState(0);
@@ -61,10 +64,10 @@ export default function ConclusionRequestButton({ state, idle, onClick }: Props)
       <motion.button
         type="button"
         onClick={onClick}
-        disabled={state === 'loading'}
+        disabled={state === 'loading' || disabled}
         animate={shaking ? { x: [0, -4, 4, -3, 3, 0] } : { x: 0 }}
         transition={{ duration: 0.45 }}
-        className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs leading-snug transition-all disabled:cursor-wait ${
+        className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs leading-snug transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
           state === 'error'
             ? 'border-red-200 bg-red-50/80 font-medium text-red-600 hover:bg-red-50'
             : state === 'loading'

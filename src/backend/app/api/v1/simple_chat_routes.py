@@ -104,10 +104,12 @@ from app.core.dimension_completion_checker import (
 from app.core.llmapi import LLMMessage
 from app.domain.conclusion_card_goals import cap_strengths_keywords_list, get_conclusion_card_goal
 from app.domain.conclusion_card_payload import (
+    CONCLUSION_GUIDANCE_EVENT,
     REJECTED_DRAFT_SUPERSESSION_LINE,
     build_conclusion_state_injection,
     build_state_json_draft_extension_protocol,
     format_rejected_conclusion_injection,
+    is_conclusion_guidance_message,
     sanitize_pending_conclusion_draft,
 )
 from app.domain.prompts import get_simple_chat_system_prompt, get_step_copy
@@ -305,6 +307,9 @@ def _trim_history_messages_for_llm(
     turn_count = 0
     trimmed: List[dict] = []
     for m in reversed(history_messages or []):
+        # 出卡引导话术只是 UI 提示，不进 LLM 上下文
+        if is_conclusion_guidance_message(m):
+            continue
         role = m.get("role") or "user"
         if role == "user":
             turn_count += 1
@@ -4429,6 +4434,9 @@ async def simple_chat(
 
     # 把历史文件中的 role/content 转成 LLMMessage
     for m in history_messages:
+        # 出卡引导话术只是 UI 提示，不进 LLM 上下文
+        if is_conclusion_guidance_message(m):
+            continue
         role = m.get("role") or "user"
         if role not in {"user", "assistant", "system"}:
             continue
@@ -4997,17 +5005,31 @@ def _build_conclusion_not_ready_guidance(
     rec,
     current_user: Optional[dict],
     report: dict,
+    repeat_without_progress: bool = False,
 ) -> str:
     """点击出卡按钮但判定未完成时的引导话术（固定模板 + 判定理由 + 试用升级提示）。
 
     2026-09-27 起手动按钮常驻、点击即判定：判定不通过时不生成卡片，
     用该话术作为一条 assistant 消息插入对话流，引导用户继续探索。
+
+    2026-09-29 起分级（避免用户形成「点按钮 = 出卡」的心智，按钮定位是应急兜底）：
+    - 首次（或上次引导后有新对话进展）：温和引导继续聊，括号顺带说明按钮只是兜底；
+    - 重复点击且期间无新用户发言：明确告知反复点没用，指回具体缺口的聊法。
+    两级话术都只指方向（继续聊什么），不再出现「再点一次按钮」这类工具指向。
     """
     reason_text = (reason or "").strip().rstrip("。") or "还有部分内容没有聊透"
-    text = (
-        f"离生成本阶段的小结还差一点点——{reason_text}。"
-        "不着急，我们继续聊几句；等你觉得聊透了，再点一次下方的按钮，我会立刻为你整理好本阶段的小结卡。"
-    )
+    if repeat_without_progress:
+        text = (
+            "小结卡要靠我们聊出来，反复点按钮没法让它提前哦——"
+            "它只是聊不下去时的应急兜底。"
+            f"{reason_text}，我们从这里继续？"
+        )
+    else:
+        text = (
+            f"离本阶段的小结还差一点点——{reason_text}。"
+            "不着急，我们围绕这个继续聊几句；聊透了我会主动为你整理好小结卡。"
+            "（下方的按钮只是聊不下去时的兜底，平时跟着我聊就好～）"
+        )
     # 试用码死路兜底：values 限 10 轮，「继续聊」可能在下一轮被 402 拦截，话术里带升级引导
     if _is_trial_code(rec) and not _can_bypass_flow_limits(current_user, rec):
         try:
@@ -5085,6 +5107,7 @@ async def request_conclusion_card(
     conv_history = [
         {"role": m.get("role", "user"), "content": m.get("content", "")}
         for m in conv_data.get("messages", [])
+        if not is_conclusion_guidance_message(m)
     ]
     basic_info = _load_basic_info_from_activation(request.activation_code)
     prior_context = _load_prior_context_from_activation(request.activation_code, phase_step, report)
@@ -5123,27 +5146,53 @@ async def request_conclusion_card(
             )
 
         if not complete:
-            guidance = _build_conclusion_not_ready_guidance(
-                phase_step, reason, rec, current_user, report
+            # 分级判定（2026-09-29 起）：上一条引导话术之后没有任何新用户发言 → 重复级话术
+            _existing_msgs = conv_data.get("messages") or []
+            _last_guidance_idx = None
+            for _i in range(len(_existing_msgs) - 1, -1, -1):
+                if is_conclusion_guidance_message(_existing_msgs[_i]):
+                    _last_guidance_idx = _i
+                    break
+            _repeat_no_progress = _last_guidance_idx is not None and not any(
+                (m.get("role") or "") == "user"
+                for m in _existing_msgs[_last_guidance_idx + 1 :]
             )
-            try:
-                await conv_manager.append_message(
-                    session_id=report["report_id"],
-                    category=category,
-                    message={
-                        "role": "assistant",
-                        "content": guidance,
-                        **IDCodec.build_message_ids(
-                            thread_id=logical_session_id,
-                            activation_session_id=rec.session_id,
-                        ),
-                        "step_id": phase_step,
-                        "agent_id": "coach",
-                        "event": "assistant_reply",
-                    },
-                )
-            except Exception as e:
-                logger.warning("[conclusion_request] guidance append_message failed: %s", e)
+            guidance = _build_conclusion_not_ready_guidance(
+                phase_step,
+                reason,
+                rec,
+                current_user,
+                report,
+                repeat_without_progress=_repeat_no_progress,
+            )
+            # 落盘去重（2026-09-29 起）：上一条已是相同引导话术（连点/冷却期内的重复请求）
+            # 则不再重复插入，避免对话流被相同话术刷屏；审计 note 照常记录
+            _last_msg = _existing_msgs[-1] if _existing_msgs else {}
+            _is_dup_guidance = (
+                _last_msg.get("role") == "assistant"
+                and (_last_msg.get("content") or "") == guidance
+            )
+            if not _is_dup_guidance:
+                try:
+                    await conv_manager.append_message(
+                        session_id=report["report_id"],
+                        category=category,
+                        message={
+                            "role": "assistant",
+                            "content": guidance,
+                            **IDCodec.build_message_ids(
+                                thread_id=logical_session_id,
+                                activation_session_id=rec.session_id,
+                            ),
+                            "step_id": phase_step,
+                            "agent_id": "coach",
+                            # 引导话术只是界面提示（与谈话内容无关）：展示给用户，
+                            # 但不进任何 LLM 上下文（主对话流/判定与出卡/锚点摘要均过滤）
+                            "event": CONCLUSION_GUIDANCE_EVENT,
+                        },
+                    )
+                except Exception as e:
+                    logger.warning("[conclusion_request] guidance append_message failed: %s", e)
             try:
                 await _append_note_json(
                     conv_manager,
@@ -6187,6 +6236,7 @@ async def simple_chat_stream(
         conv_history = [
             {"role": m.get("role", "user"), "content": m.get("content", "")}
             for m in conv_data.get("messages", [])
+            if not is_conclusion_guidance_message(m)
         ]
         user_count = _count_user_messages(conv_data.get("messages"))
         conclusion_shown_at = cmeta.get("shown_at")

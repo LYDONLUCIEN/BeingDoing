@@ -351,6 +351,84 @@ def test_conclusion_request_trial_guidance_with_upgrade_hint(seeded_env, monkeyp
     assert "试用版" in guidance
 
 
+def test_conclusion_request_not_ready_dedup_repeat_click(seeded_env, monkeypatch):
+    """分级 + 去重（2026-09-29 起）：
+    - 第 1 次点击：首次级话术（引导继续聊，顺带说明按钮是兜底）；
+    - 第 2 次点击（期间无新发言）：重复级话术（明确反复点没用），仍会落盘；
+    - 第 3 次点击（仍无新发言）：与上一条相同 → 落盘去重，不再插入。
+    引导话术消息统一打 event=conclusion_guidance 标记。"""
+    env = seeded_env(3)
+
+    async def fake_judge(*args, **kwargs):
+        return False, "关键词还没有逐个确认"
+
+    monkeypatch.setattr(simple_chat_api, "judge_dimension_completion", fake_judge)
+    monkeypatch.setattr(simple_chat_api, "_get_reasoning_llm_provider", lambda vip_level=1: object())
+
+    payload = {
+        "activation_code": env["activation_code"],
+        "phase": "values",
+        "thread_id": THREAD_ID,
+    }
+    resps = [
+        env["client"].post(
+            "/api/v1/simple-chat/conclusion/request", json=payload, headers=env["headers"]
+        )
+        for _ in range(3)
+    ]
+    assert all(r.status_code == 200 for r in resps)
+    guidances = [r.json()["data"].get("guidance", "") for r in resps]
+    assert all(r.json()["data"].get("not_ready") is True for r in resps)
+    # 分级：首次级 ≠ 重复级；重复级稳定（相同理由）
+    assert "还差一点点" in guidances[0]
+    assert "反复点按钮" not in guidances[0]
+    assert "反复点按钮" in guidances[1]
+    assert guidances[1] == guidances[2]
+
+    thread = _read_json(env["thread_file"])
+    guidance_msgs = [
+        m
+        for m in thread.get("messages", [])
+        if m.get("role") == "assistant" and m.get("event") == "conclusion_guidance"
+    ]
+    # 只落 2 条：首次级 + 重复级（第 3 次与上一条相同被去重）
+    assert len(guidance_msgs) == 2
+    assert guidance_msgs[0].get("content") == guidances[0]
+    assert guidance_msgs[1].get("content") == guidances[1]
+
+
+def test_conclusion_request_guidance_excluded_from_judge_context(seeded_env, monkeypatch):
+    """引导话术不进 LLM 上下文（2026-09-29 起）：
+    第 2 次点击时，judge 收到的对话历史里不含第 1 次落下的引导话术。"""
+    env = seeded_env(3)
+    captured_histories: list = []
+
+    async def fake_judge(*args, **kwargs):
+        conv_history = args[1] if len(args) > 1 else kwargs.get("conv_history") or []
+        captured_histories.append([m.get("content", "") for m in conv_history])
+        return False, "关键词还没有逐个确认"
+
+    monkeypatch.setattr(simple_chat_api, "judge_dimension_completion", fake_judge)
+    monkeypatch.setattr(simple_chat_api, "_get_reasoning_llm_provider", lambda vip_level=1: object())
+
+    payload = {
+        "activation_code": env["activation_code"],
+        "phase": "values",
+        "thread_id": THREAD_ID,
+    }
+    for _ in range(2):
+        resp = env["client"].post(
+            "/api/v1/simple-chat/conclusion/request", json=payload, headers=env["headers"]
+        )
+        assert resp.status_code == 200
+
+    assert len(captured_histories) == 2
+    # 两次判定的上下文都不含任何引导话术（首次级/重复级）
+    for hist in captured_histories:
+        assert not any("还差一点点" in c for c in hist)
+        assert not any("反复点按钮" in c for c in hist)
+
+
 def test_conclusion_request_judge_failure_returns_503(seeded_env, monkeypatch):
     """判定本身失败/超时：503 可重试，不擅自出卡、不落任何状态。"""
     env = seeded_env(3)

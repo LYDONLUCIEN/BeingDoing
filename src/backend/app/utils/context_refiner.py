@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 from app.core.llmapi import LLMMessage
 from app.core.llmapi.factory import get_default_llm_provider
 from app.domain.conclusion_card_goals import get_conclusion_card_goal
+from app.domain.conclusion_card_payload import is_conclusion_guidance_message
 from app.utils.report_registry import ReportRegistry, STEP_IDS
 
 logger = logging.getLogger(__name__)
@@ -112,7 +113,10 @@ async def refine_and_save_anchor(
         return None
 
     conv_text = "\n\n".join(
-        f"{m.get('role', 'user')}: {m.get('content', '')}" for m in messages[-40:]
+        f"{m.get('role', 'user')}: {m.get('content', '')}"
+        for m in messages[-40:]
+        # 出卡引导话术只是 UI 提示，不进锚点摘要上下文
+        if not is_conclusion_guidance_message(m)
     )
     if not conv_text.strip():
         return None
