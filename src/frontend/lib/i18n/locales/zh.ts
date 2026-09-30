@@ -256,6 +256,15 @@ export const zh = {
       retrying: '刚才没有组织好语言，我再想想…',
       /** 自动重试后仍空回复的错误文案（显示在错误条，配「重新尝试」按钮） */
       emptyResponseError: '这次没能给出回复，请点击重新尝试',
+      /** 滥用检测：429 频率警告顶条兜底文案（优先展示后端 message） */
+      abuseWarning: '操作过于频繁，请稍后再试；持续异常操作将导致账号功能被冻结',
+      abuseWarningDismiss: '知道了',
+      /** 滥用检测：403 冻结弹层 + 输入禁用 */
+      abuseFrozenTitle: '聊天功能已冻结',
+      abuseFrozenBody: '账号存在异常操作，聊天功能已冻结。如有疑问，请联系管理员。',
+      abuseFrozenContact: '联系管理员：{email}',
+      abuseFrozenOk: '我知道了',
+      abuseFrozenPlaceholder: '聊天功能已冻结，暂时无法发送消息',
       scrollToBottom: '滚动到底部',
       streamAuthExpired: '登录状态已失效，请重新登录后继续对话',
       messageToolbar: {

@@ -15,6 +15,7 @@ from app.models.site_notice import SiteNotice
 from app.models.rumination_ab import RuminationAbAssignment
 from app.models.llm_model_config import LlmModelConfig, UserLlmModelConfig
 from app.models.feedback import Feedback, FeedbackAttachment, Notification
+from app.models.abuse import AbuseEvent, AbuseState
 from app.models.payment import (
     PaymentOrder,
     Coupon,
@@ -55,6 +56,9 @@ __all__ = [
     "Feedback",
     "FeedbackAttachment",
     "Notification",
+    # 滥用检测
+    "AbuseEvent",
+    "AbuseState",
     # 支付与会员
     "PaymentOrder",
     "Coupon",

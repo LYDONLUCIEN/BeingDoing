@@ -23,6 +23,7 @@ from app.api.v1 import feedbacks  # 新增：用户反馈
 from app.api.v1 import notifications  # 新增：站内信
 from app.api.v1 import admin_feedbacks  # 新增：管理员反馈管理
 from app.api.v1 import admin_payment  # 新增：支付管理（P1 折扣券 / P2a 订单退款）
+from app.api.v1 import admin_abuse  # 新增：滥用检测管理（配置/处置状态/解冻）
 from app.api.v1 import payment  # 新增：支付（P2a 用户侧下单/订单）
 from app.api.v1 import payment_webhook  # 新增：支付回调（P2a，无登录鉴权）
 from app.api.v1 import consultation  # 新增：报告解读咨询（P-D 用户侧）
@@ -471,6 +472,17 @@ async def _start_bounce_scan_scheduler():
     _start_bounce_scheduler()
 
 
+@app.on_event("startup")
+async def _load_abuse_frozen_users():
+    """启动时加载滥用冻结用户到内存（门控热路径用），失败不阻断启动。"""
+    try:
+        from app.services import abuse_service
+
+        await abuse_service.load_frozen_users()
+    except Exception as e:
+        logging.getLogger(__name__).warning("abuse frozen users load failed: %s", e)
+
+
 @app.on_event("shutdown")
 async def _stop_bounce_scan_scheduler():
     global _bounce_scheduler
@@ -543,6 +555,7 @@ app.include_router(feedbacks.router, prefix="/api/v1")  # 用户反馈（提反�
 app.include_router(notifications.router, prefix="/api/v1")  # 站内信（用户侧）
 app.include_router(admin_feedbacks.router, prefix="/api/v1")  # 管理员反馈管理
 app.include_router(admin_payment.router, prefix="/api/v1")  # 支付管理（P1 折扣券 / P2a 订单退款）
+app.include_router(admin_abuse.router, prefix="/api/v1")  # 滥用检测管理（admin）
 app.include_router(payment.router, prefix="/api/v1")  # 支付（P2a 用户侧下单/订单）
 app.include_router(payment_webhook.router, prefix="/api/v1")  # 支付回调（P2a，无登录鉴权）
 app.include_router(consultation.router, prefix="/api/v1")  # 报告解读咨询（P-D 用户侧）

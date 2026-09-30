@@ -2007,3 +2007,113 @@ export async function fetchAdminLlmBalance(): Promise<AdminLlmBalance> {
   const res = await apiClient.get('/admin/llm-balance');
   return (res.data?.data ?? res.data) as AdminLlmBalance;
 }
+
+// ── 滥用检测（abuse detection）────────────────────────────────────────────
+
+/** 滥用检测阈值配置（GET/POST /admin/abuse/config，保存即时生效） */
+export interface AdminAbuseConfig {
+  enabled: boolean;
+  msg_per_minute: number;
+  msg_per_hour: number;
+  msg_per_day: number;
+  token_lifetime: number;
+  thread_delete_per_phase: number;
+  /** 出厂默认值（仅展示用） */
+  defaults?: Partial<Record<string, number | boolean>>;
+  /** 合法取值范围（前端保存前校验用，形如 {min,max}） */
+  ranges?: Record<string, { min?: number; max?: number }>;
+}
+
+/** 触限用户列表条目（GET /admin/abuse/users） */
+export interface AdminAbuseUserItem {
+  user_id: string;
+  username?: string | null;
+  email?: string | null;
+  status: 'warned' | 'frozen' | string;
+  warned_at?: string | null;
+  warned_rule?: string | null;
+  frozen_at?: string | null;
+  frozen_rule?: string | null;
+  frozen_activation_code?: string | null;
+  messages_24h?: number;
+  deletes_total?: number;
+}
+
+export interface AdminAbuseUserList {
+  items: AdminAbuseUserItem[];
+  total: number;
+}
+
+/** 用户滥用事件流水条目（GET /admin/abuse/users/{id}/events） */
+export interface AdminAbuseEventItem {
+  id: string;
+  event_type: string;
+  phase?: string | null;
+  detail?: string | null;
+  created_at: string;
+}
+
+export interface AdminAbuseEventList {
+  items: AdminAbuseEventItem[];
+  total: number;
+}
+
+export async function fetchAdminAbuseConfig(): Promise<AdminAbuseConfig> {
+  const res = await apiClient.get('/admin/abuse/config');
+  return (res.data?.data ?? res.data) as AdminAbuseConfig;
+}
+
+/** 部分字段更新；返回更新后的完整配置 */
+export async function updateAdminAbuseConfig(
+  payload: Partial<
+    Pick<
+      AdminAbuseConfig,
+      | 'enabled'
+      | 'msg_per_minute'
+      | 'msg_per_hour'
+      | 'msg_per_day'
+      | 'token_lifetime'
+      | 'thread_delete_per_phase'
+    >
+  >
+): Promise<AdminAbuseConfig> {
+  const res = await apiClient.post('/admin/abuse/config', payload);
+  return (res.data?.data ?? res.data) as AdminAbuseConfig;
+}
+
+export async function fetchAdminAbuseUsers(params: {
+  status: 'warned' | 'frozen';
+  page?: number;
+  page_size?: number;
+}): Promise<AdminAbuseUserList> {
+  const res = await apiClient.get('/admin/abuse/users', { params });
+  const data = res.data?.data ?? res.data;
+  return {
+    items: (data?.items ?? []) as AdminAbuseUserItem[],
+    total: Number(data?.total ?? 0),
+  };
+}
+
+export async function fetchAdminAbuseUserEvents(
+  userId: string,
+  params?: { page?: number; page_size?: number }
+): Promise<AdminAbuseEventList> {
+  const res = await apiClient.get(`/admin/abuse/users/${userId}/events`, { params });
+  const data = res.data?.data ?? res.data;
+  return {
+    items: (data?.items ?? []) as AdminAbuseEventItem[],
+    total: Number(data?.total ?? 0),
+  };
+}
+
+/** 解冻恢复：解除冻结并恢复被冻激活码，返回恢复后的状态 */
+export async function unfreezeAdminAbuseUser(
+  userId: string
+): Promise<{ user_id: string; status: string; restored_code?: string | null }> {
+  const res = await apiClient.post(`/admin/abuse/users/${userId}/unfreeze`);
+  return (res.data?.data ?? res.data) as {
+    user_id: string;
+    status: string;
+    restored_code?: string | null;
+  };
+}

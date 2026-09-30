@@ -261,6 +261,17 @@ export const en = {
       retrying: 'I lost my train of thought — thinking again…',
       /** Error text when retry still returns empty (shown with the Retry button) */
       emptyResponseError: 'No response this time. Please tap Retry.',
+      /** Abuse detection: fallback text for the 429 rate-limit banner (backend message preferred) */
+      abuseWarning:
+        'You are acting too frequently. Please try again later; continued abnormal activity will freeze account features.',
+      abuseWarningDismiss: 'Got it',
+      /** Abuse detection: 403 frozen modal + disabled input */
+      abuseFrozenTitle: 'Chat is frozen',
+      abuseFrozenBody:
+        'Abnormal activity was detected on this account, so chat has been frozen. Please contact the administrator if you have questions.',
+      abuseFrozenContact: 'Contact admin: {email}',
+      abuseFrozenOk: 'I understand',
+      abuseFrozenPlaceholder: 'Chat is frozen. You cannot send messages for now.',
       scrollToBottom: 'Scroll to bottom',
       streamAuthExpired: 'Session expired. Please sign in again to continue.',
       messageToolbar: {

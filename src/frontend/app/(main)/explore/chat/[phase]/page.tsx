@@ -18,6 +18,7 @@ import ConclusionRequestButton, { type ConclusionRequestState } from '@/componen
 import PhaseCompleteWarmModal from '@/components/explore/PhaseCompleteWarmModal';
 import PhaseWelcomeModal from '@/components/explore/PhaseWelcomeModal';
 import TrialLimitModal from '@/components/explore/TrialLimitModal';
+import AbuseFrozenModal from '@/components/explore/AbuseFrozenModal';
 import ContinueConfirmModal from '@/components/explore/ContinueConfirmModal';
 import UpgradeTrialModal from '@/components/payment/UpgradeTrialModal';
 import PurchaseModal from '@/components/payment/PurchaseModal';
@@ -131,6 +132,36 @@ function parseTrialBlock(detail: unknown): TrialBlock | null {
     rec?.type === 'trial_limit_reached' ? 'limit' : rec?.type === 'trial_phase_locked' ? 'locked' : null;
   if (!kind) return null;
   return { kind, hasUpgradeCodes: rec?.has_upgrade_codes === true };
+}
+
+/** 滥用检测拦截类型：warning=429 频率警告（不阻断）；frozen=403 冻结（禁用输入） */
+type AbuseBlockKind = 'warning' | 'frozen';
+
+/** 滥用检测拦截信息：kind + 触发规则 + 后端文案 */
+type AbuseBlock = { kind: AbuseBlockKind; rule?: string; message: string };
+
+/**
+ * 解析滥用检测拦截（429 abuse_warning / 403 abuse_frozen）。
+ * detail 兼容 JSON 字符串 / 已解析对象；非滥用拦截返回 null。
+ */
+function parseAbuseBlock(detail: unknown): AbuseBlock | null {
+  let obj: unknown = detail;
+  if (typeof detail === 'string') {
+    try {
+      obj = JSON.parse(detail);
+    } catch {
+      return null;
+    }
+  }
+  const rec = obj as { type?: unknown; rule?: unknown; message?: unknown } | null;
+  const kind: AbuseBlockKind | null =
+    rec?.type === 'abuse_warning' ? 'warning' : rec?.type === 'abuse_frozen' ? 'frozen' : null;
+  if (!kind) return null;
+  return {
+    kind,
+    rule: typeof rec?.rule === 'string' ? rec.rule : undefined,
+    message: typeof rec?.message === 'string' ? rec.message : '',
+  };
 }
 
 /** 解析 403 邮箱未验证拦截（detail 兼容 JSON 字符串 / 已解析对象） */
@@ -288,6 +319,11 @@ function LiveChatPhasePage() {
   const [continueConfirmOpen, setContinueConfirmOpen] = useState(false);
   /** 试用拦截弹层（402 trial_limit_reached / trial_phase_locked），非 null 时展示 */
   const [trialBlock, setTrialBlock] = useState<TrialBlock | null>(null);
+  /** 滥用检测（429 abuse_warning）：输入区上方顶条警告，不阻断后续操作 */
+  const [abuseWarning, setAbuseWarning] = useState<string | null>(null);
+  /** 滥用检测（403 abuse_frozen）：冻结后输入禁用；modalOpen 控制弹层（关闭不解除禁用） */
+  const [abuseFrozen, setAbuseFrozen] = useState<{ message: string } | null>(null);
+  const [abuseFrozenModalOpen, setAbuseFrozenModalOpen] = useState(false);
   /** 购买引导：试用拦截弹层点「去购买」后打开现有 PurchaseModal */
   const [trialPurchaseOpen, setTrialPurchaseOpen] = useState(false);
   /** 消耗升级弹窗（ADR-0014）：拦截点「使用已有激活码升级」入口 */
@@ -643,11 +679,17 @@ function LiveChatPhasePage() {
           if (!cancelled) {
             // 试用码出卡确认后进入下一阶段：init 被 402 trial_phase_locked 拦截，
             // 与超 10 轮一样弹购买/升级引导层，而不是笼统的「初始化失败」
-            const block = parseTrialBlock(
-              initErr?.response?.data?.detail ?? initErr?.response?.data?.message
-            );
+            const initDetail = initErr?.response?.data?.detail ?? initErr?.response?.data?.message;
+            const block = parseTrialBlock(initDetail);
+            // 滥用拦截：冻结 → 弹层；警告 → 错误条（init 本身失败，需要重试入口）
+            const initAbuse = parseAbuseBlock(initDetail);
             if (block) {
               setTrialBlock(block);
+            } else if (initAbuse?.kind === 'frozen') {
+              setAbuseFrozen({ message: initAbuse.message });
+              setAbuseFrozenModalOpen(true);
+            } else if (initAbuse) {
+              setChatError(initAbuse.message || t('explore.chat.abuseWarning'));
             } else {
               setChatError(getApiErrorMessage(initErr, '初始化失败，请刷新后重试'));
             }
@@ -691,11 +733,16 @@ function LiveChatPhasePage() {
             } catch (err: any) {
               if (!cancelled) {
                 // 同上：试用码进非价值观阶段 init 402 → 弹购买/升级引导层
-                const block = parseTrialBlock(
-                  err?.response?.data?.detail ?? err?.response?.data?.message
-                );
+                const retryDetail = err?.response?.data?.detail ?? err?.response?.data?.message;
+                const block = parseTrialBlock(retryDetail);
+                const retryAbuse = parseAbuseBlock(retryDetail);
                 if (block) {
                   setTrialBlock(block);
+                } else if (retryAbuse?.kind === 'frozen') {
+                  setAbuseFrozen({ message: retryAbuse.message });
+                  setAbuseFrozenModalOpen(true);
+                } else if (retryAbuse) {
+                  setChatError(retryAbuse.message || t('explore.chat.abuseWarning'));
                 } else {
                   setChatError(getApiErrorMessage(err, '初始化失败，请刷新后重试'));
                 }
@@ -773,6 +820,7 @@ function LiveChatPhasePage() {
   const showConclusionRequestButton =
     !isSelectedCompleted &&
     !reportUnlocked &&
+    !abuseFrozen &&
     !pendingConclusionChoiceBlocksChat &&
     !lastDimensionConclusionMessage(messages)?.conclusionConfirmed;
   const isReadOnly =
@@ -781,6 +829,7 @@ function LiveChatPhasePage() {
     isSelectedCompleted ||
     (stepLocked && !adminDebugBypass) || // 阶段已锁定，普通用户只读
     (!isBackendSynced && !!activeThreadId) || // 切到其它 thread 时暂不输入（未同步）
+    !!abuseFrozen || // 滥用冻结（403）：输入禁用，解冻前只读
     pendingConclusionChoiceBlocksChat;
   const selectionMatchesReportForContinue = !stepLocked
     ? true
@@ -874,6 +923,25 @@ function LiveChatPhasePage() {
     savepointDraftMsgIndex,
     savepointDraftName,
   ]);
+
+  /**
+   * 统一处理滥用检测拦截（429 警告顶条 / 403 冻结弹层+禁用输入）。
+   * 命中返回 true，调用方应中止本次操作（消息未被后端接收）。
+   */
+  const applyAbuseBlock = useCallback(
+    (detail: unknown): boolean => {
+      const abuse = parseAbuseBlock(detail);
+      if (!abuse) return false;
+      if (abuse.kind === 'frozen') {
+        setAbuseFrozen({ message: abuse.message });
+        setAbuseFrozenModalOpen(true);
+      } else {
+        setAbuseWarning(abuse.message || t('explore.chat.abuseWarning'));
+      }
+      return true;
+    },
+    [t]
+  );
 
   /** 流式请求中：仅在 LLM 段结束后的尾部阶段展示（与输入框上方 status 行文案一致、分结论卡/假设生成/其它） */
   const streamTailInputPlaceholder = useMemo(() => {
@@ -1186,6 +1254,10 @@ function LiveChatPhasePage() {
             return;
           }
         }
+        // 滥用检测（429 警告 / 403 冻结）：警告顶条提示 / 冻结弹层并禁用输入，终止本次发送
+        if ((res.status === 429 || res.status === 403) && applyAbuseBlock(detail)) {
+          return;
+        }
         // 邮箱未验证拦截（403）：回问卷页做验证引导
         if (res.status === 403 && isEmailNotVerifiedBlock(detail)) {
           router.replace('/explore/survey');
@@ -1214,6 +1286,8 @@ function LiveChatPhasePage() {
               const block = parseTrialBlock(payload);
               if (block) {
                 setTrialBlock(block);
+              } else if (applyAbuseBlock(payload)) {
+                // SSE 内嵌滥用拦截（防御：429 警告 / 403 冻结以流内 error 下发）
               } else if (isEmailNotVerifiedBlock(payload)) {
                 router.replace('/explore/survey');
               } else if (isEmptyResponseBlock(payload)) {
@@ -1578,7 +1652,12 @@ function LiveChatPhasePage() {
       }
     } catch (e) {
       console.warn('[RequestConclusion] failed:', e);
-      setConclusionReqState((await recoverFromHistory()) ? 'idle' : 'error');
+      // 滥用拦截（429 警告 / 403 冻结）：顶条提示 / 冻结弹层，不落入「生成失败」自愈链路
+      if (applyAbuseBlock((e as any)?.response?.data?.detail)) {
+        setConclusionReqState('idle');
+      } else {
+        setConclusionReqState((await recoverFromHistory()) ? 'idle' : 'error');
+      }
     } finally {
       // 递增冷却：任何结局（出卡/引导话术/失败重试）都冷却，连点逐级拉长，防刷屏与重复烧 token
       const ms = CONCLUSION_COOLDOWN_STEPS_MS[Math.min(conclusionCooldownLevel, CONCLUSION_COOLDOWN_STEPS_MS.length - 1)];
@@ -2201,6 +2280,21 @@ function LiveChatPhasePage() {
 
           {/* 对话输入框：固定在最底部 */}
           <div className="careering-input-dock w-full flex-shrink-0">
+            {abuseWarning && !abuseFrozen && (
+              <div
+                className="border-t border-amber-200/90 bg-amber-50 px-4 py-2 text-center text-xs font-medium text-amber-950"
+                role="status"
+              >
+                {abuseWarning}
+                <button
+                  type="button"
+                  onClick={() => setAbuseWarning(null)}
+                  className="ml-2 underline underline-offset-2 hover:text-amber-700"
+                >
+                  {t('explore.chat.abuseWarningDismiss')}
+                </button>
+              </div>
+            )}
             {phaseInteractionLocked && (
               <div
                 className="border-t border-amber-200/90 bg-amber-50 px-4 py-2 text-center text-xs font-medium text-amber-950"
@@ -2270,7 +2364,9 @@ function LiveChatPhasePage() {
                     }}
                     placeholder={
                       streamTailInputPlaceholder ??
-                      (phaseInteractionLocked
+                      (abuseFrozen
+                        ? t('explore.chat.abuseFrozenPlaceholder')
+                        : phaseInteractionLocked
                         ? t('explore.chat.placeholderPhaseLocked')
                         : isReadOnly
                           ? t('explore.chat.placeholderReadOnly')
@@ -2492,6 +2588,15 @@ function LiveChatPhasePage() {
           handleCompleteAndContinue();
         }}
         onClose={() => setContinueConfirmOpen(false)}
+      />
+      <AbuseFrozenModal
+        open={abuseFrozenModalOpen}
+        title={t('explore.chat.abuseFrozenTitle')}
+        body={abuseFrozen?.message || t('explore.chat.abuseFrozenBody')}
+        contactLabel={t('explore.chat.abuseFrozenContact', { email: 'openlife.lab@outlook.com' })}
+        contactEmail="openlife.lab@outlook.com"
+        okLabel={t('explore.chat.abuseFrozenOk')}
+        onClose={() => setAbuseFrozenModalOpen(false)}
       />
       <TrialLimitModal
         open={trialBlock !== null}

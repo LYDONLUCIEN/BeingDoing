@@ -427,6 +427,12 @@ async def combo_chat_endpoint(req: ComboChatReq, current_user: dict = Depends(ge
     )
     reports_root, rid, rec = _resolve_v4_ctx_with_rec(req.activation_code, current_user)
     _assert_rumination_editable(reports_root, rid, current_user, rec)
+    # 滥用检测：rumination 主对话消息计数 + 阈值聚合（admin/沙箱豁免；冻结用户 403）
+    from app.api.v1.simple_chat_routes import (  # 延迟导入避免循环依赖
+        _record_abuse_message_event,
+    )
+
+    await _record_abuse_message_event(rec, current_user, req.activation_code, "rumination")
     state = load_v4_state(reports_root, rid)
     combo = find_combo(state, req.combo_id)
     if not combo:

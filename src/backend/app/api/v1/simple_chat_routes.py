@@ -124,6 +124,7 @@ from app.domain.rumination_step_guidance import (
     get_rumination_chat_step_addon,
     render_fixed_opening_zh,
 )
+from app.services import abuse_service
 from app.services.analytics_service import AnalyticsService
 from app.services.llm_turn_log_service import (
     OUTCOME_DISCONNECTED,
@@ -822,10 +823,47 @@ def _assert_email_verified_for_explore(rec, current_user: Optional[dict]) -> Non
     )
 
 
+def _assert_abuse_not_frozen(rec, current_user: Optional[dict]) -> None:
+    """
+    滥用冻结门控（同步内存检查，零 DB 开销）：冻结用户一切探索写操作 → 403 abuse_frozen。
+
+    挂在 _assert_trial_phase_allowed 统一入口（邮箱验证门控之后），覆盖
+    init/message/stream/thread/rumination/prior-context 全部写端点。
+    豁免：admin 调试工作区（_can_bypass_flow_limits）。
+    """
+    if not current_user:
+        return
+    if rec is not None and _can_bypass_flow_limits(current_user, rec):
+        return
+    info = abuse_service.is_frozen((current_user.get("user_id") or "").strip())
+    if info:
+        raise abuse_service.build_frozen_exception(info.get("rule"))
+
+
+async def _record_abuse_message_event(
+    rec, current_user: Optional[dict], activation_code: Optional[str], phase_step: str
+) -> None:
+    """滥用检测：落一条消息事件并做硬阈值聚合检查（admin/沙箱豁免）。
+
+    命中阈值时按状态机 raise 429（首次警告）/ 403（警告后再次触发 → 冻结）；
+    其余异常（DB 抖动等）fail-open，不阻断主聊天流程。
+    """
+    if not current_user:
+        return
+    if _can_bypass_flow_limits(current_user, rec):
+        return
+    user_id = (current_user.get("user_id") or "").strip()
+    if not user_id:
+        return
+    await abuse_service.record_and_check_message(user_id, activation_code, phase_step)
+
+
 def _assert_trial_phase_allowed(rec, current_user: Optional[dict], phase_step: str) -> None:
     """试用码阶段锁：非 values 写请求一律 402。full 码与豁免场景直接放行。"""
     # 邮箱验证门控挂在所有探索写端点的统一入口（本函数被全部写端点直接或间接调用）
     _assert_email_verified_for_explore(rec, current_user)
+    # 滥用冻结门控（同样覆盖全部写端点，纯内存检查）
+    _assert_abuse_not_frozen(rec, current_user)
     if not _is_trial_code(rec):
         return
     if _can_bypass_flow_limits(current_user, rec):
@@ -4361,6 +4399,8 @@ async def simple_chat(
     _assert_trial_message_allowed(
         rec, current_user, phase_step, registry, report["report_id"]
     )
+    # 滥用检测：消息计数 + 阈值聚合（命中首次 429 警告 / 再次 403 冻结）
+    await _record_abuse_message_event(rec, current_user, request.activation_code, phase_step)
 
     # 更新最后活跃时间（过期时不更新）
     if rec.status == ActivationStatus.ACTIVE:
@@ -7342,6 +7382,12 @@ async def delete_thread(
                 lock_file.unlink(missing_ok=True)
             except OSError:
                 pass
+    # 滥用检测：删除已完成后记录并检查同 phase 累计删除阈值
+    # （escalate 抛 429/403 时删除不回滚，产品口径可接受）
+    if not _can_bypass_flow_limits(current_user, rec):
+        await abuse_service.record_and_check_thread_delete(
+            user_id, request.activation_code, phase_step
+        )
     return SimpleChatResponse(
         code=200,
         message="success",

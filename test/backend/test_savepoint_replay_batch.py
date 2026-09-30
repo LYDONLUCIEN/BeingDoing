@@ -166,6 +166,18 @@ def _apply_case_mocks(case: Dict[str, Any], monkeypatch) -> str:
     return "mock"
 
 
+def _disable_abuse_detection(monkeypatch) -> None:
+    """回放用例在短时间内密集发消息，会触发滥用检测限流（属正确行为）；
+    回放只验证对话逻辑，这里把滥用计数打桩为空操作。"""
+    import app.services.abuse_service as _abuse_svc
+
+    async def _noop_record(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(_abuse_svc, "record_and_check_message", _noop_record)
+    monkeypatch.setattr(_abuse_svc, "record_and_check_thread_delete", _noop_record)
+
+
 @pytest.fixture()
 def savepoint_env(tmp_path, monkeypatch):
     global _app, _get_current_user, activation_manager_mod, simple_chat_api
@@ -184,6 +196,7 @@ def savepoint_env(tmp_path, monkeypatch):
     simple_root = tmp_path / "simple"
     simple_root.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(activation_manager_mod, "get_simple_base_dir", lambda: simple_root)
+    _disable_abuse_detection(monkeypatch)
     _app.dependency_overrides[_get_current_user] = lambda: TEST_USER
     client = TestClient(_app)
     headers = {"Authorization": "Bearer savepoint-token"}
