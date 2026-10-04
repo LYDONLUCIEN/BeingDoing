@@ -364,7 +364,7 @@ export const zh = {
     resendVerifyEmail: '重新发送验证邮件',
     verifySuccess: '邮箱验证成功',
     verifyFailed: '验证失败',
-    verifyEmailDesc: '验证邮箱后即可使用激活码开始探索',
+    verifyEmailDesc: '请回到之前操作的页面继续；若仍显示未验证，稍候片刻或刷新页面即可',
     needVerifyFirst: '请先验证邮箱再使用激活码',
     goToVerify: '前往验证',
   },

@@ -291,6 +291,7 @@ function ActivatePageContent() {
         <span className="ol-transition-noise" />
       </div>
 
+      {user?.is_super_admin && (
       <details className="ol-transition-appearance">
         <summary>页面质感</summary>
         <div className="ol-transition-panel">
@@ -331,6 +332,7 @@ function ActivatePageContent() {
           </div>
         </div>
       </details>
+      )}
 
       <motion.section
         className="ol-transition-stage"

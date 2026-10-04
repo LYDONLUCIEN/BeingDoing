@@ -372,7 +372,7 @@ export const en = {
     resendVerifyEmail: 'Resend Verification Email',
     verifySuccess: 'Email verified successfully',
     verifyFailed: 'Verification failed',
-    verifyEmailDesc: 'Verify your email to use activation codes',
+    verifyEmailDesc: 'Return to the page you were on to continue; if it still shows unverified, wait a moment or refresh',
     needVerifyFirst: 'Please verify your email before using activation codes',
     goToVerify: 'Go Verify',
   },

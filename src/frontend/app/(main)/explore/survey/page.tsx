@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import SurveyFormBd from '@/components/survey/SurveyFormBd';
 import { surveyApi } from '@/lib/api/survey';
+import { authApi } from '@/lib/api/auth';
 import { apiClient, getApiErrorMessage } from '@/lib/api/client';
 import { loadSession, saveSession, getLastActivationCode, setUserSurveyCompleted, getUserPrivacyAck, setUserPrivacyAck } from '@/lib/explore/session';
 import { applyExploreResumeToSession } from '@/lib/explore/session';
@@ -22,6 +23,7 @@ export default function SurveyPage() {
   const [initialData, setInitialData] = useState<SurveyData>({});
   const [preloadDone, setPreloadDone] = useState(false);
   const { user } = useAuthStore();
+  const setUser = useAuthStore((s) => s.setUser);
   const { t } = useLocale();
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [resending, setResending] = useState(false);
@@ -43,6 +45,32 @@ export default function SurveyPage() {
       setResending(false);
     }
   };
+
+  // 未验证拦截期间静默轮询后端：用户在邮箱（通常是新标签页）完成验证后回到本页时，
+  // 本页 store 快照仍是未验证。挂载先查一次（覆盖「早已验证、仅 store 陈旧」），之后每 5s
+  // 同步一次，一旦后端已验证立即更新 store 解除拦截——无需用户理解"要刷新页面"。
+  useEffect(() => {
+    if (!emailUnverified) return;
+    let stopped = false;
+    const sync = async () => {
+      try {
+        const me = await authApi.getCurrentUser();
+        const d = me?.data;
+        // 后端语义：email_verified 缺失视为已验证，与 get_current_user 的 getattr 默认一致
+        if (stopped || !d || d.email_verified === false) return;
+        const u = useAuthStore.getState().user;
+        setUser({ ...u, email_verified: d.email_verified, email: d.email ?? u?.email });
+      } catch {
+        /* 网络异常静默重试，下个轮询周期继续 */
+      }
+    };
+    sync();
+    const timer = setInterval(sync, 5000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [emailUnverified, setUser]);
 
   useEffect(() => {
     const code = getLastActivationCode();
