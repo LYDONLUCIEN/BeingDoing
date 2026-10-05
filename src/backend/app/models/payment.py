@@ -1,7 +1,9 @@
 """
 支付与会员相关数据模型（P1 建表，P2 支付闭环 / P3 会员启用）
 
-包含三张表：
+包含以下表：
+- payment_order_lines: 订单明细行（优惠分摊口径，退款上限依据，2026-10-05）
+- payment_refunds: 退款申请单（全退/部分退统一状态机，2026-10-05）
 - payment_orders: 支付订单（购买者、商品、渠道、金额、状态）
 - coupons: 折扣券（通用码、固定金额、无门槛、永久有效、核销一次即作废）
 - subscriptions: 会员订阅（P3 用，本期仅建表）
@@ -31,9 +33,10 @@ class PaymentOrder(Base):
         amount_original: 原价（分）
         amount_discount: 抵扣金额（分）
         amount_paid: 实付金额（分）
+        amount_refunded: 累计成功退款（分，恒 ≤ amount_paid；等于 amount_paid 时 status=refunded）
         coupon_id: 使用的折扣券 ID（外键 → coupons.id，可空）
         channel: 支付渠道（wechat / alipay）
-        status: 订单状态（pending/paid/granted/closed/cancelled/refunding/refunded）
+        status: 订单状态（pending/paid/granted/partially_refunded/closed/cancelled/refunding/refunded）
         channel_transaction_id: 渠道交易号
         delivered_code: 交付的激活码
         qr_code: 渠道预下单返回的支付二维码串（供订单详情/继续支付）
@@ -66,6 +69,8 @@ class PaymentOrder(Base):
     paid_at = Column(DateTime, nullable=True)
     closed_at = Column(DateTime, nullable=True)
     refunded_at = Column(DateTime, nullable=True)
+    # 累计成功退款（分）；不变式：amount_refunded == amount_paid ⇔ status == refunded
+    amount_refunded = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(
         DateTime,
@@ -76,6 +81,117 @@ class PaymentOrder(Base):
 
     # 关系
     coupon = relationship("Coupon", foreign_keys=[coupon_id])
+
+
+class PaymentOrderLine(Base):
+    """订单明细行（优惠分摊口径，2026-10-05 退款系统）
+
+    交付（granted）时生成并落库分摊，退款只读取、不重算；存量 granted 订单
+    首次访问退款能力时惰性回填（payment_line_service.ensure_order_lines）。
+
+    分摊算法：同单内各行商品等价 → 原价/券/实付均按行数等分、尾差归最后一行，
+    保证 Σ行 == 订单总额（不变式，见设计文档 2.2）。券面额超折后价时各行
+    amount_paid_alloc 可为 0（Σ 仍等于订单实付），不为负。
+
+    Attributes:
+        id: 行 ID（UUID，主键）
+        order_id: 订单 ID（外键 → payment_orders.id）
+        line_no: 行号（1 起）
+        item_type: 行商品类型（code 激活码 / consultation_service 咨询 / renewal_service 延期）
+        item_ref: 行关联实体（码值 / booking_id / 目标码）
+        price_original_alloc: 分摊原价（分）
+        coupon_alloc: 优惠分摊额（分，会员折扣+券合计，Σ = amount_discount）
+        amount_paid_alloc: 分摊实付（分，退款上限取此值）
+        status: available 未动可退 / used 生成时已被用（激活/消耗/已预约）/ refunded 已随退款作废
+        refunded_at: 随退款作废时间
+        created_at: 创建时间
+
+    注意：status 是退款驱动流转的持久记录（available → refunded）；
+    「申请后码被激活」等竞态由审批/查询时实时重验码状态兜底，不回写本列。
+    """
+
+    __tablename__ = "payment_order_lines"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    order_id = Column(
+        String(36), ForeignKey("payment_orders.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    line_no = Column(Integer, nullable=False)
+    item_type = Column(String(32), nullable=False)
+    item_ref = Column(String(64), nullable=True)
+    price_original_alloc = Column(Integer, nullable=False)
+    coupon_alloc = Column(Integer, default=0, nullable=False)
+    amount_paid_alloc = Column(Integer, nullable=False)
+    status = Column(String(16), default="available", nullable=False)
+    refunded_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class PaymentRefund(Base):
+    """退款申请单（全退/部分退统一状态机，2026-10-05）
+
+    状态机：
+        pending_review →（批准并执行）→ refunding → succeeded / failed（可重试，同 refund_no）
+        pending_review → withdrawn（用户撤回）/ rejected（admin 驳回，必填理由）
+
+    幂等与审计：refund_no = order_no + "R" + 3 位序号（即支付宝 out_request_no），
+    唯一索引兜底；申请额/批准额分列，调整必填 reason_admin；渠道回执留
+    channel_response；批准时关联行快照存 line_snapshot。
+
+    Attributes:
+        id: 退款单 ID（UUID，主键）
+        refund_no: 退款单号（唯一，渠道幂等号）
+        order_id / order_no: 关联原订单
+        user_id: 申请人（= 订单主人）
+        originated: user 用户自提 / admin 代录
+        created_by_admin: 代录 admin 用户 ID
+        refund_type: full 全退 / partial 部分退
+        requested_amount: 申请金额（分）
+        approved_amount: 批准金额（分，= 执行金额）
+        reason_user: 用户申请理由
+        reason_admin: 审批意见 / 驳回理由 / 金额调整理由
+        status: pending_review/approved/refunding/succeeded/failed/rejected/withdrawn
+        reviewed_by / reviewed_at: 审批 admin 及时间
+        executed_at / succeeded_at: 渠道调用 / 渠道确认成功时间
+        failed_reason: 渠道失败原因
+        channel_response: 渠道回执（JSON 文本，审计留存）
+        line_snapshot: 批准时关联行快照（JSON 文本）
+        created_at / updated_at: 通用时间戳
+    """
+
+    __tablename__ = "payment_refunds"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    refund_no = Column(String(32), unique=True, nullable=False, index=True)
+    order_id = Column(
+        String(36), ForeignKey("payment_orders.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    order_no = Column(String(32), nullable=False, index=True)
+    user_id = Column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    originated = Column(String(8), nullable=False)
+    created_by_admin = Column(String(36), nullable=True)
+    refund_type = Column(String(8), nullable=False)
+    requested_amount = Column(Integer, nullable=False)
+    approved_amount = Column(Integer, nullable=True)
+    reason_user = Column(Text, nullable=True)
+    reason_admin = Column(Text, nullable=True)
+    status = Column(String(16), default="pending_review", nullable=False, index=True)
+    reviewed_by = Column(String(36), nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    executed_at = Column(DateTime, nullable=True)
+    succeeded_at = Column(DateTime, nullable=True)
+    failed_reason = Column(Text, nullable=True)
+    channel_response = Column(Text, nullable=True)
+    line_snapshot = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
 
 
 class Coupon(Base):

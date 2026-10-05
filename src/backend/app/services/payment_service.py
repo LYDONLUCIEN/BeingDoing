@@ -38,6 +38,7 @@ from app.models.payment import ConsultationBooking, Coupon, PaymentOrder
 from app.models.user import User
 from app.services.coupon_service import CouponService
 from app.services.email_service import EmailService
+from app.services.payment_line_service import ensure_order_lines
 from app.utils.simple_activation_manager import (
     SimpleActivationManager,
     get_activation_with_manager,
@@ -503,6 +504,8 @@ class PaymentService:
             order.paid_at = paid_at or _utcnow()
             if channel_transaction_id and not order.channel_transaction_id:
                 order.channel_transaction_id = channel_transaction_id
+            # 订单明细行（优惠分摊落库，退款系统 2026-10-05；幂等）
+            await ensure_order_lines(db, order, source="delivery")
             await db.commit()
             await db.refresh(order)
             coupon_id = order.coupon_id
@@ -1421,6 +1424,7 @@ class PaymentService:
             "amount_original": order.amount_original,
             "amount_discount": order.amount_discount,
             "amount_paid": order.amount_paid,
+            "amount_refunded": order.amount_refunded,
             "coupon_code": coupon_code,
             "channel": order.channel,
             "status": order.status,

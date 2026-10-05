@@ -1,0 +1,26 @@
+Fork 没有把沉淀数据弄丢。后台看不到，是因为管理端还在按旧的 v3 沉淀去读；这份码的沉淀实际在 v4 文件里，而且已经复制进沙箱。
+
+今天 14:43 从 `Z9ZU729FI1` fork 出沙箱码 `SBXLMS1IF0U`。沙箱报告 `4a5b252d-9fc9-47d0-9e1e-22c17d00f4ec` 里，`rumination_v4_progress.json` 是完整的，时间都在 fork 之前（10 月 4 日）：
+
+- 两个组合都已确认：`combo_1`「问题解决」、`combo_2`「规则应用」，平衡点判定都是已找到
+- 终选已提交（`combo_1` + `combo_2`），`main_section` 为 `end`
+- `record.json` 里沉淀阶段 `locked: true`，但 `session_ids` 是空数组，`selected_session_id` 也是空
+- 目录里没有 v3 的 `rumination_progress.json`，也没有 `rumination__*.json` 对话文件
+
+这和 v4 的写法一致：终选提交只锁阶段，不写线程文件。对话、结论卡都在 `rumination_v4_progress.json` 的 `combo_sessions` 里。
+
+## 后台为什么像没有沉淀
+
+管理端会话列表只遍历各阶段的 `session_ids`。这个码的沉淀 `session_ids` 为空，所以列表里不会出现沉淀对话。
+
+点进沉淀详情时，后端 `build_rumination_tables` 只读 v3 的 `rumination_progress.json`，前端用 `RuminationTablesView` 画旧的 1–7 步表格。文件不存在时，七步都会显示「未进行」。v4 那份进度文件，后台会话接口完全不读。
+
+还有一层：会话列表和报告列表用的 `ReportRegistry()` 只扫 `data/simple`。沙箱在 `data/test/simple/sandboxes/98a50cde-da16-4e8a-818b-d00dc80ac31a/`。用沙箱码 `SBXLMS1IF0U` 在后台会话里搜，整份报告都不会出现，不只是沉淀。
+
+所以「后台没有 rumination」在源码 `Z9ZU729FI1` 上也会一样。不 fork，沉淀会话同样是空的。Fork 只是把同一份结构复制过去了。
+
+## 进入页面看到的是哪一版
+
+当前仓库里，`/explore/chat/rumination` 无条件进 v4，v3 七步页已经删掉。这份数据五个阶段都已锁定，进入探索会回到沉淀，并去读沙箱里的 v4 文件。正常应看到组合工作台：顶栏「05 沉淀」、两个已确认组合，以及「最终选择已提交，内容已锁定，仅供回看」。
+
+若你看到的是七步筛选表、而且全是「未进行」，那就是后台会话详情那套旧视图，不是用户探索页，也不是 fork 把数据写坏了。

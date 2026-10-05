@@ -18,6 +18,8 @@ from app.models.feedback import Feedback, FeedbackAttachment, Notification
 from app.models.abuse import AbuseEvent, AbuseState
 from app.models.payment import (
     PaymentOrder,
+    PaymentOrderLine,
+    PaymentRefund,
     Coupon,
     Subscription,
     ConsultationBooking,
@@ -61,6 +63,8 @@ __all__ = [
     "AbuseState",
     # 支付与会员
     "PaymentOrder",
+    "PaymentOrderLine",
+    "PaymentRefund",
     "Coupon",
     "Subscription",
     "ConsultationBooking",
