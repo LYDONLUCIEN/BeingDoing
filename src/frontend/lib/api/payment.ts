@@ -160,10 +160,14 @@ export type ProductType =
 
 export type PayChannel = 'alipay' | 'wechat';
 
+/** 支付串展示方式：qr=页面内 iframe 嵌入二维码（支付宝前置模式/微信 Native）；redirect=新窗口跳收银台 */
+export type PayType = 'qr' | 'redirect';
+
 export type OrderStatus =
   | 'pending'
   | 'paid'
   | 'granted'
+  | 'partially_refunded'
   | 'closed'
   | 'cancelled'
   | 'refunding'
@@ -207,6 +211,8 @@ export interface OrderItem {
   amount_discount: number;
   /** 实付（分） */
   amount_paid: number;
+  /** 累计成功退款（分） */
+  amount_refunded?: number;
   coupon_code?: string | null;
   channel: PayChannel;
   status: OrderStatus;
@@ -246,14 +252,15 @@ export interface OrderListResult {
 
 export interface CreateOrderResult {
   order: OrderItem;
-  /** 0 元单为 null（订单直接 granted）；否则含支付宝收银台跳转 URL（page.pay） */
-  payment: { channel: PayChannel; pay_url: string } | null;
+  /** 0 元单为 null（订单直接 granted）；否则含支付串（qr=iframe 嵌入二维码，redirect=收银台跳转） */
+  payment: { channel: PayChannel; pay_type?: PayType; pay_url: string } | null;
 }
 
 export interface OrderDetailResult {
   order: OrderItem;
-  /** 支付宝收银台跳转 URL（仅 pending 订单返回） */
+  /** 支付串（仅 pending 订单返回；qr=iframe 嵌入二维码，redirect=收银台跳转） */
   pay_url: string | null;
+  pay_type?: PayType | null;
 }
 
 /** 商品与价格列表 */
@@ -406,8 +413,200 @@ export async function adminGetOrder(id: string): Promise<{ order: AdminOrderItem
   return res.data as { order: AdminOrderItem };
 }
 
-/** 发起退款（仅未使用激活码可退；官方退款 API，回调后置 refunded + 作废码） */
-export async function adminRefundOrder(id: string): Promise<{ order: AdminOrderItem }> {
-  const res = await apiClient.post(`/admin/payment/orders/${encodeURIComponent(id)}/refund`);
-  return res.data as { order: AdminOrderItem };
+// ===================== 退款（2026-10-05 统一申请单）=====================
+
+export type RefundType = 'full' | 'partial';
+
+export type RefundStatus =
+  | 'pending_review'
+  | 'refunding'
+  | 'succeeded'
+  | 'failed'
+  | 'rejected'
+  | 'withdrawn';
+
+/** 订单明细行（优惠分摊口径；item_type=code 时 item_ref 为激活码） */
+export interface RefundLineItem {
+  id: string;
+  line_no: number;
+  item_type: 'code' | 'consultation_service' | 'renewal_service';
+  item_ref: string | null;
+  /** 该行分摊实付（分，退款上限） */
+  amount_paid_alloc: number;
+  /** 实时有效状态：available 可退 / used 已被用 / refunded 已退 */
+  effective_status: 'available' | 'used' | 'refunded';
+}
+
+/** 退款能力视图 */
+export interface RefundOptions {
+  order: {
+    id: string;
+    order_no: string;
+    product_type: ProductType;
+    amount_paid: number;
+    amount_refunded: number;
+    status: OrderStatus;
+  };
+  full_allowed: boolean;
+  partial_allowed: boolean;
+  /** 套餐部分退按所选码折算；咨询部分退走 admin 协商金额 */
+  partial_by_lines: boolean;
+  remaining_refundable: number;
+  lines: RefundLineItem[];
+  pending_request: RefundItem | null;
+  history: RefundItem[];
+}
+
+/** 退款单（审批留痕全量可见） */
+export interface RefundItem {
+  id: string;
+  refund_no: string;
+  order_id: string;
+  order_no: string;
+  user_id: string;
+  originated: 'user' | 'admin';
+  created_by_admin?: string | null;
+  refund_type: RefundType;
+  /** 申请金额（分） */
+  requested_amount: number;
+  /** 批准金额（分，= 执行金额） */
+  approved_amount?: number | null;
+  reason_user?: string | null;
+  reason_admin?: string | null;
+  status: RefundStatus;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  executed_at?: string | null;
+  succeeded_at?: string | null;
+  failed_reason?: string | null;
+  line_snapshot?: Array<{
+    line_id: string;
+    line_no: number;
+    item_type: string;
+    item_ref: string | null;
+    amount_paid_alloc: number;
+  }> | null;
+  created_at: string;
+  updated_at?: string | null;
+  /** admin 列表附带 */
+  user_email?: string;
+}
+
+export interface RefundListResult {
+  items: RefundItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+/** 订单退款能力视图（行级分摊 + 可退性） */
+export async function fetchRefundOptions(orderId: string): Promise<RefundOptions> {
+  const res = await apiClient.get(
+    `/payment/orders/${encodeURIComponent(orderId)}/refund-options`
+  );
+  return res.data as RefundOptions;
+}
+
+/** 提交退款申请（全退/部分退；金额按规则计算） */
+export async function createRefundRequest(
+  orderId: string,
+  payload: { refund_type: RefundType; line_ids?: string[]; reason: string }
+): Promise<{ refund: RefundItem }> {
+  const res = await apiClient.post(
+    `/payment/orders/${encodeURIComponent(orderId)}/refund-requests`,
+    payload
+  );
+  return res.data as { refund: RefundItem };
+}
+
+/** 我的退款申请列表 */
+export async function listMyRefunds(params?: {
+  page?: number;
+  page_size?: number;
+}): Promise<RefundListResult> {
+  const res = await apiClient.get('/payment/refund-requests', { params });
+  return (res.data ?? { items: [], total: 0, page: 1, page_size: 20 }) as RefundListResult;
+}
+
+/** 撤回退款申请（仅待审批） */
+export async function withdrawRefund(id: string): Promise<{ refund: RefundItem }> {
+  const res = await apiClient.post(`/payment/refund-requests/${encodeURIComponent(id)}/withdraw`);
+  return res.data as { refund: RefundItem };
+}
+
+// ─── Admin：退款审批 ──────────────────────────────────────────
+
+/** admin 退款单列表（状态/订单号筛选） */
+export async function adminListRefunds(params?: {
+  status?: RefundStatus;
+  order_no?: string;
+  page?: number;
+  page_size?: number;
+}): Promise<RefundListResult> {
+  const res = await apiClient.get('/admin/payment/refunds', { params });
+  return (res.data ?? { items: [], total: 0, page: 1, page_size: 20 }) as RefundListResult;
+}
+
+/** admin 退款单详情（含订单信息 + 实时行状态） */
+export async function adminGetRefund(
+  id: string
+): Promise<RefundItem & {
+  order: {
+    id: string;
+    order_no: string;
+    product_type: ProductType;
+    amount_paid: number;
+    amount_refunded: number;
+    status: OrderStatus;
+    coupon_id: string | null;
+  };
+  order_lines: Array<RefundLineItem & { db_status: string }>;
+}> {
+  const res = await apiClient.get(`/admin/payment/refunds/${encodeURIComponent(id)}`);
+  return res.data as ReturnType<typeof adminGetRefund>;
+}
+
+/** admin 代录退款申请（线下协商场景） */
+export async function adminCreateRefund(
+  payload: {
+    order_id: string;
+    refund_type: RefundType;
+    amount?: number;
+    line_ids?: string[];
+    reason: string;
+    note?: string;
+  }
+): Promise<{ refund: RefundItem }> {
+  const res = await apiClient.post('/admin/payment/refunds', payload);
+  return res.data as { refund: RefundItem };
+}
+
+/** 批准并执行退款（approved_amount 不传 = 申请额；与申请额不一致必填 note） */
+export async function adminApproveRefund(
+  id: string,
+  payload: { approved_amount?: number; note?: string }
+): Promise<{ refund: RefundItem }> {
+  const res = await apiClient.post(
+    `/admin/payment/refunds/${encodeURIComponent(id)}/approve`,
+    payload
+  );
+  return res.data as { refund: RefundItem };
+}
+
+/** 驳回（必填理由，用户可见） */
+export async function adminRejectRefund(
+  id: string,
+  note: string
+): Promise<{ refund: RefundItem }> {
+  const res = await apiClient.post(
+    `/admin/payment/refunds/${encodeURIComponent(id)}/reject`,
+    { note }
+  );
+  return res.data as { refund: RefundItem };
+}
+
+/** 失败重试（同 refund_no 渠道幂等） */
+export async function adminRetryRefund(id: string): Promise<{ refund: RefundItem }> {
+  const res = await apiClient.post(`/admin/payment/refunds/${encodeURIComponent(id)}/retry`);
+  return res.data as { refund: RefundItem };
 }

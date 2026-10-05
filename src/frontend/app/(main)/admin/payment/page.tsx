@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Check, Copy, ShoppingCart, Ticket, X } from 'lucide-react';
+import { Check, Copy, RotateCcw, ShoppingCart, Ticket, X } from 'lucide-react';
 import PaymentOrdersTab from '@/components/admin/PaymentOrdersTab';
+import RefundApprovalsTab from '@/components/admin/RefundApprovalsTab';
 import { getApiErrorMessage } from '@/lib/api/client';
 import {
   createCoupons,
@@ -23,7 +24,7 @@ import {
 } from '@/lib/api/payment';
 import { formatLocalDateTime } from '@/lib/utils/formatTime';
 
-type PageTab = 'orders' | 'coupons';
+type PageTab = 'orders' | 'refunds' | 'coupons';
 type StatusFilter = 'all' | CouponStatus;
 type SourceFilter = 'all' | CouponSource;
 
@@ -337,6 +338,18 @@ export default function AdminPaymentPage() {
         </button>
         <button
           type="button"
+          onClick={() => setTab('refunds')}
+          className={`px-4 py-2 rounded-xl text-xs border inline-flex items-center gap-1.5 ${
+            tab === 'refunds'
+              ? 'bg-bd-ui-accent text-bd-ui-accent-fg border-transparent'
+              : 'text-bd-muted border-bd-border hover:text-bd-fg hover:bg-bd-overlay-md'
+          }`}
+        >
+          <RotateCcw className="w-3.5 h-3.5" />
+          退款审批
+        </button>
+        <button
+          type="button"
           onClick={() => setTab('coupons')}
           className={`px-4 py-2 rounded-xl text-xs border inline-flex items-center gap-1.5 ${
             tab === 'coupons'
@@ -351,6 +364,9 @@ export default function AdminPaymentPage() {
 
       {/* 订单管理 tab */}
       {tab === 'orders' && <PaymentOrdersTab />}
+
+      {/* 退款审批 tab（2026-10-05 统一退款申请单） */}
+      {tab === 'refunds' && <RefundApprovalsTab />}
 
       {tab === 'coupons' && (
         <>

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Check, Copy, Receipt } from 'lucide-react';
+import { Check, Copy, Receipt, RotateCcw } from 'lucide-react';
 import { getApiErrorMessage, isRequestCanceled } from '@/lib/api/client';
 import {
   cancelOrder,
@@ -16,6 +16,7 @@ import {
 import { formatLocalDateTime } from '@/lib/utils/formatTime';
 import { useLocale } from '@/hooks/useLocale';
 import PurchaseModal from '@/components/payment/PurchaseModal';
+import RefundRequestModal from '@/components/payment/RefundRequestModal';
 
 const PAGE_SIZE = 10;
 
@@ -27,6 +28,7 @@ const STATUS_COLOR: Record<OrderStatus, string> = {
   closed: 'ol-pill--gray',
   cancelled: 'ol-pill--gray',
   refunding: 'ol-pill--red',
+  partially_refunded: 'ol-pill--purple',
   refunded: 'ol-pill--purple',
 };
 
@@ -45,6 +47,9 @@ export default function OrdersSection() {
   // 购买弹窗：resumeOrderId 存在时为「继续支付」模式
   const [modalOpen, setModalOpen] = useState(false);
   const [resumeOrderId, setResumeOrderId] = useState<string | undefined>(undefined);
+
+  // 退款申请弹窗（granted/partially_refunded 可发起）
+  const [refundOrder, setRefundOrder] = useState<OrderItem | null>(null);
 
   const loadOrders = useCallback(
     async (p: number) => {
@@ -187,6 +192,13 @@ export default function OrdersSection() {
                     </span>
                   </>
                 )}
+                {(order.amount_refunded ?? 0) > 0 && (
+                  <span className="text-xs text-purple-600">
+                    {t('dashboard.ordersPage.refundedNote', {
+                      amount: fenToYuan(order.amount_refunded ?? 0),
+                    })}
+                  </span>
+                )}
               </div>
 
               {/* 渠道 + 创建时间 */}
@@ -297,6 +309,21 @@ export default function OrdersSection() {
                     </Link>
                   </div>
                 )}
+
+              {/* 申请退款：已交付且非延期单（延期交付即已用不可退，后端仍会守卫） */}
+              {(order.status === 'granted' || order.status === 'partially_refunded') &&
+                order.product_type !== 'renewal' && (
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setRefundOrder(order)}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm border border-bd-border text-bd-muted hover:text-bd-fg hover:bg-bd-overlay-md"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      {t('dashboard.ordersPage.applyRefund')}
+                    </button>
+                  </div>
+                )}
             </div>
           ))}
 
@@ -333,6 +360,14 @@ export default function OrdersSection() {
         resumeOrderId={resumeOrderId}
         onSuccess={() => void loadOrders(1)}
       />
+
+      {refundOrder && (
+        <RefundRequestModal
+          order={refundOrder}
+          onClose={() => setRefundOrder(null)}
+          onChanged={() => void loadOrders(page)}
+        />
+      )}
     </div>
   );
 }

@@ -406,6 +406,8 @@ export const zh = {
       deliveredCodesLabel: '交付激活码（共 {count} 个）',
       codesFungibleHint: '激活码不区分用途：未绑定前可自用、可转赠，也可用 1 个升级你的试用码；每枚码的实际去向见',
       viewCodesLink: '我的激活码',
+      applyRefund: '申请退款',
+      refundedNote: '已退 ¥{amount}',
     },
     purchaseCard: {
       title: '购买激活码',
@@ -624,8 +626,8 @@ export const zh = {
     },
     waiting: {
       title: '等待支付',
-      hint: '已在新标签页打开支付宝收银台，完成支付后此页面将自动更新',
-      reopen: '如果没有弹出，请点击这里',
+      hint: '请使用支付宝 App 扫一扫上方二维码，完成支付后此页面将自动更新',
+      reopen: '二维码显示不出来？在新窗口打开',
       closed: '订单已关闭，可重新下单',
       expired: '订单已过期，可重新下单',
       reorder: '重新下单',
@@ -694,6 +696,7 @@ export const zh = {
       closed: '已关闭',
       cancelled: '已取消',
       refunding: '退款中',
+      partially_refunded: '部分退款',
       refunded: '已退款',
     },
   },

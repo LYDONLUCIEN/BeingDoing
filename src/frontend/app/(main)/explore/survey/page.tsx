@@ -59,7 +59,7 @@ export default function SurveyPage() {
         // 后端语义：email_verified 缺失视为已验证，与 get_current_user 的 getattr 默认一致
         if (stopped || !d || d.email_verified === false) return;
         const u = useAuthStore.getState().user;
-        setUser({ ...u, email_verified: d.email_verified, email: d.email ?? u?.email });
+        setUser({ ...u, user_id: u?.user_id ?? '', email_verified: d.email_verified, email: d.email ?? u?.email });
       } catch {
         /* 网络异常静默重试，下个轮询周期继续 */
       }

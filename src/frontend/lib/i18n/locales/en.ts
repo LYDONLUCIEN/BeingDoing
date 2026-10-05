@@ -415,6 +415,8 @@ export const en = {
       deliveredCodesLabel: 'Delivered activation codes ({count})',
       codesFungibleHint: 'Codes are interchangeable: use one yourself, gift it, or spend one to upgrade your trial code. See each code\'s status on',
       viewCodesLink: 'My Codes',
+      applyRefund: 'Request refund',
+      refundedNote: 'Refunded ¥{amount}',
     },
     purchaseCard: {
       title: 'Buy Activation Code',
@@ -633,8 +635,8 @@ export const en = {
     },
     waiting: {
       title: 'Waiting for Payment',
-      hint: 'Alipay cashier has opened in a new tab. This page will update automatically once payment is complete.',
-      reopen: "Didn't pop up? Click here",
+      hint: 'Scan the QR code above with your Alipay app. This page will update automatically once payment is complete.',
+      reopen: 'QR code not showing? Open in a new window',
       closed: 'Order closed. You can place a new order.',
       expired: 'Order expired. You can place a new order.',
       reorder: 'Place New Order',
@@ -703,6 +705,7 @@ export const en = {
       closed: 'Closed',
       cancelled: 'Cancelled',
       refunding: 'Refunding',
+      partially_refunded: 'Partially refunded',
       refunded: 'Refunded',
     },
   },

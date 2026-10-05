@@ -6,7 +6,7 @@ import { getApiErrorMessage } from '@/lib/api/client';
 import {
   adminGetOrder,
   adminListOrders,
-  adminRefundOrder,
+  adminCreateRefund,
   fenToYuan,
   type AdminOrderItem,
   type OrderStatus,
@@ -26,6 +26,7 @@ const STATUS_LABEL: Record<OrderStatus, string> = {
   closed: '已关闭',
   cancelled: '已取消',
   refunding: '退款中',
+  partially_refunded: '部分退款',
   refunded: '已退款',
 };
 
@@ -37,6 +38,7 @@ const STATUS_COLOR: Record<OrderStatus, string> = {
   closed: 'bg-neutral-200 text-neutral-600 border-neutral-300',
   cancelled: 'bg-neutral-200 text-neutral-600 border-neutral-300',
   refunding: 'bg-orange-100 text-orange-700 border-orange-200',
+  partially_refunded: 'bg-purple-100 text-purple-700 border-purple-200',
   refunded: 'bg-purple-100 text-purple-700 border-purple-200',
 };
 
@@ -177,15 +179,24 @@ export default function PaymentOrdersTab() {
   };
 
   const handleRefund = async () => {
+    // 2026-10-05 起改为统一退款申请单：此处代录全退申请（originated=admin 留痕），
+    // 批准执行请到「退款审批」tab（可下调金额/驳回）
     if (!refundTarget || refundWorking) return;
     setRefundWorking(true);
     try {
-      await adminRefundOrder(refundTarget.id);
-      setToast({ type: 'success', msg: `订单 ${refundTarget.order_no} 已发起退款` });
+      await adminCreateRefund({
+        order_id: refundTarget.id,
+        refund_type: 'full',
+        reason: `订单页代录：${refundTarget.order_no} 全额退款`,
+      });
+      setToast({
+        type: 'success',
+        msg: `订单 ${refundTarget.order_no} 已代录退款申请，请到「退款审批」tab 批准执行`,
+      });
       setRefundTarget(null);
       await reload();
     } catch (e: unknown) {
-      setToast({ type: 'error', msg: getApiErrorMessage(e, '退款失败') });
+      setToast({ type: 'error', msg: getApiErrorMessage(e, '代录退款申请失败') });
     } finally {
       setRefundWorking(false);
     }
@@ -213,6 +224,7 @@ export default function PaymentOrdersTab() {
             <option value="closed">已关闭</option>
             <option value="cancelled">已取消</option>
             <option value="refunding">退款中</option>
+            <option value="partially_refunded">部分退款</option>
             <option value="refunded">已退款</option>
           </select>
         </label>
@@ -438,7 +450,7 @@ export default function PaymentOrdersTab() {
             className="relative w-full max-w-sm rounded-2xl border border-bd-border bg-bd-card px-6 py-5 shadow-xl space-y-4"
           >
             <h3 className="text-sm font-semibold" style={{ color: 'var(--bd-fg)' }}>
-              确认退款
+              代录全额退款申请
             </h3>
             <div className="space-y-1.5 text-xs text-bd-muted">
               <p>
@@ -454,7 +466,8 @@ export default function PaymentOrdersTab() {
               <p className="text-xs text-rose-600">激活码已被使用，不可退款</p>
             ) : (
               <p className="text-xs text-bd-subtle">
-                退款成功后该激活码将作废，确认继续？
+                2026-10-05 起退款走统一审批流：此处代录申请，请到「退款审批」tab
+                批准执行（可下调金额、驳回）。提交后将通知管理员审批。
               </p>
             )}
             <div className="flex justify-end gap-2">
@@ -472,7 +485,7 @@ export default function PaymentOrdersTab() {
                 disabled={refundWorking || refundTarget.code_refundable === false}
                 className="px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-medium disabled:opacity-50"
               >
-                {refundWorking ? '退款中…' : '确认退款'}
+                {refundWorking ? '提交中…' : '代录申请'}
               </button>
             </div>
           </div>
