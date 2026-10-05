@@ -7,9 +7,8 @@
    0 元单不调渠道，直接走支付成功交付（status granted）。旧 SKU activation_code 已下架
 3. handle_alipay_notify：验签 → 查单 → 校验金额 → 幂等交付（TRADE_SUCCESS / TRADE_FINISHED）
 4. cancel_order / close_timeout_orders：关单（尝试渠道 close_order，失败仅记日志）+ 释放券
-5. admin_refund：套餐订单任一码被激活/消耗则整单不可退，全部未动可退并作废全部码（ADR-0014）；
-   延期交付即已用不可退；咨询仅未预约可退（退款取消预约单）；
-   历史 activation_code 订单维持原规则（码未被 claim 可退，成功作废码）
+5. 退款（2026-10-05 起迁至 refund_service.RefundService：统一申请单 + admin 审批，
+   本模块仅保留订单/券/行查询与展示辅助
 
 设计要点：
 - 金额一律整数分；order_no = "X" + UTC 14 位时间戳 + 6 位随机大写 hex（21 字符）
@@ -51,6 +50,11 @@ _MAX_ORDER_NO_RETRIES = 5
 
 # 支付宝视为支付成功的交易状态
 _ALIPAY_PAID_STATUSES = {"TRADE_SUCCESS", "TRADE_FINISHED"}
+
+# 渠道 → 支付串展示方式（下单/订单详情返回 pay_type，前端按此渲染）：
+# qr = 页面内 iframe 嵌入二维码（支付宝前置模式 qr_pay_mode=4；微信 Native 接入后同为 qr）
+# redirect = 新窗口跳转收银台（未登记渠道的兜底）
+_CHANNEL_PAY_TYPES: Dict[str, str] = {"alipay": "qr"}
 
 # 即时查单（sync）冷却：order_no → 上次查渠道的 time.monotonic()，10 秒内不重复查（防刷）
 _ORDER_SYNC_COOLDOWN: Dict[str, float] = {}
@@ -302,7 +306,8 @@ class PaymentService:
         """创建支付订单
 
         Returns:
-            (order, payment)：payment = {"channel", "pay_url"}；0 元单为 None
+            (order, payment)：payment = {"channel", "pay_type", "pay_url"}；
+            pay_type=qr 时前端 iframe 嵌入展示二维码；0 元单为 None
 
         Raises:
             ValueError: 商品/渠道不支持、券无效、renewal 目标码校验失败
@@ -393,7 +398,7 @@ class PaymentService:
             order = await cls._deliver_order(order.id)
             return order, None
 
-        # 调渠道下单（page.pay），跳转 URL 存 qr_code 列
+        # 调渠道下单（page.pay 前置模式），二维码嵌入 URL 存 qr_code 列
         pay_url = await pay_channel.create_order(
             order_no=order.order_no,
             amount_fen=paid,
@@ -404,7 +409,11 @@ class PaymentService:
             row.qr_code = pay_url
             await db.commit()
             await db.refresh(row)
-            return row, {"channel": channel, "pay_url": pay_url}
+            return row, {
+                "channel": channel,
+                "pay_type": _CHANNEL_PAY_TYPES.get(channel, "redirect"),
+                "pay_url": pay_url,
+            }
 
     @classmethod
     async def _insert_order(cls, db, **fields) -> PaymentOrder:
@@ -929,13 +938,13 @@ class PaymentService:
     async def get_user_order(
         cls, user_id: str, order_id: str, sync: bool = False
     ) -> Dict[str, Any]:
-        """订单详情（仅本人）；pending 时返回存储的支付跳转 URL 供继续支付
+        """订单详情（仅本人）；pending 时返回存储的支付串供继续支付
 
         Args:
             sync: True 时先向渠道即时查单补交付（10 秒冷却防刷），再返回最新状态
 
         Returns:
-            {"order": OrderItem, "pay_url": str | None}
+            {"order": OrderItem, "pay_url": str | None, "pay_type": str | None}
 
         Raises:
             OrderNotFoundError: 订单不存在或非本人
@@ -957,6 +966,11 @@ class PaymentService:
             return {
                 "order": cls._order_to_dict(order, coupon_code),
                 "pay_url": order.qr_code if order.status == "pending" else None,
+                "pay_type": (
+                    _CHANNEL_PAY_TYPES.get(order.channel, "redirect")
+                    if order.status == "pending"
+                    else None
+                ),
             }
 
     @classmethod
@@ -969,7 +983,7 @@ class PaymentService:
             sync: True 时先向渠道即时查单补交付（10 秒冷却防刷），再返回最新状态
 
         Returns:
-            {"order": OrderItem, "pay_url": str | None}
+            {"order": OrderItem, "pay_url": str | None, "pay_type": str | None}
 
         Raises:
             OrderNotFoundError: 订单不存在或非本人
@@ -991,6 +1005,11 @@ class PaymentService:
             return {
                 "order": cls._order_to_dict(order, coupon_code),
                 "pay_url": order.qr_code if order.status == "pending" else None,
+                "pay_type": (
+                    _CHANNEL_PAY_TYPES.get(order.channel, "redirect")
+                    if order.status == "pending"
+                    else None
+                ),
             }
 
     # ─── 取消与超时关单 ─────────────────────────────────────────
@@ -1302,110 +1321,6 @@ class PaymentService:
         if rec is None:
             return False
         return not rec.owner_user_id and rec.status == "active"
-
-    @classmethod
-    async def admin_refund(cls, order_id: str, actor: Optional[dict] = None) -> PaymentOrder:
-        """Admin 发起退款（按商品类型守卫）
-
-        - 套餐（quarterly/annual，ADR-0014）：任一交付码被激活（claim）或消耗升级 → 整单不可退；
-          全部码未动 → 可退，退款成功作废全部码
-        - 延期（renewal）：交付即已用，一律拒绝
-        - 咨询（consultation）：仅未预约（pending_survey/submitted）可退，退款后预约单取消
-        - 旧 SKU（activation_code）：仅交付码未被 claim 可退，退款成功作废码
-
-        Raises:
-            OrderNotFoundError: 订单不存在
-            ValueError: 状态不允许 / 不可退款
-            RuntimeError: 渠道未配置
-            PaymentChannelError: 渠道退款失败
-        """
-        booking = None
-        legacy_code: Optional[str] = None
-        legacy_mgr = None
-        package_codes: List[str] = []
-
-        async with AsyncSessionLocal() as db:
-            order = await cls._get_order_or_raise(db, order_id)
-            if order.status != "granted":
-                raise ValueError("仅已交付（granted）订单可退款")
-            product_type = order.product_type
-
-            if product_type == PRODUCT_RENEWAL:
-                raise ValueError("延期订单交付后即已使用，不可退款（请走线下协商）")
-
-            if product_type in (PRODUCT_QUARTERLY, PRODUCT_ANNUAL):
-                # ADR-0014：一单多码时任一码被激活/消耗 → 整单不可退
-                if not cls._package_codes_untouched(order):
-                    raise ValueError(
-                        "订单内激活码已被使用或消耗，不可退款（请走线下协商）"
-                    )
-                package_codes = cls._package_order_codes(order)
-            elif product_type == PRODUCT_CONSULTATION:
-                booking = (
-                    await db.execute(
-                        select(ConsultationBooking).where(
-                            ConsultationBooking.order_id == order.id
-                        )
-                    )
-                ).scalar_one_or_none()
-                if booking is None:
-                    raise ValueError("咨询预约单不存在，需人工核查")
-                if booking.status not in ("pending_survey", "submitted"):
-                    raise ValueError("咨询已预约或已完成，不可退款（请走线下协商）")
-            else:
-                # 旧 SKU：码未被 claim 才可退
-                if not order.delivered_code:
-                    raise ValueError("订单无交付激活码，需人工核查")
-                legacy_code = order.delivered_code
-                legacy_mgr, rec = get_activation_with_manager(legacy_code)
-                if rec is None:
-                    raise ValueError("交付的激活码不存在，需人工核查")
-                if rec.owner_user_id or rec.status != "active":
-                    raise ValueError("激活码已被使用，不可退款（请走线下协商）")
-
-            # 调渠道退款（0 元单无真实支付，跳过渠道）
-            if order.amount_paid > 0:
-                channel = get_channel(order.channel)
-                await channel.refund(
-                    order_no=order.order_no,
-                    amount_fen=order.amount_paid,
-                    refund_no=order.order_no + "R",
-                )
-
-            order.status = "refunded"
-            order.refunded_at = _utcnow()
-            if booking is not None:
-                booking.status = "cancelled"
-            await db.commit()
-            await db.refresh(order)
-
-        # 旧 SKU：作废码（update_status 内部写审计 EVENT_STATUS_CHANGED）
-        if legacy_code and legacy_mgr:
-            changed = legacy_mgr.update_status([legacy_code], "revoked", actor=actor)
-            if changed:
-                logger.info("退款完成，激活码已作废：order_id=%s code=%s", order_id, legacy_code)
-        # 套餐：全部未动码作废
-        for code in package_codes:
-            try:
-                mgr, _rec = get_activation_with_manager(code)
-                if mgr:
-                    mgr.update_status([code], "revoked", actor=actor)
-            except Exception as e:
-                logger.error("退款作废套餐码失败（需人工核查）：code=%s err=%s", code, e)
-        if package_codes:
-            logger.info("退款完成，套餐码已全部作废：order_id=%s codes=%s", order_id, package_codes)
-        # 退款退券：本单用过的券退回用户（used → unused，保留归属）；失败不阻断退款
-        if order.coupon_id:
-            try:
-                await CouponService.return_coupon_on_refund(order.coupon_id)
-            except ValueError as e:
-                logger.error(
-                    "退款退券失败（订单已退款，需人工核查）：order=%s coupon=%s err=%s",
-                    order_id,
-                    order.coupon_id,
-                    e,
-                )
-        return order
 
     # ─── 序列化 ─────────────────────────────────────────────────
 

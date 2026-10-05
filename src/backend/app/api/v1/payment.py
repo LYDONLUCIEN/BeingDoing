@@ -1,5 +1,5 @@
 """
-支付 API（用户侧，P2a：支付宝闭环）
+支付 API（用户侧，P2a：支付宝闭环；2026-10-05 退款申请）
 
 接口（全部 get_current_user 登录鉴权，统一响应 {code, message, data}）：
 - GET  /payment/products             商品目录 + 会员折扣信息
@@ -10,11 +10,16 @@
 - GET  /payment/orders/by-no/{order_no}  按商户订单号查详情（支付回跳页用）
 - GET  /payment/orders/{id}          订单详情（pending 返回 pay_url 供继续支付）
 - POST /payment/orders/{id}/cancel   取消订单（仅 pending，释放券）
+- GET  /payment/orders/{id}/refund-options  退款能力视图（行级分摊 + 可退性）
+- POST /payment/orders/{id}/refund-requests 提交退款申请（全退/部分退）
+- GET  /payment/refund-requests      我的退款申请列表
+- GET  /payment/refund-requests/{id} 退款申请详情（含审批留痕）
+- POST /payment/refund-requests/{id}/withdraw 撤回（仅待审批）
 
 异常映射：ValueError → 400；OrderNotFoundError → 404；渠道未配置 RuntimeError → 503。
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -23,6 +28,7 @@ from app.api.v1.auth import get_current_user
 from app.core.payment.base import PaymentChannelError
 from app.services.coupon_service import CouponService
 from app.services.payment_service import OrderNotFoundError, PaymentService
+from app.services.refund_service import RefundNotFoundError, RefundService, refund_to_dict
 
 router = APIRouter(prefix="/payment", tags=["Payment"])
 
@@ -66,6 +72,16 @@ class OrderCreateRequest(BaseModel):
     intent: Optional[str] = Field(
         None, description="订单意图（可选；upgrade_trial=试用拦截点直购升级，仅套餐）"
     )
+
+
+class RefundRequestCreate(BaseModel):
+    """退款申请提交请求"""
+
+    refund_type: str = Field(..., description="退款类型（full 全退 / partial 部分退）")
+    line_ids: Optional[List[str]] = Field(
+        None, description="部分退所选行 ID（refund-options.lines[].id；套餐按码折算必传）"
+    )
+    reason: str = Field(..., min_length=1, description="申请理由")
 
 
 # ===================== 路由 =====================
@@ -115,7 +131,8 @@ async def create_order(
 ) -> Dict[str, Any]:
     """创建支付订单
 
-    返回 {order, payment}：payment = {channel, pay_url}；0 元单 payment=null（已直接交付）。
+    返回 {order, payment}：payment = {channel, pay_type, pay_url}；
+    pay_type=qr 时前端 iframe 嵌入展示二维码（支付宝前置模式）；0 元单 payment=null（已直接交付）。
     """
     try:
         order, payment = await PaymentService.create_order(
@@ -202,3 +219,86 @@ async def cancel_order(
     except (ValueError, OrderNotFoundError) as e:
         _raise_for_service_error(e)
     return _ok({"order": PaymentService._order_to_dict(order)})
+
+
+# ===================== 退款申请（2026-10-05）=====================
+
+
+@router.get("/orders/{order_id}/refund-options")
+async def get_refund_options(
+    order_id: str,
+    current_user: dict = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """订单退款能力视图（仅本人）：行级分摊明细 + 实时可退性 + 剩余可退"""
+    try:
+        data = await RefundService.get_refund_options(
+            user_id=str(current_user["user_id"]), order_id=order_id
+        )
+    except OrderNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return _ok(data)
+
+
+@router.post("/orders/{order_id}/refund-requests")
+async def create_refund_request(
+    order_id: str,
+    payload: RefundRequestCreate,
+    current_user: dict = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """提交退款申请（全退/部分退；金额按规则计算，admin 审批后执行）"""
+    try:
+        refund = await RefundService.create_refund_request(
+            user_id=str(current_user["user_id"]),
+            order_id=order_id,
+            refund_type=payload.refund_type,
+            line_ids=payload.line_ids,
+            reason=payload.reason,
+        )
+    except (ValueError, OrderNotFoundError) as e:
+        _raise_for_service_error(e)
+    return _ok({"refund": refund_to_dict(refund)})
+
+
+@router.get("/refund-requests")
+async def list_refund_requests(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    current_user: dict = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """我的退款申请列表（含状态与驳回理由）"""
+    items, total = await RefundService.list_user_refunds(
+        user_id=str(current_user["user_id"]), page=page, page_size=page_size
+    )
+    return _ok({"items": items, "total": total, "page": page, "page_size": page_size})
+
+
+@router.get("/refund-requests/{refund_id}")
+async def get_refund_request(
+    refund_id: str,
+    current_user: dict = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """退款申请详情（仅本人；含审批留痕与驳回理由）"""
+    try:
+        data = await RefundService.get_user_refund(
+            user_id=str(current_user["user_id"]), refund_id=refund_id
+        )
+    except RefundNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return _ok(data)
+
+
+@router.post("/refund-requests/{refund_id}/withdraw")
+async def withdraw_refund_request(
+    refund_id: str,
+    current_user: dict = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """撤回退款申请（仅本人 + 待审批；撤回后可再次申请）"""
+    try:
+        refund = await RefundService.withdraw_refund_request(
+            user_id=str(current_user["user_id"]), refund_id=refund_id
+        )
+    except (ValueError, RefundNotFoundError) as e:
+        if isinstance(e, RefundNotFoundError):
+            raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
+    return _ok({"refund": refund_to_dict(refund)})

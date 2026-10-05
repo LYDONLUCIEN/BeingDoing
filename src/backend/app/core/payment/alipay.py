@@ -1,7 +1,8 @@
 """
 支付宝渠道适配（官方 alipay-sdk-python）
 
-- 下单：电脑网站支付 alipay.trade.page.pay → 返回收银台跳转 URL
+- 下单：电脑网站支付 alipay.trade.page.pay（前置模式 qr_pay_mode=4）→ 返回嵌入式二维码 URL，
+  前端以 iframe 加载该 URL，支付宝页面只渲染二维码（不跳收银台）
 - 回调验签：RSA2 + 支付宝公钥（sign/sign_type 不参与签名内容）
 - 退款：alipay.trade.refund（同步响应 code=10000 且 fund_change=Y 即成功）
 - 关单：alipay.trade.close
@@ -41,6 +42,12 @@ _ALIPAY_TZ = ZoneInfo("Asia/Shanghai")
 
 # 验签失败 / 必填参数缺失提示
 _ERR_VERIFY = "支付宝回调验签失败"
+
+# 前置模式（官方支持文档「电脑网站如何在商家页面展示二维码」）：qr_pay_mode=4 为
+# 可自定义宽度的嵌入式二维码，商家页面以 iframe 加载下单 URL，支付宝只渲染二维码；
+# qrcode_width 为二维码宽度（像素，qr_pay_mode=4 时生效）。切回跳转收银台删掉这两个参数即可。
+_QR_PAY_MODE = "4"
+_QRCODE_WIDTH = 220
 
 
 def _fen_to_yuan(amount_fen: int) -> str:
@@ -101,11 +108,12 @@ class AlipayChannel(PaymentChannel):
         config.sign_type = "RSA2"
         return DefaultAlipayClient(config)
 
-    # ─── 下单：电脑网站支付 page.pay ──────────────────────────
+    # ─── 下单：电脑网站支付 page.pay（前置模式，iframe 嵌入式二维码）──
 
     async def create_order(self, order_no: str, amount_fen: int, subject: str) -> str:
-        """电脑网站支付下单，返回带签名的收银台跳转 URL
+        """电脑网站支付下单（前置模式 qr_pay_mode=4），返回带签名的二维码嵌入 URL
 
+        前端以 iframe 加载该 URL，支付宝页面只渲染二维码（扫码支付，不跳收银台）。
         page_execute 仅本地签名拼接 URL，不发起网络请求。
 
         Raises:
@@ -123,6 +131,8 @@ class AlipayChannel(PaymentChannel):
             "total_amount": _fen_to_yuan(amount_fen),
             "subject": subject,
             "product_code": "FAST_INSTANT_TRADE_PAY",
+            "qr_pay_mode": _QR_PAY_MODE,
+            "qrcode_width": _QRCODE_WIDTH,
         }
         try:
             pay_url = await asyncio.to_thread(self._client.page_execute, request, "GET")
@@ -236,8 +246,14 @@ class AlipayChannel(PaymentChannel):
 
     # ─── 退款 ───────────────────────────────────────────────────
 
-    async def refund(self, order_no: str, amount_fen: int, refund_no: str) -> None:
+    async def refund(self, order_no: str, amount_fen: int, refund_no: str) -> str:
         """退款（同步响应即成功）
+
+        幂等：同一 out_request_no 重复请求（失败重试/超时兜底）时，支付宝返回
+        code=10000 且 fund_change=N（本次无资金变动，此前已退成功），视为成功。
+
+        Returns:
+            渠道回执原始 JSON 字符串（审计留存）
 
         Raises:
             PaymentChannelError: 退款失败
@@ -252,12 +268,21 @@ class AlipayChannel(PaymentChannel):
         }
         response = await asyncio.to_thread(self._client.execute, request)
         logger.info("alipay refund response: %s", response)
-        response = _parse_response(response)
-        if not response or str(response.get("code")) != "10000":
-            sub_msg = (response or {}).get("sub_msg") or (response or {}).get("msg")
-            raise PaymentChannelError(f"支付宝退款失败：{sub_msg or response}")
-        if str(response.get("fund_change", "")).upper() != "Y":
-            raise PaymentChannelError(f"支付宝退款失败：fund_change={response.get('fund_change')}")
+        parsed = _parse_response(response)
+        if not parsed or str(parsed.get("code")) != "10000":
+            sub_msg = (parsed or {}).get("sub_msg") or (parsed or {}).get("msg")
+            raise PaymentChannelError(f"支付宝退款失败：{sub_msg or parsed}")
+        fund_change = str(parsed.get("fund_change", "")).upper()
+        if fund_change not in ("Y", "N"):
+            raise PaymentChannelError(f"支付宝退款失败：fund_change={parsed.get('fund_change')}")
+        if fund_change == "N":
+            logger.info(
+                "alipay refund idempotent hit (fund_change=N, 此前已退成功)："
+                "order_no=%s refund_no=%s",
+                order_no,
+                refund_no,
+            )
+        return response if isinstance(response, str) else json.dumps(parsed, ensure_ascii=False)
 
     # ─── 关单 ───────────────────────────────────────────────────
 

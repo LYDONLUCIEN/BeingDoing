@@ -23,9 +23,12 @@ from app.models.database import Base
 from app.models.payment import ConsultationBooking
 from app.models.user import User
 from app.services import coupon_service as cs_mod
+from app.services import payment_line_service as pline_mod
 from app.services import payment_service as ps_mod
+from app.services import refund_service as rs_mod
 from app.services.coupon_service import CouponService
 from app.services.payment_service import PaymentService
+from app.services.refund_service import RefundService
 from app.utils.simple_activation_manager import SimpleActivationManager
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -74,6 +77,18 @@ async def _setup_db(monkeypatch, tmp_path, fake_channel):
     monkeypatch.setattr(ps_mod, "_activation_manager", lambda: manager)
     monkeypatch.setattr(
         ps_mod,
+        "get_activation_with_manager",
+        lambda code: (manager, manager.get_activation(code)),
+    )
+    monkeypatch.setattr(rs_mod, "AsyncSessionLocal", _TestSessionLocal)
+    monkeypatch.setattr(rs_mod, "get_channel", lambda name: fake_channel)
+    monkeypatch.setattr(
+        rs_mod,
+        "get_activation_with_manager",
+        lambda code: (manager, manager.get_activation(code)),
+    )
+    monkeypatch.setattr(
+        pline_mod,
         "get_activation_with_manager",
         lambda code: (manager, manager.get_activation(code)),
     )
@@ -494,6 +509,26 @@ async def test_consultation_creates_booking(_setup_db):
 # ─── 6. 退款守卫 ──────────────────────────────────────────────
 
 
+async def _get_order_pkg(order_id: str):
+    """按 ID 取订单最新状态"""
+    from app.models.payment import PaymentOrder
+
+    async with _TestSessionLocal() as db:
+        return (
+            await db.execute(select(PaymentOrder).where(PaymentOrder.id == order_id))
+        ).scalar_one()
+
+
+async def _refund_full(order_id: str, user_id: str = "u1"):
+    """新退款流程：用户申请全额退款 → admin 批准执行，返回执行后的退款单"""
+    refund = await RefundService.create_refund_request(
+        user_id=user_id, order_id=order_id, refund_type="full", reason="测试退款"
+    )
+    return await RefundService.approve_refund(
+        admin_user={"user_id": "admin"}, refund_id=refund.id
+    )
+
+
 @pytest.mark.asyncio
 async def test_refund_allowed_when_package_codes_untouched(_setup_db, fake_channel):
     """套餐退款（ADR-0014）：全部码未动 → 可退，全部码作废；任一动用 → 拒退"""
@@ -506,12 +541,14 @@ async def test_refund_allowed_when_package_codes_untouched(_setup_db, fake_chann
             channel="alipay",
             coupon_code=coupon,
         )
-        refunded = await PaymentService.admin_refund(order.id)
+        executed = await _refund_full(order.id)
+        assert executed.status == "succeeded"
+        refunded = await _get_order_pkg(order.id)
         assert refunded.status == "refunded"
         for code in PaymentService._parse_meta(refunded.meta)["codes"]:
             assert mgr.get_activation(code).status == "revoked"
 
-    # 任一码被 claim → 整单拒退
+    # 任一码被 claim → 整单拒退（守卫在申请时）
     coupon = await _big_coupon()
     order, _ = await PaymentService.create_order(
         user_id="u1",
@@ -521,8 +558,10 @@ async def test_refund_allowed_when_package_codes_untouched(_setup_db, fake_chann
     )
     codes = PaymentService._parse_meta(order.meta)["codes"]
     mgr.claim_owner(codes[0], {"user_id": "u2", "email": "bob@test.com"})
-    with pytest.raises(ValueError, match="不可退款"):
-        await PaymentService.admin_refund(order.id)
+    with pytest.raises(ValueError, match="不可整单退款"):
+        await RefundService.create_refund_request(
+            user_id="u1", order_id=order.id, refund_type="full", reason="测试退款"
+        )
 
 
 @pytest.mark.asyncio
@@ -538,7 +577,9 @@ async def test_refund_rejected_for_renewal(_setup_db):
         target_code=full.code,
     )
     with pytest.raises(ValueError, match="不可退款"):
-        await PaymentService.admin_refund(order.id)
+        await RefundService.create_refund_request(
+            user_id="u1", order_id=order.id, refund_type="full", reason="测试退款"
+        )
 
 
 @pytest.mark.asyncio
@@ -558,11 +599,20 @@ async def test_refund_consultation_before_scheduled(fake_channel):
             )
         ).scalar_one()
         row.amount_paid = 100
+        from app.models.payment import PaymentOrderLine
+        for line in (
+            await db.execute(
+                select(PaymentOrderLine).where(PaymentOrderLine.order_id == order.id)
+            )
+        ).scalars():
+            line.amount_paid_alloc = 100  # 行分摊同步为实付（模拟真实支付单）
         await db.commit()
 
-    refunded = await PaymentService.admin_refund(order.id)
-    assert refunded.status == "refunded"
+    executed = await _refund_full(order.id)
+    assert executed.status == "succeeded"
+    assert (await _get_order_pkg(order.id)).status == "refunded"
     assert fake_channel.refunds, "应调用渠道退款"
+    assert fake_channel.refunds[-1][1] == 100  # 退款金额 = 实付
 
     meta = PaymentService._parse_meta(order.meta)
     async with _TestSessionLocal() as db:
@@ -598,4 +648,6 @@ async def test_refund_consultation_rejected_when_scheduled():
         await db.commit()
 
     with pytest.raises(ValueError, match="已预约"):
-        await PaymentService.admin_refund(order.id)
+        await RefundService.create_refund_request(
+            user_id="u1", order_id=order.id, refund_type="full", reason="测试退款"
+        )

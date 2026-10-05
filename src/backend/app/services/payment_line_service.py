@@ -153,8 +153,13 @@ async def ensure_order_lines(
     # 行定义：(item_type, item_ref, initial_status)
     rows: List[Tuple[str, Optional[str], str]] = []
     if order.product_type in ("quarterly_package", "annual_package"):
+        # ADR-0014：已自动升级试用码的订单（meta.upgraded/auto_upgraded）
+        # 升级不可逆 → 整单不可退，全部码行置 used
+        legacy_upgraded = bool(meta.get("upgraded") or meta.get("auto_upgraded"))
         for code in _order_codes(order, meta):
-            rows.append((LINE_ITEM_CODE, code, _code_initial_status(code)))
+            rows.append(
+                (LINE_ITEM_CODE, code, "used" if legacy_upgraded else _code_initial_status(code))
+            )
     elif order.product_type == "renewal":
         # 延期交付即已用（不可退），生成即 used，保证行口径完整
         target = (meta.get("target_code") or "").strip().upper() or None
@@ -191,6 +196,7 @@ async def ensure_order_lines(
         for i, (item_type, item_ref, initial_status) in enumerate(rows)
     ]
     db.add_all(lines)
+    await db.flush()  # 立即落 id/默认值，调用方按 line.id 索引
     logger.info(
         "订单明细行已生成：order_no=%s source=%s lines=%d statuses=%s",
         order.order_no,

@@ -75,13 +75,19 @@ class PaymentChannel(ABC):
         """
 
     @abstractmethod
-    async def refund(self, order_no: str, amount_fen: int, refund_no: str) -> None:
+    async def refund(self, order_no: str, amount_fen: int, refund_no: str) -> Optional[str]:
         """退款（同步响应即成功，否则抛异常）
+
+        幂等：同一 refund_no 重复请求时渠道应返回成功且无资金变动
+        （如支付宝 fund_change=N），实现方视为成功不抛异常。
 
         Args:
             order_no: 原商户订单号
             amount_fen: 退款金额（分）
             refund_no: 退款请求号（幂等用）
+
+        Returns:
+            渠道回执原始内容（JSON 字符串，审计留存；无回执的渠道返回 None）
 
         Raises:
             PaymentChannelError: 退款失败

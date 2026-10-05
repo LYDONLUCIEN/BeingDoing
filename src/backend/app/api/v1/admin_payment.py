@@ -1,5 +1,5 @@
 """
-Admin 支付管理 API（P1：折扣券管理；P2a：订单管理与退款）
+Admin 支付管理 API（P1：折扣券管理；P2a：订单管理；2026-10-05 退款审批）
 
 接口：
 - GET    /admin/coupons          分页列表（status 过滤含派生态 expired/void；used 态联查邮箱/订单号）
@@ -11,12 +11,17 @@ Admin 支付管理 API（P1：折扣券管理；P2a：订单管理与退款）
 - POST   /admin/coupon-config    调整默认有效期（1-3650 天，即时生效，只影响新券）
 - GET    /admin/payment/orders           订单分页列表（status/channel 筛选，含 user_email + code_refundable）
 - GET    /admin/payment/orders/{id}      订单详情（完整字段 + user_email + code_refundable + delivered_codes 去向）
-- POST   /admin/payment/orders/{id}/refund  退款（仅 granted 且码未被 claim；成功作废码）
+- GET    /admin/payment/refunds          退款单分页列表（status/order_no 筛选，含审批留痕）
+- GET    /admin/payment/refunds/{id}     退款单详情（行快照 + 实时行状态 + 订单 + 用户邮箱）
+- POST   /admin/payment/refunds          代录退款申请（线下协商场景，代录人留痕）
+- POST   /admin/payment/refunds/{id}/approve  批准并执行（可下调金额，调整必填理由）
+- POST   /admin/payment/refunds/{id}/reject   驳回（必填理由，用户可见）
+- POST   /admin/payment/refunds/{id}/retry    失败重试（同 refund_no 渠道幂等）
 
 全部 is_super_admin_user 门控，统一响应 {code, message, data}。
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from datetime import datetime
 
@@ -28,6 +33,7 @@ from app.core.payment.base import PaymentChannelError
 from app.services import coupon_config
 from app.services.coupon_service import CouponService
 from app.services.payment_service import OrderNotFoundError, PaymentService
+from app.services.refund_service import RefundNotFoundError, RefundService, refund_to_dict
 from app.utils.super_admin import is_super_admin_user
 
 router = APIRouter(prefix="/admin", tags=["Admin-Payment"])
@@ -74,6 +80,38 @@ class CouponConfigRequest(BaseModel):
         le=coupon_config.MAX_TTL_DAYS,
         description="默认有效期天数（1-3650）",
     )
+
+
+class AdminRefundCreateRequest(BaseModel):
+    """代录退款申请请求（线下协商场景）"""
+
+    order_id: str = Field(..., min_length=1, description="订单 ID")
+    refund_type: str = Field(..., description="退款类型（full / partial）")
+    amount: Optional[int] = Field(
+        None, ge=0, description="代录金额（分，可选；不传按规则计算上限）"
+    )
+    line_ids: Optional[List[str]] = Field(
+        None, description="部分退所选行 ID（refund-options.lines[].id）"
+    )
+    reason: str = Field(..., min_length=1, description="申请事由（必填）")
+    note: Optional[str] = Field(None, description="代录备注（写入审批意见栏）")
+
+
+class AdminRefundApproveRequest(BaseModel):
+    """批准退款请求"""
+
+    approved_amount: Optional[int] = Field(
+        None, ge=0, description="批准金额（分，不传=申请额；只能 ≤ 实时可退上限）"
+    )
+    note: Optional[str] = Field(
+        None, description="审批意见 / 金额调整理由（与申请额不一致时必填）"
+    )
+
+
+class AdminRefundRejectRequest(BaseModel):
+    """驳回退款请求"""
+
+    note: str = Field(..., min_length=1, description="驳回理由（用户可见）")
 
 
 # ===================== 路由 =====================
@@ -253,16 +291,137 @@ async def refund_payment_order(
     order_id: str,
     current_user: Optional[dict] = Depends(get_current_user),
 ) -> Dict[str, Any]:
-    """发起退款：仅 granted 且交付码未被任何用户 claim；成功即 refunded 并作废码"""
+    """【已废弃 2026-10-05】旧直接退款接口：请改用统一退款申请单流程
+
+    兼容期保留此路由但直接拒绝，避免旧客户端静默走非审计路径。
+    """
+    _require_super_admin(current_user)
+    raise HTTPException(
+        status_code=410,
+        detail="直接退款接口已下线：请用 POST /admin/payment/refunds 代录申请，"
+        "再 POST /admin/payment/refunds/{id}/approve 审批执行",
+    )
+
+
+# ===================== 退款审批（2026-10-05）=====================
+
+
+@router.get("/payment/refunds")
+async def list_payment_refunds(
+    status: Optional[str] = Query(
+        None,
+        description="pending_review | refunding | succeeded | failed | rejected | withdrawn",
+    ),
+    order_no: Optional[str] = Query(None, description="按商户订单号精确筛选"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """退款单分页列表（含用户邮箱与完整审批留痕）"""
+    _require_super_admin(current_user)
+    items, total = await RefundService.admin_list_refunds(
+        status=status, order_no=order_no, page=page, page_size=page_size
+    )
+    return _ok({"items": items, "total": total, "page": page, "page_size": page_size})
+
+
+@router.get("/payment/refunds/{refund_id}")
+async def get_payment_refund(
+    refund_id: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """退款单详情（行快照 + 实时行状态 + 订单信息 + 用户邮箱）"""
     _require_super_admin(current_user)
     try:
-        order = await PaymentService.admin_refund(order_id, actor=current_user)
-    except OrderNotFoundError as e:
+        data = await RefundService.admin_get_refund(refund_id)
+    except RefundNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except RuntimeError as e:
+    return _ok(data)
+
+
+@router.post("/payment/refunds")
+async def create_payment_refund(
+    payload: AdminRefundCreateRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """代录退款申请（线下协商场景；originated=admin + 代录人留痕）"""
+    _require_super_admin(current_user)
+    try:
+        refund = await RefundService.admin_create_refund_request(
+            admin_user=current_user or {},
+            order_id=payload.order_id,
+            refund_type=payload.refund_type,
+            amount=payload.amount,
+            line_ids=payload.line_ids,
+            reason=payload.reason,
+            note=payload.note,
+        )
+    except (ValueError, OrderNotFoundError, RuntimeError, PaymentChannelError) as e:
+        _raise_refund_service_error(e)
+    return _ok({"refund": refund_to_dict(refund)})
+
+
+@router.post("/payment/refunds/{refund_id}/approve")
+async def approve_payment_refund(
+    refund_id: str,
+    payload: AdminRefundApproveRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """批准并执行退款（可下调金额，与申请额不一致必填理由；同步渠道退款）"""
+    _require_super_admin(current_user)
+    try:
+        refund = await RefundService.approve_refund(
+            admin_user=current_user or {},
+            refund_id=refund_id,
+            approved_amount=payload.approved_amount,
+            note=payload.note,
+        )
+    except (ValueError, RefundNotFoundError, RuntimeError, PaymentChannelError) as e:
+        _raise_refund_service_error(e)
+    return _ok({"refund": refund_to_dict(refund)})
+
+
+@router.post("/payment/refunds/{refund_id}/reject")
+async def reject_payment_refund(
+    refund_id: str,
+    payload: AdminRefundRejectRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """驳回退款申请（必填理由，用户可见；驳回后用户可重新申请）"""
+    _require_super_admin(current_user)
+    try:
+        refund = await RefundService.reject_refund(
+            admin_user=current_user or {}, refund_id=refund_id, note=payload.note
+        )
+    except (ValueError, RefundNotFoundError) as e:
+        _raise_refund_service_error(e)
+    return _ok({"refund": refund_to_dict(refund)})
+
+
+@router.post("/payment/refunds/{refund_id}/retry")
+async def retry_payment_refund(
+    refund_id: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """失败退款重试（复用同 refund_no，渠道幂等不会重复退款）"""
+    _require_super_admin(current_user)
+    try:
+        refund = await RefundService.retry_refund(
+            admin_user=current_user or {}, refund_id=refund_id
+        )
+    except (ValueError, RefundNotFoundError, RuntimeError, PaymentChannelError) as e:
+        _raise_refund_service_error(e)
+    return _ok({"refund": refund_to_dict(refund)})
+
+
+def _raise_refund_service_error(e: Exception) -> None:
+    """退款服务异常 → HTTP 状态码映射"""
+    if isinstance(e, (OrderNotFoundError, RefundNotFoundError)):
+        raise HTTPException(status_code=404, detail=str(e))
+    if isinstance(e, RuntimeError):
         raise HTTPException(status_code=503, detail=str(e))
-    except PaymentChannelError as e:
+    if isinstance(e, PaymentChannelError):
         raise HTTPException(status_code=502, detail=str(e))
-    return _ok({"order": PaymentService._order_to_dict(order)})
+    if isinstance(e, ValueError):
+        raise HTTPException(status_code=400, detail=str(e))
+    raise e

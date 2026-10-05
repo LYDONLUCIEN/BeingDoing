@@ -28,9 +28,12 @@ from app.models.feedback import Notification
 from app.models.payment import Coupon, PaymentOrder
 from app.models.user import User
 from app.services import coupon_service as cs_mod
+from app.services import payment_line_service as pline_mod
 from app.services import payment_service as ps_mod
+from app.services import refund_service as rs_mod
 from app.services.coupon_service import CouponService
 from app.services.payment_service import OrderNotFoundError, PaymentService
+from app.services.refund_service import RefundService
 from app.utils.simple_activation_manager import SimpleActivationManager
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -101,6 +104,14 @@ async def _setup_db(monkeypatch, tmp_path, fake_channel):
     monkeypatch.setattr(ps_mod, "_activation_manager", lambda: mgr)
     monkeypatch.setattr(
         ps_mod, "get_activation_with_manager", lambda code: (mgr, mgr.get_activation(code))
+    )
+    monkeypatch.setattr(rs_mod, "AsyncSessionLocal", _TestSessionLocal)
+    monkeypatch.setattr(rs_mod, "get_channel", lambda name: fake_channel)
+    monkeypatch.setattr(
+        rs_mod, "get_activation_with_manager", lambda code: (mgr, mgr.get_activation(code))
+    )
+    monkeypatch.setattr(
+        pline_mod, "get_activation_with_manager", lambda code: (mgr, mgr.get_activation(code))
     )
 
     # 审计日志：不写文件
@@ -266,10 +277,11 @@ async def test_create_order_locks_coupon(fake_channel):
     assert order.coupon_id == coupon.id
     assert len(order.order_no) == 21 and order.order_no.startswith("X")
 
-    # 渠道下单：金额 = 实付，跳转 URL 存 qr_code 列
+    # 渠道下单：金额 = 实付，二维码嵌入 URL 存 qr_code 列；pay_type=qr（前置模式 iframe 渲染）
     assert fake_channel.created_orders == [(order.order_no, 1900, "季度套餐")]
     assert payment == {
         "channel": "alipay",
+        "pay_type": "qr",
         "pay_url": f"https://openapi.alipay.com/gateway.do?fake-page-pay-{order.order_no}",
     }
     assert (await _get_order(order.id)).qr_code == payment["pay_url"]
@@ -572,7 +584,17 @@ async def test_close_timeout_orders_skips_fresh_orders():
     assert (await _get_order(order.id)).status == "pending"
 
 
-# ─── 退款 ──────────────────────────────────────────────────────
+
+async def _refund_full(order_id: str, user_id: str = "u1"):
+    """新退款流程：用户申请全额退款 → admin 批准执行，返回执行后的退款单"""
+    refund = await RefundService.create_refund_request(
+        user_id=user_id, order_id=order_id, refund_type="full", reason="测试退款"
+    )
+    return await RefundService.approve_refund(
+        admin_user={"user_id": "admin"}, refund_id=refund.id
+    )
+
+# ─── 退款 ─────────────────────────────────────────────────────
 
 
 async def _make_granted_order(
@@ -616,7 +638,9 @@ async def test_refund_guard_claimed_code(fake_channel, tmp_path):
     mgr.claim_owner(order.delivered_code, {"user_id": "u9", "email": "x@test.com"})
 
     with pytest.raises(ValueError, match="已被使用"):
-        await PaymentService.admin_refund(order.id, actor={"user_id": "admin"})
+        await RefundService.create_refund_request(
+            user_id="u1", order_id=order.id, refund_type="full", reason="测试退款"
+        )
 
     final = await _get_order(order.id)
     assert final.status == "granted"
@@ -631,7 +655,9 @@ async def test_refund_guard_wrong_status():
     """退款守卫：非 granted 订单拒绝"""
     order, _ = await PaymentService.create_order("u1", "quarterly_package", "alipay", None)
     with pytest.raises(ValueError):
-        await PaymentService.admin_refund(order.id, actor={"user_id": "admin"})
+        await RefundService.create_refund_request(
+            user_id="u1", order_id=order.id, refund_type="full", reason="测试退款"
+        )
 
 
 @pytest.mark.asyncio
@@ -639,12 +665,14 @@ async def test_refund_success_revokes_code(fake_channel, tmp_path):
     """退款成功：渠道退款（refund_no=order_no+R）→ status refunded → 码 revoked"""
     order = await _make_granted_order(tmp_path=tmp_path)
 
-    refunded = await PaymentService.admin_refund(order.id, actor={"user_id": "admin"})
+    executed = await _refund_full(order.id)
+    assert executed.status == "succeeded"
+    refunded = await _get_order(order.id)
     assert refunded.status == "refunded"
     assert refunded.refunded_at is not None
 
-    # 渠道退款调用正确
-    assert fake_channel.refunds == [(order.order_no, order.amount_paid, order.order_no + "R")]
+    # 渠道退款调用正确（refund_no = order_no + R001）
+    assert fake_channel.refunds == [(order.order_no, order.amount_paid, order.order_no + "R001")]
 
     # 码已作废
     mgr = SimpleActivationManager(base_dir=str(tmp_path / "simple"))
@@ -657,8 +685,9 @@ async def test_refund_zero_amount_skips_channel(fake_channel, tmp_path):
     order = await _make_granted_order(paid=0, tmp_path=tmp_path)
     assert order.amount_paid == 0
 
-    refunded = await PaymentService.admin_refund(order.id, actor={"user_id": "admin"})
-    assert refunded.status == "refunded"
+    executed = await _refund_full(order.id)
+    assert executed.status == "succeeded"
+    assert (await _get_order(order.id)).status == "refunded"
     assert fake_channel.refunds == []
 
     mgr = SimpleActivationManager(base_dir=str(tmp_path / "simple"))
@@ -682,8 +711,9 @@ async def test_refund_returns_coupon_to_user(fake_channel, tmp_path):
         o.coupon_id = coupon.id
         await db.commit()
 
-    refunded = await PaymentService.admin_refund(order.id, actor={"user_id": "admin"})
-    assert refunded.status == "refunded"
+    executed = await _refund_full(order.id)
+    assert executed.status == "succeeded"
+    assert (await _get_order(order.id)).status == "refunded"
 
     final = await _get_coupon(coupon.id)
     assert final.status == "unused"
@@ -732,14 +762,16 @@ async def test_list_and_get_user_orders():
     assert total == 1
     assert items[0]["id"] == order.id
 
-    # pending：返回存储的 pay_url
+    # pending：返回存储的 pay_url + pay_type=qr（前置模式 iframe 渲染）
     detail = await PaymentService.get_user_order("u1", order.id)
     assert detail["pay_url"] == payment["pay_url"]
+    assert detail["pay_type"] == "qr"
 
     # 支付后：不再返回 pay_url
     await PaymentService.handle_alipay_notify(_notify_form(order))
     detail2 = await PaymentService.get_user_order("u1", order.id)
     assert detail2["pay_url"] is None
+    assert detail2["pay_type"] is None
 
     # 非本人 → 404
     with pytest.raises(OrderNotFoundError):
@@ -754,6 +786,7 @@ async def test_get_order_by_no():
     detail = await PaymentService.get_order_by_no("u1", order.order_no)
     assert detail["order"]["id"] == order.id
     assert detail["pay_url"] == payment["pay_url"]
+    assert detail["pay_type"] == "qr"
 
     # 非本人 → 404
     with pytest.raises(OrderNotFoundError):
@@ -945,9 +978,10 @@ async def test_refund_package_untouched_success(fake_channel, tmp_path):
     meta = ps_mod.PaymentService._parse_meta(order.meta)
     codes = meta["codes"]
 
-    refunded = await PaymentService.admin_refund(order.id, actor={"user_id": "admin"})
-    assert refunded.status == "refunded"
-    assert fake_channel.refunds == [(order.order_no, order.amount_paid, order.order_no + "R")]
+    executed = await _refund_full(order.id)
+    assert executed.status == "succeeded"
+    assert (await _get_order(order.id)).status == "refunded"
+    assert fake_channel.refunds == [(order.order_no, order.amount_paid, order.order_no + "R001")]
 
     mgr = SimpleActivationManager(base_dir=str(tmp_path / "simple"))
     for code in codes:
@@ -962,8 +996,10 @@ async def test_refund_package_rejected_when_code_claimed(fake_channel, tmp_path)
     mgr = SimpleActivationManager(base_dir=str(tmp_path / "simple"))
     mgr.claim_owner(meta["codes"][1], {"user_id": "u9", "email": "x@test.com"})
 
-    with pytest.raises(ValueError, match="不可退款"):
-        await PaymentService.admin_refund(order.id, actor={"user_id": "admin"})
+    with pytest.raises(ValueError, match="不可整单退款"):
+        await RefundService.create_refund_request(
+            user_id="u1", order_id=order.id, refund_type="full", reason="测试退款"
+        )
     assert fake_channel.refunds == []
     assert (await _get_order(order.id)).status == "granted"
 
@@ -978,8 +1014,10 @@ async def test_refund_package_rejected_when_code_consumed(fake_channel, tmp_path
     mgr.claim_owner(trial.code, {"user_id": "u1", "email": "alice@test.com"})
     mgr.consume_for_trial_upgrade(meta["codes"][0], trial.code, actor={"user_id": "u1"})
 
-    with pytest.raises(ValueError, match="不可退款"):
-        await PaymentService.admin_refund(order.id, actor={"user_id": "admin"})
+    with pytest.raises(ValueError, match="不可整单退款"):
+        await RefundService.create_refund_request(
+            user_id="u1", order_id=order.id, refund_type="full", reason="测试退款"
+        )
     assert fake_channel.refunds == []
 
 
@@ -992,10 +1030,20 @@ async def test_refund_package_rejected_legacy_upgraded(fake_channel, tmp_path):
         meta = ps_mod.PaymentService._parse_meta(row.meta)
         meta["upgraded"] = True
         row.meta = json.dumps(meta, ensure_ascii=False)
+        # 真实存量订单交付时无行系统：删行模拟回填场景（backfill 读到 upgraded 标记）
+        from app.models.payment import PaymentOrderLine
+        for line in (
+            await db.execute(
+                select(PaymentOrderLine).where(PaymentOrderLine.order_id == order.id)
+            )
+        ).scalars():
+            await db.delete(line)
         await db.commit()
 
-    with pytest.raises(ValueError, match="不可退款"):
-        await PaymentService.admin_refund(order.id, actor={"user_id": "admin"})
+    with pytest.raises(ValueError, match="不可整单退款"):
+        await RefundService.create_refund_request(
+            user_id="u1", order_id=order.id, refund_type="full", reason="测试退款"
+        )
 
 
 async def cls_get(db, order_id):
@@ -1059,8 +1107,9 @@ async def test_admin_order_detail_destination_consumed_revoked_unknown(fake_chan
     await PaymentService.handle_alipay_notify(_notify_form(order_b))
     meta_b = ps_mod.PaymentService._parse_meta((await _get_order(order_b.id)).meta)
     revoked_code = meta_b["codes"][0]
-    refunded = await PaymentService.admin_refund(order_b.id, actor={"user_id": "admin"})
-    assert refunded.status == "refunded"
+    executed = await _refund_full(order_b.id)
+    assert executed.status == "succeeded"
+    assert (await _get_order(order_b.id)).status == "refunded"
 
     detail_a = await PaymentService.admin_get_order(order_a.id)
     d = detail_a["order"]["delivered_codes"][0]
