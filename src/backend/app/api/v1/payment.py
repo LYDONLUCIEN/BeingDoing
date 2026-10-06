@@ -21,7 +21,7 @@
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from app.api.v1.auth import get_current_user
@@ -29,8 +29,13 @@ from app.core.payment.base import PaymentChannelError
 from app.services.coupon_service import CouponService
 from app.services.payment_service import OrderNotFoundError, PaymentService
 from app.services.refund_service import RefundNotFoundError, RefundService, refund_to_dict
+from app.utils import rate_limit
 
 router = APIRouter(prefix="/payment", tags=["Payment"])
+
+# 输码端点限流（防短码暴力试探；单进程内存计数）
+_CODE_RATE_LIMIT = 10
+_CODE_RATE_WINDOW = 60.0
 
 
 def _ok(data: Any) -> Dict[str, Any]:
@@ -98,9 +103,17 @@ async def get_products(
 @router.post("/coupons/validate")
 async def validate_coupon(
     payload: CouponValidateRequest,
+    request: Request,
     current_user: dict = Depends(get_current_user),
 ) -> Dict[str, Any]:
-    """校验券码，返回面额与有效期（无效/过期/非本人券 400；校验不认领归属）"""
+    """校验券码，返回面额与有效期（无效/过期/非本人券 400；校验不认领归属）。
+
+    输入自动归一化（大小写/空白/全角横杠；裸 8 位补 Q- 前缀，存量 12 位裸码原样兼容）；
+    限流 10 次/分/IP 防短码暴力试探（共享券码 Q-8 位后试探成本下降）。
+    """
+    ip = rate_limit.client_ip(request.headers, request.client)
+    if not rate_limit.hit(ip, "coupon_validate", _CODE_RATE_LIMIT, _CODE_RATE_WINDOW):
+        raise HTTPException(status_code=429, detail="尝试过于频繁，请稍后再试")
     try:
         coupon = await CouponService.validate_coupon(
             payload.code, user_id=str(current_user["user_id"])

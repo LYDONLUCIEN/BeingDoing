@@ -14,25 +14,29 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-from app.utils.simple_activation_manager import (
-    SimpleActivationManager,
-    ActivationStatus,
-    bind_session_id_for_ensure_report,
-    get_effective_simple_root,
-    get_activation_with_manager,
-    get_simple_base_dir,
-    get_simple_test_base_dir,
-)
-from app.utils.sandbox_fork import assert_sandbox_not_expired
-from app.api.v1.auth import get_current_user
 from fastapi import Depends, Request
-from app.utils.report_registry import ReportRegistry, compute_explore_resume
-from app.utils.id_codec import IDCodec
+
+from app.api.v1.auth import get_current_user
+from app.utils import rate_limit
 from app.utils.activation_audit import (
-    append_activation_audit,
+    EVENT_ACCESS,
     EVENT_OWNER_DENIED,
     EVENT_OWNER_VERIFIED,
-    EVENT_ACCESS,
+    append_activation_audit,
+)
+from app.utils.code_format import ACTIVATION_CONTEXT, normalize_user_code
+from app.utils.id_codec import IDCodec
+from app.utils.report_registry import ReportRegistry, compute_explore_resume
+from app.utils.report_review import REVIEW_STATUS_APPROVED, get_review_status
+from app.utils.sandbox_fork import assert_sandbox_not_expired
+from app.utils.simple_activation_manager import (
+    ActivationStatus,
+    SimpleActivationManager,
+    bind_session_id_for_ensure_report,
+    get_activation_with_manager,
+    get_effective_simple_root,
+    get_simple_base_dir,
+    get_simple_test_base_dir,
 )
 from app.utils.survey_storage import load_basic_info_by_user
 from app.utils.trial_codes import (
@@ -40,8 +44,6 @@ from app.utils.trial_codes import (
     ensure_trial_code_for_user,
     is_trial_code,
 )
-from app.utils.report_review import REVIEW_STATUS_APPROVED, get_review_status
-
 
 router = APIRouter(prefix="/simple-auth", tags=["简单模式认证"])
 
@@ -101,6 +103,7 @@ def _client_ip(request) -> str:
 
 class CreateActivationRequest(BaseModel):
     """创建激活码请求（仅开发/内部使用）"""
+
     mode: str = "values"  # values | strengths | interests | combined
     ttl_minutes: int = 60
 
@@ -113,6 +116,7 @@ class ActivationResponse(BaseModel):
 
 class ActivateRequest(BaseModel):
     """使用激活码激活简单会话"""
+
     code: str
 
 
@@ -153,8 +157,17 @@ async def activate(
 
     - 激活码过期后，仍然可以查询到记录，但 status 会为 expired
     - 客户端可以根据 status 决定是否允许继续对话（或仅展示历史结果）
+
+    输入自动归一化（大小写/空白/全角横杠/未分组重排；裸 12 位补 OPENLIFE- 前缀，
+    存量 10 位裸码原样兼容）；限流 10 次/分/IP 防猜码。
     """
-    code = (request.code or "").strip()
+    ip = _client_ip(req)
+    if not rate_limit.hit(ip, "activation_activate", 10, 60.0):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="尝试过于频繁，请稍后再试",
+        )
+    code = normalize_user_code(request.code or "", ACTIVATION_CONTEXT)
     if not code:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -172,7 +185,7 @@ async def activate(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     # 首次激活绑定归属用户；已绑定则仅允许归属者使用
-    client_ip = _client_ip(req)
+    client_ip = ip
     uid = (current_user or {}).get("user_id")
     email = (current_user or {}).get("email")
     if not manager.is_owner(rec, current_user):
@@ -267,7 +280,9 @@ async def list_user_journeys(
     user_id = (current_user or {}).get("user_id", "")
     email = (current_user or {}).get("email", "")
     if not user_id and not email:
-        return ActivationResponse(code=200, message="success", data={"journeys": [], "user_survey": {}})
+        return ActivationResponse(
+            code=200, message="success", data={"journeys": [], "user_survey": {}}
+        )
 
     journeys = []
 
@@ -333,16 +348,18 @@ async def list_user_journeys(
         report = _report_for_journey(rec, user_id, email)
         resume = compute_explore_resume(report) if report else {}
 
-        journeys.append({
-            "activation_code": rec.code,
-            "code_type": getattr(rec, "code_type", None) or "full",
-            "mode": rec.mode,
-            "status": rec.status,
-            "created_at": rec.created_at,
-            "expires_at": rec.expires_at,
-            "last_activity_at": getattr(rec, "last_activity_at", None) or rec.created_at,
-            "explore_resume": resume,
-        })
+        journeys.append(
+            {
+                "activation_code": rec.code,
+                "code_type": getattr(rec, "code_type", None) or "full",
+                "mode": rec.mode,
+                "status": rec.status,
+                "created_at": rec.created_at,
+                "expires_at": rec.expires_at,
+                "last_activity_at": getattr(rec, "last_activity_at", None) or rec.created_at,
+                "explore_resume": resume,
+            }
+        )
 
     # 按最后活跃时间倒序
     journeys.sort(key=lambda j: j.get("last_activity_at") or "", reverse=True)
@@ -407,26 +424,28 @@ async def list_my_codes(
         else:
             source = (getattr(rec, "source", None) or "").strip() or "admin"
         report_status = _report_status(rec, user_id, email)
-        items.append({
-            "code": rec.code,
-            "code_type": getattr(rec, "code_type", None) or "full",
-            "status": _derive_code_status(rec),
-            "expires_at": rec.expires_at,
-            "created_at": rec.created_at,
-            "source": source,
-            "session_id": rec.session_id,
-            # has_report 语义：报告已生成 = 审核通过（与 my-purchased-codes 口径拉齐）
-            "has_report": report_status == REVIEW_STATUS_APPROVED,
-            "report_status": report_status,
-            # 消耗升级溯源（ADR-0014）：本试用码是被哪个付费码消耗升级而来，无则 None
-            "upgraded_from_code": getattr(rec, "upgraded_from_code", None),
-            # 7 天免费续期（ADR-0015）：已过期 + 已发通知 + 未领取 => 可领取
-            "free_renewal_available": bool(
-                rec.status == ActivationStatus.EXPIRED
-                and getattr(rec, "free_renewal_offered_at", None)
-                and not getattr(rec, "free_renewal_claimed_at", None)
-            ),
-        })
+        items.append(
+            {
+                "code": rec.code,
+                "code_type": getattr(rec, "code_type", None) or "full",
+                "status": _derive_code_status(rec),
+                "expires_at": rec.expires_at,
+                "created_at": rec.created_at,
+                "source": source,
+                "session_id": rec.session_id,
+                # has_report 语义：报告已生成 = 审核通过（与 my-purchased-codes 口径拉齐）
+                "has_report": report_status == REVIEW_STATUS_APPROVED,
+                "report_status": report_status,
+                # 消耗升级溯源（ADR-0014）：本试用码是被哪个付费码消耗升级而来，无则 None
+                "upgraded_from_code": getattr(rec, "upgraded_from_code", None),
+                # 7 天免费续期（ADR-0015）：已过期 + 已发通知 + 未领取 => 可领取
+                "free_renewal_available": bool(
+                    rec.status == ActivationStatus.EXPIRED
+                    and getattr(rec, "free_renewal_offered_at", None)
+                    and not getattr(rec, "free_renewal_claimed_at", None)
+                ),
+            }
+        )
 
     # 按创建时间倒序
     items.sort(key=lambda x: x.get("created_at") or "", reverse=True)
@@ -529,24 +548,26 @@ async def list_my_purchased_codes(
             source_order_id = getattr(rec, "source_order_id", None)
             if source_order_id:
                 order_ids.add(source_order_id)
-            items.append({
-                "code": rec.code,
-                "code_type": getattr(rec, "code_type", None) or "full",
-                "package_type": getattr(rec, "package_type", None),
-                "status": _derive_code_status(rec),
-                "expires_at": rec.expires_at,
-                "created_at": rec.created_at,
-                "activated": bool(rec.owner_user_id),
-                "activated_by": _mask_email(rec.owner_email or "") or None,
-                "activated_by_self": rec.owner_user_id == user_id,
-                "has_report": norm in approved_codes,
-                "report_status": report_status_by_code.get(norm),
-                "report_authorized": bool(getattr(rec, "report_authorized", False)),
-                # 去向溯源（ADR-0014）：交付来源订单 / 消耗升级的受益试用码 / 反向溯源
-                "source_order_id": source_order_id,
-                "consumed_into": getattr(rec, "consumed_into", None),
-                "upgraded_from_code": getattr(rec, "upgraded_from_code", None),
-            })
+            items.append(
+                {
+                    "code": rec.code,
+                    "code_type": getattr(rec, "code_type", None) or "full",
+                    "package_type": getattr(rec, "package_type", None),
+                    "status": _derive_code_status(rec),
+                    "expires_at": rec.expires_at,
+                    "created_at": rec.created_at,
+                    "activated": bool(rec.owner_user_id),
+                    "activated_by": _mask_email(rec.owner_email or "") or None,
+                    "activated_by_self": rec.owner_user_id == user_id,
+                    "has_report": norm in approved_codes,
+                    "report_status": report_status_by_code.get(norm),
+                    "report_authorized": bool(getattr(rec, "report_authorized", False)),
+                    # 去向溯源（ADR-0014）：交付来源订单 / 消耗升级的受益试用码 / 反向溯源
+                    "source_order_id": source_order_id,
+                    "consumed_into": getattr(rec, "consumed_into", None),
+                    "upgraded_from_code": getattr(rec, "upgraded_from_code", None),
+                }
+            )
 
     # 订单联查：按 source_order_id 一次性批量查询，构建 id→order 映射（避免 N+1）；
     # 查不到或 DB 异常时订单字段一律 None，不影响码列表本身
@@ -562,10 +583,14 @@ async def list_my_purchased_codes(
 
             async with AsyncSessionLocal() as db:
                 rows = (
-                    await db.execute(
-                        _select(PaymentOrder).where(PaymentOrder.id.in_(sorted(order_ids)))
+                    (
+                        await db.execute(
+                            _select(PaymentOrder).where(PaymentOrder.id.in_(sorted(order_ids)))
+                        )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
             orders_by_id = {o.id: o for o in rows}
             product_name_of = {o.id: _product_name(o.product_type) for o in rows}
         except Exception:
@@ -609,9 +634,10 @@ async def get_report_authorize(
     # 前端据此不渲染授权开关（授权语义仅存在于转赠/团队场景）
     if purchaser_user_id and purchaser_user_id != rec.owner_user_id:
         try:
+            from sqlalchemy import select as _select
+
             from app.models.database import AsyncSessionLocal
             from app.models.user import User
-            from sqlalchemy import select as _select
 
             async with AsyncSessionLocal() as db:
                 purchaser_email = (
@@ -662,7 +688,6 @@ async def set_report_authorize(
         message="success",
         data={"code": updated.code, "authorized": bool(updated.report_authorized)},
     )
-
 
 
 # ─── 消耗升级（ADR-0014）───────────────────────────────────────
@@ -856,9 +881,7 @@ async def update_preferences(
         raise HTTPException(status_code=401, detail="未登录")
 
     async with AsyncSessionLocal() as db:
-        user = (
-            await db.execute(_select(User).where(User.id == user_id))
-        ).scalar_one_or_none()
+        user = (await db.execute(_select(User).where(User.id == user_id))).scalar_one_or_none()
         if user is None:
             raise HTTPException(status_code=404, detail="用户不存在")
         prefs = await _read_user_preferences(user_id)

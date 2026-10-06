@@ -2,11 +2,15 @@
 Admin 支付管理 API（P1：折扣券管理；P2a：订单管理；2026-10-05 退款审批）
 
 接口：
-- GET    /admin/coupons          分页列表（status 过滤含派生态 expired/void；used 态联查邮箱/订单号）
-- POST   /admin/coupons          单个/批量创建（固定面额，分；ttl_days 可选，默认读运行时配置）
+- GET    /admin/coupons          分页列表（status 过滤含派生态 expired/suspended/void；
+                                  used 态联查邮箱/订单号；多次券带 max_uses/used_count/locked_count）
+- POST   /admin/coupons          单个/批量创建（固定面额，分；ttl_days 可选，默认读运行时配置；
+                                  max_uses 总核销次数 1-10000，>1 为共享促销码，禁绑归属）
 - PATCH  /admin/coupons/{id}     调整面额/有效期（仅 unused，含派生 expired——改期即复活）
-- DELETE /admin/coupons/{id}     作废（仅 unused；软删除置 void，可恢复）
+- DELETE /admin/coupons/{id}     作废（仅 unused 且无核销/锁定记录；软删除置 void，可恢复）
 - POST   /admin/coupons/{id}/restore  恢复已作废券（void → unused）
+- POST   /admin/coupons/{id}/suspend  停用（剩余名额冻结，已核销保留有效）
+- POST   /admin/coupons/{id}/resume   启用（解除停用，剩余名额恢复可用）
 - GET    /admin/coupon-config    读折扣券默认有效期（天）
 - POST   /admin/coupon-config    调整默认有效期（1-3650 天，即时生效，只影响新券）
 - GET    /admin/payment/orders           订单分页列表（status/channel 筛选，含 user_email + code_refundable）
@@ -21,9 +25,8 @@ Admin 支付管理 API（P1：折扣券管理；P2a：订单管理；2026-10-05 
 全部 is_super_admin_user 门控，统一响应 {code, message, data}。
 """
 
-from typing import Any, Dict, List, Optional
-
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -61,6 +64,13 @@ class CouponCreateRequest(BaseModel):
         ge=coupon_config.MIN_TTL_DAYS,
         le=coupon_config.MAX_TTL_DAYS,
         description="有效期天数（可选，默认读运行时配置）",
+    )
+    max_uses: int = Field(
+        1,
+        ge=1,
+        le=10000,
+        description="总核销次数（1-10000；1=单次券，>1=共享促销码：任何用户先到先得，"
+        "每账号限用一次，面额×次数=总补贴）",
     )
 
 
@@ -103,9 +113,7 @@ class AdminRefundApproveRequest(BaseModel):
     approved_amount: Optional[int] = Field(
         None, ge=0, description="批准金额（分，不传=申请额；只能 ≤ 实时可退上限）"
     )
-    note: Optional[str] = Field(
-        None, description="审批意见 / 金额调整理由（与申请额不一致时必填）"
-    )
+    note: Optional[str] = Field(None, description="审批意见 / 金额调整理由（与申请额不一致时必填）")
 
 
 class AdminRefundRejectRequest(BaseModel):
@@ -119,7 +127,9 @@ class AdminRefundRejectRequest(BaseModel):
 
 @router.get("/coupons")
 async def list_coupons(
-    status: Optional[str] = Query(None, description="unused | locked | used | expired | void"),
+    status: Optional[str] = Query(
+        None, description="unused | locked | used | expired | suspended | void"
+    ),
     source: Optional[str] = Query(None, description="admin | email_auto"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -138,7 +148,7 @@ async def create_coupons(
     payload: CouponCreateRequest,
     current_user: Optional[dict] = Depends(get_current_user),
 ) -> Dict[str, Any]:
-    """创建折扣券（单个/批量，固定面额）"""
+    """创建折扣券（单个/批量，固定面额；max_uses>1 为共享促销码）"""
     _require_super_admin(current_user)
     try:
         coupons = await CouponService.create_coupons(
@@ -147,6 +157,7 @@ async def create_coupons(
             source="admin",
             created_by=str(current_user.get("user_id")) if current_user else None,
             ttl_days=payload.ttl_days,
+            max_uses=payload.max_uses,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -157,6 +168,7 @@ async def create_coupons(
                     "id": c.id,
                     "code": c.code,
                     "amount": c.amount,
+                    "max_uses": c.max_uses,
                     "expires_at": c.expires_at.isoformat() if c.expires_at else None,
                 }
                 for c in coupons
@@ -219,6 +231,38 @@ async def restore_coupon(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return _ok({"id": coupon.id, "code": coupon.code, "status": coupon.status})
+
+
+@router.post("/coupons/{coupon_id}/suspend")
+async def suspend_coupon(
+    coupon_id: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """停用券（停机开关）：已核销名额保持有效，剩余名额立即冻结，可 resume 恢复。
+
+    适用：共享促销码面额配错/活动提前结束等运营纠错（作废要求无核销记录，
+    部分核销的券只能停用）。
+    """
+    _require_super_admin(current_user)
+    try:
+        coupon = await CouponService.suspend_coupon(coupon_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return _ok({"id": coupon.id, "code": coupon.code, "suspended": True})
+
+
+@router.post("/coupons/{coupon_id}/resume")
+async def resume_coupon(
+    coupon_id: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """启用券：解除停用，剩余名额恢复可用（已过期则自然派生 expired）"""
+    _require_super_admin(current_user)
+    try:
+        coupon = await CouponService.resume_coupon(coupon_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return _ok({"id": coupon.id, "code": coupon.code, "suspended": False})
 
 
 @router.get("/coupon-config")
