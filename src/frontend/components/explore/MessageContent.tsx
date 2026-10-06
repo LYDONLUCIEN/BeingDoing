@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import MarkdownPreview from '@uiw/react-markdown-preview';
 import { preprocessMarkdown } from '@/lib/mdPreprocess';
 
@@ -45,7 +46,7 @@ function stripHiddenBlocks(text: string): string {
     .trim();
 }
 
-export default function MessageContent({
+function MessageContent({
   content,
   className = '',
   markdown = true,
@@ -141,3 +142,7 @@ export default function MessageContent({
     </div>
   );
 }
+
+/* memo 化（2026-10-05 性能优化）：content 不变时跳过 markdown 重新 parse，
+   流式输出期间历史消息不再逐 chunk 重渲染 */
+export default memo(MessageContent);

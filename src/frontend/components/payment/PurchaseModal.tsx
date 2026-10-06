@@ -28,6 +28,7 @@ import {
   type MyCouponItem,
   type OrderItem,
   type PayChannel,
+  type PayType,
   type ProductItem,
   type ProductType,
 } from '@/lib/api/payment';
@@ -142,8 +143,9 @@ export default function PurchaseModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
-  /** 等待支付视图：收银台 URL（「如果没有弹出，请点击这里」重开用） */
+  /** 等待支付视图：支付串（qr=iframe 嵌入二维码；redirect=收银台跳转 URL，「点击重开」用） */
   const [payUrl, setPayUrl] = useState<string | null>(null);
+  const [payType, setPayType] = useState<PayType>('redirect');
   const [waitStatus, setWaitStatus] = useState<WaitStatus>('polling');
   /** 消耗升级弹窗（ADR-0014）：套餐成功交付且有已开聊试用码时弹出 */
   const [upgradeOpen, setUpgradeOpen] = useState(false);
@@ -212,6 +214,7 @@ export default function PurchaseModal({
     setCouponError(null);
     setError(null);
     setPayUrl(null);
+    setPayType('redirect');
     setWaitStatus('polling');
     setUpgradeOpen(false);
     setTrialUpgraded(false);
@@ -219,13 +222,14 @@ export default function PurchaseModal({
     successFiredRef.current = false;
   }, []);
 
-  // ── 进入等待支付视图：新标签页打开收银台，本页保持上下文轮询 ──
-  const startWaiting = useCallback((ord: OrderItem, url: string) => {
+  // ── 进入等待支付视图：qr 在本页 iframe 内嵌二维码；redirect 新标签页打开收银台 ──
+  const startWaiting = useCallback((ord: OrderItem, url: string, type: PayType = 'redirect') => {
     setOrder(ord);
     setPayUrl(url);
+    setPayType(type);
     setWaitStatus('polling');
     setView('waiting');
-    window.open(url, '_blank');
+    if (type === 'redirect') window.open(url, '_blank');
   }, []);
 
   // ── 等待支付：每 2s 轮询订单状态，直到发放/关闭/取消，或 30 分钟超时 ──
@@ -305,8 +309,8 @@ export default function PurchaseModal({
         .then((res) => {
           const st = res.order.status;
           if ((st === 'pending' || st === 'paid') && res.pay_url) {
-            // 继续支付：新标签页打开支付宝收银台
-            startWaiting(res.order, res.pay_url);
+            // 继续支付：qr 在本页 iframe 嵌入二维码，redirect 新标签页打开收银台
+            startWaiting(res.order, res.pay_url, res.pay_type ?? 'redirect');
           } else if (st === 'granted') {
             enterSuccess(res.order);
           } else {
@@ -398,8 +402,8 @@ export default function PurchaseModal({
         // 0 元单：直接发放
         enterSuccess(res.order);
       } else {
-        // 新标签页打开支付宝收银台（本页轮询等待支付完成）
-        startWaiting(res.order, res.payment.pay_url);
+        // qr：本页 iframe 嵌入二维码；redirect：新标签页打开收银台（本页轮询等待支付完成）
+        startWaiting(res.order, res.payment.pay_url, res.payment.pay_type ?? 'redirect');
       }
     } catch (e: unknown) {
       setError(getApiErrorMessage(e, t('payment.error.createOrder')));
@@ -1060,11 +1064,22 @@ export default function PurchaseModal({
               )}
 
               {view === 'waiting' && order && (
-                /* 等待支付：收银台已在新标签页打开，本页轮询订单状态 */
+                /* 等待支付：qr 在本页 iframe 嵌入二维码（支付宝前置模式），本页轮询订单状态 */
                 <div className="space-y-5">
                   {waitStatus === 'polling' ? (
-                    <div className="flex flex-col items-center space-y-3 py-6 text-center">
-                      <Loader2 className="h-8 w-8 animate-spin text-stone-400" />
+                    <div className="flex flex-col items-center space-y-3 py-4 text-center">
+                      {payType === 'qr' && payUrl ? (
+                        /* 支付宝前置模式：iframe 内只渲染二维码（qrcode_width=220，含支付宝页内边距） */
+                        <iframe
+                          src={payUrl}
+                          title={t('payment.waiting.title')}
+                          width={248}
+                          height={300}
+                          className="rounded-xl border border-stone-200 bg-white"
+                        />
+                      ) : (
+                        <Loader2 className="h-8 w-8 animate-spin text-stone-400" />
+                      )}
                       <p className="text-sm font-medium leading-relaxed text-stone-700">
                         {t('payment.waiting.hint')}
                       </p>

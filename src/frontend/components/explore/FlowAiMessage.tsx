@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
 import { BookmarkPlus, Heart } from 'lucide-react';
 import MessageContent from './MessageContent';
 import ToolbarCopyButton from './ToolbarCopyButton';
@@ -61,7 +61,8 @@ interface FlowAiMessageProps {
   toolbarCopyTitle?: string;
   toolbarLikeTitle?: string;
   toolbarSavepointTitle?: string;
-  onSavepoint?: () => void;
+  /** 点击书签按钮时回传消息 id（父级据此定位消息，便于回调稳定化做 memo） */
+  onSavepoint?: (messageId?: string) => void;
   /** 为 true 时不显示底部复制/点赞条（如静态引导文案） */
   hideToolbar?: boolean;
   /** 子步 3：假设候选列表 */
@@ -80,8 +81,10 @@ interface FlowAiMessageProps {
 
 /**
  * AI 消息气泡 + 工具栏。思考过程仅流式阶段显示单行状态，结束后不保留/不展示推理全文，避免提示词泄露。
+ * memo 化（2026-10-05 性能优化）：流式输出期间父级每帧重渲染，历史消息气泡靠
+ * props 浅比较跳过（markdown 不再逐 chunk 重新 parse）；调用方需保证 props 引用稳定。
  */
-export default function FlowAiMessage({
+function FlowAiMessage({
   content,
   phase,
   variant = 'default',
@@ -289,7 +292,7 @@ export default function FlowAiMessage({
               type="button"
               className="flow-toolbar-btn"
               title={savepointTitle}
-              onClick={onSavepoint}
+              onClick={() => onSavepoint?.(messageId)}
             >
               <BookmarkPlus size={14} strokeWidth={1.6} />
             </button>
@@ -299,3 +302,5 @@ export default function FlowAiMessage({
     </div>
   );
 }
+
+export default memo(FlowAiMessage);

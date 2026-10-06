@@ -21,8 +21,13 @@ interface Props {
 }
 
 export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Props) {
-  const { state, selectFinal, submitFinal, comboCache, activationCode, attachAnalysis } =
-    useRuminationV4Store();
+  /* 窄选择器（2026-10-05 性能优化） */
+  const state = useRuminationV4Store((s) => s.state);
+  const selectFinal = useRuminationV4Store((s) => s.selectFinal);
+  const submitFinal = useRuminationV4Store((s) => s.submitFinal);
+  const comboCache = useRuminationV4Store((s) => s.comboCache);
+  const activationCode = useRuminationV4Store((s) => s.activationCode);
+  const attachAnalysis = useRuminationV4Store((s) => s.attachAnalysis);
   const router = useRouter();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);

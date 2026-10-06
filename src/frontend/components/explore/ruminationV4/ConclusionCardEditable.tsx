@@ -40,7 +40,9 @@ function getToken(): string | undefined {
 }
 
 export default function ConclusionCardEditable({ comboId, card, analysis, userSkipped }: Props) {
-  const { confirmCard, setStatus } = useRuminationV4Store();
+  /* 窄选择器（2026-10-05 性能优化）：actions 引用稳定 */
+  const confirmCard = useRuminationV4Store((s) => s.confirmCard);
+  const setStatus = useRuminationV4Store((s) => s.setStatus);
   /** 终选已提交：整页回看模式，结论卡只读、操作按钮全部隐藏 */
   const finalSubmitted = useRuminationV4Store(
     (s) => !!s.state?.final_selection?.submitted

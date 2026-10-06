@@ -51,7 +51,10 @@ function hypText(c: ComboSession | undefined): string {
 }
 
 export default function V4ComboSidebar({ onExpandSelector }: SidebarProps) {
-  const { state, switchCombo, removeCombo } = useRuminationV4Store();
+  /* 窄选择器（2026-10-05 性能优化）：流式 chunk 不再触发本栏重渲染 */
+  const state = useRuminationV4Store((s) => s.state);
+  const switchCombo = useRuminationV4Store((s) => s.switchCombo);
+  const removeCombo = useRuminationV4Store((s) => s.removeCombo);
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
   if (!state) return null;

@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useRouter, useParams, usePathname, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { motion } from 'framer-motion';
 import {
   ChevronRight,
   ChevronDown,
@@ -79,6 +78,7 @@ import {
   type ChatThread,
   type ThreadMessage,
 } from '@/lib/explore/threads';
+import { computeActiveThreadSidebarMeta } from '@/lib/explore/sidebarMeta';
 import { useLocale } from '@/hooks/useLocale';
 import { useAuthStore } from '@/stores/authStore';
 import { createAdminSavepoint, fetchAdminSystemSettings } from '@/lib/api/admin';
@@ -227,6 +227,57 @@ function mergePendingDraftIntoMessagesFromMeta(
   ];
 }
 
+/**
+ * 结论卡消息行（memo 化，2026-10-05 性能优化）：
+ * 流式输出期间父级每帧重渲染，历史结论卡靠 props 浅比较跳过。
+ * 回调经 msgId 参数化保持引用稳定（见 LiveChatPhasePage 内 stable 回调组）。
+ */
+const ConclusionRow = memo(function ConclusionRow({
+  msg,
+  data,
+  phaseClass,
+  isSelectedCompleted,
+  phaseInteractionLocked,
+  isLatest,
+  onCollapsedChange,
+  onConfirm,
+  onContinueChatFor,
+}: {
+  msg: ThreadMessage;
+  data: DimensionConclusionData;
+  phaseClass: 'values' | 'strength' | 'interest' | 'purpose' | 'rumination';
+  isSelectedCompleted: boolean;
+  phaseInteractionLocked: boolean;
+  isLatest: boolean;
+  onCollapsedChange: (msgId: string, collapsed: boolean) => void;
+  onConfirm: () => void;
+  onContinueChatFor: (msgId: string) => void;
+}) {
+  return (
+    <div className="flow-msg-conclusion-wrap">
+      <DimensionConclusionCard
+        phase={phaseClass}
+        data={data}
+        isCompleted={isSelectedCompleted || !!msg.conclusionConfirmed}
+        inline
+        collapsed={!!msg.conclusionCollapsed}
+        interactionLocked={
+          phaseInteractionLocked || !!msg.conclusionLocked || !isLatest
+        }
+        onCollapsedChange={(collapsed: boolean) => onCollapsedChange(msg.id, collapsed)}
+        showActions={
+          !phaseInteractionLocked && !msg.conclusionLocked && !msg.conclusionCollapsed && isLatest
+        }
+        forbidHeaderCollapseWhileActions={
+          !phaseInteractionLocked && !msg.conclusionLocked && !msg.conclusionCollapsed && isLatest
+        }
+        onConfirm={onConfirm}
+        onContinueChat={() => onContinueChatFor(msg.id)}
+      />
+    </div>
+  );
+});
+
 export default function ChatPhasePage() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -370,11 +421,33 @@ function LiveChatPhasePage() {
   /** 仅在线程 id 集合变化时触发「加载消息」effect，避免因 threads 引用反复变（persist / save 后 getThreads）而重复 init */
   const threadListSignature = useMemo(() => threads.map((t) => t.id).join('|'), [threads]);
 
-  /** 侧栏预览：当前选中线程的消息以 React state 为准（列表里的 thread 可能仍是 messages:[]） */
-  const threadsForSidebar = useMemo(() => {
-    if (!activeThreadId) return threads;
-    return threads.map((th) => (th.id === activeThreadId ? { ...th, messages } : th));
-  }, [threads, activeThreadId, messages]);
+  /** 思考占位文案：hoist 成稳定引用（原先每条消息每次渲染都新建数组，破坏子组件 memo） */
+  const thinkPlaceholders = useMemo(
+    () => [
+      t('explore.chat.thinkInProgress1'),
+      t('explore.chat.thinkInProgress2'),
+      t('explore.chat.thinkInProgress3'),
+      t('explore.chat.thinkInProgress4'),
+      t('explore.chat.thinkInProgress5'),
+      t('explore.chat.thinkInProgress6'),
+    ],
+    [t]
+  );
+
+  /**
+   * 每条消息的埋点 log_index（其之前 assistant 文本消息数）单遍预计算。
+   * 原先在 render 内对每条 AI 消息 slice+filter（O(n²)，流式期间整体 O(n³)）；
+   * 语义与旧实现完全一致（保埋点口径），仅改为一次线性扫描。
+   */
+  const aiLogIndexById = useMemo(() => {
+    const map = new Map<string, number>();
+    let count = 0;
+    for (const m of messages) {
+      map.set(m.id, count);
+      if (m.role === 'assistant' && m.type !== 'dimension_conclusion') count += 1;
+    }
+    return map;
+  }, [messages]);
 
   const latestConclusionMessageId = lastDimensionConclusionMessage(messages)?.id;
 
@@ -1079,6 +1152,65 @@ function LiveChatPhasePage() {
     stickToBottomRef.current = gap <= 120;
   }, []);
 
+  /* ── 流式 chunk rAF 批量提交（2026-10-05 性能优化）──────────────
+     原先每个 SSE chunk 都 setMessages → 整页重渲染 + 全部历史消息
+     markdown 重新 parse。现改为：chunk 先累积到 pending ref，每动画帧
+     最多提交一次。低频事件（结论卡插入/重试/done/结束清理）先
+     flushStreamNow() 再走原逻辑，保证顺序与内容不丢。 */
+  const streamPendingRef = useRef<{
+    id: string | null;
+    content: string;
+    thinkStreaming: boolean;
+    thinkChunk: string | undefined;
+  }>({ id: null, content: '', thinkStreaming: false, thinkChunk: undefined });
+  const streamRafRef = useRef<number | null>(null);
+
+  const applyStreamPending = useCallback(() => {
+    const p = streamPendingRef.current;
+    if (p.id == null) return;
+    const id = p.id;
+    const content = p.content;
+    const thinkStreaming = p.thinkStreaming;
+    const thinkChunk = p.thinkChunk;
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === id
+          ? { ...m, content, thinkStreaming, thinkChunkContent: thinkChunk }
+          : m
+      )
+    );
+    // 跟随滚动并入同一帧（原先每 chunk 一次 scrollTop 写 + 强制布局）
+    if (stickToBottomRef.current) {
+      const el = chatBodyRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    }
+    checkScrollPosition();
+  }, [checkScrollPosition]);
+
+  const scheduleStreamFlush = useCallback(() => {
+    if (streamRafRef.current != null) return;
+    streamRafRef.current = requestAnimationFrame(() => {
+      streamRafRef.current = null;
+      applyStreamPending();
+    });
+  }, [applyStreamPending]);
+
+  /** 立即落地 pending（取消已排 rAF）：结论卡插入 / retrying / done / finally 清理前必须调用 */
+  const flushStreamNow = useCallback(() => {
+    if (streamRafRef.current != null) {
+      cancelAnimationFrame(streamRafRef.current);
+      streamRafRef.current = null;
+    }
+    applyStreamPending();
+  }, [applyStreamPending]);
+
+  useEffect(
+    () => () => {
+      if (streamRafRef.current != null) cancelAnimationFrame(streamRafRef.current);
+    },
+    []
+  );
+
   /** 进入某阶段 / 切换会话 / 线程列表首次就绪后：立即滚到底部（最新一条） */
   useLayoutEffect(() => {
     if (initLoading || !threadsFetched) return;
@@ -1091,7 +1223,8 @@ function LiveChatPhasePage() {
     });
   }, [phase, activeThreadId, initLoading, threadsFetched, threadListSignature]);
 
-  /** 流式生成中：仅当用户仍在底部附近时才跟随，避免挡住上滑回看 */
+  /** 结构性插入（用户消息/结论卡）时若仍在底部则跟随；
+   *  流式逐字跟随已并入 rAF 批量提交（applyStreamPending），不再逐 chunk 触发 */
   useEffect(() => {
     if (!sending) return;
     if (!stickToBottomRef.current) return;
@@ -1101,7 +1234,7 @@ function LiveChatPhasePage() {
     } else {
       messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
     }
-  }, [messages, sending]);
+  }, [messages.length, sending]);
 
   useEffect(() => {
     const el = chatBodyRef.current;
@@ -1109,7 +1242,7 @@ function LiveChatPhasePage() {
     el.addEventListener('scroll', checkScrollPosition);
     checkScrollPosition();
     return () => el.removeEventListener('scroll', checkScrollPosition);
-  }, [checkScrollPosition, messages]);
+  }, [checkScrollPosition]);
 
   const scrollToBottom = useCallback(() => {
     stickToBottomRef.current = true;
@@ -1177,6 +1310,13 @@ function LiveChatPhasePage() {
       ? [assistantMsg]
       : [userMsg, assistantMsg];
     setMessages((prev) => [...prev, ...toAdd]);
+    // 流式批量提交：登记待更新气泡（chunk 先进 ref，每帧统一落地）
+    streamPendingRef.current = {
+      id: assistantId,
+      content: '',
+      thinkStreaming: false,
+      thinkChunk: undefined,
+    };
     setChatError(null);
     setConclusionLoading(false);
     setPostLlmTailActive(false);
@@ -1303,50 +1443,37 @@ function LiveChatPhasePage() {
             if (payload.retrying) {
               // 空回复自动重试告知：重置当前气泡 + 显示「再想想」提示
               setAutoRetryNotice(true);
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId
-                    ? { ...m, content: '', thinkStreaming: false, thinkChunkContent: undefined }
-                    : m
-                )
-              );
+              // 气泡重置立即落地（不走 rAF，避免与后续 chunk 竞态）
+              streamPendingRef.current = {
+                id: assistantId,
+                content: '',
+                thinkStreaming: false,
+                thinkChunk: undefined,
+              };
+              flushStreamNow();
             }
             if (payload.think_start) {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId ? { ...m, thinkStreaming: true, thinkChunkContent: '' } : m
-                )
-              );
+              streamPendingRef.current.thinkStreaming = true;
+              streamPendingRef.current.thinkChunk = '';
+              scheduleStreamFlush();
             }
             if (payload.think_chunk) {
               const chunk = typeof payload.think_chunk === 'string' ? payload.think_chunk : '';
               if (chunk) {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId
-                      ? { ...m, thinkChunkContent: chunk }
-                      : m
-                  )
-                );
+                streamPendingRef.current.thinkChunk = chunk;
+                scheduleStreamFlush();
               }
             }
             if (payload.think_end != null) {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId
-                    ? { ...m, thinkStreaming: false, thinkChunkContent: undefined }
-                    : m
-                )
-              );
+              streamPendingRef.current.thinkStreaming = false;
+              streamPendingRef.current.thinkChunk = undefined;
+              scheduleStreamFlush();
             }
             if (payload.chunk) {
               fullReply += payload.chunk;
               if (String(payload.chunk || '').trim()) assistantHasVisibleOutput = true;
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId ? { ...m, content: (m.content || '') + payload.chunk } : m
-                )
-              );
+              streamPendingRef.current.content = fullReply;
+              scheduleStreamFlush();
             }
             if (payload.llm_stream_end) {
               setPostLlmTailActive(true);
@@ -1359,6 +1486,8 @@ function LiveChatPhasePage() {
               assistantHasVisibleOutput = true;
               setConclusionLoading(false);
               setWaitingForConclusionCardUi(false);
+              // 结论卡必须接在已流出的正文之后：先落地 pending 再插入
+              flushStreamNow();
               const concl = payload.dimension_conclusion as DimensionConclusionData;
               const conclMsg: ThreadMessage = {
                 id: `concl_${Date.now()}`,
@@ -1383,6 +1512,9 @@ function LiveChatPhasePage() {
               if (String(payload.response || '').trim()) assistantHasVisibleOutput = true;
               const doneAt = Date.now();
               setAutoRetryNotice(false);
+              // 权威全文写入前先落地 pending，保证与上方流式内容顺序一致
+              streamPendingRef.current.content = fullReply;
+              flushStreamNow();
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === assistantId
@@ -1405,6 +1537,9 @@ function LiveChatPhasePage() {
     } catch (err: any) {
       if (err?.name !== 'AbortError') setChatError(err?.message || '发送失败，请重试');
     } finally {
+      // 先落地剩余流式内容再清理：否则中途停止/异常时丢失未 flush 的尾部文本
+      flushStreamNow();
+      streamPendingRef.current.id = null;
       setSending(false);
       setConclusionLoading(false);
       setPostLlmTailActive(false);
@@ -1977,6 +2112,70 @@ function LiveChatPhasePage() {
     abortControllerRef.current?.abort();
   };
 
+  /* ── 引用稳定回调组（2026-10-05 性能优化）──────────────────────
+     侧栏与消息行已 memo 化：这些回调经 ref 桥接为恒定引用（每渲染更新 ref，
+     与组件顶部 messagesRef 同一惯用法），避免每帧新闭包击穿子组件浅比较。 */
+  const handleSelectThreadRef = useRef(handleSelectThread);
+  handleSelectThreadRef.current = handleSelectThread;
+  const onSelectThreadStable = useCallback((thread: ChatThread) => {
+    handleSelectThreadRef.current(thread);
+  }, []);
+
+  const handleNewChatRef = useRef(handleNewChat);
+  handleNewChatRef.current = handleNewChat;
+  const onNewChatStable = useCallback(() => {
+    handleNewChatRef.current();
+  }, []);
+
+  const handleDeleteThreadRef = useRef(handleDeleteThread);
+  handleDeleteThreadRef.current = handleDeleteThread;
+  const onDeleteThreadStable = useCallback((thread: ChatThread) => {
+    handleDeleteThreadRef.current(thread);
+  }, []);
+
+  const handleConfirmConclusionRef = useRef(handleConfirmConclusion);
+  handleConfirmConclusionRef.current = handleConfirmConclusion;
+  const onConfirmConclusionStable = useCallback(() => {
+    handleConfirmConclusionRef.current();
+  }, []);
+
+  const handleContinueChatRef = useRef(handleContinueChat);
+  handleContinueChatRef.current = handleContinueChat;
+  const onContinueChatFor = useCallback((msgId: string) => {
+    const msg = messagesRef.current.find((x) => x.id === msgId);
+    if (msg) handleContinueChatRef.current(msg);
+  }, []);
+
+  /** 结论卡折叠态变更：仅依赖 setMessages，天然稳定 */
+  const onConclusionCollapsedChange = useCallback((msgId: string, collapsed: boolean) => {
+    setMessages((prev) =>
+      prev.map((msg) => (msg.id === msgId ? { ...msg, conclusionCollapsed: collapsed } : msg))
+    );
+  }, []);
+
+  /** 超管检查点：FlowAiMessage 传 messageId，经 messagesRef 定位（回调保持稳定） */
+  const handleSavepointClick = useCallback(
+    (msgId?: string) => {
+      if (!msgId || !canUseAdminSavepoint || savepointBusy) return;
+      const fullIdx = messagesRef.current.findIndex((x) => x.id === msgId);
+      if (fullIdx < 0) return;
+      void handleOpenSavepointModal(messagesRef.current[fullIdx], fullIdx);
+    },
+    [canUseAdminSavepoint, savepointBusy, handleOpenSavepointModal]
+  );
+
+  /** 活动线程元信息：3 个原始值替代整份 messages 注入侧栏（见 ChatPhaseSidebar memo） */
+  const activeThreadSidebarMeta = useMemo(
+    () =>
+      activeThreadId
+        ? computeActiveThreadSidebarMeta(messages, selectedThread, t('explore.chat.noContent'))
+        : null,
+    [messages, activeThreadId, selectedThread, t]
+  );
+
+  /** 活动线程是否存在于列表（threadId 原始值化，替代渲染块内 threads.find） */
+  const activeThreadExists = activeThreadId != null && threads.some((t) => t.id === activeThreadId);
+
   const phaseClass =
     phase === 'values'
       ? 'values'
@@ -2003,11 +2202,11 @@ function LiveChatPhasePage() {
       {/* 顶栏留白由 (main)/layout.tsx 的 pt-14 承担，此处勿再 pt-14，否则侧栏与主区会出现双倍空白 */}
       <div className="flex min-h-0 flex-1 overflow-hidden relative z-10">
         <ChatPhaseSidebar
-            threads={threadsForSidebar}
+            threads={threads}
             activeThreadId={activeThreadId}
-            onSelectThread={handleSelectThread}
-            onNewChat={handleNewChat}
-            onDeleteThread={handleDeleteThread}
+            onSelectThread={onSelectThreadStable}
+            onNewChat={onNewChatStable}
+            onDeleteThread={onDeleteThreadStable}
             canNewChat={canCreateMoreThreads}
             phaseTitle={phaseLabel}
             phaseInteractionLocked={phaseInteractionLocked}
@@ -2015,6 +2214,9 @@ function LiveChatPhasePage() {
             phaseStickerSrc={`/assets/openlife-journey/sticker-${phase}.webp`}
             streamBlocksSessionSwitch={sending}
             threadsLoading={!threadsFetched || initLoading}
+            activePreview={activeThreadSidebarMeta?.preview}
+            activeTurnCount={activeThreadSidebarMeta?.turnCount}
+            activeLastAt={activeThreadSidebarMeta?.lastAt}
           />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {/* 报告已解锁：只读历史模式提示条 + 查看报告入口 */}
@@ -2075,11 +2277,10 @@ function LiveChatPhasePage() {
                   <div className="flex justify-center py-12">
                     <div className="flex gap-1.5">
                       {[0, 1, 2].map((i) => (
-                        <motion.div
+                        <span
                           key={i}
-                          className="w-2 h-2 rounded-full bg-neutral-400"
-                          animate={{ opacity: [0.3, 1, 0.3] }}
-                          transition={{ duration: 1.2, delay: i * 0.2, repeat: Infinity }}
+                          className="flow-loading-dot"
+                          style={{ animationDelay: `${i * 0.2}s` }}
                         />
                       ))}
                     </div>
@@ -2090,46 +2291,20 @@ function LiveChatPhasePage() {
                   </p>
                 ) : (
                   messages.map((m, idx) => {
-                    const msgIdxInFull = messages.findIndex((x) => x.id === m.id);
-                    const aiIndexForHandlers = msgIdxInFull >= 0 ? msgIdxInFull : idx;
                     return (
                     <div key={m.id} className={m.role === 'user' || m.type === 'dimension_conclusion' ? (m.role === 'user' ? 'flow-msg-user' : '') : ''}>
                       {m.type === 'dimension_conclusion' && m.conclusionData ? (
-                        <div className="flow-msg-conclusion-wrap">
-                          <DimensionConclusionCard
-                            phase={phaseClass}
-                            data={m.conclusionData}
-                            isCompleted={isSelectedCompleted || !!m.conclusionConfirmed}
-                            inline
-                            collapsed={!!m.conclusionCollapsed}
-                            interactionLocked={
-                              phaseInteractionLocked ||
-                              !!m.conclusionLocked ||
-                              m.id !== latestConclusionMessageId
-                            }
-                            onCollapsedChange={(collapsed) =>
-                              setMessages((prev) =>
-                                prev.map((msg) =>
-                                  msg.id === m.id ? { ...msg, conclusionCollapsed: collapsed } : msg
-                                )
-                              )
-                            }
-                            showActions={
-                              !phaseInteractionLocked &&
-                              !m.conclusionLocked &&
-                              !m.conclusionCollapsed &&
-                              m.id === latestConclusionMessageId
-                            }
-                            forbidHeaderCollapseWhileActions={
-                              !phaseInteractionLocked &&
-                              !m.conclusionLocked &&
-                              !m.conclusionCollapsed &&
-                              m.id === latestConclusionMessageId
-                            }
-                            onConfirm={handleConfirmConclusion}
-                            onContinueChat={() => handleContinueChat(m)}
-                          />
-                        </div>
+                        <ConclusionRow
+                          msg={m}
+                          data={m.conclusionData}
+                          phaseClass={phaseClass}
+                          isSelectedCompleted={isSelectedCompleted}
+                          phaseInteractionLocked={phaseInteractionLocked}
+                          isLatest={m.id === latestConclusionMessageId}
+                          onCollapsedChange={onConclusionCollapsedChange}
+                          onConfirm={onConfirmConclusionStable}
+                          onContinueChatFor={onContinueChatFor}
+                        />
                       ) : m.role === 'user' ? (
                         <div className="flow-msg-user-wrap">
                           {m.createdAt !== undefined && (
@@ -2195,31 +2370,21 @@ function LiveChatPhasePage() {
                           streaming={sending && idx === messages.length - 1}
                           thinkStreaming={m.thinkStreaming}
                           thinkChunkContent={m.thinkChunkContent}
-                          thinkPlaceholders={[
-                            t('explore.chat.thinkInProgress1'),
-                            t('explore.chat.thinkInProgress2'),
-                            t('explore.chat.thinkInProgress3'),
-                            t('explore.chat.thinkInProgress4'),
-                            t('explore.chat.thinkInProgress5'),
-                            t('explore.chat.thinkInProgress6'),
-                          ]}
+                          thinkPlaceholders={thinkPlaceholders}
                           timestamp={m.createdAt}
                           toolbarCopyTitle={t('explore.chat.messageToolbar.copy')}
                           toolbarLikeTitle={t('explore.chat.messageToolbar.like')}
                           toolbarSavepointTitle={savepointBusy ? '保存中…' : '保存为检查点'}
                           sessionId={backendSessionId ?? undefined}
-                          logIndex={messages
-                            .slice(0, aiIndexForHandlers)
-                            .filter((x) => x.role === 'assistant' && x.type !== 'dimension_conclusion')
-                            .length}
+                          logIndex={aiLogIndexById.get(m.id) ?? 0}
                           dimension={phase}
                           messageId={m.id}
-                          threadId={threads.find((t) => t.id === activeThreadId)?.id}
+                          threadId={activeThreadExists ? activeThreadId : undefined}
                           phaseKey={phase}
                           activationCode={activationCode ?? undefined}
                           onSavepoint={
-                            canUseAdminSavepoint && !savepointBusy && msgIdxInFull >= 0
-                              ? () => void handleOpenSavepointModal(m, aiIndexForHandlers)
+                            canUseAdminSavepoint && !savepointBusy
+                              ? handleSavepointClick
                               : undefined
                           }
                           hideToolbar={

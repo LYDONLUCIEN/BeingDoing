@@ -40,7 +40,10 @@ export default function RuminationV4Page({
   canContinue = true,
   continueDisabledHint = '',
 }: Props) {
-  const { state, init } = useRuminationV4Store();
+  /* 窄选择器（2026-10-05 性能优化）：state 引用不随流式 chunk 变化，
+     流式期间本页（含 ResizeObserver effect）不再逐 chunk 重渲染 */
+  const state = useRuminationV4Store((s) => s.state);
+  const init = useRuminationV4Store((s) => s.init);
   // Chat 外观配置 → 根节点 data-* 属性（背景/气泡/布局/皮肤/矩阵等）
   const { dataAttrs: chatAppearanceAttrs, style: chatAppearanceStyle } = useChatAppearanceAttrs();
   /** 页面布局（外观面板）：guided = 左组合列表 / 中对话 / 右选择器（stacked 时回退 classic 堆叠） */
@@ -273,11 +276,7 @@ export default function RuminationV4Page({
       {/* guided 锁屏：未确认组合时对话区锁定（对齐 HTML .guided-chat-lock） */}
       {isGuided && !state.active_combo_id && !finalSubmitted && (
         <div
-          className="absolute inset-0 z-20 flex items-center justify-center rounded-[20px] border border-white/60 bg-white/55 p-6"
-          style={{
-            backdropFilter: 'blur(14px) saturate(1.05)',
-            WebkitBackdropFilter: 'blur(14px) saturate(1.05)',
-          }}
+          className="absolute inset-0 z-20 flex items-center justify-center rounded-[20px] border border-white/60 bg-white/90 p-6"
           role="status"
         >
           <div className="flex max-w-[340px] flex-col items-center gap-3 rounded-2xl border border-[rgba(100,91,122,0.12)] bg-white/90 px-8 py-7 text-center shadow-[0_18px_46px_rgba(49,43,65,0.12)]">

@@ -12,7 +12,12 @@ import V4ComboMatrixSelector from './V4ComboMatrixSelector';
 import ConclusionCardEditable from './ConclusionCardEditable';
 
 export default function V4MatrixLeftPanel({ stacked = false }: { stacked?: boolean }) {
-  const { state, createAndStart, comboCache, error, clearError } = useRuminationV4Store();
+  /* 窄选择器（2026-10-05 性能优化） */
+  const state = useRuminationV4Store((s) => s.state);
+  const createAndStart = useRuminationV4Store((s) => s.createAndStart);
+  const comboCache = useRuminationV4Store((s) => s.comboCache);
+  const error = useRuminationV4Store((s) => s.error);
+  const clearError = useRuminationV4Store((s) => s.clearError);
   const [creating, setCreating] = useState(false);
 
   const activeCombo = useMemo(() => {
@@ -73,9 +78,7 @@ export default function V4MatrixLeftPanel({ stacked = false }: { stacked?: boole
           stacked ? '' : 'min-h-0 flex-1'
         }`}
         style={{
-          background: 'rgba(255,255,255,0.5)',
-          backdropFilter: 'blur(10px)',
-          WebkitBackdropFilter: 'blur(10px)',
+          background: 'rgba(255,255,255,0.9)',
         }}
       >
         <div

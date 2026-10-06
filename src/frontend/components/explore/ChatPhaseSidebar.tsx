@@ -1,8 +1,13 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, memo } from 'react';
 import { MessageSquare, Trash2 } from 'lucide-react';
-import type { ChatThread, DimensionConclusionData } from '@/lib/explore/threads';
+import type { ChatThread } from '@/lib/explore/threads';
+import {
+  getLastAssistantMessagePreview,
+  getTurnCount,
+  getLastMessageTime,
+} from '@/lib/explore/sidebarMeta';
 import { useLocale } from '@/hooks/useLocale';
 
 const SWIPE_DELETE_PX = 72;
@@ -19,41 +24,6 @@ function formatLastTime(ms: number, t: (k: string, p?: Record<string, string>) =
   const diff = (today.getTime() - threadDay.getTime()) / (24 * 60 * 60 * 1000);
   if (diff < 7) return t('explore.chat.daysAgo', { n: String(Math.floor(diff)) });
   return t('explore.chat.monthDay', { m: String(d.getMonth() + 1), d: String(d.getDate()) });
-}
-
-function conclusionDataPreview(d: DimensionConclusionData | undefined): string {
-  if (!d) return '';
-  const bits = [d.summary, d.ai_summary, d.final_answer, d.dimension_goal]
-    .map((x) => (typeof x === 'string' ? x.trim() : ''))
-    .filter(Boolean);
-  return bits[0] ?? '';
-}
-
-/** 最后一条助手回复（摘要），用于列表主文案（前四维对话） */
-function getLastAssistantMessagePreview(thread: ChatThread, noContent: string): string {
-  for (let i = thread.messages.length - 1; i >= 0; i--) {
-    const m = thread.messages[i];
-    if (m.role !== 'assistant') continue;
-    if (m.type === 'table_widget') continue;
-    let raw = m.content?.trim() ?? '';
-    if (!raw && m.type === 'dimension_conclusion') {
-      raw = conclusionDataPreview(m.conclusionData) || conclusionDataPreview(thread.dimensionConclusion);
-    }
-    if (!raw) continue;
-    return raw.replace(/\s+/g, ' ');
-  }
-  return noContent;
-}
-
-/** 对话轮数：用户消息数 */
-function getTurnCount(thread: ChatThread): number {
-  return thread.messages.filter((m) => m.role === 'user').length;
-}
-
-function getLastMessageTime(thread: ChatThread): number | null {
-  const last = thread.messages[thread.messages.length - 1];
-  if (last?.createdAt) return last.createdAt;
-  return thread.createdAt;
 }
 
 /** 导出为 Markdown，供用户复制存档 */
@@ -114,9 +84,16 @@ interface ChatPhaseSidebarProps {
   threadsLoading?: boolean;
   /** 侧栏底部阶段植物贴纸（data-chat-sidebar-art 控制显隐）；不传用默认贴纸 */
   phaseStickerSrc?: string;
+  /**
+   * 活动线程元信息（2026-10-05 性能优化）：父级对流式中的线程传原始值，
+   * 避免注入整份 messages 导致每帧重渲染；不传时回退 thread.messages 内部计算。
+   */
+  activePreview?: string;
+  activeTurnCount?: number;
+  activeLastAt?: number | null;
 }
 
-export default function ChatPhaseSidebar({
+function ChatPhaseSidebar({
   threads,
   activeThreadId,
   onSelectThread,
@@ -129,6 +106,9 @@ export default function ChatPhaseSidebar({
   streamBlocksSessionSwitch = false,
   threadsLoading = false,
   phaseStickerSrc = '/assets/openlife-journey/sticker-values.webp',
+  activePreview,
+  activeTurnCount,
+  activeLastAt,
 }: ChatPhaseSidebarProps) {
   const { t } = useLocale();
   const [deleteTarget, setDeleteTarget] = useState<ChatThread | null>(null);
@@ -288,10 +268,16 @@ export default function ChatPhaseSidebar({
           ) : null}
           {threads.map((thread) => {
             const isActive = thread.id === activeThreadId;
-            const lastTime = getLastMessageTime(thread);
             const noContent = t('explore.chat.noContent');
-            const summary = getLastAssistantMessagePreview(thread, noContent);
-            const turnCount = getTurnCount(thread);
+            // 活动线程：优先用父级传入的实时元信息（流式预览），否则回退线程自带消息
+            const lastTime =
+              isActive && activeLastAt != null ? activeLastAt : getLastMessageTime(thread);
+            const summary =
+              isActive && activePreview !== undefined
+                ? activePreview || noContent
+                : getLastAssistantMessagePreview(thread, noContent);
+            const turnCount =
+              isActive && activeTurnCount !== undefined ? activeTurnCount : getTurnCount(thread);
             const lastTimeStr = lastTime ? formatLastTime(lastTime, t) : '';
             const off = offsetForThread(thread.id);
             const dragging = dragRef.current?.threadId === thread.id;
@@ -428,7 +414,7 @@ export default function ChatPhaseSidebar({
 
       {deleteTarget && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45"
           onClick={() => setDeleteTarget(null)}
           role="presentation"
         >
@@ -465,3 +451,7 @@ export default function ChatPhaseSidebar({
     </aside>
   );
 }
+
+/* memo 化（2026-10-05 性能优化）：props 全部原始值/稳定引用，
+   流式输出期间侧栏不再随每帧消息更新重渲染 */
+export default memo(ChatPhaseSidebar);

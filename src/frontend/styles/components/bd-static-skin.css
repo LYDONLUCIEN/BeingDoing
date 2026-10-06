@@ -1,0 +1,213 @@
+/* ════════════════════════════════════════════════════════
+   bd-static-skin.css — 静态性能皮肤（2026-10-05 性能优化 Phase 1）
+
+   目标：老电脑（软件合成/集显）进入 chat 页不再卡死。
+   原则：保持现有布局与审美——装饰动画冻结在自然位、磨砂玻璃换
+   视觉等价的半透明实色、滚动容器 mask 换父级渐变遮罩条。
+   布局、字号、颜色体系、功能动效（加载/思考/重试指示）全部不动。
+
+   ⚠ 本文件必须保持在 globals.css 所有 @import 的最后（同特异性靠
+   源顺序取胜；journey/chat-defaults 的 !important 这里需同级对抗）。
+   Phase 2（dashboard/首页/全站外壳）继续往本文件追加。
+
+   2026-10-05 基线（headless 软件渲染模拟老电脑）：
+   - values chat 空闲平均帧 386ms（≈2.6fps）；沉淀 170ms（≈5.9fps）
+   ════════════════════════════════════════════════════════ */
+
+/* ── 1. 装饰动画冻结（对全员；admin「动效暂停」开关不再控制这些元素）── */
+
+/* 前四阶段：3× 80vw silk blob（blur 120px + 38s 无限旋转）→ 冻结在布局位
+   （keyframe 0% 即 rotate(0) scale(1)，静止帧与原位一致，视觉无损） */
+.careering-bg-root .careering-silk-blob {
+  animation: none !important;
+  will-change: auto !important;
+}
+
+/* 沉淀 V4：67vw×86vh 流光 blob（30s 无限漂移）→ 冻结 */
+.rumination-journey-backdrop .rumination-flow-blob {
+  animation: none !important;
+  will-change: auto !important;
+}
+
+/* mesh 引擎兜底（ChatUiPreview 预览用）：45vw 光球 float 18s → 冻结 */
+.flow-phase-blob {
+  animation: none !important;
+  will-change: auto !important;
+}
+
+/* 发送键呼吸光晕（纯装饰；流式状态由停止图标+思考呼吸点表达） */
+.flow-light .flow-send-glow {
+  display: none !important;
+}
+
+/* ── 2. backdrop-filter → 视觉等价半透明实色 ──────────────
+   换算：近白纸底上 rgba(255,255,255,α)+blur ≈ 实色 α'≈α+(1-α)·0.85。
+   磨砂必须移除：只要背景层仍在重绘（滚动/流式），backdrop-filter
+   就会逐帧重新采样，软件合成下每帧都是全屏高斯模糊。 */
+
+/* —— chat 页（前四阶段）—— */
+
+/* 侧栏：0.68+blur24 → 0.94 实色 */
+.flow-light.careering-matte .careering-sidebar {
+  background: rgba(251, 252, 251, 0.94) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* 顶栏：0.34+blur12 → 0.88 */
+.careering-chat-header {
+  background: rgba(251, 252, 251, 0.88);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* AI 气泡：现状默认已被 openlife-chat-defaults 墨色实底接管；
+   此处仅防御性压掉 journey 的 blur14（保底任何外观分支都无磨砂） */
+.flow-light.careering-matte .flow-msg-ai-content {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* 结论卡：0.82+blur20 → 0.96（同时压掉 flow-chat-light 基类 blur12） */
+.flow-light.careering-matte .flow-conclusion-card,
+.flow-light .flow-conclusion-card {
+  background: rgba(255, 255, 255, 0.96) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* 输入框：0.92+blur16 → 0.99 */
+.flow-light.careering-matte .careering-input-dock .flow-input-box {
+  background: rgba(255, 255, 255, 0.99);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* 回到底按钮：0.90+blur10 → 0.98 */
+.flow-light .flow-chat-box .flow-scroll-bottom-btn {
+  background: rgba(255, 255, 255, 0.98);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* —— 沉淀 V4 —— */
+
+/* V4 顶栏：0.34+blur12 → 0.88 */
+.rumination-v4-root .journey-rumination-header {
+  background: rgba(251, 252, 251, 0.88);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.rumination-v4-root.flow-light[data-rumination-layout='studio'] .journey-rumination-header {
+  background: rgba(255, 255, 255, 0.92);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* V4 卡片（含右侧对话卡）：0.55+blur12 → 0.92 */
+.rumination-v4-root .rumination-beautiful-card,
+.rumination-v4-root .rumination-beautiful-card--chat {
+  background: rgba(255, 255, 255, 0.92);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* V4 外壳（classic/studio 布局）：0.66+blur22 → 0.93 */
+.v4-outer-shell {
+  background: rgba(255, 255, 255, 0.93);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* ── 3. 滚动容器 mask-image → 父级渐变遮罩条 ─────────────
+   mask 挂在滚动容器上，每滚动帧都要对整个滚动内容重做遮罩合成；
+   改为不滚动的定位父级（.flow-chat-box，两处 JSX 均带 relative 类）
+   叠 ::before/::after 渐变条，视觉等价（内容在上下沿渐隐）。 */
+
+.flow-light.careering-matte .flow-chat-body,
+.rumination-beautiful-root .rumination-beautiful-chat-panel .rumination-chat-body-fade {
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+  -webkit-mask-repeat: no-repeat !important;
+  mask-repeat: no-repeat !important;
+}
+
+/* chat 页：上沿 2rem / 下沿 5.5rem，纸白渐变（与页面底色一致，仍可透出背景） */
+.flow-light.careering-matte .flow-chat-box::before,
+.flow-light.careering-matte .flow-chat-box::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.flow-light.careering-matte .flow-chat-box::before {
+  top: 0;
+  height: var(--careering-scroll-fade-top, 2rem);
+  background: linear-gradient(to bottom, rgba(251, 252, 251, 0.92), rgba(251, 252, 251, 0));
+}
+.flow-light.careering-matte .flow-chat-box::after {
+  bottom: 0;
+  height: var(--careering-scroll-fade-bottom, 5.5rem);
+  background: linear-gradient(to top, rgba(251, 252, 251, 0.92), rgba(251, 252, 251, 0));
+}
+
+/* 沉淀 V4：上沿 2rem / 下沿 6rem，冷调纸白（与 v4 根背景 #fbfbfe 一致） */
+.rumination-beautiful-root .flow-chat-box.rumination-beautiful-chat-panel::before,
+.rumination-beautiful-root .flow-chat-box.rumination-beautiful-chat-panel::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.rumination-beautiful-root .flow-chat-box.rumination-beautiful-chat-panel::before {
+  top: 0;
+  height: var(--rum-scroll-fade-top, 2rem);
+  background: linear-gradient(to bottom, rgba(250, 250, 252, 0.92), rgba(250, 250, 252, 0));
+}
+.rumination-beautiful-root .flow-chat-box.rumination-beautiful-chat-panel::after {
+  bottom: 0;
+  height: var(--rum-scroll-fade-bottom, 6rem);
+  background: linear-gradient(to top, rgba(250, 250, 252, 0.92), rgba(250, 250, 252, 0));
+}
+
+/* V4 输入区在 .flow-chat-box 内部（与 chat 页不同，chat 页 dock 在 box 外）：
+   提到遮罩条之上，恢复原 mask 方案「渐隐只作用于滚动内容」的视觉——
+   否则近白渐变条会蒙在输入胶囊/发送按钮上（pointer-events 不受影响，但按钮会泛灰） */
+.rumination-beautiful-root .flow-chat-box.rumination-beautiful-chat-panel .careering-input-dock {
+  position: relative;
+  z-index: 2;
+}
+
+/* ════════════════════════════════════════════════════════
+   4. 功能动效（状态指示，勿删！）
+   性能清理时注意：以下属于「用户需要知道系统在工作」的功能反馈，
+   与上方装饰动画不同，任何「去动画」清理都不应触碰本节。
+   保留清单（散布在其他文件）：
+   - flow-think-pulse（思考中呼吸点）  flow-chat-light.css
+   - flow-msg-retrying-pulse（重试脉冲）flow-chat-light.css
+   - Tailwind animate-spin / animate-pulse（加载转圈等）
+   - PhaseCelebrateBurst（有限时长庆祝粒子 canvas）
+   ════════════════════════════════════════════════════════ */
+
+/* 初始化加载三点（替代原 framer-motion 实现，节奏/错峰/透明度区间一致；
+   仅动 opacity，合成器友好，主线程零开销） */
+.flow-loading-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: #a3a3a3; /* neutral-400，与原 bg-neutral-400 一致 */
+  animation: flow-loading-dot-pulse 1.2s ease-in-out infinite;
+}
+@keyframes flow-loading-dot-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}

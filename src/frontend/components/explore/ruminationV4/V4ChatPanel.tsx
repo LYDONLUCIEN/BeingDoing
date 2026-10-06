@@ -11,7 +11,7 @@
  * - 分析中(ADR-0015)：输入锁定,提示「正在分析中」
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { ArrowUp, Square } from 'lucide-react';
 import { useRuminationV4Store } from '@/stores/ruminationV4Store';
@@ -22,6 +22,9 @@ import type { ComboMessage } from '@/lib/explore/ruminationV4Api';
 const FlowAiMessage = dynamic(() => import('@/components/explore/FlowAiMessage'), {
   ssr: false,
 });
+
+/** 思考占位文案：模块级常量（原每条消息每次渲染新建数组，击穿 FlowAiMessage memo） */
+const V4_THINK_PLACEHOLDERS = ['正在思考…', '整理思路中…', '组织回复…'];
 
 interface Props {
   comboId: string | null;
@@ -35,21 +38,23 @@ function formatMsgTime(ts?: string): string {
 }
 
 export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
-  const {
-    comboCache,
-    beginDiscussion,
-    sendChat,
-    abortChat,
-    isStreaming,
-    streamingText,
-    thinkStreaming,
-    thinkChunkContent,
-    error,
-    init,
-    clearError,
-    activationCode,
-    state,
-  } = useRuminationV4Store();
+  /* 窄选择器订阅（2026-10-05 性能优化）：原先整店解构，store 每个流式 chunk
+     set() 都触发本面板之外的全部订阅组件重渲染。本面板是唯一有意逐 chunk
+     重渲染的组件（渲染流式气泡）；其余组件已各自窄化。 */
+  const comboCache = useRuminationV4Store((s) => s.comboCache);
+  const beginDiscussion = useRuminationV4Store((s) => s.beginDiscussion);
+  const sendChat = useRuminationV4Store((s) => s.sendChat);
+  const abortChat = useRuminationV4Store((s) => s.abortChat);
+  const isStreaming = useRuminationV4Store((s) => s.isStreaming);
+  const streamingText = useRuminationV4Store((s) => s.streamingText);
+  const thinkStreaming = useRuminationV4Store((s) => s.thinkStreaming);
+  const thinkChunkContent = useRuminationV4Store((s) => s.thinkChunkContent);
+  const error = useRuminationV4Store((s) => s.error);
+  const init = useRuminationV4Store((s) => s.init);
+  const clearError = useRuminationV4Store((s) => s.clearError);
+  const activationCode = useRuminationV4Store((s) => s.activationCode);
+  /** 终选已提交（布尔原始值；不订阅整个 state） */
+  const finalSubmitted = useRuminationV4Store((s) => !!s.state?.final_selection?.submitted);
   const { user } = useAuthStore();
 
   const [input, setInput] = useState('');
@@ -57,6 +62,10 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   /** 记录上一帧是否在流式中，用于流式结束后把光标放回输入框 */
   const wasStreamingRef = useRef(false);
+  /** 本次流式开始时间（替代逐渲染 Date.now()，保 FlowAiMessage 可 memo） */
+  const streamStartRef = useRef(0);
+  /** 底部跟随 rAF 节流（原逐 chunk 同步写 scrollTop + 强制布局） */
+  const scrollRafRef = useRef<number | null>(null);
 
   const userInitials = useMemo(
     () => (user?.username || user?.email || 'U').slice(0, 2).toUpperCase(),
@@ -70,8 +79,6 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
   const isReadOnly = combo?.status === 'concluded' || combo?.status === 'abandoned';
   // ADR-0015:判定分析中锁对话输入(锁是 combo 级的,可切换/新建其他组合)
   const isAnalyzing = combo?.balance_analysis?.status === 'analyzing';
-  /** 终选已提交：整页回看模式，对话输入与「开始讨论」全部禁用 */
-  const finalSubmitted = !!state?.final_selection?.submitted;
 
   // 为每条消息补充稳定 id / 时间，用于 key、时间戳、埋点
   // 过滤空内容消息(历史 tool-only 轮次可能落盘过空 assistant 消息,避免空气泡)
@@ -87,14 +94,44 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
     [messages, comboId]
   );
 
-  useEffect(() => {
-    if (bodyRef.current) {
-      bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+  /** 每条消息的 log_index 单遍预计算（原 render 内 slice+filter，O(n²)/chunk） */
+  const aiLogIndexById = useMemo(() => {
+    const map = new Map<string, number>();
+    let count = 0;
+    for (const m of enrichedMessages) {
+      map.set(m.id, count);
+      if (m.role === 'assistant') count += 1;
     }
-  }, [enrichedMessages.length, streamingText, thinkStreaming]);
+    return map;
+  }, [enrichedMessages]);
 
-  // 流式结束（含中止）后 textarea 重新可用时，自动聚焦，用户可直接继续输入
+  const scheduleScrollToBottom = useCallback(() => {
+    if (scrollRafRef.current != null) return;
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+      if (bodyRef.current) {
+        bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+      }
+    });
+  }, []);
+
   useEffect(() => {
+    scheduleScrollToBottom();
+  }, [enrichedMessages.length, streamingText, thinkStreaming, scheduleScrollToBottom]);
+
+  useEffect(
+    () => () => {
+      if (scrollRafRef.current != null) cancelAnimationFrame(scrollRafRef.current);
+    },
+    []
+  );
+
+  // 流式结束（含中止）后 textarea 重新可用时，自动聚焦，用户可直接继续输入；
+  // 进入流式时记录开始时间（流式气泡时间戳稳定化）
+  useEffect(() => {
+    if (isStreaming && !wasStreamingRef.current) {
+      streamStartRef.current = Date.now();
+    }
     if (wasStreamingRef.current && !isStreaming) {
       inputRef.current?.focus();
     }
@@ -225,11 +262,7 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
                         userInitials={userInitials}
                         comboId={comboId}
                         activationCode={activationCode}
-                        aiLogIndex={
-                          enrichedMessages
-                            .slice(0, idx)
-                            .filter((x) => x.role === 'assistant').length
-                        }
+                        aiLogIndex={aiLogIndexById.get(m.id) ?? 0}
                       />
                     ))}
 
@@ -247,8 +280,8 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
                         toolbarSavepointTitle="保存"
                         thinkStreaming={thinkStreaming}
                         thinkChunkContent={thinkChunkContent}
-                        thinkPlaceholders={['正在思考…', '整理思路中…', '组织回复…']}
-                        timestamp={Date.now()}
+                        thinkPlaceholders={V4_THINK_PLACEHOLDERS}
+                        timestamp={streamStartRef.current || undefined}
                         sessionId={activationCode ?? undefined}
                         messageId={`${comboId}-streaming-assistant`}
                         threadId={comboId ?? undefined}
@@ -341,10 +374,9 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
           <div
             className="rounded-2xl px-5 py-3.5 text-center text-[13px] font-[700] text-[#536184]"
             style={{
-              background: 'rgba(255,255,255,0.82)',
+              background: 'rgba(255,255,255,0.95)',
               border: '1px solid rgba(255,255,255,0.7)',
               boxShadow: '0 10px 28px rgba(33,48,79,0.08)',
-              backdropFilter: 'blur(8px)',
             }}
           >
             在选择器选完热爱与优势后
@@ -357,8 +389,8 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
   );
 }
 
-/** 用户/AI 气泡 DOM 对齐 v3 rumination workbench */
-function MessageRow({
+/** 用户/AI 气泡 DOM 对齐 v3 rumination workbench（memo：流式期间历史行不再重渲染） */
+const MessageRow = memo(function MessageRow({
   msg,
   isLast,
   isStreaming,
@@ -431,7 +463,7 @@ function MessageRow({
       toolbarCopyTitle="复制"
       toolbarLikeTitle="点赞"
       toolbarSavepointTitle="保存"
-      thinkPlaceholders={['正在思考…', '整理思路中…', '组织回复…']}
+      thinkPlaceholders={V4_THINK_PLACEHOLDERS}
       timestamp={msg.createdAt}
       sessionId={activationCode ?? undefined}
       logIndex={aiLogIndex}
@@ -442,4 +474,4 @@ function MessageRow({
       activationCode={activationCode ?? undefined}
     />
   );
-}
+});
