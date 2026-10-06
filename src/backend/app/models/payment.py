@@ -5,11 +5,14 @@
 - payment_order_lines: 订单明细行（优惠分摊口径，退款上限依据，2026-10-05）
 - payment_refunds: 退款申请单（全退/部分退统一状态机，2026-10-05）
 - payment_orders: 支付订单（购买者、商品、渠道、金额、状态）
-- coupons: 折扣券（通用码、固定金额、无门槛、永久有效、核销一次即作废）
+- coupons: 折扣券（通用码、固定金额、无门槛、限期有效；支持 n 次核销，n=1 单次）
+- coupon_redemptions: 券核销记录（多次券按行记账，2026-10-06）
 - subscriptions: 会员订阅（P3 用，本期仅建表）
 
 金额一律整数分存储。券状态机：unused → locked（下单锁定）→ used（支付成功核销）；
 订单关闭/取消时 locked → unused 释放。
+n>1 共享券（促销码模式）：券级 status 恒为 unused 直到 used_count >= max_uses，
+锁定不再改券级状态而是占名额（locked_count 原子自增守卫）。
 """
 
 import uuid
@@ -60,7 +63,7 @@ class PaymentOrder(Base):
     channel = Column(String(16), nullable=False)
     status = Column(String(16), default="pending", nullable=False, index=True)
     channel_transaction_id = Column(String(64), nullable=True)
-    delivered_code = Column(String(16), nullable=True)
+    delivered_code = Column(String(64), nullable=True)
     # 列名保留 qr_code（兼容历史），实际存支付跳转 URL/凭证（page.pay URL 约 800~1000 字符，故用 Text）
     qr_code = Column(Text, nullable=True)
     # 商品特定载荷（JSON 文本）：renewal={target_code, added_days}；
@@ -198,20 +201,27 @@ class Coupon(Base):
     """折扣券表
 
     固定金额（分）、无门槛抵扣码；有有效期（expires_at，默认 90 天，admin 可调），
-    可绑定归属用户（owner_user_id，None=未绑定流通券），核销一次即作废。
+    可绑定归属用户（owner_user_id，None=未绑定流通券）。
+    支持多次核销（max_uses，2026-10-06）：n=1 为原单次语义（单槽字段照旧）；
+    n>1 为促销码模式（流通券、每用户每券限 1 次、核销记 coupon_redemptions 行）。
 
     Attributes:
         id: 券 ID（UUID，主键）
-        code: 券码（12 位大写字母+数字，唯一）
+        code: 券码（新码 Q-+8 位防混淆字符；存量 12 位大写字母+数字，唯一）
         amount: 面额（分）
-        status: 状态（unused/locked/used/void；expired 为 unused 的惰性派生态，不落库）
+        max_uses: 总核销次数上限（1-10000；默认 1）
+        used_count: 已核销次数（原子自增/自减，与单槽字段双写仅 n=1）
+        locked_count: 锁定中名额数（n>1 并发锁守卫用）
+        status: 状态（unused/locked/used/void；expired 为 unused 的惰性派生态，不落库；
+            n>1 券锁定不改 status，used_count>=max_uses 即视为用满）
         expires_at: 过期时间（unused 且 expires_at<now 即视为已过期；locked 免疫）
-        owner_user_id: 归属用户 ID（发放即绑定/下单认领；None=未绑定流通券）
+        owner_user_id: 归属用户 ID（发放即绑定/下单认领；None=未绑定流通券；n>1 恒 None）
         voided_at: 作废时间（软删除，admin 可恢复）
-        locked_order_id: 锁定它的订单 ID（locked 时填）
-        used_by_user_id: 核销用户 ID
-        used_order_id: 核销订单 ID
-        used_at: 核销时间
+        suspended_at: 停用时间（D6 停机开关：已核销保留有效、剩余名额冻结；NULL=未停用）
+        locked_order_id: 锁定它的订单 ID（locked 时填；仅 n=1 使用）
+        used_by_user_id: 核销用户 ID（仅 n=1 使用；n>1 见 coupon_redemptions）
+        used_order_id: 核销订单 ID（仅 n=1 使用）
+        used_at: 核销时间（仅 n=1 使用）
         source: 来源（admin / email_auto）
         created_by: 创建人用户 ID（admin 创建时填）
         created_at: 创建时间
@@ -222,10 +232,15 @@ class Coupon(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     code = Column(String(32), unique=True, nullable=False, index=True)
     amount = Column(Integer, nullable=False)
+    # 总核销次数上限 + 计数器（迁移 024；存量券 backfill 为 1）
+    max_uses = Column(Integer, default=1, nullable=False)
+    used_count = Column(Integer, default=0, nullable=False)
+    locked_count = Column(Integer, default=0, nullable=False)
     status = Column(String(16), default="unused", nullable=False, index=True)
     expires_at = Column(DateTime, nullable=True)
     owner_user_id = Column(String(36), nullable=True, index=True)
     voided_at = Column(DateTime, nullable=True)
+    suspended_at = Column(DateTime, nullable=True)
     locked_order_id = Column(String(36), nullable=True)
     used_by_user_id = Column(String(36), nullable=True)
     used_order_id = Column(String(36), nullable=True)
@@ -233,6 +248,39 @@ class Coupon(Base):
     source = Column(String(16), default="admin", nullable=False)
     created_by = Column(String(36), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class CouponRedemption(Base):
+    """券核销记录（多次券按行记账，2026-10-06；n=1 新券同样双写，历史数据不回填）
+
+    一次「锁定→核销」生命周期一行；退款全额成功按行回退（used → refunded + used_count-1）。
+
+    Attributes:
+        id: 记录 ID（UUID，主键）
+        coupon_id: 券 ID（外键 → coupons.id）
+        order_id: 订单 ID（外键 → payment_orders.id，唯一——一单一券一核销行）
+        user_id: 核销用户 ID
+        status: 行状态（locked/used/released/refunded）
+        locked_at: 锁定时间
+        used_at: 核销时间
+        refunded_at: 退款回退时间
+    """
+
+    __tablename__ = "coupon_redemptions"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    coupon_id = Column(
+        String(36), ForeignKey("coupons.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    order_id = Column(
+        String(36), ForeignKey("payment_orders.id", ondelete="CASCADE"),
+        nullable=False, unique=True,
+    )
+    user_id = Column(String(36), nullable=False, index=True)
+    status = Column(String(16), default="locked", nullable=False, index=True)
+    locked_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    refunded_at = Column(DateTime, nullable=True)
 
 
 class ConsultationBooking(Base):
