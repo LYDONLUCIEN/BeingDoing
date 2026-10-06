@@ -8,7 +8,13 @@ import { apiClient } from '@/lib/api/client';
 
 // ─── 类型定义 ─────────────────────────────────────────────
 
-export type CouponStatus = 'unused' | 'locked' | 'used' | 'expired' | 'void';
+export type CouponStatus =
+  | 'unused'
+  | 'locked'
+  | 'used'
+  | 'expired'
+  | 'suspended'
+  | 'void';
 
 export type CouponSource = 'admin' | 'email_auto';
 
@@ -17,6 +23,12 @@ export interface CouponItem {
   code: string;
   /** 面额（分） */
   amount: number;
+  /** 总核销次数上限（1=单次券，>1=共享促销码） */
+  max_uses: number;
+  /** 已核销次数 */
+  used_count: number;
+  /** 锁定中名额数 */
+  locked_count: number;
   status: CouponStatus;
   source: CouponSource;
   created_at: string;
@@ -26,10 +38,12 @@ export interface CouponItem {
   locked_order_no?: string | null;
   /** 有效期（ISO8601，null=不限） */
   expires_at: string | null;
-  /** 绑定用户邮箱（null=未绑定） */
+  /** 绑定用户邮箱（null=未绑定；多次券恒 null） */
   owner_email: string | null;
   /** 作废时间（软删除，null=未作废） */
   voided_at: string | null;
+  /** 停用时间（停机开关，null=未停用） */
+  suspended_at: string | null;
 }
 
 export interface CouponListResult {
@@ -44,6 +58,8 @@ export interface CreatedCoupon {
   code: string;
   /** 面额（分） */
   amount: number;
+  /** 总核销次数上限（1=单次券，>1=共享促销码） */
+  max_uses: number;
   /** 有效期（ISO8601，null=不限） */
   expires_at?: string | null;
 }
@@ -100,11 +116,13 @@ export async function listCoupons(params?: {
   return (res.data ?? { items: [], total: 0, page: 1, page_size: 20 }) as CouponListResult;
 }
 
-/** 批量创建折扣券（定金额，count 1-500），amount 单位：分；ttl_days 不传用全局默认 */
+/** 批量创建折扣券（定金额，count 1-500），amount 单位：分；ttl_days 不传用全局默认；
+ * max_uses 总核销次数（1-10000，>1 为共享促销码：先到先得、每账号限一次） */
 export async function createCoupons(payload: {
   amount: number;
   count: number;
   ttl_days?: number;
+  max_uses?: number;
 }): Promise<{ created: CreatedCoupon[] }> {
   const res = await apiClient.post('/admin/coupons', payload);
   return (res.data ?? { created: [] }) as { created: CreatedCoupon[] };
@@ -133,6 +151,18 @@ export async function deleteCoupon(id: string): Promise<void> {
 export async function restoreCoupon(id: string): Promise<{ id: string; code: string; status: CouponStatus }> {
   const res = await apiClient.post(`/admin/coupons/${encodeURIComponent(id)}/restore`);
   return (res.data ?? {}) as { id: string; code: string; status: CouponStatus };
+}
+
+/** 停用折扣券（停机开关：已核销保留有效，剩余名额立即冻结） */
+export async function suspendCoupon(id: string): Promise<{ id: string; code: string; suspended: boolean }> {
+  const res = await apiClient.post(`/admin/coupons/${encodeURIComponent(id)}/suspend`);
+  return (res.data ?? {}) as { id: string; code: string; suspended: boolean };
+}
+
+/** 启用折扣券（解除停用，剩余名额恢复可用） */
+export async function resumeCoupon(id: string): Promise<{ id: string; code: string; suspended: boolean }> {
+  const res = await apiClient.post(`/admin/coupons/${encodeURIComponent(id)}/resume`);
+  return (res.data ?? {}) as { id: string; code: string; suspended: boolean };
 }
 
 /** 读取折扣券全局配置（默认有效期天数） */

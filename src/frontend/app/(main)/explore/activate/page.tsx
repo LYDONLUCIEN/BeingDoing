@@ -23,6 +23,7 @@ import { fetchAdminSystemSettings } from '@/lib/api/admin';
 import { useLocale } from '@/hooks/useLocale';
 import { authApi } from '@/lib/api/auth';
 import { listMyCodes } from '@/lib/api/activation';
+import { normalizeActivationCode } from '@/lib/codeFormat';
 import PurchaseModal from '@/components/payment/PurchaseModal';
 
 function useActivateBg() {
@@ -155,12 +156,13 @@ function ActivatePageContent() {
   }, [code]);
 
   const handleActivate = async () => {
-    const trimmed = code.trim();
-    if (!trimmed) return;
+    // 归一化（大小写/空白/全角横杠/裸码补前缀）后提交；后端亦兜底归一化
+    const normalized = normalizeActivationCode(code);
+    if (!normalized) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await apiClient.post('/simple-auth/activate', { code: trimmed });
+      const res = await apiClient.post('/simple-auth/activate', { code: normalized });
       const activationCode: string = res.data.activation_code;
       const sessionId: string | undefined = res.data.activation_session_id;
       const workspaceKind = String(res.data.workspace_kind || '').toLowerCase();

@@ -8,6 +8,7 @@ import { listMyCodes, type CodeType, type MyCodeItem } from '@/lib/api/activatio
 import { setLastActivationCode } from '@/lib/explore/session';
 import { fetchMyPurchasedCodes, type PurchasedCodeItem } from '@/lib/api/teamAnalysis';
 import { formatLocalDateTime, toDate } from '@/lib/utils/formatTime';
+import { normalizeActivationCode } from '@/lib/codeFormat';
 import PurchaseModal from '@/components/payment/PurchaseModal';
 import UpgradeTrialModal from '@/components/payment/UpgradeTrialModal';
 import FreeRenewalClaimModal from '@/components/payment/FreeRenewalClaimModal';
@@ -321,7 +322,8 @@ export default function DashboardCodesPage() {
   };
 
   const handleBindCode = async () => {
-    const value = bindCode.trim().toUpperCase();
+    // 归一化（大小写/空白/全角横杠/裸码补 OPENLIFE- 前缀）；后端亦兜底归一化
+    const value = normalizeActivationCode(bindCode);
     if (!value || binding) return;
     setBinding(true);
     setBindStatus(null);

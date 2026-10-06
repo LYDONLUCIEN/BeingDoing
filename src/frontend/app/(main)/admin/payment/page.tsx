@@ -12,6 +12,8 @@ import {
   fetchCouponConfig,
   listCoupons,
   restoreCoupon,
+  resumeCoupon,
+  suspendCoupon,
   updateCouponAmount,
   updateCouponConfig,
   updateCouponExpiry,
@@ -35,6 +37,7 @@ const STATUS_LABEL: Record<CouponStatus, string> = {
   locked: '锁定中',
   used: '已使用',
   expired: '已过期',
+  suspended: '已停用',
   void: '已作废',
 };
 
@@ -43,6 +46,7 @@ const STATUS_COLOR: Record<CouponStatus, string> = {
   locked: 'bg-amber-100 text-amber-700 border-amber-200',
   used: 'bg-neutral-200 text-neutral-600 border-neutral-300',
   expired: 'bg-amber-100 text-amber-700 border-amber-200',
+  suspended: 'bg-orange-100 text-orange-700 border-orange-200',
   void: 'bg-neutral-200 text-neutral-600 border-neutral-300',
 };
 
@@ -67,6 +71,7 @@ export default function AdminPaymentPage() {
   const [createAmount, setCreateAmount] = useState('50');
   const [createCount, setCreateCount] = useState(1);
   const [createTtl, setCreateTtl] = useState('');
+  const [createMaxUses, setCreateMaxUses] = useState(1);
   const [creating, setCreating] = useState(false);
   const [lastCreated, setLastCreated] = useState<CreatedCoupon[]>([]);
 
@@ -207,13 +212,21 @@ export default function AdminPaymentPage() {
       }
       ttlDays = ttl;
     }
+    const maxUses = Math.floor(createMaxUses);
+    if (!Number.isFinite(maxUses) || maxUses < 1 || maxUses > 10000) {
+      setToast({ type: 'error', msg: '可用次数需为 1-10000 的整数' });
+      return;
+    }
     setCreating(true);
     try {
-      const res = await createCoupons({ amount: fen, count, ttl_days: ttlDays });
+      const res = await createCoupons({ amount: fen, count, ttl_days: ttlDays, max_uses: maxUses });
       setLastCreated(res.created);
       setToast({
         type: 'success',
-        msg: `已创建 ${res.created.length} 张折扣券（面额 ¥${fenToYuan(fen)}）`,
+        msg:
+          maxUses > 1
+            ? `已创建 ${res.created.length} 张共享券（面额 ¥${fenToYuan(fen)} × ${maxUses} 次 = 每张总补贴 ¥${fenToYuan(fen * maxUses)}）`
+            : `已创建 ${res.created.length} 张折扣券（面额 ¥${fenToYuan(fen)}）`,
       });
       await loadCoupons(1, statusFilter, sourceFilter);
     } catch (e: unknown) {
@@ -291,6 +304,39 @@ export default function AdminPaymentPage() {
     }
   };
 
+  const handleSuspend = async (item: CouponItem) => {
+    if (
+      !window.confirm(
+        `确认停用折扣券 ${item.code}？\n已核销的 ${item.used_count} 次保持有效，剩余名额将立即冻结（可随时「启用」恢复）。`,
+      )
+    ) {
+      return;
+    }
+    setRowWorkingId(item.id);
+    try {
+      await suspendCoupon(item.id);
+      setToast({ type: 'success', msg: `券 ${item.code} 已停用（剩余名额冻结）` });
+      await reload();
+    } catch (e: unknown) {
+      setToast({ type: 'error', msg: getApiErrorMessage(e, '停用失败') });
+    } finally {
+      setRowWorkingId(null);
+    }
+  };
+
+  const handleResume = async (item: CouponItem) => {
+    setRowWorkingId(item.id);
+    try {
+      await resumeCoupon(item.id);
+      setToast({ type: 'success', msg: `券 ${item.code} 已启用（剩余名额恢复可用）` });
+      await reload();
+    } catch (e: unknown) {
+      setToast({ type: 'error', msg: getApiErrorMessage(e, '启用失败') });
+    } finally {
+      setRowWorkingId(null);
+    }
+  };
+
   const handleDelete = async (item: CouponItem) => {
     if (
       !window.confirm(
@@ -318,7 +364,10 @@ export default function AdminPaymentPage() {
           支付管理
         </h1>
         <p className="text-sm" style={{ color: 'var(--bd-fg-muted)' }}>
-          折扣券为通用码：固定金额、无门槛、限期有效、核销一次即作废；下单锁定、关单释放。
+          折扣券：固定金额、无门槛、限期有效；下单锁定、关单释放。可用次数 1
+          为单次券（核销即作废）；大于 1 为共享促销码（先到先得、每账号限一次，
+          部分核销后不可作废只能「停用」冻结剩余名额）。新券码格式 Q-8 位（如
+          Q-K3M7X9A2），存量 12 位码继续可用。
         </p>
       </header>
 
@@ -436,6 +485,30 @@ export default function AdminPaymentPage() {
                   className="w-28 rounded-lg border border-bd-border bg-bd-overlay px-3 py-2 text-xs"
                 />
               </div>
+              <div className="space-y-1">
+                <p className="text-[11px] text-bd-subtle">可用次数（1-10000）</p>
+                <input
+                  type="number"
+                  min={1}
+                  max={10000}
+                  value={createMaxUses}
+                  onChange={(e) => setCreateMaxUses(Number(e.target.value || 1))}
+                  className="w-28 rounded-lg border border-bd-border bg-bd-overlay px-3 py-2 text-xs"
+                />
+              </div>
+              {/* 总补贴负债实时提示：面额 × 次数 × 数量 */}
+              <div className="space-y-1 min-w-[10rem]">
+                <p className="text-[11px] text-bd-subtle">
+                  {(() => {
+                    const fen = parseAmountToFen(createAmount) ?? 0;
+                    const n = Math.max(1, Math.floor(createMaxUses) || 1);
+                    const cnt = Math.max(1, Math.floor(createCount) || 1);
+                    return n > 1
+                      ? `共享券：每张 ¥${fenToYuan(fen)}×${n}，本批总补贴 ¥${fenToYuan(fen * n * cnt)}`
+                      : '次数 1 = 普通单次券';
+                  })()}
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={handleCreate}
@@ -451,7 +524,8 @@ export default function AdminPaymentPage() {
               <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 dark:bg-emerald-950/20 dark:border-emerald-800 px-4 py-3">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs text-emerald-700 dark:text-emerald-300">
-                    本次创建 {lastCreated.length} 张（面额 ¥{fenToYuan(lastCreated[0].amount)}）
+                    本次创建 {lastCreated.length} 张（面额 ¥{fenToYuan(lastCreated[0].amount)}
+                    {lastCreated[0].max_uses > 1 ? ` × ${lastCreated[0].max_uses} 次` : ''}）
                   </p>
                   <div className="flex items-center gap-2">
                     <button
@@ -512,6 +586,7 @@ export default function AdminPaymentPage() {
                 <option value="locked">锁定中</option>
                 <option value="used">已使用</option>
                 <option value="expired">已过期</option>
+                <option value="suspended">已停用</option>
                 <option value="void">已作废</option>
               </select>
             </label>
@@ -547,6 +622,7 @@ export default function AdminPaymentPage() {
                     <tr className="border-b border-bd-border text-[11px] text-bd-subtle">
                       <th className="px-2 py-2 text-left font-medium">券码</th>
                       <th className="px-2 py-2 text-left font-medium">面额</th>
+                      <th className="px-2 py-2 text-left font-medium">已用/总量</th>
                       <th className="px-2 py-2 text-left font-medium">状态</th>
                       <th className="px-2 py-2 text-left font-medium">来源</th>
                       <th className="px-2 py-2 text-left font-medium">有效期至</th>
@@ -578,6 +654,14 @@ export default function AdminPaymentPage() {
                         <td className="px-2 py-2 whitespace-nowrap text-[11px] text-bd-muted">
                           ¥{fenToYuan(item.amount)}
                         </td>
+                        <td className="px-2 py-2 whitespace-nowrap text-[11px] font-mono text-bd-muted">
+                          {item.used_count}/{item.max_uses}
+                          {item.locked_count > 0 && (
+                            <span className="ml-1 text-amber-600" title="锁定中名额">
+                              （锁{item.locked_count}）
+                            </span>
+                          )}
+                        </td>
                         <td className="px-2 py-2">
                           <span
                             className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-medium ${
@@ -601,7 +685,15 @@ export default function AdminPaymentPage() {
                           {formatTime(item.created_at)}
                         </td>
                         <td className="px-2 py-2 text-[11px] text-bd-muted">
-                          {item.status === 'used' ? (
+                          {item.max_uses > 1 ? (
+                            item.used_count > 0 ? (
+                              <span title="多次券按核销记录行记账，退款按行回退名额">
+                                已核销 {item.used_count} 次
+                              </span>
+                            ) : (
+                              '—'
+                            )
+                          ) : item.status === 'used' ? (
                             <span title={item.used_order_no ? `订单号：${item.used_order_no}` : undefined}>
                               {item.used_by_email || '—'} · {formatTime(item.used_at)}
                             </span>
@@ -614,7 +706,9 @@ export default function AdminPaymentPage() {
                           )}
                         </td>
                         <td className="px-2 py-2 whitespace-nowrap">
-                          {item.status === 'unused' || item.status === 'expired' ? (
+                          {item.status === 'unused' ||
+                          item.status === 'expired' ||
+                          item.status === 'suspended' ? (
                             editingId === item.id ? (
                               <div className="inline-flex items-center gap-1.5">
                                 <input
@@ -685,14 +779,35 @@ export default function AdminPaymentPage() {
                                 >
                                   改期
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDelete(item)}
-                                  disabled={rowWorkingId === item.id}
-                                  className="px-2 py-1 rounded-md border border-rose-200 bg-rose-50 text-rose-700 text-[11px] disabled:opacity-50"
-                                >
-                                  作废
-                                </button>
+                                {item.status === 'suspended' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleResume(item)}
+                                    disabled={rowWorkingId === item.id}
+                                    className="px-2 py-1 rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 text-[11px] disabled:opacity-50"
+                                  >
+                                    启用
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSuspend(item)}
+                                    disabled={rowWorkingId === item.id}
+                                    className="px-2 py-1 rounded-md border border-orange-200 bg-orange-50 text-orange-700 text-[11px] disabled:opacity-50"
+                                  >
+                                    停用
+                                  </button>
+                                )}
+                                {item.used_count === 0 && item.locked_count === 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDelete(item)}
+                                    disabled={rowWorkingId === item.id}
+                                    className="px-2 py-1 rounded-md border border-rose-200 bg-rose-50 text-rose-700 text-[11px] disabled:opacity-50"
+                                  >
+                                    作废
+                                  </button>
+                                )}
                               </div>
                             )
                           ) : item.status === 'void' ? (

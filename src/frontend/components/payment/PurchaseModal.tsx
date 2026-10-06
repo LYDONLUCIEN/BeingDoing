@@ -4,17 +4,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  CalendarDays,
   Check,
   ChevronDown,
   Copy,
-  FileText,
   Loader2,
-  MessageCircle,
-  UserCheck,
-  Users,
   X,
-  type LucideIcon,
 } from 'lucide-react';
 import { getApiErrorMessage } from '@/lib/api/client';
 import {
@@ -33,6 +27,7 @@ import {
   type ProductType,
 } from '@/lib/api/payment';
 import { toDate } from '@/lib/utils/formatTime';
+import { normalizeCouponCode } from '@/lib/codeFormat';
 import { useLocale } from '@/hooks/useLocale';
 import { CopyableCode } from '@/components/payment/CopyableCode';
 import UpgradeTrialModal from '@/components/payment/UpgradeTrialModal';
@@ -101,6 +96,410 @@ const FALLBACK_PRODUCTS: ProductItem[] = [
   },
 ];
 
+// ── 宽版方案选择视图子组件（UI 对齐设计稿 wiki/开发文档/10-05/newpay.html）──
+
+type WidePlanId = 'free' | 'quarterly_package' | 'annual_package';
+
+/** 套餐主题（free=绿 / quarterly=蓝 / annual=紫，取自设计稿色板） */
+const WIDE_PLAN_THEME: Record<
+  WidePlanId,
+  { deep: string; soft: string; border: string; mark: string; selectedShadow: string }
+> = {
+  free: {
+    deep: 'text-[#176a57]',
+    soft: 'bg-[#edf9f5]',
+    border: 'border-[#176a57]',
+    mark: 'border-[#147b65] bg-[#147b65]',
+    selectedShadow: 'shadow-[0_0_0_2px_rgba(20,123,101,0.17),0_14px_30px_rgba(31,48,64,0.08)]',
+  },
+  quarterly_package: {
+    deep: 'text-[#254f9d]',
+    soft: 'bg-[#eef4ff]',
+    border: 'border-[#254f9d]',
+    mark: 'border-[#3569d4] bg-[#3569d4]',
+    selectedShadow: 'shadow-[0_0_0_2px_rgba(53,105,212,0.17),0_14px_30px_rgba(31,48,64,0.08)]',
+  },
+  annual_package: {
+    deep: 'text-[#51399f]',
+    soft: 'bg-[#f3f0ff]',
+    border: 'border-[#51399f]',
+    mark: 'border-[#6f52c7] bg-[#6f52c7]',
+    selectedShadow: 'shadow-[0_0_0_2px_rgba(111,82,199,0.17),0_14px_30px_rgba(31,48,64,0.08)]',
+  },
+};
+
+/** 方案卡：编号 + 名称/定位 + 推荐标 + 一句话承诺 + ✓ 特性列表（付费卡可点选，免费卡仅展示） */
+function WidePlanCard({
+  plan,
+  index,
+  name,
+  role,
+  promise,
+  features,
+  recommend,
+  selected,
+  selectedTag,
+  selectable,
+  onSelect,
+}: {
+  plan: WidePlanId;
+  index: string;
+  name: string;
+  role: string;
+  promise: string;
+  features: string[];
+  recommend?: string;
+  selected: boolean;
+  selectedTag: string;
+  selectable: boolean;
+  onSelect: () => void;
+}) {
+  const theme = WIDE_PLAN_THEME[plan];
+  return (
+    <article
+      role={selectable ? 'button' : undefined}
+      tabIndex={selectable ? 0 : undefined}
+      aria-pressed={selectable ? selected : undefined}
+      aria-disabled={selectable ? undefined : true}
+      aria-label={selectable ? `${name}` : undefined}
+      onClick={selectable ? onSelect : undefined}
+      onKeyDown={
+        selectable
+          ? (e) => {
+              if (e.key !== 'Enter' && e.key !== ' ') return;
+              e.preventDefault();
+              onSelect();
+            }
+          : undefined
+      }
+      className={`relative flex min-h-[286px] w-full min-w-0 flex-col rounded-[19px] border bg-white/80 px-[19px] pb-[17px] pt-[19px] transition max-[860px]:min-h-0 ${
+        selected
+          ? `${theme.border} bg-white ${theme.selectedShadow}`
+          : `border-[#e3e8ec] ${
+              selectable
+                ? 'cursor-pointer hover:-translate-y-0.5 hover:border-[#b7c0ca] hover:bg-white hover:shadow-[0_12px_28px_rgba(31,48,64,0.07)]'
+                : 'cursor-default'
+            }`
+      } focus:outline-none focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-[3px] focus-visible:outline-[rgba(53,105,212,0.25)]`}
+    >
+      {selected && selectable && (
+        <span
+          className={`absolute right-[14px] top-[14px] rounded-full px-2 py-1 text-[10px] font-bold ${theme.soft} ${theme.deep}`}
+        >
+          {selectedTag}
+        </span>
+      )}
+      <div className="mb-3 flex min-h-[52px] items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-[9px]">
+          <span
+            aria-hidden
+            className={`grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[10px] text-[11px] font-extrabold tracking-[0.04em] ${theme.soft} ${theme.deep}`}
+          >
+            {index}
+          </span>
+          <span className="min-w-0">
+            <span className="block text-xl font-bold leading-[1.2] tracking-[-0.025em] text-[#182130]">
+              {name}
+            </span>
+            <span className="mt-[5px] block text-xs leading-[1.4] text-[#5f6c7d]">{role}</span>
+          </span>
+        </div>
+      </div>
+      {recommend && (
+        <span className="mb-2.5 inline-flex min-h-6 w-fit items-center rounded-full bg-[#eef4ff] px-[9px] text-[11px] font-bold text-[#254f9d]">
+          {recommend}
+        </span>
+      )}
+      <p className="mb-3 min-h-[44px] text-sm font-medium leading-[1.55] text-[#465366] max-[860px]:min-h-0">
+        {promise}
+      </p>
+      <ul className="grid list-none gap-2 p-0">
+        {features.map((f) => (
+          <li key={f} className="relative min-h-5 pl-6 text-[13px] leading-[1.55] text-[#465366]">
+            <span
+              aria-hidden
+              className={`absolute left-0 top-[2px] grid h-[17px] w-[17px] place-items-center rounded-full text-[11px] font-extrabold ${theme.soft} ${theme.deep}`}
+            >
+              ✓
+            </span>
+            {f}
+          </li>
+        ))}
+      </ul>
+    </article>
+  );
+}
+
+/** 价格选择条：sr-only 单选 + 选择圈 + 名称/说明 + 价格（免费版为静态虚线框，见调用处内联实现） */
+function WidePriceOption({
+  plan,
+  name,
+  note,
+  price,
+  selected,
+  ariaLabel,
+  disabled,
+  onSelect,
+}: {
+  plan: WidePlanId;
+  name: string;
+  note: string;
+  price: string;
+  selected: boolean;
+  ariaLabel: string;
+  disabled?: boolean;
+  onSelect: () => void;
+}) {
+  const theme = WIDE_PLAN_THEME[plan];
+  return (
+    <label
+      className={`relative flex min-h-[66px] min-w-0 items-center justify-between gap-3 rounded-[14px] border px-[13px] py-[11px] transition ${
+        selected
+          ? `${theme.border} ${theme.soft} shadow-[0_0_0_2px_rgba(53,105,212,0.12)]`
+          : 'border-[#cbd3dc] bg-white hover:border-[#9ba8b5]'
+      } ${disabled ? 'pointer-events-none opacity-70' : 'cursor-pointer'}`}
+    >
+      <input
+        type="radio"
+        name="purchase-plan"
+        value={plan}
+        className="sr-only"
+        checked={selected}
+        onChange={onSelect}
+        aria-label={ariaLabel}
+        disabled={disabled}
+      />
+      <span className="flex min-w-0 items-center gap-[9px]">
+        <span
+          aria-hidden
+          className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border-[1.5px] text-[11px] font-extrabold ${
+            selected ? `${theme.mark} text-white` : 'border-[#98a4af] bg-white text-transparent'
+          }`}
+        >
+          ✓
+        </span>
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold text-[#293644]">{name}</span>
+          <span className="mt-[3px] block text-[11px] leading-[1.35] text-[#5f6c7d]">{note}</span>
+        </span>
+      </span>
+      <span className={`shrink-0 text-right ${theme.deep}`}>
+        <strong className="block text-[22px] font-bold leading-[1.05] tracking-[-0.035em]">
+          {price}
+        </strong>
+      </span>
+    </label>
+  );
+}
+
+/**
+ * 二维码舞台：下单前为占位框（四角标 + 渠道标 + 标题），下单后为支付宝前置模式 iframe
+ * （后端 qr_pay_mode=4 / qrcode_width=220，iframe 248×300 含支付宝页内边距，stage 随内容自适应）。
+ */
+function QrStage({
+  active,
+  payUrl,
+  iframeTitle,
+  placeholderTitle,
+  hint,
+}: {
+  active: boolean;
+  payUrl: string | null;
+  iframeTitle: string;
+  placeholderTitle: string;
+  hint: string;
+}) {
+  return (
+    <div
+      aria-live="polite"
+      className="relative mx-auto grid w-fit place-items-center rounded-2xl border border-[#c6cfd8] bg-white p-[7px] shadow-[0_8px_20px_rgba(31,48,64,0.07)]"
+    >
+      {active && payUrl ? (
+        <iframe
+          src={payUrl}
+          title={iframeTitle}
+          width={248}
+          height={300}
+          className="rounded-xl bg-white"
+        />
+      ) : (
+        <div className="relative flex h-[160px] w-[160px] flex-col items-center justify-center rounded-[10px] border border-dashed border-[#aeb9c4] bg-[#f7f9fc] p-5 text-center">
+          {/* 四角标（设计稿 .qr-corner） */}
+          <i
+            aria-hidden
+            className="absolute left-[10px] top-[10px] h-[19px] w-[19px] border-l-[3px] border-t-[3px] border-[#8996a3]"
+          />
+          <i
+            aria-hidden
+            className="absolute right-[10px] top-[10px] h-[19px] w-[19px] border-r-[3px] border-t-[3px] border-[#8996a3]"
+          />
+          <i
+            aria-hidden
+            className="absolute bottom-[10px] left-[10px] h-[19px] w-[19px] border-b-[3px] border-l-[3px] border-[#8996a3]"
+          />
+          <i
+            aria-hidden
+            className="absolute bottom-[10px] right-[10px] h-[19px] w-[19px] border-b-[3px] border-r-[3px] border-[#8996a3]"
+          />
+          <span
+            aria-hidden
+            className="mb-2 grid h-[38px] w-[38px] place-items-center rounded-[11px] bg-[#1677ff] text-base font-extrabold text-white"
+          >
+            支
+          </span>
+          <strong className="text-[13px] font-semibold text-[#293644]">{placeholderTitle}</strong>
+          <span className="sr-only">{hint}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 对比表单元格值：boolean=是否包含（✓ / —），string=文案 */
+type WideCompareCell = string | boolean;
+
+type WideCompareRow = {
+  label: string;
+  free: WideCompareCell;
+  quarterly: WideCompareCell;
+  annual: WideCompareCell;
+};
+
+/** 折叠式三列功能对比（免费 / 启程 / 同行），选中付费列高亮 */
+function CompareSection({
+  open,
+  onToggle,
+  rows,
+  activeType,
+  freeName,
+  quarterlyName,
+  annualName,
+  t,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  rows: WideCompareRow[];
+  activeType: ProductType;
+  freeName: string;
+  quarterlyName: string;
+  annualName: string;
+  t: (k: string) => string;
+}) {
+  const cols: Array<{
+    key: WidePlanId;
+    rowKey: 'free' | 'quarterly' | 'annual';
+    name: string;
+    active: boolean;
+  }> = [
+    { key: 'free', rowKey: 'free', name: freeName, active: false },
+    {
+      key: 'quarterly_package',
+      rowKey: 'quarterly',
+      name: quarterlyName,
+      active: activeType === 'quarterly_package',
+    },
+    {
+      key: 'annual_package',
+      rowKey: 'annual',
+      name: annualName,
+      active: activeType === 'annual_package',
+    },
+  ];
+  return (
+    <div className="mt-3.5 overflow-hidden rounded-2xl border border-[#e3e8ec] bg-white/70">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="flex min-h-[50px] w-full items-center justify-between gap-4 px-[17px]"
+      >
+        <span className="text-sm font-semibold text-[#293644]">
+          {t('payment.dialog.compareTitle')}
+        </span>
+        <span className="flex items-center gap-2 text-xs text-[#5f6c7d]">
+          {open ? t('payment.dialog.compareCollapse') : t('payment.dialog.compareExpand')}
+          <ChevronDown
+            className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`}
+            aria-hidden
+          />
+        </span>
+      </button>
+      {open && (
+        <div
+          className="overflow-x-auto px-3.5 pb-3.5"
+          role="region"
+          aria-label={t('payment.dialog.compareTitle')}
+          tabIndex={0}
+        >
+          <table className="w-full min-w-[720px] border-separate border-spacing-0 text-xs leading-[1.55] text-[#465366]">
+            <thead>
+              <tr>
+                <th
+                  scope="col"
+                  className="w-1/4 border-b border-[#e3e8ec] bg-[#f7f9fc] px-3 py-2 text-left font-semibold text-[#293644]"
+                >
+                  {t('payment.compare.colFeature')}
+                </th>
+                {cols.map((col) => (
+                  <th
+                    key={col.key}
+                    scope="col"
+                    className={`w-1/4 border-b border-[#e3e8ec] px-3 py-2 text-center font-semibold ${
+                      col.active ? 'bg-[#eef4ff] text-[#254f9d]' : 'bg-[#f7f9fc] text-[#293644]'
+                    }`}
+                  >
+                    {col.name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.label}>
+                  <th
+                    scope="row"
+                    className="border-b border-[#e3e8ec] px-3 py-2 text-left font-normal"
+                  >
+                    {row.label}
+                  </th>
+                  {cols.map((col) => {
+                    const v = row[col.rowKey];
+                    return (
+                      <td
+                        key={col.key}
+                        className={`border-b border-[#e3e8ec] px-3 py-2 text-center ${
+                          col.active ? 'bg-[#eef4ff]/60 text-[#254f9d]' : ''
+                        }`}
+                      >
+                        {typeof v === 'boolean' ? (
+                          v ? (
+                            <Check
+                              className="mx-auto h-[15px] w-[15px] text-[#147b65]"
+                              strokeWidth={2.5}
+                              aria-label={t('payment.compare.included')}
+                            />
+                          ) : (
+                            '—'
+                          )
+                        ) : (
+                          v
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-2.5 text-xs leading-[1.65] text-[#5f6c7d]">
+            {t('payment.dialog.compareFootnote')}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * 购买套餐弹窗（P-B 套餐商品化；P2a 支付宝闭环）
  * 三视图：下单（套餐选择/延期激活 + 渠道 + 券码）→ 等待支付（新标签页打开支付宝收银台，本页轮询订单状态）→ 成功（0 元单直接发码 / 轮询到 granted）
@@ -157,6 +556,8 @@ export default function PurchaseModal({
   const [consumedCode, setConsumedCode] = useState<string | null>(null);
 
   const successFiredRef = useRef(false);
+  /** 宽模式结算面板（startWaiting 后滚入视野） */
+  const paymentPanelRef = useRef<HTMLDivElement>(null);
 
   const selectedProduct =
     products.find((p) => p.product_type === selectedType) ?? products[0] ?? FALLBACK_PRODUCTS[0];
@@ -173,9 +574,6 @@ export default function PurchaseModal({
     const val = t(key);
     return val === key ? p.name : val;
   };
-
-  /** 套餐月数（展示用，与套餐定义一致：季度 3 / 年度 12） */
-  const planMonths = (type: ProductType): number => (type === 'annual_package' ? 12 : 3);
 
   // ── 进入成功视图（onSuccess 每单只触发一次）──
   const enterSuccess = useCallback(
@@ -230,6 +628,10 @@ export default function PurchaseModal({
     setWaitStatus('polling');
     setView('waiting');
     if (type === 'redirect') window.open(url, '_blank');
+    // 宽模式：结算面板滚入视野，保证二维码立即可见（窄模式无该节点，静默跳过）
+    requestAnimationFrame(() =>
+      paymentPanelRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }),
+    );
   }, []);
 
   // ── 等待支付：每 2s 轮询订单状态，直到发放/关闭/取消，或 30 分钟超时 ──
@@ -326,7 +728,7 @@ export default function PurchaseModal({
 
   // ── 券码校验 ──
   const handleApplyCoupon = async (codeOverride?: string) => {
-    const code = (codeOverride ?? couponInput).trim();
+    const code = normalizeCouponCode(codeOverride ?? couponInput);
     if (!code || couponChecking) return;
     setCouponChecking(true);
     setCouponError(null);
@@ -456,75 +858,80 @@ export default function PurchaseModal({
     : consultationMode
       ? t('payment.consultation.title')
       : t('payment.title');
-  /** 宽版方案选择视图（仅套餐下单；延期/咨询/等待/成功保持窄弹窗），UI 对齐设计稿 wiki/开发文档/0914-openlife-purchase.html */
-  const wideMode = view === 'order' && !renewalMode && !consultationMode;
+  /** 宽版方案选择视图（套餐下单与等待支付；延期/咨询下单及成功视图保持窄弹窗），UI 对齐设计稿 wiki/开发文档/10-05/newpay.html */
+  const wideMode = !renewalMode && !consultationMode && view !== 'success';
   const quarterlyProduct =
     products.find((p) => p.product_type === 'quarterly_package') ?? FALLBACK_PRODUCTS[0];
   const annualProduct =
     products.find((p) => p.product_type === 'annual_package') ?? FALLBACK_PRODUCTS[1];
-  const isAnnual = selectedType === 'annual_package';
+  /** 宽模式等待支付子态：金额与套餐以服务端订单为准（resume 单可能是另一套餐） */
+  const wideWaiting = wideMode && view === 'waiting' && order !== null;
+  const displayType: ProductType = wideWaiting && order ? order.product_type : selectedType;
+  const displayProduct =
+    products.find((p) => p.product_type === displayType) ?? selectedProduct;
+  const displayAmount = wideWaiting && order ? order.amount_paid : finalAmount;
+  /** 二维码激活：等待轮询中且为 qr 类型（支付宝前置模式 iframe） */
+  const qrActive = wideWaiting && waitStatus === 'polling' && payType === 'qr' && !!payUrl;
 
-  /** 左栏权益（按所选套餐切换） */
-  const benefits: Array<{ icon: LucideIcon; chip: string; title: string; sub: string }> = [
-    {
-      icon: MessageCircle,
-      chip: 'bg-[#e4f1ff] text-[#2774d6]',
-      title: t('payment.dialog.benefitChatTitle'),
-      sub: t('payment.dialog.benefitChatSub'),
-    },
-    {
-      icon: FileText,
-      chip: 'bg-[#e3f4ec] text-[#2c8c62]',
-      title: t('payment.dialog.benefitReportTitle', { count: String(isAnnual ? 3 : 1) }),
-      sub: t('payment.dialog.benefitReportSub'),
-    },
-    {
-      icon: UserCheck,
-      chip: 'bg-[#ffe9e7] text-[#d05a4e]',
-      title: t('payment.dialog.benefitReviewTitle'),
-      sub: t('payment.dialog.benefitReviewSub'),
-    },
-    isAnnual
-      ? {
-          icon: Users,
-          chip: 'bg-[#fdf3d8] text-[#b98a1d]',
-          title: t('payment.dialog.benefitTeamTitle'),
-          sub: t('payment.dialog.benefitTeamSub'),
-        }
-      : {
-          icon: CalendarDays,
-          chip: 'bg-[#fdf3d8] text-[#b98a1d]',
-          title: t('payment.dialog.benefitRenewalTitle'),
-          sub: t('payment.dialog.benefitRenewalSub'),
-        },
-  ];
-
-  /** 功能对比行（boolean=是否包含；string=文案） */
-  const compareRows: Array<{ label: string; quarterly: string | boolean; annual: string | boolean }> = [
+  /** 三列功能对比行（boolean=是否包含；string=文案），免费列取自设计稿静态信息 */
+  const wideCompareRows: WideCompareRow[] = [
     {
       label: t('payment.compare.quota'),
+      free: t('payment.compare.quotaFree'),
       quarterly: t('payment.compare.quotaValue'),
       annual: t('payment.compare.quotaValue'),
     },
     {
+      label: t('payment.compare.phases'),
+      free: t('payment.compare.phasesFree'),
+      quarterly: t('payment.compare.phasesValue'),
+      annual: t('payment.compare.phasesValue'),
+    },
+    {
       label: t('payment.compare.reports'),
+      free: false,
       quarterly: t('payment.compare.reportsQuarterly'),
       annual: t('payment.compare.reportsAnnual'),
     },
-    { label: t('payment.compare.review'), quarterly: true, annual: true },
-    { label: t('payment.compare.team'), quarterly: false, annual: true },
-    { label: t('payment.compare.renewal'), quarterly: true, annual: true },
+    { label: t('payment.compare.review'), free: false, quarterly: true, annual: true },
     {
-      label: t('payment.compare.duration'),
-      quarterly: t('payment.compare.durationQuarterly'),
-      annual: t('payment.compare.durationAnnual'),
+      label: t('payment.compare.recheck'),
+      free: false,
+      quarterly: t('payment.compare.recheckValue'),
+      annual: t('payment.compare.recheckValue'),
     },
     {
+      label: t('payment.compare.codes'),
+      free: t('payment.compare.codesFree'),
+      quarterly: t('payment.compare.codesQuarterly'),
+      annual: t('payment.compare.codesAnnual'),
+    },
+    { label: t('payment.compare.team'), free: false, quarterly: false, annual: true },
+    {
       label: t('payment.compare.scene'),
+      free: t('payment.compare.sceneFree'),
       quarterly: t('payment.compare.sceneQuarterly'),
       annual: t('payment.compare.sceneAnnual'),
     },
   ];
+
+  /** 金额行主按钮：下单视图=生成付款码；等待轮询=禁用；已关闭/过期=重新下单 */
+  const amountButtonLabel = wideWaiting
+    ? waitStatus === 'polling'
+      ? t('payment.wide.waitingPay')
+      : t('payment.waiting.reorder')
+    : submitting
+      ? t('payment.creating')
+      : displayAmount <= 0
+        ? t('payment.payFree')
+        : t('payment.wide.generateQr');
+  const handleAmountButtonClick = () => {
+    if (wideWaiting) {
+      if (waitStatus !== 'polling') resetToOrderView();
+      return;
+    }
+    void handlePay();
+  };
 
   // 套餐交付的全部码（等价、不区分用途）；弹窗升级后排除已消耗的那枚
   const allDeliveredCodes: string[] = order?.meta?.codes?.length
@@ -548,7 +955,7 @@ export default function PurchaseModal({
         >
           <button
             type="button"
-            className={`absolute inset-0 ${wideMode ? 'bg-[#24354a]/45 backdrop-blur-[7px]' : 'bg-stone-900/25 backdrop-blur-[2px]'}`}
+            className={`absolute inset-0 ${wideMode ? 'bg-[#182130]/58 backdrop-blur-[12px]' : 'bg-stone-900/25 backdrop-blur-[2px]'}`}
             aria-label="关闭"
             onClick={onClose}
           />
@@ -558,17 +965,8 @@ export default function PurchaseModal({
             aria-labelledby="purchase-modal-title"
             className={
               wideMode
-                ? 'relative flex max-h-[85vh] w-full max-w-[1180px] flex-col overflow-hidden rounded-[22px] border border-white/80 shadow-[0_24px_100px_rgba(27,47,81,0.17)]'
+                ? 'relative flex max-h-[calc(100dvh-40px)] w-full max-w-[1240px] flex-col overflow-hidden rounded-[26px] border border-white/95 bg-[#fbfcfb] shadow-[0_16px_40px_rgba(24,33,48,0.16)]'
                 : 'relative w-full max-w-md max-h-[85vh] flex flex-col rounded-2xl border border-stone-200/80 bg-white/95 shadow-[0_24px_80px_-24px_rgba(15,23,42,0.18),0_0_0_1px_rgba(255,255,255,0.6)_inset]'
-            }
-            style={
-              wideMode
-                ? {
-                    backgroundColor: 'rgba(255,255,255,0.98)',
-                    backgroundImage:
-                      'radial-gradient(ellipse at 0 0,#d9effdcc,transparent 29%),radial-gradient(ellipse at 100% 0,#ffe1e4ad,transparent 25%),radial-gradient(ellipse at 0 100%,#dff5e8b3,transparent 27%),radial-gradient(ellipse at 100% 100%,#fff0c5c7,transparent 27%)',
-                  }
-                : undefined
             }
             initial={{ opacity: 0, y: 14, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -578,318 +976,356 @@ export default function PurchaseModal({
           >
             {wideMode ? (
               <>
-                {/* 右上角浮动关闭（对齐设计稿 0914-openlife-purchase.html） */}
+                {/* 右上角浮动关闭（对齐设计稿 10-05/newpay.html） */}
                 <button
                   type="button"
                   onClick={onClose}
                   aria-label="关闭"
-                  className="absolute right-4 top-3.5 z-10 grid h-[34px] w-[34px] place-items-center rounded-full text-[28px] font-light leading-none text-[#506b8b] transition hover:bg-[#e9eff9] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#327ce3]"
+                  className="absolute right-[22px] top-5 z-10 grid h-[42px] w-[42px] place-items-center rounded-full text-[29px] font-light leading-none text-[#5f6c7d] transition hover:bg-[#eef2f5] hover:text-[#182130] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3569d4]/40 max-[700px]:right-3 max-[700px]:top-3"
                 >
                   ×
                 </button>
 
-                <div className="overflow-y-auto overscroll-contain px-5 pb-4 pt-10 sm:px-10 lg:px-[52px]">
-                  {/* 标题区（通栏）：下方左右两栏从同一水平线开始，保证套餐卡与权益矩阵顶/底对齐 */}
-                  <header>
-                    <h2
-                      id="purchase-modal-title"
-                      className="mb-3 text-[clamp(22px,2.2vw,30px)] font-bold leading-[1.35] tracking-[-1.1px] text-[#142443]"
-                    >
-                      {t('payment.dialog.title')}
-                    </h2>
-                    <div className="mb-4 flex min-h-[26px] items-center gap-3">
-                      <span className="shrink-0 rounded-full bg-[#e4f1ff] px-3 py-1 text-xs font-semibold text-[#2774d6]">
-                        {planName(selectedProduct)}
-                      </span>
-                      <p className="text-sm leading-relaxed text-[#6d7e98]">
-                        {t(isAnnual ? 'payment.dialog.subtitleAnnual' : 'payment.dialog.subtitleQuarterly')}
-                      </p>
+                <div className="overflow-y-auto overscroll-contain">
+                  {/* 弹窗头：eyebrow + 主标题 */}
+                  <header className="border-b border-[#e3e8ec]/85 bg-white/70 px-[38px] pb-5 pt-[30px] max-[1080px]:px-[26px] max-[700px]:px-5 max-[700px]:pb-[17px] max-[700px]:pt-6">
+                    <div className="mb-2 flex items-center gap-2.5 text-xs font-bold tracking-[0.08em] text-[#254f9d]">
+                      <span
+                        aria-hidden
+                        className="h-[7px] w-[7px] rounded-full bg-[#3569d4] shadow-[0_0_0_5px_rgba(53,105,212,0.1)]"
+                      />
+                      {t('payment.wide.eyebrow')}
                     </div>
+                    <h1
+                      id="purchase-modal-title"
+                      className="text-[clamp(25px,2.4vw,34px)] font-bold leading-[1.2] tracking-[-0.045em] text-[#182130]"
+                    >
+                      {t('payment.wide.title')}
+                    </h1>
                   </header>
 
-                  <div className="grid items-stretch gap-6 lg:grid-cols-2">
-                    {/* 左栏：权益 2×2 矩阵（随所选套餐切换） + 底部券码行 */}
-                    <section className="flex flex-col">
-                      <div className="grid flex-1 grid-cols-2 grid-rows-2 gap-2.5">
-                        {benefits.map((b) => (
-                          <div
-                            key={b.title}
-                            className="flex h-full min-h-[68px] items-center gap-2.5 rounded-xl border border-[#ebeff5] bg-white/60 px-3 py-2.5"
-                          >
-                            <span
-                              className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${b.chip}`}
-                              aria-hidden
-                            >
-                              <b.icon className="h-[18px] w-[18px]" strokeWidth={1.8} />
+                  <main className="px-[38px] pb-6 pt-[22px] max-[1080px]:px-[26px] max-[700px]:px-4">
+                    {/* 选择探索版本：三列方案卡（免费版仅展示）+ 价格选择条 */}
+                    <section aria-label={t('payment.wide.sectionTitle')}>
+                      <div className="mb-3 flex items-center justify-between gap-4">
+                        <strong className="text-[15px] font-bold text-[#293644]">
+                          {t('payment.wide.sectionTitle')}
+                        </strong>
+                      </div>
+                      <div
+                        aria-disabled={wideWaiting}
+                        className={`grid grid-cols-3 gap-3.5 max-[860px]:grid-cols-1 ${
+                          wideWaiting ? 'pointer-events-none opacity-70' : ''
+                        }`}
+                      >
+                        {/* 免费版：仅展示不可选（试用流程不在本弹窗） */}
+                        <div className="flex min-w-0 flex-col gap-2.5">
+                          <WidePlanCard
+                            plan="free"
+                            index="01"
+                            name={t('payment.wide.free.name')}
+                            role={t('payment.wide.free.role')}
+                            promise={t('payment.wide.free.promise')}
+                            features={[
+                              t('payment.wide.free.f1'),
+                              t('payment.wide.free.f2'),
+                              t('payment.wide.free.f3'),
+                              t('payment.wide.free.f4'),
+                            ]}
+                            selected={false}
+                            selectedTag={t('payment.wide.selectedTag')}
+                            selectable={false}
+                            onSelect={() => {}}
+                          />
+                          {/* 免费版价格条（静态，无单选） */}
+                          <div className="flex min-h-[66px] min-w-0 items-center justify-between gap-3 rounded-[14px] border border-dashed border-[#b9c5c0] bg-[#f4f8f6] px-[13px] py-[11px] opacity-90">
+                            <span className="min-w-0">
+                              <span className="block text-sm font-semibold text-[#293644]">
+                                {t('payment.wide.free.name')}
+                              </span>
+                              <span className="mt-[3px] block text-[11px] leading-[1.35] text-[#5f6c7d]">
+                                {t('payment.wide.free.priceNote')}
+                              </span>
                             </span>
-                            <span>
-                              <strong className="block text-xs font-semibold leading-relaxed text-[#142443]">
-                                {b.title}
-                              </strong>
-                              <small className="mt-0.5 block text-[11px] leading-normal text-[#6d7e98]">{b.sub}</small>
+                            <span className="inline-flex min-h-[25px] shrink-0 items-center whitespace-nowrap rounded-full bg-[#edf9f5] px-2.5 text-[11px] font-semibold text-[#176a57]">
+                              {t('payment.wide.freeBadge')}
                             </span>
                           </div>
-                        ))}
-                      </div>
-
-                      {/* 券码行：输入框 + 使用按钮（与右侧渠道行同一水平线） */}
-                      <div className="mt-3 flex flex-col gap-2">
-                        {renderMyCouponsSelect(
-                          'w-full rounded-xl border border-[#dfe6ef] bg-white/80 px-3 py-2 text-[13px] text-[#142443] outline-none transition focus:border-[#3678df]',
-                        )}
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            value={couponInput}
-                            onChange={(e) => {
-                              setCouponInput(e.target.value);
-                              setCouponError(null);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') void handleApplyCoupon();
-                            }}
-                            placeholder={t('payment.coupon.placeholder')}
-                            className="min-w-0 flex-1 rounded-xl border border-[#dfe6ef] bg-white/80 px-3 py-2 text-[13px] text-[#142443] outline-none transition focus:border-[#3678df]"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => void handleApplyCoupon()}
-                            disabled={couponChecking || !couponInput.trim()}
-                            className="shrink-0 rounded-xl border border-[#c8d4e4] px-3 py-2 text-[13px] font-medium text-[#32629a] transition hover:bg-[#e9eff9] disabled:opacity-40"
-                          >
-                            {couponChecking ? t('payment.coupon.checking') : t('payment.coupon.apply')}
-                          </button>
                         </div>
-                        {appliedCoupon && (
-                          <p className="text-[13px] font-medium text-emerald-600">
-                            {t('payment.coupon.applied', { amount: fenToYuan(appliedCoupon.amount) })}
-                            {appliedCoupon.expires_at &&
-                              ` · ${t('payment.coupon.expiresAt', { date: formatCouponDay(appliedCoupon.expires_at) })}`}
-                          </p>
-                        )}
-                        {couponError && <p className="text-[13px] text-red-600">{couponError}</p>}
+
+                        {/* 启程版（quarterly_package） */}
+                        <div className="flex min-w-0 flex-col gap-2.5">
+                          <WidePlanCard
+                            plan="quarterly_package"
+                            index="02"
+                            name={planName(quarterlyProduct)}
+                            role={t('payment.wide.quarterly.role')}
+                            promise={t('payment.wide.quarterly.promise')}
+                            features={[
+                              t('payment.plan.quarterly_package.f1'),
+                              t('payment.plan.quarterly_package.f2'),
+                              t('payment.plan.quarterly_package.f3'),
+                              t('payment.plan.quarterly_package.f4'),
+                            ]}
+                            recommend={
+                              quarterlyProduct.popular ? t('payment.plan.popular') : undefined
+                            }
+                            selected={displayType === 'quarterly_package'}
+                            selectedTag={t('payment.wide.selectedTag')}
+                            selectable
+                            onSelect={() => setSelectedType('quarterly_package')}
+                          />
+                          <WidePriceOption
+                            plan="quarterly_package"
+                            name={t('payment.wide.quarterly.priceName')}
+                            note={t('payment.wide.quarterly.priceNote')}
+                            price={`¥${fenToYuan(quarterlyProduct.price)}`}
+                            selected={displayType === 'quarterly_package'}
+                            ariaLabel={`${planName(quarterlyProduct)}，¥${fenToYuan(quarterlyProduct.price)}，${t('payment.wide.quarterly.priceNote')}`}
+                            disabled={wideWaiting}
+                            onSelect={() => setSelectedType('quarterly_package')}
+                          />
+                        </div>
+
+                        {/* 同行版（annual_package） */}
+                        <div className="flex min-w-0 flex-col gap-2.5">
+                          <WidePlanCard
+                            plan="annual_package"
+                            index="03"
+                            name={planName(annualProduct)}
+                            role={t('payment.wide.annual.role')}
+                            promise={t('payment.wide.annual.promise')}
+                            features={[
+                              t('payment.plan.annual_package.f1'),
+                              t('payment.plan.annual_package.f2'),
+                              t('payment.plan.annual_package.f3'),
+                              t('payment.plan.annual_package.f4'),
+                            ]}
+                            selected={displayType === 'annual_package'}
+                            selectedTag={t('payment.wide.selectedTag')}
+                            selectable
+                            onSelect={() => setSelectedType('annual_package')}
+                          />
+                          <WidePriceOption
+                            plan="annual_package"
+                            name={t('payment.wide.annual.priceName')}
+                            note={t('payment.wide.annual.priceNote')}
+                            price={`¥${fenToYuan(annualProduct.price)}`}
+                            selected={displayType === 'annual_package'}
+                            ariaLabel={`${planName(annualProduct)}，¥${fenToYuan(annualProduct.price)}，${t('payment.wide.annual.priceNote')}`}
+                            disabled={wideWaiting}
+                            onSelect={() => setSelectedType('annual_package')}
+                          />
+                        </div>
                       </div>
                     </section>
 
-                    {/* 右栏：2×2 矩阵（季度套餐 / 年度套餐 / 支付宝 / 微信支付），与左栏等高 */}
-                    <fieldset className="flex flex-col gap-3">
-                      <legend className="sr-only">{t('payment.title')}</legend>
-                      {/* 套餐卡：与左栏权益矩阵同行高（默认 items-stretch 拉伸，内容垂直居中） */}
-                      <div className="grid flex-1 gap-3 sm:grid-cols-2">
-                        {[quarterlyProduct, annualProduct].map((p) => {
-                          const selected = p.product_type === selectedType;
-                          return (
-                            <label
-                              key={p.product_type}
-                              className={`relative flex h-full cursor-pointer flex-col justify-center rounded-xl border p-4 transition ${
-                                selected
-                                  ? 'border-[#3678df] bg-[#eaf2ff]/60 ring-1 ring-[#3678df]/40'
-                                  : 'border-[#dfe6ef] bg-white/60 hover:bg-white/90'
-                              }`}
-                            >
-                              {p.popular && (
-                                <span className="absolute -top-2.5 right-3 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-semibold text-white">
-                                  {t('payment.plan.popular')}
-                                </span>
+                    {/* 折叠式三列功能对比（选中套餐列高亮） */}
+                    <CompareSection
+                      open={compareOpen}
+                      onToggle={() => setCompareOpen((v) => !v)}
+                      rows={wideCompareRows}
+                      activeType={displayType}
+                      freeName={t('payment.wide.free.name')}
+                      quarterlyName={`${planName(quarterlyProduct)} · ¥${fenToYuan(quarterlyProduct.price)}`}
+                      annualName={`${planName(annualProduct)} · ¥${fenToYuan(annualProduct.price)}`}
+                      t={t}
+                    />
+
+                    {/* 结算面板：左二维码 + 右三行（金额 / 优惠码 / 支付方式）；下单后二维码在此渲染 */}
+                    <section
+                      ref={paymentPanelRef}
+                      aria-label={t('payment.wide.generateQr')}
+                      className="mt-3.5 overflow-hidden rounded-[18px] border border-[#e3e8ec] bg-white/95 shadow-[0_12px_30px_rgba(31,48,64,0.05)]"
+                    >
+                      <div className="grid grid-cols-1 min-[701px]:grid-cols-[296px_minmax(0,1fr)]">
+                        {/* 二维码列：占位框 → 支付宝前置模式 iframe（生成付款码后） */}
+                        <div className="grid place-items-center border-b border-[#e3e8ec] bg-[#fcfdfd] p-3.5 min-[701px]:border-b-0 min-[701px]:border-r">
+                          <QrStage
+                            active={qrActive}
+                            payUrl={payUrl}
+                            iframeTitle={t('payment.waiting.title')}
+                            placeholderTitle={t('payment.wide.qrPlaceholderTitle')}
+                            hint={t('payment.wide.qrHint')}
+                          />
+                        </div>
+
+                        {/* 结算列：应付金额 / 优惠码 / 支付方式 */}
+                        <div className="grid min-w-0 divide-y divide-[#e3e8ec]">
+                          {/* 应付金额行：套餐 + 合计 + 生成付款码（等待支付时复用为状态按钮） */}
+                          <div className="grid min-h-[68px] grid-cols-[76px_minmax(90px,1fr)_auto_auto] items-center gap-3 px-3.5 py-2.5 max-[700px]:grid-cols-[1fr_auto]">
+                            <span className="text-[11px] font-bold tracking-[0.06em] text-[#5f6c7d] max-[700px]:col-span-2">
+                              {t('payment.wide.amountLabel')}
+                            </span>
+                            <span className="min-w-0 truncate text-sm font-semibold text-[#293644]">
+                              {planName(displayProduct)}
+                              {appliedCoupon && !wideWaiting && (
+                                <s className="ml-2 font-normal text-[#5f6c7d]">
+                                  ¥{fenToYuan(priceProduct.price)}
+                                </s>
                               )}
-                              <span className="flex items-center gap-2.5">
+                            </span>
+                            <strong className="whitespace-nowrap text-xl font-bold leading-none text-[#293644]">
+                              ¥{fenToYuan(displayAmount)}
+                            </strong>
+                            <button
+                              type="button"
+                              onClick={handleAmountButtonClick}
+                              disabled={submitting || (wideWaiting && waitStatus === 'polling')}
+                              className="min-h-[38px] shrink-0 rounded-[10px] bg-[#222b35] px-[15px] text-xs font-semibold text-white transition hover:bg-[#151c23] hover:shadow-[0_10px_24px_rgba(24,33,48,0.15)] disabled:cursor-wait disabled:opacity-55 disabled:hover:shadow-none max-[700px]:col-span-2 max-[700px]:w-full"
+                            >
+                              {amountButtonLabel}
+                            </button>
+                          </div>
+
+                          {/* 优惠码行：我的可用券 + 手动输入 + 使用（反馈走状态行） */}
+                          <div className="grid min-h-[68px] grid-cols-[76px_minmax(0,1fr)] items-center gap-3 px-3.5 py-2.5 max-[700px]:grid-cols-1 max-[700px]:gap-2 max-[700px]:py-3">
+                            <span className="text-[11px] font-bold tracking-[0.06em] text-[#5f6c7d]">
+                              {t('payment.wide.couponLabel')}
+                            </span>
+                            <fieldset disabled={wideWaiting} className="min-w-0">
+                              <div className="grid grid-cols-[minmax(116px,0.7fr)_minmax(150px,1fr)_auto] gap-1.5 max-[700px]:grid-cols-[1fr_auto]">
+                                {renderMyCouponsSelect(
+                                  'h-[42px] w-full min-w-0 rounded-[11px] border border-[#b6c0ca] bg-white px-2.5 text-xs text-[#293644] outline-none transition focus:border-[#3569d4] max-[700px]:col-span-2',
+                                )}
                                 <input
-                                  type="radio"
-                                  name="purchase-plan"
-                                  className="sr-only"
-                                  checked={selected}
-                                  onChange={() => setSelectedType(p.product_type)}
-                                  aria-label={`${planName(p)}，¥${fenToYuan(p.price)}，${t('payment.dialog.months', { count: String(planMonths(p.product_type)) })}`}
+                                  type="text"
+                                  value={couponInput}
+                                  onChange={(e) => {
+                                    setCouponInput(e.target.value);
+                                    setCouponError(null);
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') void handleApplyCoupon();
+                                  }}
+                                  placeholder={t('payment.coupon.placeholder')}
+                                  aria-label={t('payment.wide.couponLabel')}
+                                  className="h-[42px] w-full min-w-0 rounded-[11px] border border-[#b6c0ca] bg-white px-3 text-xs text-[#293644] outline-none transition focus:border-[#3569d4]"
                                 />
+                                <button
+                                  type="button"
+                                  onClick={() => void handleApplyCoupon()}
+                                  disabled={couponChecking || !couponInput.trim()}
+                                  className="h-[42px] shrink-0 rounded-[11px] border border-[#aab5c0] bg-white px-3.5 text-xs font-semibold text-[#293644] transition hover:bg-[#f7f9fc] disabled:opacity-40"
+                                >
+                                  {couponChecking
+                                    ? t('payment.coupon.checking')
+                                    : t('payment.coupon.apply')}
+                                </button>
+                              </div>
+                            </fieldset>
+                          </div>
+
+                          {/* 支付方式行：支付宝（微信即将上线，保持现有禁用态） */}
+                          <div className="grid min-h-[68px] grid-cols-[76px_minmax(0,1fr)] items-center gap-3 px-3.5 py-2.5 max-[700px]:grid-cols-1 max-[700px]:gap-2 max-[700px]:py-3">
+                            <span className="text-[11px] font-bold tracking-[0.06em] text-[#5f6c7d]">
+                              {t('payment.channelLabel')}
+                            </span>
+                            <div className="grid max-w-[420px] grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setChannel('alipay')}
+                                disabled={wideWaiting}
+                                className={`flex min-h-[42px] items-center justify-center gap-[7px] rounded-xl border px-3 text-[13px] font-semibold transition ${
+                                  channel === 'alipay'
+                                    ? 'border-[#254f9d] bg-[#eef4ff] text-[#254f9d] shadow-[0_0_0_1px_rgba(37,79,157,0.13)]'
+                                    : 'border-[#e3e8ec] bg-white text-[#465366] hover:border-[#aeb8c3]'
+                                }`}
+                              >
                                 <span
                                   aria-hidden
-                                  className={`grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full border-2 ${selected ? 'border-[#3678df]' : 'border-[#b9c6d8]'}`}
+                                  className="grid h-[23px] w-[23px] place-items-center rounded-[7px] bg-[#1677ff] text-[11px] font-extrabold text-white"
                                 >
-                                  {selected && <span className="h-2 w-2 rounded-full bg-[#3678df]" />}
+                                  支
                                 </span>
-                                <span className="text-[15px] font-semibold text-[#142443]">{planName(p)}</span>
-                              </span>
-                              <span className="mt-2 block">
-                                <span className="text-[26px] font-bold leading-none text-[#142443]">
-                                  ¥{fenToYuan(p.price)}
-                                </span>
-                                <span className="ml-1 text-xs text-[#6d7e98]">
-                                  / {t('payment.dialog.months', { count: String(planMonths(p.product_type)) })}
-                                </span>
-                              </span>
-                              <span className="mt-1.5 block text-xs leading-relaxed text-[#6d7e98]">
-                                {t(
-                                  p.product_type === 'annual_package'
-                                    ? 'payment.dialog.descAnnual'
-                                    : 'payment.dialog.descQuarterly',
-                                )}
-                              </span>
-                            </label>
-                          );
-                        })}
-                      </div>
-
-                      {/* 渠道行：支付宝 / 微信支付（与左侧券码行同一水平线） */}
-                      <div className="grid grid-cols-2 gap-3">
-                        <button
-                          type="button"
-                          onClick={() => setChannel('alipay')}
-                          className={`rounded-xl border px-3 py-2 text-[13px] font-medium transition ${
-                            channel === 'alipay'
-                              ? 'border-[#1677ff] bg-[#1677ff]/5 text-[#1677ff] ring-1 ring-[#1677ff]/30'
-                              : 'border-[#dfe6ef] bg-white/60 text-[#506b8b] hover:bg-white/90'
-                          }`}
-                        >
-                          {t('payment.channel.alipay')}
-                        </button>
-                        <button
-                          type="button"
-                          disabled
-                          title={t('payment.channel.comingSoon')}
-                          className="relative cursor-not-allowed rounded-xl border border-[#dfe6ef] bg-white/40 px-3 py-2 text-[13px] font-medium text-[#9aa8bb]"
-                        >
-                          {t('payment.channel.wechat')}
-                          <span className="absolute -top-2 right-2 rounded-full bg-stone-200 px-1.5 py-0.5 text-[10px] text-stone-500">
-                            {t('payment.channel.comingSoon')}
-                          </span>
-                        </button>
-                      </div>
-                    </fieldset>
-                  </div>
-
-                  {/* 各方案功能对比（折叠；选中套餐列高亮） */}
-                  <div className="mt-4 overflow-hidden rounded-2xl border border-[#dfe6ef] bg-white/60">
-                    <button
-                      type="button"
-                      onClick={() => setCompareOpen((v) => !v)}
-                      className="flex w-full items-center justify-between gap-3 px-4 py-3"
-                      aria-expanded={compareOpen}
-                    >
-                      <span className="text-base font-semibold text-[#142443]">
-                        {t('payment.dialog.compareTitle')}
-                      </span>
-                      <span className="flex items-center gap-2 text-[13px] text-[#6d7e98]">
-                        {compareOpen ? t('payment.dialog.compareCollapse') : t('payment.dialog.compareExpand')}
-                        <ChevronDown
-                          className={`h-3.5 w-3.5 transition-transform ${compareOpen ? 'rotate-180' : ''}`}
-                          aria-hidden
-                        />
-                      </span>
-                    </button>
-                    {compareOpen && (
-                      <div
-                        className="overflow-x-auto px-3 pb-3"
-                        role="region"
-                        aria-label={t('payment.dialog.compareTitle')}
-                        tabIndex={0}
-                      >
-                        <table className="w-full min-w-[540px] border-separate border-spacing-0 text-xs leading-relaxed text-[#5c6c83]">
-                          <thead>
-                            <tr>
-                              <th
-                                scope="col"
-                                className="w-[34%] bg-[#f3f6fb] px-3 py-2 text-left font-semibold text-[#142443]"
+                                {t('payment.channel.alipay')}
+                              </button>
+                              <button
+                                type="button"
+                                disabled
+                                title={t('payment.channel.comingSoon')}
+                                className="relative flex min-h-[42px] cursor-not-allowed items-center justify-center gap-[7px] rounded-xl border border-[#e3e8ec] bg-white/60 px-3 text-[13px] font-semibold text-[#9aa8bb]"
                               >
-                                {t('payment.compare.colFeature')}
-                              </th>
-                              {[
-                                { p: quarterlyProduct, active: !isAnnual },
-                                { p: annualProduct, active: isAnnual },
-                              ].map(({ p, active }) => (
-                                <th
-                                  key={p.product_type}
-                                  scope="col"
-                                  className={`w-[33%] px-3 py-2 text-center font-semibold ${active ? 'bg-[#e2edff] text-[#256bc7]' : 'bg-[#f3f6fb] text-[#142443]'}`}
+                                <span
+                                  aria-hidden
+                                  className="grid h-[23px] w-[23px] place-items-center rounded-[7px] bg-[#07c160] text-[11px] font-extrabold text-white"
                                 >
-                                  {planName(p)} · ¥{fenToYuan(p.price)}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {compareRows.map((row) => (
-                              <tr key={row.label}>
-                                <th
-                                  scope="row"
-                                  className="border-b border-[#e6ebf2] px-3 py-1.5 text-left font-normal"
-                                >
-                                  {row.label}
-                                </th>
-                                {[
-                                  { v: row.quarterly, active: !isAnnual },
-                                  { v: row.annual, active: isAnnual },
-                                ].map(({ v, active }, ci) => (
-                                  <td
-                                    key={ci}
-                                    className={`border-b border-[#e6ebf2] px-3 py-1.5 text-center ${active ? 'bg-[#eaf2ff]/50 text-[#256bc7]' : ''}`}
-                                  >
-                                    {typeof v === 'boolean' ? (
-                                      v ? (
-                                        <Check
-                                          className="mx-auto h-4 w-4 text-[#2c8c62]"
-                                          strokeWidth={2.5}
-                                          aria-label="包含"
-                                        />
-                                      ) : (
-                                        '—'
-                                      )
-                                    ) : (
-                                      v
-                                    )}
-                                  </td>
-                                ))}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                        <p className="mt-2 text-[11px] leading-relaxed text-[#6d7e98]">
-                          {t('payment.dialog.compareFootnote')}
-                        </p>
+                                  微
+                                </span>
+                                {t('payment.channel.wechat')}
+                                <span className="absolute -top-2 right-2 rounded-full bg-stone-200 px-1.5 py-0.5 text-[10px] text-stone-500">
+                                  {t('payment.channel.comingSoon')}
+                                </span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    )}
-                  </div>
+                    </section>
 
-                  {error && (
+                    {/* 状态行：错误 / 等待支付（订单号 + 重开 + 取消）/ 券码反馈 */}
                     <p
-                      className="mt-3.5 rounded-xl border border-[#bdd5fa] bg-[#eef5ff] px-4 py-3 text-[13px] leading-relaxed text-[#32629a]"
                       role="status"
+                      aria-live="polite"
+                      className="mx-0.5 mt-2.5 min-h-5 text-xs leading-[1.6] text-[#5f6c7d]"
                     >
-                      {error}
+                      {error ? (
+                        <span className="text-[#a63e4b]">{error}</span>
+                      ) : couponError ? (
+                        <span className="text-[#a63e4b]">{couponError}</span>
+                      ) : wideWaiting ? (
+                        waitStatus === 'polling' ? (
+                          <>
+                            <span className="text-[#147b65]">
+                              {t('payment.wide.orderCreated', { no: order?.order_no ?? '' })} ·{' '}
+                              {t('payment.wide.qrHint')}
+                            </span>
+                            {payUrl && (
+                              <button
+                                type="button"
+                                onClick={() => payUrl && window.open(payUrl, '_blank')}
+                                className="mx-1 text-[#3569d4] underline underline-offset-2"
+                              >
+                                {t('payment.waiting.reopen')}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => void handleCancelOrder()}
+                              className="mx-1 text-[#5f6c7d] underline underline-offset-2 transition hover:text-[#a63e4b]"
+                            >
+                              {t('payment.waiting.cancel')}
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-[#a63e4b]">
+                            {waitStatus === 'expired'
+                              ? t('payment.waiting.expired')
+                              : t('payment.waiting.closed')}
+                          </span>
+                        )
+                      ) : appliedCoupon ? (
+                        <span className="text-[#147b65]">
+                          {t('payment.coupon.applied', {
+                            amount: fenToYuan(appliedCoupon.amount),
+                          })}
+                          {appliedCoupon.expires_at &&
+                            ` · ${t('payment.coupon.expiresAt', { date: formatCouponDay(appliedCoupon.expires_at) })}`}
+                        </span>
+                      ) : null}
                     </p>
-                  )}
+
+                    {/* 信任行 */}
+                    <div className="mt-2 flex items-center justify-center gap-2 text-[11px] leading-[1.5] text-[#5f6c7d] max-[700px]:items-start max-[700px]:justify-start">
+                      <span
+                        aria-hidden
+                        className="h-[5px] w-[5px] shrink-0 rounded-full bg-[#147b65]"
+                      />
+                      {t('payment.wide.trust')}
+                    </div>
+                  </main>
                 </div>
 
-                {/* 固定底栏：已选 + 金额 + 确认购买 */}
-                <footer className="flex shrink-0 flex-col items-center justify-between gap-2.5 border-t border-[#dfe6ed] bg-white/55 px-5 py-3 sm:flex-row sm:px-10 lg:px-[52px]">
-                  <div className="flex flex-wrap items-baseline justify-center gap-x-3 gap-y-1 text-sm text-[#6d7e98] sm:justify-start">
-                    <span>{t('payment.dialog.selectedLabel')}</span>
-                    <strong className="font-semibold text-[#2571d8]">{planName(selectedProduct)}</strong>
-                    {appliedCoupon && (
-                      <>
-                        <span className="line-through">¥{fenToYuan(priceProduct.price)}</span>
-                        <span className="text-emerald-600">
-                          {t('payment.coupon.applied', { amount: fenToYuan(appliedCoupon.amount) })}
-                        </span>
-                      </>
-                    )}
-                    <strong className="whitespace-nowrap text-[22px] font-semibold leading-none text-[#2571d8]">
-                      ¥{fenToYuan(finalAmount)}
-                    </strong>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void handlePay()}
-                    disabled={submitting}
-                    className="w-full min-w-[200px] rounded-xl border border-[#3474d9] px-8 py-3 text-base font-semibold text-white transition hover:brightness-[1.06] disabled:cursor-wait disabled:opacity-65 sm:w-auto"
-                    style={{ background: 'linear-gradient(135deg,#3e82e5,#3973d1)' }}
-                  >
-                    {submitting
-                      ? t('payment.creating')
-                      : finalAmount <= 0
-                        ? t('payment.payFree')
-                        : t('payment.dialog.confirm')}
-                  </button>
-                </footer>
               </>
             ) : (
               <>
