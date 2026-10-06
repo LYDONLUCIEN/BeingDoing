@@ -333,6 +333,7 @@ function LandingFooter() {
       <div className="ol-footer-links">
         {/* 小红书二维码入口在「关于我们」左侧（2026-09-21 起） */}
         <XiaohongshuQrEntry className="ol-footer-qr" />
+        <Link href="/consultants">{t('footer.consultants')}</Link>
         <Link href="/about">{t('footer.aboutUs')}</Link>
         <LegalDocLink type="privacy" className="ol-footer-link" />
         <LegalDocLink type="terms" className="ol-footer-link" />

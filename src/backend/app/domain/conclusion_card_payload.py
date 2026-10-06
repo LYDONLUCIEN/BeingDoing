@@ -407,10 +407,6 @@ def build_state_json_draft_extension_protocol(phase: str) -> str:
             '   · experience_value_rows: [{"experience":"...","values":["价值观1","价值观2"]}, ...] — '
             "经历一句与对应价值观词列表（一段经历可匹配多个价值观）；无结构化信息可省略或 []。"
         )
-        lines.append(
-            '   · purpose_progress: {"current_index": int, "confirmed_rows": [...], "completed": bool} — '
-            "使命进度（必须包含，每次回复都须回传，即使未推进也须回传当前值）。"
-        )
     elif p == "rumination":
         lines.append("   · 沉淀阶段以主对话为准；draft 一般仅需 summary 与 keywords，通常无需上述扩展。")
     else:
@@ -421,6 +417,12 @@ def build_state_json_draft_extension_protocol(phase: str) -> str:
     lines.append(
         "6) [STATE_JSON] 块之外只写给用户看的自然语言；勿向用户解释本协议，勿在正文写出块名、state 英文名或「JSON/草案/协议」等字样。"
     )
+    if p == "purpose":
+        # 与 draft 同级放顶层：continue 时 draft=null 也能携带，避免与规则 2 矛盾导致模型乱放
+        lines.append(
+            '7) purpose_progress: {"current_index": int, "confirmed_rows": [...], "completed": bool} — '
+            "放在与 draft 同级的顶层（不是 draft 内部）；使命进度每次回复都须回传，即使未推进也须回传当前值。"
+        )
     return "\n".join(lines)
 
 

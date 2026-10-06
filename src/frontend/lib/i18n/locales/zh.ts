@@ -30,7 +30,7 @@ export const zh = {
     dashboard: '个人空间',
     career: '职业成长',
     community: '交流社区',
-    consultants: '咨询师',
+    consultants: '咨询团队',
     about: '关于我们',
     pricing: '定价方案',
     colors: '配色',

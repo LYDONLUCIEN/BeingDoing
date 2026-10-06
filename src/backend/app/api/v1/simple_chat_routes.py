@@ -5422,6 +5422,32 @@ async def list_threads(
     )
 
 
+def _strip_state_json_from_history_messages(messages: List[dict]) -> List[dict]:
+    """历史返回前剥离助手正文中的 [STATE_JSON] 协议块（只读清洗，不改磁盘）。
+
+    - 已闭合块：整块删除；
+    - 未闭合块：从起始标记起截断（历史脏数据修复：模型偶发漏写 [/STATE_JSON]，
+      落盘函数当时会把协议 JSON 当正文保存，前端只剥已闭合块挡不住）。
+    """
+    out: List[dict] = []
+    for m in messages:
+        if m.get("role") != "assistant" or not isinstance(m.get("content"), str):
+            out.append(m)
+            continue
+        content = re.sub(r"\[STATE_JSON\][\s\S]*?\[/STATE_JSON\]", "", m["content"])
+        idx = content.find("[STATE_JSON]")
+        if idx >= 0:
+            content = content[:idx]
+        content = content.strip()
+        if content == m["content"]:
+            out.append(m)
+        else:
+            cleaned = dict(m)
+            cleaned["content"] = content
+            out.append(cleaned)
+    return out
+
+
 @router.get("/history", response_model=SimpleHistoryResponse)
 async def simple_history(
     activation_code: str,
@@ -5513,6 +5539,9 @@ async def simple_history(
                 start_idx = max(0, total_count - limit)
                 page_messages = history_messages[start_idx:]
             history_messages = page_messages
+
+        # 只读清洗：剥离助手正文中的 STATE_JSON 协议块（含未闭合的历史脏数据）
+        history_messages = _strip_state_json_from_history_messages(history_messages)
 
         return SimpleHistoryResponse(
             code=200,
@@ -6990,12 +7019,19 @@ async def simple_chat_stream(
         # 使命阶段：解析 purpose_progress 并更新 metadata
         if phase_step == "purpose" and state_obj:
             draft_raw = state_obj.get("draft")
+            # 提示词规定 continue 时 draft=null、purpose_progress 与 draft 同级放顶层；
+            # 兼容两种位置：draft 内优先，其次顶层（旧提示词会让模型把进度写到顶层）。
+            pp_raw = None
             if isinstance(draft_raw, dict) and "purpose_progress" in draft_raw:
+                pp_raw = draft_raw["purpose_progress"]
+            elif isinstance(state_obj.get("purpose_progress"), dict):
+                pp_raw = state_obj["purpose_progress"]
+            if pp_raw is not None:
                 try:
                     conv_data_pp = await conv_manager.get_conversation_data(session_id, category)
                     meta_pp = conv_data_pp.get("metadata") or {}
                     cur_prog = normalize_progress(meta_pp.get("purpose_progress"))
-                    updated_prog = apply_progress_update(cur_prog, draft_raw["purpose_progress"])
+                    updated_prog = apply_progress_update(cur_prog, pp_raw)
                     await conv_manager.update_metadata(
                         session_id,
                         category,

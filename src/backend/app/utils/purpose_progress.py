@@ -77,7 +77,7 @@ def build_progress_injection(progress: Dict[str, Any]) -> str:
         f"当前进度：第 {idx + 1}/{TARGET_TOTAL} 条经历（已完成 {done} 条）。",
         "规则：仅处理 current_index 指向的经历；不得对 confirmed_rows 中的经历重新提问或重新匹配。",
         "用户确认后：将 current_index +1 并将该行追加到 confirmed_rows；若用户要求修改已确认经历，更新对应行 values 并调整 current_index。",
-        "每次回复末尾的 STATE_JSON 中须包含 purpose_progress 字段（与当前进度一致），即使未推进也须回传。",
+        "每次回复末尾的 STATE_JSON 中须包含 purpose_progress 字段（与 draft 同级的顶层，与当前进度一致），即使未推进也须回传。",
     ]
     return "\n".join(lines)
 

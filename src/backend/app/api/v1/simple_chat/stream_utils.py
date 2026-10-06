@@ -177,15 +177,27 @@ def split_visible_reply_and_state(raw_text: str) -> tuple[str, Optional[Dict]]:
     if start < 0:
         return raw_text.strip(), None
     if end < 0 or end <= start:
-        # 块未闭合（典型原因：max_tokens 截断），此前静默返回导致不出卡且不可查
+        # 块未闭合（flash 偶发漏写结束标记，finish_reason=stop 也会发生；或 max_tokens 截断）。
+        # 可见正文只留标记之前的部分（与流式过滤器口径一致）；尾部 JSON 能完整解析则照常驱动
+        # 状态机（进度/结论卡不丢），解析失败按本轮无状态处理。
+        # 不再把整段原文当正文返回——那会把协议 JSON 写进对话文件并经 done.response 盖回气泡。
+        tail = raw_text[start + len(start_marker) :].strip()
+        tail_obj: Optional[Dict] = None
+        if tail:
+            try:
+                obj = json.loads(tail)
+                tail_obj = obj if isinstance(obj, dict) else None
+            except (json.JSONDecodeError, TypeError):
+                tail_obj = None
         logger.warning(
-            "[state_json] unclosed block: start=%d end=%d text_len=%d tail=%r",
+            "[state_json] unclosed block: start=%d end=%d text_len=%d tail_parse=%s tail=%r",
             start,
             end,
             len(raw_text),
+            tail_obj is not None,
             raw_text[start:][-300:],
         )
-        return raw_text.strip(), None
+        return raw_text[:start].rstrip(), tail_obj
     json_part = raw_text[start + len(start_marker) : end].strip()
     visible = raw_text[:start].rstrip()
     try:

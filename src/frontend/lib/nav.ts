@@ -9,5 +9,6 @@ export const NAV_ITEMS: NavItem[] = [
   { labelKey: 'nav.explore', href: '/explore/intro', requiresAuth: true },
   { labelKey: 'nav.career', href: '/career' },
   { labelKey: 'nav.community', href: '/community' },
+  { labelKey: 'nav.consultants', href: '/consultants' },
   { labelKey: 'nav.about', href: '/about' },
 ];

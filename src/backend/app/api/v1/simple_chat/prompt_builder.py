@@ -121,7 +121,7 @@ def build_system_prompt(
     protocol = f"""
 
 [输出协议 - 必须遵守]
-在你的自然语言回复末尾，追加如下块（严格 JSON）：
+在你的自然语言回复末尾，追加如下块（严格 JSON，必须以 [/STATE_JSON] 结束）：
 [STATE_JSON]
 {{"state":"continue|pending_ready","draft":{{"summary":"...","keywords":["..."]}}}}
 [/STATE_JSON]
@@ -129,7 +129,7 @@ def build_system_prompt(
 
 规则：
 1) 仅当你判断"已可进入结论确认"时，state 才能是 pending_ready。
-2) state=continue 时，draft 置为 null。
+2) state=continue 时，draft 置为 null；purpose_progress（如需回传）放在与 draft 同级的顶层。
 3) state=pending_ready 时，draft.summary 必填，draft.keywords 为数组（可为空但应尽量给出）。
 {build_state_json_draft_extension_protocol(phase)}
 

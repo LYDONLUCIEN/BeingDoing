@@ -1,0 +1,1691 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>寻路 · OpenLife｜探索方案 UI 参考</title>
+  <style>
+    :root {
+      --paper: #fbfcfb;
+      --paper-cool: #f7f9fc;
+      --surface: #ffffff;
+      --ink: #182130;
+      --ink-soft: #293644;
+      --body: #465366;
+      --muted: #5f6c7d;
+      --faint: #667285;
+      --line: #e3e8ec;
+      --control: #84909f;
+      --action: #222b35;
+      --blue: #3569d4;
+      --blue-deep: #254f9d;
+      --blue-soft: #eef4ff;
+      --green: #147b65;
+      --green-soft: #edf9f5;
+      --violet: #6f52c7;
+      --violet-deep: #51399f;
+      --violet-soft: #f3f0ff;
+      --amber: #b57512;
+      --amber-soft: #fff7e8;
+      --danger: #a63e4b;
+      font-family: "OpenLifeSans", "Noto Sans SC", Inter, -apple-system,
+        BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Microsoft YaHei",
+        system-ui, sans-serif;
+      color: var(--ink);
+      font-synthesis: none;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { background: #eef2f0; }
+
+    body {
+      min-width: 320px;
+      min-height: 100vh;
+      margin: 0;
+      background: #eef2f0;
+      color: var(--ink);
+    }
+
+    button,
+    input,
+    select { font: inherit; }
+
+    button { color: inherit; }
+
+    button,
+    label,
+    select { -webkit-tap-highlight-color: transparent; }
+
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    summary:focus-visible {
+      outline: 3px solid rgba(37, 79, 157, 0.34);
+      outline-offset: 3px;
+    }
+
+    .demo-site {
+      min-height: 100vh;
+      overflow: hidden;
+      background: var(--paper);
+    }
+
+    .demo-nav {
+      display: flex;
+      height: 72px;
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0 40px;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(227, 232, 236, 0.7);
+    }
+
+    .demo-logo { font-size: 20px; font-weight: 720; letter-spacing: -0.04em; }
+    .demo-links { display: flex; gap: 36px; color: var(--muted); font-size: 14px; }
+
+    .demo-hero {
+      display: grid;
+      min-height: calc(100vh - 72px);
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 104px 40px;
+      align-content: start;
+    }
+
+    .demo-hero h1 {
+      max-width: 660px;
+      margin: 0 0 20px;
+      color: var(--ink);
+      font-size: clamp(40px, 5.6vw, 76px);
+      line-height: 1.13;
+      letter-spacing: -0.055em;
+    }
+
+    .demo-hero p {
+      max-width: 510px;
+      margin: 0 0 28px;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.9;
+    }
+
+    .demo-open,
+    .primary-action {
+      min-height: 46px;
+      border: 1px solid var(--action);
+      border-radius: 999px;
+      background: var(--action);
+      color: #fff;
+      cursor: pointer;
+      font-weight: 650;
+      transition: transform 140ms ease, box-shadow 140ms ease, background 140ms ease;
+    }
+
+    .demo-open { width: fit-content; padding: 0 24px; }
+
+    .demo-open:hover,
+    .primary-action:hover {
+      transform: translateY(-1px);
+      background: #151c23;
+      box-shadow: 0 10px 24px rgba(24, 33, 48, 0.15);
+    }
+
+    dialog {
+      width: min(1240px, calc(100vw - 40px));
+      max-width: none;
+      max-height: calc(100dvh - 40px);
+      margin: auto;
+      padding: 0;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.94);
+      border-radius: 26px;
+      background: rgba(251, 252, 251, 0.98);
+      box-shadow: 0 16px 40px rgba(24, 33, 48, 0.16);
+      color: var(--ink);
+    }
+
+    dialog::backdrop {
+      background: rgba(24, 33, 48, 0.58);
+      -webkit-backdrop-filter: blur(12px);
+      backdrop-filter: blur(12px);
+    }
+
+    body:has(dialog[open]) { overflow: hidden; }
+
+    .modal-shell {
+      display: flex;
+      max-height: calc(100dvh - 42px);
+      flex-direction: column;
+    }
+
+    .modal-scroll {
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
+    }
+
+    .modal-head {
+      position: relative;
+      padding: 30px 38px 20px;
+      border-bottom: 1px solid rgba(227, 232, 236, 0.84);
+      background: rgba(255, 255, 255, 0.72);
+    }
+
+    .head-copy {
+      display: flex;
+      padding-right: 48px;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 28px;
+    }
+
+    .head-title-wrap { min-width: 0; }
+
+    .eyebrow {
+      display: flex;
+      margin-bottom: 8px;
+      align-items: center;
+      gap: 10px;
+      color: var(--blue-deep);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+
+    .eyebrow-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--blue);
+      box-shadow: 0 0 0 5px rgba(53, 105, 212, 0.1);
+    }
+
+    .modal-head h1 {
+      margin: 0;
+      color: var(--ink);
+      font-size: clamp(25px, 2.4vw, 34px);
+      line-height: 1.2;
+      letter-spacing: -0.045em;
+    }
+
+    .modal-head p {
+      max-width: 500px;
+      margin: 0 0 2px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.75;
+    }
+
+    .close-button {
+      position: absolute;
+      top: 20px;
+      right: 22px;
+      display: grid;
+      width: 42px;
+      height: 42px;
+      padding: 0;
+      place-items: center;
+      border: 0;
+      border-radius: 50%;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 29px;
+      font-weight: 300;
+      line-height: 1;
+      transition: background 140ms ease, color 140ms ease;
+    }
+
+    .close-button:hover { background: #eef2f5; color: var(--ink); }
+
+    .modal-body { padding: 22px 38px 24px; }
+
+    .section-heading {
+      display: flex;
+      margin-bottom: 12px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+    }
+
+    .section-heading-main { display: flex; align-items: center; gap: 10px; }
+
+    .step-chip {
+      display: inline-grid;
+      width: 25px;
+      height: 25px;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--ink);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 750;
+    }
+
+    .section-heading strong { color: var(--ink-soft); font-size: 15px; font-weight: 700; }
+    .section-heading small { color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+    .feature-section .plan-card {
+      min-height: 286px;
+      cursor: default;
+    }
+
+    .feature-section .plan-card:hover { transform: none; }
+
+    .feature-section .plan-card.is-selected::after {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: var(--plan-soft);
+      color: var(--plan-deep);
+      content: "价格已选";
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .feature-section .plan-card[data-plan="free"]::after {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      background: var(--green-soft);
+      color: #176a57;
+      content: "当前版本";
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .feature-index {
+      display: grid;
+      width: 30px;
+      height: 30px;
+      flex: 0 0 auto;
+      place-items: center;
+      border-radius: 10px;
+      background: var(--plan-soft);
+      color: var(--plan-deep);
+      font-size: 11px;
+      font-weight: 780;
+      letter-spacing: 0.04em;
+    }
+
+    .plan-fieldset {
+      min-width: 0;
+      margin: 0;
+      padding: 0;
+      border: 0;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    .plan-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .plan-choice {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .plan-card {
+      --plan-accent: var(--blue);
+      --plan-deep: var(--blue-deep);
+      --plan-soft: var(--blue-soft);
+      position: relative;
+      display: flex;
+      min-width: 0;
+      min-height: 286px;
+      padding: 19px 19px 17px;
+      flex-direction: column;
+      border: 1px solid var(--line);
+      border-radius: 19px;
+      background: rgba(255, 255, 255, 0.82);
+      cursor: default;
+      transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease,
+        background 160ms ease;
+    }
+
+    .plan-choice .plan-card { height: 100%; }
+    .plan-card[role="button"] { cursor: pointer; }
+
+    .plan-card[data-plan="free"] {
+      --plan-accent: var(--green);
+      --plan-deep: #176a57;
+      --plan-soft: var(--green-soft);
+    }
+
+    .plan-card[data-plan="annual_package"] {
+      --plan-accent: var(--violet);
+      --plan-deep: var(--violet-deep);
+      --plan-soft: var(--violet-soft);
+    }
+
+    .plan-card[role="button"]:hover {
+      transform: translateY(-2px);
+      border-color: #b7c0ca;
+      background: #fff;
+      box-shadow: 0 12px 28px rgba(31, 48, 64, 0.07);
+    }
+
+    .plan-card:has(input:checked) {
+      border-color: var(--plan-deep);
+      background: #fff;
+      box-shadow: 0 0 0 2px rgba(53, 105, 212, 0.14),
+        0 14px 30px rgba(31, 48, 64, 0.08);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--plan-accent) 17%, transparent),
+        0 14px 30px rgba(31, 48, 64, 0.08);
+    }
+
+    .plan-card.is-selected {
+      border-color: var(--plan-deep);
+      background: #fff;
+      box-shadow: 0 0 0 2px rgba(53, 105, 212, 0.14),
+        0 14px 30px rgba(31, 48, 64, 0.08);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--plan-accent) 17%, transparent),
+        0 14px 30px rgba(31, 48, 64, 0.08);
+    }
+
+    .plan-card:has(input:focus-visible) {
+      outline: 3px solid rgba(53, 105, 212, 0.25);
+      outline: 3px solid color-mix(in srgb, var(--plan-accent) 28%, transparent);
+      outline-offset: 3px;
+    }
+
+    .plan-card[role="button"]:focus-visible {
+      outline: 3px solid rgba(53, 105, 212, 0.25);
+      outline: 3px solid color-mix(in srgb, var(--plan-accent) 28%, transparent);
+      outline-offset: 3px;
+    }
+
+    .plan-radio { position: absolute; opacity: 0; pointer-events: none; }
+
+    .plan-top {
+      display: flex;
+      min-height: 52px;
+      margin-bottom: 12px;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .plan-name-line { display: flex; min-width: 0; align-items: center; gap: 9px; }
+
+    .selection-mark {
+      display: grid;
+      width: 21px;
+      height: 21px;
+      flex: 0 0 auto;
+      place-items: center;
+      border: 1.5px solid #9aa5b1;
+      border-radius: 50%;
+      color: transparent;
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .plan-card:has(input:checked) .selection-mark {
+      border-color: var(--plan-accent);
+      background: var(--plan-accent);
+      color: #fff;
+    }
+
+    .plan-card.is-selected .selection-mark {
+      border-color: var(--plan-accent);
+      background: var(--plan-accent);
+      color: #fff;
+    }
+
+    .plan-name {
+      display: block;
+      color: var(--ink);
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1.2;
+      letter-spacing: -0.025em;
+    }
+
+    .plan-role {
+      display: block;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .price-tag {
+      flex: 0 0 auto;
+      padding: 6px 9px;
+      border: 1px solid #cbd5df;
+      border-color: color-mix(in srgb, var(--plan-accent) 20%, var(--line));
+      border-radius: 999px;
+      background: var(--plan-soft);
+      color: var(--plan-deep);
+      font-size: 13px;
+      font-weight: 650;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .price-tag strong { font-size: 15px; font-weight: 720; }
+
+    .recommend-tag {
+      display: inline-flex;
+      width: fit-content;
+      min-height: 24px;
+      margin: -2px 0 10px 0;
+      padding: 0 9px;
+      align-items: center;
+      border-radius: 999px;
+      background: var(--blue-soft);
+      color: var(--blue-deep);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .plan-promise {
+      min-height: 44px;
+      margin: 0 0 12px;
+      color: var(--body);
+      font-size: 14px;
+      font-weight: 580;
+      line-height: 1.55;
+    }
+
+    .feature-list {
+      display: grid;
+      margin: 0;
+      padding: 0;
+      gap: 8px;
+      list-style: none;
+    }
+
+    .feature-list li {
+      position: relative;
+      min-height: 20px;
+      padding-left: 24px;
+      color: var(--body);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .feature-list li::before {
+      position: absolute;
+      top: 2px;
+      left: 0;
+      display: grid;
+      width: 17px;
+      height: 17px;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--plan-soft);
+      color: var(--plan-deep);
+      content: "✓";
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .feature-list strong { color: var(--ink-soft); font-weight: 650; }
+
+    .plan-foot {
+      display: flex;
+      min-height: 34px;
+      margin-top: auto;
+      padding-top: 12px;
+      align-items: flex-end;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .price-fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+
+    .price-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .price-option {
+      --price-accent: var(--blue);
+      --price-deep: var(--blue-deep);
+      --price-soft: var(--blue-soft);
+      position: relative;
+      display: flex;
+      min-width: 0;
+      min-height: 66px;
+      padding: 11px 13px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border: 1px solid #cbd3dc;
+      border-radius: 14px;
+      background: #fff;
+      cursor: pointer;
+      transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+    }
+
+    .price-option[data-plan="free"] {
+      --price-accent: var(--green);
+      --price-deep: #176a57;
+      --price-soft: var(--green-soft);
+    }
+
+    .price-option[data-plan="annual_package"] {
+      --price-accent: var(--violet);
+      --price-deep: var(--violet-deep);
+      --price-soft: var(--violet-soft);
+    }
+
+    .price-option:hover { border-color: #9ba8b5; }
+
+    .price-option.is-current {
+      border-style: dashed;
+      border-color: #b9c5c0;
+      background: #f4f8f6;
+      cursor: default;
+      opacity: 0.88;
+    }
+
+    .price-option.is-current:hover { border-color: #b9c5c0; }
+
+    .current-version-mark {
+      display: inline-flex;
+      min-height: 25px;
+      padding: 0 10px;
+      align-items: center;
+      border-radius: 999px;
+      background: var(--green-soft);
+      color: #176a57;
+      font-size: 11px;
+      font-weight: 720;
+      white-space: nowrap;
+    }
+
+    .price-option:has(input:checked),
+    .price-option.is-selected {
+      border-color: var(--price-deep);
+      background: var(--price-soft);
+      box-shadow: 0 0 0 2px rgba(53, 105, 212, 0.12);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--price-accent) 14%, transparent);
+    }
+
+    .price-option:has(input:focus-visible) {
+      outline: 3px solid rgba(53, 105, 212, 0.24);
+      outline-offset: 3px;
+    }
+
+    .price-radio { position: absolute; opacity: 0; pointer-events: none; }
+
+    .price-option-copy { display: flex; min-width: 0; align-items: center; gap: 9px; }
+
+    .price-selection {
+      display: grid;
+      width: 20px;
+      height: 20px;
+      flex: 0 0 auto;
+      place-items: center;
+      border: 1.5px solid #98a4af;
+      border-radius: 50%;
+      background: #fff;
+      color: transparent;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .price-option:has(input:checked) .price-selection,
+    .price-option.is-selected .price-selection {
+      border-color: var(--price-accent);
+      background: var(--price-accent);
+      color: #fff;
+    }
+
+    .price-name { display: block; color: var(--ink-soft); font-size: 14px; font-weight: 680; }
+    .price-note { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.35; }
+
+    .price-value { flex: 0 0 auto; color: var(--price-deep); text-align: right; white-space: nowrap; }
+    .price-value strong { display: block; font-size: 22px; font-weight: 730; line-height: 1.05; letter-spacing: -0.035em; }
+    .price-value small { color: var(--muted); font-size: 10px; }
+
+    .comparison {
+      margin-top: 14px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.72);
+    }
+
+    .comparison summary {
+      display: flex;
+      min-height: 50px;
+      padding: 0 17px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      cursor: pointer;
+      list-style: none;
+    }
+
+    .comparison summary::-webkit-details-marker { display: none; }
+
+    .compare-title { color: var(--ink-soft); font-size: 14px; font-weight: 650; }
+
+    .compare-help {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .chevron {
+      width: 9px;
+      height: 9px;
+      border-right: 1.5px solid currentColor;
+      border-bottom: 1.5px solid currentColor;
+      transform: rotate(45deg) translateY(-2px);
+      transition: transform 160ms ease;
+    }
+
+    .comparison[open] .chevron { transform: rotate(225deg) translate(-1px, -1px); }
+
+    .compare-wrap { overflow-x: auto; padding: 0 14px 14px; }
+
+    .compare-table {
+      width: 100%;
+      min-width: 720px;
+      border-collapse: separate;
+      border-spacing: 0;
+      color: var(--body);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .compare-table th,
+    .compare-table td {
+      width: 25%;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: center;
+      vertical-align: middle;
+    }
+
+    .compare-table thead th {
+      background: var(--paper-cool);
+      color: var(--ink-soft);
+      font-weight: 680;
+    }
+
+    .compare-table th:first-child { text-align: left; }
+    .compare-table tbody th { font-weight: 500; }
+
+    .compare-table .active-col {
+      background: var(--blue-soft);
+      color: var(--blue-deep);
+    }
+
+    .compare-check { color: var(--green); font-size: 15px; font-weight: 800; }
+
+    .compare-footnote {
+      margin: 10px 2px 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.65;
+    }
+
+    .payment-panel {
+      margin-top: 14px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.94);
+      box-shadow: 0 12px 30px rgba(31, 48, 64, 0.05);
+    }
+
+    .payment-panel.is-hidden { display: none; }
+
+    .payment-grid { display: grid; grid-template-columns: 220px minmax(0, 1fr); }
+
+    .qr-column {
+      display: grid;
+      min-height: 204px;
+      padding: 14px;
+      place-items: center;
+      border-right: 1px solid var(--line);
+      background: #fcfdfd;
+    }
+
+    .qr-stage {
+      position: relative;
+      display: grid;
+      width: 176px;
+      height: 176px;
+      margin: 0 auto;
+      padding: 7px;
+      place-items: center;
+      border: 1px solid #c6cfd8;
+      border-radius: 16px;
+      background: #fff;
+      box-shadow: 0 8px 20px rgba(31, 48, 64, 0.07);
+    }
+
+    .qr-image { width: 160px; height: 160px; border-radius: 8px; object-fit: contain; }
+
+    .qr-placeholder {
+      position: relative;
+      display: flex;
+      width: 160px;
+      height: 160px;
+      padding: 20px;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      border: 1px dashed #aeb9c4;
+      border-radius: 10px;
+      background: var(--paper-cool);
+      text-align: center;
+    }
+
+    .qr-placeholder.is-hidden { display: none; }
+
+    .qr-corner { position: absolute; width: 19px; height: 19px; border-color: #8996a3; }
+    .qr-corner.tl { top: 10px; left: 10px; border-top: 3px solid; border-left: 3px solid; }
+    .qr-corner.tr { top: 10px; right: 10px; border-top: 3px solid; border-right: 3px solid; }
+    .qr-corner.bl { bottom: 10px; left: 10px; border-bottom: 3px solid; border-left: 3px solid; }
+    .qr-corner.br { right: 10px; bottom: 10px; border-right: 3px solid; border-bottom: 3px solid; }
+
+    .qr-brand {
+      display: grid;
+      width: 38px;
+      height: 38px;
+      margin-bottom: 8px;
+      place-items: center;
+      border-radius: 11px;
+      background: #1677ff;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    .qr-placeholder[data-channel="wechat"] .qr-brand { background: #07c160; }
+    .qr-placeholder strong { color: var(--ink-soft); font-size: 13px; }
+    .order-column { display: grid; min-width: 0; grid-template-rows: repeat(3, 1fr); }
+
+    .checkout-row {
+      display: grid;
+      min-width: 0;
+      min-height: 68px;
+      padding: 10px 14px;
+      align-items: center;
+      grid-template-columns: 76px minmax(0, 1fr);
+      gap: 12px;
+    }
+
+    .checkout-row + .checkout-row { border-top: 1px solid var(--line); }
+    .checkout-row > .checkout-label { margin: 0; }
+
+    .amount-row { grid-template-columns: 76px minmax(90px, 1fr) auto auto; }
+    .selected-plan { color: var(--ink-soft); font-size: 14px; font-weight: 650; }
+    .order-total { color: var(--muted); font-size: 11px; white-space: nowrap; }
+    .order-total strong { color: var(--ink-soft); font-size: 20px; line-height: 1; }
+
+    .payment-coupon .coupon-row { grid-template-columns: minmax(116px, 0.7fr) minmax(150px, 1fr) auto; }
+    .payment-channel-select .channel-row { max-width: 420px; }
+
+    .amount-row .primary-action {
+      min-height: 38px;
+      padding: 0 15px;
+      border-radius: 10px;
+      font-size: 12px;
+    }
+
+    .checkout-panel {
+      display: grid;
+      grid-template-columns: minmax(210px, 0.82fr) minmax(300px, 1.15fr) minmax(250px, 0.9fr);
+      margin-top: 14px;
+      padding: 15px 16px;
+      align-items: center;
+      gap: 18px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 10px 28px rgba(31, 48, 64, 0.045);
+    }
+
+    .checkout-block + .checkout-block {
+      padding-left: 18px;
+      border-left: 1px solid var(--line);
+    }
+
+    .checkout-label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+    }
+
+    .channel-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+    .channel-button {
+      display: flex;
+      min-height: 42px;
+      padding: 0 11px;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+      color: var(--body);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+    }
+
+    .channel-button:hover { border-color: #aeb8c3; }
+
+    .channel-button[aria-pressed="true"] {
+      border-color: var(--blue-deep);
+      background: var(--blue-soft);
+      box-shadow: 0 0 0 1px rgba(37, 79, 157, 0.13);
+      color: var(--blue-deep);
+    }
+
+    .channel-mark {
+      display: grid;
+      width: 23px;
+      height: 23px;
+      place-items: center;
+      border-radius: 7px;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .channel-mark.alipay { background: #1677ff; }
+    .channel-mark.wechat { background: #07c160; }
+
+    .coupon-row { display: grid; grid-template-columns: minmax(0, 0.75fr) minmax(0, 1fr) auto; gap: 7px; }
+
+    .coupon-row select,
+    .coupon-row input {
+      width: 100%;
+      min-width: 0;
+      height: 42px;
+      border: 1px solid #b6c0ca;
+      border-radius: 11px;
+      background: #fff;
+      color: var(--ink-soft);
+      font-size: 12px;
+      outline: 0;
+    }
+
+    .coupon-row select { padding: 0 30px 0 10px; }
+    .coupon-row input { padding: 0 11px; }
+    .coupon-row input::placeholder { color: #778392; opacity: 1; }
+
+    .coupon-apply {
+      height: 42px;
+      padding: 0 14px;
+      border: 1px solid #aab5c0;
+      border-radius: 11px;
+      background: #fff;
+      color: var(--ink-soft);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .coupon-apply:hover { background: var(--paper-cool); }
+
+    .checkout-action {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 13px;
+    }
+
+    .selected-copy { min-width: 0; }
+
+    .selected-plan {
+      display: block;
+      overflow: hidden;
+      color: var(--ink-soft);
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.4;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .selected-detail {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .amount-copy {
+      display: inline-flex;
+      margin-top: 7px;
+      align-items: baseline;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .amount-copy strong { color: var(--ink-soft); font-size: 16px; font-weight: 700; }
+
+    .primary-action {
+      min-width: 148px;
+      padding: 0 20px;
+      white-space: nowrap;
+    }
+
+    .primary-action:disabled { cursor: wait; opacity: 0.58; transform: none; box-shadow: none; }
+
+    .free-panel {
+      display: none;
+      grid-template-columns: minmax(0, 1fr) auto;
+      margin-top: 14px;
+      padding: 15px 16px;
+      align-items: center;
+      gap: 20px;
+      border: 1px solid #bcd8ce;
+      border-radius: 18px;
+      background: var(--green-soft);
+    }
+
+    .free-panel.is-visible { display: grid; }
+    .checkout-panel.is-hidden { display: none; }
+
+    .free-panel strong {
+      display: block;
+      margin-bottom: 4px;
+      color: #176a57;
+      font-size: 14px;
+    }
+
+    .free-panel p { margin: 0; color: var(--body); font-size: 12px; line-height: 1.65; }
+
+    .free-action {
+      min-height: 44px;
+      padding: 0 22px;
+      border: 1px solid #176a57;
+      border-radius: 999px;
+      background: #176a57;
+      color: #fff;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 680;
+      white-space: nowrap;
+    }
+
+    .status-line {
+      min-height: 20px;
+      margin: 10px 2px 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .status-line[data-tone="success"] { color: var(--green); }
+    .status-line[data-tone="error"] { color: var(--danger); }
+
+    .trust-line {
+      display: flex;
+      margin-top: 8px;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.5;
+      text-align: center;
+    }
+
+    .trust-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); }
+
+    @media (max-width: 1080px) {
+      dialog { width: min(940px, calc(100vw - 28px)); max-height: calc(100dvh - 28px); }
+      .modal-shell { max-height: calc(100dvh - 30px); }
+      .modal-head { padding: 25px 26px 18px; }
+      .modal-body { padding: 18px 26px 22px; }
+      .head-copy { align-items: flex-start; flex-direction: column; gap: 8px; }
+      .plan-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .feature-list { grid-template-columns: 1fr; }
+      .checkout-panel { grid-template-columns: 1fr 1.25fr; }
+      .checkout-action { grid-column: 1 / -1; padding: 14px 0 0 !important; border-top: 1px solid var(--line); border-left: 0 !important; }
+      .payment-grid { grid-template-columns: 210px minmax(0, 1fr); }
+    }
+
+    @media (max-width: 860px) {
+      .plan-grid { grid-template-columns: 1fr; }
+      .plan-card { min-height: 0; }
+      .plan-promise { min-height: 0; }
+      .feature-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 700px) {
+      .demo-nav { padding: 0 18px; }
+      .demo-links { display: none; }
+      .demo-hero { padding: 70px 20px; }
+      dialog { width: calc(100vw - 14px); max-height: calc(100dvh - 14px); border-radius: 22px; }
+      .modal-shell { max-height: calc(100dvh - 16px); }
+      .modal-head { padding: 24px 20px 17px; }
+      .modal-head p { font-size: 13px; }
+      .modal-body { padding: 15px 15px 20px; }
+      .head-copy { padding-right: 32px; }
+      .close-button { top: 12px; right: 12px; }
+      .plan-card { padding: 17px 15px 15px; }
+      .feature-list { grid-template-columns: 1fr; }
+      .section-heading { align-items: flex-start; flex-direction: column; gap: 5px; }
+      .price-grid { grid-template-columns: 1fr; }
+      .price-option { min-height: 68px; }
+      .checkout-panel { grid-template-columns: 1fr; padding: 14px; }
+      .checkout-block + .checkout-block { padding: 13px 0 0; border-top: 1px solid var(--line); border-left: 0; }
+      .checkout-action { grid-column: auto; grid-template-columns: 1fr; }
+      .coupon-row { grid-template-columns: 1fr auto; }
+      .coupon-row select { grid-column: 1 / -1; }
+      .payment-grid { grid-template-columns: 1fr; }
+      .qr-column { border-right: 0; border-bottom: 1px solid var(--line); }
+      .order-column { padding: 0; }
+      .checkout-row { grid-template-columns: 1fr; padding: 12px 14px; gap: 8px; }
+      .amount-row { grid-template-columns: 1fr auto; }
+      .amount-row > .checkout-label { grid-column: 1 / -1; }
+      .amount-row .primary-action { grid-column: 1 / -1; }
+      .payment-coupon .coupon-row { grid-template-columns: 1fr auto; }
+      .payment-coupon .coupon-row select { grid-column: 1 / -1; }
+      .primary-action { width: 100%; }
+      .free-panel { grid-template-columns: 1fr; }
+      .free-action { width: 100%; }
+      .trust-line { align-items: flex-start; text-align: left; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="demo-site" aria-hidden="true">
+    <nav class="demo-nav">
+      <span class="demo-logo">寻路 · OpenLife</span>
+      <span class="demo-links"><span>首页</span><span>开始探索</span><span>社区</span></span>
+      <span style="color:var(--muted);font-size:13px">你好，探索者</span>
+    </nav>
+    <main class="demo-hero">
+      <h1>更清晰的自己，<br>更温柔地生活。</h1>
+      <p>通过 AI 深度对话与结构化探索，看见你的价值观、优势、热爱与使命。</p>
+      <button class="demo-open" id="openPurchase" type="button">查看探索方案</button>
+    </main>
+  </div>
+
+  <dialog id="purchaseDialog" aria-labelledby="purchaseTitle">
+    <div class="modal-shell">
+      <div class="modal-scroll" id="modalScroll">
+        <header class="modal-head">
+          <button class="close-button" id="closePurchase" type="button" aria-label="关闭方案选择">×</button>
+          <div class="head-copy">
+            <div class="head-title-wrap">
+              <div class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>寻路 · OPENLIFE 探索方案</div>
+              <h1 id="purchaseTitle">选择适合你的探索方式</h1>
+            </div>
+          </div>
+        </header>
+
+        <main class="modal-body">
+          <section class="feature-section" aria-labelledby="featureSectionTitle">
+            <div class="section-heading">
+              <div class="section-heading-main"><strong id="featureSectionTitle">选择探索版本</strong></div>
+            </div>
+            <div class="plan-grid">
+              <div class="plan-choice" data-plan="free">
+                <article class="plan-card" data-plan="free" aria-disabled="true">
+                  <span class="plan-top">
+                    <span class="plan-name-line">
+                      <span class="feature-index" aria-hidden="true">01</span>
+                      <span><span class="plan-name">免费版</span><span class="plan-role">先体验对话方式</span></span>
+                    </span>
+                  </span>
+                  <span class="plan-promise">10 轮对话，体验价值观探索。</span>
+                  <ul class="feature-list">
+                    <li><strong>价值观阶段</strong>的交互式探索</li>
+                    <li><strong>10 轮</strong> AI 深度对话</li>
+                    <li>阶段结论卡与即时反馈</li>
+                    <li>不含完整报告</li>
+                  </ul>
+                </article>
+                <div class="price-option is-current" data-plan="free" aria-label="免费版，当前版本，不可选择">
+                  <span class="price-option-copy"><span><span class="price-name">免费版</span><span class="price-note">免费体验</span></span></span>
+                  <span class="current-version-mark">当前版本</span>
+                </div>
+              </div>
+
+              <div class="plan-choice" data-plan="quarterly_package">
+                <article class="plan-card" data-plan="quarterly_package" role="button" tabindex="0" aria-pressed="true" aria-label="选择启程版">
+                  <span class="plan-top">
+                    <span class="plan-name-line">
+                      <span class="feature-index" aria-hidden="true">02</span>
+                      <span><span class="plan-name">启程版</span><span class="plan-role">一次完整的个人探索</span></span>
+                    </span>
+                  </span>
+                  <span class="recommend-tag">推荐</span>
+                  <span class="plan-promise">完成五阶段探索，生成完整报告。</span>
+                  <ul class="feature-list">
+                    <li><strong>全部 5 阶段</strong>，AI 对话不限轮次</li>
+                    <li><strong>1 份</strong> 30+ 页 / 7+ 主题完整报告</li>
+                    <li>24 小时人工审核 + 1 次免费复核</li>
+                    <li>1 枚激活码，可自用或转赠</li>
+                  </ul>
+                </article>
+                <label class="price-option" data-plan="quarterly_package">
+                  <input class="price-radio" type="radio" name="purchase-plan" value="quarterly_package" checked>
+                  <span class="price-option-copy"><span class="price-selection" aria-hidden="true">✓</span><span><span class="price-name">选择启程版</span><span class="price-note">1 枚激活码 · 3 个月</span></span></span>
+                  <span class="price-value"><strong>¥69</strong></span>
+                </label>
+              </div>
+
+              <div class="plan-choice" data-plan="annual_package">
+                <article class="plan-card" data-plan="annual_package" role="button" tabindex="0" aria-pressed="false" aria-label="选择同行版">
+                  <span class="plan-top">
+                    <span class="plan-name-line">
+                      <span class="feature-index" aria-hidden="true">03</span>
+                      <span><span class="plan-name">同行版</span><span class="plan-role">长期探索或多人同行</span></span>
+                    </span>
+                  </span>
+                  <span class="plan-promise">3 份报告，适合持续复盘或多人同行。</span>
+                  <ul class="feature-list">
+                    <li><strong>全部 5 阶段</strong>，AI 对话不限轮次</li>
+                    <li><strong>3 份报告 + 3 枚等价激活码</strong></li>
+                    <li>团队匹配度与角色分析</li>
+                    <li>24 小时人工审核 + 1 次免费复核</li>
+                  </ul>
+                </article>
+                <label class="price-option" data-plan="annual_package">
+                  <input class="price-radio" type="radio" name="purchase-plan" value="annual_package">
+                  <span class="price-option-copy"><span class="price-selection" aria-hidden="true">✓</span><span><span class="price-name">选择同行版</span><span class="price-note">3 枚激活码 · 每码 1 年</span></span></span>
+                  <span class="price-value"><strong>¥159</strong></span>
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <details class="comparison" id="comparison">
+            <summary>
+              <span class="compare-title">查看完整功能对比</span>
+              <span class="compare-help"><span id="compareToggleText">展开对比</span><i class="chevron" aria-hidden="true"></i></span>
+            </summary>
+            <div class="compare-wrap" role="region" aria-label="三种探索方案功能对比，可横向滚动" tabindex="0">
+              <table class="compare-table" id="comparisonTable">
+                <thead>
+                  <tr>
+                    <th scope="col">功能</th>
+                    <th scope="col" data-column="free">免费版</th>
+                    <th scope="col" data-column="quarterly_package">启程版</th>
+                    <th scope="col" data-column="annual_package">同行版</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><th scope="row">AI 对话额度</th><td data-column="free">10 轮</td><td data-column="quarterly_package">不限</td><td data-column="annual_package">不限</td></tr>
+                  <tr><th scope="row">开放探索阶段</th><td data-column="free">价值观阶段</td><td data-column="quarterly_package">全部 5 阶段</td><td data-column="annual_package">全部 5 阶段</td></tr>
+                  <tr><th scope="row">完整报告（30+页 / 7+主题）</th><td data-column="free">—</td><td data-column="quarterly_package">1 份</td><td data-column="annual_package">3 份</td></tr>
+                  <tr><th scope="row">24 小时人工审核</th><td data-column="free">—</td><td class="compare-check" data-column="quarterly_package">✓</td><td class="compare-check" data-column="annual_package">✓</td></tr>
+                  <tr><th scope="row">免费报告复核</th><td data-column="free">—</td><td data-column="quarterly_package">1 次</td><td data-column="annual_package">1 次</td></tr>
+                  <tr><th scope="row">激活码数量</th><td data-column="free">试用码</td><td data-column="quarterly_package">1 枚</td><td data-column="annual_package">3 枚</td></tr>
+                  <tr><th scope="row">团队匹配与角色分析</th><td data-column="free">—</td><td data-column="quarterly_package">—</td><td class="compare-check" data-column="annual_package">✓</td></tr>
+                  <tr><th scope="row">适用场景</th><td data-column="free">体验产品</td><td data-column="quarterly_package">个人阶段性深度探索</td><td data-column="annual_package">持续探索 / 多人同行 / 团队分析</td></tr>
+                </tbody>
+              </table>
+              <p class="compare-footnote">启程版与同行版到期后仍可查看已生成报告，但不能继续编辑或查看对话。激活码在未绑定前可自用、转赠或用于升级试用码。</p>
+            </div>
+          </details>
+
+          <section class="payment-panel" id="paidCheckout" aria-label="扫码支付">
+            <div class="payment-grid">
+              <div class="qr-column">
+                <div class="qr-stage" aria-live="polite">
+                  <img class="qr-image" id="paymentQrImage" alt="" hidden>
+                  <div class="qr-placeholder" id="qrPlaceholder" data-channel="alipay">
+                    <i class="qr-corner tl" aria-hidden="true"></i><i class="qr-corner tr" aria-hidden="true"></i><i class="qr-corner bl" aria-hidden="true"></i><i class="qr-corner br" aria-hidden="true"></i>
+                    <span class="qr-brand" id="qrBrand" aria-hidden="true">支</span>
+                    <strong id="qrPlaceholderTitle">支付宝二维码</strong>
+                  </div>
+                </div>
+                <span class="sr-only" id="qrHint">请使用支付宝扫一扫完成支付。</span>
+              </div>
+
+              <div class="order-column">
+                <div class="checkout-row amount-row" aria-live="polite">
+                  <span class="checkout-label">应付金额</span>
+                  <span class="selected-plan" id="selectedPlan">启程版</span>
+                  <span class="sr-only" id="selectedDetail">1 枚激活码 · 1 份报告 · 3 个月</span>
+                  <span class="order-total"><strong id="selectedAmount">¥69.00</strong></span>
+                  <button class="primary-action" id="buyButton" type="button">生成付款码</button>
+                </div>
+                <div class="checkout-row payment-coupon">
+                  <span class="checkout-label">优惠码</span>
+                  <div class="coupon-row">
+                    <select id="myCoupons" aria-label="我的可用券"><option value="">我的优惠券</option></select>
+                    <input id="couponInput" type="text" autocomplete="off" placeholder="输入优惠码" aria-label="优惠码">
+                    <button class="coupon-apply" id="applyCoupon" type="button">使用</button>
+                  </div>
+                </div>
+                <div class="checkout-row payment-channel-select">
+                  <span class="checkout-label">支付方式</span>
+                  <div class="channel-row" role="group" aria-label="选择支付方式">
+                    <button class="channel-button" type="button" data-channel="alipay" aria-pressed="true">
+                      <span class="channel-mark alipay" aria-hidden="true">支</span>支付宝
+                    </button>
+                    <button class="channel-button" type="button" data-channel="wechat" aria-pressed="false">
+                      <span class="channel-mark wechat" aria-hidden="true">微</span>微信支付
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="free-panel" id="freeCheckout" aria-label="免费体验说明">
+            <div>
+              <strong>无需付款，验证邮箱后即可开始</strong>
+              <p>先用 10 轮真实对话体验价值观探索；需要继续五阶段探索时，可随时升级启程版或同行版。</p>
+            </div>
+            <button class="free-action" id="freeButton" type="button">继续免费体验</button>
+          </section>
+
+          <p class="status-line" id="purchaseStatus" role="status" aria-live="polite"></p>
+          <div class="trust-line"><span class="trust-dot" aria-hidden="true"></span>支付宝 / 微信安全支付</div>
+        </main>
+      </div>
+    </div>
+  </dialog>
+
+  <script>
+    /*
+      OpenLife 支付 UI 参考稿
+      -----------------------------------------------------------------------
+      生产映射保持现有命名：
+      - product_type: quarterly_package | annual_package
+      - channel: alipay | wechat
+      - 事件函数: handleApplyCoupon / handleSelectMyCoupon / handlePay /
+        handleCancelOrder / handleCopyCode / handleGoActivate / handleGoOrders /
+        handleGoConsultation / resetToOrderView / startWaiting / enterSuccess
+      - 免费版不创建支付订单，走现有试用流程。
+      - 价格、券抵扣、商品权限和支付状态必须由服务端最终确认。
+    */
+    const PLANS = {
+      free: {
+        product_type: 'free',
+        name: '免费版',
+        price: 0,
+        detail: '10 轮 AI 对话 · 价值观阶段体验',
+      },
+      quarterly_package: {
+        product_type: 'quarterly_package',
+        name: '启程版',
+        price: 6900,
+        detail: '1 枚激活码 · 1 份报告 · 3 个月',
+      },
+      annual_package: {
+        product_type: 'annual_package',
+        name: '同行版',
+        price: 15900,
+        detail: '3 枚激活码 · 3 份报告 · 每码 1 年',
+      },
+    };
+
+    const dialog = document.getElementById('purchaseDialog');
+    const modalScroll = document.getElementById('modalScroll');
+    const paidCheckout = document.getElementById('paidCheckout');
+    const freeCheckout = document.getElementById('freeCheckout');
+    const selectedPlan = document.getElementById('selectedPlan');
+    const selectedDetail = document.getElementById('selectedDetail');
+    const selectedAmount = document.getElementById('selectedAmount');
+    const purchaseStatus = document.getElementById('purchaseStatus');
+    const buyButton = document.getElementById('buyButton');
+    const couponInput = document.getElementById('couponInput');
+    const myCoupons = document.getElementById('myCoupons');
+    const comparison = document.getElementById('comparison');
+    const compareToggleText = document.getElementById('compareToggleText');
+    const paymentQrImage = document.getElementById('paymentQrImage');
+    const qrPlaceholder = document.getElementById('qrPlaceholder');
+    const qrBrand = document.getElementById('qrBrand');
+    const qrPlaceholderTitle = document.getElementById('qrPlaceholderTitle');
+    const qrHint = document.getElementById('qrHint');
+
+    let selectedType = 'quarterly_package';
+    let channel = 'alipay';
+    let appliedCoupon = null;
+    let submitting = false;
+    let returnFocus = document.getElementById('openPurchase');
+    const qrSources = { alipay: '', wechat: '' };
+
+    function fenToYuan(fen) {
+      return (Math.max(0, Number(fen) || 0) / 100).toFixed(2);
+    }
+
+    function setStatus(message = '', tone = '') {
+      purchaseStatus.textContent = message;
+      if (tone) purchaseStatus.dataset.tone = tone;
+      else delete purchaseStatus.dataset.tone;
+    }
+
+    function syncComparisonHighlight() {
+      document.querySelectorAll('[data-column]').forEach((cell) => {
+        cell.classList.toggle('active-col', cell.dataset.column === selectedType);
+      });
+    }
+
+    function selectPlan(productType) {
+      if (!PLANS[productType] || productType === 'free') return;
+      selectedType = productType;
+      const plan = PLANS[productType];
+      document.querySelectorAll('input[name="purchase-plan"]').forEach((input) => {
+        input.checked = input.value === productType;
+      });
+      document.querySelectorAll('.plan-card').forEach((card) => {
+        const isSelected = card.dataset.plan === productType;
+        card.classList.toggle('is-selected', isSelected);
+        if (card.getAttribute('role') === 'button') card.setAttribute('aria-pressed', String(isSelected));
+      });
+      document.querySelectorAll('.price-option').forEach((option) => {
+        option.classList.toggle('is-selected', option.dataset.plan === productType);
+      });
+      const isFree = productType === 'free';
+      paidCheckout.classList.toggle('is-hidden', isFree);
+      freeCheckout.classList.toggle('is-visible', isFree);
+      selectedPlan.textContent = plan.name;
+      selectedDetail.textContent = plan.detail;
+      const discount = appliedCoupon ? appliedCoupon.amount : 0;
+      selectedAmount.textContent = `¥${fenToYuan(plan.price - discount)}`;
+      syncComparisonHighlight();
+      setStatus();
+    }
+
+    function setChannel(nextChannel) {
+      if (!['alipay', 'wechat'].includes(nextChannel)) return;
+      channel = nextChannel;
+      document.querySelectorAll('.channel-button[data-channel]').forEach((button) => {
+        button.setAttribute('aria-pressed', String(button.dataset.channel === channel));
+      });
+      renderPaymentQr();
+      setStatus();
+    }
+
+    function renderPaymentQr() {
+      const isAlipay = channel === 'alipay';
+      const source = qrSources[channel];
+      qrPlaceholder.dataset.channel = channel;
+      qrBrand.textContent = isAlipay ? '支' : '微';
+      qrPlaceholderTitle.textContent = `${isAlipay ? '支付宝' : '微信支付'}二维码`;
+      qrHint.textContent = `请使用${isAlipay ? '支付宝' : '微信'}扫一扫完成支付。`;
+      if (source) {
+        paymentQrImage.src = source;
+        paymentQrImage.alt = `${isAlipay ? '支付宝' : '微信支付'}付款二维码`;
+        paymentQrImage.hidden = false;
+        qrPlaceholder.classList.add('is-hidden');
+      } else {
+        paymentQrImage.removeAttribute('src');
+        paymentQrImage.alt = '';
+        paymentQrImage.hidden = true;
+        qrPlaceholder.classList.remove('is-hidden');
+      }
+    }
+
+    function setQrSource(nextChannel, source) {
+      if (!['alipay', 'wechat'].includes(nextChannel)) return;
+      qrSources[nextChannel] = String(source || '');
+      if (channel === nextChannel) renderPaymentQr();
+    }
+
+    function setQrSources(sources = {}) {
+      setQrSource('alipay', sources.alipay);
+      setQrSource('wechat', sources.wechat);
+    }
+
+    async function handleApplyCoupon(codeOverride) {
+      const code = String(codeOverride ?? couponInput.value).trim();
+      if (!code) {
+        setStatus('请输入折扣券码。', 'error');
+        couponInput.focus();
+        return;
+      }
+      const validateCoupon = window.openLifePaymentBridge?.validateCoupon;
+      if (typeof validateCoupon !== 'function') {
+        setStatus('当前是 UI 参考稿；接入现有 validateCoupon 后即可实时校验优惠券。');
+        return;
+      }
+      const button = document.getElementById('applyCoupon');
+      button.disabled = true;
+      button.textContent = '校验中…';
+      try {
+        const result = await validateCoupon(code);
+        appliedCoupon = {
+          code: result.code || code,
+          amount: Number(result.amount) || 0,
+          expires_at: result.expires_at || null,
+        };
+        couponInput.value = appliedCoupon.code;
+        selectPlan(selectedType);
+        setStatus(`优惠券已使用，抵扣 ¥${fenToYuan(appliedCoupon.amount)}。`, 'success');
+      } catch (error) {
+        appliedCoupon = null;
+        selectPlan(selectedType);
+        setStatus(error?.message || '券码无效、已过期或已被使用。', 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = '使用';
+      }
+    }
+
+    function handleSelectMyCoupon(code) {
+      if (!code) return;
+      couponInput.value = code;
+      void handleApplyCoupon(code);
+    }
+
+    function renderMyCoupons(coupons = []) {
+      myCoupons.replaceChildren(new Option('选择我的可用券', ''));
+      coupons.forEach((coupon) => {
+        const amount = fenToYuan(coupon.amount);
+        myCoupons.add(new Option(`¥${amount} · ${coupon.code}`, coupon.code));
+      });
+    }
+
+    async function handlePay() {
+      if (submitting) return;
+      if (selectedType === 'free') {
+        const continueTrial = window.openLifePaymentBridge?.continueTrial;
+        if (typeof continueTrial === 'function') await continueTrial();
+        else setStatus('已选择免费版。生产环境在这里进入现有试用流程，不创建支付订单。', 'success');
+        return;
+      }
+
+      const createOrder = window.openLifePaymentBridge?.createOrder;
+      if (typeof createOrder !== 'function') {
+        setStatus('当前为 UI 参考，不会创建订单或扣款。');
+        return;
+      }
+
+      submitting = true;
+      buyButton.disabled = true;
+      buyButton.textContent = '生成中…';
+      setStatus();
+      try {
+        const result = await createOrder({
+          product_type: selectedType,
+          channel,
+          coupon_code: appliedCoupon?.code,
+        });
+        if (!result.payment || result.order?.status === 'granted') enterSuccess(result.order);
+        else startWaiting(result.order, result.payment);
+      } catch (error) {
+        setStatus(error?.message || '下单失败，请稍后重试。', 'error');
+      } finally {
+        submitting = false;
+        buyButton.disabled = false;
+        buyButton.textContent = '生成付款码';
+      }
+    }
+
+    async function handleCancelOrder(orderId) {
+      const cancelOrder = window.openLifePaymentBridge?.cancelOrder;
+      if (typeof cancelOrder === 'function' && orderId) await cancelOrder(orderId);
+      resetToOrderView();
+    }
+
+    async function handleCopyCode(code) {
+      if (!code) return;
+      await navigator.clipboard?.writeText(code);
+      setStatus('激活码已复制。', 'success');
+    }
+
+    function handleGoActivate(code) {
+      const path = `/explore/activate?code=${encodeURIComponent(code || '')}`;
+      if (typeof window.openLifePaymentBridge?.navigate === 'function') window.openLifePaymentBridge.navigate(path);
+      else setStatus(`生产环境跳转：${path}`);
+    }
+
+    function handleGoOrders() {
+      const path = '/dashboard/codes?tab=orders';
+      if (typeof window.openLifePaymentBridge?.navigate === 'function') window.openLifePaymentBridge.navigate(path);
+      else setStatus(`生产环境跳转：${path}`);
+    }
+
+    function handleGoConsultation(bookingId) {
+      const path = bookingId ? `/dashboard/consultation/${bookingId}` : '/dashboard/codes?tab=orders';
+      if (typeof window.openLifePaymentBridge?.navigate === 'function') window.openLifePaymentBridge.navigate(path);
+      else setStatus(`生产环境跳转：${path}`);
+    }
+
+    function resetToOrderView() {
+      appliedCoupon = null;
+      couponInput.value = '';
+      comparison.open = false;
+      compareToggleText.textContent = '展开对比';
+      selectPlan(selectedType);
+      setStatus();
+    }
+
+    function startWaiting(order, payment) {
+      const qrImageUrl = typeof payment === 'object'
+        ? payment?.qr_image_url || payment?.qr_url || ''
+        : '';
+      const legacyPayUrl = typeof payment === 'object' ? payment?.pay_url : payment;
+      if (qrImageUrl) setQrSource(channel, qrImageUrl);
+      else if (legacyPayUrl) window.open(legacyPayUrl, '_blank', 'noopener');
+      setStatus(`订单 ${order?.order_no || ''} 已创建，正在等待支付结果。`, 'success');
+    }
+
+    function enterSuccess(order) {
+      setStatus(`支付成功${order?.order_no ? `（订单 ${order.order_no}）` : ''}，请进入现有成功交付视图。`, 'success');
+    }
+
+    function openPurchase() {
+      if (dialog.open) return;
+      returnFocus = document.activeElement;
+      dialog.showModal();
+      modalScroll.scrollTop = 0;
+      selectPlan(selectedType);
+    }
+
+    function closePurchase() { dialog.close(); }
+
+    document.querySelectorAll('input[name="purchase-plan"]').forEach((input) => {
+      input.addEventListener('change', () => selectPlan(input.value));
+    });
+
+    document.querySelectorAll('.plan-card[role="button"]').forEach((card) => {
+      const chooseCardPlan = () => selectPlan(card.dataset.plan);
+      card.addEventListener('click', chooseCardPlan);
+      card.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        chooseCardPlan();
+      });
+    });
+
+    document.querySelectorAll('.channel-button[data-channel]').forEach((button) => {
+      button.addEventListener('click', () => setChannel(button.dataset.channel));
+    });
+
+    document.getElementById('applyCoupon').addEventListener('click', () => void handleApplyCoupon());
+    couponInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') void handleApplyCoupon();
+    });
+    myCoupons.addEventListener('change', () => handleSelectMyCoupon(myCoupons.value));
+    buyButton.addEventListener('click', () => void handlePay());
+    document.getElementById('freeButton').addEventListener('click', () => void handlePay());
+    document.getElementById('openPurchase').addEventListener('click', openPurchase);
+    document.getElementById('closePurchase').addEventListener('click', closePurchase);
+    comparison.addEventListener('toggle', () => {
+      compareToggleText.textContent = comparison.open ? '收起对比' : '展开对比';
+    });
+    dialog.addEventListener('close', () => {
+      if (returnFocus?.isConnected) returnFocus.focus();
+    });
+
+    let backdropPointerDown = false;
+    function isBackdropEvent(event) {
+      const rect = dialog.getBoundingClientRect();
+      return event.clientX < rect.left || event.clientX > rect.right ||
+        event.clientY < rect.top || event.clientY > rect.bottom;
+    }
+    dialog.addEventListener('pointerdown', (event) => { backdropPointerDown = isBackdropEvent(event); });
+    dialog.addEventListener('click', (event) => {
+      if (backdropPointerDown && isBackdropEvent(event)) dialog.close();
+      backdropPointerDown = false;
+    });
+
+    window.openLifePurchase = { open: openPurchase, close: closePurchase, select: selectPlan };
+    window.OpenLifePaymentReference = {
+      selectPlan,
+      setChannel,
+      handleApplyCoupon,
+      handleSelectMyCoupon,
+      handlePay,
+      handleCancelOrder,
+      handleCopyCode,
+      handleGoActivate,
+      handleGoOrders,
+      handleGoConsultation,
+      resetToOrderView,
+      startWaiting,
+      enterSuccess,
+      renderMyCoupons,
+      setQrSource,
+      setQrSources,
+      getState: () => ({ selectedType, channel, appliedCoupon }),
+    };
+
+    selectPlan(selectedType);
+    renderPaymentQr();
+    openPurchase();
+  </script>
+</body>
+</html>

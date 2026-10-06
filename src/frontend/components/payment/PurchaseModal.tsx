@@ -172,7 +172,7 @@ function WidePlanCard({
             }
           : undefined
       }
-      className={`relative flex min-h-[286px] w-full min-w-0 flex-col rounded-[19px] border bg-white/80 px-[19px] pb-[17px] pt-[19px] transition max-[860px]:min-h-0 ${
+      className={`relative flex min-h-[286px] w-full min-w-0 flex-1 flex-col rounded-[19px] border bg-white/80 px-[19px] pb-[17px] pt-[19px] transition max-[860px]:min-h-0 ${
         selected
           ? `${theme.border} bg-white ${theme.selectedShadow}`
           : `border-[#e3e8ec] ${

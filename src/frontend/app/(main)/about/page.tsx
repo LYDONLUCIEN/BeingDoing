@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import PaperVeilLayers from '@/components/explore/PaperVeilLayers';
@@ -75,6 +76,15 @@ export default function AboutPage() {
               {ABOUT_CONTACT_EMAIL}
             </a>
             。期待与你同行。
+          </p>
+          <p className="border-t border-bd-border pt-5">
+            想让报告解读更进一步？
+            <Link
+              href="/consultants"
+              className="font-semibold text-bd-fg hover:underline"
+            >
+              了解咨询师团队 →
+            </Link>
           </p>
         </motion.div>
       </div>
