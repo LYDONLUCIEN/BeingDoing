@@ -1290,6 +1290,11 @@ export async function fetchPromptCatalog(params?: {
 
 // ─── Admin Users ──────────────────────────────────────────────
 
+/** 用户类型标签：real 真实用户 / beta 内测用户 / test 测试账号 / admin 管理员账号 */
+export type AdminUserType = 'real' | 'beta' | 'test' | 'admin';
+
+export const ADMIN_USER_TYPES: AdminUserType[] = ['real', 'beta', 'test', 'admin'];
+
 export interface AdminUserItem {
   user_id: string;
   email?: string | null;
@@ -1304,6 +1309,10 @@ export interface AdminUserItem {
   deletion_purge_after?: string | null;
   profile_completed: boolean;
   activation_count: number;
+  /** 用户类型标签（缺省按 real 处理） */
+  user_type?: AdminUserType | string;
+  /** 管理员备注 */
+  admin_note?: string | null;
 }
 
 export interface AdminUserActivation {
@@ -1327,6 +1336,10 @@ export interface AdminUserDetail {
   created_at?: string | null;
   updated_at?: string | null;
   last_login_at?: string | null;
+  /** 用户类型标签（缺省按 real 处理） */
+  user_type?: AdminUserType | string;
+  /** 管理员备注 */
+  admin_note?: string | null;
   profile: {
     gender?: string | null;
     age?: number | null;
@@ -1359,6 +1372,7 @@ export async function fetchAdminUsers(params?: {
   is_active?: boolean | null;
   deleted?: boolean | null;
   profile_completed?: boolean | null;
+  user_type?: AdminUserType | null;
   created_after?: string;
   created_before?: string;
 }): Promise<{ items: AdminUserItem[]; total: number; page: number; page_size: number }> {
@@ -1384,6 +1398,40 @@ export async function patchAdminUserStatus(
     is_active: isActive,
   });
   return (res.data ?? {}) as { user_id: string; is_active: boolean };
+}
+
+/** 修改用户类型标签与备注（super_admin）；admin_note 传空串即清空 */
+export async function patchAdminUserMeta(
+  userId: string,
+  payload: { user_type?: AdminUserType; admin_note?: string },
+): Promise<{ user_id: string; user_type: string; admin_note: string | null }> {
+  const res = await apiClient.patch(`/admin/users/${encodeURIComponent(userId)}/meta`, payload);
+  return (res.data?.data ?? {}) as {
+    user_id: string;
+    user_type: string;
+    admin_note: string | null;
+  };
+}
+
+/**
+ * 按用户全量导出（zip，super_admin）。
+ * 显式 user_ids 或服务端筛选（user_type/q/注册时间/has_report）二选一；
+ * 每用户一个子目录：profile.json + 名下全部 report（五轮对话全线程 + 报告 markdown）。
+ */
+export async function exportUsersFullData(payload: {
+  user_ids?: string[];
+  user_type?: AdminUserType | null;
+  q?: string;
+  created_after?: string;
+  created_before?: string;
+  has_report?: boolean;
+}): Promise<void> {
+  const res = await apiClient.raw.post('/admin/users/export', payload, {
+    responseType: 'blob',
+  });
+  const blob = res.data as Blob;
+  const filename = pickFilenameFromHeaders(res.headers, 'users_full_export.zip');
+  triggerBlobDownload(blob, filename);
 }
 
 export async function adminVerifyUserEmail(

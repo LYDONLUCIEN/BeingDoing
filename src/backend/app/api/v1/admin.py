@@ -2,64 +2,29 @@
 Admin 专用 API：数据分析仪表盘、点赞详情查看、对话明细
 仅超级管理员可访问
 """
-from typing import Optional, List, Dict, Any
+
+import json
 import logging
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from app.api.v1.auth import get_current_user
-from app.utils.data_paths import get_debug_logs_dir, get_logs_dir
-from app.utils.simple_activation_manager import (
-    SimpleActivationManager,
-    ActivationStatus,
-    get_simple_base_dir,
-    get_activation_with_manager,
-    get_effective_simple_root,
-    _looks_like_debug_activation_code,
-)
-import json
-from pathlib import Path
-from datetime import date, datetime, timedelta, timezone
-from app.services.analytics_funnel_service import SH_TZ
 from sqlalchemy import select
-from app.models.database import AsyncSessionLocal
-from app.models.analytics import AnalyticsReport
-from app.utils.report_registry import ReportRegistry, _report_portal_unlocked
-from app.utils.report_review import get_review_status
-from app.config.settings import settings
-from app.utils.super_admin import is_super_admin_user
 
-from app.services.analytics_service import AnalyticsService
+from app.api.v1.auth import get_current_user
+from app.config.settings import settings
+from app.models.analytics import AnalyticsReport
+from app.models.database import AsyncSessionLocal
 from app.services import report_recheck_service
-from app.utils.sandbox_fork import (
-    SANDBOX_RETENTION_DAYS,
-    delete_sandbox_by_code,
-    fork_activation_from_source,
-    list_sandboxes,
-    purge_expired_sandboxes,
-)
-from app.utils.admin_workspace import ensure_admin_resident_workspace
+from app.services.analytics_funnel_service import SH_TZ
+from app.services.analytics_service import AnalyticsService
+from app.services.prompt_catalog import build_prompt_catalog
 from app.utils.admin_policy import (
     is_admin_debug_workspace_enabled,
     is_admin_sandbox_enabled,
-)
-from app.utils.admin_savepoints import (
-    cancel_generated_scenarios_batch_job,
-    cleanup_batch_job_history,
-    create_savepoint,
-    delete_savepoint,
-    export_savepoint_assets,
-    list_batch_jobs,
-    list_generated_scenarios,
-    list_batch_job_history,
-    list_savepoints,
-    list_replay_logs,
-    load_savepoint,
-    record_savepoint_replay_result,
-    get_generated_scenarios_batch_job,
-    run_generated_scenario,
-    run_generated_scenarios_batch,
-    start_generated_scenarios_batch_job,
 )
 from app.utils.admin_prompt_lab import (
     add_profile_version,
@@ -67,11 +32,50 @@ from app.utils.admin_prompt_lab import (
     create_profile,
     export_current_profile_payload,
     get_profile,
-    list_bindings as list_prompt_bindings,
-    list_profiles as list_prompt_profiles,
+)
+from app.utils.admin_prompt_lab import list_bindings as list_prompt_bindings
+from app.utils.admin_prompt_lab import list_profiles as list_prompt_profiles
+from app.utils.admin_prompt_lab import (
     set_current_version,
 )
-from app.services.prompt_catalog import build_prompt_catalog
+from app.utils.admin_savepoints import (
+    cancel_generated_scenarios_batch_job,
+    cleanup_batch_job_history,
+    create_savepoint,
+    delete_savepoint,
+    export_savepoint_assets,
+    get_generated_scenarios_batch_job,
+    list_batch_job_history,
+    list_batch_jobs,
+    list_generated_scenarios,
+    list_replay_logs,
+    list_savepoints,
+    load_savepoint,
+    record_savepoint_replay_result,
+    run_generated_scenario,
+    run_generated_scenarios_batch,
+    start_generated_scenarios_batch_job,
+)
+from app.utils.admin_workspace import ensure_admin_resident_workspace
+from app.utils.data_paths import get_debug_logs_dir, get_logs_dir
+from app.utils.report_registry import ReportRegistry, _report_portal_unlocked
+from app.utils.report_review import get_review_status
+from app.utils.sandbox_fork import (
+    SANDBOX_RETENTION_DAYS,
+    delete_sandbox_by_code,
+    fork_activation_from_source,
+    list_sandboxes,
+    purge_expired_sandboxes,
+)
+from app.utils.simple_activation_manager import (
+    ActivationStatus,
+    SimpleActivationManager,
+    _looks_like_debug_activation_code,
+    get_activation_with_manager,
+    get_effective_simple_root,
+    get_simple_base_dir,
+)
+from app.utils.super_admin import is_super_admin_user
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +186,9 @@ def _is_super_admin(user: Optional[dict]) -> bool:
 
 def _assert_admin_debug_workspace_enabled() -> None:
     if not is_admin_debug_workspace_enabled():
-        raise HTTPException(status_code=403, detail="当前环境未开启管理员常驻工作区功能")
+        raise HTTPException(
+            status_code=403, detail="当前环境未开启管理员常驻工作区功能"
+        )
 
 
 def _assert_admin_sandbox_enabled() -> None:
@@ -291,7 +297,9 @@ async def get_admin_analytics(current_user: Optional[dict] = Depends(get_current
 
 
 @router.get("/dashboard/overview")
-async def get_dashboard_overview(current_user: Optional[dict] = Depends(get_current_user)):
+async def get_dashboard_overview(
+    current_user: Optional[dict] = Depends(get_current_user),
+):
     """Admin Dashboard 概览统计（仅 super_admin）"""
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
@@ -300,7 +308,9 @@ async def get_dashboard_overview(current_user: Optional[dict] = Depends(get_curr
 
 
 @router.post("/dashboard/overview/sync")
-async def sync_dashboard_overview(current_user: Optional[dict] = Depends(get_current_user)):
+async def sync_dashboard_overview(
+    current_user: Optional[dict] = Depends(get_current_user),
+):
     """手动从 /data 重算 dashboard，并写入 data/static 缓存"""
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
@@ -310,8 +320,12 @@ async def sync_dashboard_overview(current_user: Optional[dict] = Depends(get_cur
 
 @router.get("/analytics/funnel")
 async def get_analytics_funnel(
-    start: Optional[str] = Query(None, description="开始日期 YYYY-MM-DD（Asia/Shanghai），默认近 30 天"),
-    end: Optional[str] = Query(None, description="结束日期 YYYY-MM-DD（含当天），默认今天"),
+    start: Optional[str] = Query(
+        None, description="开始日期 YYYY-MM-DD（Asia/Shanghai），默认近 30 天"
+    ),
+    end: Optional[str] = Query(
+        None, description="结束日期 YYYY-MM-DD（含当天），默认今天"
+    ),
     granularity: str = Query("day", description="分组粒度 day / month"),
     current_user: Optional[dict] = Depends(get_current_user),
 ):
@@ -336,7 +350,9 @@ async def get_analytics_funnel(
 
 
 @router.post("/analytics/sync-from-history")
-async def sync_analytics_from_history(current_user: Optional[dict] = Depends(get_current_user)):
+async def sync_analytics_from_history(
+    current_user: Optional[dict] = Depends(get_current_user),
+):
     """从 runs.jsonl 历史同步 LLM tokens、用户字数、维度等到 analytics 表（仅 super_admin）"""
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
@@ -360,8 +376,12 @@ def _parse_usage_date_range(
 
 @router.get("/analytics/llm-usage/summary")
 async def get_llm_usage_summary(
-    start: Optional[str] = Query(None, description="开始日期 YYYY-MM-DD（Asia/Shanghai），默认近 30 天"),
-    end: Optional[str] = Query(None, description="结束日期 YYYY-MM-DD（含当天），默认今天"),
+    start: Optional[str] = Query(
+        None, description="开始日期 YYYY-MM-DD（Asia/Shanghai），默认近 30 天"
+    ),
+    end: Optional[str] = Query(
+        None, description="结束日期 YYYY-MM-DD（含当天），默认今天"
+    ),
     current_user: Optional[dict] = Depends(get_current_user),
 ):
     """LLM 用量总览：总量 + 分场景 + 按天趋势 + 峰谷拆分（仅 super_admin）"""
@@ -393,7 +413,9 @@ async def get_llm_usage_users(
 
     start_d, end_d = _parse_usage_date_range(start, end)
     try:
-        data = await LlmUsageStatsService.get_users(start_d, end_d, page=page, page_size=page_size, q=q)
+        data = await LlmUsageStatsService.get_users(
+            start_d, end_d, page=page, page_size=page_size, q=q
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"code": 200, "message": "success", "data": data}
@@ -427,12 +449,19 @@ async def get_llm_usage_calls(
 @router.get("/analytics/llm-turns")
 async def get_llm_turn_logs(
     start: Optional[str] = Query(None, description="开始日期 YYYY-MM-DD，默认不限"),
-    end: Optional[str] = Query(None, description="结束日期 YYYY-MM-DD（含当天），默认不限"),
+    end: Optional[str] = Query(
+        None, description="结束日期 YYYY-MM-DD（含当天），默认不限"
+    ),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     activation_code: Optional[str] = Query(None),
-    session_id: Optional[str] = Query(None, description="按 session_id 或 thread_id 匹配"),
-    outcome: Optional[str] = Query(None, description="ok/length/empty_content_retried_ok/empty_content_failed/partial/error/disconnected"),
+    session_id: Optional[str] = Query(
+        None, description="按 session_id 或 thread_id 匹配"
+    ),
+    outcome: Optional[str] = Query(
+        None,
+        description="ok/length/empty_content_retried_ok/empty_content_failed/partial/error/disconnected",
+    ),
     user_id: Optional[str] = Query(None),
     current_user: Optional[dict] = Depends(get_current_user),
 ):
@@ -509,9 +538,17 @@ async def get_like_detail(
             for i, line in enumerate(f):
                 if i == log_index:
                     try:
-                        return {"code": 200, "message": "success", "data": json.loads(line)}
+                        return {
+                            "code": 200,
+                            "message": "success",
+                            "data": json.loads(line),
+                        }
                     except json.JSONDecodeError:
-                        return {"code": 200, "message": "success", "data": {"raw": line[:2000]}}
+                        return {
+                            "code": 200,
+                            "message": "success",
+                            "data": {"raw": line[:2000]},
+                        }
     return {"code": 404, "message": "未找到对应记录", "data": None}
 
 
@@ -574,7 +611,9 @@ async def list_activations(
     items = []
     for code, rec in records.items():
         # 删除到垃圾桶的激活码只在 recycle-bin 展示，不再出现在主列表
-        if rec.status == ActivationStatus.DELETED.value and (status is None or status != ActivationStatus.DELETED.value):
+        if rec.status == ActivationStatus.DELETED.value and (
+            status is None or status != ActivationStatus.DELETED.value
+        ):
             continue
         if status and rec.status != status:
             continue
@@ -668,7 +707,9 @@ async def resolve_report_id_by_activation_code(
         "activation_owner_email": getattr(rec, "owner_email", None) or None,
         "storage_root": str(root),
         "reports_dir": str(root / "reports"),
-        "record_json_path": str(root / "reports" / rid / "record.json") if rid else None,
+        "record_json_path": (
+            str(root / "reports" / rid / "record.json") if rid else None
+        ),
         "is_sandbox": bool(getattr(rec, "is_sandbox", False)),
         "fork_id": getattr(rec, "fork_id", None),
         "forked_from_code": getattr(rec, "forked_from_code", None),
@@ -693,7 +734,8 @@ async def batch_create_activations(
         code_type=request.code_type,
     )
     # 审计日志：批量创建
-    from app.utils.activation_audit import append_activation_audit, EVENT_BATCH_CREATED
+    from app.utils.activation_audit import EVENT_BATCH_CREATED, append_activation_audit
+
     for rec in created:
         append_activation_audit(
             EVENT_BATCH_CREATED,
@@ -771,11 +813,17 @@ async def batch_delete_activations(
         deleted_by=current_user,
         retention_days=30,
     )
-    return {"code": 200, "message": "success", "data": {"changed": changed, "retention_days": 30}}
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {"changed": changed, "retention_days": 30},
+    }
 
 
 @router.get("/activations/recycle-bin")
-async def list_activation_recycle_bin(current_user: Optional[dict] = Depends(get_current_user)):
+async def list_activation_recycle_bin(
+    current_user: Optional[dict] = Depends(get_current_user),
+):
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     manager = SimpleActivationManager()
@@ -784,7 +832,9 @@ async def list_activation_recycle_bin(current_user: Optional[dict] = Depends(get
     items = []
     for rec in recycle.values():
         try:
-            purge_after_dt = datetime.fromisoformat((rec.purge_after or "").replace("Z", ""))
+            purge_after_dt = datetime.fromisoformat(
+                (rec.purge_after or "").replace("Z", "")
+            )
             days_remaining = max(0, (purge_after_dt - now).days)
         except ValueError:
             days_remaining = None
@@ -801,7 +851,11 @@ async def list_activation_recycle_bin(current_user: Optional[dict] = Depends(get
             }
         )
     items.sort(key=lambda x: x.get("deleted_at", ""), reverse=True)
-    return {"code": 200, "message": "success", "data": {"items": items, "total": len(items)}}
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {"items": items, "total": len(items)},
+    }
 
 
 @router.post("/activations/recycle-bin/restore")
@@ -817,7 +871,9 @@ async def restore_activations_from_recycle(
 
 
 @router.post("/activations/recycle-bin/purge")
-async def purge_activation_recycle_bin(current_user: Optional[dict] = Depends(get_current_user)):
+async def purge_activation_recycle_bin(
+    current_user: Optional[dict] = Depends(get_current_user),
+):
     """清理过期垃圾桶条目（按 purge_after 自动）"""
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
@@ -864,7 +920,9 @@ async def admin_transfer_activation_owner(
     code = (request.activation_code or "").strip().upper()
     target_uid = (request.target_user_id or "").strip()
     if not code or not target_uid:
-        raise HTTPException(status_code=400, detail="activation_code 与 target_user_id 均不能为空")
+        raise HTTPException(
+            status_code=400, detail="activation_code 与 target_user_id 均不能为空"
+        )
 
     # 1. 校验激活码存在 + 取旧 owner 信息
     manager, rec = get_activation_with_manager(code)
@@ -876,6 +934,7 @@ async def admin_transfer_activation_owner(
     # 2. 校验目标用户存在,并取 email
     from app.core.database import UserDB
     from app.models.database import AsyncSessionLocal
+
     async with AsyncSessionLocal() as db:
         user_db = UserDB(db)
         target_user = await user_db.get_user_by_id(target_uid)
@@ -954,7 +1013,9 @@ async def sync_activations_from_db(
         ActivationStatus.REVOKED.value,
         ActivationStatus.DELETED.value,
     }
-    default_status = (req.default_status or ActivationStatus.REVOKED.value).strip().lower()
+    default_status = (
+        (req.default_status or ActivationStatus.REVOKED.value).strip().lower()
+    )
     if default_status not in allowed_status:
         raise HTTPException(status_code=400, detail="default_status 不支持")
 
@@ -968,7 +1029,12 @@ async def sync_activations_from_db(
             source_rows[source] = _rows_from_simple_activations_file(default_status)
 
     by_source: Dict[str, Dict[str, int]] = {
-        source: {"scanned": len(source_rows.get(source, [])), "normalized": 0, "would_insert": 0, "inserted": 0}
+        source: {
+            "scanned": len(source_rows.get(source, [])),
+            "normalized": 0,
+            "would_insert": 0,
+            "inserted": 0,
+        }
         for source in selected_sources
     }
 
@@ -978,7 +1044,7 @@ async def sync_activations_from_db(
     duplicates = 0
     for source in selected_sources:
         for row in source_rows.get(source, []):
-            code = ((row.get("activation_code") or "").strip().upper())
+            code = (row.get("activation_code") or "").strip().upper()
             session_id = (row.get("session_id") or "").strip()
             if not code or not session_id:
                 skipped_invalid += 1
@@ -1007,7 +1073,7 @@ async def sync_activations_from_db(
     manager = SimpleActivationManager()
     existing_codes = set(manager.list_activations().keys())
     for code, row in merged.items():
-        source = (row.get("source") or "unknown")
+        source = row.get("source") or "unknown"
         if code not in existing_codes and source in by_source:
             by_source[source]["would_insert"] += 1
 
@@ -1016,7 +1082,11 @@ async def sync_activations_from_db(
     if not req.dry_run:
         inserted = manager.upsert_from_db_rows(merged_rows)
         # 审计日志：数据库同步
-        from app.utils.activation_audit import append_activation_audit, EVENT_SYNC_FROM_DB
+        from app.utils.activation_audit import (
+            EVENT_SYNC_FROM_DB,
+            append_activation_audit,
+        )
+
         for row in merged_rows[:50]:  # 限制日志量，避免大量同步时日志膨胀
             append_activation_audit(
                 EVENT_SYNC_FROM_DB,
@@ -1112,7 +1182,11 @@ async def list_reports(
             }
         )
     items.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
-    return {"code": 200, "message": "success", "data": {"items": items, "total": len(items)}}
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {"items": items, "total": len(items)},
+    }
 
 
 @router.post("/reports/{report_id}/approve")
@@ -1211,7 +1285,9 @@ async def regenerate_report_recheck(
     registry = ReportRegistry()
     report = _get_report_or_404(registry, report_id)
     if report_recheck_service.get_current_recheck(report) is None:
-        raise HTTPException(status_code=409, detail="该报告没有进行中的复核，不能重新生成")
+        raise HTTPException(
+            status_code=409, detail="该报告没有进行中的复核，不能重新生成"
+        )
 
     from app.services.report_pdf_service import is_generation_inflight
 
@@ -1222,7 +1298,11 @@ async def regenerate_report_recheck(
     )
     if not kicked:
         raise HTTPException(status_code=409, detail="触发失败（可能正在生成中）")
-    return {"code": 200, "message": "success", "data": {"report_id": report_id, "status": "regenerating"}}
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {"report_id": report_id, "status": "regenerating"},
+    }
 
 
 @router.get("/reports/{report_id}/recheck/staging-pdf")
@@ -1288,7 +1368,9 @@ async def get_recheck_markdown(
     elif version == "staging":
         markdown_text = service.load_staging_markdown(report_id)
     else:
-        raise HTTPException(status_code=400, detail="version 必须是 original 或 staging")
+        raise HTTPException(
+            status_code=400, detail="version 必须是 original 或 staging"
+        )
     if markdown_text is None:
         raise HTTPException(status_code=404, detail="该版本 markdown 不存在")
     return {
@@ -1347,7 +1429,11 @@ async def list_generating_reports(
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     from app.services.report_pdf_service import list_generation_inflight
 
-    return {"code": 200, "message": "success", "data": {"report_ids": list_generation_inflight()}}
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {"report_ids": list_generation_inflight()},
+    }
 
 
 @router.get("/reports/{report_id}/render-pdf")
@@ -1376,7 +1462,9 @@ async def admin_render_report_pdf(
     service = ReportPdfService()
     markdown_text = service.load_cached_markdown(report_id)
     if not markdown_text:
-        raise HTTPException(status_code=409, detail="报告尚未生成 markdown 缓存，请先走生成流程")
+        raise HTTPException(
+            status_code=409, detail="报告尚未生成 markdown 缓存，请先走生成流程"
+        )
     try:
         pdf_bytes = await asyncio.to_thread(
             service._markdown_to_pdf_via_xunlu, markdown_text, report_id
@@ -1502,7 +1590,9 @@ async def get_report_detail(
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     registry = ReportRegistry()
-    report = next((r for r in registry.list_reports() if r.get("report_id") == report_id), None)
+    report = next(
+        (r for r in registry.list_reports() if r.get("report_id") == report_id), None
+    )
     if not report:
         raise HTTPException(status_code=404, detail="报告不存在")
     return {"code": 200, "message": "success", "data": report}
@@ -1524,7 +1614,9 @@ async def download_report_json(
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     registry = ReportRegistry()
-    report = next((r for r in registry.list_reports() if r.get("report_id") == report_id), None)
+    report = next(
+        (r for r in registry.list_reports() if r.get("report_id") == report_id), None
+    )
     if not report:
         raise HTTPException(status_code=404, detail="报告不存在")
 
@@ -1555,7 +1647,9 @@ async def download_report_json(
 
 
 @router.post("/reports/sync-from-activations")
-async def sync_reports_from_activations(current_user: Optional[dict] = Depends(get_current_user)):
+async def sync_reports_from_activations(
+    current_user: Optional[dict] = Depends(get_current_user),
+):
     """
     从 activations 反向补齐 report 注册表：
     - 仅对「已激活」（有 owner）且缺失 report 的 activation 生成 report
@@ -1580,10 +1674,16 @@ async def sync_reports_from_activations(current_user: Optional[dict] = Depends(g
             session_id=rec.session_id,
         )
         created += 1
-    return {"code": 200, "message": "success", "data": {"created": created, "scanned": len(activations)}}
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {"created": created, "scanned": len(activations)},
+    }
 
 
-def _load_report_step_session(report_id: str, step_id: str, session_id: str) -> Optional[dict]:
+def _load_report_step_session(
+    report_id: str, step_id: str, session_id: str
+) -> Optional[dict]:
     registry = ReportRegistry()
     file = registry.get_step_session_file(report_id, step_id, session_id)
     if not file.is_file():
@@ -1594,7 +1694,9 @@ def _load_report_step_session(report_id: str, step_id: str, session_id: str) -> 
         return None
 
 
-def _save_report_step_session(report_id: str, step_id: str, session_id: str, data: dict) -> None:
+def _save_report_step_session(
+    report_id: str, step_id: str, session_id: str, data: dict
+) -> None:
     """写入 report step session 对话文件"""
     registry = ReportRegistry()
     file = registry.get_step_session_file(report_id, step_id, session_id)
@@ -1609,7 +1711,11 @@ def _build_rumination_extras(report_id: str, conversation: dict) -> dict:
       - rumination_tables: prerequisites + steps[1-7] + combo（见 rumination_export.build_rumination_tables）
       - conversation_by_step: 按 filter_step 切片的对话 {step_str: [msg]} 或 {_unified: [msg]}
     """
-    from app.utils.rumination_export import build_rumination_tables, slice_conversation_by_step
+    from app.utils.rumination_export import (
+        build_rumination_tables,
+        slice_conversation_by_step,
+    )
+
     tables = build_rumination_tables(report_id)
     msgs = (conversation or {}).get("messages") or []
     by_step = slice_conversation_by_step(msgs)
@@ -1667,6 +1773,7 @@ async def get_mock_info(current_user: Optional[dict] = Depends(get_current_user)
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     _assert_admin_sandbox_enabled()
     from app.utils.admin_mock import get_mock_info as _get
+
     return {"code": 200, "message": "success", "data": _get()}
 
 
@@ -1677,6 +1784,7 @@ async def init_mock(current_user: Optional[dict] = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     _assert_admin_sandbox_enabled()
     from app.utils.admin_mock import init_mock_force
+
     return {"code": 200, "message": "success", "data": init_mock_force()}
 
 
@@ -1690,6 +1798,7 @@ async def apply_mock_to_activation(
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     _assert_admin_sandbox_enabled()
     from app.utils.admin_mock import apply_mock_to_activation as _apply
+
     try:
         registry = ReportRegistry()
         result = _apply(request.activation_code.strip().upper(), registry)
@@ -1708,9 +1817,14 @@ async def save_as_mock(
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     _assert_admin_sandbox_enabled()
     from app.utils.admin_mock import save_report_as_mock
+
     try:
         result = save_report_as_mock(
-            activation_code=request.activation_code.strip().upper() if request.activation_code else None,
+            activation_code=(
+                request.activation_code.strip().upper()
+                if request.activation_code
+                else None
+            ),
             report_id=request.report_id,
         )
         return {"code": 200, "message": "success", "data": result}
@@ -1735,7 +1849,11 @@ async def clone_conversation(
     manager = SimpleActivationManager()
     reports_root = get_simple_base_dir() / "reports"
 
-    src_file = reports_root / request.source_report_id / f"{request.source_phase}__{request.source_thread_id}.json"
+    src_file = (
+        reports_root
+        / request.source_report_id
+        / f"{request.source_phase}__{request.source_thread_id}.json"
+    )
     if not src_file.is_file():
         raise HTTPException(status_code=404, detail="源会话不存在")
 
@@ -1762,6 +1880,7 @@ async def clone_conversation(
     target_thread_id = (request.target_thread_id or "").strip()
     if not target_thread_id:
         import uuid
+
         target_thread_id = str(uuid.uuid4())
 
     try:
@@ -1826,6 +1945,7 @@ async def jump_to_rumination(
     # 使用 mock 数据预填未完成阶段（含 prior context），避免 init 报 400
     try:
         from app.utils.admin_mock import apply_mock_to_activation as _apply_mock
+
         _apply_mock(request.activation_code.strip().upper(), registry)
     except ValueError:
         pass  # 激活码无 report 等，回退到原有逻辑
@@ -1896,7 +2016,7 @@ async def list_conversations(
             normalized_step = ReportRegistry.normalize_step_id(sid)
             if step_id and normalized_step != ReportRegistry.normalize_step_id(step_id):
                 continue
-            for sess_id in (step_payload.get("session_ids") or []):
+            for sess_id in step_payload.get("session_ids") or []:
                 if session_id and session_id != sess_id:
                     continue
                 if q:
@@ -1910,7 +2030,9 @@ async def list_conversations(
                     messages = conv.get("messages") or []
                     msg_count = len(messages)
                     if messages:
-                        ts = (messages[-1] or {}).get("created_at") or (messages[-1] or {}).get("timestamp")
+                        ts = (messages[-1] or {}).get("created_at") or (
+                            messages[-1] or {}
+                        ).get("timestamp")
                         if ts:
                             last_ts = ts
                 rows.append(
@@ -1922,7 +2044,8 @@ async def list_conversations(
                         "session_id": sess_id,
                         "message_count": msg_count,
                         "last_message_at": last_ts,
-                        "updated_at": (step_payload or {}).get("updated_at") or report.get("updated_at"),
+                        "updated_at": (step_payload or {}).get("updated_at")
+                        or report.get("updated_at"),
                     }
                 )
     rows.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
@@ -1930,7 +2053,16 @@ async def list_conversations(
     start = (page - 1) * page_size
     end = start + page_size
     page_rows = rows[start:end]
-    return {"code": 200, "message": "success", "data": {"items": page_rows, "total": total, "page": page, "page_size": page_size}}
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "items": page_rows,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        },
+    }
 
 
 @router.get("/conversations/{session_id}")
@@ -1944,10 +2076,16 @@ async def get_conversation_detail(
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     registry = ReportRegistry()
 
-    def _finalize_data(base: dict, norm_step: str, rid_for_rumination: Optional[str]) -> dict:
+    def _finalize_data(
+        base: dict, norm_step: str, rid_for_rumination: Optional[str]
+    ) -> dict:
         """对 rumination 会话追加 rumination_tables + conversation_by_step。"""
         if norm_step == "rumination" and rid_for_rumination:
-            base.update(_build_rumination_extras(rid_for_rumination, base.get("conversation") or {}))
+            base.update(
+                _build_rumination_extras(
+                    rid_for_rumination, base.get("conversation") or {}
+                )
+            )
         return base
 
     # 优先使用前端传入的 report_id + step_id 精确定位
@@ -1955,28 +2093,38 @@ async def get_conversation_detail(
         normalized_step = ReportRegistry.normalize_step_id(step_id)
         conv = _load_report_step_session(report_id, normalized_step, session_id)
         if conv:
-            data = _finalize_data({
-                "source": "report_dir",
-                "report_id": report_id,
-                "step_id": normalized_step,
-                "session_id": session_id,
-                "conversation": conv,
-            }, normalized_step, report_id)
+            data = _finalize_data(
+                {
+                    "source": "report_dir",
+                    "report_id": report_id,
+                    "step_id": normalized_step,
+                    "session_id": session_id,
+                    "conversation": conv,
+                },
+                normalized_step,
+                report_id,
+            )
             return {"code": 200, "message": "success", "data": data}
 
     # 兜底：仅按 session_id 在注册表中反查
     found = registry.find_report_step_by_session(session_id)
     if found:
         report, resolved_step_id = found
-        conv = _load_report_step_session(report["report_id"], resolved_step_id, session_id)
+        conv = _load_report_step_session(
+            report["report_id"], resolved_step_id, session_id
+        )
         if conv:
-            data = _finalize_data({
-                "source": "report_dir",
-                "report_id": report["report_id"],
-                "step_id": resolved_step_id,
-                "session_id": session_id,
-                "conversation": conv,
-            }, resolved_step_id, report["report_id"])
+            data = _finalize_data(
+                {
+                    "source": "report_dir",
+                    "report_id": report["report_id"],
+                    "step_id": resolved_step_id,
+                    "session_id": session_id,
+                    "conversation": conv,
+                },
+                resolved_step_id,
+                report["report_id"],
+            )
             return {"code": 200, "message": "success", "data": data}
 
     detail = await AnalyticsService.get_session_conversation_detail(session_id)
@@ -2002,6 +2150,7 @@ async def get_system_settings(current_user: Optional[dict] = Depends(get_current
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     from app.utils.admin_config import get_basic_info_merge_strategy
+
     return {
         "code": 200,
         "message": "success",
@@ -2012,10 +2161,16 @@ async def get_system_settings(current_user: Optional[dict] = Depends(get_current
             "LLM_MODEL": getattr(settings, "LLM_MODEL", None),
             "AUDIO_MODE": getattr(settings, "AUDIO_MODE", None),
             "DEBUG_MODE": getattr(settings, "DEBUG_MODE", None),
-            "ADMIN_DEBUG_POLICY_ENABLED": getattr(settings, "ADMIN_DEBUG_POLICY_ENABLED", False),
-            "ADMIN_DEBUG_WORKSPACE_ENABLED": getattr(settings, "ADMIN_DEBUG_WORKSPACE_ENABLED", True),
+            "ADMIN_DEBUG_POLICY_ENABLED": getattr(
+                settings, "ADMIN_DEBUG_POLICY_ENABLED", False
+            ),
+            "ADMIN_DEBUG_WORKSPACE_ENABLED": getattr(
+                settings, "ADMIN_DEBUG_WORKSPACE_ENABLED", True
+            ),
             "ADMIN_SANDBOX_ENABLED": getattr(settings, "ADMIN_SANDBOX_ENABLED", True),
-            "SUPER_ADMIN_EMAILS_CONFIGURED": bool((getattr(settings, "SUPER_ADMIN_EMAILS", "") or "").strip()),
+            "SUPER_ADMIN_EMAILS_CONFIGURED": bool(
+                (getattr(settings, "SUPER_ADMIN_EMAILS", "") or "").strip()
+            ),
             "BASIC_INFO_MERGE_STRATEGY": get_basic_info_merge_strategy(),
         },
     }
@@ -2034,23 +2189,32 @@ async def patch_system_settings(
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     from app.utils.admin_config import set_admin_config
+
     if req.basic_info_merge_strategy is not None:
         val = (req.basic_info_merge_strategy or "").strip().upper()
         if val not in ("A", "B", "C"):
-            raise HTTPException(status_code=400, detail="basic_info_merge_strategy 须为 A/B/C")
+            raise HTTPException(
+                status_code=400, detail="basic_info_merge_strategy 须为 A/B/C"
+            )
         set_admin_config("basic_info_merge_strategy", val)
     return {"code": 200, "message": "success", "data": {}}
 
 
 @router.get("/prompt-lab/profiles")
-async def admin_list_prompt_profiles(current_user: Optional[dict] = Depends(get_current_user)):
+async def admin_list_prompt_profiles(
+    current_user: Optional[dict] = Depends(get_current_user),
+):
     """
     Prompt Lab profile 列表（sandbox_only）。
     """
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     _assert_admin_sandbox_enabled()
-    return {"code": 200, "message": "success", "data": {"items": list_prompt_profiles()}}
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {"items": list_prompt_profiles()},
+    }
 
 
 @router.post("/prompt-lab/profiles")
@@ -2135,11 +2299,17 @@ async def admin_activate_prompt_profile_version(
 
 
 @router.get("/prompt-lab/bindings")
-async def admin_list_prompt_bindings(current_user: Optional[dict] = Depends(get_current_user)):
+async def admin_list_prompt_bindings(
+    current_user: Optional[dict] = Depends(get_current_user),
+):
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     _assert_admin_sandbox_enabled()
-    return {"code": 200, "message": "success", "data": {"items": list_prompt_bindings()}}
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {"items": list_prompt_bindings()},
+    }
 
 
 @router.post("/prompt-lab/bindings")
@@ -2153,12 +2323,16 @@ async def admin_bind_prompt_profile_to_activation(
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     _assert_admin_sandbox_enabled()
-    _manager, rec = get_activation_with_manager((req.activation_code or "").strip().upper())
+    _manager, rec = get_activation_with_manager(
+        (req.activation_code or "").strip().upper()
+    )
     if not rec:
         raise HTTPException(status_code=404, detail="激活码不存在")
     kind = (getattr(rec, "workspace_kind", None) or "").strip().lower()
     if kind not in {"fork", "resident"} and not bool(getattr(rec, "is_sandbox", False)):
-        raise HTTPException(status_code=400, detail="仅支持绑定到管理员调试工作区激活码（SBX/ADM）")
+        raise HTTPException(
+            status_code=400, detail="仅支持绑定到管理员调试工作区激活码（SBX/ADM）"
+        )
     try:
         result = bind_profile_to_activation(
             req.activation_code,
@@ -2192,7 +2366,9 @@ async def admin_get_prompt_catalog(
 
 
 @router.get("/sandboxes")
-async def admin_list_sandboxes(current_user: Optional[dict] = Depends(get_current_user)):
+async def admin_list_sandboxes(
+    current_user: Optional[dict] = Depends(get_current_user),
+):
     """列出所有调试沙箱 Fork"""
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
@@ -2210,13 +2386,19 @@ async def admin_list_sandboxes(current_user: Optional[dict] = Depends(get_curren
 
 
 @router.get("/savepoints")
-async def admin_list_savepoints(current_user: Optional[dict] = Depends(get_current_user)):
+async def admin_list_savepoints(
+    current_user: Optional[dict] = Depends(get_current_user),
+):
     """列出调试 Savepoint 索引（仅 super_admin）。"""
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     _assert_admin_sandbox_enabled()
     items = list_savepoints()
-    return {"code": 200, "message": "success", "data": {"items": items, "total": len(items)}}
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {"items": items, "total": len(items)},
+    }
 
 
 @router.post("/savepoints/create")
@@ -2247,7 +2429,9 @@ async def admin_create_savepoint(
             payload = json.loads(str(e))
         except json.JSONDecodeError:
             payload = {"detail": str(e)}
-        raise HTTPException(status_code=409, detail={"message": "savepoint 名称已存在", **payload})
+        raise HTTPException(
+            status_code=409, detail={"message": "savepoint 名称已存在", **payload}
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -2330,7 +2514,11 @@ async def admin_savepoint_replay_logs(
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     _assert_admin_sandbox_enabled()
     items = list_replay_logs(limit=limit)
-    return {"code": 200, "message": "success", "data": {"items": items, "total": len(items)}}
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {"items": items, "total": len(items)},
+    }
 
 
 @router.get("/savepoints/generated-scenarios")
@@ -2342,7 +2530,11 @@ async def admin_savepoint_generated_scenarios(
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     _assert_admin_sandbox_enabled()
     items = list_generated_scenarios(limit=limit)
-    return {"code": 200, "message": "success", "data": {"items": items, "total": len(items)}}
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {"items": items, "total": len(items)},
+    }
 
 
 @router.post("/savepoints/generated-scenarios/run")
@@ -2433,7 +2625,11 @@ async def admin_list_generated_scenarios_batch_async_jobs(
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     _assert_admin_sandbox_enabled()
     items = list_batch_jobs(limit=limit)
-    return {"code": 200, "message": "success", "data": {"items": items, "total": len(items)}}
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {"items": items, "total": len(items)},
+    }
 
 
 @router.post("/savepoints/generated-scenarios/run-batch-async/{job_id}/cancel")
@@ -2460,7 +2656,11 @@ async def admin_generated_scenarios_batch_async_history(
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     _assert_admin_sandbox_enabled()
     items = list_batch_job_history(limit=limit)
-    return {"code": 200, "message": "success", "data": {"items": items, "total": len(items)}}
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {"items": items, "total": len(items)},
+    }
 
 
 @router.post("/savepoints/generated-scenarios/run-batch-async-history/cleanup")
@@ -2482,7 +2682,9 @@ async def admin_generated_scenarios_batch_async_history_cleanup(
 
 
 @router.post("/workspace/ensure")
-async def admin_ensure_workspace(current_user: Optional[dict] = Depends(get_current_user)):
+async def admin_ensure_workspace(
+    current_user: Optional[dict] = Depends(get_current_user),
+):
     """
     确保当前超级管理员存在常驻调试工作区（长期激活码，独立目录）。
     """
@@ -2549,7 +2751,9 @@ async def admin_delete_sandbox(
 
 
 @router.post("/sandboxes/purge-expired")
-async def admin_purge_expired_sandboxes(current_user: Optional[dict] = Depends(get_current_user)):
+async def admin_purge_expired_sandboxes(
+    current_user: Optional[dict] = Depends(get_current_user),
+):
     """清理已超过 sandbox_expires_at 的沙箱（可挂定时任务调用）"""
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
@@ -2578,8 +2782,12 @@ async def activation_data_inspect(
 
     root = get_effective_simple_root(rec)
     registry = ReportRegistry(base_dir=str(root))
-    user_id = getattr(rec, "owner_user_id", None) or getattr(rec, "owner_email", None) or ""
-    report = registry.get_by_activation_user(activation_code, user_id) if user_id else None
+    user_id = (
+        getattr(rec, "owner_user_id", None) or getattr(rec, "owner_email", None) or ""
+    )
+    report = (
+        registry.get_by_activation_user(activation_code, user_id) if user_id else None
+    )
 
     result: Dict[str, Any] = {
         "activation": {
@@ -2662,8 +2870,13 @@ async def get_activation_audit_logs(
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     from app.utils.activation_audit import read_audit_logs
+
     logs = read_audit_logs(code=activation_code, limit=limit, test_root=test_root)
-    return {"code": 200, "message": "success", "data": {"items": logs, "total": len(logs)}}
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {"items": logs, "total": len(logs)},
+    }
 
 
 # ─── Admin Users ──────────────────────────────────────────────
@@ -2671,6 +2884,13 @@ async def get_activation_audit_logs(
 
 class UserStatusPatchRequest(BaseModel):
     is_active: bool
+
+
+class UserMetaPatchRequest(BaseModel):
+    """管理员修改用户类型标签与备注（2026-10-06）"""
+
+    user_type: Optional[str] = Field(None, description="用户类型：real/beta/test/admin")
+    admin_note: Optional[str] = Field(None, max_length=2000, description="管理员备注")
 
 
 class AdminResetPasswordRequest(BaseModel):
@@ -2695,6 +2915,9 @@ async def admin_list_users(
         None, description="筛选注销状态：true=已注销（冷区），false=未注销"
     ),
     profile_completed: Optional[bool] = Query(None, description="筛选是否填完 profile"),
+    user_type: Optional[str] = Query(
+        None, description="用户类型筛选：real/beta/test/admin"
+    ),
     created_after: Optional[str] = Query(None, description="注册时间下界（ISO 格式）"),
     created_before: Optional[str] = Query(None, description="注册时间上界（ISO 格式）"),
     current_user: Optional[dict] = Depends(get_current_user),
@@ -2702,6 +2925,13 @@ async def admin_list_users(
     """用户列表（分页 + 搜索筛选，仅 super_admin）"""
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+
+    from app.models.user import USER_TYPES
+
+    if user_type is not None and user_type not in USER_TYPES:
+        raise HTTPException(
+            status_code=400, detail=f"user_type 仅支持 {'/'.join(USER_TYPES)}"
+        )
 
     from app.core.database import UserDB
 
@@ -2735,6 +2965,7 @@ async def admin_list_users(
             profile_completed=profile_completed,
             created_after=created_after,
             created_before=created_before,
+            user_type=user_type,
         )
 
         items = []
@@ -2749,15 +2980,25 @@ async def admin_list_users(
                     "is_active": u.is_active,
                     "email_verified": getattr(u, "email_verified", True),
                     "created_at": u.created_at.isoformat() if u.created_at else None,
-                    "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
-                    "deleted_at": u.deleted_at.isoformat() if getattr(u, "deleted_at", None) else None,
+                    "last_login_at": (
+                        u.last_login_at.isoformat() if u.last_login_at else None
+                    ),
+                    "deleted_at": (
+                        u.deleted_at.isoformat()
+                        if getattr(u, "deleted_at", None)
+                        else None
+                    ),
                     "deletion_purge_after": (
                         u.deletion_purge_after.isoformat()
                         if getattr(u, "deletion_purge_after", None)
                         else None
                     ),
-                    "profile_completed": profile.profile_completed if profile else False,
+                    "profile_completed": (
+                        profile.profile_completed if profile else False
+                    ),
                     "activation_count": len(activations),
+                    "user_type": getattr(u, "user_type", None) or "real",
+                    "admin_note": getattr(u, "admin_note", None),
                 }
             )
 
@@ -2841,6 +3082,7 @@ async def admin_get_user_detail(
 
     # 读取新版 survey 问卷（data/user/{user_id}/basic_info.json）
     from app.utils.survey_storage import load_basic_info_by_user
+
     survey_data = load_basic_info_by_user(user_id) or {}
 
     return {
@@ -2852,7 +3094,11 @@ async def admin_get_user_detail(
             "phone": user.phone,
             "username": user.username,
             "is_active": user.is_active,
-            "deleted_at": user.deleted_at.isoformat() if getattr(user, "deleted_at", None) else None,
+            "deleted_at": (
+                user.deleted_at.isoformat()
+                if getattr(user, "deleted_at", None)
+                else None
+            ),
             "deletion_purge_after": (
                 user.deletion_purge_after.isoformat()
                 if getattr(user, "deletion_purge_after", None)
@@ -2860,7 +3106,11 @@ async def admin_get_user_detail(
             ),
             "created_at": user.created_at.isoformat() if user.created_at else None,
             "updated_at": user.updated_at.isoformat() if user.updated_at else None,
-            "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
+            "last_login_at": (
+                user.last_login_at.isoformat() if user.last_login_at else None
+            ),
+            "user_type": getattr(user, "user_type", None) or "real",
+            "admin_note": getattr(user, "admin_note", None),
             "profile": {
                 "gender": profile.gender if profile else None,
                 "age": profile.age if profile else None,
@@ -2869,6 +3119,49 @@ async def admin_get_user_detail(
             },
             "activations": bound_activations,
             "work_histories": wh_list,
+        },
+    }
+
+
+@router.patch("/users/{user_id}/meta")
+async def admin_patch_user_meta(
+    user_id: str,
+    req: UserMetaPatchRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """修改用户类型标签与备注（仅 super_admin；用于区分真实用户/内测/测试/管理员账号）"""
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+
+    from app.models.user import USER_TYPES
+
+    if req.user_type is not None and req.user_type not in USER_TYPES:
+        raise HTTPException(
+            status_code=400, detail=f"user_type 仅支持 {'/'.join(USER_TYPES)}"
+        )
+
+    from app.core.database import UserDB
+
+    async with AsyncSessionLocal() as db:
+        user_db = UserDB(db)
+        user = await user_db.get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        updates: Dict[str, Any] = {}
+        if req.user_type is not None:
+            updates["user_type"] = req.user_type
+        # admin_note 传 null 表示清空备注
+        if req.admin_note is not None:
+            updates["admin_note"] = req.admin_note.strip() or None
+        user = await user_db.update_user(user_id, **updates)
+
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "user_id": user.id,
+            "user_type": user.user_type or "real",
+            "admin_note": user.admin_note,
         },
     }
 
@@ -3019,6 +3312,183 @@ async def admin_restore_user_deletion(
     }
 
 
+# ─── 按用户全量导出（2026-10-06） ──────────────────────────────
+
+
+class UsersExportRequest(BaseModel):
+    """按用户全量导出请求：显式 user_ids，或服务端按筛选条件全量选取"""
+
+    user_ids: Optional[List[str]] = Field(
+        None, description="显式用户 ID 列表（与筛选模式二选一，优先于筛选）"
+    )
+    user_type: Optional[str] = Field(
+        None, description="用户类型筛选：real/beta/test/admin"
+    )
+    q: Optional[str] = Field(None, description="按 email 或 username 模糊搜索")
+    created_after: Optional[str] = Field(None, description="注册时间下界（ISO 格式）")
+    created_before: Optional[str] = Field(None, description="注册时间上界（ISO 格式）")
+    has_report: Optional[bool] = Field(None, description="只导名下有探索报告的用户")
+
+
+@router.post("/users/export")
+async def export_users_full_data(
+    req: UsersExportRequest,
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """
+    按用户全量导出（zip，仅 super_admin）。
+
+    - 显式传 user_ids：按列表导出（去重，≤50）
+    - 不传 user_ids：服务端按 user_type / q / 注册时间 / has_report 筛选全量导出
+    - 每用户一个子目录：profile.json（注册邮箱/激活码/profile/工作履历/类型/备注）
+      + 名下**全部** report（五轮对话全线程 raw + 纯净 md + 报告全文 markdown +
+      rumination 表格与进度），跨激活码旅程完整在一个目录里。
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+
+    from app.models.user import USER_TYPES
+    from app.services.user_export_service import MAX_EXPORT_USERS, UserExportService
+
+    if req.user_type is not None and req.user_type not in USER_TYPES:
+        raise HTTPException(
+            status_code=400, detail=f"user_type 仅支持 {'/'.join(USER_TYPES)}"
+        )
+
+    service = UserExportService()
+    report_counts = service.count_reports_for_users()
+
+    # —— 解析目标用户（显式列表 > 服务端筛选） ——
+    if req.user_ids:
+        seen = set()
+        target_ids: List[str] = []
+        for uid in req.user_ids:
+            uid = (uid or "").strip()
+            if uid and uid not in seen:
+                seen.add(uid)
+                target_ids.append(uid)
+    else:
+        if not (
+            req.user_type
+            or req.q
+            or req.created_after
+            or req.created_before
+            or req.has_report is not None
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="请至少提供 user_ids 或一个筛选条件（user_type/q/时间/has_report）",
+            )
+        from app.core.database import UserDB
+
+        target_ids = []
+        page = 1
+        while True:
+            async with AsyncSessionLocal() as db:
+                user_db = UserDB(db)
+                users, _total = await user_db.list_users(
+                    page=page,
+                    page_size=500,
+                    search=req.q,
+                    user_type=req.user_type,
+                    created_after=req.created_after,
+                    created_before=req.created_before,
+                )
+            if not users:
+                break
+            for u in users:
+                if req.has_report is True and report_counts.get(u.id, 0) == 0:
+                    continue
+                if req.has_report is False and report_counts.get(u.id, 0) > 0:
+                    continue
+                target_ids.append(u.id)
+            if len(users) < 500:
+                break
+            page += 1
+
+    if not target_ids:
+        raise HTTPException(status_code=404, detail="筛选条件下没有匹配的用户")
+    if len(target_ids) > MAX_EXPORT_USERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"单次最多导出 {MAX_EXPORT_USERS} 个用户（本次 {len(target_ids)} 个），请缩小范围分批导出",
+        )
+
+    # —— 逐用户收集（用户不存在 / 无数据记入 skipped） ——
+    entries: List[dict] = []
+    skipped: List[str] = []
+    user_index: List[dict] = []
+    from app.core.database import UserDB
+
+    for uid in target_ids:
+        files = await service.collect_user_export(uid)
+        if not files:
+            skipped.append(uid)
+            continue
+        entries.append({"user_id": uid, "files": files})
+
+    if not entries:
+        raise HTTPException(
+            status_code=404, detail=f"所有用户均不存在或无数据，跳过: {skipped}"
+        )
+
+    # 索引：user_id → 邮箱/用户名/类型/report 数（从各用户 profile.json 反查太绕，直接查库）
+    async with AsyncSessionLocal() as db:
+        user_db = UserDB(db)
+        for entry in entries:
+            u = await user_db.get_user_by_id(entry["user_id"])
+            user_index.append(
+                {
+                    "user_id": entry["user_id"],
+                    "email": u.email if u else None,
+                    "username": u.username if u else None,
+                    "user_type": (
+                        (getattr(u, "user_type", None) or "real") if u else None
+                    ),
+                    "admin_note": getattr(u, "admin_note", None) if u else None,
+                    "report_count": report_counts.get(entry["user_id"], 0),
+                }
+            )
+
+    # —— 打包 zip（内存流） ——
+    import io
+    import json as _json
+    import zipfile
+
+    from fastapi.responses import StreamingResponse
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "index.json",
+            _json.dumps(
+                {
+                    "exported_at": datetime.now(timezone.utc).isoformat(),
+                    "user_count": len(entries),
+                    "users": user_index,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+        )
+        for entry in entries:
+            # collect_user_export 返回的路径已带 users/{user_id}/ 前缀
+            for inner_path, data in entry["files"]:
+                zf.writestr(inner_path, data)
+        if skipped:
+            zf.writestr("_skipped.txt", "\n".join(skipped))
+    buf.seek(0)
+
+    zip_filename = (
+        f"users_full_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.zip"
+    )
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'},
+    )
+
+
 # ─── 批量导出报告（T1） ────────────────────────────────────────
 
 
@@ -3073,7 +3543,9 @@ async def export_reports_batch(
 
     batch_service = BatchExportService()
     # 每个 report 的产物放在 zip 内独立子目录，避免跨 report 文件名冲突
-    entries: List[dict] = []  # [{"dir": report_dir, "files": [(path, bytes), ...]}, ...]
+    entries: List[dict] = (
+        []
+    )  # [{"dir": report_dir, "files": [(path, bytes), ...]}, ...]
     skipped: List[str] = []
     for rid in unique_ids:
         result = await batch_service.collect_report_export(report_id=rid, fmt=fmt)

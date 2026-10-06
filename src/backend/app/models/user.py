@@ -5,12 +5,25 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import ARRAY, Boolean, Column, Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    ARRAY,
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from app.models.database import Base
+
+# 用户类型标签枚举（2026-10-06 admin 需求）：real 真实用户 / beta 内测用户 / test 测试账号 / admin 管理员账号
+USER_TYPES = ("real", "beta", "test", "admin")
 
 
 class User(Base):
@@ -46,15 +59,27 @@ class User(Base):
     # 用户偏好（JSON 字符串；如 upgrade_modal_dont_remind，ADR-0014）
     preferences = Column(Text, nullable=True)
 
+    # 用户类型标签（2026-10-06）：real 真实用户（默认）/ beta 内测用户 / test 测试账号 / admin 管理员账号
+    user_type = Column(String(16), default="real", nullable=False)
+    # 管理员备注（后台维护，随用户全量导出打包）
+    admin_note = Column(Text, nullable=True)
+
     # 关系
     profile = relationship(
-        "UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan"
+        "UserProfile",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
     )
     work_histories = relationship(
         "WorkHistory", back_populates="user", cascade="all, delete-orphan"
     )
-    sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
-    selections = relationship("UserSelection", back_populates="user", cascade="all, delete-orphan")
+    sessions = relationship(
+        "Session", back_populates="user", cascade="all, delete-orphan"
+    )
+    selections = relationship(
+        "UserSelection", back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class UserProfile(Base):
@@ -64,7 +89,10 @@ class UserProfile(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(
-        String(36), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
     )
     gender = Column(String(20), nullable=True)  # male, female, other
     age = Column(Integer, nullable=True)
@@ -86,7 +114,9 @@ class WorkHistory(Base):
     __tablename__ = "work_history"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
     company = Column(String(255), nullable=True)
     position = Column(String(255), nullable=True)
     start_date = Column(Date, nullable=True)

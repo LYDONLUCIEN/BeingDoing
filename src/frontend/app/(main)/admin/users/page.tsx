@@ -6,12 +6,15 @@ import {
   fetchAdminUsers,
   fetchAdminUserDetail,
   patchAdminUserStatus,
+  patchAdminUserMeta,
   adminVerifyUserEmail,
   adminResetUserPassword,
   adminRestoreUserDeletion,
   getUserConversationStats,
+  ADMIN_USER_TYPES,
   type AdminUserItem,
   type AdminUserDetail,
+  type AdminUserType,
   type ConversationStatsResult,
 } from '@/lib/api/admin';
 import SurveyFormBd from '@/components/survey/SurveyFormBd';
@@ -19,6 +22,15 @@ import { toDate } from '@/lib/utils/formatTime';
 
 type ActiveFilter = 'all' | 'active' | 'inactive' | 'deleted';
 type ProfileFilter = 'all' | 'completed' | 'incomplete';
+type TypeFilter = 'all' | AdminUserType;
+
+/** 用户类型 tag 样式（真实=绿 / 内测=蓝 / 测试=灰 / 管理员=橙） */
+const USER_TYPE_TAG: Record<string, { label: string; bg: string; color: string }> = {
+  real: { label: '真实用户', bg: 'rgba(34,197,94,0.12)', color: '#16a34a' },
+  beta: { label: '内测用户', bg: 'rgba(59,130,246,0.12)', color: '#2563eb' },
+  test: { label: '测试账号', bg: 'rgba(148,163,184,0.18)', color: '#64748b' },
+  admin: { label: '管理员', bg: 'rgba(245,158,11,0.14)', color: '#d97706' },
+};
 
 export default function AdminUsersPage() {
   const router = useRouter();
@@ -31,6 +43,7 @@ export default function AdminUsersPage() {
   const [query, setQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>('all');
   const [profileFilter, setProfileFilter] = useState<ProfileFilter>('all');
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [createdAfter, setCreatedAfter] = useState('');
   const [createdBefore, setCreatedBefore] = useState('');
 
@@ -38,6 +51,11 @@ export default function AdminUsersPage() {
   const [drawerUser, setDrawerUser] = useState<AdminUserDetail | null>(null);
   const [drawerLoading, setDrawerLoading] = useState(false);
   const [surveyExpanded, setSurveyExpanded] = useState(false);
+
+  // Drawer 内类型/备注编辑态
+  const [metaType, setMetaType] = useState<AdminUserType>('real');
+  const [metaNote, setMetaNote] = useState('');
+  const [metaSaving, setMetaSaving] = useState(false);
 
   // Conversation stats modal
   const [statsResult, setStatsResult] = useState<ConversationStatsResult | null>(null);
@@ -65,6 +83,7 @@ export default function AdminUsersPage() {
           activeFilter === 'active' ? true : activeFilter === 'inactive' ? false : null,
         deleted: activeFilter === 'deleted' ? true : activeFilter === 'inactive' ? false : null,
         profile_completed: profileFilter === 'all' ? null : profileFilter === 'completed',
+        user_type: typeFilter === 'all' ? null : typeFilter,
         created_after: createdAfter || undefined,
         created_before: createdBefore || undefined,
       });
@@ -75,7 +94,7 @@ export default function AdminUsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, query, activeFilter, profileFilter, createdAfter, createdBefore]);
+  }, [page, pageSize, query, activeFilter, profileFilter, typeFilter, createdAfter, createdBefore]);
 
   useEffect(() => {
     loadList();
@@ -88,10 +107,32 @@ export default function AdminUsersPage() {
     try {
       const detail = await fetchAdminUserDetail(userId);
       setDrawerUser(detail);
+      // 初始化类型/备注编辑态
+      const t = (detail.user_type || 'real') as AdminUserType;
+      setMetaType(ADMIN_USER_TYPES.includes(t) ? t : 'real');
+      setMetaNote(detail.admin_note || '');
     } catch (e: any) {
       setDrawerUser(null);
     } finally {
       setDrawerLoading(false);
+    }
+  };
+
+  /** 保存用户类型与备注（Drawer 内编辑） */
+  const saveUserMeta = async () => {
+    if (!drawerUser) return;
+    setMetaSaving(true);
+    try {
+      await patchAdminUserMeta(drawerUser.user_id, {
+        user_type: metaType,
+        admin_note: metaNote,
+      });
+      await loadList();
+      await openDrawer(drawerUser.user_id);
+    } catch (e: any) {
+      alert(e?.message || '保存失败');
+    } finally {
+      setMetaSaving(false);
     }
   };
 
@@ -182,6 +223,7 @@ export default function AdminUsersPage() {
     setQuery('');
     setActiveFilter('all');
     setProfileFilter('all');
+    setTypeFilter('all');
     setCreatedAfter('');
     setCreatedBefore('');
     setPage(1);
@@ -311,6 +353,25 @@ export default function AdminUsersPage() {
             <option value="completed">已填写</option>
             <option value="incomplete">未填写</option>
           </select>
+          <select
+            value={typeFilter}
+            onChange={(e) => {
+              setTypeFilter(e.target.value as TypeFilter);
+              setPage(1);
+            }}
+            className="px-3 py-2 rounded-lg text-sm border outline-none"
+            style={{
+              background: 'var(--bd-overlay-md, #fff)',
+              borderColor: 'var(--bd-border)',
+              color: 'var(--bd-fg)',
+            }}
+          >
+            <option value="all">用户类型全部</option>
+            <option value="real">真实用户</option>
+            <option value="beta">内测用户</option>
+            <option value="test">测试账号</option>
+            <option value="admin">管理员</option>
+          </select>
           <input
             type="date"
             placeholder="注册起始日期"
@@ -386,6 +447,7 @@ export default function AdminUsersPage() {
                 <th className="px-4 py-3 font-medium" style={{ color: 'var(--bd-fg-muted)' }}>用户 ID</th>
                 <th className="px-4 py-3 font-medium" style={{ color: 'var(--bd-fg-muted)' }}>Email</th>
                 <th className="px-4 py-3 font-medium" style={{ color: 'var(--bd-fg-muted)' }}>用户名</th>
+                <th className="px-4 py-3 font-medium" style={{ color: 'var(--bd-fg-muted)' }}>用户类型</th>
                 <th className="px-4 py-3 font-medium" style={{ color: 'var(--bd-fg-muted)' }}>状态</th>
                 <th className="px-4 py-3 font-medium" style={{ color: 'var(--bd-fg-muted)' }}>邮箱验证</th>
                 <th className="px-4 py-3 font-medium" style={{ color: 'var(--bd-fg-muted)' }}>激活码数</th>
@@ -408,6 +470,19 @@ export default function AdminUsersPage() {
                   </td>
                   <td className="px-4 py-3" style={{ color: 'var(--bd-fg)' }}>{u.email || '-'}</td>
                   <td className="px-4 py-3" style={{ color: 'var(--bd-fg)' }}>{u.username || '-'}</td>
+                  <td className="px-4 py-3">
+                    {(() => {
+                      const t = USER_TYPE_TAG[u.user_type || 'real'] || USER_TYPE_TAG.real;
+                      return (
+                        <span
+                          className="inline-block px-2 py-0.5 rounded-full text-xs font-medium"
+                          style={{ background: t.bg, color: t.color }}
+                        >
+                          {t.label}
+                        </span>
+                      );
+                    })()}
+                  </td>
                   <td className="px-4 py-3">
                     {u.deleted_at ? (
                       <div className="space-y-0.5">
@@ -819,6 +894,72 @@ export default function AdminUsersPage() {
                       <Row label="Profile" value={drawerUser.profile.profile_completed ? '已填写' : '未填写'} />
                       <Row label="注册时间" value={fmtDate(drawerUser.created_at)} />
                       <Row label="最后登录" value={fmtDate(drawerUser.last_login_at)} />
+                    </div>
+                  </section>
+
+                  {/* 用户类型与备注（管理员可编辑） */}
+                  <section>
+                    <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--bd-fg-muted)' }}>
+                      用户类型与备注
+                    </h3>
+                    <div
+                      className="space-y-3 rounded-lg border p-4"
+                      style={{
+                        borderColor: 'var(--bd-border)',
+                        background: 'var(--bd-overlay-md, rgba(0,0,0,0.02))',
+                      }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm flex-shrink-0" style={{ color: 'var(--bd-fg)' }}>
+                          类型
+                        </span>
+                        <select
+                          value={metaType}
+                          onChange={(e) => setMetaType(e.target.value as AdminUserType)}
+                          className="px-3 py-1.5 rounded-lg text-sm border outline-none"
+                          style={{
+                            background: 'var(--bd-overlay-md, #fff)',
+                            borderColor: 'var(--bd-border)',
+                            color: 'var(--bd-fg)',
+                          }}
+                        >
+                          <option value="real">真实用户</option>
+                          <option value="beta">内测用户</option>
+                          <option value="test">测试账号</option>
+                          <option value="admin">管理员</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-sm" style={{ color: 'var(--bd-fg)' }}>
+                          备注
+                        </span>
+                        <textarea
+                          value={metaNote}
+                          onChange={(e) => setMetaNote(e.target.value)}
+                          rows={3}
+                          maxLength={2000}
+                          placeholder="内部备注信息，仅后台可见，随用户全量导出打包"
+                          className="w-full px-3 py-2 rounded-lg text-sm border outline-none resize-y"
+                          style={{
+                            background: 'var(--bd-overlay-md, #fff)',
+                            borderColor: 'var(--bd-border)',
+                            color: 'var(--bd-fg)',
+                          }}
+                        />
+                      </div>
+                      <div className="flex justify-end">
+                        <button
+                          onClick={saveUserMeta}
+                          disabled={metaSaving}
+                          className="px-4 py-1.5 rounded-lg text-sm font-medium border hover:opacity-80 transition-opacity disabled:opacity-40"
+                          style={{
+                            borderColor: '#7c3aed',
+                            color: '#7c3aed',
+                          }}
+                        >
+                          {metaSaving ? '保存中...' : '保存'}
+                        </button>
+                      </div>
                     </div>
                   </section>
 

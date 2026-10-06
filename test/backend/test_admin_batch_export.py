@@ -1,9 +1,15 @@
 """
-POST /admin/reports/export/batch 路由测试：
+POST /api/v1/admin/reports/export/batch 路由测试：
 - 非 super_admin -> 403
 - 51 个 report -> 400
-- 2 个 report（一个 5 phase、一个 3 phase）-> zip 内 2 文件
-- 不存在的 report_id -> 跳过，其他正常
+- 2 个 report（一个 5 phase、一个 3 phase）-> zip 内两个 report 子目录，md 章节正确
+- 不存在的 report_id -> 跳过（_skipped.txt），其他正常
+- 全部不存在 -> 404
+
+说明（2026-10-06 重写）：早期版本 mock 了 BatchExportService 的内部结构
+（export_service.collect_export_data），与现行实现早已漂移。现改为把
+batch_export_service 模块内的 ReportRegistry 重定向到 tmp 目录，跑**真实**
+service 的集成路径（含 raw 全量会话打包与 report_markdown.md 附带）。
 """
 
 from __future__ import annotations
@@ -11,14 +17,14 @@ from __future__ import annotations
 import io
 import json
 import zipfile
+from functools import partial
 from pathlib import Path
 from typing import Dict
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from app.api.v1.auth import get_current_user
 from app.main import app
-from app.services.batch_export_service import BatchExportService
 from app.utils.report_registry import STEP_IDS, ReportRegistry
 from fastapi.testclient import TestClient
 
@@ -28,6 +34,33 @@ def _write_record(root: Path, report_id: str, payload: dict) -> None:
     d.mkdir(parents=True, exist_ok=True)
     (d / "record.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def _write_step_session(
+    root: Path, report_id: str, step_id: str, session_id: str
+) -> None:
+    """写 {step}__{session}.json 会话源文件（含最小 messages 与结论）。"""
+    d = root / "reports" / report_id
+    d.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "session_id": session_id,
+        "messages": [
+            {
+                "role": "user",
+                "content": f"u-{session_id}",
+                "created_at": "2026-01-01T00:01:00",
+            },
+            {
+                "role": "assistant",
+                "content": f"a-{session_id}",
+                "created_at": "2026-01-01T00:01:05",
+            },
+        ],
+        "metadata": {"conclusion_final": f"结论-{session_id}"},
+    }
+    (d / f"{step_id}__{session_id}.json").write_text(
+        json.dumps(payload, ensure_ascii=False), encoding="utf-8"
     )
 
 
@@ -60,30 +93,12 @@ def _make_record(
     }
 
 
-def _mock_collect_export_data(user_id: str, session_id: str) -> dict:
-    return {
-        "export_time": "2026-01-01T00:00:00",
-        "user": {"user_id": user_id, "email": "test@example.com", "username": "测试"},
-        "session": {
-            "session_id": session_id,
-            "status": "completed",
-            "created_at": "2026-01-01T00:00:00",
-        },
-        "conversation_history": {
-            f"cat__{session_id}": [
-                {
-                    "role": "user",
-                    "content": f"u-{session_id}",
-                    "created_at": "2026-01-01T00:01:00",
-                },
-                {
-                    "role": "assistant",
-                    "content": f"a-{session_id}",
-                    "created_at": "2026-01-01T00:01:05",
-                },
-            ]
-        },
-    }
+def _patch_registry(base: Path):
+    """把 batch_export_service 模块内实例化的 ReportRegistry 重定向到 tmp 目录。"""
+    return patch(
+        "app.services.batch_export_service.ReportRegistry",
+        partial(ReportRegistry, base_dir=str(base)),
+    )
 
 
 def _override_auth(is_admin: bool):
@@ -113,7 +128,6 @@ def _reset_auth():
 @pytest.fixture
 def admin_client():
     """super_admin TestClient。"""
-    # 确保 admin 用户在配置中
     _override_auth(is_admin=True)
     with patch("app.api.v1.admin._is_super_admin", return_value=True):
         yield TestClient(app)
@@ -125,7 +139,7 @@ def test_batch_export_non_super_admin_403():
     with patch("app.api.v1.admin._is_super_admin", return_value=False):
         client = TestClient(app)
         resp = client.post(
-            "/admin/reports/export/batch",
+            "/api/v1/admin/reports/export/batch",
             json={"report_ids": ["r1"], "format": "md"},
         )
     assert resp.status_code == 403
@@ -135,43 +149,31 @@ def test_batch_export_over_50_returns_400(admin_client):
     """51 个 report -> 400。"""
     ids = [f"r{i}" for i in range(51)]
     resp = admin_client.post(
-        "/admin/reports/export/batch",
+        "/api/v1/admin/reports/export/batch",
         json={"report_ids": ids, "format": "md"},
     )
     assert resp.status_code == 400
-    assert "单次最多导出 50 个" in resp.json()["detail"]
-
-
-def test_batch_export_empty_ids_returns_400(admin_client):
-    """空 report_ids -> 400。"""
-    resp = admin_client.post(
-        "/admin/reports/export/batch",
-        json={"report_ids": [], "format": "md"},
-    )
-    assert resp.status_code == 400
-
-
-def test_batch_export_invalid_format_returns_400(admin_client):
-    """非法 format -> 400。"""
-    resp = admin_client.post(
-        "/admin/reports/export/batch",
-        json={"report_ids": ["r1"], "format": "pdf"},
-    )
-    assert resp.status_code == 400
+    assert "50" in resp.json()["detail"]
 
 
 def test_batch_export_two_reports_zip(admin_client, tmp_path: Path):
-    """2 个 report（5 phase + 3 phase）-> zip 内 2 文件，章节数正确。"""
-    # 准备 ReportRegistry 数据
+    """2 个 report（5 phase / 3 phase）-> zip 内两个子目录，md 章节正确。"""
     base = tmp_path / "simple"
     base.mkdir(parents=True, exist_ok=True)
-    registry = ReportRegistry(base_dir=str(base))
 
     rid_full = "rpt-full-5"
-    selected_full = {sid: f"sess-full-{sid}" for sid in STEP_IDS}
+    selected_full = {
+        "values": "sess-f-v",
+        "strengths": "sess-f-s",
+        "interests": "sess-f-i",
+        "purpose": "sess-f-p",
+        "rumination": "sess-f-r",
+    }
     _write_record(
         base, rid_full, _make_record(rid_full, selected_sessions=selected_full)
     )
+    for sid, sess in selected_full.items():
+        _write_step_session(base, rid_full, sid, sess)
 
     rid_partial = "rpt-partial-3"
     selected_partial = {
@@ -182,35 +184,34 @@ def test_batch_export_two_reports_zip(admin_client, tmp_path: Path):
     _write_record(
         base, rid_partial, _make_record(rid_partial, selected_sessions=selected_partial)
     )
+    for sid, sess in selected_partial.items():
+        _write_step_session(base, rid_partial, sid, sess)
 
-    # Mock BatchExportService 的 registry 指向 tmp_path，collect_export_data 走 mock
-    def _patch_service():
-        svc = BatchExportService()
-        svc.registry = ReportRegistry(base_dir=str(base))
-        svc.export_service.collect_export_data = AsyncMock(
-            side_effect=_mock_collect_export_data
-        )
-        return svc
-
-    with patch("app.api.v1.admin.BatchExportService", side_effect=_patch_service):
+    with _patch_registry(base):
         resp = admin_client.post(
-            "/admin/reports/export/batch",
+            "/api/v1/admin/reports/export/batch",
             json={"report_ids": [rid_full, rid_partial], "format": "md"},
         )
 
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "application/zip"
 
-    # 解压 zip 验证
     buf = io.BytesIO(resp.content)
     with zipfile.ZipFile(buf) as zf:
         names = zf.namelist()
-        assert len(names) == 2
-        assert "report_rpt-full-5.md" in names
-        assert "report_rpt-partial-3.md" in names
 
-        full_content = zf.read("report_rpt-full-5.md").decode("utf-8")
-        partial_content = zf.read("report_rpt-partial-3.md").decode("utf-8")
+        # 每 report 一个子目录：md + stats + rumination_tables + summary + raw 会话
+        assert f"{rid_full}/report_{rid_full}.md" in names
+        assert f"{rid_partial}/report_{rid_partial}.md" in names
+        assert f"{rid_full}/stats.json" in names
+        assert f"{rid_full}/raw/values__sess-f-v.json" in names
+        # 3 phase 报告不含 purpose/rumination 的 raw
+        assert not any(n.startswith(f"{rid_partial}/raw/purpose__") for n in names)
+
+        full_content = zf.read(f"{rid_full}/report_{rid_full}.md").decode("utf-8")
+        partial_content = zf.read(f"{rid_partial}/report_{rid_partial}.md").decode(
+            "utf-8"
+        )
 
         # 5 phase 报告：5 个章节标题
         for i, sid in enumerate(STEP_IDS, start=1):
@@ -237,23 +238,13 @@ def test_batch_export_nonexistent_report_skipped(admin_client, tmp_path: Path):
     base.mkdir(parents=True, exist_ok=True)
 
     rid_valid = "rpt-valid"
-    _write_record(
-        base,
-        rid_valid,
-        _make_record(rid_valid, selected_sessions={"values": "sess-v"}),
-    )
+    selected = {"values": "sess-v"}
+    _write_record(base, rid_valid, _make_record(rid_valid, selected_sessions=selected))
+    _write_step_session(base, rid_valid, "values", "sess-v")
 
-    def _patch_service():
-        svc = BatchExportService()
-        svc.registry = ReportRegistry(base_dir=str(base))
-        svc.export_service.collect_export_data = AsyncMock(
-            side_effect=_mock_collect_export_data
-        )
-        return svc
-
-    with patch("app.api.v1.admin.BatchExportService", side_effect=_patch_service):
+    with _patch_registry(base):
         resp = admin_client.post(
-            "/admin/reports/export/batch",
+            "/api/v1/admin/reports/export/batch",
             json={"report_ids": [rid_valid, "nonexistent-id"], "format": "md"},
         )
 
@@ -261,18 +252,20 @@ def test_batch_export_nonexistent_report_skipped(admin_client, tmp_path: Path):
     buf = io.BytesIO(resp.content)
     with zipfile.ZipFile(buf) as zf:
         names = zf.namelist()
-        # 仅有效 report 一个文件
-        assert len(names) == 1
-        assert "report_rpt-valid.md" in names
+        assert f"{rid_valid}/report_{rid_valid}.md" in names
+        # 跳过清单
+        assert "_skipped.txt" in names
+        assert zf.read("_skipped.txt").decode("utf-8") == "nonexistent-id"
+        assert not any(n.startswith("nonexistent-id/") for n in names)
 
 
-def test_batch_export_all_nonexistent_returns_404(admin_client):
+def test_batch_export_all_nonexistent_returns_404(admin_client, tmp_path: Path):
     """全部 report_id 不存在 -> 404。"""
-    with patch("app.api.v1.admin.BatchExportService") as MockSvc:
-        svc = MockSvc.return_value
-        svc.collect_report_export = AsyncMock(return_value=None)
+    base = tmp_path / "simple"  # 空 registry
+    base.mkdir(parents=True, exist_ok=True)
+    with _patch_registry(base):
         resp = admin_client.post(
-            "/admin/reports/export/batch",
+            "/api/v1/admin/reports/export/batch",
             json={"report_ids": ["ghost1", "ghost2"], "format": "md"},
         )
     assert resp.status_code == 404

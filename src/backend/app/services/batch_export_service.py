@@ -15,6 +15,11 @@
   - 选会话优先级：``selected_session_id`` > ``session_ids`` 的最后一个（最新一次）。
   - 因此 rumination 走到中途（有 session 未 select）也能导出。
   - 完全没有 session 的 step 不输出。
+  - md / stats 只按「选中会话」渲染统计（口径不变）；
+    但 ``raw/`` 会打包 report 目录下**全部** ``{step}__{session}.json``
+    （含未选中的线程与 record 未登记的孤儿文件），保证对话全量可溯源
+    （2026-10-06：修复 rumination 之前的聊天线程漏导问题）。
+  - 若报告 markdown 已生成（``report_markdown.md`` 缓存存在），原样附带。
 """
 
 from __future__ import annotations
@@ -24,8 +29,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
-from app.utils.report_registry import STEP_IDS, ReportRegistry
 from app.utils.helpers import parse_iso_to_utc
+from app.utils.report_registry import STEP_IDS, ReportRegistry
 from app.utils.rumination_export import (
     build_rumination_tables,
     build_summary,
@@ -106,7 +111,9 @@ class BatchExportService:
         files: List[Tuple[str, bytes]] = []
 
         # 解析每个 step 实际要导出的 session（selected 优先，否则 session_ids 最后一个）
-        phase_sessions: List[Tuple[str, int, str, bool]] = []  # (step_id, seq, session_id, is_selected)
+        phase_sessions: List[Tuple[str, int, str, bool]] = (
+            []
+        )  # (step_id, seq, session_id, is_selected)
         seq = 0
         for step_id in STEP_IDS:
             step = record.get("steps", {}).get(step_id) or {}
@@ -131,7 +138,9 @@ class BatchExportService:
                     "error": "源对话文件缺失",
                 }
                 per_phase_stats.append(
-                    self._empty_phase_stat(step_id, session_id, is_selected, missing=True)
+                    self._empty_phase_stat(
+                        step_id, session_id, is_selected, missing=True
+                    )
                 )
             else:
                 raw.setdefault("report_id", report_id)
@@ -141,7 +150,9 @@ class BatchExportService:
                     "report_anchor_summary",
                     (record.get("steps", {}).get(step_id) or {}).get("anchor_summary"),
                 )
-                raw.setdefault("report_final_conclusion", record.get("final_conclusion"))
+                raw.setdefault(
+                    "report_final_conclusion", record.get("final_conclusion")
+                )
                 raw.setdefault("report_step_is_selected", is_selected)
                 raw.setdefault(
                     "report_step_locked",
@@ -152,7 +163,18 @@ class BatchExportService:
                 )
 
             inner_path = f"raw/{step_id}__{session_id}.json"
-            files.append((inner_path, json.dumps(raw, ensure_ascii=False, indent=2).encode("utf-8")))
+            files.append(
+                (
+                    inner_path,
+                    json.dumps(raw, ensure_ascii=False, indent=2).encode("utf-8"),
+                )
+            )
+
+        # —— 产物 1b：其余会话线程源文件（未选中线程 / record 未登记的孤儿文件） ——
+        # md/stats 口径不变（只按选中会话），raw 层全量打包保证溯源完整。
+        files.extend(
+            self._collect_extra_session_files(report_id, record, phase_sessions)
+        )
 
         # —— 产物 2：纯净 Markdown ——
         md_content = self._build_clean_markdown(
@@ -164,30 +186,57 @@ class BatchExportService:
         files.append((f"report_{report_id}.{ext}", md_content.encode("utf-8")))
 
         # —— 产物 3：统计 JSON ——
-        stats = self._build_stats(report_id=report_id, record=record, per_phase=per_phase_stats)
-        files.append(("stats.json", json.dumps(stats, ensure_ascii=False, indent=2).encode("utf-8")))
+        stats = self._build_stats(
+            report_id=report_id, record=record, per_phase=per_phase_stats
+        )
+        files.append(
+            (
+                "stats.json",
+                json.dumps(stats, ensure_ascii=False, indent=2).encode("utf-8"),
+            )
+        )
 
         # —— 产物 4：rumination 表格 JSON（结构化 step1~7 表格 + 前置 keywords） ——
         rumination_tables = build_rumination_tables(report_id, registry=self.registry)
-        files.append((
-            "rumination_tables.json",
-            json.dumps(rumination_tables, ensure_ascii=False, indent=2).encode("utf-8"),
-        ))
+        files.append(
+            (
+                "rumination_tables.json",
+                json.dumps(rumination_tables, ensure_ascii=False, indent=2).encode(
+                    "utf-8"
+                ),
+            )
+        )
 
         # —— 产物 5：结论汇总 JSON（report 级 + 5 phase conclusion_final） ——
         summary = build_summary(report_id, registry=self.registry)
-        files.append((
-            "summary.json",
-            json.dumps(summary, ensure_ascii=False, indent=2).encode("utf-8"),
-        ))
+        files.append(
+            (
+                "summary.json",
+                json.dumps(summary, ensure_ascii=False, indent=2).encode("utf-8"),
+            )
+        )
 
         # —— 产物 6：rumination_progress.json 原样打包（完整溯源） ——
         raw_progress = load_raw_rumination_progress(report_id, registry=self.registry)
         if raw_progress is not None:
-            files.append((
-                "raw/rumination_progress.json",
-                json.dumps(raw_progress, ensure_ascii=False, indent=2).encode("utf-8"),
-            ))
+            files.append(
+                (
+                    "raw/rumination_progress.json",
+                    json.dumps(raw_progress, ensure_ascii=False, indent=2).encode(
+                        "utf-8"
+                    ),
+                )
+            )
+
+        # —— 产物 7：已生成的报告 markdown 全文（缓存存在才附带，不现场生成） ——
+        report_md_path = self.registry.reports_root / report_id / "report_markdown.md"
+        if report_md_path.is_file():
+            try:
+                files.append(("report_markdown.md", report_md_path.read_bytes()))
+            except OSError as e:
+                logger.warning(
+                    "批量导出：读取报告 markdown 失败: %s err=%s", report_md_path, e
+                )
 
         return files
 
@@ -203,6 +252,71 @@ class BatchExportService:
             return sel
         ids = [s for s in (session_ids or []) if isinstance(s, str) and s.strip()]
         return ids[-1] if ids else None
+
+    def _collect_extra_session_files(
+        self,
+        report_id: str,
+        record: dict,
+        phase_sessions: List[Tuple[str, int, str, bool]],
+    ) -> List[Tuple[str, bytes]]:
+        """
+        收集 raw 层的「其余」会话源文件。
+
+        主循环只打包了每个 step 的选中会话；这里扫描 report 目录下全部
+        ``{step}__{session}.json``，把未选中的线程与 record.json 未登记的
+        孤儿文件一并打包（同样注入 report 元信息，标注是否为选中会话），
+        保证「rumination 之前的全部聊天」完整可溯源。
+        """
+        chosen: Dict[str, str] = {step_id: sid for step_id, _, sid, _ in phase_sessions}
+        already: set = {
+            f"raw/{step_id}__{sid}.json" for step_id, _, sid, _ in phase_sessions
+        }
+
+        report_dir = self.registry.reports_root / report_id
+        if not report_dir.is_dir():
+            return []
+
+        extras: List[Tuple[str, bytes]] = []
+        for fp in sorted(report_dir.glob("*__*.json")):
+            name = fp.name
+            inner_path = f"raw/{name}"
+            if inner_path in already:
+                continue
+            step_id, sep, session_id = name.partition("__")
+            if not sep or step_id not in STEP_IDS:
+                # 非 step 会话文件（如 record.json 之外的杂项）不在此列
+                continue
+            if not session_id.endswith(".json"):
+                continue
+            session_id = session_id[: -len(".json")]
+            try:
+                raw = json.loads(fp.read_text(encoding="utf-8") or "{}")
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warning("批量导出：额外会话文件解析失败，跳过: %s err=%s", fp, e)
+                continue
+            if not isinstance(raw, dict):
+                continue
+            is_selected = chosen.get(step_id) == session_id
+            raw.setdefault("report_id", report_id)
+            raw.setdefault("report_activation_code", record.get("activation_code"))
+            raw.setdefault("report_user_id", record.get("user_id"))
+            raw.setdefault(
+                "report_anchor_summary",
+                (record.get("steps", {}).get(step_id) or {}).get("anchor_summary"),
+            )
+            raw.setdefault("report_final_conclusion", record.get("final_conclusion"))
+            raw.setdefault("report_step_is_selected", is_selected)
+            raw.setdefault(
+                "report_step_locked",
+                bool((record.get("steps", {}).get(step_id) or {}).get("locked")),
+            )
+            extras.append(
+                (
+                    inner_path,
+                    json.dumps(raw, ensure_ascii=False, indent=2).encode("utf-8"),
+                )
+            )
+        return extras
 
     # ------------------------------------------------------------------
     # 统计
@@ -268,7 +382,9 @@ class BatchExportService:
             "last_message_at": timestamps[-1] if timestamps else None,
             "token_usage": token_acc if has_token else None,
             "conclusion_state": (raw.get("metadata") or {}).get("conclusion_state"),
-            "has_conclusion_final": bool((raw.get("metadata") or {}).get("conclusion_final")),
+            "has_conclusion_final": bool(
+                (raw.get("metadata") or {}).get("conclusion_final")
+            ),
         }
 
     def _empty_phase_stat(
@@ -399,7 +515,9 @@ class BatchExportService:
     # Markdown
     # ------------------------------------------------------------------
 
-    def _load_step_session_json(self, report_id: str, step_id: str, session_id: str) -> Optional[dict]:
+    def _load_step_session_json(
+        self, report_id: str, step_id: str, session_id: str
+    ) -> Optional[dict]:
         """读取 report 目录下 {step_id}__{session_id}.json 源文件。"""
         file_path = self.registry.get_step_session_file(report_id, step_id, session_id)
         if not file_path.is_file():
@@ -504,7 +622,9 @@ class BatchExportService:
         "not_reached": "— 未进行",
     }
 
-    def _render_rumination_md(self, lines: List[str], report_id: str, raw: dict) -> None:
+    def _render_rumination_md(
+        self, lines: List[str], report_id: str, raw: dict
+    ) -> None:
         """渲染 rumination 章节：前置结论 + 每个 step（表格 + 对话切片）。
 
         rumination 全局结论不在此处（留在 md 顶部「报告最终结论」）。
@@ -591,7 +711,9 @@ class BatchExportService:
                 lines.append("> （本步骤无对话记录）")
                 lines.append("")
 
-    def _render_table_md(self, lines: List[str], columns: List[str], rows: List[dict]) -> None:
+    def _render_table_md(
+        self, lines: List[str], columns: List[str], rows: List[dict]
+    ) -> None:
         """把行数据渲染成 markdown 表格（就地追加到 lines）。
 
         长文本单元格内的换行替换为空格，避免破坏 md 表格格式。
@@ -614,7 +736,12 @@ class BatchExportService:
         if value is None:
             return ""
         s = value if isinstance(value, str) else str(value)
-        s = s.replace("\r\n", " ").replace("\n", " ").replace("\r", " ").replace("|", "\\|")
+        s = (
+            s.replace("\r\n", " ")
+            .replace("\n", " ")
+            .replace("\r", " ")
+            .replace("|", "\\|")
+        )
         return s.strip()
 
     def _extract_phase_conclusion(self, raw: dict) -> str:
