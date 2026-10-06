@@ -30,7 +30,6 @@ from typing import Dict, List, Optional, Tuple
 
 from app.utils.helpers import parse_iso_to_utc
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -355,13 +354,12 @@ class SimpleActivationManager:
         if package_type not in {None, "quarterly", "annual"}:
             raise ValueError(f"不支持的 package_type: {package_type}")
 
-        # 简单生成一个 10 位激活码（大写字母+数字）
-        import random
-        import string
+        # 生成激活码（2026-10-06 新格式：OPENLIFE-XXXX-XXXX-XXXX，防混淆字符集，
+        # secrets 随机——激活码是付费商品凭据；存量 10 位裸码精确匹配永久兼容）
+        from app.utils.code_format import generate_activation_code
 
-        alphabet = string.ascii_uppercase + string.digits
         while True:
-            code = "".join(random.choices(alphabet, k=10))
+            code = generate_activation_code()
             if code not in records:
                 break
 
@@ -1057,6 +1055,7 @@ class SimpleActivationManager:
         if report_id:
             try:
                 from app.utils.report_registry import ReportRegistry
+
                 registry = ReportRegistry(base_dir=str(self.base_dir))
                 changed = registry.change_report_user_id(
                     report_id=report_id,
@@ -1067,13 +1066,16 @@ class SimpleActivationManager:
                     logger.warning(
                         "迁移归属:canonical report 不存在,仅改了 activations.json。"
                         "code=%s report_id=%s",
-                        norm, report_id,
+                        norm,
+                        report_id,
                     )
             except Exception as e:
                 logger.error(
                     "迁移归属:改 record.json user_id 失败(activations.json 已更新)。"
                     "code=%s report_id=%s error=%s",
-                    norm, report_id, e,
+                    norm,
+                    report_id,
+                    e,
                 )
 
         # 审计日志

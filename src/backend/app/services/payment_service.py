@@ -1029,12 +1029,13 @@ class PaymentService:
             if order.status != "pending":
                 raise ValueError(f"仅待支付订单可取消（当前状态：{order.status}）")
             coupon_id = order.coupon_id
+            order_id_ = order.id
             await cls._close_channel_order(order)
             order.status = "cancelled"
             await db.commit()
             await db.refresh(order)
 
-        await cls._release_coupon_safe(coupon_id)
+        await cls._release_coupon_safe(coupon_id, order_id_)
         return order
 
     @classmethod
@@ -1068,11 +1069,12 @@ class PaymentService:
                 try:
                     await cls._close_channel_order(order)
                     coupon_id = order.coupon_id
+                    order_id_ = order.id
                     order.status = "closed"
                     order.closed_at = _utcnow()
                     await db.commit()
                     closed += 1
-                    await cls._release_coupon_safe(coupon_id)
+                    await cls._release_coupon_safe(coupon_id, order_id_)
                 except Exception as e:
                     await db.rollback()
                     logger.error("关闭超时订单失败：order_no=%s err=%s", order.order_no, e)
@@ -1108,11 +1110,12 @@ class PaymentService:
                 try:
                     await cls._close_channel_order(order)
                     coupon_id = order.coupon_id
+                    order_id_ = order.id
                     order.status = "closed"
                     order.closed_at = _utcnow()
                     await db.commit()
                     closed += 1
-                    await cls._release_coupon_safe(coupon_id)
+                    await cls._release_coupon_safe(coupon_id, order_id_)
                 except Exception as e:
                     await db.rollback()
                     logger.error(
@@ -1134,14 +1137,14 @@ class PaymentService:
             logger.warning("渠道关单失败（不阻断本地关单）：order_no=%s err=%s", order.order_no, e)
 
     @staticmethod
-    async def _release_coupon_safe(coupon_id: Optional[str]) -> None:
-        """释放券（防御性：失败仅记日志）"""
+    async def _release_coupon_safe(coupon_id: Optional[str], order_id: Optional[str] = None) -> None:
+        """释放券（防御性：失败仅记日志；order_id 用于按核销行释放，多次券必需）"""
         if not coupon_id:
             return
         try:
-            await CouponService.release_coupon(coupon_id)
+            await CouponService.release_coupon(coupon_id, order_id=order_id)
         except ValueError as e:
-            logger.warning("释放券失败：coupon=%s err=%s", coupon_id, e)
+            logger.warning("释放券失败：coupon=%s order=%s err=%s", coupon_id, order_id, e)
 
     # ─── Admin：订单列表 / 详情 / 退款 ──────────────────────────
 

@@ -1005,10 +1005,10 @@ class RefundService:
                     "退款完成，交付码已作废：refund_no=%s codes=%s", refund_no, revoked_codes
                 )
 
-            # 整单退完 → 退回券（未过期；失败不阻断）
+            # 整单退完 → 退回券（按订单核销行回退，多次券减名额；失败不阻断）
             if coupon_id and fully_refunded:
                 try:
-                    await CouponService.return_coupon_on_refund(coupon_id)
+                    await CouponService.return_coupon_on_refund(coupon_id, refund.order_id)
                 except ValueError as e:
                     logger.error(
                         "退款退券失败（订单已退款，需人工核查）：order=%s coupon=%s err=%s",

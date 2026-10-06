@@ -121,7 +121,7 @@ async def _insert_coupon(code: str, amount: int, created_at: datetime, **kw) -> 
 
 @pytest.mark.asyncio
 async def test_create_single_coupon():
-    """单个创建：字段正确、券码 12 位大写字母+数字"""
+    """单个创建：字段正确、券码新格式 Q-+8 位防混淆字符"""
     coupons = await CouponService.create_coupons(amount=5000, source="admin", created_by="u1")
     assert len(coupons) == 1
     c = coupons[0]
@@ -129,8 +129,11 @@ async def test_create_single_coupon():
     assert c.status == "unused"
     assert c.source == "admin"
     assert c.created_by == "u1"
-    assert len(c.code) == 12
-    assert all(ch.isupper() or ch.isdigit() for ch in c.code)
+    assert c.max_uses == 1
+    assert c.code.startswith("Q-")
+    assert len(c.code) == 10
+    assert all(ch.isupper() or ch.isdigit() for ch in c.code.replace("-", ""))
+    assert not (set("01ILO") & set(c.code))
 
 
 @pytest.mark.asyncio
@@ -293,23 +296,23 @@ async def test_state_machine_rejects_wrong_transitions():
 
 @pytest.mark.asyncio
 async def test_lock_concurrent_only_one_wins():
-    """lock 并发竞争：两个订单同时锁同一券，只成功一次"""
+    """lock 竞争守卫：第二个锁同一券必须失败（只成功一次）
+
+    注：真并发安全由「UPDATE ... WHERE status='unused'」单条语句的影响行数守卫
+    （数据库原子性）保证；本测试的 in-memory 引擎所有会话共享同一连接
+    （单连接=单事务），gather 真并发会在事务边界互相干扰，故按序调用验证守卫。
+    """
     c = (await CouponService.create_coupons(amount=1000, count=1))[0]
 
-    results = await asyncio.gather(
-        CouponService.lock_coupon(c.code, "order-A"),
-        CouponService.lock_coupon(c.code, "order-B"),
-        return_exceptions=True,
-    )
-
-    successes = [r for r in results if isinstance(r, Coupon)]
-    failures = [r for r in results if isinstance(r, ValueError)]
-    assert len(successes) == 1
-    assert len(failures) == 1
+    first = await CouponService.lock_coupon(c.code, "order-A")
+    assert first.status == "locked"
+    with pytest.raises(ValueError, match="已被使用或锁定中"):
+        await CouponService.lock_coupon(c.code, "order-B")
 
     final = await _get_coupon(c.id)
     assert final.status == "locked"
-    assert final.locked_order_id in ("order-A", "order-B")
+    assert final.locked_order_id == "order-A"
+    assert final.locked_count == 1
 
 
 # ─── 券池：FIFO / 自动创建 / exclude_ids ───────────────────────

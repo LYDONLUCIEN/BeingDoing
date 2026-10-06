@@ -44,13 +44,15 @@ ACTIVATION_BODY_LENGTH: Final[int] = 12
 ACTIVATION_GROUP_SIZE: Final[int] = 4
 
 # 全角/异体横杠 → 半角连字符（富文本复制常见变体）
-_DASH_TRANSLATION = str.maketrans({
-    "－": "-",  # 全角减号
-    "—": "-",  # em dash
-    "–": "-",  # en dash
-    "−": "-",  # 数学减号
-    "_": "-",  # 下划线（口述场景常见替代）
-})
+_DASH_TRANSLATION = str.maketrans(
+    {
+        "－": "-",  # 全角减号
+        "—": "-",  # em dash
+        "–": "-",  # en dash
+        "−": "-",  # 数学减号
+        "_": "-",  # 下划线（口述场景常见替代）
+    }
+)
 _WHITESPACE_RE = re.compile(r"\s+")
 
 
@@ -92,7 +94,7 @@ def normalize_user_code(raw: str, context: str) -> str:
 
     # 已带前缀的激活码 body 未分组（OPENLIFE-9F2K8M4P7X1D）→ 重新分组对齐查找键
     if s.startswith(ACTIVATION_PREFIX):
-        rest = s[len(ACTIVATION_PREFIX):]
+        rest = s[len(ACTIVATION_PREFIX) :]
         if "-" not in rest and len(rest) == ACTIVATION_BODY_LENGTH:
             return ACTIVATION_PREFIX + format_activation_body(rest)
         return s

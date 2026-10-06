@@ -317,7 +317,7 @@ async def test_zero_amount_order_granted_immediately(fake_channel):
     final = await _get_order(order.id)
     assert final.status == "granted"
     assert final.amount_paid == 0
-    assert final.delivered_code and len(final.delivered_code) == 10
+    assert final.delivered_code and final.delivered_code.startswith("OPENLIFE-")
     assert final.paid_at is not None
 
     # 券已核销
