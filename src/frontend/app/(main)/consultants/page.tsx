@@ -1,14 +1,14 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import PaperVeilLayers from '@/components/explore/PaperVeilLayers';
 import XiaohongshuQrEntry from '@/components/common/XiaohongshuQrEntry';
 
 // 文案来源：wiki/开发文档/10-05/咨询师.md（2026-10-06 上线咨询师介绍页，入口在顶部导航「咨询团队」）
-// 卡片布局参考 lumina-lab.cn/coaches：两列宽矮卡，姓名 + 键值对元信息 + 要点列表；
-// 咨询风格/适合人群折叠进卡片底部，保证卡片低矮且内容全量保留。
+// v3（2026-10-07）：咨询师改为一次展示一位、左右切换；卡内多栏铺开全量内容
+// （背景/咨询风格/适合人群并列 + 价值观标签），保证一屏内看完一位咨询师。
 
 // 统一介绍（含小红书/反馈指引，文案与需求文档保持一致）
 const INTRO_PARAGRAPH =
@@ -25,7 +25,7 @@ const FORMAT_ITEMS = [
   '提供 1 次免费更换机会：若咨询开始后的前 15 分钟内不满意，可申请更换咨询师。',
 ];
 
-// 咨询师数据来源：wiki/开发文档/10-05/咨询师.md
+// 咨询师数据来源：wiki/开发文档/10-05/咨询师.md（全量展示：背景 / 咨询风格 / 适合人群 / 价值观）
 interface Coach {
   name: string;
   industry: string;
@@ -117,8 +117,141 @@ const COACHES: Coach[] = [
 ];
 
 const META_LABEL = 'font-semibold text-bd-fg';
+const SUB_LABEL = 'text-sm font-semibold text-bd-fg mb-2';
 const BODY_LIST = 'list-disc pl-5 space-y-1.5 text-bd-muted text-sm leading-relaxed';
-const SUB_LABEL = 'text-sm font-semibold text-bd-fg';
+
+function CoachCarousel() {
+  // [当前下标, 切换方向]；方向用于左右滑动动效
+  const [[index, direction], setState] = useState<[number, number]>([0, 0]);
+  const coach = COACHES[index];
+  const move = (delta: number) =>
+    setState(([i]) => [(i + delta + COACHES.length) % COACHES.length, delta]);
+
+  return (
+    <div className="space-y-5">
+      {/* 姓名页签：直接选人 */}
+      <div className="flex justify-center gap-2" role="tablist" aria-label="选择咨询师">
+        {COACHES.map((item, i) => (
+          <button
+            key={item.name}
+            type="button"
+            role="tab"
+            aria-selected={i === index}
+            onClick={() => setState([i, i > index ? 1 : -1])}
+            className={`rounded-full border px-4 py-1.5 text-sm transition-colors ${
+              i === index
+                ? 'border-bd-fg bg-bd-overlay-md font-semibold text-bd-fg'
+                : 'border-bd-border text-bd-muted hover:text-bd-fg'
+            }`}
+          >
+            {item.name}
+          </button>
+        ))}
+      </div>
+
+      {/* 卡片与上方介绍卡同宽；箭头骑跨卡片两缘（落在卡片 padding 内不遮内容），≤720px 由全局样式隐藏 */}
+      <div className="relative" aria-live="polite">
+        <AnimatePresence mode="wait" initial={false}>
+            <motion.article
+              key={coach.name}
+              role="tabpanel"
+              initial={{ opacity: 0, x: direction >= 0 ? 24 : -24 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: direction >= 0 ? -24 : 24 }}
+              transition={{ duration: 0.22, ease: 'easeOut' }}
+              /* 首页评价卡同款质感（ol-reading-glass 玻璃纸面）+ 固定最小高度统一三位咨询师的卡片尺寸 */
+              className="bd-glass-card ol-reading-glass rounded-[20px] p-6 md:p-8 space-y-5 md:min-h-[710px] xl:min-h-[470px]"
+            >
+              <div className="space-y-2.5">
+                <p className="ol-kicker" style={{ marginBottom: 0 }}>
+                  COUNSELOR PROFILE · {String(index + 1).padStart(2, '0')}
+                </p>
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <h3 className="text-2xl font-bold text-bd-fg">{coach.name}</h3>
+                  <p className="text-sm text-bd-muted">
+                    <span className={META_LABEL}>行业：</span>
+                    {coach.industry}
+                    <span className="mx-2 text-bd-border" aria-hidden>·</span>
+                    <span className={META_LABEL}>形式：</span>
+                    {coach.format}
+                    <span className="mx-2 text-bd-border" aria-hidden>·</span>
+                    <span className={META_LABEL}>工作年限：</span>
+                    {coach.years}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {coach.values.map((value) => (
+                    <span
+                      key={value}
+                      className="rounded-full border border-bd-border bg-bd-overlay px-3 py-1 text-xs text-bd-muted"
+                    >
+                      {value}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* 全量内容多栏铺开：一屏看完，无需下拉；标题后随 hairline 增强编辑感 */}
+              <div className="grid content-start gap-6 border-t border-bd-border pt-5 md:min-h-0 md:grid-cols-2 xl:grid-cols-3">
+                {(
+                  [
+                    ['背景与擅长', coach.background],
+                    ['咨询风格', coach.style],
+                    ['适合人群', coach.audience],
+                  ] as const
+                ).map(([label, items]) => (
+                  <section key={label}>
+                    <h4 className="mb-3 flex items-center gap-3 text-sm font-semibold text-bd-fg">
+                      <span>{label}</span>
+                      <span className="h-px flex-1 bg-bd-border/70" aria-hidden />
+                    </h4>
+                    <ul className={BODY_LIST}>
+                      {items.map((item, j) => (
+                        <li key={j}>{item}</li>
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+              </div>
+            </motion.article>
+        </AnimatePresence>
+
+        <button
+          type="button"
+          aria-label="上一位咨询师"
+          onClick={() => move(-1)}
+          className="ol-round-arrow absolute top-1/2 -translate-y-1/2 z-10 -left-4"
+        >
+          ←
+        </button>
+        <button
+          type="button"
+          aria-label="下一位咨询师"
+          onClick={() => move(1)}
+          className="ol-round-arrow absolute top-1/2 -translate-y-1/2 z-10 -right-4"
+        >
+          →
+        </button>
+      </div>
+
+      {/* 移动端分页圆点（首页用户评价同款；桌面用两侧圆箭头 + 页签）。外层包 md:hidden 控制，
+          因 .ol-review-dots 的 display:flex 无层叠层，会压过 tailwind 工具类 */}
+      <div className="md:hidden">
+        <div className="ol-review-dots" aria-label="咨询师分页" style={{ marginTop: 8 }}>
+          {COACHES.map((item, i) => (
+            <button
+              key={item.name}
+              type="button"
+              aria-label={`第 ${i + 1} 位咨询师：${item.name}`}
+              aria-current={i === index}
+              onClick={() => setState([i, i > index ? 1 : -1])}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function ConsultantsPage() {
   const router = useRouter();
@@ -170,17 +303,17 @@ export default function ConsultantsPage() {
           <p>{INTRO_PARAGRAPH}</p>
 
           <div className="space-y-2 border-t border-bd-border pt-6">
-            <h2 className={SUB_LABEL}>咨询范围</h2>
+            <h2 className="text-sm font-semibold text-bd-fg">咨询范围</h2>
             <p>{SCOPE_TEXT}</p>
           </div>
 
           <div className="space-y-2 border-t border-bd-border pt-6">
-            <h2 className={SUB_LABEL}>咨询条件</h2>
+            <h2 className="text-sm font-semibold text-bd-fg">咨询条件</h2>
             <p>{REQUIREMENT_TEXT}</p>
           </div>
 
           <div className="space-y-2 border-t border-bd-border pt-6">
-            <h2 className={SUB_LABEL}>咨询形式</h2>
+            <h2 className="text-sm font-semibold text-bd-fg">咨询形式</h2>
             <ol className="list-decimal pl-5 space-y-1.5">
               {FORMAT_ITEMS.map((item, i) => (
                 <li key={i}>{item}</li>
@@ -189,7 +322,7 @@ export default function ConsultantsPage() {
           </div>
         </motion.div>
 
-        {/* 下：咨询师卡片（两列宽矮卡，姓名 + 键值对元信息 + 背景要点；风格/适合人群折叠） */}
+        {/* 下：咨询师介绍（一次一位、左右切换；卡内三栏铺开全量内容，一屏看完） */}
         <div className="space-y-6">
           <motion.div
             initial={{ opacity: 0, y: 15 }}
@@ -201,75 +334,13 @@ export default function ConsultantsPage() {
             <p className="text-bd-muted text-sm">咨询前，根据您的需求与特点匹配咨询师</p>
           </motion.div>
 
-          <div className="grid md:grid-cols-2 gap-6">
-            {COACHES.map((coach, i) => (
-              <motion.article
-                key={coach.name}
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.25 + i * 0.08 }}
-                className="bd-glass-card rounded-2xl p-6 md:p-7 space-y-4"
-              >
-                <h3 className="text-lg font-bold text-bd-fg">{coach.name}</h3>
-
-                <div className="space-y-1 text-sm text-bd-muted">
-                  <p>
-                    <span className={META_LABEL}>行业：</span>
-                    {coach.industry}
-                  </p>
-                  <p>
-                    <span className={META_LABEL}>形式：</span>
-                    {coach.format}
-                    <span className="mx-2 text-bd-border" aria-hidden>·</span>
-                    <span className={META_LABEL}>工作年限：</span>
-                    {coach.years}
-                  </p>
-                </div>
-
-                <ul className={BODY_LIST}>
-                  {coach.background.map((item, j) => (
-                    <li key={j}>{item}</li>
-                  ))}
-                </ul>
-
-                <div className="flex flex-wrap gap-2">
-                  {coach.values.map((value) => (
-                    <span
-                      key={value}
-                      className="rounded-full border border-bd-border px-3 py-1 text-xs text-bd-muted"
-                    >
-                      {value}
-                    </span>
-                  ))}
-                </div>
-
-                <details className="group border-t border-bd-border pt-3">
-                  <summary className="cursor-pointer list-none select-none text-sm font-semibold text-bd-fg flex items-center gap-1.5 [&::-webkit-details-marker]:hidden">
-                    咨询风格与适合人群
-                    <span className="text-bd-subtle transition-transform group-open:rotate-90" aria-hidden>▸</span>
-                  </summary>
-                  <div className="pt-3 space-y-4">
-                    <div className="space-y-1.5">
-                      <h4 className={SUB_LABEL}>咨询风格</h4>
-                      <ul className={BODY_LIST}>
-                        {coach.style.map((item, j) => (
-                          <li key={j}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                    <div className="space-y-1.5">
-                      <h4 className={SUB_LABEL}>适合人群</h4>
-                      <ul className={BODY_LIST}>
-                        {coach.audience.map((item, j) => (
-                          <li key={j}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                </details>
-              </motion.article>
-            ))}
-          </div>
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+          >
+            <CoachCarousel />
+          </motion.div>
         </div>
       </div>
     </div>

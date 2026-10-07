@@ -293,8 +293,9 @@ function WidePriceOption({
 }
 
 /**
- * 二维码舞台：下单前为占位框（四角标 + 渠道标 + 标题），下单后为支付宝前置模式 iframe
- * （后端 qr_pay_mode=4 / qrcode_width=220，iframe 248×300 含支付宝页内边距，stage 随内容自适应）。
+ * 二维码舞台：下单前为占位框（四角标 + 渠道标 + 标题），下单后为支付宝前置模式 iframe。
+ * 占位框与 iframe 同尺寸（194×210，对应后端 qr_pay_mode=4 / qrcode_width=170：
+ * 码 170px + 支付宝页四周内边距 ≈12px），出码前后舞台零跳动；更高会露出支付宝页底部空白。
  */
 function QrStage({
   active,
@@ -318,12 +319,12 @@ function QrStage({
         <iframe
           src={payUrl}
           title={iframeTitle}
-          width={248}
-          height={300}
+          width={194}
+          height={210}
           className="rounded-xl bg-white"
         />
       ) : (
-        <div className="relative flex h-[160px] w-[160px] flex-col items-center justify-center rounded-[10px] border border-dashed border-[#aeb9c4] bg-[#f7f9fc] p-5 text-center">
+        <div className="relative flex h-[210px] w-[194px] flex-col items-center justify-center rounded-[10px] border border-dashed border-[#aeb9c4] bg-[#f7f9fc] p-5 text-center">
           {/* 四角标（设计稿 .qr-corner） */}
           <i
             aria-hidden
@@ -774,7 +775,8 @@ export default function PurchaseModal({
     );
 
   // ── 下单 ──
-  const handlePay = async () => {
+  // ch：渠道覆盖（点渠道按钮即下单时传入，避免闭包读到旧 state）
+  const handlePay = async (ch?: PayChannel) => {
     if (submitting) return;
     setSubmitting(true);
     setError(null);
@@ -783,19 +785,19 @@ export default function PurchaseModal({
         renewalMode
           ? {
               product_type: 'renewal',
-              channel,
+              channel: ch ?? channel,
               coupon_code: appliedCoupon?.code,
               target_code: renewalTargetCode,
             }
           : consultationMode
             ? {
                 product_type: 'consultation',
-                channel,
+                channel: ch ?? channel,
                 coupon_code: appliedCoupon?.code,
               }
             : {
                 product_type: selectedType,
-                channel,
+                channel: ch ?? channel,
                 coupon_code: appliedCoupon?.code,
                 intent,
               },
@@ -915,7 +917,8 @@ export default function PurchaseModal({
     },
   ];
 
-  /** 金额行主按钮：下单视图=生成付款码；等待轮询=禁用；已关闭/过期=重新下单 */
+  /** 结算面板主按钮：下单视图=立即支付（带金额，收银台主 CTA，点击后秒出二维码）；
+   * 等待轮询=禁用；已关闭/过期=重新下单 */
   const amountButtonLabel = wideWaiting
     ? waitStatus === 'polling'
       ? t('payment.wide.waitingPay')
@@ -924,7 +927,7 @@ export default function PurchaseModal({
       ? t('payment.creating')
       : displayAmount <= 0
         ? t('payment.payFree')
-        : t('payment.wide.generateQr');
+        : t('payment.wide.payNow', { amount: fenToYuan(displayAmount) });
   const handleAmountButtonClick = () => {
     if (wideWaiting) {
       if (waitStatus !== 'polling') resetToOrderView();
@@ -1132,14 +1135,14 @@ export default function PurchaseModal({
                       t={t}
                     />
 
-                    {/* 结算面板：左二维码 + 右三行（金额 / 优惠码 / 支付方式）；下单后二维码在此渲染 */}
+                    {/* 结算面板：左二维码 + 右三行（金额 / 优惠码 / 支付方式）+ 底部通栏支付按钮；下单后二维码在此渲染 */}
                     <section
                       ref={paymentPanelRef}
-                      aria-label={t('payment.wide.generateQr')}
+                      aria-label={t('payment.wide.checkoutLabel')}
                       className="mt-3.5 overflow-hidden rounded-[18px] border border-[#e3e8ec] bg-white/95 shadow-[0_12px_30px_rgba(31,48,64,0.05)]"
                     >
                       <div className="grid grid-cols-1 min-[701px]:grid-cols-[296px_minmax(0,1fr)]">
-                        {/* 二维码列：占位框 → 支付宝前置模式 iframe（生成付款码后） */}
+                        {/* 二维码列：占位框 → 支付宝前置模式 iframe（点击立即支付后） */}
                         <div className="grid place-items-center border-b border-[#e3e8ec] bg-[#fcfdfd] p-3.5 min-[701px]:border-b-0 min-[701px]:border-r">
                           <QrStage
                             active={qrActive}
@@ -1152,8 +1155,8 @@ export default function PurchaseModal({
 
                         {/* 结算列：应付金额 / 优惠码 / 支付方式 */}
                         <div className="grid min-w-0 divide-y divide-[#e3e8ec]">
-                          {/* 应付金额行：套餐 + 合计 + 生成付款码（等待支付时复用为状态按钮） */}
-                          <div className="grid min-h-[68px] grid-cols-[76px_minmax(90px,1fr)_auto_auto] items-center gap-3 px-3.5 py-2.5 max-[700px]:grid-cols-[1fr_auto]">
+                          {/* 应付金额行：套餐 + 合计（纯展示，支付按钮在面板底部通栏） */}
+                          <div className="grid min-h-[68px] grid-cols-[76px_minmax(90px,1fr)_auto] items-center gap-3 px-3.5 py-2.5 max-[700px]:grid-cols-[1fr_auto]">
                             <span className="text-[11px] font-bold tracking-[0.06em] text-[#5f6c7d] max-[700px]:col-span-2">
                               {t('payment.wide.amountLabel')}
                             </span>
@@ -1168,14 +1171,6 @@ export default function PurchaseModal({
                             <strong className="whitespace-nowrap text-xl font-bold leading-none text-[#293644]">
                               ¥{fenToYuan(displayAmount)}
                             </strong>
-                            <button
-                              type="button"
-                              onClick={handleAmountButtonClick}
-                              disabled={submitting || (wideWaiting && waitStatus === 'polling')}
-                              className="min-h-[38px] shrink-0 rounded-[10px] bg-[#222b35] px-[15px] text-xs font-semibold text-white transition hover:bg-[#151c23] hover:shadow-[0_10px_24px_rgba(24,33,48,0.15)] disabled:cursor-wait disabled:opacity-55 disabled:hover:shadow-none max-[700px]:col-span-2 max-[700px]:w-full"
-                            >
-                              {amountButtonLabel}
-                            </button>
                           </div>
 
                           {/* 优惠码行：我的可用券 + 手动输入 + 使用（反馈走状态行） */}
@@ -1224,7 +1219,13 @@ export default function PurchaseModal({
                             <div className="grid max-w-[420px] grid-cols-2 gap-2">
                               <button
                                 type="button"
-                                onClick={() => setChannel('alipay')}
+                                onClick={() => {
+                                  setChannel('alipay');
+                                  // 点渠道即下单出码（收银台体验）：page.pay 仅本地签名，点击即出码、
+                                  // 不在支付宝侧建交易；本机 pending 单 30 分钟超时关单兜底。
+                                  // 出码后想改套餐/券走状态行「取消订单」。
+                                  if (!wideWaiting) void handlePay('alipay');
+                                }}
                                 disabled={wideWaiting}
                                 className={`flex min-h-[42px] items-center justify-center gap-[7px] rounded-xl border px-3 text-[13px] font-semibold transition ${
                                   channel === 'alipay'
@@ -1260,6 +1261,18 @@ export default function PurchaseModal({
                             </div>
                           </div>
                         </div>
+                      </div>
+
+                      {/* 面板底部通栏主按钮：立即支付（点击后秒出二维码）；等待支付=禁用态；关闭/过期=重新下单 */}
+                      <div className="border-t border-[#e3e8ec] px-3.5 py-3">
+                        <button
+                          type="button"
+                          onClick={handleAmountButtonClick}
+                          disabled={submitting || (wideWaiting && waitStatus === 'polling')}
+                          className="flex min-h-[46px] w-full items-center justify-center rounded-[12px] bg-[#222b35] px-[15px] text-sm font-semibold tracking-[0.02em] text-white transition hover:bg-[#151c23] hover:shadow-[0_10px_24px_rgba(24,33,48,0.15)] disabled:cursor-wait disabled:opacity-55 disabled:hover:shadow-none"
+                        >
+                          {amountButtonLabel}
+                        </button>
                       </div>
                     </section>
 
@@ -1505,12 +1518,12 @@ export default function PurchaseModal({
                   {waitStatus === 'polling' ? (
                     <div className="flex flex-col items-center space-y-3 py-4 text-center">
                       {payType === 'qr' && payUrl ? (
-                        /* 支付宝前置模式：iframe 内只渲染二维码（qrcode_width=220，含支付宝页内边距） */
+                        /* 支付宝前置模式：iframe 内只渲染二维码（194×210 与码 170px+内边距贴合） */
                         <iframe
                           src={payUrl}
                           title={t('payment.waiting.title')}
-                          width={248}
-                          height={300}
+                          width={194}
+                          height={210}
                           className="rounded-xl border border-stone-200 bg-white"
                         />
                       ) : (

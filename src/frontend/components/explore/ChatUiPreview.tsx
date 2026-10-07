@@ -582,7 +582,8 @@ export default function ChatUiPreview({
               </button>
             </div>
           </header>
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden py-4">
+          {/* 同真实页 1007：去 py-4，内容裁切线贴 header 底边（渐隐交给遮罩条） */}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             {messagePane}
           </div>
           {inputDock}

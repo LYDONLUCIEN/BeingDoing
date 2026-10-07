@@ -2265,7 +2265,10 @@ function LiveChatPhasePage() {
                   </div>
                 </header>
               <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-                <div className="flex min-h-0 flex-1 flex-col overflow-hidden py-4">
+                {/* 1007：去掉原 py-4——上下各 16px 空白段把内容裁切线压到 header 灰线之下，
+                    形成「无形卡片」挡内容的观感；对话区现在贴着 header 底边/输入区，
+                    渐隐交给 flow-chat-box 的遮罩条（bd-static-skin §3） */}
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                   {/* 对话区 */}
                   <div className="flow-chat-box relative flex min-h-0 min-w-0 flex-1 flex-col w-full max-w-none">
               <div

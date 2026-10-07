@@ -145,6 +145,9 @@
   mask-image: none !important;
   -webkit-mask-repeat: no-repeat !important;
   mask-repeat: no-repeat !important;
+  /* 1007 贴线：原无 top padding，首条消息会落进顶部渐隐条的弱alpha区；
+     1.25rem 与前四阶段 .flow-chat-body 呼吸一致，内容起点避开条区 */
+  padding-top: 1.25rem;
 }
 
 /* chat 页：上沿 2rem / 下沿 7rem。
@@ -173,7 +176,13 @@
   background: linear-gradient(to top, rgba(238, 240, 245, 0.55), rgba(238, 240, 245, 0));
 }
 
-/* 沉淀 V4：上沿 2rem / 下沿 7rem（同 chat 页：背景实测色系，条对背景隐形） */
+/* 沉淀 V4：渐隐条 = 横向双色渐变底 + 纵向 mask 渐隐（1007 定稿）。
+   V4 背景是四色流光融合，横向色差实测达 28 RGB 单位（左薰衣草→右近白），
+   1006 的平色条 (240,241,246) 在彩底上压出一块「颜色对不上」的方带。
+   解法：条底色用 90° 双色渐变近似背景横向分布（色样取自用户截图实测），
+   纵向 0.7→0 渐隐用 mask 挂在条自身——条是不滚动的静态层，mask 只
+   栅格化一次，滚动零成本（性能禁令的 mask 只针对滚动容器）。
+   若换分辨率后 blob 位置偏移导致轻微色偏，重采样更新下方色值即可。 */
 .rumination-beautiful-root .flow-chat-box.rumination-beautiful-chat-panel::before,
 .rumination-beautiful-root .flow-chat-box.rumination-beautiful-chat-panel::after {
   content: '';
@@ -185,18 +194,21 @@
 }
 .rumination-beautiful-root .flow-chat-box.rumination-beautiful-chat-panel::before {
   top: 0;
-  height: var(--rum-scroll-fade-top, 2rem);
-  background: linear-gradient(to bottom, rgba(240, 241, 246, 0.55), rgba(240, 241, 246, 0));
+  height: 2rem;
+  background: linear-gradient(90deg, rgba(224, 229, 247, 0.7), rgba(240, 242, 250, 0.7) 45%, rgba(250, 251, 252, 0.7));
+  -webkit-mask-image: linear-gradient(to bottom, #000, transparent);
+  mask-image: linear-gradient(to bottom, #000, transparent);
 }
 .rumination-beautiful-root .flow-chat-box.rumination-beautiful-chat-panel::after {
   bottom: 0;
-  height: var(--rum-scroll-fade-bottom, 7rem);
-  background: linear-gradient(to top, rgba(240, 241, 246, 0.55), rgba(240, 241, 246, 0));
+  height: 7rem;
+  background: linear-gradient(90deg, rgba(238, 241, 249, 0.7), rgba(250, 251, 253, 0.7));
+  -webkit-mask-image: linear-gradient(to top, #000, transparent);
+  mask-image: linear-gradient(to top, #000, transparent);
 }
 
 /* V4 输入区在 .flow-chat-box 内部（与 chat 页不同，chat 页 dock 在 box 外）：
-   提到遮罩条之上，恢复原 mask 方案「渐隐只作用于滚动内容」的视觉——
-   否则近白渐变条会蒙在输入胶囊/发送按钮上（pointer-events 不受影响，但按钮会泛灰） */
+   提到渐隐条之上，避免条蒙在输入胶囊/发送按钮上 */
 .rumination-beautiful-root .flow-chat-box.rumination-beautiful-chat-panel .careering-input-dock {
   position: relative;
   z-index: 2;

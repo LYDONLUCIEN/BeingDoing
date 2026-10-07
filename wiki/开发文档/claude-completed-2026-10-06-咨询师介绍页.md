@@ -10,7 +10,7 @@
 | --- | --- |
 | 形态 | 独立页 `/consultants`（与 /about 同款 bd-mesh-page 纸纹底 + bd-glass-card 玻璃卡 + framer-motion） |
 | 首页顶部入口 | 导航栏 `journey-navbar-links` 内「关于我们」旁新增 `journey-nav-link` 同款链接（**不是** hero 横幅），文案「咨询团队」 |
-| 卡片布局 | **v2（2026-10-06 当天返工）**：参考 lumina-lab/coaches 截图——页面容器 max-w-5xl，卡片两列网格（宽矮矩形）：姓名锚点（无头像）+ 键值对元信息（行业/形式·年限）+ 背景要点 + 价值观 chips；咨询风格/适合人群折叠进 `<details>`（保内容全量又卡片低矮） |
+| 卡片布局 | **v4（2026-10-07 定稿）**：在 v3（一次一位、左右切换、三栏全量直出）基础上换首页用户评价同款质感：卡片 `ol-reading-glass rounded-[20px]` 玻璃纸面 + `ol-kicker` 眉标（COUNSELOR PROFILE · 0X）+ 小节标题后随 hairline + 价值观 chips 加底色；**md:min-h-[710px] / xl:min-h-[470px] 统一三位卡片高度**；箭头直接用全局 `ol-round-arrow` 绝对定位骑跨卡片两缘（`-left-4/-right-4`，卡片与上方介绍卡同宽；≤720px 自动隐藏），移动端用 `ol-review-dots` 圆点（外层 md:hidden 控制，因该类 display 无层叠层会压过 tailwind）。~~v2 两列矮卡+折叠~~（被否：内容显得少）；~~v3 裸 bd-glass-card+边框圆钮~~（被否：不高级、尺寸不一） |
 | 须知布局 | 单张玻璃卡内分三节（咨询范围 / 咨询条件 / 咨询形式），横向分隔线，正文限宽 42rem |
 | 其它入口 | 首页 footer「咨询师团队」链接；关于我们页文末「了解咨询师团队 →」 |
 | i18n | 仅导航/footer 标签走 i18n（`nav.consultants`=咨询团队 / `footer.consultants`=咨询师团队）；页面文案中文硬编码（与 About 口径一致） |

@@ -46,8 +46,10 @@ _ERR_VERIFY = "支付宝回调验签失败"
 # 前置模式（官方支持文档「电脑网站如何在商家页面展示二维码」）：qr_pay_mode=4 为
 # 可自定义宽度的嵌入式二维码，商家页面以 iframe 加载下单 URL，支付宝只渲染二维码；
 # qrcode_width 为二维码宽度（像素，qr_pay_mode=4 时生效）。切回跳转收银台删掉这两个参数即可。
+# 170 = 码本体 170px + 页面四周内边距 ≈ 12px → 前端 iframe 194×210 正好贴合（与占位框
+# 同尺寸，出码前后零跳动；实测见 wiki/开发文档/claude-completed-2026-10-07-支付弹窗收银台化改造.md）。
 _QR_PAY_MODE = "4"
-_QRCODE_WIDTH = 220
+_QRCODE_WIDTH = 170
 
 
 def _fen_to_yuan(amount_fen: int) -> str:

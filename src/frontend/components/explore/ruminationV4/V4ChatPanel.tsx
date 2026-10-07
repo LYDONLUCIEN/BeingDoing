@@ -174,7 +174,8 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
       {/* 0923 拍板：不再包毛玻璃聊天卡——对话直接落在流光背景上（同前四阶段/HTML conversation），
           气泡与输入胶囊自带表面；仅保留顶部组合名 + 状态行（细线分隔，同 conversation-top） */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="mb-2 shrink-0 border-b border-black/[0.06] pb-2">
+        {/* 1007 贴线：去 mb-2，对话面板与状态行细线无缝衔接（同前四阶段 header 灰线处理） */}
+        <div className="shrink-0 border-b border-black/[0.06] pb-2">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-[15px] font-semibold text-bd-fg">
@@ -202,7 +203,7 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
         </div>
 
         <div
-          className={`flex min-h-0 flex-1 flex-col overflow-hidden py-1 transition-[filter,opacity] duration-300 ${
+          className={`flex min-h-0 flex-1 flex-col overflow-hidden transition-[filter,opacity] duration-300 ${
             isDraft ? 'pointer-events-none select-none opacity-[0.45] blur-[2.5px]' : ''
           }`}
           aria-disabled={isDraft}
