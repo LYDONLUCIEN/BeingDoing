@@ -55,3 +55,29 @@ pending_review → withdrawn / rejected
 
 - 发票模块未做（口径已落库可回溯）；手续费线下核算；`refunding` 订单态保留未用（退款状态在退款单上）
 - 上线注意：admin 直接退款旧入口已 410，前后端本次同批发布；存量订单首次访问退款能力时自动回填明细行
+
+## 八、逐文件变更清单（2d2b290…6234050，4 提交，29 文件 +4936/−193）
+
+| 文件 | 变更 | 说明 |
+|---|---|---|
+| `alembic/versions/023_payment_refund_system.py` | 新增 | 迁移 023（dev 已应用） |
+| `app/models/payment.py` | +120 | PaymentOrderLine / PaymentRefund 两表 + amount_refunded / partially_refunded |
+| `app/models/__init__.py` | +4 | 注册新模型 |
+| `app/services/payment_line_service.py` | 新增 | 分摊算法 + 交付生成/存量回填 + 行实时状态 |
+| `app/services/refund_service.py` | 新增 | 退款全流程（申请/撤回/驳回/批准执行/重试/通知/联动） |
+| `app/services/payment_service.py` | −admin_refund | 交付时生成明细行；移除旧直接退款；序列化加 amount_refunded |
+| `app/api/v1/payment.py` | +106 | 用户侧 5 个退款接口 |
+| `app/api/v1/admin_payment.py` | +181 | admin 6 个接口 + 旧接口 410 |
+| `app/core/payment/base.py` `alipay.py` | +53 | refund 返回回执 str + fund_change=N 幂等重试；alipay.py 同时含并行 qr_pay_mode=4 前置模式 |
+| `components/payment/RefundRequestModal.tsx` | 新增 | 用户申请弹窗 |
+| `components/admin/RefundApprovalsTab.tsx` | 新增 | admin 审批 Tab |
+| `components/dashboard/OrdersSection.tsx` | +37 | 申请退款入口/部分退徽标/已退金额 |
+| `components/admin/PaymentOrdersTab.tsx` | ±27 | 旧退款改代录；状态映射补 partially_refunded |
+| `app/(main)/admin/payment/page.tsx` | +20 | 退款审批 Tab 挂载 |
+| `lib/api/payment.ts` `i18n/zh.ts` `en.ts` | +227 | 退款 API client/类型 + 文案（含并行 PayType 前端段） |
+| `app/(main)/explore/survey/page.tsx` | 1 行 | user_id 类型收窄（解除 production build 阻塞） |
+| `test_payment_lines.py` `test_refund_service.py` `test_refund_api.py` | 新增 | 14+16+11 项 |
+| `test_payment_service.py` `test_packages.py` | 迁移 | 旧退款测试全部改走新流程 |
+| `wiki/开发文档/10-05/*` + 本文档 | 新增 | 设计（grill-me 定稿）/需求原文/完成记录 |
+
+> GitHub 存档 issue：[#102](https://github.com/LYDONLUCIEN/BeingDoing/issues/102)（enhancement / ready-for-human，待生产部署勾选）
