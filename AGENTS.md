@@ -161,6 +161,11 @@ SMTP_PASS=授权码
 TEAM_ANALYSIS_EMAIL=soulhappylab@163.com  # 团队分析报告联系邮箱（前后端共用，ADR-0018；仅联系地址，与发信通道无关）
 
 # 可选：支付模块（P1 折扣券；P2a 支付宝闭环已上线，微信 P2b 预留）
+# 二维码自渲染（2026-10-08 起）：下单后后端 GET 前置模式收银台页提取 hidden#J_qrCode
+# 的二维码内容串（alipay.py extract_qr_text），随下单/订单详情（仅 sync=false，轮询热路径
+# 不套取）返回 qr_text，前端 qrcode.react 自渲染（居中/白边自控，免疫支付宝页布局漂移）；
+# 提取失败 qr_text=null 自动回退 iframe 嵌入 pay_url。码会轮换，手动刷新走
+# POST /payment/orders/{id}/refresh-qr（每单 10s 冷却，服务层 refresh_qr_text）
 # 商品目录（ADR-0008；2026-07-28 起对外口径改回：季度套餐 / 年度套餐，内部 SKU 仍为 quarterly_package/annual_package）
 # 套餐码有效期（ADR-0018，2026-08-16 起）：支付成功（交付）即起算，交付时 expires_at = now + 套餐天数；
 # 存量未激活码（expires_at=None）不溯及既往，仍由 maybe_start_validity 首次创建对话 session 时起算

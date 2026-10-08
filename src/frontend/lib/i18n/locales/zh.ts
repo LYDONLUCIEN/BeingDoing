@@ -506,6 +506,10 @@ export const zh = {
     copy: '复制',
     copied: '已复制',
     confirmCancel: '确认取消该订单吗？',
+    qr: {
+      refresh: '刷新二维码',
+      refreshFailed: '二维码刷新失败，请稍后重试',
+    },
     channelLabel: '支付方式',
     channel: {
       alipay: '支付宝',
@@ -551,6 +555,7 @@ export const zh = {
       freeBadge: '免费体验',
       qrPlaceholderTitle: '支付宝二维码',
       qrHint: '请使用支付宝扫一扫完成支付。',
+      qrScanTip: '打开支付宝，扫一扫完成支付',
       amountLabel: '应付金额',
       checkoutLabel: '结算面板',
       payNow: '立即支付 ¥{amount}',

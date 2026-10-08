@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   Check,
   ChevronDown,
   Copy,
   Loader2,
+  RefreshCw,
   X,
 } from 'lucide-react';
 import { getApiErrorMessage } from '@/lib/api/client';
@@ -18,6 +20,7 @@ import {
   getOrder,
   getProducts,
   listMyCoupons,
+  refreshQrCode,
   validateCoupon,
   type MyCouponItem,
   type OrderItem,
@@ -293,29 +296,55 @@ function WidePriceOption({
 }
 
 /**
- * 二维码舞台：下单前为占位框（四角标 + 渠道标 + 标题），下单后为支付宝前置模式 iframe。
- * 占位框与 iframe 同尺寸（194×210，对应后端 qr_pay_mode=4 / qrcode_width=170：
- * 码 170px + 支付宝页四周内边距 ≈12px），出码前后舞台零跳动；更高会露出支付宝页底部空白。
+ * 二维码舞台：下单前为占位框（四角标 + 渠道标 + 标题）；下单后优先自渲染二维码
+ * （后端套取 qrCode 文本，qrcode.react 绘制——居中/白边/样式全自控，免疫支付宝页布局漂移），
+ * qrText 缺失（提取失败）时回退支付宝前置模式 iframe。
+ * 三种形态同尺寸（194×210），出码前后舞台零跳动。
  */
 function QrStage({
   active,
   payUrl,
+  qrText,
   iframeTitle,
   placeholderTitle,
   hint,
+  scanTip,
 }: {
   active: boolean;
   payUrl: string | null;
+  qrText: string | null;
   iframeTitle: string;
   placeholderTitle: string;
   hint: string;
+  scanTip: string;
 }) {
   return (
     <div
       aria-live="polite"
       className="relative mx-auto grid w-fit place-items-center rounded-2xl border border-[#c6cfd8] bg-white p-[7px] shadow-[0_8px_20px_rgba(31,48,64,0.07)]"
     >
-      {active && payUrl ? (
+      {active && qrText ? (
+        <div className="flex h-[210px] w-[194px] flex-col items-center justify-center gap-2 rounded-[10px] bg-white">
+          <QRCodeSVG
+            value={qrText}
+            size={164}
+            level="M"
+            marginSize={1}
+            role="img"
+            aria-label={iframeTitle}
+          />
+          <span className="flex items-center gap-1.5 text-[11px] font-medium text-[#5f6c7d]">
+            <span
+              aria-hidden
+              className="grid h-[15px] w-[15px] place-items-center rounded-[5px] bg-[#1677ff] text-[9px] font-extrabold text-white"
+            >
+              支
+            </span>
+            {scanTip}
+          </span>
+        </div>
+      ) : active && payUrl ? (
+        /* 回退：qr 文本提取失败时 iframe 嵌入支付宝前置模式页 */
         <iframe
           src={payUrl}
           title={iframeTitle}
@@ -543,8 +572,12 @@ export default function PurchaseModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
-  /** 等待支付视图：支付串（qr=iframe 嵌入二维码；redirect=收银台跳转 URL，「点击重开」用） */
+  /** 等待支付视图：支付串（qr=页面内二维码；redirect=收银台跳转 URL，「点击重开」用） */
   const [payUrl, setPayUrl] = useState<string | null>(null);
+  /** 二维码内容串（自渲染用；null=回退 iframe 嵌入 payUrl） */
+  const [qrText, setQrText] = useState<string | null>(null);
+  /** 二维码手动刷新中 */
+  const [qrRefreshing, setQrRefreshing] = useState(false);
   const [payType, setPayType] = useState<PayType>('redirect');
   const [waitStatus, setWaitStatus] = useState<WaitStatus>('polling');
   /** 消耗升级弹窗（ADR-0014）：套餐成功交付且有已开聊试用码时弹出 */
@@ -613,6 +646,8 @@ export default function PurchaseModal({
     setCouponError(null);
     setError(null);
     setPayUrl(null);
+    setQrText(null);
+    setQrRefreshing(false);
     setPayType('redirect');
     setWaitStatus('polling');
     setUpgradeOpen(false);
@@ -621,19 +656,38 @@ export default function PurchaseModal({
     successFiredRef.current = false;
   }, []);
 
-  // ── 进入等待支付视图：qr 在本页 iframe 内嵌二维码；redirect 新标签页打开收银台 ──
-  const startWaiting = useCallback((ord: OrderItem, url: string, type: PayType = 'redirect') => {
-    setOrder(ord);
-    setPayUrl(url);
-    setPayType(type);
-    setWaitStatus('polling');
-    setView('waiting');
-    if (type === 'redirect') window.open(url, '_blank');
-    // 宽模式：结算面板滚入视野，保证二维码立即可见（窄模式无该节点，静默跳过）
-    requestAnimationFrame(() =>
-      paymentPanelRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }),
-    );
-  }, []);
+  // ── 进入等待支付视图：qr 在本页渲染二维码（优先自渲染 qrText，回退 iframe）；redirect 新标签页打开收银台 ──
+  const startWaiting = useCallback(
+    (ord: OrderItem, url: string, type: PayType = 'redirect', qr: string | null = null) => {
+      setOrder(ord);
+      setPayUrl(url);
+      setQrText(qr);
+      setQrRefreshing(false);
+      setPayType(type);
+      setWaitStatus('polling');
+      setView('waiting');
+      if (type === 'redirect') window.open(url, '_blank');
+      // 宽模式：结算面板滚入视野，保证二维码立即可见（窄模式无该节点，静默跳过）
+      requestAnimationFrame(() =>
+        paymentPanelRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }),
+      );
+    },
+    [],
+  );
+
+  // ── 手动刷新二维码（自渲染模式码过期/扫码失败时；每单 10s 冷却由后端强制）──
+  const handleRefreshQr = async () => {
+    if (!order || qrRefreshing) return;
+    setQrRefreshing(true);
+    try {
+      const res = await refreshQrCode(order.id);
+      if (res.qr_text) setQrText(res.qr_text);
+    } catch (e: unknown) {
+      setError(getApiErrorMessage(e, t('payment.qr.refreshFailed')));
+    } finally {
+      setQrRefreshing(false);
+    }
+  };
 
   // ── 等待支付：每 2s 轮询订单状态，直到发放/关闭/取消，或 30 分钟超时 ──
   // 视图切换或组件卸载时由 cleanup 清理 interval
@@ -712,8 +766,8 @@ export default function PurchaseModal({
         .then((res) => {
           const st = res.order.status;
           if ((st === 'pending' || st === 'paid') && res.pay_url) {
-            // 继续支付：qr 在本页 iframe 嵌入二维码，redirect 新标签页打开收银台
-            startWaiting(res.order, res.pay_url, res.pay_type ?? 'redirect');
+            // 继续支付：qr 在本页渲染二维码（优先自渲染，回退 iframe），redirect 新标签页打开收银台
+            startWaiting(res.order, res.pay_url, res.pay_type ?? 'redirect', res.qr_text ?? null);
           } else if (st === 'granted') {
             enterSuccess(res.order);
           } else {
@@ -806,8 +860,13 @@ export default function PurchaseModal({
         // 0 元单：直接发放
         enterSuccess(res.order);
       } else {
-        // qr：本页 iframe 嵌入二维码；redirect：新标签页打开收银台（本页轮询等待支付完成）
-        startWaiting(res.order, res.payment.pay_url, res.payment.pay_type ?? 'redirect');
+        // qr：本页渲染二维码（优先自渲染，回退 iframe）；redirect：新标签页打开收银台（本页轮询等待支付完成）
+        startWaiting(
+          res.order,
+          res.payment.pay_url,
+          res.payment.pay_type ?? 'redirect',
+          res.payment.qr_text ?? null,
+        );
       }
     } catch (e: unknown) {
       setError(getApiErrorMessage(e, t('payment.error.createOrder')));
@@ -872,8 +931,9 @@ export default function PurchaseModal({
   const displayProduct =
     products.find((p) => p.product_type === displayType) ?? selectedProduct;
   const displayAmount = wideWaiting && order ? order.amount_paid : finalAmount;
-  /** 二维码激活：等待轮询中且为 qr 类型（支付宝前置模式 iframe） */
-  const qrActive = wideWaiting && waitStatus === 'polling' && payType === 'qr' && !!payUrl;
+  /** 二维码激活：等待轮询中且为 qr 类型（优先自渲染 qrText，回退支付宝前置模式 iframe） */
+  const qrActive =
+    wideWaiting && waitStatus === 'polling' && payType === 'qr' && !!(qrText || payUrl);
 
   /** 三列功能对比行（boolean=是否包含；string=文案），免费列取自设计稿静态信息 */
   const wideCompareRows: WideCompareRow[] = [
@@ -1142,14 +1202,16 @@ export default function PurchaseModal({
                       className="mt-3.5 overflow-hidden rounded-[18px] border border-[#e3e8ec] bg-white/95 shadow-[0_12px_30px_rgba(31,48,64,0.05)]"
                     >
                       <div className="grid grid-cols-1 min-[701px]:grid-cols-[296px_minmax(0,1fr)]">
-                        {/* 二维码列：占位框 → 支付宝前置模式 iframe（点击立即支付后） */}
+                        {/* 二维码列：占位框 → 自渲染二维码（qrText 缺失时回退支付宝前置模式 iframe） */}
                         <div className="grid place-items-center border-b border-[#e3e8ec] bg-[#fcfdfd] p-3.5 min-[701px]:border-b-0 min-[701px]:border-r">
                           <QrStage
                             active={qrActive}
                             payUrl={payUrl}
+                            qrText={qrText}
                             iframeTitle={t('payment.waiting.title')}
                             placeholderTitle={t('payment.wide.qrPlaceholderTitle')}
                             hint={t('payment.wide.qrHint')}
+                            scanTip={t('payment.wide.qrScanTip')}
                           />
                         </div>
 
@@ -1300,6 +1362,20 @@ export default function PurchaseModal({
                                 className="mx-1 text-[#3569d4] underline underline-offset-2"
                               >
                                 {t('payment.waiting.reopen')}
+                              </button>
+                            )}
+                            {qrText && (
+                              <button
+                                type="button"
+                                onClick={() => void handleRefreshQr()}
+                                disabled={qrRefreshing}
+                                className="mx-1 inline-flex items-center gap-1 text-[#3569d4] underline underline-offset-2 disabled:opacity-50"
+                              >
+                                <RefreshCw
+                                  className={`h-3 w-3 ${qrRefreshing ? 'animate-spin' : ''}`}
+                                  aria-hidden
+                                />
+                                {t('payment.qr.refresh')}
                               </button>
                             )}
                             <button
@@ -1513,12 +1589,32 @@ export default function PurchaseModal({
               )}
 
               {view === 'waiting' && order && (
-                /* 等待支付：qr 在本页 iframe 嵌入二维码（支付宝前置模式），本页轮询订单状态 */
+                /* 等待支付：qr 在本页渲染二维码（优先自渲染 qrText，回退支付宝前置模式 iframe），本页轮询订单状态 */
                 <div className="space-y-5">
                   {waitStatus === 'polling' ? (
                     <div className="flex flex-col items-center space-y-3 py-4 text-center">
-                      {payType === 'qr' && payUrl ? (
-                        /* 支付宝前置模式：iframe 内只渲染二维码（194×210 与码 170px+内边距贴合） */
+                      {payType === 'qr' && qrText ? (
+                        <div className="flex w-[194px] flex-col items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-4">
+                          <QRCodeSVG
+                            value={qrText}
+                            size={164}
+                            level="M"
+                            marginSize={1}
+                            role="img"
+                            aria-label={t('payment.waiting.title')}
+                          />
+                          <span className="flex items-center gap-1.5 text-[11px] font-medium text-stone-500">
+                            <span
+                              aria-hidden
+                              className="grid h-[15px] w-[15px] place-items-center rounded-[5px] bg-[#1677ff] text-[9px] font-extrabold text-white"
+                            >
+                              支
+                            </span>
+                            {t('payment.wide.qrScanTip')}
+                          </span>
+                        </div>
+                      ) : payType === 'qr' && payUrl ? (
+                        /* 回退：qr 文本提取失败时 iframe 嵌入支付宝前置模式页 */
                         <iframe
                           src={payUrl}
                           title={t('payment.waiting.title')}
@@ -1532,13 +1628,29 @@ export default function PurchaseModal({
                       <p className="text-sm font-medium leading-relaxed text-stone-700">
                         {t('payment.waiting.hint')}
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => payUrl && window.open(payUrl, '_blank')}
-                        className="text-xs text-[#1677ff] underline-offset-2 transition hover:underline"
-                      >
-                        {t('payment.waiting.reopen')}
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => payUrl && window.open(payUrl, '_blank')}
+                          className="text-xs text-[#1677ff] underline-offset-2 transition hover:underline"
+                        >
+                          {t('payment.waiting.reopen')}
+                        </button>
+                        {qrText && (
+                          <button
+                            type="button"
+                            onClick={() => void handleRefreshQr()}
+                            disabled={qrRefreshing}
+                            className="inline-flex items-center gap-1 text-xs text-[#1677ff] underline-offset-2 transition hover:underline disabled:opacity-50"
+                          >
+                            <RefreshCw
+                              className={`h-3 w-3 ${qrRefreshing ? 'animate-spin' : ''}`}
+                              aria-hidden
+                            />
+                            {t('payment.qr.refresh')}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     /* 订单已关闭/已过期：引导重新下单 */

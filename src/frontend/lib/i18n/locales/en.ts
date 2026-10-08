@@ -515,6 +515,10 @@ export const en = {
     copy: 'Copy',
     copied: 'Copied',
     confirmCancel: 'Cancel this order?',
+    qr: {
+      refresh: 'Refresh QR code',
+      refreshFailed: 'Failed to refresh the QR code. Please try again.',
+    },
     channelLabel: 'Payment Method',
     channel: {
       alipay: 'Alipay',
@@ -560,6 +564,7 @@ export const en = {
       freeBadge: 'Free to Try',
       qrPlaceholderTitle: 'Alipay QR Code',
       qrHint: 'Scan the QR code with Alipay to pay.',
+      qrScanTip: 'Open Alipay and scan to pay',
       amountLabel: 'Amount Due',
       checkoutLabel: 'Checkout',
       payNow: 'Pay ¥{amount}',

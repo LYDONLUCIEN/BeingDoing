@@ -282,15 +282,23 @@ export interface OrderListResult {
 
 export interface CreateOrderResult {
   order: OrderItem;
-  /** 0 元单为 null（订单直接 granted）；否则含支付串（qr=iframe 嵌入二维码，redirect=收银台跳转） */
-  payment: { channel: PayChannel; pay_type?: PayType; pay_url: string } | null;
+  /** 0 元单为 null（订单直接 granted）；否则含支付串（qr=页面内二维码，redirect=收银台跳转） */
+  payment: {
+    channel: PayChannel;
+    pay_type?: PayType;
+    pay_url: string;
+    /** 二维码内容串（自渲染用；null=提取失败，回退 iframe 嵌入 pay_url） */
+    qr_text?: string | null;
+  } | null;
 }
 
 export interface OrderDetailResult {
   order: OrderItem;
-  /** 支付串（仅 pending 订单返回；qr=iframe 嵌入二维码，redirect=收银台跳转） */
+  /** 支付串（仅 pending 订单返回；qr=页面内二维码，redirect=收银台跳转） */
   pay_url: string | null;
   pay_type?: PayType | null;
+  /** 二维码内容串（仅 pending 且非轮询查询时返回；null=回退 iframe 嵌入） */
+  qr_text?: string | null;
 }
 
 /** 商品与价格列表 */
@@ -387,6 +395,12 @@ export async function getOrderByNo(orderNo: string, sync?: boolean): Promise<Ord
 export async function cancelOrder(id: string): Promise<{ order: OrderItem }> {
   const res = await apiClient.post(`/payment/orders/${encodeURIComponent(id)}/cancel`);
   return res.data as { order: OrderItem };
+}
+
+/** 刷新二维码文本（自渲染模式下码过期/扫码失败时手动刷新；每单 10 秒冷却，频繁/失败 400） */
+export async function refreshQrCode(id: string): Promise<{ qr_text: string }> {
+  const res = await apiClient.post(`/payment/orders/${encodeURIComponent(id)}/refresh-qr`);
+  return res.data as { qr_text: string };
 }
 
 // ─── P2a Admin 订单管理 ─────────────────────────────────

@@ -60,6 +60,10 @@ _CHANNEL_PAY_TYPES: Dict[str, str] = {"alipay": "qr"}
 _ORDER_SYNC_COOLDOWN: Dict[str, float] = {}
 _SYNC_COOLDOWN_SECONDS = 10.0
 
+# 二维码手动刷新冷却：order_no → 上次套取收银台页的 time.monotonic()（防刷）
+_QR_REFRESH_COOLDOWN: Dict[str, float] = {}
+_QR_REFRESH_COOLDOWN_SECONDS = 10.0
+
 # 旧 SKU（已下架，仅历史订单兼容）
 _LEGACY_PRODUCT_TYPE = "activation_code"
 _LEGACY_PRODUCT_NAME = "全程激活码"
@@ -404,6 +408,8 @@ class PaymentService:
             amount_fen=paid,
             subject=_product_name(product_type),
         )
+        # 顺带套取二维码文本供前端自渲染（None 时前端回退 iframe 嵌入，支付链路不受影响）
+        qr_text = await cls._extract_qr_text_safe(channel, pay_url)
         async with AsyncSessionLocal() as db:
             row = await cls._get_order_or_raise(db, order.id)
             row.qr_code = pay_url
@@ -413,6 +419,7 @@ class PaymentService:
                 "channel": channel,
                 "pay_type": _CHANNEL_PAY_TYPES.get(channel, "redirect"),
                 "pay_url": pay_url,
+                "qr_text": qr_text,
             }
 
     @classmethod
@@ -442,6 +449,51 @@ class PaymentService:
             if order:
                 await db.delete(order)
                 await db.commit()
+
+    @staticmethod
+    async def _extract_qr_text_safe(channel: str, pay_url: str) -> Optional[str]:
+        """套取二维码文本（前端自渲染用；任何失败返回 None，前端回退 iframe 嵌入）"""
+        try:
+            extract = getattr(get_channel(channel), "extract_qr_text", None)
+            if extract is None:
+                return None
+            return await extract(pay_url)
+        except Exception as e:
+            logger.warning("qr 文本提取失败（回退 iframe）：channel=%s err=%s", channel, e)
+            return None
+
+    @classmethod
+    async def refresh_qr_text(cls, user_id: str, order_id: str) -> Dict[str, Any]:
+        """刷新二维码文本（仅本人 pending 且已向渠道下单）：重新套取收银台页提取最新 qrCode
+
+        自渲染模式下码过期/扫码失败时由用户手动触发；每单 10 秒冷却防刷。
+
+        Returns:
+            {"qr_text": str}
+
+        Raises:
+            OrderNotFoundError: 订单不存在或非本人
+            ValueError: 非待支付订单 / 刷新过于频繁 / 提取失败（前端保留旧码提示重试）
+        """
+        async with AsyncSessionLocal() as db:
+            order = await cls._get_order_or_raise(db, order_id)
+            if order.user_id != user_id:
+                raise OrderNotFoundError("订单不存在")
+            if order.status != "pending" or not order.qr_code:
+                raise ValueError("仅待支付订单可刷新二维码")
+            order_no, channel_name, pay_url = order.order_no, order.channel, order.qr_code
+
+        now = time.monotonic()
+        if now - _QR_REFRESH_COOLDOWN.get(order_no, 0.0) < _QR_REFRESH_COOLDOWN_SECONDS:
+            raise ValueError("刷新过于频繁，请稍后再试")
+        _QR_REFRESH_COOLDOWN[order_no] = now
+        if len(_QR_REFRESH_COOLDOWN) > 10000:  # 防御：避免冷却字典无限增长
+            _QR_REFRESH_COOLDOWN.clear()
+
+        qr_text = await cls._extract_qr_text_safe(channel_name, pay_url)
+        if not qr_text:
+            raise ValueError("二维码刷新失败，请稍后再试")
+        return {"qr_text": qr_text}
 
     # ─── 支付成功交付（幂等）─────────────────────────────────────
 
@@ -963,15 +1015,20 @@ class PaymentService:
             if sync:
                 await cls._sync_order_from_channel(order)
                 await db.refresh(order)  # sync 可能已触发交付，重取最新数据
-            return {
+            pending = order.status == "pending"
+            result: Dict[str, Any] = {
                 "order": cls._order_to_dict(order, coupon_code),
-                "pay_url": order.qr_code if order.status == "pending" else None,
+                "pay_url": order.qr_code if pending else None,
                 "pay_type": (
-                    _CHANNEL_PAY_TYPES.get(order.channel, "redirect")
-                    if order.status == "pending"
-                    else None
+                    _CHANNEL_PAY_TYPES.get(order.channel, "redirect") if pending else None
                 ),
             }
+            channel_name, stored_pay_url = order.channel, (order.qr_code if pending else None)
+
+        # sync=True 是 2s 轮询热路径，不套取 qr 文本（前端已持有或走 iframe 兜底）
+        if not sync and stored_pay_url:
+            result["qr_text"] = await cls._extract_qr_text_safe(channel_name, stored_pay_url)
+        return result
 
     @classmethod
     async def get_order_by_no(
@@ -1002,15 +1059,20 @@ class PaymentService:
             if sync:
                 await cls._sync_order_from_channel(order)
                 await db.refresh(order)  # sync 可能已触发交付，重取最新数据
-            return {
+            pending = order.status == "pending"
+            result: Dict[str, Any] = {
                 "order": cls._order_to_dict(order, coupon_code),
-                "pay_url": order.qr_code if order.status == "pending" else None,
+                "pay_url": order.qr_code if pending else None,
                 "pay_type": (
-                    _CHANNEL_PAY_TYPES.get(order.channel, "redirect")
-                    if order.status == "pending"
-                    else None
+                    _CHANNEL_PAY_TYPES.get(order.channel, "redirect") if pending else None
                 ),
             }
+            channel_name, stored_pay_url = order.channel, (order.qr_code if pending else None)
+
+        # sync=True 是 2s 轮询热路径，不套取 qr 文本（前端已持有或走 iframe 兜底）
+        if not sync and stored_pay_url:
+            result["qr_text"] = await cls._extract_qr_text_safe(channel_name, stored_pay_url)
+        return result
 
     # ─── 取消与超时关单 ─────────────────────────────────────────
 

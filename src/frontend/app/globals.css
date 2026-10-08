@@ -40,6 +40,7 @@
 @import '../styles/components/openlife-admin.css';
 @import '../styles/components/openlife-profile.css';
 @import '../styles/components/openlife-chat-defaults.css';
+@import '../styles/components/consultants-coach.css';
 /* 静态性能皮肤：必须保持在最后（性能优化 Phase 1，详见文件头注释） */
 @import '../styles/components/bd-static-skin.css';
 

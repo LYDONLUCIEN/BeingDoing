@@ -61,14 +61,89 @@ async def test_create_order_embeds_qr_pay_mode(channel):
 
     # biz_content dict 已被 SDK 转成 AlipayTradePagePayModel，模型字段是参数存活的证明
     assert request.biz_content.qr_pay_mode == "4"
-    assert request.biz_content.qrcode_width == 220
+    assert request.biz_content.qrcode_width == 170
 
     # 完整序列化（page_execute 实际签名的参数）核对
     params = request.get_params()
     biz = json.loads(params["biz_content"])
     assert biz["qr_pay_mode"] == "4"
-    assert biz["qrcode_width"] == 220
+    assert biz["qrcode_width"] == 170
     assert biz["out_trade_no"] == "X202610051234567890123"
     assert biz["total_amount"] == "199.00"
     assert biz["subject"] == "年度套餐"
     assert biz["product_code"] == "FAST_INSTANT_TRADE_PAY"
+
+
+# ─── extract_qr_text：收银台页二维码文本提取（前端自渲染用）──
+
+
+class _FakeHttpResponse:
+    def __init__(self, status_code: int = 200, content: bytes = b""):
+        self.status_code = status_code
+        self.content = content
+
+
+class _FakeAsyncClient:
+    """打桩 httpx.AsyncClient：返回预设响应或抛预设异常"""
+
+    response: _FakeHttpResponse | None = None
+    error: Exception | None = None
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+    async def get(self, url):
+        if _FakeAsyncClient.error is not None:
+            raise _FakeAsyncClient.error
+        return _FakeAsyncClient.response
+
+
+def _patch_httpx(monkeypatch, response=None, error=None):
+    import httpx
+
+    _FakeAsyncClient.response = response
+    _FakeAsyncClient.error = error
+    monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClient)
+
+
+_QR_PAGE_HTML = """
+<html><head><meta charset="gb2312"/></head><body>
+<input name="qrCode" type="hidden" value="https://qr.alipay.com/upx01053y5i15pjf0yaf5506" id="J_qrCode"/>
+</body></html>
+""".encode("gb18030")
+
+
+@pytest.mark.asyncio
+async def test_extract_qr_text_ok(channel, monkeypatch):
+    """正常套取：gb2312 页面 → 提取 J_qrCode 的 value"""
+    ch, _ = channel
+    _patch_httpx(monkeypatch, response=_FakeHttpResponse(200, _QR_PAGE_HTML))
+
+    text = await ch.extract_qr_text(_FAKE_PAY_URL)
+
+    assert text == "https://qr.alipay.com/upx01053y5i15pjf0yaf5506"
+
+
+@pytest.mark.asyncio
+async def test_extract_qr_text_fallbacks(channel, monkeypatch):
+    """各类失败一律返回 None（前端回退 iframe）：HTTP 非 200 / 无 J_qrCode / value 非法 / 网络异常"""
+    ch, _ = channel
+
+    _patch_httpx(monkeypatch, response=_FakeHttpResponse(500, b""))
+    assert await ch.extract_qr_text(_FAKE_PAY_URL) is None
+
+    _patch_httpx(monkeypatch, response=_FakeHttpResponse(200, b"<html>no qr input</html>"))
+    assert await ch.extract_qr_text(_FAKE_PAY_URL) is None
+
+    bad_value = '<input id="J_qrCode" value="javascript:evil"/>'.encode()
+    _patch_httpx(monkeypatch, response=_FakeHttpResponse(200, bad_value))
+    assert await ch.extract_qr_text(_FAKE_PAY_URL) is None
+
+    _patch_httpx(monkeypatch, error=TimeoutError("boom"))
+    assert await ch.extract_qr_text(_FAKE_PAY_URL) is None

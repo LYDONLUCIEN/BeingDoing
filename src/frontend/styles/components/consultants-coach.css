@@ -1,0 +1,316 @@
+/* ════════════════════════════════════════════════════════
+   consultants-coach.css — /consultants 咨询师卡片（v4，2026-10-08）
+   设计稿：wiki/开发文档/10-07/consultants.html
+
+   卡片内部改为「左人物栏 + 右内容栏」：
+   - aside：头像 / CONSULTANT 编号 / 姓名 / 风格标签 / 元信息，
+     背景染 accent 渐变并带同心圆装饰；
+   - content：背景要点（accent 圆点）、咨询风格/适合人群双栏
+     （竖条小标题）、底部价值观 chips。
+   三位咨询师各自 accent：祝余=蓝、Mary=绿、Lena=紫（data-coach）。
+
+   外壳质感仍由 bd-glass-card ol-reading-glass 提供，本文件只负责
+   内部布局与配色；min-height 让三位咨询师左右切换时卡片高度稳定
+   （卡片宽度由页面容器决定，不在此设置）。
+   ════════════════════════════════════════════════════════ */
+
+.ol-coach-card {
+  /* 祝余（默认）= 蓝 */
+  --coach-accent: #3569d4;
+  --coach-deep: #254f9d;
+  --coach-soft: #eef4ff;
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  grid-template-columns: 1fr; /* 移动端上下堆叠 */
+}
+
+.ol-coach-card[data-coach='mary'] {
+  --coach-accent: #147b65;
+  --coach-deep: #0e5f4f;
+  --coach-soft: #edf9f5;
+}
+
+.ol-coach-card[data-coach='lena'] {
+  --coach-accent: #6f52c7;
+  --coach-deep: #51399f;
+  --coach-soft: #f3f0ff;
+}
+
+/* ── 左侧人物栏 ─────────────────────────────────────── */
+
+.ol-coach-aside {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  padding: 28px 22px;
+  flex-direction: column;
+  overflow: hidden;
+  border-bottom: 1px solid var(--bd-border);
+  background: linear-gradient(160deg, #fff 12%, var(--coach-soft));
+}
+
+/* 同心圆装饰（ bleed 到栏外，由 overflow:hidden 裁切） */
+.ol-coach-aside::after {
+  position: absolute;
+  right: -72px;
+  bottom: -72px;
+  width: 180px;
+  height: 180px;
+  border: 1px solid color-mix(in srgb, var(--coach-accent) 20%, transparent);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 25px color-mix(in srgb, var(--coach-accent) 4%, transparent),
+    0 0 0 50px color-mix(in srgb, var(--coach-accent) 3%, transparent);
+  content: "";
+}
+
+.ol-coach-avatar {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 78px;
+  height: 78px;
+  margin-bottom: 26px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 25px;
+  background: var(--coach-accent);
+  box-shadow: 0 15px 32px color-mix(in srgb, var(--coach-accent) 24%, transparent);
+  color: #fff;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 29px;
+  font-style: italic;
+  font-weight: 700;
+}
+
+.ol-coach-count {
+  position: relative;
+  z-index: 1;
+  display: block;
+  margin-bottom: 5px;
+  color: var(--coach-deep);
+  font-size: 11px;
+  font-weight: 780;
+  letter-spacing: 0.12em;
+}
+
+.ol-coach-name {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  color: var(--bd-fg);
+  font-size: 30px;
+  font-weight: 730;
+  letter-spacing: -0.04em;
+}
+
+.ol-coach-subtitle {
+  position: relative;
+  z-index: 1;
+  margin: 7px 0 25px;
+  color: var(--bd-fg-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.ol-coach-meta {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  margin: 0;
+  gap: 13px;
+  /* 设计稿：≤760px 元信息横排三列（行业/形式/工作年限） */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ol-coach-meta-row { display: grid; gap: 3px; }
+.ol-coach-meta-row dt { color: var(--bd-fg-subtle); font-size: 10px; font-weight: 720; letter-spacing: 0.08em; }
+.ol-coach-meta-row dd { margin: 0; color: var(--bd-fg); font-size: 13px; font-weight: 600; line-height: 1.55; }
+
+/* ── 右侧内容栏 ─────────────────────────────────────── */
+
+.ol-coach-content {
+  min-width: 0;
+  padding: 28px 22px 25px;
+}
+
+.ol-coach-summary {
+  display: grid;
+  margin: 0;
+  padding: 0 0 31px;
+  gap: 12px;
+  border-bottom: 1px solid var(--bd-border);
+  list-style: none;
+}
+
+.ol-coach-summary li {
+  position: relative;
+  padding-left: 23px;
+  color: var(--bd-fg-muted);
+  font-size: 14px;
+  line-height: 1.72;
+}
+
+.ol-coach-summary li::before {
+  position: absolute;
+  top: 0.72em;
+  left: 1px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--coach-accent);
+  box-shadow: 0 0 0 5px var(--coach-soft);
+  content: "";
+}
+
+.ol-coach-detail-grid {
+  display: grid;
+  padding: 31px 0 28px;
+  grid-template-columns: 1fr; /* 移动端单栏 */
+  gap: 29px;
+}
+
+.ol-coach-detail-title {
+  display: flex;
+  margin-bottom: 17px;
+  align-items: center;
+  gap: 9px;
+  color: var(--bd-fg);
+  font-size: 14px;
+  font-weight: 730;
+}
+
+.ol-coach-detail-title::before {
+  display: block;
+  width: 4px;
+  height: 17px;
+  border-radius: 5px;
+  background: var(--coach-accent);
+  content: "";
+}
+
+.ol-coach-detail-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: 10px;
+  list-style: none;
+}
+
+.ol-coach-detail-list li {
+  position: relative;
+  padding-left: 16px;
+  color: var(--bd-fg-muted);
+  font-size: 13px;
+  line-height: 1.68;
+}
+
+.ol-coach-detail-list li::before {
+  position: absolute;
+  top: 0.77em;
+  left: 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #a3aeba;
+  content: "";
+}
+
+.ol-coach-value-row {
+  display: flex;
+  padding-top: 23px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-top: 1px solid var(--bd-border);
+}
+
+.ol-coach-value-label {
+  margin-right: 5px;
+  color: var(--bd-fg-subtle);
+  font-size: 11px;
+  font-weight: 720;
+  letter-spacing: 0.08em;
+}
+
+.ol-coach-value-chip {
+  display: inline-flex;
+  min-height: 28px;
+  padding: 0 11px;
+  align-items: center;
+  border-radius: 999px;
+  background: var(--coach-soft);
+  color: var(--coach-deep);
+  font-size: 11px;
+  font-weight: 680;
+}
+
+/* ── ≤520px：元信息退化为「标签 58px + 值」横行（设计稿同款） ── */
+
+@media (max-width: 520px) {
+  .ol-coach-meta { grid-template-columns: 1fr; }
+
+  .ol-coach-meta-row {
+    grid-template-columns: 58px minmax(0, 1fr);
+    align-items: baseline;
+  }
+}
+
+/* ── ≥761px：左右分栏（aside 240px，元信息恢复竖排） ── */
+
+@media (min-width: 761px) {
+  .ol-coach-card {
+    grid-template-columns: 240px minmax(0, 1fr);
+    /* 三位咨询师切换时高度稳定（祝余内容最多，取其高度余量） */
+    min-height: 700px;
+  }
+
+  .ol-coach-aside {
+    padding: 31px 25px;
+    border-right: 1px solid var(--bd-border);
+    border-bottom: 0;
+  }
+
+  .ol-coach-meta { grid-template-columns: 1fr; gap: 14px; }
+
+  .ol-coach-content { padding: 32px 30px 28px; }
+  .ol-coach-detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 30px; }
+}
+
+/* ── ≥981px：aside 加宽到 290px，留白放大（对齐设计稿） ── */
+
+@media (min-width: 981px) {
+  .ol-coach-card {
+    grid-template-columns: 290px minmax(0, 1fr);
+    min-height: 580px;
+  }
+
+  .ol-coach-aside { padding: 34px 30px; }
+  .ol-coach-content { padding: 36px 38px 32px; }
+  .ol-coach-detail-grid { gap: 44px; }
+}
+
+/* ── 深色模式：aside 渐变与 chips 改为 accent 透明色调，
+      文字色已走 --bd-* 主题变量，这里只处理硬编码的浅色底 ── */
+
+[data-color-scheme='dark'] .ol-coach-aside {
+  border-right-color: var(--bd-border);
+  border-bottom-color: var(--bd-border);
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.03) 12%,
+    color-mix(in srgb, var(--coach-accent) 9%, transparent)
+  );
+}
+
+[data-color-scheme='dark'] .ol-coach-count { color: color-mix(in srgb, var(--coach-accent) 55%, #fff); }
+
+[data-color-scheme='dark'] .ol-coach-summary li::before {
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--coach-accent) 16%, transparent);
+}
+
+[data-color-scheme='dark'] .ol-coach-value-chip {
+  background: color-mix(in srgb, var(--coach-accent) 22%, transparent);
+  color: color-mix(in srgb, var(--coach-accent) 60%, #fff);
+}

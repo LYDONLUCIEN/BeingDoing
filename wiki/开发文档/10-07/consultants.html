@@ -1,0 +1,1168 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="寻路 OpenLife 咨询师介绍：报告解读、职业转型、自由职业探索与职场发展咨询。">
+  <title>咨询师介绍｜寻路 · OpenLife</title>
+  <style>
+    :root {
+      --paper: #fbfcfb;
+      --paper-cool: #f5f8fb;
+      --surface: #ffffff;
+      --ink: #182130;
+      --ink-soft: #293644;
+      --body: #465366;
+      --muted: #667285;
+      --line: #e2e8ec;
+      --blue: #3569d4;
+      --blue-deep: #254f9d;
+      --blue-soft: #eef4ff;
+      --green: #147b65;
+      --green-deep: #0e5f4f;
+      --green-soft: #edf9f5;
+      --violet: #6f52c7;
+      --violet-deep: #51399f;
+      --violet-soft: #f3f0ff;
+      --amber: #b57512;
+      --amber-soft: #fff7e8;
+      --shadow-soft: 0 18px 50px rgba(28, 44, 61, 0.07);
+      font-family: "OpenLifeSans", "Noto Sans SC", Inter, -apple-system,
+        BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Microsoft YaHei",
+        system-ui, sans-serif;
+      color: var(--ink);
+      font-synthesis: none;
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+      background: var(--paper);
+    }
+
+    body {
+      min-width: 320px;
+      min-height: 100vh;
+      margin: 0;
+      overflow-x: hidden;
+      background:
+        radial-gradient(circle at 94% 10%, rgba(53, 105, 212, 0.09), transparent 25rem),
+        radial-gradient(circle at 4% 34%, rgba(20, 123, 101, 0.07), transparent 28rem),
+        var(--paper);
+      color: var(--ink);
+    }
+
+    a { color: inherit; text-decoration: none; }
+    button, input, textarea { font: inherit; }
+    button { color: inherit; }
+
+    a:focus-visible,
+    button:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible {
+      outline: 3px solid rgba(37, 79, 157, 0.28);
+      outline-offset: 3px;
+    }
+
+    .site-header {
+      position: sticky;
+      z-index: 20;
+      top: 0;
+      border-bottom: 1px solid rgba(226, 232, 236, 0.82);
+      background: rgba(251, 252, 251, 0.88);
+      -webkit-backdrop-filter: blur(18px);
+      backdrop-filter: blur(18px);
+    }
+
+    .nav-shell {
+      display: flex;
+      width: min(1180px, calc(100% - 64px));
+      min-height: 72px;
+      margin: 0 auto;
+      align-items: center;
+      justify-content: space-between;
+      gap: 32px;
+    }
+
+    .brand {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 10px;
+      color: var(--ink);
+      font-size: 19px;
+      font-weight: 740;
+      letter-spacing: -0.035em;
+    }
+
+    .brand-mark {
+      position: relative;
+      width: 25px;
+      height: 25px;
+      overflow: hidden;
+      border-radius: 9px;
+      background: var(--ink);
+      box-shadow: inset -7px -7px 0 rgba(255, 255, 255, 0.12);
+    }
+
+    .brand-mark::before,
+    .brand-mark::after {
+      position: absolute;
+      border-radius: 50%;
+      background: #fff;
+      content: "";
+    }
+
+    .brand-mark::before { width: 9px; height: 9px; top: 5px; left: 5px; }
+    .brand-mark::after { width: 6px; height: 6px; right: 4px; bottom: 4px; opacity: 0.7; }
+
+    .nav-links {
+      display: flex;
+      min-width: 0;
+      align-items: stretch;
+      justify-content: center;
+      gap: 7px;
+    }
+
+    .nav-link {
+      position: relative;
+      display: inline-flex;
+      min-height: 42px;
+      padding: 0 14px;
+      align-items: center;
+      border-radius: 12px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 560;
+      white-space: nowrap;
+      transition: color 150ms ease, background 150ms ease;
+    }
+
+    .nav-link:hover { color: var(--ink); background: #f1f4f6; }
+
+    .nav-link[aria-current="page"] {
+      background: var(--blue-soft);
+      color: var(--blue-deep);
+      font-weight: 680;
+    }
+
+    .nav-action,
+    .primary-action,
+    .secondary-action {
+      display: inline-flex;
+      min-height: 44px;
+      padding: 0 20px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 680;
+      transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease;
+    }
+
+    .nav-action,
+    .primary-action {
+      border: 1px solid var(--ink);
+      background: var(--ink);
+      color: #fff;
+    }
+
+    .nav-action:hover,
+    .primary-action:hover {
+      transform: translateY(-1px);
+      background: #10171f;
+      box-shadow: 0 10px 25px rgba(24, 33, 48, 0.16);
+    }
+
+    .secondary-action {
+      border: 1px solid #b9c4ce;
+      background: rgba(255, 255, 255, 0.84);
+      color: var(--ink-soft);
+    }
+
+    .secondary-action:hover { transform: translateY(-1px); border-color: #8794a2; background: #fff; }
+
+    .hero {
+      position: relative;
+      display: grid;
+      width: min(1180px, calc(100% - 64px));
+      min-height: 600px;
+      margin: 0 auto;
+      padding: 104px 0 88px;
+      align-items: center;
+      grid-template-columns: minmax(0, 1.25fr) minmax(330px, 0.75fr);
+      gap: 78px;
+    }
+
+    .hero-copy { position: relative; z-index: 1; }
+
+    .eyebrow {
+      display: inline-flex;
+      margin-bottom: 19px;
+      align-items: center;
+      gap: 10px;
+      color: var(--blue-deep);
+      font-size: 12px;
+      font-weight: 760;
+      letter-spacing: 0.11em;
+    }
+
+    .eyebrow-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--blue);
+      box-shadow: 0 0 0 6px rgba(53, 105, 212, 0.1);
+    }
+
+    h1 {
+      max-width: 720px;
+      margin: 0;
+      color: var(--ink);
+      font-size: clamp(46px, 6.2vw, 78px);
+      font-weight: 730;
+      line-height: 1.08;
+      letter-spacing: -0.058em;
+    }
+
+    .hero-lead {
+      max-width: 690px;
+      margin: 28px 0 0;
+      color: var(--body);
+      font-size: 16px;
+      line-height: 1.95;
+    }
+
+    .hero-actions { display: flex; margin-top: 31px; flex-wrap: wrap; gap: 11px; }
+
+    .hero-visual {
+      position: relative;
+      display: grid;
+      min-height: 390px;
+      place-items: center;
+    }
+
+    .orbit {
+      position: absolute;
+      width: min(37vw, 390px);
+      aspect-ratio: 1;
+      border: 1px solid rgba(53, 105, 212, 0.17);
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 42% 36%, rgba(255, 255, 255, 0.98), rgba(238, 244, 255, 0.68) 45%, rgba(237, 249, 245, 0.34) 73%, transparent 74%);
+    }
+
+    .orbit::before,
+    .orbit::after {
+      position: absolute;
+      border: 1px solid rgba(20, 123, 101, 0.16);
+      border-radius: 50%;
+      content: "";
+    }
+
+    .orbit::before { inset: 45px; }
+    .orbit::after { inset: 92px; border-color: rgba(111, 82, 199, 0.15); }
+
+    .orbit-point {
+      position: absolute;
+      z-index: 1;
+      width: 13px;
+      height: 13px;
+      border: 3px solid #fff;
+      border-radius: 50%;
+      box-shadow: 0 5px 14px rgba(24, 33, 48, 0.18);
+    }
+
+    .orbit-point.one { top: 32px; left: 92px; background: var(--blue); }
+    .orbit-point.two { right: 18px; bottom: 120px; background: var(--green); }
+    .orbit-point.three { bottom: 33px; left: 98px; background: var(--violet); }
+
+    .metric-card {
+      position: relative;
+      z-index: 2;
+      width: min(265px, 76%);
+      padding: 28px;
+      border: 1px solid rgba(255, 255, 255, 0.88);
+      border-radius: 25px;
+      background: rgba(255, 255, 255, 0.78);
+      box-shadow: 0 24px 65px rgba(34, 56, 76, 0.13);
+      -webkit-backdrop-filter: blur(16px);
+      backdrop-filter: blur(16px);
+    }
+
+    .metric-card small {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: 0.06em;
+    }
+
+    .metric-card strong {
+      display: block;
+      margin: 5px 0 8px;
+      color: var(--ink);
+      font-size: 62px;
+      font-weight: 730;
+      line-height: 1;
+      letter-spacing: -0.065em;
+    }
+
+    .metric-card p { margin: 0; color: var(--body); font-size: 13px; line-height: 1.65; }
+
+    .trust-bar {
+      display: grid;
+      width: min(1180px, calc(100% - 64px));
+      margin: 0 auto;
+      padding: 17px 24px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.76);
+      box-shadow: 0 10px 32px rgba(31, 48, 64, 0.04);
+    }
+
+    .trust-item {
+      display: flex;
+      min-height: 30px;
+      padding: 0 22px;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      color: var(--body);
+      font-size: 13px;
+      font-weight: 620;
+      text-align: center;
+    }
+
+    .trust-item + .trust-item { border-left: 1px solid var(--line); }
+
+    .trust-check {
+      display: inline-grid;
+      width: 19px;
+      height: 19px;
+      flex: 0 0 auto;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--green-soft);
+      color: var(--green-deep);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .content-section {
+      width: min(1180px, calc(100% - 64px));
+      margin: 0 auto;
+      padding: 126px 0 0;
+    }
+
+    .section-intro {
+      display: grid;
+      margin-bottom: 43px;
+      align-items: end;
+      grid-template-columns: minmax(0, 0.9fr) minmax(360px, 0.7fr);
+      gap: 70px;
+    }
+
+    .section-label {
+      display: block;
+      margin-bottom: 12px;
+      color: var(--blue-deep);
+      font-size: 12px;
+      font-weight: 760;
+      letter-spacing: 0.1em;
+    }
+
+    h2 {
+      max-width: 700px;
+      margin: 0;
+      color: var(--ink);
+      font-size: clamp(33px, 4vw, 52px);
+      font-weight: 720;
+      line-height: 1.16;
+      letter-spacing: -0.048em;
+    }
+
+    .section-intro p {
+      margin: 0;
+      color: var(--body);
+      font-size: 14px;
+      line-height: 1.85;
+    }
+
+    .service-grid {
+      display: grid;
+      grid-template-columns: 1.24fr 0.76fr;
+      gap: 16px;
+    }
+
+    .service-card {
+      position: relative;
+      min-width: 0;
+      padding: 31px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 23px;
+      background: rgba(255, 255, 255, 0.84);
+      box-shadow: 0 12px 35px rgba(31, 48, 64, 0.04);
+    }
+
+    .service-card.scope { grid-row: span 2; padding: 38px; }
+    .service-card.requirement { background: linear-gradient(145deg, #f7fbfa, #edf8f5); border-color: #cfe4dc; }
+    .service-card.process { background: linear-gradient(145deg, #f8faff, #eef4ff); border-color: #d7e2f7; }
+
+    .card-number {
+      display: inline-grid;
+      width: 30px;
+      height: 30px;
+      margin-bottom: 36px;
+      place-items: center;
+      border-radius: 10px;
+      background: var(--blue-soft);
+      color: var(--blue-deep);
+      font-size: 11px;
+      font-weight: 780;
+      letter-spacing: 0.05em;
+    }
+
+    .requirement .card-number { background: rgba(255, 255, 255, 0.78); color: var(--green-deep); }
+    .process .card-number { background: rgba(255, 255, 255, 0.78); }
+
+    .service-card h3 { margin: 0 0 11px; color: var(--ink); font-size: 23px; letter-spacing: -0.03em; }
+    .service-card p { margin: 0; color: var(--body); font-size: 14px; line-height: 1.8; }
+
+    .scope-list {
+      display: flex;
+      margin-top: 34px;
+      flex-wrap: wrap;
+      gap: 9px;
+    }
+
+    .scope-chip {
+      display: inline-flex;
+      min-height: 38px;
+      padding: 0 15px;
+      align-items: center;
+      border: 1px solid #dbe3e9;
+      border-radius: 999px;
+      background: #fff;
+      color: var(--ink-soft);
+      font-size: 13px;
+      font-weight: 620;
+    }
+
+    .condition-callout {
+      display: flex;
+      margin-top: 25px;
+      padding-top: 20px;
+      align-items: center;
+      gap: 11px;
+      border-top: 1px solid rgba(20, 123, 101, 0.14);
+      color: var(--green-deep);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .condition-icon {
+      display: grid;
+      width: 28px;
+      height: 28px;
+      place-items: center;
+      border-radius: 9px;
+      background: #fff;
+      box-shadow: 0 6px 15px rgba(20, 123, 101, 0.08);
+    }
+
+    .process-list { display: grid; margin-top: 23px; gap: 14px; }
+
+    .process-item { display: grid; align-items: start; grid-template-columns: 25px minmax(0, 1fr); gap: 11px; }
+    .process-index { color: var(--blue-deep); font-size: 12px; font-weight: 780; line-height: 1.7; }
+    .process-item p { font-size: 13px; line-height: 1.7; }
+
+    .coaches-section { padding-bottom: 122px; }
+
+    .coach-list { display: grid; gap: 22px; }
+
+    .coach-card {
+      --coach-accent: var(--blue);
+      --coach-deep: var(--blue-deep);
+      --coach-soft: var(--blue-soft);
+      display: grid;
+      min-width: 0;
+      overflow: hidden;
+      grid-template-columns: 290px minmax(0, 1fr);
+      border: 1px solid var(--line);
+      border-radius: 26px;
+      background: rgba(255, 255, 255, 0.88);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .coach-card[data-coach="mary"] {
+      --coach-accent: var(--green);
+      --coach-deep: var(--green-deep);
+      --coach-soft: var(--green-soft);
+    }
+
+    .coach-card[data-coach="lena"] {
+      --coach-accent: var(--violet);
+      --coach-deep: var(--violet-deep);
+      --coach-soft: var(--violet-soft);
+    }
+
+    .coach-aside {
+      position: relative;
+      display: flex;
+      min-width: 0;
+      padding: 34px 30px;
+      flex-direction: column;
+      overflow: hidden;
+      border-right: 1px solid var(--line);
+      background: linear-gradient(160deg, #fff 12%, var(--coach-soft));
+    }
+
+    .coach-aside::after {
+      position: absolute;
+      right: -72px;
+      bottom: -72px;
+      width: 180px;
+      height: 180px;
+      border: 1px solid color-mix(in srgb, var(--coach-accent) 20%, transparent);
+      border-radius: 50%;
+      box-shadow:
+        0 0 0 25px color-mix(in srgb, var(--coach-accent) 4%, transparent),
+        0 0 0 50px color-mix(in srgb, var(--coach-accent) 3%, transparent);
+      content: "";
+    }
+
+    .coach-avatar {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      width: 78px;
+      height: 78px;
+      margin-bottom: 26px;
+      place-items: center;
+      border: 1px solid rgba(255, 255, 255, 0.9);
+      border-radius: 25px;
+      background: var(--coach-accent);
+      box-shadow: 0 15px 32px color-mix(in srgb, var(--coach-accent) 24%, transparent);
+      color: #fff;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 29px;
+      font-style: italic;
+      font-weight: 700;
+    }
+
+    .coach-count {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--coach-deep);
+      font-size: 11px;
+      font-weight: 780;
+      letter-spacing: 0.12em;
+    }
+
+    .coach-aside h3 {
+      margin: 0;
+      color: var(--ink);
+      font-size: 31px;
+      font-weight: 730;
+      letter-spacing: -0.04em;
+    }
+
+    .coach-subtitle { margin: 7px 0 25px; color: var(--body); font-size: 12px; line-height: 1.55; }
+
+    .coach-meta {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      margin: 0;
+      gap: 14px;
+    }
+
+    .meta-row { display: grid; gap: 3px; }
+    .meta-row dt { color: var(--muted); font-size: 10px; font-weight: 720; letter-spacing: 0.08em; }
+    .meta-row dd { margin: 0; color: var(--ink-soft); font-size: 13px; font-weight: 640; line-height: 1.55; }
+
+    .coach-content { min-width: 0; padding: 36px 38px 32px; }
+
+    .coach-summary {
+      display: grid;
+      margin: 0;
+      padding: 0 0 31px;
+      gap: 12px;
+      border-bottom: 1px solid var(--line);
+      list-style: none;
+    }
+
+    .coach-summary li {
+      position: relative;
+      padding-left: 23px;
+      color: var(--body);
+      font-size: 14px;
+      line-height: 1.72;
+    }
+
+    .coach-summary li::before {
+      position: absolute;
+      top: 0.72em;
+      left: 1px;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--coach-accent);
+      box-shadow: 0 0 0 5px var(--coach-soft);
+      content: "";
+    }
+
+    .coach-detail-grid {
+      display: grid;
+      padding: 31px 0 28px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 44px;
+    }
+
+    .detail-title {
+      display: flex;
+      margin-bottom: 17px;
+      align-items: center;
+      gap: 9px;
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 730;
+    }
+
+    .detail-title::before {
+      display: block;
+      width: 4px;
+      height: 17px;
+      border-radius: 5px;
+      background: var(--coach-accent);
+      content: "";
+    }
+
+    .detail-list { display: grid; margin: 0; padding: 0; gap: 10px; list-style: none; }
+    .detail-list li { position: relative; padding-left: 16px; color: var(--body); font-size: 13px; line-height: 1.68; }
+    .detail-list li::before { position: absolute; top: 0.77em; left: 0; width: 4px; height: 4px; border-radius: 50%; background: #a3aeba; content: ""; }
+
+    .value-row {
+      display: flex;
+      padding-top: 23px;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      border-top: 1px solid var(--line);
+    }
+
+    .value-label { margin-right: 5px; color: var(--muted); font-size: 11px; font-weight: 720; letter-spacing: 0.08em; }
+
+    .value-chip {
+      display: inline-flex;
+      min-height: 28px;
+      padding: 0 11px;
+      align-items: center;
+      border-radius: 999px;
+      background: var(--coach-soft);
+      color: var(--coach-deep);
+      font-size: 11px;
+      font-weight: 680;
+    }
+
+    .closing-card {
+      position: relative;
+      display: grid;
+      width: min(1180px, calc(100% - 64px));
+      margin: 0 auto 56px;
+      padding: 54px 58px;
+      overflow: hidden;
+      align-items: center;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 60px;
+      border-radius: 27px;
+      background: var(--ink);
+      color: #fff;
+    }
+
+    .closing-card::after {
+      position: absolute;
+      top: -170px;
+      right: 5%;
+      width: 370px;
+      height: 370px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 50%;
+      box-shadow: 0 0 0 52px rgba(255, 255, 255, 0.025), 0 0 0 104px rgba(255, 255, 255, 0.018);
+      content: "";
+    }
+
+    .closing-copy { position: relative; z-index: 1; }
+    .closing-card .section-label { color: #9cbcff; }
+    .closing-card h2 { max-width: 660px; color: #fff; font-size: clamp(30px, 3.4vw, 45px); }
+    .closing-card p { max-width: 670px; margin: 17px 0 0; color: #c7d0db; font-size: 14px; line-height: 1.8; }
+    .closing-card .primary-action { position: relative; z-index: 1; border-color: #fff; background: #fff; color: var(--ink); }
+    .closing-card .primary-action:hover { background: #eef2f5; }
+
+    .site-footer {
+      display: flex;
+      width: min(1180px, calc(100% - 64px));
+      min-height: 86px;
+      margin: 0 auto;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .footer-links { display: flex; flex-wrap: wrap; gap: 19px; }
+    .footer-links a:hover { color: var(--ink); }
+
+    .feedback-button {
+      position: fixed;
+      z-index: 30;
+      right: 24px;
+      bottom: 24px;
+      display: inline-flex;
+      min-height: 47px;
+      padding: 0 18px;
+      align-items: center;
+      gap: 9px;
+      border: 1px solid rgba(255, 255, 255, 0.84);
+      border-radius: 999px;
+      background: var(--ink);
+      box-shadow: 0 14px 34px rgba(24, 33, 48, 0.22);
+      color: #fff;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 680;
+      transition: transform 150ms ease, box-shadow 150ms ease;
+    }
+
+    .feedback-button:hover { transform: translateY(-2px); box-shadow: 0 17px 40px rgba(24, 33, 48, 0.27); }
+    .feedback-icon { font-size: 16px; line-height: 1; }
+
+    .feedback-dialog {
+      width: min(500px, calc(100% - 32px));
+      max-width: none;
+      padding: 0;
+      border: 1px solid rgba(255, 255, 255, 0.9);
+      border-radius: 24px;
+      background: var(--surface);
+      box-shadow: 0 25px 80px rgba(24, 33, 48, 0.26);
+      color: var(--ink);
+    }
+
+    .feedback-dialog::backdrop { background: rgba(24, 33, 48, 0.52); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+    body:has(.feedback-dialog[open]) { overflow: hidden; }
+    .feedback-form { padding: 31px; }
+    .dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+    .dialog-head h2 { font-size: 26px; letter-spacing: -0.035em; }
+    .dialog-head p { margin: 8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.7; }
+
+    .dialog-close {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      flex: 0 0 auto;
+      padding: 0;
+      place-items: center;
+      border: 0;
+      border-radius: 50%;
+      background: var(--paper-cool);
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 22px;
+    }
+
+    .field { display: grid; margin-top: 19px; gap: 7px; }
+    .field label { color: var(--ink-soft); font-size: 12px; font-weight: 680; }
+    .field input, .field textarea { width: 100%; border: 1px solid #c7d0d8; border-radius: 12px; background: #fff; color: var(--ink); outline: 0; }
+    .field input { height: 43px; padding: 0 13px; }
+    .field textarea { min-height: 100px; padding: 12px 13px; resize: vertical; line-height: 1.6; }
+    .field input::placeholder, .field textarea::placeholder { color: #8b96a3; }
+    .dialog-actions { display: flex; margin-top: 22px; align-items: center; justify-content: flex-end; gap: 10px; }
+    .dialog-actions button { min-height: 41px; padding: 0 18px; border-radius: 999px; cursor: pointer; font-size: 12px; font-weight: 680; }
+    .dialog-cancel { border: 1px solid #c6cfd7; background: #fff; color: var(--body); }
+    .dialog-submit { border: 1px solid var(--ink); background: var(--ink); color: #fff; }
+    .dialog-status { min-height: 20px; margin: 14px 0 0; color: var(--green); font-size: 12px; line-height: 1.5; }
+
+    @media (max-width: 980px) {
+      .nav-shell, .hero, .trust-bar, .content-section, .closing-card, .site-footer { width: min(calc(100% - 40px), 820px); }
+      .nav-links { overflow-x: auto; justify-content: flex-start; scrollbar-width: none; }
+      .nav-links::-webkit-scrollbar { display: none; }
+      .nav-action { display: none; }
+      .hero { min-height: auto; padding: 82px 0 70px; grid-template-columns: 1fr 300px; gap: 35px; }
+      .orbit { width: 310px; }
+      .section-intro { grid-template-columns: 1fr; gap: 20px; }
+      .service-grid { grid-template-columns: 1fr; }
+      .service-card.scope { grid-row: auto; }
+      .coach-card { grid-template-columns: 240px minmax(0, 1fr); }
+      .coach-aside { padding: 31px 25px; }
+      .coach-content { padding: 32px 30px 28px; }
+      .coach-detail-grid { gap: 30px; }
+    }
+
+    @media (max-width: 760px) {
+      .site-header { position: relative; }
+      .nav-shell { min-height: 0; padding: 18px 0 11px; flex-wrap: wrap; gap: 14px; }
+      .brand { width: 100%; }
+      .nav-links { width: 100%; margin: 0 -6px; padding: 0 6px; }
+      .nav-link { min-height: 39px; padding: 0 12px; }
+      .hero { padding: 65px 0 60px; grid-template-columns: 1fr; }
+      .hero-lead { font-size: 15px; }
+      .hero-visual { min-height: 315px; }
+      .orbit { width: 305px; }
+      .metric-card { width: 245px; }
+      .trust-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 9px; }
+      .trust-item { min-height: 48px; padding: 0 9px; justify-content: flex-start; text-align: left; }
+      .trust-item + .trust-item { border-left: 0; }
+      .trust-item:nth-child(even) { border-left: 1px solid var(--line); }
+      .trust-item:nth-child(n+3) { border-top: 1px solid var(--line); }
+      .content-section { padding-top: 90px; }
+      .service-card, .service-card.scope { padding: 28px 24px; }
+      .card-number { margin-bottom: 28px; }
+      .coach-card { grid-template-columns: 1fr; }
+      .coach-aside { border-right: 0; border-bottom: 1px solid var(--line); }
+      .coach-meta { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
+      .coach-detail-grid { grid-template-columns: 1fr; gap: 29px; }
+      .closing-card { padding: 42px 32px; grid-template-columns: 1fr; gap: 27px; }
+      .closing-card .primary-action { width: fit-content; }
+      .site-footer { padding: 24px 0 100px; align-items: flex-start; flex-direction: column; justify-content: center; }
+    }
+
+    @media (max-width: 520px) {
+      .nav-shell, .hero, .trust-bar, .content-section, .closing-card, .site-footer { width: calc(100% - 28px); }
+      h1 { font-size: 43px; }
+      .hero-actions { align-items: stretch; flex-direction: column; }
+      .hero-actions a { width: 100%; }
+      .trust-item { font-size: 11px; }
+      .content-section { padding-top: 78px; }
+      .coach-content { padding: 28px 22px 25px; }
+      .coach-aside { padding: 28px 22px; }
+      .coach-meta { grid-template-columns: 1fr; }
+      .meta-row { grid-template-columns: 58px minmax(0, 1fr); align-items: baseline; }
+      .coach-summary li { font-size: 13px; }
+      .closing-card { padding: 35px 24px; }
+      .closing-card .primary-action { width: 100%; }
+      .feedback-button { right: 14px; bottom: 14px; }
+      .feedback-form { padding: 25px 21px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body id="top">
+  <header class="site-header">
+    <nav class="nav-shell" aria-label="主导航">
+      <a class="brand" href="#top" aria-label="寻路 OpenLife 首页">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>寻路 · OpenLife</span>
+      </a>
+      <div class="nav-links">
+        <a class="nav-link" href="#top">首页</a>
+        <a class="nav-link" href="#service">开始探索</a>
+        <a class="nav-link" href="#coaches" aria-current="page">咨询师介绍</a>
+        <a class="nav-link" href="#about">关于我们</a>
+      </div>
+      <button class="nav-action" type="button" data-open-feedback>提交问题反馈</button>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="pageTitle">
+      <div class="hero-copy">
+        <div class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>OPENLIFE CONSULTANTS</div>
+        <h1 id="pageTitle">有人与你一起，<br>把方向看清楚。</h1>
+        <p class="hero-lead">寻路 OpenLife 严选在自由职业、转型赛道与职场发展领域经验丰富的咨询师，为您提供定制化报告解读。目前，我们已帮助 100+ 自由职业者和职场转型人理清思路并找到自己的方向。</p>
+        <div class="hero-actions">
+          <a class="primary-action" href="#coaches">认识咨询师</a>
+          <button class="secondary-action" type="button" data-open-feedback>咨询匹配与预约</button>
+        </div>
+      </div>
+      <div class="hero-visual" aria-label="已陪伴超过一百位探索者">
+        <div class="orbit" aria-hidden="true">
+          <i class="orbit-point one"></i>
+          <i class="orbit-point two"></i>
+          <i class="orbit-point three"></i>
+        </div>
+        <div class="metric-card">
+          <small>已经陪伴</small>
+          <strong>100+</strong>
+          <p>自由职业者与职场转型者，理清思路并找到自己的方向。</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="trust-bar" aria-label="咨询服务承诺">
+      <div class="trust-item"><span class="trust-check" aria-hidden="true">✓</span>团队严选</div>
+      <div class="trust-item"><span class="trust-check" aria-hidden="true">✓</span>统一培训</div>
+      <div class="trust-item"><span class="trust-check" aria-hidden="true">✓</span>全程无导流</div>
+      <div class="trust-item"><span class="trust-check" aria-hidden="true">✓</span>无额外收费</div>
+    </div>
+
+    <section class="content-section" id="service" aria-labelledby="serviceTitle">
+      <div class="section-intro">
+        <div>
+          <span class="section-label">服务说明</span>
+          <h2 id="serviceTitle">从一份报告，走向更具体的下一步。</h2>
+        </div>
+        <p>咨询不会替你做决定，而是以报告为起点，把模糊感受、真实处境与可行动的方向连接起来。我们会在咨询前根据你的需求与特点匹配合适的咨询师。</p>
+      </div>
+
+      <div class="service-grid">
+        <article class="service-card scope">
+          <span class="card-number">01</span>
+          <h3>咨询范围</h3>
+          <p>寻路 OpenLife 咨询师团队提供专业的报告解读，覆盖自我认知提升、职场答疑解惑、自由职业探索、职业方向转型等维度。所有咨询师均由团队严选并接受培训，咨询效果稳定，全程无导流、无额外收费。</p>
+          <div class="scope-list" aria-label="咨询范围标签">
+            <span class="scope-chip">自我认知提升</span>
+            <span class="scope-chip">职场答疑解惑</span>
+            <span class="scope-chip">自由职业探索</span>
+            <span class="scope-chip">职业方向转型</span>
+            <span class="scope-chip">报告深度解读</span>
+          </div>
+        </article>
+
+        <article class="service-card requirement">
+          <span class="card-number">02</span>
+          <h3>咨询条件</h3>
+          <p>为了让对话更聚焦、更深入，你需要已经持有一份寻路 OpenLife 的报告。</p>
+          <div class="condition-callout"><span class="condition-icon" aria-hidden="true">✓</span>持有完整报告即可预约</div>
+        </article>
+
+        <article class="service-card process">
+          <span class="card-number">03</span>
+          <h3>咨询形式</h3>
+          <div class="process-list">
+            <div class="process-item"><span class="process-index">1</span><p>线上 60 分钟 1v1 深度对话，不受地域限制，沟通私密、聚焦、高效。</p></div>
+            <div class="process-item"><span class="process-index">2</span><p>咨询前，根据您的需求与特点匹配咨询师。</p></div>
+            <div class="process-item"><span class="process-index">3</span><p>提供 1 次免费更换机会：若咨询开始后的前 15 分钟内不满意，可申请更换咨询师。</p></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="content-section coaches-section" id="coaches" aria-labelledby="coachesTitle">
+      <div class="section-intro">
+        <div>
+          <span class="section-label">咨询师团队</span>
+          <h2 id="coachesTitle">不同经历与风格，<br>同样认真地看见你。</h2>
+        </div>
+        <p>你不需要先判断自己“适合谁”。告诉我们当下最想解决的问题，我们会结合行业经历、对话风格与议题方向为你匹配。</p>
+      </div>
+
+      <div class="coach-list">
+        <article class="coach-card" data-coach="zhuyu" aria-labelledby="zhuyuName">
+          <aside class="coach-aside">
+            <div class="coach-avatar" aria-hidden="true">祝</div>
+            <span class="coach-count">CONSULTANT 01</span>
+            <h3 id="zhuyuName">祝余</h3>
+            <p class="coach-subtitle">结构化梳理 · 优势挖掘 · 职业转型</p>
+            <dl class="coach-meta">
+              <div class="meta-row"><dt>行业</dt><dd>公益、教育、互联网、职业咨询</dd></div>
+              <div class="meta-row"><dt>形式</dt><dd>线上</dd></div>
+              <div class="meta-row"><dt>工作年限</dt><dd>10+ 年</dd></div>
+            </dl>
+          </aside>
+          <div class="coach-content">
+            <ul class="coach-summary">
+              <li>公益与教育行业十年以上沉淀，兼具 NGO 与互联网大厂经验。</li>
+              <li>拥有国际交流背景与团队管理经验，跨领域视野扎实。</li>
+              <li>经历从公益到互联网的行业转换，理解不同赛道的工作逻辑。</li>
+              <li>擅长报告解读、优势挖掘、职业转型梳理与行动方案设计。</li>
+            </ul>
+            <div class="coach-detail-grid">
+              <section aria-labelledby="zhuyuStyle">
+                <div class="detail-title" id="zhuyuStyle">咨询风格</div>
+                <ul class="detail-list">
+                  <li>结构化拆解，用框架把模糊感受变成清晰问题。</li>
+                  <li>温和但有力量，会直接指出你的不一致和盲区。</li>
+                  <li>追问式引导，不替你给答案，帮你自己找到方向。</li>
+                  <li>赋能式反馈，擅长把“缺点”重构为你的优势。</li>
+                  <li>盯行动、给方法，咨询结束时有明确的下一步。</li>
+                </ul>
+              </section>
+              <section aria-labelledby="zhuyuFit">
+                <div class="detail-title" id="zhuyuFit">适合人群</div>
+                <ul class="detail-list">
+                  <li>职业迷茫、想转型、有报告但不会用的人。</li>
+                  <li>高反思、低自信、长期缺正反馈的人。</li>
+                  <li>喜欢逻辑框架、愿意自我探索的人。</li>
+                  <li>需要被看见、被肯定、被推一把的人。</li>
+                  <li>想探索副业、第二曲线、公益 / 心理 / 内容方向的人。</li>
+                </ul>
+              </section>
+            </div>
+            <div class="value-row"><span class="value-label">价值观</span><span class="value-chip">价值实现</span><span class="value-chip">自爱</span><span class="value-chip">自由</span><span class="value-chip">正直</span><span class="value-chip">奋斗</span></div>
+          </div>
+        </article>
+
+        <article class="coach-card" data-coach="mary" aria-labelledby="maryName">
+          <aside class="coach-aside">
+            <div class="coach-avatar" aria-hidden="true">M</div>
+            <span class="coach-count">CONSULTANT 02</span>
+            <h3 id="maryName">Mary</h3>
+            <p class="coach-subtitle">温和陪伴 · 职业定位 · 选择梳理</p>
+            <dl class="coach-meta">
+              <div class="meta-row"><dt>行业</dt><dd>互联网、电商、职业咨询</dd></div>
+              <div class="meta-row"><dt>形式</dt><dd>线上</dd></div>
+              <div class="meta-row"><dt>工作年限</dt><dd>10+ 年</dd></div>
+            </dl>
+          </aside>
+          <div class="coach-content">
+            <ul class="coach-summary">
+              <li>大厂营销 / 运营实战背景，熟悉电商行业岗位、校招、转行求职的真实场景。</li>
+              <li>亲身经历岗位调整、求职选择、自由职业，懂职场人的纠结内耗、被卡住的真实感受。</li>
+              <li>擅长优势梳理、职业定位、转行规划、心理疏导，帮你理清职业选择中的取舍。</li>
+            </ul>
+            <div class="coach-detail-grid">
+              <section aria-labelledby="maryStyle">
+                <div class="detail-title" id="maryStyle">咨询风格</div>
+                <ul class="detail-list">
+                  <li>温和陪伴式沟通，循循引导，不急着下结论。</li>
+                  <li>善于倾听共情，接纳你的迷茫，再慢慢一起拆解卡点。</li>
+                  <li>以提问引导思考，不灌输标准答案，帮你听见自己内心的倾向。</li>
+                  <li>兼顾感受与落地，先梳理情绪，再一起敲定可执行的步骤。</li>
+                </ul>
+              </section>
+              <section aria-labelledby="maryFit">
+                <div class="detail-title" id="maryFit">适合人群</div>
+                <ul class="detail-list">
+                  <li>在多个选项之间反复纠结、容易内耗的人。</li>
+                  <li>不清楚自身优势、害怕试错风险的人。</li>
+                  <li>需要有人耐心帮你梳理现状，看清取舍的人。</li>
+                  <li>希望被理解、被支持，不喜欢高压式沟通的人。</li>
+                </ul>
+              </section>
+            </div>
+            <div class="value-row"><span class="value-label">价值观</span><span class="value-chip">接纳</span><span class="value-chip">看见</span><span class="value-chip">从容</span><span class="value-chip">长期成长</span></div>
+          </div>
+        </article>
+
+        <article class="coach-card" data-coach="lena" aria-labelledby="lenaName">
+          <aside class="coach-aside">
+            <div class="coach-avatar" aria-hidden="true">L</div>
+            <span class="coach-count">CONSULTANT 03</span>
+            <h3 id="lenaName">Lena</h3>
+            <p class="coach-subtitle">高效破局 · 天赋优势 · 行动落地</p>
+            <dl class="coach-meta">
+              <div class="meta-row"><dt>行业</dt><dd>AI、科技 / 互联网、咨询</dd></div>
+              <div class="meta-row"><dt>形式</dt><dd>线上</dd></div>
+              <div class="meta-row"><dt>工作年限</dt><dd>10+ 年</dd></div>
+            </dl>
+          </aside>
+          <div class="coach-content">
+            <ul class="coach-summary">
+              <li>十年以上职场沉淀，横跨世界 500 强互联网公司的技术、产品与项目管理。</li>
+              <li>三次转岗转行，跨职能、跨行业经验扎实。</li>
+              <li>两次职业空窗，亲历空窗后求职与互联网创业。</li>
+              <li>擅长内在成长、挖掘天赋优势、职业转型、目标和执行力管理。</li>
+            </ul>
+            <div class="coach-detail-grid">
+              <section aria-labelledby="lenaStyle">
+                <div class="detail-title" id="lenaStyle">咨询风格</div>
+                <ul class="detail-list">
+                  <li>拆解问题快准狠，专治卡点。</li>
+                  <li>用追问代替说教，带你自己找到答案。</li>
+                  <li>反馈直接，节奏明快，不绕弯。</li>
+                  <li>盯行动、看落地，不只聊感受。</li>
+                </ul>
+              </section>
+              <section aria-labelledby="lenaFit">
+                <div class="detail-title" id="lenaFit">适合人群</div>
+                <ul class="detail-list">
+                  <li>想高效破局、拒绝拖沓的人。</li>
+                  <li>能接受直言、不怕被追问的人。</li>
+                  <li>愿意表达、也愿意独立思考的人。</li>
+                  <li>目标感强、希望咨询后立刻有方向的人。</li>
+                </ul>
+              </section>
+            </div>
+            <div class="value-row"><span class="value-label">价值观</span><span class="value-chip">清醒</span><span class="value-chip">批判</span><span class="value-chip">自由</span><span class="value-chip">成长</span><span class="value-chip">正直</span></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="closing-card" id="about" aria-labelledby="closingTitle">
+      <div class="closing-copy">
+        <span class="section-label">找到适合你的对话方式</span>
+        <h2 id="closingTitle">不确定选谁，也可以把选择交给我们。</h2>
+        <p>想了解匹配建议或预约方式，可前往小红书店铺，或点击右下角“提交问题反馈”联系我们。</p>
+      </div>
+      <button class="primary-action" type="button" data-open-feedback>提交匹配需求</button>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <span>© 2026 寻路 · OpenLife</span>
+    <div class="footer-links"><a href="#service">咨询说明</a><a href="#coaches">咨询师团队</a><button type="button" data-open-feedback style="border:0;padding:0;background:none;color:inherit;cursor:pointer">问题反馈</button></div>
+  </footer>
+
+  <button class="feedback-button" type="button" data-open-feedback aria-label="提交问题反馈">
+    <span class="feedback-icon" aria-hidden="true">◌</span>提交问题反馈
+  </button>
+
+  <dialog class="feedback-dialog" id="feedbackDialog" aria-labelledby="feedbackTitle">
+    <form class="feedback-form" id="feedbackForm">
+      <div class="dialog-head">
+        <div>
+          <h2 id="feedbackTitle">告诉我们你的需求</h2>
+          <p>留下希望解决的问题与联系方式，我们会据此为你匹配咨询师。</p>
+        </div>
+        <button class="dialog-close" type="button" id="closeFeedback" aria-label="关闭反馈表单">×</button>
+      </div>
+      <div class="field"><label for="contact">联系方式</label><input id="contact" name="contact" type="text" autocomplete="email" placeholder="微信号 / 手机号 / 邮箱" required></div>
+      <div class="field"><label for="question">最想解决的问题</label><textarea id="question" name="question" placeholder="例如：在留任和转行之间反复纠结，希望梳理更适合自己的方向……" required></textarea></div>
+      <div class="dialog-actions"><button class="dialog-cancel" type="button" id="cancelFeedback">暂不提交</button><button class="dialog-submit" type="submit">提交需求</button></div>
+      <p class="dialog-status" id="dialogStatus" role="status" aria-live="polite"></p>
+    </form>
+  </dialog>
+
+  <script>
+    const feedbackDialog = document.getElementById('feedbackDialog');
+    const feedbackForm = document.getElementById('feedbackForm');
+    const dialogStatus = document.getElementById('dialogStatus');
+    let feedbackReturnFocus = null;
+
+    function openFeedback(event) {
+      feedbackReturnFocus = event?.currentTarget || document.activeElement;
+      dialogStatus.textContent = '';
+      if (!feedbackDialog.open) feedbackDialog.showModal();
+      window.setTimeout(() => document.getElementById('contact').focus(), 0);
+    }
+
+    function closeFeedback() {
+      if (feedbackDialog.open) feedbackDialog.close();
+    }
+
+    document.querySelectorAll('[data-open-feedback]').forEach((button) => {
+      button.addEventListener('click', openFeedback);
+    });
+
+    document.getElementById('closeFeedback').addEventListener('click', closeFeedback);
+    document.getElementById('cancelFeedback').addEventListener('click', closeFeedback);
+
+    feedbackForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      dialogStatus.textContent = '需求已记录。接入现有反馈服务后即可正式提交。';
+    });
+
+    feedbackDialog.addEventListener('close', () => {
+      if (feedbackReturnFocus?.isConnected) feedbackReturnFocus.focus();
+    });
+
+    feedbackDialog.addEventListener('click', (event) => {
+      const rect = feedbackDialog.getBoundingClientRect();
+      const onBackdrop = event.clientX < rect.left || event.clientX > rect.right ||
+        event.clientY < rect.top || event.clientY > rect.bottom;
+      if (onBackdrop) closeFeedback();
+    });
+  </script>
+</body>
+</html>

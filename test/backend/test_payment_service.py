@@ -283,6 +283,8 @@ async def test_create_order_locks_coupon(fake_channel):
         "channel": "alipay",
         "pay_type": "qr",
         "pay_url": f"https://openapi.alipay.com/gateway.do?fake-page-pay-{order.order_no}",
+        # 自渲染二维码文本（fake 渠道无 extract_qr_text → None，前端回退 iframe）
+        "qr_text": None,
     }
     assert (await _get_order(order.id)).qr_code == payment["pay_url"]
 

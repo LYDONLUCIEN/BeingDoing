@@ -9,6 +9,10 @@ import XiaohongshuQrEntry from '@/components/common/XiaohongshuQrEntry';
 // 文案来源：wiki/开发文档/10-05/咨询师.md（2026-10-06 上线咨询师介绍页，入口在顶部导航「咨询团队」）
 // v3（2026-10-07）：咨询师改为一次展示一位、左右切换；卡内多栏铺开全量内容
 // （背景/咨询风格/适合人群并列 + 价值观标签），保证一屏内看完一位咨询师。
+// v4（2026-10-08）：卡片视觉按 wiki/开发文档/10-07/consultants.html 重做——
+// 左人物栏（头像/编号/姓名/风格标签/元信息）+ 右内容栏（背景要点/
+// 咨询风格/适合人群双栏/价值观 chips），每位咨询师独立 accent 色
+// （祝余=蓝、Mary=绿、Lena=紫）。样式见 styles/components/consultants-coach.css。
 
 // 统一介绍（含小红书/反馈指引，文案与需求文档保持一致）
 const INTRO_PARAGRAPH =
@@ -26,8 +30,12 @@ const FORMAT_ITEMS = [
 ];
 
 // 咨询师数据来源：wiki/开发文档/10-05/咨询师.md（全量展示：背景 / 咨询风格 / 适合人群 / 价值观）
+// id 用于 consultants-coach.css 的 data-coach accent 配色；initial 为头像字母
 interface Coach {
+  id: 'zhuyu' | 'mary' | 'lena';
   name: string;
+  initial: string;
+  subtitle: string;
   industry: string;
   format: string;
   years: string;
@@ -39,7 +47,10 @@ interface Coach {
 
 const COACHES: Coach[] = [
   {
+    id: 'zhuyu',
     name: '祝余',
+    initial: '祝',
+    subtitle: '结构化梳理 · 优势挖掘 · 职业转型',
     industry: '公益、教育、互联网、职业咨询',
     format: '线上',
     years: '10+年',
@@ -66,7 +77,10 @@ const COACHES: Coach[] = [
     values: ['价值实现', '自爱', '自由', '正直', '奋斗'],
   },
   {
+    id: 'mary',
     name: 'Mary',
+    initial: 'M',
+    subtitle: '温和陪伴 · 职业定位 · 选择梳理',
     industry: '互联网、电商、职业咨询',
     format: '线上',
     years: '10+年',
@@ -90,7 +104,10 @@ const COACHES: Coach[] = [
     values: ['接纳', '看见', '从容', '长期成长'],
   },
   {
+    id: 'lena',
     name: 'Lena',
+    initial: 'L',
+    subtitle: '高效破局 · 天赋优势 · 行动落地',
     industry: 'AI、科技/互联网、咨询',
     format: '线上',
     years: '10+年',
@@ -115,10 +132,6 @@ const COACHES: Coach[] = [
     values: ['清醒', '批判', '自由', '成长', '正直'],
   },
 ];
-
-const META_LABEL = 'font-semibold text-bd-fg';
-const SUB_LABEL = 'text-sm font-semibold text-bd-fg mb-2';
-const BODY_LIST = 'list-disc pl-5 space-y-1.5 text-bd-muted text-sm leading-relaxed';
 
 function CoachCarousel() {
   // [当前下标, 切换方向]；方向用于左右滑动动效
@@ -155,63 +168,75 @@ function CoachCarousel() {
             <motion.article
               key={coach.name}
               role="tabpanel"
+              data-coach={coach.id}
               initial={{ opacity: 0, x: direction >= 0 ? 24 : -24 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: direction >= 0 ? -24 : 24 }}
               transition={{ duration: 0.22, ease: 'easeOut' }}
-              /* 首页评价卡同款质感（ol-reading-glass 玻璃纸面）+ 固定最小高度统一三位咨询师的卡片尺寸 */
-              className="bd-glass-card ol-reading-glass rounded-[20px] p-6 md:p-8 space-y-5 md:min-h-[710px] xl:min-h-[470px]"
+              /* v4 卡面（consultants-coach.css）：外壳仍用玻璃纸面质感，内部为
+                 左人物栏 + 右内容栏；min-height 在 CSS 内按断点控制，宽度随容器 */
+              className="ol-coach-card bd-glass-card ol-reading-glass rounded-[26px]"
             >
-              <div className="space-y-2.5">
-                <p className="ol-kicker" style={{ marginBottom: 0 }}>
-                  COUNSELOR PROFILE · {String(index + 1).padStart(2, '0')}
-                </p>
-                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <h3 className="text-2xl font-bold text-bd-fg">{coach.name}</h3>
-                  <p className="text-sm text-bd-muted">
-                    <span className={META_LABEL}>行业：</span>
-                    {coach.industry}
-                    <span className="mx-2 text-bd-border" aria-hidden>·</span>
-                    <span className={META_LABEL}>形式：</span>
-                    {coach.format}
-                    <span className="mx-2 text-bd-border" aria-hidden>·</span>
-                    <span className={META_LABEL}>工作年限：</span>
-                    {coach.years}
-                  </p>
+              {/* 左：人物栏（头像 / 编号 / 姓名 / 风格标签 / 元信息） */}
+              <aside className="ol-coach-aside">
+                <div className="ol-coach-avatar" aria-hidden="true">
+                  {coach.initial}
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
+                <span className="ol-coach-count">
+                  CONSULTANT {String(index + 1).padStart(2, '0')}
+                </span>
+                <h3 className="ol-coach-name">{coach.name}</h3>
+                <p className="ol-coach-subtitle">{coach.subtitle}</p>
+                <dl className="ol-coach-meta">
+                  <div className="ol-coach-meta-row">
+                    <dt>行业</dt>
+                    <dd>{coach.industry}</dd>
+                  </div>
+                  <div className="ol-coach-meta-row">
+                    <dt>形式</dt>
+                    <dd>{coach.format}</dd>
+                  </div>
+                  <div className="ol-coach-meta-row">
+                    <dt>工作年限</dt>
+                    <dd>{coach.years}</dd>
+                  </div>
+                </dl>
+              </aside>
+
+              {/* 右：背景要点 / 咨询风格·适合人群双栏 / 价值观 */}
+              <div className="ol-coach-content">
+                <ul className="ol-coach-summary">
+                  {coach.background.map((item, j) => (
+                    <li key={j}>{item}</li>
+                  ))}
+                </ul>
+
+                <div className="ol-coach-detail-grid">
+                  {(
+                    [
+                      ['咨询风格', coach.style],
+                      ['适合人群', coach.audience],
+                    ] as const
+                  ).map(([label, items]) => (
+                    <section key={label} aria-label={label}>
+                      <div className="ol-coach-detail-title">{label}</div>
+                      <ul className="ol-coach-detail-list">
+                        {items.map((item, j) => (
+                          <li key={j}>{item}</li>
+                        ))}
+                      </ul>
+                    </section>
+                  ))}
+                </div>
+
+                <div className="ol-coach-value-row">
+                  <span className="ol-coach-value-label">价值观</span>
                   {coach.values.map((value) => (
-                    <span
-                      key={value}
-                      className="rounded-full border border-bd-border bg-bd-overlay px-3 py-1 text-xs text-bd-muted"
-                    >
+                    <span key={value} className="ol-coach-value-chip">
                       {value}
                     </span>
                   ))}
                 </div>
-              </div>
-
-              {/* 全量内容多栏铺开：一屏看完，无需下拉；标题后随 hairline 增强编辑感 */}
-              <div className="grid content-start gap-6 border-t border-bd-border pt-5 md:min-h-0 md:grid-cols-2 xl:grid-cols-3">
-                {(
-                  [
-                    ['背景与擅长', coach.background],
-                    ['咨询风格', coach.style],
-                    ['适合人群', coach.audience],
-                  ] as const
-                ).map(([label, items]) => (
-                  <section key={label}>
-                    <h4 className="mb-3 flex items-center gap-3 text-sm font-semibold text-bd-fg">
-                      <span>{label}</span>
-                      <span className="h-px flex-1 bg-bd-border/70" aria-hidden />
-                    </h4>
-                    <ul className={BODY_LIST}>
-                      {items.map((item, j) => (
-                        <li key={j}>{item}</li>
-                      ))}
-                    </ul>
-                  </section>
-                ))}
               </div>
             </motion.article>
         </AnimatePresence>

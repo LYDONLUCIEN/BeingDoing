@@ -234,6 +234,21 @@ async def cancel_order(
     return _ok({"order": PaymentService._order_to_dict(order)})
 
 
+@router.post("/orders/{order_id}/refresh-qr")
+async def refresh_qr(
+    order_id: str,
+    current_user: dict = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """刷新二维码文本（自渲染模式下码过期/扫码失败时手动刷新；每单 10 秒冷却）"""
+    try:
+        data = await PaymentService.refresh_qr_text(
+            user_id=str(current_user["user_id"]), order_id=order_id
+        )
+    except (ValueError, OrderNotFoundError) as e:
+        _raise_for_service_error(e)
+    return _ok(data)
+
+
 # ===================== 退款申请（2026-10-05）=====================
 
 

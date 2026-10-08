@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
@@ -50,6 +51,18 @@ _ERR_VERIFY = "支付宝回调验签失败"
 # 同尺寸，出码前后零跳动；实测见 wiki/开发文档/claude-completed-2026-10-07-支付弹窗收银台化改造.md）。
 _QR_PAY_MODE = "4"
 _QRCODE_WIDTH = 170
+
+# 二维码文本提取（前端自渲染用，2026-10-08 起）：
+# page.pay 前置页 HTML 的 hidden input#J_qrCode 携带二维码内容串（https://qr.alipay.com/...）。
+# 后端套取出来交前端用 qrcode.react 自渲染（居中/白边/样式全自控，摆脱 iframe 内
+# 支付宝页面布局漂移）；提取失败返回 None，前端回退 iframe 嵌入模式，支付链路不受影响。
+_QR_TEXT_UA = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
+_QR_TEXT_TIMEOUT = 10.0
+# 合法的二维码内容串前缀（防页面结构变更后误提取）
+_QR_TEXT_PREFIX = "https://qr.alipay.com/"
 
 
 def _fen_to_yuan(amount_fen: int) -> str:
@@ -144,6 +157,46 @@ class AlipayChannel(PaymentChannel):
         if not pay_url:
             raise PaymentChannelError("支付宝下单失败：未生成跳转 URL")
         return pay_url
+
+    # ─── 二维码文本提取（自渲染用）────────────────────────────
+
+    async def extract_qr_text(self, pay_url: str) -> Optional[str]:
+        """套取前置模式收银台页，提取二维码内容串（供前端自渲染）
+
+        page_execute 只签名不发请求，二维码内容需 GET 收银台页后从
+        hidden input#J_qrCode 解析（页面 charset=gb2312，gb18030 为其超集）。
+
+        Returns:
+            二维码内容串（https://qr.alipay.com/...）；任何失败返回 None
+            （前端回退 iframe 嵌入 pay_url，支付链路不受影响）
+        """
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(
+                timeout=_QR_TEXT_TIMEOUT,
+                follow_redirects=True,
+                headers={"User-Agent": _QR_TEXT_UA},
+            ) as client:
+                resp = await client.get(pay_url)
+            if resp.status_code != 200:
+                logger.warning("extract_qr_text: 收银台页 GET 失败 status=%s", resp.status_code)
+                return None
+            html = resp.content.decode("gb18030", errors="replace")
+            tag = re.search(r'<input[^>]*id="J_qrCode"[^>]*>', html)
+            if not tag:
+                logger.warning("extract_qr_text: 未找到 J_qrCode（支付宝页面结构可能已变更）")
+                return None
+            val = re.search(r'value="([^"]+)"', tag.group(0))
+            if not val or not val.group(1).startswith(_QR_TEXT_PREFIX):
+                logger.warning(
+                    "extract_qr_text: J_qrCode value 非法：%s", val.group(1) if val else None
+                )
+                return None
+            return val.group(1)
+        except Exception as e:
+            logger.warning("extract_qr_text 异常（前端回退 iframe）：%s", e)
+            return None
 
     # ─── 回调验签 ───────────────────────────────────────────────
 
