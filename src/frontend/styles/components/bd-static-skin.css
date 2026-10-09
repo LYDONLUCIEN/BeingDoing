@@ -60,7 +60,9 @@
 }
 
 /* 顶栏：原 0.34+blur12 → 完全透明（1006 二轮：0.34 实色在带色背景上仍是可见白条，
-   header 下无滚动内容，直接透出页面背景 = 与正文零色差） */
+   header 下无滚动内容，直接透出页面背景 = 与正文零色差）
+   2026-10-08：主聊天页顶栏已改为覆盖式悬浮，毛玻璃由 §5 的 ::before 羽化层承担；
+   本条「本体透明」规则保留作为基底，勿删 */
 .careering-chat-header {
   background: transparent;
   -webkit-backdrop-filter: none;
@@ -215,7 +217,139 @@
 }
 
 /* ════════════════════════════════════════════════════════
-   4. 功能动效（状态指示，勿删！）
+   4. 覆盖式毛玻璃光晕（2026-10-08，部分回调 1006 二轮定稿）
+
+   需求：header / 输入坞与对话区交界处恢复「模糊光晕 + 半透明毛玻璃」，
+   气泡滚动时从两层毛玻璃下方穿过、隐约透出。
+
+   性能口径：blur 只挂在 header/dock 两块小面积固定条带的 ::before 上
+   （非全屏、非滚动容器），半径收窄到 8px——这是「轻度模糊折中」的有意
+   权衡，勿按 §2「全部去 backdrop-filter」的惯性清掉。
+
+   结构（前四阶段主聊天页）：page.tsx 把 .chat-overlay-glass 挂在主栏容器上，
+   header/dock 绝对定位悬浮；JS 实测两者高度写入 --chat-overlay-header-h /
+   --chat-overlay-dock-h，滚动区上下 padding 据此补偿（气泡可穿过毛玻璃，
+   但滚到底时末条消息能完全露出 dock 之上）。dock 内滥用警告条出现/消失会
+   改变 dock 高度，ResizeObserver 会跟随。
+   ════════════════════════════════════════════════════════ */
+
+/* —— 前四阶段 chat 页（.chat-overlay-glass 仅挂在 LiveChatPhasePage 主栏） —— */
+.chat-overlay-glass .careering-chat-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+}
+.chat-overlay-glass .careering-input-dock {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+}
+
+/* 毛玻璃本体放 ::before 并向交界方向羽化（mask 渐隐 = 光晕），不遮标题/按钮/
+   输入框；::before 在各自 stacking context 内垫于内容之下、压于对话区之上 */
+.chat-overlay-glass .careering-chat-header::before,
+.chat-overlay-glass .careering-input-dock::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  z-index: -1;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.chat-overlay-glass .careering-chat-header::before {
+  top: 0;
+  /* 向下探出 22px 羽化带，气泡经过 header 下沿时被柔化透出 */
+  height: calc(100% + 22px);
+  background: linear-gradient(to bottom, rgba(251, 252, 251, 0.78), rgba(251, 252, 251, 0.5));
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent);
+}
+.chat-overlay-glass .careering-input-dock::before {
+  /* 向上探出 26px 羽化带；颜色对齐对话区背景实测色（238,240,245，同 §3 渐变条），
+     与 flow-chat-body 融合、不形成色带 */
+  top: -26px;
+  bottom: 0;
+  background: linear-gradient(to top, rgba(238, 240, 245, 0.85), rgba(238, 240, 245, 0.55));
+  -webkit-mask-image: linear-gradient(to top, #000 55%, transparent);
+  mask-image: linear-gradient(to top, #000 55%, transparent);
+}
+
+/* 滚动区上下 padding 按实测悬浮层高补偿：首条消息不被 header 遮、
+   末条消息可完全滚出 dock 之上（特异性需压过 careering-matte 的 10rem 底 padding） */
+.flow-light.careering-matte .chat-overlay-glass .flow-chat-body {
+  padding-top: calc(var(--chat-overlay-header-h, 76px) + 0.5rem);
+  padding-bottom: calc(var(--chat-overlay-dock-h, 120px) + 0.5rem);
+}
+
+/* 回底按钮上移到悬浮 dock 之上 */
+.flow-light .chat-overlay-glass .flow-scroll-bottom-btn {
+  bottom: calc(var(--chat-overlay-dock-h, 120px) + 10px);
+}
+
+/* —— 沉淀 V4 对话面板 —— */
+
+/* 头部（组合名 + 状态行）：毛玻璃质感 + 与上方「05 沉淀」顶栏无缝一体——
+   背景色样取顶部渐隐条同款（224,229,247 → 240,242,250 → 250,251,252），
+   即内容列顶部的流光背景实测色，避免乳白渐变在薰衣草底上「白一块」的割裂感；
+   文本居中（V4ChatPanel 已改 justify-center），下方 border-b 是整块唯一分隔线 */
+.rumination-beautiful-root .v4-chat-glass-header {
+  position: relative;
+  z-index: 3;
+  padding-top: 2px;
+  background: linear-gradient(90deg, rgba(226, 231, 247, 0.55), rgba(241, 243, 250, 0.55) 45%, rgba(250, 251, 252, 0.55));
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.rumination-beautiful-root .v4-chat-glass-header::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 26px;
+  background: linear-gradient(90deg, rgba(226, 231, 247, 0.4), rgba(241, 243, 250, 0.4) 45%, rgba(250, 251, 252, 0.4));
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  -webkit-mask-image: linear-gradient(to bottom, #000, transparent);
+  mask-image: linear-gradient(to bottom, #000, transparent);
+  pointer-events: none;
+}
+
+/* 输入坞：颜色对齐 rumination-chat-body-fade 底色（色样同 §3 下沿渐变条），
+   与对话区融合；上沿 24px 羽化 + 轻度模糊。dock 本体保持透明（§2 规则不动），
+   毛玻璃层放 ::before（dock 已是 relative z-index:2 的 stacking context，
+   ::before z-index:-1 垫于输入胶囊之下、压于对话区之上） */
+.rumination-beautiful-root .flow-chat-box.rumination-beautiful-chat-panel .careering-input-dock::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -24px;
+  bottom: 0;
+  background: linear-gradient(90deg, rgba(238, 241, 249, 0.62), rgba(250, 251, 253, 0.62));
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  -webkit-mask-image: linear-gradient(to top, #000 60%, transparent);
+  mask-image: linear-gradient(to top, #000 60%, transparent);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* V4 回底按钮：dock 在 flow-chat-box 内部底部，按钮需上移到 dock 之上
+   （dock 高约 96–114px：输入胶囊 54 + dock 上下 padding） */
+.rumination-beautiful-root .rumination-beautiful-chat-panel .flow-scroll-bottom-btn {
+  bottom: 7.5rem;
+  z-index: 3;
+}
+
+/* ════════════════════════════════════════════════════════
+   5. 功能动效（状态指示，勿删！）
    性能清理时注意：以下属于「用户需要知道系统在工作」的功能反馈，
    与上方装饰动画不同，任何「去动画」清理都不应触碰本节。
    保留清单（散布在其他文件）：

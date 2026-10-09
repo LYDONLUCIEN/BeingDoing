@@ -916,17 +916,18 @@ class PaymentService:
     # ─── 用户侧查询 ─────────────────────────────────────────────
 
     @classmethod
-    async def _sync_order_from_channel(cls, order: PaymentOrder) -> None:
+    async def _sync_order_from_channel(cls, order: PaymentOrder, force: bool = False) -> None:
         """即时主动查单（sync 查询用）：pending 订单向渠道查单，已支付则幂等交付
 
         仅处理 pending 且已向渠道下单（qr_code 非空）的订单；同一订单 10 秒
-        冷却期内不重复查渠道（无论成败都更新冷却时间，防刷）。
+        冷却期内不重复查渠道（无论成败都更新冷却时间，防刷）；force=True 跳过
+        冷却（cancel 竞态保护等必须立即确权的场景）。
         金额不符记 critical；渠道无单/未支付/异常均忽略（仅记日志，不抛）。
         """
         if order.status != "pending" or not order.qr_code:
             return
         now = time.monotonic()
-        if now - _ORDER_SYNC_COOLDOWN.get(order.order_no, 0.0) < _SYNC_COOLDOWN_SECONDS:
+        if not force and now - _ORDER_SYNC_COOLDOWN.get(order.order_no, 0.0) < _SYNC_COOLDOWN_SECONDS:
             return
         _ORDER_SYNC_COOLDOWN[order.order_no] = now
         if len(_ORDER_SYNC_COOLDOWN) > 10000:  # 防御：避免冷却字典无限增长
@@ -1078,7 +1079,11 @@ class PaymentService:
 
     @classmethod
     async def cancel_order(cls, user_id: str, order_id: str) -> PaymentOrder:
-        """主动取消（仅本人 pending）：尝试渠道关单（失败不阻断）→ 释放券 → cancelled
+        """主动取消（仅本人 pending）：渠道关单 → 强制查单确权 → 释放券 → cancelled
+
+        竞态保护：用户「已付款瞬间点取消」时渠道关单会失败，若直接置 cancelled
+        会导致钱到但单死（对账 job 只捞 pending）。故关单后绕过冷却强制查单，
+        已支付则幂等交付（返回 granted 订单，前端据此进成功视图而非取消）。
 
         Raises:
             OrderNotFoundError: 订单不存在或非本人
@@ -1093,6 +1098,12 @@ class PaymentService:
             coupon_id = order.coupon_id
             order_id_ = order.id
             await cls._close_channel_order(order)
+            # 关单后强制查渠道确权：已支付则转交付，不取消
+            await cls._sync_order_from_channel(order, force=True)
+            await db.refresh(order)
+            if order.status != "pending":
+                logger.info("取消时查实已支付，转交付不取消：order_no=%s", order.order_no)
+                return order
             order.status = "cancelled"
             await db.commit()
             await db.refresh(order)

@@ -18,6 +18,7 @@
 
 from datetime import datetime, timedelta, timezone
 import json
+import time
 from unittest.mock import AsyncMock
 
 import pytest
@@ -368,6 +369,56 @@ async def test_cancel_order_guards():
     # 0 元单已 granted，不可取消
     with pytest.raises(ValueError):
         await PaymentService.cancel_order("u1", order.id)
+
+
+@pytest.mark.asyncio
+async def test_cancel_order_paid_race_delivers_instead(fake_channel):
+    """取消竞态保护：用户已付款瞬间点取消（渠道关单失败）→ 强制查单发现已支付 → 转交付不取消"""
+    coupon = (await CouponService.create_coupons(amount=5000, count=1))[0]
+    order, _ = await PaymentService.create_order("u1", "quarterly_package", "alipay", coupon.code)
+
+    # 渠道关单失败（已支付的交易不可关闭）+ 查单返回已支付
+    async def _close_raises(order_no):
+        raise Exception("ACQ.TRADE_STATUS_ERROR")  # 已支付交易关单报错
+
+    fake_channel.close_order = _close_raises
+    fake_channel.query_results[order.order_no] = NotifyResult(
+        order_no=order.order_no,
+        channel_transaction_id="2026100800020",
+        paid_at=None,
+        total_amount_fen=order.amount_paid,
+        trade_status="TRADE_SUCCESS",
+    )
+
+    result = await PaymentService.cancel_order("u1", order.id)
+
+    # 不取消，转交付
+    assert result.status == "granted"
+    assert result.delivered_code
+    # 券不退回（已核销）
+    used = await _get_coupon(coupon.id)
+    assert used.status == "used"
+
+
+@pytest.mark.asyncio
+async def test_cancel_order_force_bypasses_sync_cooldown(fake_channel):
+    """cancel 路径 force=True：冷却期内仍强制查渠道；未支付则正常取消"""
+    order, _ = await PaymentService.create_order("u1", "quarterly_package", "alipay", None)
+    calls = 0
+
+    async def _counting_query(order_no):
+        nonlocal calls
+        calls += 1
+        return None  # 渠道未支付
+
+    fake_channel.query_order = _counting_query
+    # 冷却期内（模拟刚刚 sync 查过）
+    ps_mod._ORDER_SYNC_COOLDOWN[order.order_no] = time.monotonic()
+
+    cancelled = await PaymentService.cancel_order("u1", order.id)
+
+    assert calls == 1  # 绕过冷却强制查了一次
+    assert cancelled.status == "cancelled"
 
 
 # ─── 回调 ──────────────────────────────────────────────────────

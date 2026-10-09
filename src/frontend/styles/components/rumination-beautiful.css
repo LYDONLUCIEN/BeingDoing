@@ -17,6 +17,14 @@
   box-sizing: border-box;
 }
 
+/* guided 布局（2026-10-08）：去掉工作台左侧 30px 内缩——guided 无 toolbar-wrap，
+   上方「05 沉淀」顶栏本就贴着内容列左缘，工作台再内缩会让毛玻璃头部/输入坞/滚动区
+   的色带与顶栏错开 30px（接缝观感）。收窄只保留右侧 30px，左侧与内容列对齐 */
+.rumination-beautiful-root .rumination-workbench.rumination-workbench--flush-left {
+  width: calc(100% - 30px);
+  margin-left: 0;
+}
+
 /* 卡片表面对齐 HTML flow 模式面板：rgba(255,255,255,.77) + blur(10px) + 白描边 */
 .rumination-beautiful-card {
   background: rgba(255, 255, 255, 0.77);

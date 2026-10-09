@@ -406,6 +406,11 @@ function LiveChatPhasePage() {
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  /** 覆盖式毛玻璃布局（2026-10-08）：header/输入坞绝对定位悬浮在滚动区上，
+      需实测两者高度写入 CSS 变量，补偿滚动区上下 padding */
+  const chatColumnRef = useRef<HTMLDivElement>(null);
+  const chatHeaderRef = useRef<HTMLElement>(null);
+  const inputDockRef = useRef<HTMLDivElement>(null);
   /** 防止同一个 (activationCode, phase) 多次触发自动新建线程（竞态 / effect 重复执行） */
   const autoInitGuardRef = useRef<string>('');
 
@@ -1242,12 +1247,35 @@ function LiveChatPhasePage() {
     el.addEventListener('scroll', checkScrollPosition);
     checkScrollPosition();
     return () => el.removeEventListener('scroll', checkScrollPosition);
-  }, [checkScrollPosition]);
+    // 依赖 session：首帧 session 为 null 时组件 return null、chatBodyRef 未挂载，
+    // 若只在 mount 跑一次会永远挂不上监听器（回底按钮失效的历史回归根因，2026-10-08 修复）
+  }, [checkScrollPosition, session]);
 
   const scrollToBottom = useCallback(() => {
     stickToBottomRef.current = true;
     chatBodyRef.current?.scrollTo({ top: chatBodyRef.current.scrollHeight, behavior: 'smooth' });
   }, []);
+
+  /** 覆盖式毛玻璃：实测 header/输入坞高度 → CSS 变量，滚动区上下 padding 随之补偿，
+      气泡可从两层毛玻璃下方穿过而不被永久遮挡（dock 内滥用警告条出现/消失会改变高度） */
+  useEffect(() => {
+    const col = chatColumnRef.current;
+    if (!col) return;
+    const update = () => {
+      if (chatHeaderRef.current) {
+        col.style.setProperty('--chat-overlay-header-h', `${chatHeaderRef.current.offsetHeight}px`);
+      }
+      if (inputDockRef.current) {
+        col.style.setProperty('--chat-overlay-dock-h', `${inputDockRef.current.offsetHeight}px`);
+      }
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    if (chatHeaderRef.current) ro.observe(chatHeaderRef.current);
+    if (inputDockRef.current) ro.observe(inputDockRef.current);
+    return () => ro.disconnect();
+    // 依赖 session：首帧 session 为 null 时组件 return null，三个 ref 均未挂载
+  }, [session]);
 
   useEffect(() => {
     const ta = inputRef.current;
@@ -2242,9 +2270,9 @@ function LiveChatPhasePage() {
             </div>
           )}
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div ref={chatColumnRef} className="chat-overlay-glass relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 
-                <header className="careering-chat-header">
+                <header ref={chatHeaderRef} className="careering-chat-header">
                   <h2 className="careering-chat-phase-title">
                     {phaseInfo.num} {phaseLabel}
                   </h2>
@@ -2446,8 +2474,8 @@ function LiveChatPhasePage() {
             </div>
           </div>
 
-          {/* 对话输入框：固定在最底部 */}
-          <div className="careering-input-dock w-full flex-shrink-0">
+          {/* 对话输入框：悬浮覆盖在最底部（毛玻璃光晕，气泡可从下方穿过） */}
+          <div ref={inputDockRef} className="careering-input-dock w-full flex-shrink-0">
             {abuseWarning && !abuseFrozen && (
               <div
                 className="border-t border-amber-200/90 bg-amber-50 px-4 py-2 text-center text-xs font-medium text-amber-950"

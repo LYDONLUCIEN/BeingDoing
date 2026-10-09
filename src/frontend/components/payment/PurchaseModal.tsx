@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
@@ -33,6 +33,7 @@ import { toDate } from '@/lib/utils/formatTime';
 import { normalizeCouponCode } from '@/lib/codeFormat';
 import { useLocale } from '@/hooks/useLocale';
 import { CopyableCode } from '@/components/payment/CopyableCode';
+import LegalDocLink from '@/components/legal/LegalDocLink';
 import UpgradeTrialModal from '@/components/payment/UpgradeTrialModal';
 import { TeamAnalysisNoticeBox } from '@/components/payment/TeamAnalysisNoticeModal';
 import { getUpgradeContext } from '@/lib/api/activation';
@@ -309,6 +310,7 @@ function QrStage({
   placeholderTitle,
   hint,
   scanTip,
+  mask,
 }: {
   active: boolean;
   payUrl: string | null;
@@ -317,6 +319,8 @@ function QrStage({
   placeholderTitle: string;
   hint: string;
   scanTip: string;
+  /** 出码前的协议遮罩（workbuddy 式门控）；未提供时回退四角标占位框 */
+  mask?: ReactNode;
 }) {
   return (
     <div
@@ -352,6 +356,9 @@ function QrStage({
           height={210}
           className="rounded-xl bg-white"
         />
+      ) : mask ? (
+        /* 出码前：协议遮罩（假二维码 + 同意协议并支付门控） */
+        mask
       ) : (
         <div className="relative flex h-[210px] w-[194px] flex-col items-center justify-center rounded-[10px] border border-dashed border-[#aeb9c4] bg-[#f7f9fc] p-5 text-center">
           {/* 四角标（设计稿 .qr-corner） */}
@@ -381,6 +388,58 @@ function QrStage({
           <span className="sr-only">{hint}</span>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * 协议遮罩（出码前门控，对齐设计稿 wiki/开发文档/10-07/支付协议同意.png）：
+ * 模糊化的假二维码 + 半透明遮罩（「同意协议后扫码支付」+「同意协议」小按钮 + 条款链接），
+ * 点击「同意协议」才真正下单出码（假码内容为本站首页，仅示意不可扫）。
+ * 支付按钮只存在于遮罩上——下单后不再有任何「支付中」按钮，扫码完成后由轮询切成功视图。
+ */
+function QrAgreementMask({
+  submitting,
+  creatingLabel,
+  onAgree,
+  t,
+}: {
+  submitting: boolean;
+  creatingLabel: string;
+  onAgree: () => void;
+  t: (k: string, vars?: Record<string, string>) => string;
+}) {
+  return (
+    <div className="relative flex h-[210px] w-[194px] items-center justify-center overflow-hidden rounded-[10px] border border-dashed border-[#aeb9c4] bg-[#f7f9fc]">
+      {/* 假二维码（模糊化示意，不可扫） */}
+      <QRCodeSVG
+        value="https://openlife.beyondego.me/"
+        size={168}
+        level="M"
+        marginSize={1}
+        aria-hidden
+        className="select-none opacity-50 blur-[4px]"
+      />
+      {/* 遮罩：标题 + 同意协议按钮 + 条款链接 */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white/70 px-3 text-center">
+        <p className="text-xs font-medium text-[#293644]">{t('payment.agreement.maskTitle')}</p>
+        <button
+          type="button"
+          onClick={onAgree}
+          disabled={submitting}
+          className="inline-flex min-h-[30px] items-center justify-center gap-1.5 rounded-lg bg-[#222b35] px-4 text-xs font-semibold text-white transition hover:bg-[#151c23] disabled:cursor-wait disabled:opacity-55"
+        >
+          {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
+          {submitting ? creatingLabel : t('payment.agreement.agree')}
+        </button>
+        <p className="text-[10px] leading-[1.5] text-[#5f6c7d]">
+          {t('payment.agreement.termsPrefix')}
+          <LegalDocLink
+            type="terms"
+            className="mx-0.5 text-[#3569d4] underline underline-offset-2"
+          />
+        </p>
+      </div>
     </div>
   );
 }
@@ -588,6 +647,10 @@ export default function PurchaseModal({
   const [trialUpgraded, setTrialUpgraded] = useState(false);
   /** 弹窗消耗升级实际用掉的付费码（从展示列表排除） */
   const [consumedCode, setConsumedCode] = useState<string | null>(null);
+  /** 等待支付中关闭弹窗的三选确认层（继续支付 / 暂不取消先离开 / 取消订单） */
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  /** 确认层点「取消订单」后是否连带关闭弹窗（X/ESC/遮罩触发=true；状态行取消链接=false） */
+  const cancelClosesModalRef = useRef(false);
 
   const successFiredRef = useRef(false);
   /** 宽模式结算面板（startWaiting 后滚入视野） */
@@ -653,6 +716,7 @@ export default function PurchaseModal({
     setUpgradeOpen(false);
     setTrialUpgraded(false);
     setCompareOpen(false);
+    setCloseConfirmOpen(false);
     successFiredRef.current = false;
   }, []);
 
@@ -718,11 +782,26 @@ export default function PurchaseModal({
     return () => clearInterval(timer);
   }, [view, order, enterSuccess]);
 
-  // ── ESC 关闭 + 锁定背景滚动（同 LegalDocModal）──
+  // ── 关闭拦截：等待支付中关闭先弹三选确认层；其余视图直接关 ──
+  const requestClose = useCallback(() => {
+    if (view === 'waiting' && waitStatus === 'polling' && order) {
+      cancelClosesModalRef.current = true;
+      setCloseConfirmOpen(true);
+      return;
+    }
+    onClose();
+  }, [view, waitStatus, order, onClose]);
+
+  // ── ESC：确认层打开时先收确认层；否则走 requestClose 拦截 ──
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape') return;
+      if (closeConfirmOpen) {
+        setCloseConfirmOpen(false);
+        return;
+      }
+      requestClose();
     };
     window.addEventListener('keydown', onKey);
     const prev = document.body.style.overflow;
@@ -731,7 +810,7 @@ export default function PurchaseModal({
       window.removeEventListener('keydown', onKey);
       document.body.style.overflow = prev;
     };
-  }, [open, onClose]);
+  }, [open, requestClose, closeConfirmOpen]);
 
   // ── 打开时初始化：拉商品；resumeOrderId 直接进入支付/成功视图 ──
   useEffect(() => {
@@ -875,14 +954,20 @@ export default function PurchaseModal({
     }
   };
 
-  // ── 取消订单 ──
+  // ── 取消订单（确认层触发）：去掉 window.confirm；返回 granted 说明取消瞬间已支付（后端竞态保护转交付）──
   const handleCancelOrder = async () => {
     if (!order) return;
-    if (!window.confirm(t('payment.confirmCancel'))) return;
     try {
-      await cancelOrder(order.id);
+      const res = await cancelOrder(order.id);
+      setCloseConfirmOpen(false);
+      if (res.order.status === 'granted') {
+        enterSuccess(res.order);
+        return;
+      }
       resetToOrderView();
+      if (cancelClosesModalRef.current) onClose();
     } catch (e: unknown) {
+      setCloseConfirmOpen(false);
       setError(getApiErrorMessage(e, t('payment.error.cancel')));
     }
   };
@@ -977,25 +1062,6 @@ export default function PurchaseModal({
     },
   ];
 
-  /** 结算面板主按钮：下单视图=立即支付（带金额，收银台主 CTA，点击后秒出二维码）；
-   * 等待轮询=禁用；已关闭/过期=重新下单 */
-  const amountButtonLabel = wideWaiting
-    ? waitStatus === 'polling'
-      ? t('payment.wide.waitingPay')
-      : t('payment.waiting.reorder')
-    : submitting
-      ? t('payment.creating')
-      : displayAmount <= 0
-        ? t('payment.payFree')
-        : t('payment.wide.payNow', { amount: fenToYuan(displayAmount) });
-  const handleAmountButtonClick = () => {
-    if (wideWaiting) {
-      if (waitStatus !== 'polling') resetToOrderView();
-      return;
-    }
-    void handlePay();
-  };
-
   // 套餐交付的全部码（等价、不区分用途）；弹窗升级后排除已消耗的那枚
   const allDeliveredCodes: string[] = order?.meta?.codes?.length
     ? order.meta.codes
@@ -1020,7 +1086,7 @@ export default function PurchaseModal({
             type="button"
             className={`absolute inset-0 ${wideMode ? 'bg-[#182130]/58 backdrop-blur-[12px]' : 'bg-stone-900/25 backdrop-blur-[2px]'}`}
             aria-label="关闭"
-            onClick={onClose}
+            onClick={requestClose}
           />
           <motion.div
             role="dialog"
@@ -1042,7 +1108,7 @@ export default function PurchaseModal({
                 {/* 右上角浮动关闭（对齐设计稿 10-05/newpay.html） */}
                 <button
                   type="button"
-                  onClick={onClose}
+                  onClick={requestClose}
                   aria-label="关闭"
                   className="absolute right-[22px] top-5 z-10 grid h-[42px] w-[42px] place-items-center rounded-full text-[29px] font-light leading-none text-[#5f6c7d] transition hover:bg-[#eef2f5] hover:text-[#182130] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3569d4]/40 max-[700px]:right-3 max-[700px]:top-3"
                 >
@@ -1212,6 +1278,16 @@ export default function PurchaseModal({
                             placeholderTitle={t('payment.wide.qrPlaceholderTitle')}
                             hint={t('payment.wide.qrHint')}
                             scanTip={t('payment.wide.qrScanTip')}
+                            mask={
+                              view === 'order' && displayAmount > 0 ? (
+                                <QrAgreementMask
+                                  submitting={submitting}
+                                  creatingLabel={t('payment.creating')}
+                                  onAgree={() => void handlePay()}
+                                  t={t}
+                                />
+                              ) : undefined
+                            }
                           />
                         </div>
 
@@ -1282,11 +1358,9 @@ export default function PurchaseModal({
                               <button
                                 type="button"
                                 onClick={() => {
+                                  // 仅选择渠道；下单出码统一走二维码遮罩/通栏按钮的
+                                  // 「同意协议并支付」（协议门控）。出码后想改套餐/券走状态行「取消订单」。
                                   setChannel('alipay');
-                                  // 点渠道即下单出码（收银台体验）：page.pay 仅本地签名，点击即出码、
-                                  // 不在支付宝侧建交易；本机 pending 单 30 分钟超时关单兜底。
-                                  // 出码后想改套餐/券走状态行「取消订单」。
-                                  if (!wideWaiting) void handlePay('alipay');
                                 }}
                                 disabled={wideWaiting}
                                 className={`flex min-h-[42px] items-center justify-center gap-[7px] rounded-xl border px-3 text-[13px] font-semibold transition ${
@@ -1325,17 +1399,6 @@ export default function PurchaseModal({
                         </div>
                       </div>
 
-                      {/* 面板底部通栏主按钮：立即支付（点击后秒出二维码）；等待支付=禁用态；关闭/过期=重新下单 */}
-                      <div className="border-t border-[#e3e8ec] px-3.5 py-3">
-                        <button
-                          type="button"
-                          onClick={handleAmountButtonClick}
-                          disabled={submitting || (wideWaiting && waitStatus === 'polling')}
-                          className="flex min-h-[46px] w-full items-center justify-center rounded-[12px] bg-[#222b35] px-[15px] text-sm font-semibold tracking-[0.02em] text-white transition hover:bg-[#151c23] hover:shadow-[0_10px_24px_rgba(24,33,48,0.15)] disabled:cursor-wait disabled:opacity-55 disabled:hover:shadow-none"
-                        >
-                          {amountButtonLabel}
-                        </button>
-                      </div>
                     </section>
 
                     {/* 状态行：错误 / 等待支付（订单号 + 重开 + 取消）/ 券码反馈 */}
@@ -1380,18 +1443,31 @@ export default function PurchaseModal({
                             )}
                             <button
                               type="button"
-                              onClick={() => void handleCancelOrder()}
+                              onClick={() => {
+                                cancelClosesModalRef.current = false;
+                                setCloseConfirmOpen(true);
+                              }}
                               className="mx-1 text-[#5f6c7d] underline underline-offset-2 transition hover:text-[#a63e4b]"
                             >
                               {t('payment.waiting.cancel')}
                             </button>
                           </>
                         ) : (
-                          <span className="text-[#a63e4b]">
-                            {waitStatus === 'expired'
-                              ? t('payment.waiting.expired')
-                              : t('payment.waiting.closed')}
-                          </span>
+                          /* 已关闭/过期：状态文案 + 重新下单链接（原通栏按钮已随协议遮罩改造移除） */
+                          <>
+                            <span className="text-[#a63e4b]">
+                              {waitStatus === 'expired'
+                                ? t('payment.waiting.expired')
+                                : t('payment.waiting.closed')}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={resetToOrderView}
+                              className="mx-1 text-[#3569d4] underline underline-offset-2"
+                            >
+                              {t('payment.waiting.reorder')}
+                            </button>
+                          </>
                         )
                       ) : appliedCoupon ? (
                         <span className="text-[#147b65]">
@@ -1429,7 +1505,7 @@ export default function PurchaseModal({
               </h2>
               <button
                 type="button"
-                onClick={onClose}
+                onClick={requestClose}
                 aria-label="关闭"
                 className="shrink-0 rounded-full p-1.5 text-stone-500 hover:bg-stone-100 hover:text-stone-700 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400/60"
               >
@@ -1570,21 +1646,27 @@ export default function PurchaseModal({
 
                   {error && <p className="text-sm text-red-600">{error}</p>}
 
-                  {/* 主按钮 */}
-                  <button
-                    type="button"
-                    onClick={() => void handlePay()}
-                    disabled={submitting}
-                    className="w-full rounded-xl bg-stone-900 px-4 py-3.5 text-base font-semibold text-white transition hover:bg-stone-800 disabled:opacity-40"
-                  >
-                    {submitting
-                      ? t('payment.creating')
-                      : renewalMode
-                        ? t('payment.renewal.submit')
-                        : finalAmount <= 0
-                          ? t('payment.payFree')
-                          : t('payment.pay', { amount: fenToYuan(finalAmount) })}
-                  </button>
+                  {/* 协议遮罩（出码前门控）：点遮罩上的「同意协议」才下单出码，支付按钮只存在于遮罩上；
+                      0 元单无需扫码，保留「免费领取」按钮 */}
+                  {renewalMode || finalAmount > 0 ? (
+                    <div className="mx-auto w-fit rounded-2xl border border-stone-200 bg-white p-[7px]">
+                      <QrAgreementMask
+                        submitting={submitting}
+                        creatingLabel={t('payment.creating')}
+                        onAgree={() => void handlePay()}
+                        t={t}
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void handlePay()}
+                      disabled={submitting}
+                      className="w-full rounded-xl bg-stone-900 px-4 py-3.5 text-base font-semibold text-white transition hover:bg-stone-800 disabled:opacity-40"
+                    >
+                      {submitting ? t('payment.creating') : t('payment.payFree')}
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -1680,7 +1762,10 @@ export default function PurchaseModal({
                     <div className="text-center">
                       <button
                         type="button"
-                        onClick={() => void handleCancelOrder()}
+                        onClick={() => {
+                          cancelClosesModalRef.current = false;
+                          setCloseConfirmOpen(true);
+                        }}
                         className="text-xs text-stone-400 underline-offset-2 transition hover:text-stone-600 hover:underline"
                       >
                         {t('payment.waiting.cancel')}
@@ -1865,6 +1950,74 @@ export default function PurchaseModal({
               </>
             )}
           </motion.div>
+
+          {/* 等待支付中关闭弹窗的三选确认层（继续支付 / 暂不取消先离开 / 取消订单） */}
+          <AnimatePresence>
+            {closeConfirmOpen && (
+              <motion.div
+                className="fixed inset-0 z-[220] flex items-center justify-center px-5"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+              >
+                <button
+                  type="button"
+                  className="absolute inset-0 bg-[#182130]/45"
+                  aria-label={t('payment.closeConfirm.continue')}
+                  onClick={() => setCloseConfirmOpen(false)}
+                />
+                <motion.div
+                  role="alertdialog"
+                  aria-modal
+                  aria-labelledby="purchase-close-confirm-title"
+                  className="relative w-full max-w-sm rounded-2xl border border-stone-200/80 bg-white p-6 shadow-[0_24px_80px_-24px_rgba(15,23,42,0.25)]"
+                  initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 8, scale: 0.99 }}
+                  transition={{ duration: 0.22 }}
+                >
+                  <h3
+                    id="purchase-close-confirm-title"
+                    className="text-base font-semibold text-stone-800"
+                  >
+                    {t('payment.closeConfirm.title')}
+                  </h3>
+                  <p className="mt-2 text-sm leading-relaxed text-stone-500">
+                    {t('payment.closeConfirm.body')}
+                  </p>
+                  <div className="mt-5 flex flex-col gap-2">
+                    {/* 三按钮同级别：继续支付（主）/ 暂不取消先离开 / 取消订单（同级描边，仅文字标红表危险） */}
+                    <button
+                      type="button"
+                      onClick={() => setCloseConfirmOpen(false)}
+                      className="w-full rounded-xl bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-800"
+                    >
+                      {t('payment.closeConfirm.continue')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // 订单保留 pending（30 分钟超时关单兜底），可从订单记录继续支付
+                        setCloseConfirmOpen(false);
+                        onClose();
+                      }}
+                      className="w-full rounded-xl border border-stone-300 px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:bg-stone-100"
+                    >
+                      {t('payment.closeConfirm.leave')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleCancelOrder()}
+                      className="w-full rounded-xl border border-stone-300 px-4 py-2.5 text-sm font-semibold text-[#a63e4b] transition hover:border-[#a63e4b]/40 hover:bg-[#a63e4b]/5"
+                    >
+                      {t('payment.closeConfirm.cancel')}
+                    </button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
       ) : null}
       </AnimatePresence>

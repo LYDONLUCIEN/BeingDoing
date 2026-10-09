@@ -11,11 +11,12 @@
  * - 分析中(ADR-0015)：输入锁定,提示「正在分析中」
  */
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { ArrowUp, Square } from 'lucide-react';
+import { ArrowUp, ChevronDown, Square } from 'lucide-react';
 import { useRuminationV4Store } from '@/stores/ruminationV4Store';
 import { useAuthStore } from '@/stores/authStore';
+import { useLocale } from '@/hooks/useLocale';
 import ToolbarCopyButton from '@/components/explore/ToolbarCopyButton';
 import type { ComboMessage } from '@/lib/explore/ruminationV4Api';
 
@@ -66,6 +67,11 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
   const streamStartRef = useRef(0);
   /** 底部跟随 rAF 节流（原逐 chunk 同步写 scrollTop + 强制布局） */
   const scrollRafRef = useRef<number | null>(null);
+  /** 为 true 时流式输出会滚到底部；用户上滑后为 false，点「回到底」再置 true
+      （2026-10-08 补齐：对齐前四阶段 chat 页的贴底/上拉取消吸附机制） */
+  const stickToBottomRef = useRef(true);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const { t } = useLocale();
 
   const userInitials = useMemo(
     () => (user?.username || user?.email || 'U').slice(0, 2).toUpperCase(),
@@ -105,19 +111,54 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
     return map;
   }, [enrichedMessages]);
 
+  /** 距底 >80px 显示回底按钮；≤120px 恢复吸附，否则用户上拉即取消吸附（视野跟随用户） */
+  const checkScrollPosition = useCallback(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setShowScrollBottom(gap > 80);
+    stickToBottomRef.current = gap <= 120;
+  }, []);
+
   const scheduleScrollToBottom = useCallback(() => {
     if (scrollRafRef.current != null) return;
     scrollRafRef.current = requestAnimationFrame(() => {
       scrollRafRef.current = null;
-      if (bodyRef.current) {
+      if (stickToBottomRef.current && bodyRef.current) {
         bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
       }
+      checkScrollPosition();
     });
-  }, []);
+  }, [checkScrollPosition]);
 
   useEffect(() => {
     scheduleScrollToBottom();
   }, [enrichedMessages.length, streamingText, thinkStreaming, scheduleScrollToBottom]);
+
+  /** 进入面板 / 切换组合：默认展示到最下方（重置吸附，消息异步到达后由上方 effect 滚底） */
+  useLayoutEffect(() => {
+    stickToBottomRef.current = true;
+    setShowScrollBottom(false);
+    const el = bodyRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    requestAnimationFrame(() => {
+      if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+    });
+  }, [comboId]);
+
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', checkScrollPosition, { passive: true });
+    checkScrollPosition();
+    return () => el.removeEventListener('scroll', checkScrollPosition);
+  }, [checkScrollPosition]);
+
+  const scrollToBottom = useCallback(() => {
+    stickToBottomRef.current = true;
+    bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: 'smooth' });
+  }, []);
 
   useEffect(
     () => () => {
@@ -155,6 +196,8 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
     const text = input.trim();
     if (!text) return;
     setInput('');
+    // 用户主动发言 = 想看回复，恢复贴底跟随
+    stickToBottomRef.current = true;
     await sendText(text);
     // 发送未进入流式（如分析中被拦）时，聚焦由这里保证；流式结束由上面的 effect 保证
     inputRef.current?.focus();
@@ -174,9 +217,10 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
       {/* 0923 拍板：不再包毛玻璃聊天卡——对话直接落在流光背景上（同前四阶段/HTML conversation），
           气泡与输入胶囊自带表面；仅保留顶部组合名 + 状态行（细线分隔，同 conversation-top） */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        {/* 1007 贴线：去 mb-2，对话面板与状态行细线无缝衔接（同前四阶段 header 灰线处理） */}
-        <div className="shrink-0 border-b border-black/[0.06] pb-2">
-          <div className="flex items-start justify-between gap-3">
+        {/* 1007 贴线：去 mb-2，对话面板与状态行细线无缝衔接（同前四阶段 header 灰线处理）
+            2026-10-08：加 v4-chat-glass-header——半透明 + 轻度模糊 + 下沿羽化光晕（bd-static-skin §5） */}
+        <div className="v4-chat-glass-header shrink-0 border-b border-black/[0.06] pb-2">
+          <div className="flex items-start justify-center gap-3 text-center">
             <div>
               <h2 className="text-[15px] font-semibold text-bd-fg">
                 {combo ? `${combo.passion} × ${combo.strengths.join('、')}` : '探索对话'}
@@ -299,6 +343,16 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
                 )}
               </div>
             </div>
+
+            {/* 回到底部（距底 >80px 显示；2026-10-08 补齐，对齐前四阶段 chat 页） */}
+            <button
+              type="button"
+              aria-label={t('explore.chat.scrollToBottom')}
+              className={`flow-scroll-bottom-btn ${showScrollBottom ? 'visible' : ''}`}
+              onClick={scrollToBottom}
+            >
+              <ChevronDown size={22} strokeWidth={2.5} />
+            </button>
 
             {/* 输入区：结构对齐 v3 careering-input-dock + flow-input-* */}
             <div className="careering-input-dock w-full flex-shrink-0">

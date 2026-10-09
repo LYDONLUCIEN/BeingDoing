@@ -166,6 +166,19 @@ TEAM_ANALYSIS_EMAIL=soulhappylab@163.com  # 团队分析报告联系邮箱（前
 # 不套取）返回 qr_text，前端 qrcode.react 自渲染（居中/白边自控，免疫支付宝页布局漂移）；
 # 提取失败 qr_text=null 自动回退 iframe 嵌入 pay_url。码会轮换，手动刷新走
 # POST /payment/orders/{id}/refresh-qr（每单 10s 冷却，服务层 refresh_qr_text）
+# 协议遮罩门控（2026-10-08 起，对齐设计稿 wiki/开发文档/10-07/支付协议同意.png）：出码前
+# 二维码区域显示模糊化假二维码 + 半透明遮罩（「同意协议后扫码支付」+「同意协议」小按钮 +
+# LegalDocLink《服务条款》），点同意才下单出码；支付按钮只存在于遮罩上——宽模式底部通栏
+# 按钮已移除（下单后不再有「等待支付中」按钮，扫码完成后轮询切成功视图，用户自行关闭）；
+# 渠道按钮仅选择不再点击即下单；窄模式（延期/咨询）同款遮罩（仅 0 元单保留「免费领取」
+# 按钮）；resumeOrderId 继续支付视为已同意直接出码；订单关闭/过期后重新下单走状态行链接。
+# 等待支付中关闭弹窗（X/遮罩/ESC）先弹三选确认层：继续支付 / 暂不取消先离开（订单保留
+# pending 走 30 分钟超时关单兜底）/ 取消订单；状态行「取消订单」链接同走该确认层
+# （cancelClosesModalRef 区分取消后是否连带关弹窗）。关键组件 PurchaseModal.tsx 的
+# QrAgreementMask + requestClose + 内联确认层（z-[220]）。
+# 取消竞态保护（2026-10-08 起）：cancel_order 渠道关单后绕过冷却强制查单
+# （_sync_order_from_channel(force=True)），已支付则幂等交付返回 granted 不取消
+# （前端检查 cancel 响应 order.status==='granted' 时进成功视图），防「付款瞬间取消」漏交付
 # 商品目录（ADR-0008；2026-07-28 起对外口径改回：季度套餐 / 年度套餐，内部 SKU 仍为 quarterly_package/annual_package）
 # 套餐码有效期（ADR-0018，2026-08-16 起）：支付成功（交付）即起算，交付时 expires_at = now + 套餐天数；
 # 存量未激活码（expires_at=None）不溯及既往，仍由 maybe_start_validity 首次创建对话 session 时起算
@@ -338,6 +351,7 @@ async def get_user(user_id: str) -> Optional[Dict]:
 - 使用 ESLint 配置
 - 类型定义使用接口
 - 组件文档使用 JSDoc
+- **chat 页覆盖式毛玻璃（2026-10-08 起）**：前四阶段 chat 页 header / 输入坞改为绝对定位悬浮在滚动区之上（`.chat-overlay-glass` 挂在主栏容器；JS ResizeObserver 实测两者高度写 `--chat-overlay-header-h` / `--chat-overlay-dock-h`，滚动区上下 padding 据此补偿），毛玻璃是各自 ::before 羽化层（blur 8px + mask 渐隐光晕，半透明可透出穿过的气泡）；rumination V4 面板头部用 `.v4-chat-glass-header`、输入坞 ::before 用与 `rumination-chat-body-fade` 同色样的 90° 渐变融合。这是「轻度模糊折中」的有意权衡，部分回调了 2026-10-06 的去 backdrop-filter 定稿——blur 只挂在小面积固定条带上。关键文件：`styles/components/bd-static-skin.css` §4。回底按钮 + 上拉取消吸附（`stickToBottomRef`）主聊天页本就有，同日起 V4ChatPanel 补齐同款（按钮 bottom 固定 7.5rem 避开 dock）。另：guided 布局工作台加 `rumination-workbench--flush-left`——去掉左侧 30px 内缩（rumination-beautiful.css），让对话列毛玻璃头部/输入坞/滚动区左缘与「05 沉淀」顶栏左缘对齐，消除色带接缝（classic 布局保留原 60px 收窄与 toolbar 对齐口径）；同日 V4 组合名头部与「05 沉淀」顶栏无缝合并为一体（guided 下 journey-rumination-header 去 mb/border-b，`v4-chat-glass-header` 文本居中、背景换顶部渐隐条同款采样色 226,231,247→250,251,252，整块只保留头部下方一条 border-b）。
 - **浏览器兼容底线（ADR-0020）**：视口高度一律用 `.chat-shell-h`（flow-chat-light.css，vh→dvh 回退），禁止在 TSX 裸写 `h-[calc(100dvh-…)]`；新 CSS 特性（color-mix 等）同规则内先写静态近似值回退；内联 `backdropFilter` 必带 `WebkitBackdropFilter`。旧内核用特性检测（`lib/utils/browserCompat.ts`，非 UA 嗅探）弹窗引导换 Edge/Chrome（`components/layout/LegacyBrowserNotice.tsx` + 动态加载的 `LegacyBrowserNoticeDialog.tsx`，挂首页+chat 页，「不再提示」存 localStorage）；IE 模式由 root layout 的 ES5 内联脚本静态兑底。术语见 `docs/glossary.md`
 - **静态资源缓存口径（2026-09-21 起）**：`public/` 下文件名不带哈希，`/assets/`、`/fonts/` 走长缓存（nginx `deploy/nginx-static-cache.conf` + `next.config.js headers()` 双保险，30d immutable）——**引用这些资源必须在 URL 后带 `?v=yyyymmdd` 版本号，更新资源时递增版本号即击穿缓存**。首页大图已 WebP 化（`home-scene.webp` 47KB / `botanical-scene.webp` 113KB / `testimonial-avatars.webp` 51KB，q85；原 PNG 保留作无损母版勿删）；新图片一律压成 WebP 再入库，非首屏 `<img>` 带 `loading="lazy" decoding="async"`。framer-motion 不得进首屏 bundle（参考 LegacyBrowserNotice 的 dynamic import 拆法）。
 

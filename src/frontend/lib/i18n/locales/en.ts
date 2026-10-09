@@ -515,6 +515,20 @@ export const en = {
     copy: 'Copy',
     copied: 'Copied',
     confirmCancel: 'Cancel this order?',
+    /** 协议遮罩（出码前门控）：假二维码 + 遮罩，同意协议后才下单出码 */
+    agreement: {
+      maskTitle: 'Scan to pay after agreeing',
+      agree: 'Agree',
+      termsPrefix: 'I have read and agree to',
+    },
+    /** 等待支付中关闭弹窗的确认层 */
+    closeConfirm: {
+      title: 'Cancel this order?',
+      body: 'Cancelling invalidates the QR code and releases the locked coupon. You can also keep it and resume within 30 minutes from "Dashboard → My Codes → Orders".',
+      continue: 'Continue Payment',
+      leave: 'Leave Without Cancelling',
+      cancel: 'Cancel Order',
+    },
     qr: {
       refresh: 'Refresh QR code',
       refreshFailed: 'Failed to refresh the QR code. Please try again.',

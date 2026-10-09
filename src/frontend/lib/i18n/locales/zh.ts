@@ -506,6 +506,20 @@ export const zh = {
     copy: '复制',
     copied: '已复制',
     confirmCancel: '确认取消该订单吗？',
+    /** 协议遮罩（出码前门控）：假二维码 + 遮罩，同意协议后才下单出码 */
+    agreement: {
+      maskTitle: '同意协议后扫码支付',
+      agree: '同意协议',
+      termsPrefix: '我已阅读并同意',
+    },
+    /** 等待支付中关闭弹窗的确认层 */
+    closeConfirm: {
+      title: '取消这笔订单？',
+      body: '取消后收款二维码失效，已锁定的折扣券将退回。也可以暂不取消，30 分钟内在「个人空间 → 我的激活码 → 订单记录」继续支付。',
+      continue: '继续支付',
+      leave: '暂不取消，先离开',
+      cancel: '取消订单',
+    },
     qr: {
       refresh: '刷新二维码',
       refreshFailed: '二维码刷新失败，请稍后重试',

@@ -168,7 +168,11 @@ export default function RuminationV4Page({
     /* 顶栏：居中标题 + 右上完成并继续（guided 下仅横跨对话列，同 HTML conversation-top）。
        relative z-30：毛玻璃 backdrop-filter 会建立层叠上下文把外观弹层困在 header 层级之下，
        显式置顶保证弹层永远盖住对话/选择器（0923 拍板） */
-    <header className="hero journey-rumination-header relative z-30 mb-2.5 grid shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-[rgba(80,94,145,0.08)] pb-3 pt-1 text-center">
+    <header className={`hero journey-rumination-header relative z-30 grid shrink-0 grid-cols-[1fr_auto_1fr] items-center pb-3 pt-1 text-center ${
+      /* guided：与下方组合名头部（v4-chat-glass-header）无缝衔接成一体——去掉底部间距与灰线分隔；
+         classic 保留 mb + 细分隔线（与 toolbar-wrap 的间距口径） */ 
+      isGuided ? 'mb-0' : 'mb-2.5 border-b border-[rgba(80,94,145,0.08)]'
+    }`}>
       <div />
       <div className="px-4 sm:px-8">
         {/* 标题与前四阶段 .careering-chat-phase-title 同口径：19px 衬线 + SemiBold 600
@@ -331,7 +335,7 @@ export default function RuminationV4Page({
             {lockBannerNode}
             <div
               ref={workbenchRef}
-              className="rumination-workbench flex min-h-0 flex-1 gap-3 overflow-hidden"
+              className="rumination-workbench rumination-workbench--flush-left flex min-h-0 flex-1 gap-3 overflow-hidden"
             >
               {chatNode}
               {/* 0923 拍板：收拢条放在选择器左侧——展开时跟随选择器往左移动，点击收起滑回右缘 */}
