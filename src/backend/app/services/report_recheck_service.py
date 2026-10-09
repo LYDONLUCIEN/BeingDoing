@@ -369,8 +369,8 @@ async def _finalize_done(
         type_=NOTIFY_TYPE_DONE,
         title="报告复核已完成",
         content=(
-            "您申请复核的报告已完成更新，请重新下载查看最新版本："
-            "/explore/report/view\n"
+            "您申请复核的报告已完成更新，请前往「个人空间 → 当前进度」，"
+            "点击对应旅程的「查看报告」按钮查看最新版本。\n"
             f"激活码：{activation_code}"
         ),
     )
@@ -380,7 +380,8 @@ async def _finalize_done(
         subject="【寻路·OpenLife】您的报告已完成复核更新",
         body_text=(
             "您好，\n\n"
-            "您申请复核的报告已完成内容更新，登录后进入报告页重新下载即可查看最新版本。\n\n"
+            "您申请复核的报告已完成内容更新，请登录后前往「个人空间 → 当前进度」，"
+            "点击对应旅程的「查看报告」按钮查看最新版本。\n\n"
             f"激活码：{activation_code}\n\n"
             "—— 寻路·OpenLife 团队"
         ),

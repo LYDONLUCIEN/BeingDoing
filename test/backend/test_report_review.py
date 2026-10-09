@@ -484,7 +484,7 @@ def test_admin_manual_approve(reg: ReportRegistry, db_factory) -> None:
             ).scalars().all()
             assert len(rows) == 1
             assert "您的报告已审核通过" in rows[0].content
-            assert "/explore/report/view" in rows[0].content
+            assert "个人空间 → 当前进度" in rows[0].content
             assert "激活码：CODE1" in rows[0].content
             assert rid not in rows[0].content  # 内部 report_id 不透出给用户
 

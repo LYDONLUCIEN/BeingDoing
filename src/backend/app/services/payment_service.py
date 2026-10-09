@@ -779,9 +779,8 @@ class PaymentService:
                 subject = "【寻路·OpenLife】报告解读咨询购买成功"
                 body = (
                     "您好，\n\n"
-                    "感谢您的购买。请前往填写预约问卷（想探讨的主题、方便的时间段、联系方式），"
-                    "我们会尽快与您确认咨询时间：\n\n"
-                    f"{frontend}/dashboard/consultation\n\n"
+                    "感谢您的购买。请登录后前往「个人空间 → 报告解读」填写预约问卷"
+                    "（想探讨的主题、方便的时间段、联系方式），我们会尽快与您确认咨询时间。\n\n"
                     "—— 寻路·OpenLife"
                 )
             else:  # 旧 SKU 历史订单
@@ -1401,6 +1400,34 @@ class PaymentService:
     # ─── 序列化 ─────────────────────────────────────────────────
 
     @staticmethod
+    def _lookup_code_expiry(order: PaymentOrder) -> Optional[Dict[str, Optional[str]]]:
+        """订单交付码 → expires_at 联查（订单页/列表展示「失效时间」，2026-10-09 起）
+
+        覆盖 delivered_code + meta.codes + meta.gift_codes（去重）；
+        值为 ISO 字符串或 None（None = 未起算的老存量码/试用码，前端按口径显示）。
+        单码查询失败不影响其他码；无码时返回 None。
+        """
+        meta = PaymentService._parse_meta(order.meta)
+        codes: List[str] = []
+        if order.delivered_code:
+            codes.append(order.delivered_code)
+        for key in ("codes", "gift_codes"):
+            raw = meta.get(key)
+            if isinstance(raw, list):
+                codes.extend(str(c) for c in raw if c)
+        expiry: Dict[str, Optional[str]] = {}
+        for code in codes:
+            c = (code or "").strip().upper()
+            if not c or c in expiry:
+                continue
+            try:
+                _, rec = get_activation_with_manager(c)
+                expiry[c] = getattr(rec, "expires_at", None) if rec else None
+            except Exception:
+                expiry[c] = None
+        return expiry or None
+
+    @staticmethod
     def _order_to_dict(order: PaymentOrder, coupon_code: Optional[str] = None) -> Dict[str, Any]:
         """ORM → OrderItem（契约字段）"""
 
@@ -1422,6 +1449,7 @@ class PaymentService:
             "delivered_code": order.delivered_code,
             "channel_transaction_id": order.channel_transaction_id,
             "meta": PaymentService._parse_meta(order.meta) or None,
+            "code_expiry": PaymentService._lookup_code_expiry(order),
             "created_at": iso(order.created_at),
             "paid_at": iso(order.paid_at),
             "closed_at": iso(order.closed_at),

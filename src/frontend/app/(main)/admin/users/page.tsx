@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   fetchAdminUsers,
   fetchAdminUserDetail,
+  fetchFilterSchema,
   patchAdminUserStatus,
   patchAdminUserMeta,
   adminVerifyUserEmail,
@@ -16,13 +17,12 @@ import {
   type AdminUserDetail,
   type AdminUserType,
   type ConversationStatsResult,
+  type FilterSchemaEntry,
+  type FilterValues,
 } from '@/lib/api/admin';
+import { FilterBar } from '@/components/admin/FilterBar';
 import SurveyFormBd from '@/components/survey/SurveyFormBd';
 import { toDate } from '@/lib/utils/formatTime';
-
-type ActiveFilter = 'all' | 'active' | 'inactive' | 'deleted';
-type ProfileFilter = 'all' | 'completed' | 'incomplete';
-type TypeFilter = 'all' | AdminUserType;
 
 /** 用户类型 tag 样式（真实=绿 / 内测=蓝 / 测试=灰 / 管理员=橙） */
 const USER_TYPE_TAG: Record<string, { label: string; bg: string; color: string }> = {
@@ -40,12 +40,10 @@ export default function AdminUsersPage() {
   const [pageSize] = useState(50);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState<ActiveFilter>('all');
-  const [profileFilter, setProfileFilter] = useState<ProfileFilter>('all');
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
-  const [createdAfter, setCreatedAfter] = useState('');
-  const [createdBefore, setCreatedBefore] = useState('');
+  /** 筛选 schema（ADR-0023）；拉取失败时为空数组，降级为仅关键词搜索框 */
+  const [schema, setSchema] = useState<FilterSchemaEntry[]>([]);
+  /** 通用筛选值（注册表 key → 值，空 key 已剔除） */
+  const [filters, setFilters] = useState<FilterValues>({});
 
   // Detail drawer
   const [drawerUser, setDrawerUser] = useState<AdminUserDetail | null>(null);
@@ -78,14 +76,7 @@ export default function AdminUsersPage() {
       const res = await fetchAdminUsers({
         page,
         page_size: pageSize,
-        q: query || undefined,
-        is_active:
-          activeFilter === 'active' ? true : activeFilter === 'inactive' ? false : null,
-        deleted: activeFilter === 'deleted' ? true : activeFilter === 'inactive' ? false : null,
-        profile_completed: profileFilter === 'all' ? null : profileFilter === 'completed',
-        user_type: typeFilter === 'all' ? null : typeFilter,
-        created_after: createdAfter || undefined,
-        created_before: createdBefore || undefined,
+        filters,
       });
       setItems(res.items);
       setTotal(res.total);
@@ -94,7 +85,18 @@ export default function AdminUsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, query, activeFilter, profileFilter, typeFilter, createdAfter, createdBefore]);
+  }, [page, pageSize, filters]);
+
+  // 拉取筛选 schema（失败降级：FilterBar 不渲染，仅保留关键词搜索框）
+  useEffect(() => {
+    (async () => {
+      try {
+        setSchema(await fetchFilterSchema());
+      } catch {
+        setSchema([]);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     loadList();
@@ -219,16 +221,6 @@ export default function AdminUsersPage() {
     router.push(`/admin/activations?q=${encodeURIComponent(code)}`);
   };
 
-  const resetFilters = () => {
-    setQuery('');
-    setActiveFilter('all');
-    setProfileFilter('all');
-    setTypeFilter('all');
-    setCreatedAfter('');
-    setCreatedBefore('');
-    setPage(1);
-  };
-
   const openStats = async (userId: string) => {
     setStatsUserId(userId);
     setStatsLoading(true);
@@ -302,117 +294,44 @@ export default function AdminUsersPage() {
           borderColor: 'var(--bd-border)',
         }}
       >
-        <div className="flex flex-wrap gap-3 items-center">
-          <input
-            type="text"
-            placeholder="搜索 email / username"
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
+        {schema.length > 0 ? (
+          <FilterBar
+            schema={schema}
+            values={filters}
+            onChange={(v) => {
+              setFilters(v);
               setPage(1);
-            }}
-            className="px-3 py-2 rounded-lg text-sm border outline-none focus:ring-2 focus:ring-bd-ui-accent/30"
-            style={{
-              background: 'var(--bd-overlay-md, #fff)',
-              borderColor: 'var(--bd-border)',
-              color: 'var(--bd-fg)',
             }}
           />
-          <select
-            value={activeFilter}
-            onChange={(e) => {
-              setActiveFilter(e.target.value as ActiveFilter);
-              setPage(1);
-            }}
-            className="px-3 py-2 rounded-lg text-sm border outline-none"
-            style={{
-              background: 'var(--bd-overlay-md, #fff)',
-              borderColor: 'var(--bd-border)',
-              color: 'var(--bd-fg)',
-            }}
-          >
-            <option value="all">全部状态</option>
-            <option value="active">活跃</option>
-            <option value="inactive">已禁用</option>
-            <option value="deleted">已注销</option>
-          </select>
-          <select
-            value={profileFilter}
-            onChange={(e) => {
-              setProfileFilter(e.target.value as ProfileFilter);
-              setPage(1);
-            }}
-            className="px-3 py-2 rounded-lg text-sm border outline-none"
-            style={{
-              background: 'var(--bd-overlay-md, #fff)',
-              borderColor: 'var(--bd-border)',
-              color: 'var(--bd-fg)',
-            }}
-          >
-            <option value="all">Profile 全部</option>
-            <option value="completed">已填写</option>
-            <option value="incomplete">未填写</option>
-          </select>
-          <select
-            value={typeFilter}
-            onChange={(e) => {
-              setTypeFilter(e.target.value as TypeFilter);
-              setPage(1);
-            }}
-            className="px-3 py-2 rounded-lg text-sm border outline-none"
-            style={{
-              background: 'var(--bd-overlay-md, #fff)',
-              borderColor: 'var(--bd-border)',
-              color: 'var(--bd-fg)',
-            }}
-          >
-            <option value="all">用户类型全部</option>
-            <option value="real">真实用户</option>
-            <option value="beta">内测用户</option>
-            <option value="test">测试账号</option>
-            <option value="admin">管理员</option>
-          </select>
-          <input
-            type="date"
-            placeholder="注册起始日期"
-            value={createdAfter}
-            onChange={(e) => {
-              setCreatedAfter(e.target.value);
-              setPage(1);
-            }}
-            className="px-3 py-2 rounded-lg text-sm border outline-none"
-            style={{
-              background: 'var(--bd-overlay-md, #fff)',
-              borderColor: 'var(--bd-border)',
-              color: 'var(--bd-fg)',
-            }}
-          />
-          <input
-            type="date"
-            placeholder="注册截止日期"
-            value={createdBefore}
-            onChange={(e) => {
-              setCreatedBefore(e.target.value);
-              setPage(1);
-            }}
-            className="px-3 py-2 rounded-lg text-sm border outline-none"
-            style={{
-              background: 'var(--bd-overlay-md, #fff)',
-              borderColor: 'var(--bd-border)',
-              color: 'var(--bd-fg)',
-            }}
-          />
-          <button
-            onClick={resetFilters}
-            className="px-3 py-2 rounded-lg text-sm border hover:opacity-80 transition-opacity"
-            style={{
-              borderColor: 'var(--bd-border)',
-              color: 'var(--bd-fg-muted)',
-            }}
-          >
-            重置
-          </button>
-        </div>
+        ) : (
+          // schema 拉取失败降级：仅保留关键词搜索框（写入 filters.q，同走新筛选链路）
+          <div className="flex flex-wrap gap-3 items-center">
+            <input
+              type="text"
+              placeholder="搜索 email / username"
+              value={typeof filters.q === 'string' ? filters.q : ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                setFilters((prev) => {
+                  const next = { ...prev };
+                  if (v.trim()) {
+                    next.q = v;
+                  } else {
+                    delete next.q;
+                  }
+                  return next;
+                });
+                setPage(1);
+              }}
+              className="px-3 py-2 rounded-lg text-sm border outline-none focus:ring-2 focus:ring-bd-ui-accent/30"
+              style={{
+                background: 'var(--bd-overlay-md, #fff)',
+                borderColor: 'var(--bd-border)',
+                color: 'var(--bd-fg)',
+              }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Stats bar */}
@@ -444,9 +363,8 @@ export default function AdminUsersPage() {
                 className="border-b text-left"
                 style={{ background: 'var(--bd-overlay-md, rgba(0,0,0,0.03))', borderColor: 'var(--bd-border)' }}
               >
+                <th className="px-4 py-3 font-medium" style={{ color: 'var(--bd-fg-muted)' }}>用户</th>
                 <th className="px-4 py-3 font-medium" style={{ color: 'var(--bd-fg-muted)' }}>用户 ID</th>
-                <th className="px-4 py-3 font-medium" style={{ color: 'var(--bd-fg-muted)' }}>Email</th>
-                <th className="px-4 py-3 font-medium" style={{ color: 'var(--bd-fg-muted)' }}>用户名</th>
                 <th className="px-4 py-3 font-medium" style={{ color: 'var(--bd-fg-muted)' }}>用户类型</th>
                 <th className="px-4 py-3 font-medium" style={{ color: 'var(--bd-fg-muted)' }}>状态</th>
                 <th className="px-4 py-3 font-medium" style={{ color: 'var(--bd-fg-muted)' }}>邮箱验证</th>
@@ -465,11 +383,23 @@ export default function AdminUsersPage() {
                   style={{ borderColor: 'var(--bd-border)' }}
                   onClick={() => openDrawer(u.user_id)}
                 >
+                  {/* 用户：昵称优先（加粗）+ 邮箱次行——运营识别第一视角（2026-10-09） */}
+                  <td className="px-4 py-3">
+                    <div className="font-medium leading-tight" style={{ color: 'var(--bd-fg)' }}>
+                      {u.username || u.email || '-'}
+                    </div>
+                    {u.username && u.email ? (
+                      <div
+                        className="text-xs leading-tight mt-0.5"
+                        style={{ color: 'var(--bd-fg-muted)' }}
+                      >
+                        {u.email}
+                      </div>
+                    ) : null}
+                  </td>
                   <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--bd-fg)' }}>
                     {u.user_id.slice(0, 8)}...
                   </td>
-                  <td className="px-4 py-3" style={{ color: 'var(--bd-fg)' }}>{u.email || '-'}</td>
-                  <td className="px-4 py-3" style={{ color: 'var(--bd-fg)' }}>{u.username || '-'}</td>
                   <td className="px-4 py-3">
                     {(() => {
                       const t = USER_TYPE_TAG[u.user_type || 'real'] || USER_TYPE_TAG.real;

@@ -558,11 +558,25 @@ function PurchasedCodesSection({
   // 平铺展示：按创建时间倒序（最新的码在最前）
   const sorted = [...items].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
 
-  /** 单个码一行：码值 + 状态 badge + 去向备注（合并激活情况） + 报告状态；未绑定码保留复制/去使用 */
+  /** 单个码一行：码值 + 状态 badge + 去向备注（合并激活情况） + 失效时间 + 报告状态；未绑定码保留复制/去使用 */
   const renderCodeRow = (item: PurchasedCodeItem) => {
     const isConsumed = item.status === 'consumed';
     const isRevoked = item.status === 'revoked';
     const unbound = !item.activated && !isConsumed && !isRevoked;
+    // 失效时间（2026-10-09 起）：与上方 CodeCard 同口径——
+    // inactive 显示「激活后开始计算」，trial/无 expires_at 显示「不限」，否则日期+剩余天数
+    const expiryText = (() => {
+      if (item.status === 'inactive') return t('dashboard.codesPage.startsOnUse');
+      if (item.code_type === 'trial' || !item.expires_at) return t('dashboard.codesPage.noExpiry');
+      const formatted = formatLocalDateTime(item.expires_at);
+      const exp = toDate(item.expires_at);
+      const days = exp ? Math.ceil((exp.getTime() - Date.now()) / (24 * 60 * 60 * 1000)) : null;
+      const daysPart =
+        days != null && days >= 0
+          ? ` · ${t('dashboard.codesPage.daysLeft', { days: String(days) })}`
+          : '';
+      return `${formatted === '-' ? item.expires_at : formatted}${daysPart}`;
+    })();
     return (
       <div key={item.code} className="p-4 flex flex-wrap items-center gap-3">
         <span className="font-mono text-sm text-bd-fg">{item.code}</span>
@@ -588,6 +602,9 @@ function PurchasedCodesSection({
           ) : (
             t('dashboard.codesPage.destination.unbound')
           )}
+        </span>
+        <span className="text-xs text-bd-muted">
+          {t('dashboard.codesPage.expiresLabel')}：{expiryText}
         </span>
         {unbound && (
           <>

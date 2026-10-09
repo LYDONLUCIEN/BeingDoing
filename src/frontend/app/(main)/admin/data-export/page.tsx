@@ -3,14 +3,14 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   fetchAdminUsers,
+  fetchFilterSchema,
   exportUsersFullData,
   type AdminUserItem,
-  type AdminUserType,
+  type FilterSchemaEntry,
+  type FilterValues,
 } from '@/lib/api/admin';
+import { FilterBar } from '@/components/admin/FilterBar';
 import { toDate } from '@/lib/utils/formatTime';
-
-type TypeFilter = 'all' | AdminUserType;
-type HasReportFilter = 'all' | 'yes' | 'no';
 
 /** 用户类型 tag 样式（与用户管理页同口径：真实=绿 / 内测=蓝 / 测试=灰 / 管理员=橙） */
 const USER_TYPE_TAG: Record<string, { label: string; bg: string; color: string }> = {
@@ -31,12 +31,10 @@ export default function AdminDataExportPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [query, setQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
-  const [createdAfter, setCreatedAfter] = useState('');
-  const [createdBefore, setCreatedBefore] = useState('');
-  /** 仅作用于「按筛选全量导出」（服务端过滤），列表本身不按此过滤 */
-  const [hasReportFilter, setHasReportFilter] = useState<HasReportFilter>('all');
+  /** 筛选 schema（ADR-0023）；拉取失败时为空数组，降级为仅关键词搜索框 */
+  const [schema, setSchema] = useState<FilterSchemaEntry[]>([]);
+  /** 通用筛选值（注册表 key → 值，空 key 已剔除）；同时作用于列表与「按筛选全量导出」 */
+  const [filters, setFilters] = useState<FilterValues>({});
 
   /** 跨页勾选的 user_id 集合 */
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -49,10 +47,7 @@ export default function AdminDataExportPage() {
       const res = await fetchAdminUsers({
         page,
         page_size: pageSize,
-        q: query || undefined,
-        user_type: typeFilter === 'all' ? null : typeFilter,
-        created_after: createdAfter || undefined,
-        created_before: createdBefore || undefined,
+        filters,
       });
       setItems(res.items);
       setTotal(res.total);
@@ -61,7 +56,18 @@ export default function AdminDataExportPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, query, typeFilter, createdAfter, createdBefore]);
+  }, [page, pageSize, filters]);
+
+  // 拉取筛选 schema（失败降级：FilterBar 不渲染，仅保留关键词搜索框）
+  useEffect(() => {
+    (async () => {
+      try {
+        setSchema(await fetchFilterSchema());
+      } catch {
+        setSchema([]);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     loadList();
@@ -93,20 +99,27 @@ export default function AdminDataExportPage() {
     });
   };
 
-  const buildFilterPayload = () => ({
-    user_type: typeFilter === 'all' ? null : typeFilter,
-    q: query || undefined,
-    created_after: createdAfter || undefined,
-    created_before: createdBefore || undefined,
-    has_report: hasReportFilter === 'all' ? undefined : hasReportFilter === 'yes',
-  });
+  /** 组装导出 payload：导出入口再剔一次空 key（保险；FilterBar onChange 时已剔除） */
+  const buildFilterPayload = () => {
+    const cleaned: FilterValues = {};
+    for (const [key, value] of Object.entries(filters)) {
+      if (value === undefined) continue;
+      if (Array.isArray(value) && value.length === 0) continue;
+      if (typeof value === 'string' && !value.trim()) continue;
+      if (
+        typeof value === 'object' &&
+        !Array.isArray(value) &&
+        !(value.after || '').trim() &&
+        !(value.before || '').trim()
+      ) {
+        continue;
+      }
+      cleaned[key] = value;
+    }
+    return { filters: cleaned };
+  };
 
-  const hasActiveFilter =
-    typeFilter !== 'all' ||
-    !!query ||
-    !!createdAfter ||
-    !!createdBefore ||
-    hasReportFilter !== 'all';
+  const hasActiveFilter = Object.keys(filters).length > 0;
 
   /** 导出勾选的用户（显式 user_ids） */
   const exportSelected = async () => {
@@ -156,12 +169,6 @@ export default function AdminDataExportPage() {
     }
   };
 
-  const inputStyle = {
-    background: 'var(--bd-overlay-md, #fff)',
-    borderColor: 'var(--bd-border)',
-    color: 'var(--bd-fg)',
-  };
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -175,7 +182,7 @@ export default function AdminDataExportPage() {
         </p>
       </div>
 
-      {/* Filters */}
+      {/* Filters（ADR-0023 通用筛选条） */}
       <div
         className="rounded-2xl border p-4 space-y-3"
         style={{
@@ -183,87 +190,44 @@ export default function AdminDataExportPage() {
           borderColor: 'var(--bd-border)',
         }}
       >
-        <div className="flex flex-wrap gap-3 items-center">
-          <input
-            type="text"
-            placeholder="搜索 email / username"
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
+        {schema.length > 0 ? (
+          <FilterBar
+            schema={schema}
+            values={filters}
+            onChange={(v) => {
+              setFilters(v);
               setPage(1);
             }}
-            className="px-3 py-2 rounded-lg text-sm border outline-none"
-            style={inputStyle}
           />
-          <select
-            value={typeFilter}
-            onChange={(e) => {
-              setTypeFilter(e.target.value as TypeFilter);
-              setPage(1);
-            }}
-            className="px-3 py-2 rounded-lg text-sm border outline-none"
-            style={inputStyle}
-          >
-            <option value="all">用户类型全部</option>
-            <option value="real">真实用户</option>
-            <option value="beta">内测用户</option>
-            <option value="test">测试账号</option>
-            <option value="admin">管理员</option>
-          </select>
-          <input
-            type="date"
-            value={createdAfter}
-            onChange={(e) => {
-              setCreatedAfter(e.target.value);
-              setPage(1);
-            }}
-            className="px-3 py-2 rounded-lg text-sm border outline-none"
-            style={inputStyle}
-          />
-          <input
-            type="date"
-            value={createdBefore}
-            onChange={(e) => {
-              setCreatedBefore(e.target.value);
-              setPage(1);
-            }}
-            className="px-3 py-2 rounded-lg text-sm border outline-none"
-            style={inputStyle}
-          />
-          <button
-            onClick={() => {
-              setQuery('');
-              setTypeFilter('all');
-              setCreatedAfter('');
-              setCreatedBefore('');
-              setHasReportFilter('all');
-              setPage(1);
-            }}
-            className="px-3 py-2 rounded-lg text-sm border hover:opacity-80 transition-opacity"
-            style={{ borderColor: 'var(--bd-border)', color: 'var(--bd-fg-muted)' }}
-          >
-            重置
-          </button>
-        </div>
-
-        <div className="flex flex-wrap gap-3 items-center">
-          <span className="text-xs" style={{ color: 'var(--bd-fg-muted)' }}>
-            全量导出时附加：
-          </span>
-          <select
-            value={hasReportFilter}
-            onChange={(e) => setHasReportFilter(e.target.value as HasReportFilter)}
-            className="px-3 py-1.5 rounded-lg text-xs border outline-none"
-            style={inputStyle}
-          >
-            <option value="all">不限报告</option>
-            <option value="yes">仅名下有报告的用户</option>
-            <option value="no">仅名下无报告的用户</option>
-          </select>
-          <span className="text-xs" style={{ color: 'var(--bd-fg-muted)' }}>
-            （该条件只在「按筛选全量导出」时生效）
-          </span>
-        </div>
+        ) : (
+          // schema 拉取失败降级：仅保留关键词搜索框（写入 filters.q，同走新筛选链路）
+          <div className="flex flex-wrap gap-3 items-center">
+            <input
+              type="text"
+              placeholder="搜索 email / username"
+              value={typeof filters.q === 'string' ? filters.q : ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                setFilters((prev) => {
+                  const next = { ...prev };
+                  if (v.trim()) {
+                    next.q = v;
+                  } else {
+                    delete next.q;
+                  }
+                  return next;
+                });
+                setPage(1);
+              }}
+              className="px-3 py-2 rounded-lg text-sm border outline-none"
+              style={{
+                background: 'var(--bd-overlay-md, #fff)',
+                borderColor: 'var(--bd-border)',
+                color: 'var(--bd-fg)',
+              }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Export actions */}
@@ -342,13 +306,10 @@ export default function AdminDataExportPage() {
                   />
                 </th>
                 <th className="px-4 py-3 font-medium" style={{ color: 'var(--bd-fg-muted)' }}>
+                  用户
+                </th>
+                <th className="px-4 py-3 font-medium" style={{ color: 'var(--bd-fg-muted)' }}>
                   用户 ID
-                </th>
-                <th className="px-4 py-3 font-medium" style={{ color: 'var(--bd-fg-muted)' }}>
-                  Email
-                </th>
-                <th className="px-4 py-3 font-medium" style={{ color: 'var(--bd-fg-muted)' }}>
-                  用户名
                 </th>
                 <th className="px-4 py-3 font-medium" style={{ color: 'var(--bd-fg-muted)' }}>
                   用户类型
@@ -385,17 +346,25 @@ export default function AdminDataExportPage() {
                         onChange={() => toggleSelect(u.user_id)}
                       />
                     </td>
+                    {/* 用户：昵称优先（加粗）+ 邮箱次行——运营识别第一视角（2026-10-09） */}
+                    <td className="px-4 py-3">
+                      <div className="font-medium leading-tight" style={{ color: 'var(--bd-fg)' }}>
+                        {u.username || u.email || '-'}
+                      </div>
+                      {u.username && u.email ? (
+                        <div
+                          className="text-xs leading-tight mt-0.5"
+                          style={{ color: 'var(--bd-fg-muted)' }}
+                        >
+                          {u.email}
+                        </div>
+                      ) : null}
+                    </td>
                     <td
                       className="px-4 py-3 font-mono text-xs"
                       style={{ color: 'var(--bd-fg)' }}
                     >
                       {u.user_id.slice(0, 8)}...
-                    </td>
-                    <td className="px-4 py-3" style={{ color: 'var(--bd-fg)' }}>
-                      {u.email || '-'}
-                    </td>
-                    <td className="px-4 py-3" style={{ color: 'var(--bd-fg)' }}>
-                      {u.username || '-'}
                     </td>
                     <td className="px-4 py-3">
                       <span

@@ -38,13 +38,13 @@ NOTIFY_TITLE_SCHEDULED = "咨询时间已确认"
 
 
 def _build_scheduled_notification_content(scheduled_dt: datetime) -> str:
-    """预约确认站内信文案（时间 + 预约列表页入口；admin_note 为内部备注不透出，
+    """预约确认站内信文案（时间 + 前端手动入口指引；admin_note 为内部备注不透出，
     booking_id 为内部 UUID 不写进用户可见文案）。"""
     time_str = scheduled_dt.strftime("%Y-%m-%d %H:%M")
     return (
         f"您的报告解读咨询时间已确认：{time_str}。\n"
         "请提前安排好时间，顾问将通过您预留的联系方式与您沟通。\n"
-        "查看详情：/dashboard/consultation"
+        "可前往「个人空间 → 报告解读」查看预约详情。"
     )
 
 

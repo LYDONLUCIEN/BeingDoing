@@ -1315,6 +1315,35 @@ export interface AdminUserItem {
   admin_note?: string | null;
 }
 
+// ─── 通用用户筛选（ADR-0023）───────────────────────────────────
+
+/** 过滤器类型：multi_enum=多选枚举 / enum=单选枚举 / date_range=日期区间 / text=关键词 */
+export type AdminFilterType = 'multi_enum' | 'enum' | 'date_range' | 'text';
+
+/** GET /admin/filters/schema 下发的单个过滤器声明 */
+export interface FilterSchemaEntry {
+  key: string;
+  label: string;
+  type: AdminFilterType;
+  /** enum 类过滤器的可选值；text / date_range 为 null */
+  options: Array<{ value: string; label: string }> | null;
+}
+
+/**
+ * 筛选值集合：注册表 key → 多选数组 / 单选或关键词字符串 / 日期区间对象。
+ * 空值语义 = 删除该 key（FilterBar onChange 时已剔除空 key）。
+ */
+export type FilterValues = Record<
+  string,
+  string[] | string | { after?: string; before?: string } | undefined
+>;
+
+/** 拉取用户筛选 schema（GET /admin/filters/schema，super_admin） */
+export async function fetchFilterSchema(): Promise<FilterSchemaEntry[]> {
+  const res = await apiClient.get('/admin/filters/schema');
+  return (res.data?.filters ?? []) as FilterSchemaEntry[];
+}
+
 export interface AdminUserActivation {
   activation_code: string;
   session_id?: string;
@@ -1375,8 +1404,16 @@ export async function fetchAdminUsers(params?: {
   user_type?: AdminUserType | null;
   created_after?: string;
   created_before?: string;
+  /** ADR-0023 筛选注册表 key → 值；非空时序列化为 JSON 查询参数，优先于旧扁平参数 */
+  filters?: FilterValues;
 }): Promise<{ items: AdminUserItem[]; total: number; page: number; page_size: number }> {
-  const res = await apiClient.get('/admin/users', { params });
+  const { filters, ...flatParams } = params ?? {};
+  const query: Record<string, any> = { ...flatParams };
+  // 非空（有 key）才携带 filters，空对象等同不限，不下发
+  if (filters && Object.keys(filters).length > 0) {
+    query.filters = JSON.stringify(filters);
+  }
+  const res = await apiClient.get('/admin/users', { params: query });
   return (res.data ?? { items: [], total: 0, page: 1, page_size: 50 }) as {
     items: AdminUserItem[];
     total: number;
@@ -1425,6 +1462,8 @@ export async function exportUsersFullData(payload: {
   created_after?: string;
   created_before?: string;
   has_report?: boolean;
+  /** ADR-0023 筛选注册表 key → 值；与旧扁平参数并存时 filters 优先 */
+  filters?: FilterValues;
 }): Promise<void> {
   const res = await apiClient.raw.post('/admin/users/export', payload, {
     responseType: 'blob',

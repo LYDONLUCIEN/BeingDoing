@@ -249,6 +249,8 @@ export interface OrderItem {
   delivered_code?: string | null;
   /** 商品特定载荷：renewal {target_code, added_days}；annual {gift_codes}；consultation {booking_id} */
   meta?: OrderMeta | null;
+  /** 交付码 → 失效时间（ISO 或 null=未起算/不过期），后端按码联查；无码订单为 null */
+  code_expiry?: Record<string, string | null> | null;
   channel_transaction_id?: string | null;
   created_at: string;
   paid_at?: string | null;
@@ -308,7 +310,7 @@ export async function getProducts(): Promise<ProductsResult> {
 }
 
 /** 团队分析报告联系邮箱兜底（与后端 settings.TEAM_ANALYSIS_EMAIL 默认值一致） */
-export const TEAM_ANALYSIS_EMAIL_FALLBACK = 'soulhappylab@163.com';
+export const TEAM_ANALYSIS_EMAIL_FALLBACK = 'openlife.lab@outlook.com';
 
 let cachedTeamAnalysisEmail: string | null = null;
 

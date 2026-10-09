@@ -13,7 +13,7 @@ import {
   type PayChannel,
   type ProductType,
 } from '@/lib/api/payment';
-import { formatLocalDateTime } from '@/lib/utils/formatTime';
+import { formatLocalDateTime, toDate } from '@/lib/utils/formatTime';
 import { useLocale } from '@/hooks/useLocale';
 import PurchaseModal from '@/components/payment/PurchaseModal';
 import RefundRequestModal from '@/components/payment/RefundRequestModal';
@@ -97,6 +97,22 @@ export default function OrdersSection() {
     } catch {
       /* 复制失败静默 */
     }
+  };
+
+  /** 交付码失效时间（2026-10-09 起）：与「我的激活码」tab 同口径——
+   * 有 expires_at 显示日期+剩余天数，无（老存量码未起算）显示「激活后开始计算」 */
+  const codeExpiryLabel = (order: OrderItem, code: string) => {
+    const exp = order.code_expiry?.[code.trim().toUpperCase()] ?? order.code_expiry?.[code];
+    if (!exp) return t('dashboard.codesPage.startsOnUse');
+    const expDate = toDate(exp);
+    const days = expDate
+      ? Math.ceil((expDate.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+      : null;
+    const daysPart =
+      days != null && days >= 0
+        ? ` · ${t('dashboard.codesPage.daysLeft', { days: String(days) })}`
+        : '';
+    return `${t('dashboard.codesPage.expiresLabel')}：${formatTime(exp)}${daysPart}`;
   };
 
   const openResume = (id: string) => {
@@ -257,13 +273,22 @@ export default function OrdersSection() {
                       )}
                     </button>
                   );
+                  // 码 + 失效时间（码下方小字）
+                  const renderCodeWithExpiry = (code: string) => (
+                    <span key={code} className="inline-flex flex-col items-start gap-1">
+                      {renderCopyBtn(code)}
+                      <span className="text-[10px] text-bd-subtle">
+                        {codeExpiryLabel(order, code)}
+                      </span>
+                    </span>
+                  );
                   if (allCodes.length <= 1) {
                     return (
                       <div className="flex flex-wrap items-center gap-2 pt-1">
                         <span className="text-xs text-bd-muted">
                           {t('payment.success.codeLabel')}
                         </span>
-                        {renderCopyBtn(order.delivered_code!)}
+                        {renderCodeWithExpiry(order.delivered_code!)}
                         <Link
                           href={`/explore/activate?code=${encodeURIComponent(order.delivered_code!)}`}
                           className="px-4 py-2 rounded-lg text-sm font-medium bg-bd-ui-accent text-bd-ui-accent-fg hover:opacity-90"
@@ -280,8 +305,8 @@ export default function OrdersSection() {
                           count: String(allCodes.length),
                         })}
                       </p>
-                      <div className="flex flex-wrap items-center gap-2">
-                        {allCodes.map(renderCopyBtn)}
+                      <div className="flex flex-wrap items-start gap-3">
+                        {allCodes.map(renderCodeWithExpiry)}
                       </div>
                       <p className="text-[11px] text-bd-subtle">
                         {t('dashboard.ordersPage.codesFungibleHint')}

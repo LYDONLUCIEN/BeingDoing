@@ -40,8 +40,6 @@ logger = logging.getLogger(__name__)
 
 NOTIFICATION_TYPE = "report_approved"
 NOTIFICATION_TITLE = "报告审核通过"
-# 报告入口链接（前端 explore/report/view 页）
-REPORT_ENTRY_PATH = "/explore/report/view"
 
 
 def _now_iso() -> str:
@@ -52,10 +50,12 @@ def build_approved_notification_content(activation_code: str) -> str:
     """人工/自动批复同一文案（ADR-0009：用户只感知「管理员审核通过」）。
 
     用户侧标识用激活码（用户唯一知道的报告标识），不写内部 report_id。
+    入口为前端手动点击指引（2026-10-09 起，不再给裸 URL）。
     """
     return (
-        "您的报告已审核通过，点击查看完整报告："
-        f"{REPORT_ENTRY_PATH}\n激活码：{activation_code}"
+        "您的报告已审核通过，请前往「个人空间 → 当前进度」，"
+        "点击对应旅程的「查看报告」按钮查看完整报告。\n"
+        f"激活码：{activation_code}"
     )
 
 

@@ -36,3 +36,23 @@
   background: rgba(24, 27, 33, 0.82) !important;
   border-right-color: rgba(255, 255, 255, 0.08) !important;
 }
+
+/* 筛选条横向滚动（ADR-0023，2026-10-09）：单行不折行，滚动条加厚加明显便于鼠标拖拽 */
+.bd-filterbar-scroll {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: var(--bd-fg-subtle, #9aa5b1) var(--bd-overlay-md, rgba(0, 0, 0, 0.06));
+}
+.bd-filterbar-scroll::-webkit-scrollbar {
+  height: 10px;
+}
+.bd-filterbar-scroll::-webkit-scrollbar-track {
+  background: var(--bd-overlay-md, rgba(0, 0, 0, 0.06));
+  border-radius: 5px;
+}
+.bd-filterbar-scroll::-webkit-scrollbar-thumb {
+  background: var(--bd-fg-subtle, #9aa5b1);
+  border-radius: 5px;
+}
+.bd-filterbar-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--bd-fg-muted, #6b7684);
+}

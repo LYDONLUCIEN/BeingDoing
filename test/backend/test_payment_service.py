@@ -1194,3 +1194,31 @@ async def test_admin_order_detail_destination_consumed_revoked_unknown(fake_chan
     assert d_unknown["code"] == "ZZZUNKNOWN1"
     assert d_unknown["destination_type"] == "unknown"
     assert d_unknown["status"] is None
+
+
+# ─── 订单序列化：code_expiry（2026-10-09，订单页展示交付码失效时间）────
+
+
+@pytest.mark.asyncio
+async def test_order_to_dict_includes_code_expiry():
+    """套餐交付后订单带 code_expiry（码 → expires_at，非空且在未来）；无码订单为 None"""
+    order, _ = await PaymentService.create_order("u1", "quarterly_package", "alipay", None)
+
+    # 未支付：无交付码 → code_expiry 为 None
+    detail0 = await PaymentService.get_user_order("u1", order.id)
+    assert detail0["order"]["code_expiry"] is None
+
+    await PaymentService.handle_alipay_notify(_notify_form(order))
+    detail = await PaymentService.get_user_order("u1", order.id)
+    expiry = detail["order"]["code_expiry"]
+    final = await _get_order(order.id)
+    code = final.delivered_code
+    assert expiry is not None and code in expiry
+    # 套餐码支付成功即起算（ADR-0018）：expires_at 非空且在未来
+    exp = datetime.fromisoformat(expiry[code].replace("Z", "+00:00"))
+    assert exp > datetime.now(timezone.utc)
+
+    # 列表接口同样附带
+    items, total = await PaymentService.list_user_orders("u1")
+    assert total == 1
+    assert items[0]["code_expiry"][code] == expiry[code]

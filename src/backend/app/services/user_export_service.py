@@ -17,6 +17,7 @@ zip 内目录结构（每用户一个子目录）::
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -70,13 +71,14 @@ class UserExportService:
     # ------------------------------------------------------------------
 
     async def collect_user_export(
-        self, user_id: str
+        self, user_id: str, dirname: Optional[str] = None
     ) -> Optional[List[Tuple[str, bytes]]]:
         """
         收集单个用户的全部导出文件。
 
         Returns:
-            ``[(zip_inner_path, file_bytes), ...]``，路径已带 ``users/{user_id}/`` 前缀；
+            ``[(zip_inner_path, file_bytes), ...]``，路径带 ``users/{dirname}/`` 前缀
+            （dirname 缺省时按「昵称+邮箱」生成，见 build_user_export_dirname）；
             用户不存在返回 None；用户存在但无任何数据返回空列表。
         """
         from app.core.database import UserDB
@@ -175,7 +177,7 @@ class UserExportService:
         }
 
         files: List[Tuple[str, bytes]] = []
-        prefix = f"users/{uid}"
+        prefix = f"users/{dirname or build_user_export_dirname(user)}"
         files.append(
             (
                 f"{prefix}/profile.json",
@@ -200,3 +202,25 @@ def _dumps(payload: Any) -> bytes:
     import json
 
     return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+
+
+# zip 目录名不允许的字符（Windows/macOS/Linux 交集 + 控制字符）
+_DIRNAME_UNSAFE = re.compile(r'[\\\\/:*?"<>|\x00-\x1f]+')
+
+
+def build_user_export_dirname(user) -> str:
+    """导出 zip 内用户目录名：「昵称+邮箱」（2026-10-09 起，运营视角可读性优先）。
+
+    - 昵称缺失退化为邮箱；邮箱缺失退化为手机号；皆无退化为 ``user-{id前8位}``
+    - 非法文件名字符替换为 ``_``，去首尾空格/点，截断 80 字符
+    """
+    uid = getattr(user, "id", "") or ""
+    name = (getattr(user, "username", None) or "").strip()
+    contact = (getattr(user, "email", None) or "").strip() or (
+        getattr(user, "phone", None) or ""
+    ).strip()
+    label = "+".join(p for p in (name, contact) if p)
+    label = _DIRNAME_UNSAFE.sub("_", label).strip(" .")
+    if not label:
+        label = f"user-{uid[:8]}"
+    return label[:80]

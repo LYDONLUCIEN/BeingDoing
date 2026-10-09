@@ -41,6 +41,10 @@ _TestSessionLocal = async_sessionmaker(_test_engine, expire_on_commit=False)
 USER_REAL = "user-real-1"
 USER_TEST = "user-test-1"
 
+# 导出 zip 内目录名（2026-10-09 起「昵称+邮箱」，build_user_export_dirname）
+DIR_REAL = "users/真实用户+real@test.com"
+DIR_TEST = "users/测试账号+test@test.com"
+
 
 @pytest.fixture(autouse=True)
 async def _setup(monkeypatch, tmp_path):
@@ -86,6 +90,13 @@ async def _setup(monkeypatch, tmp_path):
 
     monkeypatch.setattr(
         bes_mod, "ReportRegistry", partial(ReportRegistry, base_dir=str(registry_base))
+    )
+
+    # ADR-0023：FilterContext（stage 内存过滤器）运行时从源模块取 ReportRegistry
+    import app.utils.report_registry as rr_mod
+
+    monkeypatch.setattr(
+        rr_mod, "ReportRegistry", partial(ReportRegistry, base_dir=str(registry_base))
     )
 
     # 激活码：空映射（隔离真实 activations.json；list_activations 是同步方法）
@@ -243,26 +254,28 @@ def test_users_export_by_ids_zip(admin_client, tmp_path):
         assert index["user_count"] == 2
         by_id = {u["user_id"]: u for u in index["users"]}
         assert by_id[USER_REAL]["email"] == "real@test.com"
+        assert by_id[USER_REAL]["export_dir"] == DIR_REAL.removeprefix("users/")
+        assert by_id[USER_TEST]["export_dir"] == DIR_TEST.removeprefix("users/")
         assert by_id[USER_REAL]["report_count"] == 1
         assert by_id[USER_TEST]["report_count"] == 0
 
         # 有 report 的用户：profile + report 全套产物
-        assert f"users/{USER_REAL}/profile.json" in names
-        profile = json.loads(zf.read(f"users/{USER_REAL}/profile.json"))
+        assert f"{DIR_REAL}/profile.json" in names
+        profile = json.loads(zf.read(f"{DIR_REAL}/profile.json"))
         assert profile["email"] == "real@test.com"
         assert profile["user_type"] == "real"
         assert profile["reports"][0]["report_id"] == "rpt-real-1"
-        assert f"users/{USER_REAL}/reports/rpt-real-1/report_rpt-real-1.md" in names
-        assert f"users/{USER_REAL}/reports/rpt-real-1/raw/values__sess-v.json" in names
+        assert f"{DIR_REAL}/reports/rpt-real-1/report_rpt-real-1.md" in names
+        assert f"{DIR_REAL}/reports/rpt-real-1/raw/values__sess-v.json" in names
         # 报告全文 markdown 附带
         md = zf.read(
-            f"users/{USER_REAL}/reports/rpt-real-1/report_markdown.md"
+            f"{DIR_REAL}/reports/rpt-real-1/report_markdown.md"
         ).decode()
         assert "报告全文（缓存）" in md
 
         # 无 report 的用户：仅 profile.json
-        assert f"users/{USER_TEST}/profile.json" in names
-        assert not any(n.startswith(f"users/{USER_TEST}/reports/") for n in names)
+        assert f"{DIR_TEST}/profile.json" in names
+        assert not any(n.startswith(f"{DIR_TEST}/reports/") for n in names)
 
         # 无跳过
         assert "_skipped.txt" not in names
@@ -279,8 +292,8 @@ def test_users_export_filter_mode_only_matching_type(admin_client, tmp_path):
     assert resp.status_code == 200
     with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
         names = zf.namelist()
-        assert f"users/{USER_TEST}/profile.json" in names
-        assert not any(n.startswith(f"users/{USER_REAL}/") for n in names)
+        assert f"{DIR_TEST}/profile.json" in names
+        assert not any(n.startswith(f"{DIR_REAL}/") for n in names)
 
 
 def test_users_export_filter_empty_result_404(admin_client):
@@ -289,3 +302,167 @@ def test_users_export_filter_empty_result_404(admin_client):
         json={"user_type": "admin"},
     )
     assert resp.status_code == 404
+
+
+# ─── ADR-0023：filters 注册表模式（2026-10-09） ───────────────
+
+
+def test_filter_schema_endpoint(admin_client):
+    r = admin_client.get("/api/v1/admin/filters/schema")
+    assert r.status_code == 200
+    entries = r.json()["data"]["filters"]
+    by_key = {e["key"]: e for e in entries}
+    for key in (
+        "q",
+        "user_type",
+        "account_status",
+        "profile_completed",
+        "paid_status",
+        "code_kind",
+        "stage",
+        "created_range",
+    ):
+        assert key in by_key
+    assert by_key["user_type"]["type"] == "multi_enum"
+    assert {o["value"] for o in by_key["stage"]["options"]} == {
+        "not_started",
+        "exploring",
+        "report_unlocked",
+    }
+
+
+def test_filter_schema_non_admin_403():
+    app.dependency_overrides[get_current_user] = _admin_override
+    with patch("app.api.v1.admin._is_super_admin", return_value=False):
+        client = TestClient(app)
+        resp = client.get("/api/v1/admin/filters/schema")
+    assert resp.status_code == 403
+
+
+def test_list_users_filters_param_multi_type_or(admin_client):
+    r = admin_client.get(
+        "/api/v1/admin/users",
+        params={"filters": json.dumps({"user_type": ["real", "test"]})},
+    )
+    assert r.status_code == 200
+    data = r.json()["data"]
+    assert data["total"] == 2
+
+    r = admin_client.get(
+        "/api/v1/admin/users",
+        params={"filters": json.dumps({"user_type": ["test"]})},
+    )
+    items = r.json()["data"]["items"]
+    assert [it["user_id"] for it in items] == [USER_TEST]
+
+
+def test_list_users_filters_param_stage_memory(admin_client, tmp_path):
+    base = tmp_path / "simple"
+    _write_report(base, "rpt-real-1", USER_REAL, "CODEREAL1")
+
+    # stage 为内存过滤器：USER_REAL 有 record（部分锁定=探索中），USER_TEST 无 record
+    r = admin_client.get(
+        "/api/v1/admin/users",
+        params={"filters": json.dumps({"stage": ["exploring"]})},
+    )
+    data = r.json()["data"]
+    assert [it["user_id"] for it in data["items"]] == [USER_REAL]
+    assert data["total"] == 1  # total 为精筛后总数
+
+    r = admin_client.get(
+        "/api/v1/admin/users",
+        params={"filters": json.dumps({"stage": ["not_started"]})},
+    )
+    assert [it["user_id"] for it in r.json()["data"]["items"]] == [USER_TEST]
+
+
+def test_list_users_filters_invalid_400(admin_client):
+    r = admin_client.get(
+        "/api/v1/admin/users",
+        params={"filters": json.dumps({"unknown": ["x"]})},
+    )
+    assert r.status_code == 400
+
+    r = admin_client.get("/api/v1/admin/users", params={"filters": "not-json"})
+    assert r.status_code == 400
+
+
+def test_users_export_filters_mode(admin_client, tmp_path):
+    base = tmp_path / "simple"
+    _write_report(base, "rpt-real-1", USER_REAL, "CODEREAL1")
+
+    resp = admin_client.post(
+        "/api/v1/admin/users/export",
+        json={"filters": {"user_type": ["test"]}},
+    )
+    assert resp.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        names = zf.namelist()
+        assert f"{DIR_TEST}/profile.json" in names
+        assert not any(n.startswith(f"{DIR_REAL}/") for n in names)
+
+
+def test_users_export_legacy_has_report_compat(admin_client, tmp_path):
+    """旧扁平参数 has_report 走兼容映射（→ stage），行为与旧版一致"""
+    base = tmp_path / "simple"
+    _write_report(base, "rpt-real-1", USER_REAL, "CODEREAL1")
+
+    resp = admin_client.post(
+        "/api/v1/admin/users/export",
+        json={"has_report": True},
+    )
+    assert resp.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        names = zf.namelist()
+        assert f"{DIR_REAL}/profile.json" in names
+        assert not any(n.startswith(f"{DIR_TEST}/") for n in names)
+
+    resp = admin_client.post(
+        "/api/v1/admin/users/export",
+        json={"has_report": False},
+    )
+    assert resp.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        names = zf.namelist()
+        assert f"{DIR_TEST}/profile.json" in names
+        assert not any(n.startswith(f"{DIR_REAL}/") for n in names)
+
+
+def test_users_export_filters_priority_over_legacy(admin_client):
+    """filters 与旧扁平参数并存时 filters 优先"""
+    resp = admin_client.post(
+        "/api/v1/admin/users/export",
+        json={"user_type": "test", "filters": {"user_type": ["real"]}},
+    )
+    assert resp.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        names = zf.namelist()
+        assert f"{DIR_REAL}/profile.json" in names
+        assert not any(n.startswith(f"{DIR_TEST}/") for n in names)
+
+
+# ─── 导出目录命名（2026-10-09，昵称+邮箱） ─────────────────────
+
+
+def test_build_user_export_dirname():
+    from types import SimpleNamespace
+
+    from app.services.user_export_service import build_user_export_dirname
+
+    # 昵称+邮箱 组合
+    u = SimpleNamespace(id="abcdef123456", username="爱丽丝", email="a@x.com", phone=None)
+    assert build_user_export_dirname(u) == "爱丽丝+a@x.com"
+    # 无昵称 → 仅邮箱
+    u = SimpleNamespace(id="abcdef123456", username=None, email="a@x.com", phone=None)
+    assert build_user_export_dirname(u) == "a@x.com"
+    # 无邮箱 → 手机号兜底
+    u = SimpleNamespace(id="abcdef123456", username="小明", email=None, phone="13800000000")
+    assert build_user_export_dirname(u) == "小明+13800000000"
+    # 皆无 → user-{id前8位}
+    u = SimpleNamespace(id="abcdef123456", username=None, email=None, phone=None)
+    assert build_user_export_dirname(u) == "user-abcdef12"
+    # 非法文件名字符替换 + 首尾空格/点清理
+    u = SimpleNamespace(id="abcdef123456", username=' 张/三:违法?', email='a\b.com', phone=None)
+    d = build_user_export_dirname(u)
+    assert "/" not in d and "\\" not in d and ":" not in d and "?" not in d
+    assert not d.startswith(" ") and not d.endswith(".")

@@ -2905,10 +2905,33 @@ class AdminRestoreDeletionRequest(BaseModel):
     notify: bool = Field(default=True, description="是否向用户邮箱发送恢复通知")
 
 
+@router.get("/filters/schema")
+async def admin_filter_schema(
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """用户筛选器 schema 下发（ADR-0023，仅 super_admin）。
+
+    前端 FilterBar 组件按此 schema 渲染筛选条；新增过滤器只需注册表加一项，前端零改动。
+    """
+    if not _is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+
+    from app.services.user_filters import get_filter_schema
+
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {"filters": get_filter_schema()},
+    }
+
+
 @router.get("/users")
 async def admin_list_users(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
+    filters: Optional[str] = Query(
+        None, description="筛选条件 JSON（ADR-0023 注册表 key → 值；优先于旧扁平参数）"
+    ),
     q: Optional[str] = Query(None, description="按 email 或 username 模糊搜索"),
     is_active: Optional[bool] = Query(None, description="筛选是否活跃"),
     deleted: Optional[bool] = Query(
@@ -2922,7 +2945,11 @@ async def admin_list_users(
     created_before: Optional[str] = Query(None, description="注册时间上界（ISO 格式）"),
     current_user: Optional[dict] = Depends(get_current_user),
 ):
-    """用户列表（分页 + 搜索筛选，仅 super_admin）"""
+    """用户列表（分页 + 搜索筛选，仅 super_admin）
+
+    新版走 filters JSON 参数（ADR-0023 筛选注册表，含 SQL 下推 + 内存两层执行）；
+    旧扁平参数路径原样保留（部署过渡期兼容，语义不变）。
+    """
     if not _is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
 
@@ -2932,6 +2959,17 @@ async def admin_list_users(
         raise HTTPException(
             status_code=400, detail=f"user_type 仅支持 {'/'.join(USER_TYPES)}"
         )
+
+    parsed_filters: Optional[Dict[str, Any]] = None
+    if filters is not None:
+        import json as _json
+
+        try:
+            parsed_filters = _json.loads(filters)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="filters 需为合法 JSON")
+        if not isinstance(parsed_filters, dict):
+            raise HTTPException(status_code=400, detail="filters 需为 JSON 对象")
 
     from app.core.database import UserDB
 
@@ -2955,18 +2993,28 @@ async def admin_list_users(
         )
 
     async with AsyncSessionLocal() as db:
-        user_db = UserDB(db)
-        users, total = await user_db.list_users(
-            page=page,
-            page_size=page_size,
-            search=q,
-            is_active=is_active,
-            deleted=deleted,
-            profile_completed=profile_completed,
-            created_after=created_after,
-            created_before=created_before,
-            user_type=user_type,
-        )
+        if parsed_filters is not None:
+            from app.services.user_filters import filter_users
+
+            try:
+                users, total = await filter_users(
+                    db, parsed_filters, page=page, page_size=page_size
+                )
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+        else:
+            user_db = UserDB(db)
+            users, total = await user_db.list_users(
+                page=page,
+                page_size=page_size,
+                search=q,
+                is_active=is_active,
+                deleted=deleted,
+                profile_completed=profile_completed,
+                created_after=created_after,
+                created_before=created_before,
+                user_type=user_type,
+            )
 
         items = []
         for u in users:
@@ -3321,6 +3369,11 @@ class UsersExportRequest(BaseModel):
     user_ids: Optional[List[str]] = Field(
         None, description="显式用户 ID 列表（与筛选模式二选一，优先于筛选）"
     )
+    filters: Optional[Dict[str, Any]] = Field(
+        None,
+        description="筛选条件（ADR-0023 注册表 key → 值；优先于下列旧扁平参数）",
+    )
+    # ── 旧扁平参数（兼容层，下个大版本移除） ──
     user_type: Optional[str] = Field(
         None, description="用户类型筛选：real/beta/test/admin"
     )
@@ -3328,6 +3381,29 @@ class UsersExportRequest(BaseModel):
     created_after: Optional[str] = Field(None, description="注册时间下界（ISO 格式）")
     created_before: Optional[str] = Field(None, description="注册时间上界（ISO 格式）")
     has_report: Optional[bool] = Field(None, description="只导名下有探索报告的用户")
+
+
+def _legacy_export_to_filters(req: UsersExportRequest) -> Dict[str, Any]:
+    """旧扁平导出参数 → ADR-0023 filters（兼容层，下个大版本移除）。
+
+    has_report 语义由 stage 吸收：True ≡ stage∈{exploring, report_unlocked}，
+    False ≡ stage∈{not_started}（均按名下有无 report record 判定）。
+    """
+    filters: Dict[str, Any] = {}
+    if req.user_type:
+        filters["user_type"] = [req.user_type]
+    if req.q:
+        filters["q"] = req.q
+    if req.created_after or req.created_before:
+        filters["created_range"] = {
+            "after": req.created_after or "",
+            "before": req.created_before or "",
+        }
+    if req.has_report is not None:
+        filters["stage"] = (
+            ["exploring", "report_unlocked"] if req.has_report else ["not_started"]
+        )
+    return filters
 
 
 @router.post("/users/export")
@@ -3368,43 +3444,24 @@ async def export_users_full_data(
                 seen.add(uid)
                 target_ids.append(uid)
     else:
-        if not (
-            req.user_type
-            or req.q
-            or req.created_after
-            or req.created_before
-            or req.has_report is not None
-        ):
+        from app.services.user_filters import filter_users, strip_empty_filters
+
+        filters = (
+            strip_empty_filters(req.filters)
+            if req.filters is not None
+            else _legacy_export_to_filters(req)
+        )
+        if not filters:
             raise HTTPException(
                 status_code=400,
-                detail="请至少提供 user_ids 或一个筛选条件（user_type/q/时间/has_report）",
+                detail="请至少提供 user_ids 或一个筛选条件（filters/user_type/q/时间/has_report）",
             )
-        from app.core.database import UserDB
-
-        target_ids = []
-        page = 1
-        while True:
-            async with AsyncSessionLocal() as db:
-                user_db = UserDB(db)
-                users, _total = await user_db.list_users(
-                    page=page,
-                    page_size=500,
-                    search=req.q,
-                    user_type=req.user_type,
-                    created_after=req.created_after,
-                    created_before=req.created_before,
-                )
-            if not users:
-                break
-            for u in users:
-                if req.has_report is True and report_counts.get(u.id, 0) == 0:
-                    continue
-                if req.has_report is False and report_counts.get(u.id, 0) > 0:
-                    continue
-                target_ids.append(u.id)
-            if len(users) < 500:
-                break
-            page += 1
+        async with AsyncSessionLocal() as db:
+            try:
+                users, _total = await filter_users(db, filters)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+        target_ids = [u.id for u in users]
 
     if not target_ids:
         raise HTTPException(status_code=404, detail="筛选条件下没有匹配的用户")
@@ -3414,14 +3471,38 @@ async def export_users_full_data(
             detail=f"单次最多导出 {MAX_EXPORT_USERS} 个用户（本次 {len(target_ids)} 个），请缩小范围分批导出",
         )
 
+    # —— 预取用户信息并生成导出目录名（「昵称+邮箱」，撞名加 id 短码去重） ——
+    from app.core.database import UserDB
+    from app.services.user_export_service import build_user_export_dirname
+
+    users_info: Dict[str, Dict[str, Any]] = {}
+    used_dirnames = set()
+    async with AsyncSessionLocal() as db:
+        user_db = UserDB(db)
+        for uid in target_ids:
+            u = await user_db.get_user_by_id(uid)
+            if not u:
+                continue
+            dirname = build_user_export_dirname(u)
+            if dirname in used_dirnames:
+                dirname = f"{dirname}-{uid[:8]}"
+            used_dirnames.add(dirname)
+            users_info[uid] = {
+                "export_dir": dirname,
+                "email": u.email,
+                "username": u.username,
+                "user_type": (getattr(u, "user_type", None) or "real"),
+                "admin_note": getattr(u, "admin_note", None),
+            }
+
     # —— 逐用户收集（用户不存在 / 无数据记入 skipped） ——
     entries: List[dict] = []
     skipped: List[str] = []
-    user_index: List[dict] = []
-    from app.core.database import UserDB
 
     for uid in target_ids:
-        files = await service.collect_user_export(uid)
+        files = await service.collect_user_export(
+            uid, dirname=(users_info.get(uid) or {}).get("export_dir")
+        )
         if not files:
             skipped.append(uid)
             continue
@@ -3432,23 +3513,21 @@ async def export_users_full_data(
             status_code=404, detail=f"所有用户均不存在或无数据，跳过: {skipped}"
         )
 
-    # 索引：user_id → 邮箱/用户名/类型/report 数（从各用户 profile.json 反查太绕，直接查库）
-    async with AsyncSessionLocal() as db:
-        user_db = UserDB(db)
-        for entry in entries:
-            u = await user_db.get_user_by_id(entry["user_id"])
-            user_index.append(
-                {
-                    "user_id": entry["user_id"],
-                    "email": u.email if u else None,
-                    "username": u.username if u else None,
-                    "user_type": (
-                        (getattr(u, "user_type", None) or "real") if u else None
-                    ),
-                    "admin_note": getattr(u, "admin_note", None) if u else None,
-                    "report_count": report_counts.get(entry["user_id"], 0),
-                }
-            )
+    # 索引：user_id → 导出目录/邮箱/用户名/类型/report 数
+    user_index: List[dict] = []
+    for entry in entries:
+        info = users_info.get(entry["user_id"]) or {}
+        user_index.append(
+            {
+                "user_id": entry["user_id"],
+                "export_dir": info.get("export_dir"),
+                "email": info.get("email"),
+                "username": info.get("username"),
+                "user_type": info.get("user_type"),
+                "admin_note": info.get("admin_note"),
+                "report_count": report_counts.get(entry["user_id"], 0),
+            }
+        )
 
     # —— 打包 zip（内存流） ——
     import io
@@ -3472,7 +3551,7 @@ async def export_users_full_data(
             ),
         )
         for entry in entries:
-            # collect_user_export 返回的路径已带 users/{user_id}/ 前缀
+            # collect_user_export 返回的路径已带 users/{昵称+邮箱}/ 前缀
             for inner_path, data in entry["files"]:
                 zf.writestr(inner_path, data)
         if skipped:
