@@ -1,5 +1,5 @@
 /* ══════════════════════════════════════════
-   Chat 页外观配置系统（复刻 wiki/开发文档/0919/openlife-journey (21).html #appearance-popover）
+   Chat 页外观配置系统（复刻 wiki/历史开发记录/0919/openlife-journey (21).html #appearance-popover）
 
    数据流：stores/chatAppearanceStore.ts（persist v1）
      → lib/explore/useChatAppearanceAttrs.ts（根节点 data-* 属性 + --chat-wash-opacity）

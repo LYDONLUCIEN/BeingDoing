@@ -26,7 +26,7 @@ migrate_activation_schema.py — ADR-0008 存量激活码 schema 补全迁移（
     python3 scripts/migrate_activation_schema.py             # 实际执行（需先停服）
     python3 scripts/migrate_activation_schema.py --force     # 跳过端口检查（自担风险）
 
-运维文档：wiki/开发文档/0726-激活码schema迁移脚本说明.md
+运维文档：wiki/历史开发记录/0726-激活码schema迁移脚本说明.md
 """
 
 from __future__ import annotations
@@ -202,7 +202,7 @@ def main() -> int:
         print("DRY-RUN 结束，未写任何文件。确认无误后去掉 --dry-run 实际执行。")
     else:
         print("✅ 迁移完成。如重复执行应看到「已补全 0」（幂等）。")
-        print(f"   回滚方式见 wiki/开发文档/0726-激活码schema迁移脚本说明.md §四.1（备份目录见上）。")
+        print(f"   回滚方式见 wiki/历史开发记录/0726-激活码schema迁移脚本说明.md §四.1（备份目录见上）。")
     return 0
 
 

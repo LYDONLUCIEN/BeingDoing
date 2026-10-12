@@ -6,10 +6,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import PaperVeilLayers from '@/components/explore/PaperVeilLayers';
 import XiaohongshuQrEntry from '@/components/common/XiaohongshuQrEntry';
 
-// 文案来源：wiki/开发文档/10-05/咨询师.md（2026-10-06 上线咨询师介绍页，入口在顶部导航「咨询团队」）
+// 文案来源：wiki/历史开发记录/10-05/咨询师.md（2026-10-06 上线咨询师介绍页，入口在顶部导航「咨询团队」）
 // v3（2026-10-07）：咨询师改为一次展示一位、左右切换；卡内多栏铺开全量内容
 // （背景/咨询风格/适合人群并列 + 价值观标签），保证一屏内看完一位咨询师。
-// v4（2026-10-08）：卡片视觉按 wiki/开发文档/10-07/consultants.html 重做——
+// v4（2026-10-08）：卡片视觉按 wiki/历史开发记录/10-07/consultants.html 重做——
 // 左人物栏（头像/编号/姓名/风格标签/元信息）+ 右内容栏（背景要点/
 // 咨询风格/适合人群双栏/价值观 chips），每位咨询师独立 accent 色
 // （祝余=蓝、Mary=绿、Lena=紫）。样式见 styles/components/consultants-coach.css。
@@ -29,7 +29,7 @@ const FORMAT_ITEMS = [
   '提供 1 次免费更换机会：若咨询开始后的前 15 分钟内不满意，可申请更换咨询师。',
 ];
 
-// 咨询师数据来源：wiki/开发文档/10-05/咨询师.md（全量展示：背景 / 咨询风格 / 适合人群 / 价值观）
+// 咨询师数据来源：wiki/历史开发记录/10-05/咨询师.md（全量展示：背景 / 咨询风格 / 适合人群 / 价值观）
 // id 用于 consultants-coach.css 的 data-coach accent 配色；initial 为头像字母
 interface Coach {
   id: 'zhuyu' | 'mary' | 'lena';

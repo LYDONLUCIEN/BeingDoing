@@ -560,7 +560,7 @@ export const zh = {
         f4: '24 小时人工审核 + 1 次免费复核',
       },
     },
-    /** 宽版方案选择视图（UI 对齐设计稿 wiki/开发文档/10-05/newpay.html） */
+    /** 宽版方案选择视图（UI 对齐设计稿 wiki/历史开发记录/10-05/newpay.html） */
     wide: {
       eyebrow: '寻路 · OPENLIFE 探索方案',
       title: '选择适合你的探索方式',

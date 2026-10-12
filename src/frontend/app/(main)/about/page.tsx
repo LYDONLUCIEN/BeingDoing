@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import PaperVeilLayers from '@/components/explore/PaperVeilLayers';
 import XiaohongshuQrEntry from '@/components/common/XiaohongshuQrEntry';
 
-// 文案来源：wiki/开发文档/0907-关于我们.md
+// 文案来源：wiki/历史开发记录/0907-关于我们.md
 // 关于我们页对外联系邮箱（单独设置，与 TEAM_ANALYSIS_EMAIL 无关）
 const ABOUT_CONTACT_EMAIL = 'openlife.lab@outlook.com';
 

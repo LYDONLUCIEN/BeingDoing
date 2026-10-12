@@ -15,7 +15,7 @@ const nextConfig = {
   ],
   // 静态资源缓存口径（2026-09-21）：public/ 下文件名不带哈希，
   // 统一要求引用时带 ?v= 版本号（更新资源时递增版本号即击穿缓存）。
-  // nginx 层有同口径的 location 规则（见 deploy/ 与 wiki/开发文档/0705-nginx.md），
+  // nginx 层有同口径的 location 规则（见 deploy/ 与 wiki/历史开发记录/0705-nginx.md），
   // 这里的 headers 是直连 Next（dev/排障）时的兜底，两层保持一致。
   async headers() {
     const longCache = {

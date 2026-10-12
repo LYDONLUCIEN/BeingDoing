@@ -1,6 +1,6 @@
 /* ══════════════════════════════════════════
    站内信 · 反馈（抽屉形态）
-   视觉以 wiki/开发文档/0919/openlife-journey (21).html
+   视觉以 wiki/历史开发记录/0919/openlife-journey (21).html
    的 .support-* 组件为准：右下固定 pill 悬浮球 +
    右侧 456px 抽屉（blur 28px）+ 消息卡 + 详情视图。
    作用域：.ol-msg-* 前缀，只被 FloatingFeedbackWidget /

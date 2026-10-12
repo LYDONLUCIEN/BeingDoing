@@ -2,7 +2,7 @@
 
 调查日期：2026-10-12。历史代码核对基线：`clean@5b461e6`，上游发布基线 `main=v1.8.0=e6181d4`。下文“基线现行”均指 `5b461e6`，不是本轮清理完成后的工作树。本文是历史证据索引，供整理开发规则、术语和 ADR 使用；不是部署确认，也不是安全审计通过证明。
 
-来源为本仓库 Git 历史、`docs/adr`、`wiki/开发文档`、`docs/历史文档`、`tasks`、版本迁移说明，以及本轮通过 GitHub API 只读获取的完整 issue 列表与评论快照。`/issues` API 共返回103条记录，包含102个issue和1个PR（#1），另有114条issue评论；全部条目见 [GitHub历史索引](ISSUE_HISTORY.md)。筛选了与下述主题直接相关的讨论，并用基线代码及后续提交核对。未读取服务器、真实 `data/`、`app.db` 或环境密钥；未执行历史运维命令。旧文档里的账号、主机、交易与用户实例不在此复制。
+来源为本仓库 Git 历史、`docs/adr`、`wiki/历史开发记录`（原 `wiki/开发文档`）、`docs/历史文档`、`tasks`、版本迁移说明，以及本轮通过 GitHub API 只读获取的完整 issue 列表与评论快照。`/issues` API 共返回103条记录，包含102个issue和1个PR（#1），另有114条issue评论；全部条目见 [GitHub历史索引](ISSUE_HISTORY.md)。筛选了与下述主题直接相关的讨论，并用基线代码及后续提交核对。未读取服务器、真实 `data/`、`app.db` 或环境密钥；未执行历史运维命令。旧文档里的账号、主机、交易与用户实例不在此复制。
 
 本轮与该历史基线的主要差别：用户明确撤销v3运行时兼容保留要求，正在清理v3接口、提示词、状态机及专属测试，并将历史读取/导出与可运行产品分开。下文保留“本轮废止”的目标和旧实现证据，不将未提交、未验收的工作提前写为成功。最终边界见 [ADR-0025](adr/0025-retire-v3-runtime-and-separate-history.md)，当前决定与完成记录分别见 [DECISIONS](DECISIONS.md)、[CHANGELOG](CHANGELOG.md)。本轮没有撤销旧裸码、会员预留、迁移追溯等其他明确保留条件。
 
@@ -43,7 +43,7 @@
 
 [ADR-0003](adr/0003-step3-combo-matrix.md)（`9b6b801`）把 v3 Step3 改为热爱×优势矩阵：`combo_id` 如 `"02"` 表示两个索引，消息仍在一个 `main_flow.json`，靠标签分组；Step3b 为跨组合公共讨论。相关 #18/#19/#23/#41 等旧问题仍有未关闭记录，不能因此要求恢复已被本轮用户废止的产品路径。
 
-[0707实施总结](../wiki/开发文档/0707-tag1.6.0-实施总结.md)（`83e93ad`）是 v4 初期并行试验的快照，写有 URL/localStorage 试用开关、v3端点保留、迁移脚本“本次不实现”。[7-25实施口径](../wiki/开发文档/7-25-rumination-v4-实施口径.md)（`0b8a266`，后经 `9e628e1` 修订）已改变部分行为；基线前端正式入口仅走 v4。早期“v3默认不变”不是当前界面规则，更不是永久保留命令。
+[0707实施总结](../wiki/历史开发记录/0707-tag1.6.0-实施总结.md)（`83e93ad`）是 v4 初期并行试验的快照，写有 URL/localStorage 试用开关、v3端点保留、迁移脚本“本次不实现”。[7-25实施口径](../wiki/历史开发记录/7-25-rumination-v4-实施口径.md)（`0b8a266`，后经 `9e628e1` 修订）已改变部分行为；基线前端正式入口仅走 v4。早期“v3默认不变”不是当前界面规则，更不是永久保留命令。
 
 **同名字段不是同一概念。** 基线 [v4服务](../src/backend/app/services/rumination_v4_service.py) 的 `combo_sessions[].combo_id` 是 `combo_1` 一类独立会话标识，API 路径和 `selected_combo_ids` 都使用它；并非 v3 两位矩阵索引。现行 v4 一热爱＋多优势，最多10组，同热爱与严格相同优势集合判重；每组有独立 messages、用户卡、判定结果。按 `combo_id` 文本全仓删除会破坏 v4。删除审计应按模块、路由、协议与数据含义识别 v3。
 
@@ -61,7 +61,7 @@
 
 [#87](https://github.com/LYDONLUCIEN/BeingDoing/issues/87)完整记载了3月多路判定、4月单链路收敛、8月手动兜底的原因；其中11轮门槛、点击直接出卡均已过时：`1a98a71`（9月2日）撤销自然出卡的轮数压制，`a513961`（9月28日）落实9月27日“常驻按钮＋点击先判定”。因此不能把 #87 的初版要求抄进新开发规范。
 
-现行证据为 [0927结论卡机制全景](../wiki/开发文档/0927/结论卡机制全景.md) 与 [simple_chat_routes.py](../src/backend/app/api/v1/simple_chat_routes.py) 的 `request_conclusion_card`：按钮在有用户消息、无待表态卡且线程未完成等条件下显示；judge通过才生成草案，未通过输出引导，失败明确报错。自然出卡和拒绝后retrigger是不同路径。前四阶段仍有 STATE_JSON 与 pending/confirmed/rejected 状态，不能随 v4 已淘汰的 tool/chips 协议一起删除。文档“pending判定器近乎死路径”只说明可达性疑点；其删除需要引用／路由核验，不能只看旧issue一句“死代码”。
+现行证据为 [0927结论卡机制全景](../wiki/历史开发记录/0927/结论卡机制全景.md) 与 [simple_chat_routes.py](../src/backend/app/api/v1/simple_chat_routes.py) 的 `request_conclusion_card`：按钮在有用户消息、无待表态卡且线程未完成等条件下显示；judge通过才生成草案，未通过输出引导，失败明确报错。自然出卡和拒绝后retrigger是不同路径。前四阶段仍有 STATE_JSON 与 pending/confirmed/rejected 状态，不能随 v4 已淘汰的 tool/chips 协议一起删除。文档“pending判定器近乎死路径”只说明可达性疑点；其删除需要引用／路由核验，不能只看旧issue一句“死代码”。
 
 ## 4. 账户、购买、激活与报告授权
 
@@ -97,13 +97,13 @@
 
 [ADR-0005](adr/0005-payment-dual-channel-official-gateway.md)（`7792799`）拒绝个人收款码＋人工确认，选择官方渠道。其“回调唯一成功来源”被 [#57](https://github.com/LYDONLUCIEN/BeingDoing/issues/57)的真实故障处理扩展为：验签回调、服务端主动查单、定时对账，仍不能信任浏览器支付回跳。支付宝从precreate改page.pay有开通条件原因；双渠道设计不能推断两个渠道在每个部署均已开通。
 
-早期“任一码使用就不能整单退款”被 [10-05退款设计](../wiki/开发文档/10-05/订单系统退款设计.md)、[#102](https://github.com/LYDONLUCIEN/BeingDoing/issues/102)与四阶段实现（`8074208`、`3992ec5`、`017e946`、`6234050`）替代。当前以 `payment_order_lines` 分摊原价、优惠、实付，以 `payment_refunds` 记录申请与批准金额；按可退款明细行和商品限制执行，审批时重验，批准额不能超过可退实付。`partially_refunded/refunded` 是累计退款金额口径，不是“所有码都作废”口径。旧直接退款接口返回废弃，统一走申请单。渠道退款幂等标识重试必须复用，不能为美化状态机删掉失败重试分支。
+早期“任一码使用就不能整单退款”被 [10-05退款设计](../wiki/历史开发记录/10-05/订单系统退款设计.md)、[#102](https://github.com/LYDONLUCIEN/BeingDoing/issues/102)与四阶段实现（`8074208`、`3992ec5`、`017e946`、`6234050`）替代。当前以 `payment_order_lines` 分摊原价、优惠、实付，以 `payment_refunds` 记录申请与批准金额；按可退款明细行和商品限制执行，审批时重验，批准额不能超过可退实付。`partially_refunded/refunded` 是累计退款金额口径，不是“所有码都作废”口径。旧直接退款接口返回废弃，统一走申请单。渠道退款幂等标识重试必须复用，不能为美化状态机删掉失败重试分支。
 
-[10-06多次券定稿](../wiki/开发文档/10-06/优惠券多次核销与码格式区分-设计定稿.md)与[#101](https://github.com/LYDONLUCIEN/BeingDoing/issues/101)由 `fdc54a0`、`c2a423b`、`65fd892`、`a969b68` 落地：一次券单槽历史字段保留兼容，多次券用核销行和条件UPDATE占用名额；同用户同券一次，n>1不能绑owner；部分退款不按比例退券，满足规则的全退返还核销名额。新码格式区分券与激活码，**旧裸码精确匹配永久兼容**是明确决定；不要把“旧格式”当作应删除数据。上述issue仍列生产迁移待办，本研究不能替其确认迁移023/024已在线上执行。文档“原子联动”也不是对SQL＋JSON跨存储原子性的验证结论。
+[10-06多次券定稿](../wiki/历史开发记录/10-06/优惠券多次核销与码格式区分-设计定稿.md)与[#101](https://github.com/LYDONLUCIEN/BeingDoing/issues/101)由 `fdc54a0`、`c2a423b`、`65fd892`、`a969b68` 落地：一次券单槽历史字段保留兼容，多次券用核销行和条件UPDATE占用名额；同用户同券一次，n>1不能绑owner；部分退款不按比例退券，满足规则的全退返还核销名额。新码格式区分券与激活码，**旧裸码精确匹配永久兼容**是明确决定；不要把“旧格式”当作应删除数据。上述issue仍列生产迁移待办，本研究不能替其确认迁移023/024已在线上执行。文档“原子联动”也不是对SQL＋JSON跨存储原子性的验证结论。
 
 ## 9. 报告审核、复核与内容权威
 
-[ADR-0009](adr/0009-report-review-auto-approve.md)（始于 `7792799`，后修订）先纠正“刚创建report就开始审核”的提前计时，改为完成五阶段后访问报告页触发；[0823文档](../wiki/开发文档/0823-提交即审核与报告页异常态.md)／[#83](https://github.com/LYDONLUCIEN/BeingDoing/issues/83)（`349c40d`）再前移到v4终选提交，解决用户不进报告页就永远不生成。报告页懒触发仅是旧 `not_started` 与异常兜底，不能恢复为唯一入口。
+[ADR-0009](adr/0009-report-review-auto-approve.md)（始于 `7792799`，后修订）先纠正“刚创建report就开始审核”的提前计时，改为完成五阶段后访问报告页触发；[0823文档](../wiki/历史开发记录/0823-提交即审核与报告页异常态.md)／[#83](https://github.com/LYDONLUCIEN/BeingDoing/issues/83)（`349c40d`）再前移到v4终选提交，解决用户不进报告页就永远不生成。报告页懒触发仅是旧 `not_started` 与异常兜底，不能恢复为唯一入口。
 
 [#91](https://github.com/LYDONLUCIEN/BeingDoing/issues/91)及[完成评论](https://github.com/LYDONLUCIEN/BeingDoing/issues/91#issuecomment-5558759399)（`7a48de7`）把随机3–24h改固定24h，旧pending按原deadline；扫描存在间隔，所以不是秒级承诺。生成看门狗在间隔和次数限制下重试，不能保证外部模型永不失败。旧文案将自动批复描述为人工审核，这是历史产品选择；应单独列为用户沟通口径问题，不能提升为必须永久隐瞒自动化的工程约束。
 
@@ -127,7 +127,7 @@
 
 [#17](https://github.com/LYDONLUCIEN/BeingDoing/issues/17)显示thread删除采用软归档防幽灵恢复，其[后续评论](https://github.com/LYDONLUCIEN/BeingDoing/issues/17#issuecomment-4525687328)又修正了最初“前端完全按remaining_thread_ids过滤”的策略，改按目标ID和当前state处理竞态。不能恢复初版做法。[#53](https://github.com/LYDONLUCIEN/BeingDoing/issues/53)的孤儿／缺失线程仍是待评估记录，不是应自动批量删除的授权。
 
-[0821迁移手册](../wiki/开发文档/0821-迁移计划-v1.5.1-to-v1.6.0.md)与[0917升级指引](../wiki/开发文档/0917-生产升级指引-v1.6.0-to-v1.6.1.md)记录的是特定旧版迁移和回滚。保留能解释数据的迁移链、备份/归档约定；历史主机、默认引擎、数据库revision和命令不应直接抄为今天一键部署流程。仅凭 `.duplicate/`、`data_backup/` 或回收站名称不能认定内容可丢弃。
+[0821迁移手册](../wiki/历史开发记录/0821-迁移计划-v1.5.1-to-v1.6.0.md)与[0917升级指引](../wiki/历史开发记录/0917-生产升级指引-v1.6.0-to-v1.6.1.md)记录的是特定旧版迁移和回滚。保留能解释数据的迁移链、备份/归档约定；历史主机、默认引擎、数据库revision和命令不应直接抄为今天一键部署流程。仅凭 `.duplicate/`、`data_backup/` 或回收站名称不能认定内容可丢弃。
 
 ## 12. 统计字段不能替代权益或权限
 
@@ -141,13 +141,13 @@
 
 [#81](https://github.com/LYDONLUCIEN/BeingDoing/issues/81)的“5次失败锁15分钟”已被 `b9bfd4f`（9月19日）取代。基线 [auth_service.py](../src/backend/app/services/auth_service.py)按标识计数、前5次不锁，第6/7/8/9次分别锁1/2/5/10分钟，之后10分钟；首错起满一小时重置，锁定重试不续期。不存在账号也计数并走假哈希，普通错误统一。进程内计数重启丢失、多worker不共享是当前实现边界，不是永久免改的安全保证；旧issue“明确不做IP限制”等只是该次范围。
 
-[#32](https://github.com/LYDONLUCIEN/BeingDoing/issues/32)对应 `8f8dbce` 修正邮箱验证JWT用途被access覆盖；[#97](https://github.com/LYDONLUCIEN/BeingDoing/issues/97)与[1004完成记录](../wiki/开发文档/claude-completed-1004-邮箱验证状态自动同步.md)（`2d2b290`）解决旧标签页store不同步，而非邮箱点号或后端验证延迟。不能因此修改邮箱归一化来合并不同账号。调查中issue仍写待提交，但Git已有提交，这是issue状态落后于仓库的实例。
+[#32](https://github.com/LYDONLUCIEN/BeingDoing/issues/32)对应 `8f8dbce` 修正邮箱验证JWT用途被access覆盖；[#97](https://github.com/LYDONLUCIEN/BeingDoing/issues/97)与[1004完成记录](../wiki/历史开发记录/claude-completed-1004-邮箱验证状态自动同步.md)（`2d2b290`）解决旧标签页store不同步，而非邮箱点号或后端验证延迟。不能因此修改邮箱归一化来合并不同账号。调查中issue仍写待提交，但Git已有提交，这是issue状态落后于仓库的实例。
 
 [早期admin计划](../tasks/admin-development-command-center.md)（`e5295b7`、`37de823`）记录独立子域＋super_admin＋step-up目标，混合已做和待办；需以当前路由依赖证明检查覆盖，不能拿文档标题证明所有admin操作都已二次验证。
 
 ## 14. 前端设计：限定阶段的保护线不能永久化
 
-[ADR-0004](adr/0004-rumination-v4-shell-layout.md)（`37a9904`）的v3玻璃视觉＋单shell是当时迁移策略。[0919迁移决策记录](../wiki/开发文档/0919/迁移决策记录.md)（`356809a`→`15f30dc`）之后明确允许重画rumination并覆盖旧保护线，要求保留业务状态机、真实后端能力与设计稿未覆盖功能；不能用“功能并集”要求永久保留用户后来明确淘汰的v3。
+[ADR-0004](adr/0004-rumination-v4-shell-layout.md)（`37a9904`）的v3玻璃视觉＋单shell是当时迁移策略。[0919迁移决策记录](../wiki/历史开发记录/0919/迁移决策记录.md)（`356809a`→`15f30dc`）之后明确允许重画rumination并覆盖旧保护线，要求保留业务状态机、真实后端能力与设计稿未覆盖功能；不能用“功能并集”要求永久保留用户后来明确淘汰的v3。
 
 同一文件含多轮彼此覆盖的决定：保留副标题→删除；用户localStorage外观弹层→admin全局外观；新建组合紫虚线→黑色→浅渐变→最终黑色；三栏guided成为默认；整页和聊天外层玻璃卡删除。读取时必须走到末次验收，不能选第一张“已拍板表”。“PurchaseModal完全不动”是此次换肤的范围约束，后续支付需求仍可改它。
 

@@ -4,7 +4,7 @@ Revision ID: 023_payment_refund_system
 Revises: 022_abuse_detection
 Create Date: 2026-10-05
 
-订单退款系统（wiki/开发文档/10-05/订单系统退款设计.md）：
+订单退款系统（wiki/历史开发记录/10-05/订单系统退款设计.md）：
 - payment_orders 加 amount_refunded（累计成功退款，分）
 - payment_order_lines 订单明细行（优惠分摊口径，退款上限依据）：
   交付时生成；存量 granted 订单由 payment_line_service.ensure_order_lines 惰性回填

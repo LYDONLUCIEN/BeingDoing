@@ -100,7 +100,7 @@ const FALLBACK_PRODUCTS: ProductItem[] = [
   },
 ];
 
-// ── 宽版方案选择视图子组件（UI 对齐设计稿 wiki/开发文档/10-05/newpay.html）──
+// ── 宽版方案选择视图子组件（UI 对齐设计稿 wiki/历史开发记录/10-05/newpay.html）──
 
 type WidePlanId = 'free' | 'quarterly_package' | 'annual_package';
 
@@ -393,7 +393,7 @@ function QrStage({
 }
 
 /**
- * 协议遮罩（出码前门控，对齐设计稿 wiki/开发文档/10-07/支付协议同意.png）：
+ * 协议遮罩（出码前门控，对齐设计稿 wiki/历史开发记录/10-07/支付协议同意.png）：
  * 模糊化的假二维码 + 半透明遮罩（「同意协议后扫码支付」+「同意协议」小按钮 + 条款链接），
  * 点击「同意协议」才真正下单出码（假码内容为本站首页，仅示意不可扫）。
  * 支付按钮只存在于遮罩上——下单后不再有任何「支付中」按钮，扫码完成后由轮询切成功视图。
@@ -1004,7 +1004,7 @@ export default function PurchaseModal({
     : consultationMode
       ? t('payment.consultation.title')
       : t('payment.title');
-  /** 宽版方案选择视图（套餐下单与等待支付；延期/咨询下单及成功视图保持窄弹窗），UI 对齐设计稿 wiki/开发文档/10-05/newpay.html */
+  /** 宽版方案选择视图（套餐下单与等待支付；延期/咨询下单及成功视图保持窄弹窗），UI 对齐设计稿 wiki/历史开发记录/10-05/newpay.html */
   const wideMode = !renewalMode && !consultationMode && view !== 'success';
   const quarterlyProduct =
     products.find((p) => p.product_type === 'quarterly_package') ?? FALLBACK_PRODUCTS[0];

@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
 /**
- * Chat 页外观配置（复刻 wiki/开发文档/0919/openlife-journey (21).html #appearance-popover）。
+ * Chat 页外观配置（复刻 wiki/历史开发记录/0919/openlife-journey (21).html #appearance-popover）。
  *
  * 维度总览（默认值 = HTML RECOMMENDED_APPEARANCE）：
  * - 聊天背景：background（white/tint/flow/illustration）+ placement（贴图位置）

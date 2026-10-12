@@ -569,7 +569,7 @@ export const en = {
         f4: '24-hour manual review + 1 free recheck',
       },
     },
-    /** Wide plan-selection view (design: wiki/开发文档/10-05/newpay.html) */
+    /** Wide plan-selection view (design: wiki/历史开发记录/10-05/newpay.html) */
     wide: {
       eyebrow: 'OpenLife Exploration Plans',
       title: 'Choose How You Want to Explore',

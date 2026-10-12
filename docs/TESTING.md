@@ -63,6 +63,12 @@ test/backend/test_step3_hyp_candidate.py::TestSanitizeHypCandidates::test_filter
 
 本轮未修改渲染器，第一轮8项renderer结果仍适用其未变源码；本轮新增导出测试验证原生v4快照无损复制、旧矩阵不合成终选、重用暂存目录不残留上一次v4数据。沙箱回退测试验证清除下游状态且源报告不变。复审补充schema1/2/3历史导出回归，九步记录的第8/9步及对话不截断；后台跳转使用真实双根激活码索引验证，避免替换manager掩盖集成问题。
 
+## 2026-10-13 Wiki 整理的补充验证
+
+本轮删除的旧 HTTP 回归脚本只服务已退役七步沉淀，正式 `test/` 未改。重新执行 `APP_ENV=test DEBUG=False .venv/bin/python -m pytest -q test/backend/test_rumination_retirement.py`：**26 passed、18 warnings**。本轮没有重跑全量后端或前端构建；前述全量结果仍为 2026-10-12 的记录。
+
+Wiki 与现行文档 849 条本地链接、105 条固定 Git 来源通过；全部 235 项处置去向核对，保留的 PNG／HTML／人工 diff／历史迁移源码字节不变。21 个应用／脚本文件逐字节对照仅有 `wiki/开发文档/` → `wiki/历史开发记录/` 的资料路径变化，Python 语法及差异空白检查通过。旧计划目录中其他既有失效链接不在此验证通过的范围。
+
 ## 失败分类与处理次序
 
 - core/agent、LLM：缺真实 API/DB 默认模型、计费预期与现有实现不一致，部分 tokenizer 初次下载受网络限制。先拆开离线契约测试与真实服务集成测试。

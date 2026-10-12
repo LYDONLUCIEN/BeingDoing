@@ -1,7 +1,7 @@
 # Rumination（第 5 步）左右分栏布局 — 开发计划
 
 > 文档版本：2026-04-02  
-> 依据：`uidesign/prompt/new-rumination.md`、`wiki/rumination2.0改进方案.md`、`.cursor/20260329-rumination新版.md`、当前仓库实现。
+> 依据：`uidesign/prompt/new-rumination.md`、`wiki/历史架构研究/rumination2.0改进方案.md`、`.cursor/20260329-rumination新版.md`、当前仓库实现。
 
 ---
 
@@ -14,8 +14,8 @@
 | 来源 | 要求 |
 |------|------|
 | [new-rumination.md](../uidesign/prompt/new-rumination.md) §2 页面概览 | **左侧**：可编辑表格（核心数据载体）；**右侧**：对话框（流程引导 Cue + 基于选中行的细节对话）。 |
-| [wiki/rumination2.0改进方案.md](../wiki/rumination2.0改进方案.md) §2.1 | 左右分栏：**左 table panel / 右 chat panel**；表格与对话**同屏并行**；行点击高亮 + 行级对话。 |
-| [wiki §4.2.1](../wiki/rumination2.0改进方案.md) | `phase === 'rumination'` 时**分支布局**，**隐藏通用 `ChatPhaseSidebar`**，主体 `flex row`：左表格工作台、右对话区。 |
+| [wiki/历史架构研究/rumination2.0改进方案.md](../../wiki/历史架构研究/rumination2.0改进方案.md) §2.1 | 左右分栏：**左 table panel / 右 chat panel**；表格与对话**同屏并行**；行点击高亮 + 行级对话。 |
+| [wiki §4.2.1](../../wiki/历史架构研究/rumination2.0改进方案.md) | `phase === 'rumination'` 时**分支布局**，**隐藏通用 `ChatPhaseSidebar`**，主体 `flex row`：左表格工作台、右对话区。 |
 
 ### 1.2 当前实现（v1 / 现状）
 
@@ -131,7 +131,7 @@ flowchart LR
 ## 7. 参考文档索引
 
 - [uidesign/prompt/new-rumination.md](../uidesign/prompt/new-rumination.md) — 左右区域职责、每步表格/确认/行点击  
-- [wiki/rumination2.0改进方案.md](../wiki/rumination2.0改进方案.md) — v1 现状、目标、§4.2 前端改造要点  
+- [wiki/历史架构研究/rumination2.0改进方案.md](../../wiki/历史架构研究/rumination2.0改进方案.md) — v1 现状、目标、§4.2 前端改造要点
 - [.cursor/20260329-rumination新版.md](../.cursor/20260329-rumination新版.md) — 表格为中心、步骤状态机  
 - [.cursor/plans/rumination_与探索流程增强_1f73f7a4.plan.md](../.cursor/plans/rumination_与探索流程增强_1f73f7a4.plan.md) — 历史计划片段  
 

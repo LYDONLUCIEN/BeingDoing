@@ -53,7 +53,7 @@ def analysis_task_key(report_id: str, combo_id: str) -> str:
     return f"{report_id}:{combo_id}"
 
 
-# ── 数据 schema(参考 wiki/开发文档/0707-tag1.6.0.md 第三节;2026-08-06 瘦身)───
+# ── 数据 schema(参考 wiki/历史开发记录/0707-tag1.6.0.md 第三节;2026-08-06 瘦身)───
 def default_state(matrix_snapshot: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """v4 全局 rumination_state 默认值。"""
     return {

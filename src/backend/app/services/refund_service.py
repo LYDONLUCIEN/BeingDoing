@@ -1,5 +1,5 @@
 """
-退款服务（2026-10-05，设计文档 wiki/开发文档/10-05/订单系统退款设计.md）
+退款服务（2026-10-05，设计文档 wiki/历史开发记录/10-05/订单系统退款设计.md）
 
 统一退款申请单：全退/部分退同走 payment_refunds 状态机
     pending_review →（批准并执行）→ refunding → succeeded / failed（同 refund_no 重试）

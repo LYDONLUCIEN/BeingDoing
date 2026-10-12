@@ -4,7 +4,7 @@ Revision ID: 024_coupon_multi_redemption
 Revises: 023_payment_refund_system
 Create Date: 2026-10-06
 
-优惠券多次核销（wiki/开发文档/10-06/优惠券多次核销与码格式区分-设计定稿.md）：
+优惠券多次核销（wiki/历史开发记录/10-06/优惠券多次核销与码格式区分-设计定稿.md）：
 - coupons 加 max_uses / used_count / locked_count / suspended_at
 - 存量 backfill：max_uses=1；used 行 used_count=1、locked 行 locked_count=1（对齐守卫口径）
 - 新表 coupon_redemptions：每次锁定/核销一行，退款全额按行回退（历史数据不回填）

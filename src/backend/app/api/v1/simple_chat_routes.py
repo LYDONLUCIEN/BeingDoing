@@ -3880,7 +3880,7 @@ async def delete_thread(
     )
 
 
-# ── Rumination v4 子路由挂载(见 wiki/开发文档/0707-tag1.6.0.md)──────────
+# ── Rumination v4 子路由挂载(见 wiki/历史开发记录/0707-tag1.6.0.md)──────────
 # 沉淀唯一运行入口；旧流程实现仅保留在 Git 历史。
 try:
     from app.api.v1.rumination_v4_routes import router as _rumination_v4_router

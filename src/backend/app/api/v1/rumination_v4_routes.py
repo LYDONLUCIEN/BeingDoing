@@ -21,7 +21,7 @@ Rumination v4 API 路由（2026-08-06 版，ADR-0015：用户主导结论卡 + �
 - POST /final-selection/submit
 - POST /active
 
-数据模型与决策见 wiki/开发文档/0707-tag1.6.0.md + docs/adr/0015
+数据模型与决策见 wiki/历史开发记录/0707-tag1.6.0.md + docs/adr/0015
 """
 
 from __future__ import annotations
