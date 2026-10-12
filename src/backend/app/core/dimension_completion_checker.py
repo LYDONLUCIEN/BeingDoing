@@ -364,7 +364,7 @@ async def judge_dimension_completion(
 {conv_text}
 ---
 
-请用 JSON 回复，格式：{{"complete": true 或 false, "reason": "简短理由（告知用户时还缺什么，15 字以内）"}}
+请用 JSON 回复，格式：{{"complete": true 或 false, "reason": "简短理由（只说明还缺什么，15 字以内；会直接展示给用户，不要使用「兜底」「备用」「应急」等词）"}}
 只输出 JSON，不要其他内容。"""
 
     messages = [LLMMessage(role="user", content=check_prompt)]
