@@ -1,12 +1,12 @@
 # Alembic 数据库迁移
 
-## 初始化数据库
+## 本地空库与存量库
 
-```bash
-# 从 src/backend 目录执行
-alembic revision --autogenerate -m "Initial migration"
-alembic upgrade head
-```
+本仓库历史迁移从已有基础表的数据库开始，不能用 `alembic upgrade head` 从零建库，也不应为本地安装生成新的 initial migration。
+
+新本地 SQLite 库使用[开发指南的空库流程](../../../docs/DEVELOPMENT.md#本地启动)：拒绝已有表，按当前 ORM 建表，成功后标记 head。此流程不回填历史数据。
+
+存量库先备份并在副本验证，检查 `alembic current` 后升级。没有版本号的旧库需先核对表结构；不得直接 `stamp head` 跳过变更。
 
 ## 创建新迁移
 

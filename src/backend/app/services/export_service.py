@@ -264,7 +264,7 @@ class ExportService:
             输出文件路径
 
         Note:
-            需要安装 reportlab 或 weasyprint
+            需要安装 reportlab；缺失时调用方可降级为 Markdown
         """
         try:
             from reportlab.lib.pagesizes import A4

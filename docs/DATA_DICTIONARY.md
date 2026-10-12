@@ -47,7 +47,7 @@
 | v3 combo_id / v4 combo session | v3 是两索引格子；v4 独立组合含一热爱和多优势，不按索引自动转换 |
 | hypothesis | 用户填写字符串，不是按优势分组的 dict |
 | balance_found / balance_fail_reason | 后台对确认快照的判断及理由；新消息/修改假设使判断失效；不是强制准入 |
-| AnalyticsLike.user_id / message_id | 点赞者与消息 ID；新写入必须有已认证用户，读写按用户过滤 | 
+| AnalyticsLike.user_id / message_id | 点赞者与消息 ID；新写入必须有已认证用户，读写按用户过滤 |
 | AnalyticsLike.session_id | 历史混用：前四阶段传 activation_session_id，v4 传 activation_code；当前兼容并校验归属，不据此拼路径 |
 | content_snapshot / content_preview | 客户端提供的私有内容快照/预览，不能当可信服务端原文或 HTML；trace 不再按客户端路径扫描文件 |
 | visitor_id / page_view / auth_active | 匿名访客标识/PV/登录活跃事件；PV 可公开上报，auth_active 仅服务端写；不是登录用户数同一口径 |

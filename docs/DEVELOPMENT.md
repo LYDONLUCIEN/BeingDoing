@@ -21,7 +21,7 @@ npm ci
 
 ## 本地启动
 
-所有命令仅用于独立开发目录/数据库。初始化空库前先确认 DATABASE_URL 指向新测试库：
+以下命令从仓库根目录执行，虚拟环境已激活。仅用于独立开发目录/数据库：
 
 ```bash
 export APP_ENV=development
@@ -29,9 +29,41 @@ export DEBUG=False
 export DATABASE_URL=sqlite+aiosqlite:///./local-dev.db
 export SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
 cd src/backend
-alembic upgrade head
+```
+
+**新建空库**不能直接 `alembic upgrade head`：历史迁移从已存在的用户库开始，003 会修改 `users`，没有创建完整基础表。本地空 SQLite 库先按当前 ORM 建表，再标记当前迁移版本；下列检查拒绝任何已有表的数据库，只有建表成功才执行 stamp：
+
+```bash
+python - <<'PY' && alembic stamp head && alembic current
+import asyncio
+from sqlalchemy import inspect
+from app.models import Base, engine
+
+async def initialize():
+    try:
+        if engine.url.get_backend_name() != "sqlite":
+            raise RuntimeError("此流程仅用于本地空 SQLite 库")
+        async with engine.begin() as conn:
+            tables = await conn.run_sync(lambda sync: inspect(sync).get_table_names())
+            if tables:
+                raise RuntimeError("数据库已有表，拒绝初始化；存量库请走升级流程")
+            await conn.run_sync(Base.metadata.create_all)
+    finally:
+        await engine.dispose()
+
+asyncio.run(initialize())
+PY
+```
+
+确认输出版本为 `025_user_type_admin_note (head)` 后启动：
+
+```bash
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
+
+该空库流程不执行历史数据回填，也不执行 009 的环境密钥 seed。LLM 先按本地环境配置，确需 DB 配置时参考 `scripts/sync_llm_db_config.py`。后续新增迁移需同步这里的预期 head。
+
+**存量库升级**先备份并在独立副本验证，核对 `alembic current` 后执行 `alembic upgrade head`。不要对存量库运行上述初始化或用 `stamp head` 跳过迁移；没有版本记录的历史库需要先核对真实表结构与迁移历史，不能推断其已到 head。更多迁移操作见 [迁移说明](../src/backend/alembic/README.md)。
 
 另一终端在 src/frontend 执行 `npm run dev`。前端经 next.config.js 的 `/api` rewrites 连接默认 127.0.0.1:8000；需要改后端地址时设置 NEXT_PUBLIC_API_URL。API 结构见 `/docs` 和 `/openapi.json`。
 

@@ -34,7 +34,7 @@ reportlab>=4.0.0  # PDF导出（可选）
 PyYAML>=6.0
 Jinja2>=3.1.6
 markdown>=3.5  # markdown → HTML（报告 PDF 中间层）
-weasyprint>=60.0  # HTML/CSS → PDF（报告导出）
+weasyprint>=60.0  # ADR-0021 明确保留；当前报告走 xunlu，删除前需澄清历史保留要求
 
 # 对象存储（反馈截图）
 oss2>=2.19.0  # 阿里云 OSS SDK

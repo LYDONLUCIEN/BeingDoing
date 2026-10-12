@@ -15,13 +15,13 @@
 
 README 为人类入口；AGENTS/CLAUDE/CONTEXT/claude-开发文档保留短指针，避免外部工具链接失效。规范收敛到 CONTRIBUTING，业务语言/字段/当前规则分开，订阅方向形成 ADR-0024。纠正注册试用发放、有效期、退款、多次券、PDF 引擎等过期口径。
 
-代码统一了会话/回答/管理员授权、导出标识和 Markdown 清洗。删除 analytics 不再调用的磁盘扫描兜底与 chat_optimized 未使用的旧 manager alias。修复渲染器测试的私人绝对路径，以合成数据验证章节/分页不变式。
+代码统一了会话/回答/管理员授权、导出标识和 Markdown 清洗。删除 analytics 不再调用的磁盘扫描兜底与 chat_optimized 未使用的旧 manager alias。全仓无导入的前端顶层 rehype-raw 6 依赖也已删除，UIW 自带的 7.x 解析器保留并在输出末端清洗。修复渲染器测试的私人绝对路径，以合成数据验证章节/分页不变式。
 
 ## 删除依据与保留例外
 
 | 项目 | 证据 / 处理 |
 | --- | --- |
-| flow/page.tsx.backup | 仅旧 v2.4 文档提及恢复备份，当前 Next 路由用 page.tsx；旧流程已替代，无单独保留要求，删除 |
+| flow/page.tsx.backup | 仅旧 v2.4 文档提及恢复备份，当前探索入口为 `src/frontend/app/(main)/explore/chat/[phase]/page.tsx`；旧流程已替代，无单独保留要求，删除 |
 | development-v2.4、TESTING_GUIDE_v2.4 | 已在历史文档目录、指向旧页面/备份恢复操作，现行指南取代；删除旧操作入口 |
 | 0812-报告配色配置说明 | 只指导已删除 report_theme.json/WeasyPrint 样式，ADR-0021 与 0923 完成记录明确替代，删除；仍有历史引用处标记失效 |
 | BeingDoing-整理文档 | 4 月清理方案与后续保留 .duplicate/原始笔记要求冲突，目录描述也失效，删除并用本台账替代 |
@@ -46,7 +46,7 @@ README 为人类入口；AGENTS/CLAUDE/CONTEXT/claude-开发文档保留短指�
 | [tdd](https://github.com/mattpocock/skills/blob/main/skills/engineering/tdd/SKILL.md) | 先复现越权/注入/令牌问题，再做公开行为回归 |
 | [research](https://github.com/mattpocock/skills/blob/main/skills/engineering/research/SKILL.md) | 后台检索官方技能和依赖公告，应用条件与本地证据分开 |
 | [writing-for-agents](https://github.com/mattpocock/skills/blob/main/skills/productivity/writing-for-agents/SKILL.md) | 简短根入口，按场景查阅，单一权威定义 |
-| [code-review](https://github.com/mattpocock/skills/blob/main/skills/engineering/code-review/SKILL.md) | 对固定 v1.8.0 的差异做规范/需求两个维度独立复审，结果见 REVIEW.md |
+| [code-review](https://github.com/mattpocock/skills/blob/main/skills/engineering/code-review/SKILL.md) | 对固定 v1.8.0 的差异做规范/需求两个维度独立复审，结果见 [REVIEW.md](REVIEW.md) |
 
 未启动 grill/prototype/全面架构重做：当前已有明确清理授权，先把能由代码和历史自证的部分完成。订阅具体计费、权益、退款及券范围仍需产品定稿。
 

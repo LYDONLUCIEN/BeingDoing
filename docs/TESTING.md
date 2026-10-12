@@ -26,6 +26,7 @@ isort --check-only --settings-path src/backend/pyproject.toml src/backend
 | 前端 lint | 退出 0，保留原有 Hook 依赖/原生 img 提示 |
 | 前端 production build | 退出 0，路由编译及 TypeScript 检查通过 |
 | 报告 renderer | 8 passed；修复 node --test 的目录参数兼容，并以合成 fixture 替代硬编码服务器私有报告路径；dist 重建无差异 |
+| 新开发指南空库流程 | 在独立临时 SQLite 执行文档原命令，创建 38 表（含 alembic_version）、版本为 025_user_type_admin_note；重复运行拒绝且库文件字节不变；后续 upgrade head 成功 |
 | 全量 Python 格式 | 原有大量格式债：首次 Black 检查 204 文件待调整；isort 也有既有失败。新增文件完整格式化，旧文件只格式化变更行/导入，避免全仓无关重排 |
 | pip-audit | 133 包，2 个不同未修复公告（原输出 3 条含重复），适用条件见安全评估 |
 | npm audit | bulk advisory 请求 ECONNRESET；未获得可靠完整结果，不能写成通过 |
