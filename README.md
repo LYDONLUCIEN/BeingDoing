@@ -19,7 +19,8 @@
 | 接口与权限 | [API 契约](docs/API_DOCUMENTATION.md) |
 | 理解字段、状态和跨产品关系 | [字段字典](docs/DATA_DICTIONARY.md) · [新产品边界](docs/PRODUCT_EVOLUTION.md) |
 | 安全与本次清理 | [安全评估](docs/SECURITY_REVIEW.md) · [清理依据](docs/CLEANUP.md) · [双轴复审](docs/REVIEW.md) |
-| 查历史决策 | [ADR 索引](docs/adr/README.md) |
+| 理解现行选择、原因和约束 | [架构与开发决策](docs/DECISIONS.md) · [开发变更记录](docs/CHANGELOG.md) |
+| 查历史过程和替代关系 | [历史证据](docs/HISTORY_EVIDENCE.md) · [GitHub 全量索引](docs/ISSUE_HISTORY.md) · [ADR 状态](docs/adr/README.md) |
 
 `docs/历史文档/`、`wiki/开发文档/` 和 `tasks/` 保存版本背景、设计与运维记录。历史文档中的命令需核对版本，不能替代上面的现行入口。
 

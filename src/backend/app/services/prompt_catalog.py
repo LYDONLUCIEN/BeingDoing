@@ -1,6 +1,7 @@
 """
-Admin Prompt Catalog：只读聚合 simple_chat 相关提示词与运行时注入元数据。
+Admin Prompt Catalog：只读展示前四阶段与 v4 的真实提示词；不加载退役七步流程。
 """
+
 from __future__ import annotations
 
 import os
@@ -9,31 +10,18 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
-from app.api.v1.simple_chat.prompt_builder import build_fallback_opening_question, build_system_prompt
+from app.api.v1.simple_chat.prompt_builder import (
+    build_fallback_opening_question,
+    build_system_prompt,
+)
 from app.domain.conclusion_card_payload import build_state_json_draft_extension_protocol
 from app.domain.prompts.loader import _get_loader, get_step_copy
-from app.domain.rumination_prompt_strings import (
-    DEEP_CHAT_STEP_SYSTEM_MAP,
-    OPENING_USER_WITH_TABLE_ZH,
-    RUMINATION_CHAT_STEP_ADDON_EN,
-    RUMINATION_CHAT_STEP_ADDON_ZH,
-    RUMINATION_CLOSING_EPILOGUE_SYSTEM_ZH,
-    RUMINATION_CLOSING_EPILOGUE_USER_TEMPLATE_ZH,
-    RUMINATION_ENTRY_INIT_SYSTEM_ZH,
-    RUMINATION_ENTRY_INIT_USER_TEMPLATE_ZH,
-    RUMINATION_SHORTPATH_SKIP_CLOSING_FIXED_ZH,
-    STEP_1_OPENING_SYSTEM_ZH,
-    STEP_2_OPENING_SYSTEM_ZH,
-    STEP_3_OPENING_SYSTEM_ZH,
-    STEP_4_OPENING_SYSTEM_ZH,
-    STEP_4_OPENING_USER_TEMPLATE_ZH,
-    STEP_5_OPENING_SYSTEM_ZH,
-    STEP_6_OPENING_SYSTEM_ZH,
-    STEP_7_OPENING_SYSTEM_ZH,
-    STEP_OPENING_FIXED_ZH,
+from app.domain.rumination_v4_prompt import (
+    BALANCE_JUDGE_PROMPT,
+    MEGA_PROMPT,
+    SUMMARIZER_PROMPT,
+    render_mega_prompt,
 )
-from app.domain.rumination_step_guidance import STEP_OPENING_MODE
-from app.services.rumination_init_greeting import RUMINATION_INIT_FALLBACK_ZH
 from app.utils.admin_prompt_lab import get_profile
 from app.utils.purpose_progress import build_progress_injection, normalize_progress
 
@@ -53,16 +41,6 @@ PHASE_COLORS: Dict[str, str] = {
     "interests": "rose",
     "purpose": "emerald",
     "rumination": "violet",
-}
-
-_STEP_OPENING_SYSTEM: Dict[int, str] = {
-    1: STEP_1_OPENING_SYSTEM_ZH,
-    2: STEP_2_OPENING_SYSTEM_ZH,
-    3: STEP_3_OPENING_SYSTEM_ZH,
-    4: STEP_4_OPENING_SYSTEM_ZH,
-    5: STEP_5_OPENING_SYSTEM_ZH,
-    6: STEP_6_OPENING_SYSTEM_ZH,
-    7: STEP_7_OPENING_SYSTEM_ZH,
 }
 
 _VAR_PATTERN = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
@@ -86,8 +64,6 @@ _NESTED_IF_PATTERN = re.compile(
 
 def get_variable_samples(locale: str = "zh") -> Dict[str, str]:
     """Hover 示例：供前端 {{ var }} 标签展示。"""
-    loc = (locale or "zh").strip().lower()
-    addon = RUMINATION_CHAT_STEP_ADDON_ZH.get(3, "") if not loc.startswith("en") else RUMINATION_CHAT_STEP_ADDON_EN.get(3, "")
     prior = (
         "【价值观】成长、关系、平衡\n"
         "【优势】倾听、结构化思考\n"
@@ -100,12 +76,6 @@ def get_variable_samples(locale: str = "zh") -> Dict[str, str]:
         "basic_info": "姓名：小明\n职业：产品经理\n工作年限：5年",
         "prior_block": f"\n\n以下是该来访者在上一轮咨询中的谈话结果，供你参考：\n{prior}",
         "values_info": "成长、关系、身心平衡",
-        "rumination_step_addon": addon[:200] + ("…" if len(addon) > 200 else ""),
-        "row_count": "12",
-        "table_json": '[{"passion":"写作","strength":"结构化思考"}]',
-        "values_keywords": "成长、关系、平衡",
-        "selected_summary": "1. 教育内容创作\n2. 职业咨询",
-        "prior_block_entry": prior[:400],
     }
 
 
@@ -218,28 +188,6 @@ def get_runtime_injection_catalog() -> List[Dict[str, Any]]:
             "phases": ["purpose"],
         },
         {
-            "id": "rumination_step_addon",
-            "label": "沉淀子步 chat_addon",
-            "category": "runtime",
-            "order": 15,
-            "inject_after": "simple_chat_system rumination 分支内",
-            "trigger": "phase == rumination 且 filter_step 1-7",
-            "source_path": "domain/rumination_step_guidance.py · get_rumination_chat_step_addon",
-            "sample_content": RUMINATION_CHAT_STEP_ADDON_ZH.get(3, "")[:300],
-            "phases": ["rumination"],
-        },
-        {
-            "id": "neg_gate_deep_chat",
-            "label": "深入讨论 neg gate 注入",
-            "category": "runtime",
-            "order": 25,
-            "inject_after": "simple_chat_system 渲染后末尾追加",
-            "trigger": "rumination 步骤 2/3/5/6 neg gate exploring",
-            "source_path": "utils/rumination_neg_gate.py · build_injection_zh",
-            "sample_content": list(DEEP_CHAT_STEP_SYSTEM_MAP.values())[0][:200] if DEEP_CHAT_STEP_SYSTEM_MAP else "",
-            "phases": ["rumination"],
-        },
-        {
             "id": "pending_rejection_injection",
             "label": "结论卡拒绝后再聊聊",
             "category": "runtime",
@@ -259,7 +207,7 @@ def get_runtime_injection_catalog() -> List[Dict[str, Any]]:
             "trigger": "每次 build_system_prompt",
             "source_path": "api/v1/simple_chat/prompt_builder.py · build_system_prompt",
             "sample_content": protocol_sample[:400],
-            "phases": list(PHASE_KEYS),
+            "phases": list(PHASE_KEYS[:4]),
         },
         {
             "id": "conclusion_rules",
@@ -292,18 +240,7 @@ def get_runtime_injection_catalog() -> List[Dict[str, Any]]:
             "trigger": "LLM 不可用或返回空",
             "source_path": "api/v1/simple_chat/prompt_builder.py · build_fallback_opening_question",
             "sample_content": build_fallback_opening_question("values"),
-            "phases": list(PHASE_KEYS),
-        },
-        {
-            "id": "rumination_init_fallback",
-            "label": "沉淀 entry_init 降级",
-            "category": "fallback",
-            "order": 6,
-            "inject_after": "synthesize_rumination_entry_greeting 失败",
-            "trigger": "rumination 首次 init LLM 失败",
-            "source_path": "services/rumination_init_greeting.py · RUMINATION_INIT_FALLBACK_ZH",
-            "sample_content": RUMINATION_INIT_FALLBACK_ZH,
-            "phases": ["rumination"],
+            "phases": list(PHASE_KEYS[:4]),
         },
         {
             "id": "extra_goal_hint",
@@ -314,7 +251,7 @@ def get_runtime_injection_catalog() -> List[Dict[str, Any]]:
             "trigger": "沙箱 Prompt Lab profile 绑定且 extra_goal_hint 非空",
             "source_path": "utils/admin_prompt_lab.py · resolve_simple_chat_prompt_override",
             "sample_content": "[管理员调试目标补充]\n（示例）更强调一次一问",
-            "phases": list(PHASE_KEYS),
+            "phases": list(PHASE_KEYS[:4]),
         },
     ]
 
@@ -372,81 +309,25 @@ def _step_copy_section(phase: str, position: str, locale: str) -> Dict[str, Any]
     }
 
 
-def _rumination_step_sections(step: int, locale: str) -> List[Dict[str, Any]]:
-    loc = (locale or "zh").strip().lower()
-    mode = STEP_OPENING_MODE.get(step, "llm")
-    sections: List[Dict[str, Any]] = []
-
-    opening_label = "固定开场" if mode == "fixed" else "LLM 开场 system"
-    opening_content = (
-        STEP_OPENING_FIXED_ZH.get(step, "")
-        if mode == "fixed"
-        else _STEP_OPENING_SYSTEM.get(step, "")
-    )
-    sections.append(
-        {
-            "key": "opening",
-            "label": opening_label,
-            "category": "intro",
-            "opening_mode": mode,
-            "source_path": (
-                "domain/rumination_prompt_strings.py · STEP_OPENING_FIXED_ZH"
-                if mode == "fixed"
-                else "domain/rumination_prompt_strings.py · STEP_{n}_OPENING_SYSTEM_ZH"
-            ),
-            "content": opening_content,
-            "segments": parse_content_segments(opening_content),
-        }
-    )
-
-    if mode == "llm":
-        user_tpl = STEP_4_OPENING_USER_TEMPLATE_ZH if step == 4 else OPENING_USER_WITH_TABLE_ZH
-        sections.append(
-            {
-                "key": "opening_user",
-                "label": "LLM 开场 user 模板",
-                "category": "main",
-                "source_path": "domain/rumination_prompt_strings.py",
-                "content": user_tpl,
-                "segments": parse_content_segments(user_tpl),
-            }
-        )
-
-    addon_map = RUMINATION_CHAT_STEP_ADDON_EN if loc.startswith("en") else RUMINATION_CHAT_STEP_ADDON_ZH
-    addon = addon_map.get(step, "")
-    sections.append(
-        {
-            "key": "chat_addon",
-            "label": "主对话 chat_addon",
-            "category": "addon",
-            "source_path": "domain/rumination_prompt_strings.py · RUMINATION_CHAT_STEP_ADDON_*",
-            "content": addon,
-            "segments": parse_content_segments(addon),
-        }
-    )
-
-    deep = DEEP_CHAT_STEP_SYSTEM_MAP.get(step, "")
-    if deep:
-        sections.append(
-            {
-                "key": "deep_chat",
-                "label": "深入讨论 neg gate",
-                "category": "runtime",
-                "source_path": "domain/rumination_prompt_strings.py · DEEP_CHAT_STEP_SYSTEM_MAP",
-                "content": deep,
-                "segments": parse_content_segments(deep),
-                "collapsed_default": True,
-            }
-        )
-    return sections
-
-
 def _simple_chat_diff(
     phase: str,
     locale: str,
     profile_id: Optional[str],
     branches: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
+    if phase == "rumination":
+        return {
+            "canonical_source": "domain/rumination_v4_prompt.py",
+            "canonical_template": MEGA_PROMPT,
+            "override_template": None,
+            "override_meta": None,
+            "has_override": False,
+            "effective_phase": "rumination",
+            "active_branch_content": MEGA_PROMPT,
+            "effective_preview": render_mega_prompt(
+                "写作", ["结构化思考"], "示例用户背景", ["成长"]
+            ),
+        }
     canonical_path, canonical_tpl = load_canonical_simple_chat_template()
     override_tpl: Optional[str] = None
     override_meta: Optional[Dict[str, Any]] = None
@@ -474,7 +355,6 @@ def _simple_chat_diff(
         "basic_info": samples["basic_info"],
         "prior_block": samples["prior_block"],
         "values_info": samples["values_info"],
-        "rumination_step_addon": samples["rumination_step_addon"],
     }
 
     effective = build_system_prompt(
@@ -485,7 +365,6 @@ def _simple_chat_diff(
         template_override=override_tpl,
         extra_goal_hint=extra_goal,
         values_info=mock_ctx["values_info"],
-        rumination_step_addon=mock_ctx["rumination_step_addon"],
         purpose_progress_injection=(
             build_progress_injection(normalize_progress({"current_index": 1, "confirmed_rows": []}))
             if phase == "purpose"
@@ -529,90 +408,49 @@ def build_prompt_catalog(
 
     phases_out: List[Dict[str, Any]] = []
     for pk in PHASE_KEYS:
-        sections: List[Dict[str, Any]] = [
-            _step_copy_section(pk, "intro", loc),
-            _step_copy_section(pk, "outro", loc),
-            {
-                "key": "init_fallback",
-                "label": "Init 兜底开场",
-                "category": "fallback",
-                "source_path": "api/v1/simple_chat/prompt_builder.py",
-                "content": build_fallback_opening_question(pk),
-                "segments": parse_content_segments(build_fallback_opening_question(pk)),
-            },
-            {
-                "key": "main_dialogue",
-                "label": "主对话 System Prompt",
-                "category": "main",
-                "source_path": "domain/prompts/templates/simple_chat_system.yaml",
-                "layer_stack": _build_main_layer_stack(pk, branches, runtime_catalog),
-            },
-        ]
+        sections: List[Dict[str, Any]] = []
+        if pk != "rumination":
+            sections = [
+                _step_copy_section(pk, "intro", loc),
+                _step_copy_section(pk, "outro", loc),
+                {
+                    "key": "init_fallback",
+                    "label": "Init 兜底开场",
+                    "category": "fallback",
+                    "source_path": "api/v1/simple_chat/prompt_builder.py",
+                    "content": build_fallback_opening_question(pk),
+                    "segments": parse_content_segments(build_fallback_opening_question(pk)),
+                },
+                {
+                    "key": "main_dialogue",
+                    "label": "主对话 System Prompt",
+                    "category": "main",
+                    "source_path": "domain/prompts/templates/simple_chat_system.yaml",
+                    "layer_stack": _build_main_layer_stack(pk, branches, runtime_catalog),
+                },
+            ]
 
         if pk == "rumination":
-            sections.insert(
-                2,
+            sections = [
                 {
-                    "key": "entry_init",
-                    "label": "首轮 entry_init",
-                    "category": "intro",
-                    "source_path": "domain/rumination_prompt_strings.py",
-                    "items": [
-                        {
-                            "role": "system",
-                            "content": RUMINATION_ENTRY_INIT_SYSTEM_ZH,
-                            "segments": parse_content_segments(RUMINATION_ENTRY_INIT_SYSTEM_ZH),
-                        },
-                        {
-                            "role": "user_template",
-                            "content": RUMINATION_ENTRY_INIT_USER_TEMPLATE_ZH,
-                            "segments": parse_content_segments(RUMINATION_ENTRY_INIT_USER_TEMPLATE_ZH),
-                        },
-                        {
-                            "role": "fallback",
-                            "label": "LLM 失败降级",
-                            "content": RUMINATION_INIT_FALLBACK_ZH,
-                            "source_path": "services/rumination_init_greeting.py",
-                        },
-                    ],
-                },
-            )
-            sections.append(
-                {
-                    "key": "closing",
-                    "label": "终步收束结语",
-                    "category": "outro",
-                    "source_path": "domain/rumination_prompt_strings.py",
-                    "items": [
-                        {
-                            "role": "llm_system",
-                            "content": RUMINATION_CLOSING_EPILOGUE_SYSTEM_ZH,
-                        },
-                        {
-                            "role": "llm_user_template",
-                            "content": RUMINATION_CLOSING_EPILOGUE_USER_TEMPLATE_ZH,
-                            "segments": parse_content_segments(RUMINATION_CLOSING_EPILOGUE_USER_TEMPLATE_ZH),
-                        },
-                        {
-                            "role": "fixed_shortpath",
-                            "label": "短路径固定结语",
-                            "content": RUMINATION_SHORTPATH_SKIP_CLOSING_FIXED_ZH,
-                        },
-                    ],
-                },
-            )
-            rumination_steps = []
-            for step in range(1, 8):
-                rumination_steps.append(
-                    {
-                        "step": step,
-                        "label": f"筛选步骤 {step}",
-                        "opening_mode": STEP_OPENING_MODE.get(step, "llm"),
-                        "sections": _rumination_step_sections(step, loc),
-                    }
+                    "key": key,
+                    "label": label,
+                    "category": category,
+                    "source_path": "domain/rumination_v4_prompt.py",
+                    "content": content,
+                    "segments": parse_content_segments(content),
+                }
+                for key, label, category, content in (
+                    ("main_dialogue", "组合纯对话", "main", MEGA_PROMPT),
+                    (
+                        "balance_judge",
+                        "用户确认后的独立平衡点判定",
+                        "runtime",
+                        BALANCE_JUDGE_PROMPT,
+                    ),
+                    ("summarizer", "长对话摘要", "runtime", SUMMARIZER_PROMPT),
                 )
-        else:
-            rumination_steps = None
+            ]
 
         phase_obj: Dict[str, Any] = {
             "key": pk,
@@ -620,8 +458,6 @@ def build_prompt_catalog(
             "color": PHASE_COLORS.get(pk, "gray"),
             "sections": sections,
         }
-        if rumination_steps is not None:
-            phase_obj["rumination_steps"] = rumination_steps
         phases_out.append(phase_obj)
 
     return {

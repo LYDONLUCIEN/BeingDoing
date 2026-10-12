@@ -54,7 +54,6 @@ def _builtin_templates() -> Dict[str, Path]:
     return {
         "mock_values_pending": root / "mock_values_pending",
         "mock_strengths_dialogue": root / "mock_strengths_dialogue",
-        "mock_rumination_opening": root / "mock_rumination_opening",
     }
 
 
@@ -328,7 +327,12 @@ def cmd_snapshot(args: argparse.Namespace) -> None:
         cases_path = (
             Path(args.cases_file).expanduser().resolve()
             if args.cases_file
-            else _project_root() / "test" / "backend" / "fixtures" / "simple_chat_cases" / "batch_savepoints_general.json"
+            else _project_root()
+            / "test"
+            / "backend"
+            / "fixtures"
+            / "simple_chat_cases"
+            / "batch_savepoints_general.json"
         )
         payload = _load_cases(cases_path)
         cases = [x for x in payload.get("cases", []) if isinstance(x, dict)]
@@ -384,25 +388,41 @@ def main() -> None:
     p_t = sub.add_parser("template", help="Clone builtin template with ID remap")
     p_t.add_argument("--list", action="store_true", help="List templates")
     p_t.add_argument("--template", default="", help="Template key")
-    p_t.add_argument("--output-name", default="", help="Output directory name under fixtures/simple_chat_reports")
+    p_t.add_argument(
+        "--output-name", default="", help="Output directory name under fixtures/simple_chat_reports"
+    )
     p_t.add_argument("--dry-run", action="store_true")
-    p_t.add_argument("--apply", action="store_true", help="Perform write (default dry without --apply)")
+    p_t.add_argument(
+        "--apply", action="store_true", help="Perform write (default dry without --apply)"
+    )
     p_t.set_defaults(func=cmd_template)
 
     p_s = sub.add_parser("snapshot", help="Copy live report dir into fixtures")
-    p_s.add_argument("--simple-root", default="", help="Simple data root (default: <project>/data/simple)")
+    p_s.add_argument(
+        "--simple-root", default="", help="Simple data root (default: <project>/data/simple)"
+    )
     p_s.add_argument("--report-id", required=True)
     p_s.add_argument("--output-name", default="")
     p_s.add_argument("--remap-ids", action="store_true", default=True)
     p_s.add_argument("--no-remap-ids", action="store_false", dest="remap_ids")
     p_s.add_argument("--dry-run", action="store_true")
     p_s.add_argument("--apply", action="store_true")
-    p_s.add_argument("--create-case", action="store_true", help="Append one generated case after snapshot")
-    p_s.add_argument("--cases-file", default="", help="Target cases json path; default batch_savepoints_general.json")
-    p_s.add_argument("--replace-case", action="store_true", help="Replace same-name case when create-case")
+    p_s.add_argument(
+        "--create-case", action="store_true", help="Append one generated case after snapshot"
+    )
+    p_s.add_argument(
+        "--cases-file",
+        default="",
+        help="Target cases json path; default batch_savepoints_general.json",
+    )
+    p_s.add_argument(
+        "--replace-case", action="store_true", help="Replace same-name case when create-case"
+    )
     p_s.add_argument("--case-name", default="", help="Override auto case name")
     p_s.add_argument("--phase", default="values", help="Case phase when create-case")
-    p_s.add_argument("--thread-id", default="", dest="thread_id", help="Case thread id when create-case")
+    p_s.add_argument(
+        "--thread-id", default="", dest="thread_id", help="Case thread id when create-case"
+    )
     p_s.add_argument("--message", default="", help="Case message when create-case")
     p_s.add_argument("--mock-stream", default="", dest="mock_stream", help="Case mock.stream_reply")
     p_s.add_argument("--start-state-code", default="", dest="start_state_code")

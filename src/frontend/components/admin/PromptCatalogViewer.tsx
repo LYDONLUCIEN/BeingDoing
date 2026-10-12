@@ -45,14 +45,12 @@ const PHASE_HEADER: Record<string, string> = {
 function SectionBlock({
   section,
   variableSamples,
-  activePhase,
   forceOpen,
   filters,
   onCopy,
 }: {
   section: PromptCatalogSection;
   variableSamples?: Record<string, string>;
-  activePhase: string;
   forceOpen?: boolean;
   filters: CatalogFilterState;
   onCopy?: (text: string, label: string) => void;
@@ -95,7 +93,6 @@ function SectionBlock({
             <LayerStackView
               layers={section.layer_stack}
               variableSamples={variableSamples}
-              activePhase={activePhase}
               highlightQuery={filters.searchQuery}
               onCopy={onCopy}
             />
@@ -160,7 +157,6 @@ function PhaseAccordion({
   forceExpand?: boolean;
   onCopy?: (text: string, label: string) => void;
 }) {
-  const [rumStepOpen, setRumStepOpen] = useState<number | null>(3);
   const isExpanded = forceExpand || expanded;
 
   const visibleSections = phase.sections.filter((sec) => sectionMatchesFilters(sec, phase.key, filters));
@@ -185,61 +181,13 @@ function PhaseAccordion({
               key={sec.key}
               section={sec}
               variableSamples={variableSamples}
-              activePhase={phase.key}
               forceOpen={!!filters.searchQuery.trim()}
               filters={filters}
               onCopy={onCopy}
             />
           ))}
 
-          {phase.rumination_steps?.length ? (
-            <div className="pt-2 space-y-2">
-              <h4 className="text-xs font-medium text-bd-fg">筛选子步 1–7</h4>
-              {phase.rumination_steps.map((rs) => {
-                const rsSections = rs.sections.filter((sec) =>
-                  sectionMatchesFilters(sec, 'rumination', filters),
-                );
-                if (!rsSections.length && filters.phaseFilter !== 'all' && filters.phaseFilter !== 'rumination') {
-                  return null;
-                }
-                if (!rsSections.length && filters.searchQuery.trim()) return null;
-                return (
-                  <div key={rs.step} className="rounded-xl border border-violet-200 overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => setRumStepOpen((cur) => (cur === rs.step ? null : rs.step))}
-                      className="w-full flex items-center justify-between px-3 py-2 bg-violet-50/80 text-left"
-                    >
-                      <span className="text-xs font-medium text-violet-900">
-                        步骤 {rs.step}
-                        <span className="ml-2 text-[10px] font-normal opacity-70">
-                          opening: {rs.opening_mode}
-                        </span>
-                      </span>
-                      <span className="text-xs text-violet-700">
-                        {rumStepOpen === rs.step || filters.searchQuery.trim() ? '▾' : '▸'}
-                      </span>
-                    </button>
-                    {rumStepOpen === rs.step || filters.searchQuery.trim() ? (
-                      <div className="p-3 space-y-2 bg-bd-card">
-                        {rsSections.map((sec) => (
-                          <SectionBlock
-                            key={sec.key}
-                            section={sec}
-                            variableSamples={variableSamples}
-                            activePhase="rumination"
-                            forceOpen={!!filters.searchQuery.trim()}
-                            filters={filters}
-                            onCopy={onCopy}
-                          />
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
+
         </div>
       ) : null}
     </div>

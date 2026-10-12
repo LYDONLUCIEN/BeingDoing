@@ -35,9 +35,7 @@ from app.utils.admin_prompt_lab import (
 )
 from app.utils.admin_prompt_lab import list_bindings as list_prompt_bindings
 from app.utils.admin_prompt_lab import list_profiles as list_prompt_profiles
-from app.utils.admin_prompt_lab import (
-    set_current_version,
-)
+from app.utils.admin_prompt_lab import set_current_version
 from app.utils.admin_savepoints import (
     cancel_generated_scenarios_batch_job,
     cleanup_batch_job_history,
@@ -1705,13 +1703,13 @@ def _save_report_step_session(
 
 
 def _build_rumination_extras(report_id: str, conversation: dict) -> dict:
-    """为 admin 会话详情追加 rumination 专用字段。
+    """为 admin 会话详情追加旧沉淀只读历史字段。
 
     返回 {rumination_tables, conversation_by_step}：
-      - rumination_tables: prerequisites + steps[1-7] + combo（见 rumination_export.build_rumination_tables）
+      - rumination_tables: prerequisites + steps[1-7] + combo（见 legacy_rumination_export.build_rumination_tables）
       - conversation_by_step: 按 filter_step 切片的对话 {step_str: [msg]} 或 {_unified: [msg]}
     """
-    from app.utils.rumination_export import (
+    from app.utils.legacy_rumination_export import (
         build_rumination_tables,
         slice_conversation_by_step,
     )
@@ -1733,9 +1731,6 @@ class ConversationCloneRequest(BaseModel):
 
 class JumpToRuminationRequest(BaseModel):
     activation_code: str
-    target_section: str = "opening"
-    target_filter_step: Optional[int] = None
-    seed_table: Optional[dict] = None
 
 
 class ApplyMockRequest(BaseModel):
@@ -1913,7 +1908,7 @@ async def jump_to_rumination(
     current_user: Optional[dict] = Depends(get_current_user),
 ):
     """
-    跳步到 Rumination：设置进度并可选注入种子消息，供调试使用。
+    跳步到当前沉淀：预填前四阶段并初始化 v4，不恢复旧七步状态机。
     仅 super_admin 可访问。
     """
     if not _is_super_admin(current_user):
@@ -1921,7 +1916,6 @@ async def jump_to_rumination(
     _assert_admin_sandbox_enabled()
 
     manager = SimpleActivationManager()
-    registry = ReportRegistry()
     rec = manager.get_activation(request.activation_code.strip().upper())
     if not rec:
         raise HTTPException(status_code=404, detail="激活码不存在")
@@ -1932,6 +1926,7 @@ async def jump_to_rumination(
             detail="该操作仅限沙箱激活码(SBX/ADM 等前缀)。请先 fork 一个沙箱激活码再操作,避免污染真实激活码。",
         )
 
+    registry = ReportRegistry(base_dir=str(get_effective_simple_root(rec)))
     user_id = (current_user or {}).get("user_id") or f"unknown:{rec.code}"
     report = registry.ensure_report(
         activation_code=rec.code,
@@ -1965,16 +1960,11 @@ async def jump_to_rumination(
                 except ValueError:
                     pass
 
-    from app.utils.rumination_progress import save_rumination_progress
+    from app.services.rumination_v4_service import load_v4_state, save_v4_state
 
-    reports_root = get_simple_base_dir() / "reports"
-    progress = save_rumination_progress(
-        reports_root,
-        report_id,
-        main_section=request.target_section,
-        filter_step=request.target_filter_step or 0,
-        filter_table=request.seed_table,
-    )
+    reports_root = get_effective_simple_root(rec) / "reports"
+    progress = load_v4_state(reports_root, report_id)
+    save_v4_state(reports_root, report_id, progress)
 
     return {
         "code": 200,

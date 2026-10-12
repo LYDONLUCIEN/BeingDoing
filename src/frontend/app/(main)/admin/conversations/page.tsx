@@ -35,8 +35,6 @@ export default function AdminConversationsPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [cloneOpen, setCloneOpen] = useState(false);
   const [jumpOpen, setJumpOpen] = useState(false);
-  const [jumpSection, setJumpSection] = useState('opening');
-  const [jumpFilterStep, setJumpFilterStep] = useState(0);
   const [jumpLoading, setJumpLoading] = useState(false);
   const [jumpError, setJumpError] = useState<string | null>(null);
   const [cloneTargetCode, setCloneTargetCode] = useState('');
@@ -169,8 +167,6 @@ export default function AdminConversationsPage() {
     try {
       await jumpToRumination({
         activation_code: code.toUpperCase(),
-        target_section: jumpSection,
-        target_filter_step: jumpFilterStep || undefined,
       });
       setLastActivationCode(code.toUpperCase());
       const s = loadSession(code.toUpperCase());
@@ -571,32 +567,7 @@ export default function AdminConversationsPage() {
                   className="w-full rounded-lg border border-bd-border bg-bd-overlay px-3 py-2"
                 />
               </div>
-              <div>
-                <label className="block text-bd-subtle mb-1">目标 section</label>
-                <select
-                  value={jumpSection}
-                  onChange={(e) => setJumpSection(e.target.value)}
-                  className="w-full rounded-lg border border-bd-border bg-bd-overlay px-3 py-2"
-                >
-                  <option value="opening">opening</option>
-                  <option value="review">review</option>
-                  <option value="filter">filter</option>
-                  <option value="final_choice">final_choice</option>
-                  <option value="recommend">recommend</option>
-                  <option value="end">end</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-bd-subtle mb-1">筛选步骤 (0=未进入)</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={7}
-                  value={jumpFilterStep}
-                  onChange={(e) => setJumpFilterStep(parseInt(e.target.value, 10) || 0)}
-                  className="w-full rounded-lg border border-bd-border bg-bd-overlay px-3 py-2"
-                />
-              </div>
+              <p className="text-bd-subtle text-xs">预填前四阶段并进入当前沉淀，已有组合和对话会保留。</p>
               {jumpError && <p className="text-red-600 text-xs">{jumpError}</p>}
             </div>
             <div className="mt-4 flex justify-end gap-2">

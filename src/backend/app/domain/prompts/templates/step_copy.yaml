@@ -9,7 +9,7 @@ description: 各阶段开始/结束时的引导文案（前端展示用，非 LL
 #
 # ⚠️ 作用域边界（rumination 相关）：
 # - rumination.intro_zh 仅用于前端阶段欢迎弹窗（POST /init 返回 step_intro 字段）
-# - 不可用于对话流中的引导语（对话流引导语由 rumination_step_guidance 控制）
+# - 不可用于对话流中的引导语（当前沉淀对话由 rumination_v4_prompt 控制）
 # - 不可用于筛选子步 opening（子步引导语由 STEP_OPENING_MODE + build_opening_llm_messages 控制）
 
 values:

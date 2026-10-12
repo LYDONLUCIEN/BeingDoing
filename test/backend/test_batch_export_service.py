@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import pytest
+
 from app.services.batch_export_service import PHASE_LABEL_CN, BatchExportService
 from app.utils.report_registry import STEP_IDS, ReportRegistry
 
@@ -249,3 +250,71 @@ async def test_raw_json_reflects_locked_status(
     s_raw = json.loads(s_bytes)
     assert s_raw["report_step_locked"] is False
     assert s_raw["report_step_is_selected"] is True
+
+
+@pytest.mark.asyncio
+async def test_native_v4_snapshot_export_and_staging_preserve_user_selection(
+    batch_service, tmp_path
+):
+    """原生快照可从导出包无损恢复；旧矩阵不能替代缺失的用户终选。"""
+    import importlib.util
+
+    script = Path(__file__).resolve().parents[2] / "scripts" / "batch_generate_reports.py"
+    spec = importlib.util.spec_from_file_location("batch_generate_reports", script)
+    adapter = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(adapter)
+    root = batch_service.registry.simple_base_dir
+    rid = "native-v4"
+    selected = {sid: f"sess-{sid}" for sid in STEP_IDS}
+    _write_record(root, rid, _make_record(rid, selected_sessions=selected))
+    for sid in STEP_IDS:
+        _write_step_session(root, rid, sid, selected[sid])
+    state = {
+        "combo_sessions": [
+            {
+                "combo_id": "combo_2",
+                "status": "concluded",
+                "conclusion_card": {"hypothesis": "写作"},
+            }
+        ],
+        "final_selection": {"selected_combo_ids": ["combo_2"], "submitted": True},
+    }
+    source = root / "reports" / rid / "rumination_v4_progress.json"
+    raw = json.dumps(state, ensure_ascii=False, indent=2).encode()
+    source.write_bytes(raw)
+    files = dict(await batch_service.collect_report_export(rid, "md"))
+    assert files["raw/rumination_v4_progress.json"] == raw
+    assert source.read_bytes() == raw
+
+    package = tmp_path / "export" / rid
+    for name, content in files.items():
+        dest = package / name
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(content)
+    # 原始导出测试只填了对话，这里补齐四阶段结论，验证沉淀完整性门槛。
+    summary = {
+        "phases": {
+            p: {"conclusion_final": {"keywords": [p]}} for p in STEP_IDS if p != "rumination"
+        }
+    }
+    (package / "summary.json").write_text(json.dumps(summary))
+    staging = tmp_path / "staging"
+    result = adapter.stage_report(package, staging)
+    assert result["complete"] is True
+    assert (staging / rid / "rumination_v4_progress.json").read_bytes() == raw
+
+    # 再使用同一个暂存目录，输入只有旧矩阵；不得复用上一次状态或制造 v4。
+    (package / "raw" / "rumination_v4_progress.json").unlink()
+    (package / "raw" / "rumination_progress.json").write_text(
+        json.dumps(
+            {
+                "combo_matrix": [{"combo_id": "02", "hypothesis": "旧矩阵方向"}],
+                "combo_conclusions": {"02": {"hypothesis": "旧矩阵方向"}},
+            }
+        )
+    )
+    result = adapter.stage_report(package, staging)
+    assert result["complete"] is False
+    assert result["confirmed_combos"] == 0
+    assert not (staging / rid / "rumination_v4_progress.json").exists()
+    assert source.read_bytes() == raw

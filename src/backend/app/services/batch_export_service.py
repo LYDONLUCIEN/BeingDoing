@@ -30,13 +30,13 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 from app.utils.helpers import parse_iso_to_utc
-from app.utils.report_registry import STEP_IDS, ReportRegistry
-from app.utils.rumination_export import (
+from app.utils.legacy_rumination_export import (
     build_rumination_tables,
     build_summary,
     load_raw_rumination_progress,
     slice_conversation_by_step,
 )
+from app.utils.report_registry import STEP_IDS, ReportRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -227,6 +227,11 @@ class BatchExportService:
                     ),
                 )
             )
+
+        # 原生 v4 快照原样导出，不能从历史七步表格合成组合或终选。
+        native_v4 = self.registry.reports_root / report_id / "rumination_v4_progress.json"
+        if native_v4.is_file():
+            files.append(("raw/rumination_v4_progress.json", native_v4.read_bytes()))
 
         # —— 产物 7：已生成的报告 markdown 全文（缓存存在才附带，不现场生成） ——
         report_md_path = self.registry.reports_root / report_id / "report_markdown.md"

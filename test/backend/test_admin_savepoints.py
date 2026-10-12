@@ -95,6 +95,9 @@ def test_create_and_load_savepoint_global_rewind(monkeypatch, tmp_path):
     rec = _seed_debug_activation(test_root)
     report_id, values_file = _seed_report_with_messages(rec, "t_values_1")
 
+    v4_file = values_file.parent / "rumination_v4_progress.json"
+    v4_file.write_text(json.dumps({"final_selection": {"submitted": True}}))
+
     before_source = json.loads(values_file.read_text(encoding="utf-8"))
     assert len(before_source["messages"]) == 5
 
@@ -119,6 +122,8 @@ def test_create_and_load_savepoint_global_rewind(monkeypatch, tmp_path):
     assert [m["id"] for m in snap_values["messages"]] == ["m0", "m1"]
     # 后续 phase 文件被清理
     assert not (sp_dir / "report" / "strengths__t_strengths_1.json").exists()
+    assert not (sp_dir / "report" / "rumination_v4_progress.json").exists()
+    assert v4_file.is_file()  # 快照回退不改原探索
 
     # 破坏源 report 后再 load，验证可恢复
     values_file.write_text(

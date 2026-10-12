@@ -1,6 +1,7 @@
 """
 应用配置
 """
+
 from pathlib import Path
 from typing import Optional
 
@@ -93,14 +94,6 @@ class Settings(BaseSettings):
     # 并发限制：同时进行的 LLM 调用数（0=不限制）
     LLM_MAX_CONCURRENT: int = 0
 
-    # 子步 3：AI 回复后若假设已完整则自动 cursor+1（默认关，避免抢跑跳行）
-    RUMINATION_STEP3_AUTO_UNLOCK_ENABLED: bool = False
-
-    # Rumination 版本切换：'v3'（强制 v3）| 'v4'（强制 v4）| 'ab'（按比例随机，默认）
-    RUMINATION_VERSION_MODE: str = "ab"
-    # AB 模式下分配到 v4 的概率（0.0~1.0，默认 0.5）
-    RUMINATION_AB_V4_RATIO: float = 0.5
-
     # 全局思维链开关：控制 v4-pro 等模型是否开启 thinking 模式（默认关，提升响应速度）
     LLM_THINKING_ENABLED: bool = False
 
@@ -139,19 +132,19 @@ class Settings(BaseSettings):
 
     # 退信扫描（IMAP）配置——用于群发邮件后识别不可达邮箱
     # 默认复用 SMTP 账号（当前为 Outlook，用应用密码即可，SMTP/IMAP 通用）
-    BOUNCE_IMAP_HOST: Optional[str] = None       # 例：outlook.office365.com
+    BOUNCE_IMAP_HOST: Optional[str] = None  # 例：outlook.office365.com
     BOUNCE_IMAP_PORT: int = 993
-    BOUNCE_IMAP_USER: Optional[str] = None       # 不填则回退 SMTP_USER
-    BOUNCE_IMAP_PASS: Optional[str] = None       # 不填则回退 SMTP_PASS
+    BOUNCE_IMAP_USER: Optional[str] = None  # 不填则回退 SMTP_USER
+    BOUNCE_IMAP_PASS: Optional[str] = None  # 不填则回退 SMTP_PASS
     # 定时扫描 cron（本地时间，5 字段）
-    BOUNCE_SCAN_CRON: str = "0 3 * * *"          # 默认每日 03:00
-    BOUNCE_SCAN_LOOKBACK_HOURS: int = 48          # 每次扫描回看窗口，watermark 丢失时兜底
-    BOUNCE_SCAN_SOFT_THRESHOLD: int = 3           # soft 累计次数阈值，达到升级为 blocked
+    BOUNCE_SCAN_CRON: str = "0 3 * * *"  # 默认每日 03:00
+    BOUNCE_SCAN_LOOKBACK_HOURS: int = 48  # 每次扫描回看窗口，watermark 丢失时兜底
+    BOUNCE_SCAN_SOFT_THRESHOLD: int = 3  # soft 累计次数阈值，达到升级为 blocked
 
     # 反馈附件孤儿清理 cron（本地时间，5 字段）
     # 用户上传截图后未提交反馈（feedback_id IS NULL）超 N 天的附件，DB 记录 + OSS 对象都删
     FEEDBACK_ORPHAN_CLEANUP_CRON: str = "0 4 * * *"  # 默认每日 04:00
-    FEEDBACK_ORPHAN_CLEANUP_DAYS: int = 7             # 超过 7 天未关联反馈视为孤儿
+    FEEDBACK_ORPHAN_CLEANUP_DAYS: int = 7  # 超过 7 天未关联反馈视为孤儿
 
     # 反馈超时扫描 cron（本地时间，5 字段）
     # 扫描 due_at 已过且未完结的反馈，站内信提醒所有 super_admin（当天幂等）
@@ -163,13 +156,13 @@ class Settings(BaseSettings):
 
     # LLM 余额监控（2026-09-06 起，当前仅支持 DeepSeek）
     # 定时查 DeepSeek 余额（GET /user/balance），低于阈值站内信提醒所有 super_admin（当天幂等）
-    LLM_BALANCE_ALERT_THRESHOLD: float = 10.0        # 告警阈值（元）
-    LLM_BALANCE_SCAN_INTERVAL_MINUTES: int = 60      # 扫描间隔（分钟）
+    LLM_BALANCE_ALERT_THRESHOLD: float = 10.0  # 告警阈值（元）
+    LLM_BALANCE_SCAN_INTERVAL_MINUTES: int = 60  # 扫描间隔（分钟）
 
     # LLM per-turn 诊断日志（2026-09-21 起，data/logs/llm_turns/，含 CoT 全文属敏感数据）
     # 每日 job 删除超保留期的按天 jsonl 文件；查询走 admin「轮次诊断」（仅 super_admin）
-    LLM_TURN_LOG_RETENTION_DAYS: int = 30            # 保留天数
-    LLM_TURN_LOG_CLEANUP_CRON: str = "0 5 * * *"     # 默认每日 05:00 清理
+    LLM_TURN_LOG_RETENTION_DAYS: int = 30  # 保留天数
+    LLM_TURN_LOG_CLEANUP_CRON: str = "0 5 * * *"  # 默认每日 05:00 清理
 
     # ========== 支付模块（计划见 tasks/payment-module-plan.md）==========
     # 旧商品：全程激活码（单一 SKU，已下架；配置保留供历史订单展示）
@@ -283,7 +276,7 @@ class Settings(BaseSettings):
         return self
 
     class Config:
-        #env_file = ".env"
+        # env_file = ".env"
         base_dir = Path(__file__).resolve().parents[4]  # 指向 /home/gitclone/BeingDoing
         env_file = base_dir / ".env"
         case_sensitive = True

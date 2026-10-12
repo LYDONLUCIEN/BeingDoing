@@ -1,3 +1,5 @@
+> **历史证据（2026-10-12状态核对）**：v4原始方案；卡片/判断以ADR-0015及当前规则为准，v3保留已撤销。 当前入口见 [决策文档](../../docs/DECISIONS.md)，退役边界见 [ADR-0025](../../docs/adr/0025-retire-v3-runtime-and-separate-history.md)。以下保留当时记录。
+
 # 7-25 Rumination v4 提示词融合 · 实施口径
 
 > 与 `7-25-rumination-v4.md`（产品文档）配套的工程实施契约。2026-07-25 与领域专家逐条 grill 后定案。

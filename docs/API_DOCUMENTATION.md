@@ -23,6 +23,16 @@
 
 点赞 trace 仅返回自己保存的快照/预览，不再根据客户端曾提交的 session_id 扫描磁盘；历史匿名点赞不自动认领。匿名 page_view 仍可经 /analytics/event 提交，服务端限定事件类型，保持 ADR-0013 口径。
 
+## 沉淀 v3 退役（ADR-0025）
+
+- 删除 `/simple-chat/rumination-progress`、`rumination-step-opening`、`rumination-step-opening-stream`、`rumination-table-submit`、`rumination-combo-conclusion`、`rumination-combo-guide`、`rumination-combo-matrix-submit`、`rumination-combo-matrix`、`rumination-neg-resolve`、`rumination-get-table` 路由，OpenAPI 不再发布，旧路径返回404。
+- 通用 `/simple-chat/message`、`message/stream`、`init`、`thread/reopen`、`thread/complete`、`conclusion/request`、`thread/delete` 对已认证请求的 `phase=rumination` 返回410，提示使用 `/simple-chat/rumination-v4`；在激活码读写与模型调用前拒绝。旧 row/step3/combo 请求字段从 Schema 移除。
+- 现行 `/simple-chat/rumination-v4/*` 继续使用独立组合 `combo_id`；`/version` 保留响应形状，固定 v4/current，分配时间与比例为空，不创建 A/B 记录。
+- 后台 `jump-to-rumination` 请求只保留 `activation_code`，仍要求超级管理员与沙箱；初始化 v4、不覆盖已有组合。旧 `target_section/target_filter_step/seed_table` 不再是契约。
+- `/simple-chat/history` 继续经原权限边界读取历史消息；可选 `rumination_filter_step` 仅用于历史消息筛选。后台历史导出不写回、不补矩阵。当前批量导出增加 `raw/rumination_v4_progress.json`，缺少原生终选的包不判为当前完整报告。
+
+这是明确退役，不是旧客户端无感兼容。已保存的历史 Markdown/PDF 继续按原归属及审核规则读取；未完成旧探索的数据迁移另行设计。
+
 ## 报告与新产品
 
 报告 PDF 链路保留 activation_code + report_id 的现有权限检查、完成度和审核门控；导出会话与报告 PDF 是两类功能。新产品按激活码索引历史报告时必须调用有授权的服务，不能直接公开 record.json 或拼文件路径。接口命名涉及会话/线程时必须说明具体模型，见字段字典。

@@ -13,14 +13,14 @@ import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from app.utils.report_registry import STEP_IDS, ReportRegistry
 from app.utils.simple_activation_manager import get_simple_base_dir
-from app.utils.report_registry import ReportRegistry, STEP_IDS
 from app.utils.survey_storage import load_prior_context, save_prior_context
 
 ADMIN_MOCK_DIR_NAME = "admin_mock"
 MOCK_SESSION_ID = "admin_mock"
 
-# 默认 prior context（rumination 会合并；rumination_ops 从「信念/禀赋/热忱 阶段结果」后提取关键词）
+# 默认 prior context（rumination 会合并；rumination_inputs 从「信念/禀赋/热忱 阶段结果」后提取关键词）
 DEFAULT_PRIOR_TEMPLATES = {
     "values": "核心价值观关键词：成就感、成长、创造、关系、意义。用户确认完成。",
     "strengths": "核心优势：沟通表达、逻辑分析、团队协作、学习能力、问题解决。用户确认5个优势。",
@@ -119,7 +119,10 @@ def apply_mock_to_activation(activation_code: str, registry: ReportRegistry) -> 
     将 mock 数据应用到指定激活码的 report。
     用于满足 lock_previous_step 要求，使 init rumination 不再报 400。
     """
-    from app.utils.simple_activation_manager import SimpleActivationManager
+    from app.utils.simple_activation_manager import (
+        SimpleActivationManager,
+        get_effective_simple_root,
+    )
 
     _ensure_mock_structure()
     manager = SimpleActivationManager()
@@ -137,7 +140,7 @@ def apply_mock_to_activation(activation_code: str, registry: ReportRegistry) -> 
         raise ValueError("report 无 report_id")
 
     session_id = rec.session_id or str(report_id)
-    simple_base = get_simple_base_dir()
+    simple_base = get_effective_simple_root(rec)
     session_dir = simple_base / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
 

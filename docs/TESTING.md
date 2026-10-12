@@ -15,12 +15,12 @@ isort --check-only --settings-path src/backend/pyproject.toml src/backend
 
 前端目录运行 `npm run lint`、`npm run test:security`、`NEXT_TELEMETRY_DISABLED=1 npm run build`。渲染器目录运行 `npm test`。依赖审计：`python -m pip_audit`、前端 `npm audit`，结果需按可达条件人工判断。
 
-## 实际结果
+## 第一轮结果（截至 5b461e6，历史快照）
 
 | 检查 | 结果与范围 |
 | --- | --- |
 | 全量后端基线 | 978 passed，56 failed，6 errors |
-| clean 最终全量 | 1030 passed，56 failed，6 errors；失败 ID 集合与基线完全相同，新增 52 项通过 |
+| clean 第一轮全量 | 1030 passed，56 failed，6 errors；失败 ID 集合与基线完全相同，新增 52 项通过 |
 | 新增安全用例独立运行 | 52 passed，覆盖权限、归属、配置、重置令牌和导出正反路径 |
 | 前端安全行为 | 3 passed；实际 React 组件渲染，不是文本搜索断言 |
 | 前端 lint | 退出 0，保留原有 Hook 依赖/原生 img 提示 |
@@ -31,7 +31,37 @@ isort --check-only --settings-path src/backend/pyproject.toml src/backend
 | pip-audit | 133 包，2 个不同未修复公告（原输出 3 条含重复），适用条件见安全评估 |
 | npm audit | bulk advisory 请求 ECONNRESET；未获得可靠完整结果，不能写成通过 |
 
-完整后端失败不是本次新增，但也不等于可忽略。没有删除这些失败测试来制造绿色结果。
+第一轮后端失败不是新增，但也不等于可忽略。下方保留当时的基线失败ID；第二轮按明确退役范围删除专属测试，数量不可直接与第一轮作修复率比较。
+
+## 第二轮结果：v3 退役与历史分离
+
+| 检查 | 实测结果 |
+| --- | --- |
+| 退役前新增拒绝用例 | 19项先失败，实施后通过；后续扩充只读、输入提取、版本和后台跳转边界 |
+| 退役/v4/后台/导出/提示词/试用定向回归 | 132 passed，包括26项退役边界用例；管理员跳转仅沙箱、保留原生组合，模拟资料不写生产根 |
+| 全量后端 | **853 passed、44 failed、6 errors**；失败/错误ID共50项，全部属于第一轮既有失败，无新增ID |
+| 前端 | lint退出0（既有警告保留）、3项安全行为通过、production build与TypeScript通过；最后展示分支清理另跑类型检查 |
+| 历史对话统计脚本（额外） | 31 passed、5 failed；独立导出v1.8.0源码复跑为相同5个失败，涉及测试Namespace缺gap_threshold_minutes和旧聚合预期，无新增失败 |
+| 源码与文档 | Python编译、git diff --check；本轮新增Markdown相对链接核对；历史ADR原文仅增加顶部状态说明 |
+
+总用例数由1112变为903：随v3删除整文件/专属场景，同时补退役边界和原生导出回归。减少的12个失败对应下面条目，**是功能退役，不是修好12个缺陷**。其余50个失败/错误仍需处理；本次不静默skip、不修改其预期来制造全绿。没有连接真实模型、支付渠道或生产数据库进行最终验收。
+
+```text
+test/backend/test_prompt_catalog.py::test_catalog_rumination_step3_fixed_opening
+test/backend/test_rumination_neg_gate.py::TestStep3HypothesisDef::test_collect_multiple_candidates
+test/backend/test_rumination_neg_gate.py::TestStep3HypothesisDef::test_collect_one_candidate
+test/backend/test_rumination_neg_gate.py::TestStep3HypothesisDef::test_collect_zero_candidates
+test/backend/test_rumination_opening_chain.py::TestFixedOpeningIsolation::test_fixed_templates_contain_row_count_placeholder
+test/backend/test_rumination_opening_chain.py::TestFixedOpeningIsolation::test_render_fixed_opening_uses_correct_template
+test/backend/test_rumination_ops.py::TestRuminationStepAnchors::test_load_rumination_step_anchors_reads_metadata
+test/backend/test_rumination_row_chat.py::test_build_row_chat_step3_adds_cursor_note
+test/backend/test_rumination_step3_flow.py::TestStep3PromptCopyNoLegacyUi::test_step3_addon_no_legacy
+test/backend/test_savepoint_replay_batch.py::test_savepoint_batch_cases[sp_rumination_opening_chat_5_entry]
+test/backend/test_step3_hyp_candidate.py::TestFallbackTrigger::test_no_trigger_when_candidates_present
+test/backend/test_step3_hyp_candidate.py::TestSanitizeHypCandidates::test_filters_guide_phrase
+```
+
+本轮未修改渲染器，第一轮8项renderer结果仍适用其未变源码；本轮新增导出测试验证原生v4快照无损复制、旧矩阵不合成终选、重用暂存目录不残留上一次v4数据。沙箱回退测试验证清除下游状态且源报告不变。
 
 ## 失败分类与处理次序
 
@@ -40,7 +70,7 @@ isort --check-only --settings-path src/backend/pyproject.toml src/backend
 - 知识库：干净克隆缺部署侧 CSV 路径/内容。先用受控 fixture 固定离线输入。
 - 旧 ConversationFileManager 测试：仍期待已经改变的方法/返回值，需要按当前存储契约修订，不能据此删除仍挂载的旧聊天路由。
 - 两个数据库测试：旧建表/异步会话假设与当前依赖环境冲突，需隔离 fixture。
-- v3 prompt/候选与回放：历史断言、fixture 中协议和当前兼容代码不一致；v3 后端明确保留，先定位实际支持范围再更新预期。
+- v3 prompt/候选与回放：第一轮曾保留且存在旧断言失败；第二轮按 ADR-0025 退役，不再作为现行产品回归。当前四阶段/v4回归和历史只读边界分别验证，见下面退役清单。
 - 6 个 real_history 错误：测试依赖未入库的真实历史文件。应脱敏转受控 fixture，而非依赖某台机器目录。
 
 ## 基线失败 ID（便于追踪）

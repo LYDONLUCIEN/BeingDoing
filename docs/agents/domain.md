@@ -1,51 +1,7 @@
-# Domain Docs
+# 领域文档读取约定
 
-How the engineering skills should consume this repo's domain documentation when exploring the codebase.
+先读根 CONTEXT.md、docs/glossary.md、docs/DECISIONS.md，再按领域读字段字典和当前产品规则。ADR 先查 docs/adr/README.md 的状态与替代关系，不把旧正文里的“必须”自动当作现行约束。
 
-## Before exploring, read these
+历史 wiki、tasks、issue 用于解释当时为什么选择、后来为什么改变，不自动成为开发指令。代码用于判断实施状态，不能凭现状悄悄撤销未落地决定。冲突登记到决策文档，说明当前实现、决策来源与缺失证据。
 
-- **`CONTEXT.md`** at the repo root, or
-- **`CONTEXT-MAP.md`** at the repo root if it exists — it points at one `CONTEXT.md` per context. Read each one relevant to the topic.
-- **`docs/adr/`** — read ADRs that touch the area you're about to work in. In multi-context repos, also check `src/<context>/docs/adr/` for context-scoped decisions.
-
-If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The producer skill (`/grill-with-docs`) creates them lazily when terms or decisions actually get resolved.
-
-## File structure
-
-Single-context repo (most repos):
-
-```
-/
-├── CONTEXT.md
-├── docs/adr/
-│   ├── 0001-event-sourced-orders.md
-│   └── 0002-postgres-for-write-model.md
-└── src/
-```
-
-Multi-context repo (presence of `CONTEXT-MAP.md` at the root):
-
-```
-/
-├── CONTEXT-MAP.md
-├── docs/adr/                          ← system-wide decisions
-└── src/
-    ├── ordering/
-    │   ├── CONTEXT.md
-    │   └── docs/adr/                  ← context-specific decisions
-    └── billing/
-        ├── CONTEXT.md
-        └── docs/adr/
-```
-
-## Use the glossary's vocabulary
-
-When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `CONTEXT.md`. Don't drift to synonyms the glossary explicitly avoids.
-
-If the concept you need isn't in the glossary yet, that's a signal — either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/grill-with-docs`).
-
-## Flag ADR conflicts
-
-If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
-
-> _Contradicts ADR-0007 (event-sourced orders) — but worth reopening because…_
+业务名词用当前 glossary 的定义。新术语先明确含义和边界；不要从旧字段名推导新产品权益。更改已接受的领域边界时新增 ADR，链接被替代决定，说明兼容、数据迁移和验证条件。

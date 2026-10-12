@@ -24,7 +24,6 @@ from jinja2 import Environment
 from pydantic import BaseModel, ConfigDict
 
 from app.api.v1.auth import _is_debug_admin, get_current_user
-from app.core.llmapi.usage_context import reset_llm_usage_context, set_llm_usage_context
 from app.api.v1.simple_chat.context_resolver import assert_step_editable as _assert_step_editable
 from app.api.v1.simple_chat.context_resolver import (
     can_bypass_flow_limits as _can_bypass_flow_limits,
@@ -75,21 +74,11 @@ from app.api.v1.simple_chat.prompt_builder import (
 from app.api.v1.simple_chat.stream_utils import (
     build_stream_hidden_block_filter as _build_stream_hidden_block_filter,
 )
-from app.api.v1.simple_chat.stream_utils import extract_hyp_candidates as _extract_hyp_candidates
 from app.api.v1.simple_chat.stream_utils import extract_json_object as _extract_json_object
 from app.api.v1.simple_chat.stream_utils import (
     extract_state_content_tokens as _extract_state_content_tokens,
 )
-from app.api.v1.simple_chat.stream_utils import (
-    extract_step3_hyp_output as _extract_step3_hyp_output,
-)
-from app.api.v1.simple_chat.stream_utils import (
-    looks_like_markdown_table as _looks_like_markdown_table,
-)
 from app.api.v1.simple_chat.stream_utils import normalize_token_usage as _normalize_token_usage
-from app.api.v1.simple_chat.stream_utils import (
-    split_visible_reply_and_row_state as _split_visible_reply_and_row_state,
-)
 from app.api.v1.simple_chat.stream_utils import (
     split_visible_reply_and_state as _split_visible_reply_and_state,
 )
@@ -102,6 +91,7 @@ from app.core.dimension_completion_checker import (
     judge_dimension_completion,
 )
 from app.core.llmapi import LLMMessage
+from app.core.llmapi.usage_context import reset_llm_usage_context, set_llm_usage_context
 from app.domain.conclusion_card_goals import cap_strengths_keywords_list, get_conclusion_card_goal
 from app.domain.conclusion_card_payload import (
     CONCLUSION_GUIDANCE_EVENT,
@@ -113,17 +103,6 @@ from app.domain.conclusion_card_payload import (
     sanitize_pending_conclusion_draft,
 )
 from app.domain.prompts import get_simple_chat_system_prompt, get_step_copy
-from app.domain.rumination_prompt_strings import (
-    RUMINATION_CLOSING_SUMMARY_MAX_CHARS,
-    RUMINATION_STEP2_ALL_UNMATCHED_TRANSITION_ZH,
-)
-from app.domain.rumination_step_guidance import (
-    build_opening_context,
-    build_opening_llm_messages,
-    get_opening_mode,
-    get_rumination_chat_step_addon,
-    render_fixed_opening_zh,
-)
 from app.services import abuse_service
 from app.services.analytics_service import AnalyticsService
 from app.services.llm_turn_log_service import (
@@ -136,8 +115,6 @@ from app.services.llm_turn_log_service import (
     OUTCOME_PARTIAL,
     append_turn_log,
 )
-from app.services.rumination_finalize import append_post_table_finalize_message
-from app.services.rumination_init_greeting import synthesize_rumination_entry_greeting
 from app.utils.activation_audit import (
     EVENT_OWNER_DENIED,
     EVENT_OWNER_VERIFIED,
@@ -148,9 +125,7 @@ from app.utils.admin_prompt_lab import resolve_simple_chat_prompt_override
 from app.utils.context_refiner import (
     format_anchor_for_prompt,
     load_anchor_for_phase,
-    load_rumination_step_anchors,
     refine_and_save_anchor,
-    refine_and_save_rumination_step_anchor,
 )
 from app.utils.conversation_file_manager import ConversationFileManager
 from app.utils.helpers import parse_iso_to_utc
@@ -162,79 +137,6 @@ from app.utils.purpose_progress import (
     progress_to_experience_value_rows,
 )
 from app.utils.report_registry import STEP_IDS, STEP_ORDER, ReportRegistry
-from app.utils.rumination_combo_context import (
-    build_combo_chat_system_addon,
-    build_combo_first_message,
-    build_combo_guide_text,
-    slice_messages_for_combo,
-)
-from app.utils.rumination_combo_matrix import (
-    build_combo_matrix,
-    build_combo_matrix_meta,
-    classify_combo_conclusions,
-    combo_id_to_row_id,
-    count_completed_combos,
-    get_combo_by_id,
-    get_next_combo_by_order,
-    get_passion_strength_names,
-)
-from app.utils.rumination_neg_gate import (
-    build_zero_results_gate,
-    collect_step2_mismatches,
-    try_build_neg_gate_response,
-)
-from app.utils.rumination_ops import (
-    extract_dimension_lists_for_rumination_table,
-    filter_match,
-    filter_strength,
-    gen_table,
-    is_rumination_hypothesis_pending,
-    is_rumination_step3_row_hypothesis_complete,
-    load_strength_markers,
-    load_values_snapshot_from_snapshots,
-    passion_filter,
-    reality_filter,
-    resolve_values_for_step4,
-    save_values_snapshot_to_snapshots,
-    similar_filter,
-    structure_hypothesis_round1_table,
-    value_filter,
-)
-from app.utils.rumination_progress import (
-    MAX_FILTER_STEP,
-    clear_neg_gate_triggered_from_step,
-    clear_neg_gate_triggered_step,
-    is_neg_gate_triggered,
-    load_rumination_progress,
-    mark_neg_gate_triggered,
-    max_reached_filter_step,
-    merge_rumination_progress_fields,
-    save_rumination_progress,
-)
-from app.utils.rumination_row_context import (
-    build_rumination_row_chat_user_message,
-    format_selected_row_block,
-    format_step3_confirmed_rows_block,
-    format_step3_next_row_preview,
-    format_step3_row_context_block,
-    summarize_prev_combo_row,
-)
-from app.utils.rumination_step3_flow import (
-    count_discuss_user_turns_since_last_forward,
-    format_step3_unlocked_rows_block,
-    get_step3_row_passion_strength,
-    guide_phrase_present_in_reply,
-    is_strict_hyp_candidate_retry,
-    parse_step3_hyp_tool_call,
-    resolve_step3_explicit_row_index,
-    resolve_step3_hyp_delivery,
-    resolve_step3_prompt_mode,
-    row_fields_line,
-    row_hyp,
-    sanitize_hyp_candidates,
-    should_trigger_hyp_candidate_fallback,
-)
-from app.utils.rumination_table_widgets import build_table_widget_payload
 from app.utils.sandbox_fork import assert_sandbox_not_expired
 from app.utils.simple_activation_manager import (
     ActivationStatus,
@@ -245,12 +147,6 @@ from app.utils.simple_activation_manager import (
     get_effective_simple_root,
 )
 from app.utils.super_admin import is_super_admin_user
-from app.utils.trial_codes import (
-    TRIAL_VALUES_USER_MESSAGE_LIMIT,
-    count_values_user_messages as _count_values_user_messages,
-    list_unbound_full_codes_purchased_by,
-)
-from app.utils.trial_codes import is_trial_code as _is_trial_code
 from app.utils.survey_storage import (
     build_values_info_for_prompt,
     format_basic_info_for_prompt,
@@ -262,6 +158,12 @@ from app.utils.survey_storage import (
     save_basic_info_by_user,
     save_prior_context_for_report,
 )
+from app.utils.trial_codes import (
+    TRIAL_VALUES_USER_MESSAGE_LIMIT,
+)
+from app.utils.trial_codes import count_values_user_messages as _count_values_user_messages
+from app.utils.trial_codes import is_trial_code as _is_trial_code
+from app.utils.trial_codes import list_unbound_full_codes_purchased_by
 
 # 每阶段随机抽取的题目数量
 SIMPLE_QUESTION_SAMPLE_SIZE = 6
@@ -280,8 +182,6 @@ PENDING_JUDGE_TIMEOUT_SECONDS = 20
 CONCLUSION_GEN_TIMEOUT_SECONDS = 60
 # 手动按钮「点击即判定」的判定超时（秒）：判定是轻量调用，独立于生成超时
 CONCLUSION_JUDGE_TIMEOUT_SECONDS = 30
-# step3 matrix 假设兜底重试的 LLM 超时：同上，对齐客户端 60s（原 25s 同类误杀风险）
-STEP3_FALLBACK_LLM_TIMEOUT_SECONDS = 60.0
 PENDING_HEARTBEAT_SECONDS = 2.0
 CONCLUSION_STATE_NONE = "none"
 CONCLUSION_STATE_PENDING = "pending"
@@ -342,178 +242,20 @@ def _normalize_client_locale(locale: Optional[str]) -> str:
     return "zh"
 
 
-def _system_prompt_dimension_extras(
-    phase_step: str,
-    report: Optional[dict],
-    reports_root: str,
-    rumination_filter_step: Optional[int],
-    locale: str,
-    *,
-    rumination_row_index: Optional[int] = None,
-    step3_prompt_mode: Optional[str] = None,
-    combo_id: Optional[str] = None,
-) -> Tuple[str, str]:
-    """purpose 的 values_info + rumination 子步注入段。"""
-    rid = (report or {}).get("report_id") if report else None
-    if not rid:
-        return "", ""
-    values_info = ""
-    if phase_step == "purpose":
-        values_info = build_values_info_for_prompt(rid, reports_root)
-    rumination_step_addon = ""
-    if phase_step == "rumination" and rumination_filter_step is not None:
-        rumination_step_addon = get_rumination_chat_step_addon(
-            rumination_filter_step,
-            locale,
-            step3_mode=step3_prompt_mode if int(rumination_filter_step) == 3 else None,
+def _values_info_for_phase(phase_step: str, report: Optional[dict], reports_root: str) -> str:
+    """使命阶段只读取已确认价值观；沉淀使用独立 v4 提示词。"""
+    rid = (report or {}).get("report_id")
+    return (
+        build_values_info_for_prompt(rid, reports_root) if rid and phase_step == "purpose" else ""
+    )
+
+
+def _require_four_phase_chat(phase: str) -> None:
+    """旧沉淀写入口已退役，必须在解析激活码和写文件前拒绝。"""
+    if ReportRegistry.normalize_step_id(phase) == "rumination":
+        raise HTTPException(
+            status_code=410, detail="旧沉淀流程已退役，请使用 /simple-chat/rumination-v4"
         )
-        if int(rumination_filter_step) == 3:
-            # matrix / discussion 模式分别注入行级上下文。
-            # - matrix：消息按 combo_id 隔离，这里注入当前 combo 的热爱/优势 + 已确认假设，
-            #   让模型知道用户当前面对的组合与选择。
-            # - discussion：沿用老的 filter_table 行上下文注入（已确认行、讨论行、当前行等）。
-            _is_matrix = False
-            try:
-                _prog_check = load_rumination_progress(Path(reports_root), str(rid))
-                if (_prog_check.get("filter_sub_step") or "").strip() == "matrix":
-                    _is_matrix = True
-            except Exception:
-                pass
-            if _is_matrix:
-                # matrix 模式：注入当前 combo 的热爱/优势 + 已确认假设（精简版）
-                try:
-                    _prog_m = load_rumination_progress(Path(reports_root), str(rid))
-                    _matrix_m = _prog_m.get("combo_matrix") or []
-                    _p_m, _s_m = get_passion_strength_names(_matrix_m, combo_id)
-                    _conclusions_m = _prog_m.get("combo_conclusions") or {}
-                    _entry_m = _conclusions_m.get(combo_id or "") or {}
-                    _hyp_m = ""
-                    if (
-                        isinstance(_entry_m, dict)
-                        and str(_entry_m.get("state") or "").strip() == "confirmed"
-                    ):
-                        _hyp_m = str(_entry_m.get("text") or "").strip()
-                    _matrix_ctx_lines = [
-                        "[内部·子步3当前组合（matrix）]",
-                        f"当前组合：热爱「{_p_m or '（未填）'}」× 优势「{_s_m or '（未填）'}」",
-                    ]
-                    if _hyp_m:
-                        _matrix_ctx_lines.append(f"用户已确认的假设：「{_hyp_m}」")
-                    else:
-                        _matrix_ctx_lines.append("用户当前组合暂未确认假设。")
-                    _matrix_ctx_block = "\n".join(_matrix_ctx_lines)
-                    rumination_step_addon = (
-                        f"{rumination_step_addon}\n\n{_matrix_ctx_block}".strip()
-                    )
-                except Exception:
-                    pass
-            else:
-                try:
-                    prog_ex = load_rumination_progress(Path(reports_root), str(rid))
-                    ft_ex = prog_ex.get("filter_table")
-                    cur_ex = int(prog_ex.get("filter_row_cursor") or 0)
-                    if isinstance(ft_ex, list) and ft_ex:
-                        # 已确认行摘要（cursor 之前的行）
-                        confirmed_block = format_step3_confirmed_rows_block(ft_ex, cur_ex)
-                        rumination_step_addon = (
-                            f"{rumination_step_addon}\n\n{confirmed_block}".strip()
-                        )
-                        # 点选行与 cursor 不一致：注入讨论行上下文
-                        discuss_idx = rumination_row_index
-                        if (
-                            discuss_idx is not None
-                            and 0 <= discuss_idx < len(ft_ex)
-                            and discuss_idx != cur_ex
-                        ):
-                            row_disc = ft_ex[discuss_idx]
-                            if isinstance(row_disc, dict):
-                                prev_s = ""
-                                if discuss_idx > 0:
-                                    pr = ft_ex[discuss_idx - 1]
-                                    if isinstance(pr, dict):
-                                        prev_s = summarize_prev_combo_row(pr)
-                                disc_block = format_step3_row_context_block(
-                                    str(rid),
-                                    reports_root,
-                                    row_disc,
-                                    combo_index_1based=discuss_idx + 1,
-                                    total_combos=len(ft_ex),
-                                    prev_combo_summary=prev_s,
-                                )
-                                disc_block = disc_block.replace(
-                                    "[内部·子步3当前行]",
-                                    "[内部·子步3讨论行]",
-                                    1,
-                                )
-                                rumination_step_addon = (
-                                    f"{rumination_step_addon}\n\n{disc_block}".strip()
-                                )
-                        # 当前行上下文（正常推进模式）
-                        if 0 <= cur_ex < len(ft_ex):
-                            row_ex = ft_ex[cur_ex]
-                            if isinstance(row_ex, dict):
-                                prev_s = ""
-                                if cur_ex > 0:
-                                    pr = ft_ex[cur_ex - 1]
-                                    if isinstance(pr, dict):
-                                        prev_s = summarize_prev_combo_row(pr)
-                                block = format_step3_row_context_block(
-                                    str(rid),
-                                    reports_root,
-                                    row_ex,
-                                    combo_index_1based=cur_ex + 1,
-                                    total_combos=len(ft_ex),
-                                    prev_combo_summary=prev_s,
-                                )
-                                rumination_step_addon = (
-                                    f"{rumination_step_addon}\n\n{block}".strip()
-                                )
-                            # 下一行预览：让 AI 确认当前行后可直接过渡提问
-                            next_idx = cur_ex + 1
-                            if next_idx < len(ft_ex):
-                                next_row = ft_ex[next_idx]
-                                if isinstance(next_row, dict):
-                                    preview = format_step3_next_row_preview(
-                                        next_row, next_idx + 1, len(ft_ex)
-                                    )
-                                    rumination_step_addon = (
-                                        f"{rumination_step_addon}\n\n{preview}".strip()
-                                    )
-                        elif cur_ex >= len(ft_ex):
-                            # 回溯模式：cursor 到末尾，注入全表摘要供 AI 定位用户指定的行
-                            full_block = format_step3_confirmed_rows_block(ft_ex, len(ft_ex))
-                            rumination_step_addon = (
-                                f"{rumination_step_addon}\n\n{full_block}".strip()
-                            )
-                        unlocked_block = format_step3_unlocked_rows_block(ft_ex, cur_ex)
-                        if unlocked_block:
-                            rumination_step_addon = (
-                                f"{rumination_step_addon}\n\n{unlocked_block}".strip()
-                            )
-                except Exception:
-                    pass
-        elif int(rumination_filter_step) in (2, 4, 5, 6, 7) and rumination_row_index is not None:
-            # 非步骤3但有表格的子步：仅注入用户当前选中行的关键字段。
-            # step3 有专用的多块上下文（当前行/讨论行/已确认行/下一行预览），不在此处理。
-            try:
-                prog_sel = load_rumination_progress(Path(reports_root), str(rid))
-                ft_sel = prog_sel.get("filter_table")
-                if isinstance(ft_sel, list):
-                    sel_idx = int(rumination_row_index)
-                    if 0 <= sel_idx < len(ft_sel):
-                        row_sel = ft_sel[sel_idx]
-                        if isinstance(row_sel, dict):
-                            sel_block = format_selected_row_block(
-                                row_sel,
-                                int(rumination_filter_step),
-                                sel_idx + 1,
-                            )
-                            rumination_step_addon = (
-                                f"{rumination_step_addon}\n\n{sel_block}".strip()
-                            )
-            except Exception:
-                pass
-    return values_info, rumination_step_addon
 
 
 router = APIRouter(prefix="/simple-chat", tags=["简单模式对话"])
@@ -559,8 +301,6 @@ async def _get_or_create_thread_question_bank(
     phase_step: str,
 ) -> str:
     """线程级固定 question_bank：首次生成并写入 metadata，后续复用。"""
-    if phase_step == "rumination":
-        return ""
     conv_data = await conv_manager.get_conversation_data(session_id, category)
     meta = conv_data.get("metadata") or {}
     qb = meta.get("question_bank")
@@ -1165,14 +905,6 @@ def _extract_state_content_tokens(text: str) -> Optional[Dict]:
     return {"state": state, "content": content}
 
 
-def _looks_like_markdown_table(text: str) -> bool:
-    if not text:
-        return False
-    has_row = bool(re.search(r"^\s*\|.+\|\s*$", text, flags=re.MULTILINE))
-    has_sep = bool(re.search(r"^\s*\|[\s:\-|]+\|\s*$", text, flags=re.MULTILINE))
-    return has_row and has_sep
-
-
 def _pending_judge_goal_blurb(phase: str) -> str:
     """pending 判定器用：四步各一行阶段目标（values/strengths/interests/purpose）。"""
     p = (phase or "").strip().lower()
@@ -1452,10 +1184,9 @@ def _normalize_token_usage(usage: Optional[dict]) -> dict:
 class SimpleChatRequest(BaseModel):
     activation_code: str
     message: str
-    # 阶段：values / strengths / interests / purpose / rumination（必填，禁止省略）
+    # 前四阶段：values / strengths / interests / purpose（必填）
     phase: str
     locale: Optional[str] = None
-    rumination_filter_step: Optional[int] = None
 
 
 class SimpleChatResponse(BaseModel):
@@ -1486,20 +1217,6 @@ class SimpleChatStreamRequest(BaseModel):
     # 可选：前端结论卡 UI 快照（诊断/后续扩展；不参与业务分支）
     client_conclusion_ui: Optional[Dict[str, Any]] = None
     locale: Optional[str] = None  # zh | en
-    # 沉淀阶段当前筛选子步（1–7），用于注入主对话 system 小段指引
-    rumination_filter_step: Optional[int] = None
-    # 点选表格行发问：0-based 行索引；后端从 filter_table 组装行包装 user 消息
-    rumination_row_index: Optional[int] = None
-    # 点选行展示标签（前端 UI 锚点，如 #3 热爱·优势）
-    rumination_row_label: Optional[str] = None
-    # 子步 3 表格操作：选"无"或填假设，作为 user 消息发给 AI
-    step3_table_action: Optional[str] = None  # "select_none" | "fill_hypothesis" | "regenerate_hyp"
-    step3_action_row: Optional[int] = None  # 操作行索引（0-based）
-    step3_action_hyp_text: Optional[str] = None  # 填假设时的假设文本
-    # --- v3: 组合矩阵模式 ---
-    combo_id: Optional[str] = None  # 组合 ID（如 "02"=热爱1×优势3），filter_step=3 matrix 模式必传
-    combo_conclusion_action: Optional[str] = None  # "confirm" | "skip"：更新 combo 结论状态
-    combo_conclusion_text: Optional[str] = None  # 结论文本（confirm 时使用）
 
 
 class SurveySaveRequest(BaseModel):
@@ -1704,9 +1421,7 @@ async def save_prior_context_endpoint(
     if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="激活码已过期")
     # 试用码阶段锁：仅允许写 values 阶段的上一轮咨询结果（未知 phase 宽容按 values 处理）
-    _assert_trial_phase_allowed(
-        rec, current_user, ReportRegistry.normalize_step_id(request.phase)
-    )
+    _assert_trial_phase_allowed(rec, current_user, ReportRegistry.normalize_step_id(request.phase))
     user_id = (current_user or {}).get("user_id") or (current_user or {}).get("email") or ""
     root = get_effective_simple_root(rec)
     registry = ReportRegistry(base_dir=str(root))
@@ -1739,2492 +1454,10 @@ async def save_survey(
     user_id = (current_user or {}).get("user_id") or (current_user or {}).get("email") or ""
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="请先登录")
-    await save_basic_info_by_user(user_id, _survey_data_with_nickname_default(request, current_user))
+    await save_basic_info_by_user(
+        user_id, _survey_data_with_nickname_default(request, current_user)
+    )
     return SimpleChatResponse(code=200, message="success", data={})
-
-
-class RuminationProgressResponse(BaseModel):
-    main_section: str = "opening"
-    review_sub_index: int = 0
-    filter_step: int = 0
-    filter_table: Optional[dict] = None
-
-
-class RuminationProgressSaveRequest(BaseModel):
-    activation_code: str
-    main_section: Optional[str] = None
-    review_sub_index: Optional[int] = None
-    filter_step: Optional[int] = None
-    filter_sub_step: Optional[str] = None
-    filter_table: Optional[List[Dict[str, Any]]] = None
-    filter_row_cursor: Optional[int] = None
-    hypothesis_round: Optional[int] = None
-    filter_early_terminated: Optional[bool] = None
-    filter_terminate_reason: Optional[str] = None
-    step3_trigger: Optional[str] = None
-    combo_conclusions: Optional[Dict[str, Any]] = None
-    combo_completion_modal_dismissed: Optional[bool] = None
-    matrix_intro_dismissed: Optional[bool] = None
-
-
-class RuminationTableSubmitRequest(BaseModel):
-    """提交筛选表。递进逻辑依赖非空的 table_data（整表行列表）；传 null 时服务端不会进入任一步的 if step==N and table_data 分支。"""
-
-    model_config = ConfigDict(extra="ignore")
-
-    activation_code: str
-    # 表格进度按 report 落库，不依赖 thread；允许空串避免前端会话竞态导致无法提交
-    thread_id: str = ""
-    step: int
-    table_data: Optional[List[Dict[str, Any]]] = None
-    # 终步（7）多选提交时可传 id 列表，否则从 table_data 行内 __pick / _rumination_selected 读取
-    selected_row_ids: Optional[List[str]] = None
-    # 为 True 时跳过「否定/标记」闸门（由 rumination-neg-resolve 在暂存提交后调用）
-    neg_force_commit: bool = False
-
-
-class RuminationNegResolveRequest(BaseModel):
-    """闸门：继续推进 / 开始深入讨论 / 结束讨论并推进 / 暂时关闭弹窗。"""
-
-    model_config = ConfigDict(extra="ignore")
-
-    activation_code: str
-    thread_id: str = ""
-    action: Literal["continue", "deep_start", "deep_end", "dismiss"]
-
-
-class RuminationStepOpeningStreamRequest(BaseModel):
-    """沉淀子步引导语流式生成（仅 opening_mode=llm 的子步）。"""
-
-    model_config = ConfigDict(extra="ignore")
-
-    activation_code: str
-    filter_step: int
-    thread_id: str = ""
-
-
-@router.get("/rumination-progress", response_model=SimpleChatResponse)
-def get_rumination_progress(
-    activation_code: str,
-    current_user: dict = Depends(get_current_user),
-):
-    """获取 rumination 阶段进度"""
-    try:
-        manager = get_activation_manager_for_code(activation_code)
-        rec = _resolve_activation_for_user(manager, activation_code, current_user)
-        root = get_effective_simple_root(rec)
-        registry = ReportRegistry(base_dir=str(root))
-        report = registry.ensure_report(
-            rec.code,
-            (current_user or {}).get("user_id", ""),
-            bind_session_id_for_ensure_report(rec),
-        )
-        report_id = report.get("report_id")
-        if not report_id:
-            raise HTTPException(status_code=500, detail="报告初始化失败")
-        reports_root = root / "reports"
-        progress = load_rumination_progress(reports_root, report_id)
-        mr = max_reached_filter_step(progress.get("filter_step_snapshots") or {})
-        return SimpleChatResponse(
-            code=200, message="success", data={"progress": progress, "max_reached_filter_step": mr}
-        )
-    except HTTPException:
-        raise
-    except ValueError as e:
-        logger.warning("rumination-progress ensure_report failed: %s", e)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except Exception:
-        raise
-
-
-@router.post("/rumination-progress", response_model=SimpleChatResponse)
-def save_rumination_progress_endpoint(
-    request: RuminationProgressSaveRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    """保存 rumination 阶段进度"""
-    manager = get_activation_manager_for_code(request.activation_code)
-    rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
-    if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
-        raise HTTPException(status_code=400, detail="激活码已过期")
-    # 试用码阶段锁：rumination 进度写入对试用码一律拦截
-    _assert_trial_phase_allowed(rec, current_user, "rumination")
-    root = get_effective_simple_root(rec)
-    registry = ReportRegistry(base_dir=str(root))
-    report = registry.ensure_report(
-        rec.code,
-        (current_user or {}).get("user_id", ""),
-        bind_session_id_for_ensure_report(rec),
-    )
-    report_id = report.get("report_id")
-    if not report_id:
-        raise HTTPException(status_code=500, detail="报告初始化失败")
-    reports_root = root / "reports"
-    # step3 逐行编辑：前端发来的 filter_table 中，未解锁行的业务字段已被 redact 清空。
-    # 直接覆盖会丢失后端已有的热爱/优势等原始数据。需要智能合并。
-    save_table = request.filter_table
-    if int(request.filter_step or 0) == 3 and isinstance(save_table, list) and save_table:
-        existing = load_rumination_progress(reports_root, report_id).get("filter_table")
-        if isinstance(existing, list) and existing:
-            save_table = _merge_step3_filter_table(save_table, existing)
-    progress = save_rumination_progress(
-        reports_root,
-        report_id,
-        main_section=request.main_section,
-        review_sub_index=request.review_sub_index,
-        filter_step=request.filter_step,
-        filter_table=save_table,
-        filter_row_cursor=request.filter_row_cursor,
-        hypothesis_round=request.hypothesis_round,
-        filter_early_terminated=request.filter_early_terminated,
-        filter_terminate_reason=request.filter_terminate_reason,
-    )
-    # combo 相关字段需要单独处理（save_rumination_progress 不支持这些字段）
-    extra_updates: Dict[str, Any] = {}
-    if request.filter_sub_step is not None:
-        extra_updates["filter_sub_step"] = request.filter_sub_step
-    if request.combo_conclusions is not None:
-        extra_updates["combo_conclusions"] = request.combo_conclusions
-    if request.combo_completion_modal_dismissed is not None:
-        extra_updates["combo_completion_modal_dismissed"] = request.combo_completion_modal_dismissed
-    if request.matrix_intro_dismissed is not None:
-        extra_updates["matrix_intro_dismissed"] = request.matrix_intro_dismissed
-    if extra_updates:
-        progress = merge_rumination_progress_fields(
-            reports_root,
-            report_id,
-            extra_updates,
-        )
-    # step3 表格触发不再产生 side effect（操作消息通过 /message/stream 发给 AI）
-    return SimpleChatResponse(
-        code=200, message="success", data={"progress": progress, "step3_side_effect": None}
-    )
-
-
-def _rumination_snapshots_copy(progress: Dict[str, Any]) -> Dict[str, Any]:
-    s = progress.get("filter_step_snapshots") or {}
-    return deepcopy(s) if isinstance(s, dict) else {}
-
-
-def _table_widget_payload(
-    step: int,
-    rows: List[dict],
-    values_list: List[str],
-    *,
-    progress: Optional[Dict[str, Any]] = None,
-    values_source: str = "",
-    sub_step: Optional[str] = None,
-) -> Optional[dict]:
-    """构建 table_widget；子步 3 注入 filter_row_cursor 以做行脱敏。"""
-    progress = progress or {}
-    kwargs: Dict[str, Any] = {}
-    if step == 3:
-        if sub_step == "discussion":
-            # 3b 阶段全部解锁
-            kwargs["hypothesis_row_cursor"] = len(rows)
-        else:
-            kwargs["hypothesis_row_cursor"] = int(progress.get("filter_row_cursor") or 0)
-    if sub_step:
-        kwargs["sub_step"] = sub_step
-    return build_table_widget_payload(
-        step, rows, values_list, values_source=values_source, **kwargs
-    )
-
-
-def _try_rumination_step3_row_unlock(
-    reports_root: Path,
-    report_id: str,
-    row_state: Dict[str, Any],
-) -> Optional[Dict[str, Any]]:
-    """解析 ROW_STATE_JSON；校验当前行假设已填后 filter_row_cursor += 1。"""
-    if str(row_state.get("state") or "").strip().lower() != "confirmed":
-        return None
-    try:
-        idx = int(row_state["row"])
-    except (KeyError, TypeError, ValueError):
-        return None
-    prog = load_rumination_progress(reports_root, report_id)
-    cur = int(prog.get("filter_row_cursor") or 0)
-    if idx != cur:
-        logger.info("[rumination] step3 unlock skipped: row index %s != cursor %s", idx, cur)
-        return None
-    ft = prog.get("filter_table")
-    if not isinstance(ft, list) or idx < 0 or idx >= len(ft):
-        return None
-    row = ft[idx]
-    if not isinstance(row, dict):
-        return None
-    hyp = str(row.get("用户确认的假设") or "").strip()
-    if not is_rumination_step3_row_hypothesis_complete(hyp):
-        logger.info("[rumination] step3 unlock skipped: row %s hypothesis incomplete", idx)
-        return None
-    return save_rumination_progress(
-        reports_root,
-        report_id,
-        filter_row_cursor=cur + 1,
-    )
-
-
-def _try_rumination_step3_auto_unlock(
-    reports_root: Path,
-    report_id: str,
-) -> Optional[Dict[str, Any]]:
-    """兜底自动解锁：当 AI 未输出 ROW_STATE_JSON 但当前行假设已完整时，自动推进 cursor。
-
-    在每次 step3 AI 回复结束后调用。检查当前 cursor 行的假设是否完整，
-    若完整且 cursor 不是最后一行，则 cursor+1。
-    """
-    prog = load_rumination_progress(reports_root, report_id)
-    cur = int(prog.get("filter_row_cursor") or 0)
-    ft = prog.get("filter_table")
-    if not isinstance(ft, list) or cur < 0 or cur >= len(ft):
-        return None
-    row = ft[cur]
-    if not isinstance(row, dict):
-        return None
-    hyp = str(row.get("用户确认的假设") or "").strip()
-    if not is_rumination_step3_row_hypothesis_complete(hyp):
-        return None
-    logger.info(
-        "[rumination] step3 auto-unlock (fallback): row %s hypothesis complete, advancing cursor",
-        cur,
-    )
-    return save_rumination_progress(
-        reports_root,
-        report_id,
-        filter_row_cursor=cur + 1,
-    )
-
-
-def _merge_step3_filter_table(
-    incoming: list,
-    existing: list,
-) -> list:
-    """合并 step3 前端发来的表格与后端已有数据。
-
-    前端 redact 会清空未解锁行的业务字段（热爱、优势等）。
-    直接覆盖会丢失后端已有的原始数据。此函数对每个字段做智能合并：
-    - 若前端传来的值为非空字符串 → 采用前端值（用户确实编辑了）
-    - 若前端传来的值为空/None → 保留后端原有值（未被 redact 或用户清空）
-    """
-    out: list = []
-    for i, row in enumerate(incoming):
-        if not isinstance(row, dict):
-            out.append(row)
-            continue
-        ex = existing[i] if i < len(existing) and isinstance(existing[i], dict) else {}
-        merged = dict(row)
-        for k, v in merged.items():
-            # 非空字符串保留前端值；空值尝试从后端回填
-            sv = str(v).strip() if v is not None else ""
-            if not sv and k in ex:
-                ev = ex[k]
-                if ev is not None and str(ev).strip():
-                    merged[k] = ev
-        # 确保后端有但前端没传的字段也保留
-        for k, v in ex.items():
-            if k not in merged and v is not None:
-                merged[k] = v
-        out.append(merged)
-    # 后端行数更多时追加
-    if len(existing) > len(incoming):
-        for i in range(len(incoming), len(existing)):
-            out.append(existing[i])
-    return out
-
-
-def _rumination_get_table_response(
-    progress: Dict[str, Any],
-    payload: Optional[dict],
-) -> SimpleChatResponse:
-    mr = max_reached_filter_step(progress.get("filter_step_snapshots") or {})
-    return SimpleChatResponse(
-        code=200,
-        message="success",
-        data={
-            "table_widget": payload,
-            "progress": progress,
-            "max_reached_filter_step": mr,
-        },
-    )
-
-
-def _rumination_opening_load_bundle(
-    activation_code: str,
-    current_user: dict,
-):
-    """
-    读取报告、进度与价值观关键词，供 rumination 子步引导语使用。
-
-    价值观关键词优先从 step 4 快照读取，保证与下拉选项一致；
-    无快照时实时解析并返回 source tag。
-
-    Returns:
-        tuple[rec, reports_root, report_id, progress, values_list, values_source]
-    """
-    manager = get_activation_manager_for_code(activation_code)
-    rec = _resolve_activation_for_user(manager, activation_code, current_user)
-    if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(rec, current_user):
-        raise HTTPException(status_code=400, detail="激活码已过期")
-    root = get_effective_simple_root(rec)
-    registry = ReportRegistry(base_dir=str(root))
-    report = registry.ensure_report(
-        rec.code,
-        (current_user or {}).get("user_id", ""),
-        bind_session_id_for_ensure_report(rec),
-    )
-    report_id = report.get("report_id")
-    if not report_id:
-        raise HTTPException(status_code=500, detail="报告初始化失败")
-    reports_root = root / "reports"
-    progress = load_rumination_progress(reports_root, report_id)
-    record_path = reports_root / report_id / "record.json"
-    record_obj: Optional[dict] = None
-    if record_path.is_file():
-        try:
-            raw_rec = json.loads(record_path.read_text(encoding="utf-8") or "{}")
-            if isinstance(raw_rec, dict):
-                record_obj = raw_rec
-        except (json.JSONDecodeError, OSError, TypeError):
-            record_obj = None
-    # 优先使用快照中的价值观关键词（保证与下拉选项一致）
-    snapshots = progress.get("filter_step_snapshots") or {}
-    values_list, values_source = resolve_values_for_step4(
-        str(reports_root), report_id, record_obj, snapshots
-    )
-    return rec, reports_root, report_id, progress, values_list, values_source
-
-
-@router.get("/rumination-step-opening", response_model=SimpleChatResponse)
-def rumination_step_opening(
-    activation_code: str,
-    filter_step: int = 1,
-    current_user: dict = Depends(get_current_user),
-):
-    """子步引导：fixed 时返回完整文案（前端模拟流式）；llm 时 text 为 null，走流式接口。"""
-    try:
-        _rec, _rp, _rid, progress, values_list, values_source = _rumination_opening_load_bundle(
-            activation_code, current_user
-        )
-    except HTTPException:
-        raise
-    except ValueError as e:
-        logger.warning("rumination-step-opening load failed: %s", e)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
-
-    step = max(1, min(MAX_FILTER_STEP, int(filter_step)))
-    ctx = build_opening_context(
-        filter_step=step, progress=progress, values_list=values_list, values_source=values_source
-    )
-    mode = get_opening_mode(step)
-    if mode == "llm":
-        return SimpleChatResponse(
-            code=200,
-            message="success",
-            data={"mode": "llm", "text": None, "filter_step": step},
-        )
-    text = render_fixed_opening_zh(step, ctx)
-    return SimpleChatResponse(
-        code=200,
-        message="success",
-        data={"mode": "fixed", "text": text, "filter_step": step},
-    )
-
-
-@router.post("/rumination-step-opening-stream")
-async def rumination_step_opening_stream(
-    request: RuminationStepOpeningStreamRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    set_llm_usage_context(
-        user_id=(current_user or {}).get("user_id"),
-        activation_code=getattr(request, "activation_code", None),
-        scene="rumination",
-    )
-    """子步引导流式生成（SSE 事件与 /message/stream 的 chunk/think/done 兼容）。"""
-    step = max(1, min(MAX_FILTER_STEP, int(request.filter_step)))
-    if get_opening_mode(step) != "llm":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="该子步使用固定引导语，请使用 GET /rumination-step-opening",
-        )
-    try:
-        rec, _reports_root, _report_id, progress, values_list, values_source = (
-            _rumination_opening_load_bundle(request.activation_code, current_user)
-        )
-    except HTTPException:
-        raise
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
-
-    # 试用码阶段锁：rumination 引导语流式生成对试用码一律拦截
-    _assert_trial_phase_allowed(rec, current_user, "rumination")
-
-    ctx = build_opening_context(
-        filter_step=step, progress=progress, values_list=values_list, values_source=values_source
-    )
-    try:
-        llm_messages = build_opening_llm_messages(step, ctx)
-    except ValueError as e:
-        logger.warning("rumination opening llm build failed: %s", e)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="该子步未配置 LLM 引导提示词",
-        ) from e
-
-    manager = get_activation_manager_for_code(request.activation_code)
-    try:
-        _, report, phase_step, logical_session_id, category, conv_manager = _resolve_report_context(
-            manager=manager,
-            activation_code=request.activation_code,
-            current_user=current_user,
-            phase="rumination",
-            thread_id=(request.thread_id or "").strip() or None,
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.warning("rumination opening stream resolve context: %s", e)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="会话上下文无效，请刷新后重试",
-        ) from e
-
-    registry = ReportRegistry(base_dir=str(get_effective_simple_root(rec)))
-    registry.bind_session(report["report_id"], phase_step, logical_session_id)
-
-    if phase_step != "rumination":
-        raise HTTPException(status_code=400, detail="仅支持沉淀阶段")
-
-    session_id = report["report_id"]
-    vip_level = getattr(rec, "vip_level", 1) or 1
-
-    async def event_stream() -> AsyncIterator[str]:
-        llm = _get_dialogue_llm_provider(vip_level=vip_level)
-        if hasattr(llm, "_last_stream_usage"):
-            try:
-                setattr(llm, "_last_stream_usage", None)
-            except Exception:
-                pass
-        full_reply = ""
-        sem = _get_llm_semaphore()
-
-        async def run_one() -> AsyncIterator[str]:
-            nonlocal full_reply
-            stream_coro = llm.chat_stream(llm_messages, temperature=0.65, max_tokens=8192)
-            async for piece in stream_coro:
-                if isinstance(piece, dict):
-                    t = piece.get("_t")
-                    if t == "think_start":
-                        yield 'data: {"think_start": true}\n\n'
-                    elif t == "think_chunk":
-                        tc = piece.get("content") or ""
-                        if tc:
-                            yield f"data: {json.dumps({'think_chunk': tc}, ensure_ascii=False)}\n\n"
-                    elif t == "think_end":
-                        te = piece.get("content")
-                        yield f"data: {json.dumps({'think_end': te}, ensure_ascii=False)}\n\n"
-                    continue
-                if piece:
-                    full_reply += piece
-                    yield f"data: {json.dumps({'chunk': piece}, ensure_ascii=False)}\n\n"
-
-        try:
-            if sem:
-                async with sem:
-                    async for line in run_one():
-                        yield line
-            else:
-                async for line in run_one():
-                    yield line
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
-            return
-
-        text = full_reply.strip()
-        stream_usage = _normalize_token_usage(getattr(llm, "_last_stream_usage", None))
-        if text:
-            try:
-                # step3 opening：读当前 progress.filter_sub_step，给消息打 rumination_sub_step 标记
-                # （matrix/discussion），供前端按子步精确过滤。
-                _opening_sub_step = ""
-                try:
-                    _rp_os = load_rumination_progress(
-                        Path(reports_root), str(report.get("report_id") or "")
-                    )
-                    _opening_sub_step = (_rp_os.get("filter_sub_step") or "").strip()
-                except Exception:
-                    pass
-                _opening_msg: Dict[str, Any] = {
-                    "role": "assistant",
-                    "content": text,
-                    **IDCodec.build_message_ids(
-                        thread_id=logical_session_id,
-                        activation_session_id=rec.session_id,
-                    ),
-                    "step_id": phase_step,
-                    "filter_step": step,
-                    "agent_id": "coach",
-                    "event": "assistant_reply",
-                    "token_usage": stream_usage,
-                }
-                if step == 3 and _opening_sub_step:
-                    _opening_msg["rumination_sub_step"] = _opening_sub_step
-                await conv_manager.append_message(
-                    session_id=session_id,
-                    category=category,
-                    message=_opening_msg,
-                )
-            except Exception as e:
-                logger.warning("rumination opening append_message failed: %s", e)
-
-        yield (
-            f'data: {{"done": true, "response": {json.dumps(text, ensure_ascii=False)}, '
-            f'"token_usage": {json.dumps(stream_usage, ensure_ascii=False)} }}\n\n'
-        )
-
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
-
-
-def _build_table_widget_payload(
-    step: int,
-    rows: List[dict],
-    columns: List[dict],
-    editable_cols: List[str],
-    guide_text: str = "",
-) -> dict:
-    """构建 table_widget 消息的 card_payload"""
-    return {
-        "columns": columns,
-        "rows": rows,
-        "editableCols": editable_cols,
-        "guideText": guide_text,
-        "step": step,
-    }
-
-
-RUMINATION_GUIDE_ALL_PENDING_ZH = (
-    "如果您对生成的假设内容不够确定，可以与我交流，或者可以点击蓝色的按钮，重新生成新的假设。"
-)
-
-RUMINATION_GUIDE_ZERO_SELECTION_ZH = (
-    "注意到您觉得所有选项都不太匹配，但或许我们只是还没发现它们各自的可能性。"
-    "接下来，让我们一起探索一下。"
-)
-
-# 兼容旧名：第 1 步无优势标记 / 第 2 步全不匹配，共用同一引导
-RUMINATION_GUIDE_ZERO_STRENGTH_ZH = RUMINATION_GUIDE_ZERO_SELECTION_ZH
-RUMINATION_GUIDE_ALL_MISMATCH_ZH = RUMINATION_GUIDE_ZERO_SELECTION_ZH
-
-
-def _rumination_clear_snapshots_from_step(snapshots: Dict[str, Any], start: int) -> None:
-    """删除从 start 到 7 的子步快照（含），用于回退或直达终筛后避免脏数据。"""
-    for d in range(max(1, int(start)), MAX_FILTER_STEP + 1):
-        snapshots.pop(str(d), None)
-
-
-def _resolve_non_matching_pairs(progress: Dict[str, Any]) -> set:
-    """从 progress 中解析 step2 不匹配的 (热爱, 优势) 组合集合。
-
-    数据源优先级：
-    1. snapshots["2"]["submitted"]（新版本保存的用户提交数据）
-    2. snapshots["2"]["initial"] vs snapshots["3"]["initial"] 差集（旧版本回退）
-    """
-    snapshots = progress.get("filter_step_snapshots") or {}
-    step2_snap = snapshots.get("2") or {}
-
-    # 优先级 1：submitted
-    submitted = step2_snap.get("submitted")
-    if isinstance(submitted, list) and submitted:
-        pairs: set = set()
-        for row in submitted:
-            if not isinstance(row, dict):
-                continue
-            if str(row.get("匹配性") or "").strip() == "不匹配":
-                p = str(row.get("热爱") or "").strip()
-                s = str(row.get("优势") or "").strip()
-                if p and s:
-                    pairs.add((p, s))
-        return pairs
-
-    # 优先级 2：step2 initial 与 step3 initial 的差集
-    # step2 initial = 全部行（含不匹配），step3 initial = 匹配行
-    step2_initial = step2_snap.get("initial")
-    step3_initial = (snapshots.get("3") or {}).get("initial")
-    if isinstance(step2_initial, list) and isinstance(step3_initial, list):
-        # step3 initial 的行集（用 热爱+优势 做 key）
-        step3_keys = set()
-        for row in step3_initial:
-            if isinstance(row, dict):
-                p = str(row.get("热爱") or "").strip()
-                s = str(row.get("优势") or "").strip()
-                if p and s:
-                    step3_keys.add((p, s))
-        # step2 initial 中不在 step3 的行 = 被删除的（不匹配）
-        pairs: set = set()
-        for row in step2_initial:
-            if not isinstance(row, dict):
-                continue
-            p = str(row.get("热爱") or "").strip()
-            s = str(row.get("优势") or "").strip()
-            if p and s and (p, s) not in step3_keys:
-                pairs.add((p, s))
-        return pairs
-
-    return set()
-
-
-def _rumination_step7_rows_for_widget(rows: List[dict]) -> List[dict]:
-    """终步表格增加 __final 字段供前端绿色最终勾选（多选 1-3）。"""
-    out: List[dict] = []
-    for r in rows:
-        if not isinstance(r, dict):
-            continue
-        x = dict(r)
-        x.setdefault("__final", False)
-        out.append(x)
-    return out
-
-
-def _rumination_parse_selected_row_ids(
-    table_data: Optional[List[Dict[str, Any]]],
-    selected_row_ids: Optional[List[str]],
-) -> List[str]:
-    if selected_row_ids:
-        return [str(x).strip() for x in selected_row_ids if str(x).strip()]
-    if not table_data:
-        return []
-    out: List[str] = []
-    for r in table_data:
-        if not isinstance(r, dict):
-            continue
-        # 优先认 __final（step7 终步绿色勾选）；向后兼容 __pick / _rumination_selected
-        if (
-            r.get("__final") is True
-            or r.get("__pick") is True
-            or r.get("_rumination_selected") is True
-        ):
-            rid = str(r.get("id", "")).strip()
-            if rid:
-                out.append(rid)
-    seen = set()
-    uniq: List[str] = []
-    for x in out:
-        if x not in seen:
-            seen.add(x)
-            uniq.append(x)
-    return uniq
-
-
-def _rumination_strip_meta_keys(rows: List[dict], *, keep_final: bool = False) -> List[dict]:
-    out: List[dict] = []
-    for r in rows:
-        if not isinstance(r, dict):
-            continue
-        x = dict(r)
-        x.pop("__pick", None)
-        x.pop("_rumination_selected", None)
-        if not keep_final:
-            x.pop("__final", None)
-        out.append(x)
-    return out
-
-
-def _rumination_step7_via_456_chain(rows: List[dict]) -> List[dict]:
-    """第 4 步形态的表格（含「工作目的」列）经 激情→现实→similar 得到终步展示行。"""
-    if not rows:
-        return []
-    s5 = passion_filter(rows)
-    s6 = reality_filter(s5)
-    return similar_filter(s6)
-
-
-def _rumination_step7_preserve_incoming_rows(incoming: List[dict]) -> List[dict]:
-    """假设后任一步筛选得到 0 行时：保留用户本步提交的每一行，投射为终步两列。"""
-    out: List[dict] = []
-    for r in incoming:
-        if not isinstance(r, dict):
-            continue
-        out.append(
-            {
-                "id": str(r.get("id", "")),
-                "用户确认的假设": (r.get("用户确认的假设") or "").strip(),
-            }
-        )
-    return out
-
-
-def _rumination_persist_skip_to_step7(
-    reports_root: Path,
-    report_id: str,
-    snapshots: Dict[str, Any],
-    step7_rows: List[dict],
-    values_list: List[str],
-    *,
-    filter_early_terminated: bool,
-    clear_snapshots_from: int,
-) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]], int]:
-    """直达第 7 步：清理中间快照、标记 skipped、写入 7 的 initial、更新 progress。"""
-    _rumination_clear_snapshots_from_step(snapshots, clear_snapshots_from)
-    # 标记被短链跳过的中间子步为 skipped，前端据此灰显并禁止操作
-    for skip_step in range(clear_snapshots_from, 7):
-        snapshots[str(skip_step)] = {"skipped": True}
-    wrows = _rumination_step7_rows_for_widget(step7_rows)
-    s7 = snapshots.setdefault("7", {})
-    if s7.get("initial") is None:
-        s7["initial"] = deepcopy(_rumination_strip_meta_keys(wrows))
-    s7["submitted"] = None
-    snapshots["7"] = s7
-    progress = save_rumination_progress(
-        reports_root,
-        report_id,
-        main_section="filter",
-        filter_step=7,
-        filter_table=wrows,
-        filter_step_snapshots=snapshots,
-        filter_early_terminated=filter_early_terminated,
-        filter_terminate_reason=None,
-    )
-    next_table = build_table_widget_payload(7, wrows, values_list)
-    return progress, next_table, 7
-
-
-@router.post("/rumination-table-submit", response_model=SimpleChatResponse)
-async def rumination_table_submit(
-    request: RuminationTableSubmitRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    set_llm_usage_context(
-        user_id=(current_user or {}).get("user_id"),
-        activation_code=getattr(request, "activation_code", None),
-        scene="rumination",
-    )
-    """提交 rumination 筛选表格数据，更新 progress，并可能返回下一步表格。"""
-    try:
-        manager = get_activation_manager_for_code(request.activation_code)
-        rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
-        if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(
-            rec, current_user
-        ):
-            raise HTTPException(status_code=400, detail="激活码已过期")
-        # 试用码阶段锁：rumination 表格提交对试用码一律拦截
-        _assert_trial_phase_allowed(rec, current_user, "rumination")
-        root = get_effective_simple_root(rec)
-        registry = ReportRegistry(base_dir=str(root))
-        report = registry.ensure_report(
-            rec.code,
-            (current_user or {}).get("user_id", ""),
-            bind_session_id_for_ensure_report(rec),
-        )
-        # 报告定稿后 rumination 锁定：终选（n选3）不可再改
-        _assert_step_editable(
-            registry=registry,
-            report_id=report.get("report_id") or "",
-            phase_step="rumination",
-            current_user=current_user,
-            rec=rec,
-        )
-    except HTTPException:
-        raise
-    except ValueError as e:
-        logger.warning("rumination-table-submit 报告上下文无效: %s", e)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
-    try:
-        report_id = report.get("report_id")
-        if not report_id:
-            raise HTTPException(status_code=500, detail="报告初始化失败")
-        reports_root = root / "reports"
-        step = max(1, min(MAX_FILTER_STEP, request.step))
-        progress0 = load_rumination_progress(reports_root, report_id)
-        snapshots = _rumination_snapshots_copy(progress0)
-        sk = str(step)
-        ent = snapshots.setdefault(sk, {})
-        table_data = request.table_data
-
-        # 被短链跳过的子步禁止提交
-        step_snap = progress0.get("filter_step_snapshots", {}).get(sk, {})
-        if step_snap.get("skipped"):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="该步骤已被跳过，不可提交",
-            )
-
-        pending0 = progress0.get("pending_table_submit")
-        neg0_early = progress0.get("rumination_neg_state") or {}
-        neg0_active = neg0_early.get("status") in ("awaiting_choice", "exploring")
-        if isinstance(pending0, dict) and not request.neg_force_commit and neg0_active:
-            if int(pending0.get("step") or 0) == step and table_data is not None:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="请先处理表格上方的跟进选项后再确认",
-                )
-
-        neg0 = progress0.get("rumination_neg_state") or {}
-        if (
-            neg0.get("status") == "exploring"
-            and int(neg0.get("step") or 0) == step
-            and table_data is not None
-            and not request.neg_force_commit
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="请先点击「结束讨论」后再确认表格",
-            )
-
-        if (
-            table_data is not None
-            and step in (2, 3, 5, 6)
-            and not request.neg_force_commit
-            and ent.get("submitted") is None
-            and not is_neg_gate_triggered(progress0, step)
-        ):
-            vip_gate = getattr(rec, "vip_level", 1) or 1
-            llm_gate = _get_dialogue_llm_provider(vip_level=vip_gate)
-            gate_pkg = await try_build_neg_gate_response(
-                step=step,
-                table_data=table_data,
-                llm=llm_gate,
-                selected_row_ids=request.selected_row_ids,
-            )
-            if gate_pkg:
-                # 标记本子步闸门已触发，避免后续重复弹出
-                mark_neg_gate_triggered(reports_root, report_id, step)
-                merge_rumination_progress_fields(
-                    reports_root,
-                    report_id,
-                    {
-                        "pending_table_submit": gate_pkg["pending"],
-                        "rumination_neg_state": gate_pkg["neg_state"],
-                        "filter_table": table_data,
-                    },
-                )
-                progress = load_rumination_progress(reports_root, report_id)
-                snaps_gate = progress.get("filter_step_snapshots") or {}
-                return SimpleChatResponse(
-                    code=200,
-                    message="success",
-                    data={
-                        "progress": progress,
-                        "next_step": step,
-                        "max_reached_filter_step": max_reached_filter_step(snaps_gate),
-                        "next_action": "rumination_neg_confirm",
-                        "neg_confirm": gate_pkg["confirm"],
-                    },
-                )
-
-        if table_data is not None:
-            now_iso = datetime.now(timezone.utc).isoformat()
-            if ent.get("initial") is None:
-                ent["initial"] = deepcopy(table_data)
-                # 首次进入该 step 的时刻（initial 快照写入时刻）
-                ent["initial_at"] = now_iso
-            ent["submitted"] = deepcopy(table_data)
-            # 本次提交时刻（每次确认表格都会刷新，统计时取最后一次）
-            ent["submitted_at"] = now_iso
-            snapshots[sk] = ent
-
-        progress = save_rumination_progress(
-            reports_root,
-            report_id,
-            filter_step=step,
-            filter_table=table_data,
-            filter_step_snapshots=snapshots,
-        )
-
-        # ── 后台异步生成当前子步的 anchor 摘要（供后续子步使用）──
-        try:
-            rum_cat = category  # rumination__{thread_id}
-            anchor_conv_mgr = ConversationFileManager(base_dir=str(root / "reports"))
-            asyncio.create_task(
-                refine_and_save_rumination_step_anchor(
-                    report_id,
-                    step,
-                    rum_cat,
-                    anchor_conv_mgr,
-                    vip_level=getattr(rec, "vip_level", 1) or 1,
-                )
-            )
-        except Exception as e:
-            logger.warning("rumination_submit: anchor task spawn failed: %s", e)
-
-        # ── 读取维度关键词（step 3 LLM 需要 values_hint，假设后各步需要 values_list）──
-        record_path = reports_root / report_id / "record.json"
-        record_obj: Optional[dict] = None
-        if record_path.is_file():
-            try:
-                raw_rec = json.loads(record_path.read_text(encoding="utf-8") or "{}")
-                if isinstance(raw_rec, dict):
-                    record_obj = raw_rec
-            except (json.JSONDecodeError, OSError, TypeError):
-                pass
-
-        # step 4 价值观关键词优先从快照读取，保证下拉选项与右侧对话一致
-        values_list, values_source = resolve_values_for_step4(
-            str(reports_root), report_id, record_obj, snapshots
-        )
-        # 若快照尚不存在（首次进入 step 4 前景），使用全量解析结果
-        if not values_list:
-            _v, strengths_list, interests_list, _purpose, _sources = (
-                extract_dimension_lists_for_rumination_table(
-                    str(reports_root), report_id, record_obj
-                )
-            )
-            values_list = _v
-            values_source = _sources.get("values", "none")
-        else:
-            # 快照已有 values，仍需 strengths/interests 用于后续步骤
-            _, strengths_list, interests_list, _purpose, _sources = (
-                extract_dimension_lists_for_rumination_table(
-                    str(reports_root), report_id, record_obj
-                )
-            )
-        values_hint = "、".join(values_list[:8]) if values_list else ""
-        passions = interests_list if interests_list else ["热爱1", "热爱2"]
-        strengths_for_gen = strengths_list if strengths_list else ["优势1", "优势2"]
-        strength_markers = load_strength_markers(str(reports_root), report_id)
-
-        next_table = None
-        next_step_val = step
-        rumination_submit_next_action: Optional[str] = None
-        closing_summary_for_epilogue = ""
-        rumination_finalize_via_short_path = False
-
-        if step == 1 and table_data:
-            filtered = filter_strength(table_data)
-            if not filtered:
-                ent1 = snapshots.setdefault("1", {})
-                initial1 = ent1.get("initial")
-                if not initial1:
-                    initial1 = gen_table(strengths_for_gen, passions, strength_markers)
-                    ent1["initial"] = deepcopy(initial1)
-                rows1 = deepcopy(initial1)
-                ent1["submitted"] = None
-                snapshots["1"] = ent1
-                _rumination_clear_snapshots_from_step(snapshots, 2)
-                save_rumination_progress(
-                    reports_root,
-                    report_id,
-                    main_section="filter",
-                    filter_step=1,
-                    filter_table=rows1,
-                    filter_step_snapshots=snapshots,
-                    filter_early_terminated=False,
-                    filter_terminate_reason=None,
-                )
-                gate_pkg = build_zero_results_gate(
-                    step=1,
-                    initial_rows=rows1,
-                    kind="zero_strength",
-                )
-                merge_rumination_progress_fields(
-                    reports_root,
-                    report_id,
-                    {
-                        "pending_table_submit": gate_pkg["pending"],
-                        "rumination_neg_state": gate_pkg["neg_state"],
-                        "filter_table": rows1,
-                    },
-                )
-                progress = load_rumination_progress(reports_root, report_id)
-                snaps_gate = progress.get("filter_step_snapshots") or {}
-                return SimpleChatResponse(
-                    code=200,
-                    message="success",
-                    data={
-                        "progress": progress,
-                        "next_step": 1,
-                        "max_reached_filter_step": max_reached_filter_step(snaps_gate),
-                        "next_action": "rumination_neg_confirm",
-                        "neg_confirm": gate_pkg["confirm"],
-                    },
-                )
-            else:
-                step2_rows = filter_match(filtered)
-                next_table = _build_table_widget_payload(
-                    step=2,
-                    rows=step2_rows,
-                    columns=[
-                        {"key": "id", "label": "id"},
-                        {"key": "热爱", "label": "热爱"},
-                        {"key": "优势", "label": "优势"},
-                        {"key": "匹配性", "label": "匹配性", "options": ["匹配", "不匹配"]},
-                        {"key": "匹配原因", "label": "匹配原因"},
-                    ],
-                    editable_cols=["匹配性"],
-                    guide_text="这是匹配分析结果。如不同意某行标记，可直接修改。确认后我们将基于匹配结果提出假设。",
-                )
-                next_step_val = 2
-                s2 = snapshots.setdefault("2", {})
-                # 每次从第 1 步生成第 2 步表时同步 initial，避免沿用过期快照行数导致引导语 row_count 错误
-                if step2_rows:
-                    s2["initial"] = deepcopy(step2_rows)
-                    s2["submitted"] = None
-                snapshots["2"] = s2
-                progress = save_rumination_progress(
-                    reports_root,
-                    report_id,
-                    filter_step=2,
-                    filter_table=step2_rows,
-                    filter_step_snapshots=snapshots,
-                    filter_early_terminated=False,
-                    filter_terminate_reason=None,
-                )
-
-        elif step == 2 and table_data:
-            # step 2 → 3: 结构化假设表 + LLM 填充假设
-            step3_rows = structure_hypothesis_round1_table(table_data)
-            if not step3_rows:
-                ent2 = snapshots.setdefault("2", {})
-                initial2 = ent2.get("initial")
-                if not initial2:
-                    prev_source = snapshots.get("1", {}).get("submitted")
-                    if prev_source is None:
-                        prev_source = progress0.get("filter_table") or []
-                    filtered = filter_strength(prev_source)
-                    initial2 = filter_match(filtered) if filtered else []
-                if not initial2:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="当前无法恢复第 2 步初始表，请从第 1 步重新确认。",
-                    )
-                rows2 = deepcopy(initial2)
-                ent2["submitted"] = None
-                snapshots["2"] = ent2
-                _rumination_clear_snapshots_from_step(snapshots, 3)
-                save_rumination_progress(
-                    reports_root,
-                    report_id,
-                    main_section="filter",
-                    filter_step=2,
-                    filter_table=rows2,
-                    filter_step_snapshots=snapshots,
-                    filter_early_terminated=False,
-                    filter_terminate_reason=None,
-                )
-                gate_pkg = build_zero_results_gate(
-                    step=2,
-                    initial_rows=rows2,
-                    kind="zero_match",
-                )
-                merge_rumination_progress_fields(
-                    reports_root,
-                    report_id,
-                    {
-                        "pending_table_submit": gate_pkg["pending"],
-                        "rumination_neg_state": gate_pkg["neg_state"],
-                        "filter_table": rows2,
-                    },
-                )
-                progress = load_rumination_progress(reports_root, report_id)
-                snaps_gate = progress.get("filter_step_snapshots") or {}
-                return SimpleChatResponse(
-                    code=200,
-                    message="success",
-                    data={
-                        "progress": progress,
-                        "next_step": 2,
-                        "max_reached_filter_step": max_reached_filter_step(snaps_gate),
-                        "next_action": "rumination_neg_confirm",
-                        "neg_confirm": gate_pkg["confirm"],
-                    },
-                )
-            else:
-                s3 = snapshots.setdefault("3", {})
-                if s3.get("initial") is None:
-                    s3["initial"] = deepcopy(step3_rows)
-                # 保存 step2 提交的表格（含 匹配性 信息），供 step3 矩阵标记不匹配组合
-                snapshots.setdefault("2", {})["submitted"] = deepcopy(table_data)
-                progress = save_rumination_progress(
-                    reports_root,
-                    report_id,
-                    filter_step=3,
-                    filter_table=step3_rows,
-                    filter_row_cursor=0,
-                    filter_step_snapshots=snapshots,
-                    filter_early_terminated=False,
-                    filter_terminate_reason=None,
-                )
-                # 清除旧的组合矩阵数据（用户重新走 step2→3 时避免预填旧结论）
-                # 直接设 filter_sub_step='matrix'：前端 isStep3MatrixMode 依赖该字段为 'matrix'
-                # 才会调 init combo matrix，若设 None 会与前端形成死锁，导致 matrix 面板永不渲染。
-                progress = merge_rumination_progress_fields(
-                    reports_root,
-                    report_id,
-                    {
-                        "combo_matrix": None,
-                        "combo_conclusions": {},
-                        "combo_completion_modal_dismissed": False,
-                        "matrix_intro_dismissed": False,
-                        "filter_sub_step": "matrix",
-                    },
-                )
-                next_table = _table_widget_payload(3, step3_rows, values_list, progress=progress)
-                # step2 全不匹配但用户仍推进：在 step3 表格 guideText 前加过渡引导语
-                _all_unmatched = (
-                    len(collect_step2_mismatches(table_data)) == len(table_data)
-                    if table_data
-                    else False
-                )
-                if _all_unmatched and next_table:
-                    existing_guide = (next_table.get("guideText") or "").strip()
-                    next_table["guideText"] = (
-                        f"{RUMINATION_STEP2_ALL_UNMATCHED_TRANSITION_ZH}\n\n{existing_guide}"
-                        if existing_guide
-                        else RUMINATION_STEP2_ALL_UNMATCHED_TRANSITION_ZH
-                    )
-                next_step_val = 3
-
-        elif step == 3 and table_data:
-            # 单轮假设 → 价值观入口；须完成逐行对话（cursor）且每行显式「无」或自填
-            progress3 = load_rumination_progress(reports_root, report_id)
-            sub3 = str(progress3.get("filter_sub_step") or "").strip()
-            cur3 = int(progress3.get("filter_row_cursor") or 0)
-            n3 = len(table_data)
-            # discussion（3b 深度讨论）模式全行解锁，所有行已可编辑，
-            # 不再依赖 cursor 做逐行完成校验；否则旧 cursor 值会误判"未完成全部行"。
-            if sub3 != "discussion" and cur3 < n3:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="请先在右侧对话中完成本步骤全部行的确认，再提交表格。",
-                )
-            finalized = []
-            for r in table_data:
-                row = dict(r)
-                hyp = str(row.get("用户确认的假设") or "").strip()
-                if not is_rumination_step3_row_hypothesis_complete(hyp):
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="存在未完成行：请在「假设」列选择「无」或填写具体内容。",
-                    )
-                finalized.append(row)
-            step4_rows = value_filter(finalized, values_list)
-            if not step4_rows:
-                # 价值观筛选后 0 条：弹窗兜底
-                ent3v = snapshots.setdefault("3", {})
-                initial3v = ent3v.get("initial")
-                if not initial3v:
-                    initial3v = deepcopy(finalized)
-                    ent3v["initial"] = deepcopy(initial3v)
-                rows3v = deepcopy(initial3v)
-                ent3v["submitted"] = None
-                snapshots["3"] = ent3v
-                _rumination_clear_snapshots_from_step(snapshots, 4)
-                save_rumination_progress(
-                    reports_root,
-                    report_id,
-                    main_section="filter",
-                    filter_step=3,
-                    filter_table=rows3v,
-                    filter_step_snapshots=snapshots,
-                    filter_early_terminated=False,
-                    filter_terminate_reason=None,
-                )
-                gate_pkg = build_zero_results_gate(
-                    step=3,
-                    initial_rows=rows3v,
-                    kind="zero_value",
-                )
-                merge_rumination_progress_fields(
-                    reports_root,
-                    report_id,
-                    {
-                        "pending_table_submit": gate_pkg["pending"],
-                        "rumination_neg_state": gate_pkg["neg_state"],
-                        "filter_table": rows3v,
-                    },
-                )
-                progress = load_rumination_progress(reports_root, report_id)
-                snaps_gate = progress.get("filter_step_snapshots") or {}
-                return SimpleChatResponse(
-                    code=200,
-                    message="success",
-                    data={
-                        "progress": progress,
-                        "next_step": 3,
-                        "max_reached_filter_step": max_reached_filter_step(snaps_gate),
-                        "next_action": "rumination_neg_confirm",
-                        "neg_confirm": gate_pkg["confirm"],
-                    },
-                )
-            if 1 <= len(step4_rows) <= 3:
-                step7_r = _rumination_step7_via_456_chain(step4_rows)
-                if not step7_r:
-                    step7_r = _rumination_step7_preserve_incoming_rows(step4_rows)
-                progress, next_table, next_step_val = _rumination_persist_skip_to_step7(
-                    reports_root,
-                    report_id,
-                    snapshots,
-                    step7_r,
-                    values_list,
-                    filter_early_terminated=True,
-                    clear_snapshots_from=4,
-                )
-            else:
-                next_table = _table_widget_payload(
-                    4,
-                    step4_rows,
-                    values_list,
-                    progress=load_rumination_progress(reports_root, report_id),
-                    values_source=values_source,
-                )
-                next_step_val = 4
-                s4 = snapshots.setdefault("4", {})
-                if s4.get("initial") is None:
-                    s4["initial"] = deepcopy(step4_rows)
-                # 快照价值观关键词 + source，保证下拉与对话一致
-                snapshots = save_values_snapshot_to_snapshots(
-                    snapshots, values_list, values_source, step=4
-                )
-                progress = save_rumination_progress(
-                    reports_root,
-                    report_id,
-                    filter_step=4,
-                    filter_table=step4_rows,
-                    filter_step_snapshots=snapshots,
-                    filter_early_terminated=False,
-                    filter_terminate_reason=None,
-                )
-
-        elif step == 4 and table_data:
-            step5_rows = passion_filter(table_data)
-            if not step5_rows:
-                step7_r = _rumination_step7_preserve_incoming_rows(deepcopy(table_data))
-                progress, next_table, next_step_val = _rumination_persist_skip_to_step7(
-                    reports_root,
-                    report_id,
-                    snapshots,
-                    step7_r,
-                    values_list,
-                    filter_early_terminated=True,
-                    clear_snapshots_from=5,
-                )
-            elif 1 <= len(step5_rows) <= 3:
-                step7_r = _rumination_step7_via_456_chain(step5_rows)
-                if not step7_r:
-                    step7_r = _rumination_step7_preserve_incoming_rows(step5_rows)
-                progress, next_table, next_step_val = _rumination_persist_skip_to_step7(
-                    reports_root,
-                    report_id,
-                    snapshots,
-                    step7_r,
-                    values_list,
-                    filter_early_terminated=True,
-                    clear_snapshots_from=5,
-                )
-            else:
-                next_table = build_table_widget_payload(5, step5_rows, values_list)
-                next_step_val = 5
-                s5 = snapshots.setdefault("5", {})
-                if s5.get("initial") is None:
-                    s5["initial"] = deepcopy(step5_rows)
-                progress = save_rumination_progress(
-                    reports_root,
-                    report_id,
-                    filter_step=5,
-                    filter_table=step5_rows,
-                    filter_step_snapshots=snapshots,
-                    filter_early_terminated=False,
-                    filter_terminate_reason=None,
-                )
-
-        elif step == 5 and table_data:
-            incoming5 = deepcopy(table_data)
-            step6_rows = reality_filter(table_data)
-            if not step6_rows:
-                step7_r = _rumination_step7_preserve_incoming_rows(incoming5)
-                progress, next_table, next_step_val = _rumination_persist_skip_to_step7(
-                    reports_root,
-                    report_id,
-                    snapshots,
-                    step7_r,
-                    values_list,
-                    filter_early_terminated=True,
-                    clear_snapshots_from=6,
-                )
-            elif 1 <= len(step6_rows) <= 3:
-                step7_r = _rumination_step7_via_456_chain(step6_rows)
-                if not step7_r:
-                    step7_r = _rumination_step7_preserve_incoming_rows(step6_rows)
-                progress, next_table, next_step_val = _rumination_persist_skip_to_step7(
-                    reports_root,
-                    report_id,
-                    snapshots,
-                    step7_r,
-                    values_list,
-                    filter_early_terminated=True,
-                    clear_snapshots_from=6,
-                )
-            else:
-                next_table = build_table_widget_payload(6, step6_rows, values_list)
-                next_step_val = 6
-                s6 = snapshots.setdefault("6", {})
-                if s6.get("initial") is None:
-                    s6["initial"] = deepcopy(step6_rows)
-                progress = save_rumination_progress(
-                    reports_root,
-                    report_id,
-                    filter_step=6,
-                    filter_table=step6_rows,
-                    filter_step_snapshots=snapshots,
-                    filter_early_terminated=False,
-                    filter_terminate_reason=None,
-                )
-
-        elif step == 6 and table_data:
-            incoming6 = deepcopy(table_data)
-            step7_plain = similar_filter(table_data)
-            if not step7_plain:
-                step7_plain = _rumination_step7_preserve_incoming_rows(incoming6)
-                progress, next_table, next_step_val = _rumination_persist_skip_to_step7(
-                    reports_root,
-                    report_id,
-                    snapshots,
-                    step7_plain,
-                    values_list,
-                    filter_early_terminated=True,
-                    clear_snapshots_from=7,
-                )
-            else:
-                wrows = _rumination_step7_rows_for_widget(step7_plain)
-                s7 = snapshots.setdefault("7", {})
-                if s7.get("initial") is None:
-                    s7["initial"] = deepcopy(_rumination_strip_meta_keys(wrows))
-                s7["submitted"] = None
-                snapshots["7"] = s7
-                progress = save_rumination_progress(
-                    reports_root,
-                    report_id,
-                    main_section="filter",
-                    filter_step=7,
-                    filter_table=wrows,
-                    filter_step_snapshots=snapshots,
-                    filter_early_terminated=False,
-                    filter_terminate_reason=None,
-                )
-                next_table = build_table_widget_payload(7, wrows, values_list)
-                next_step_val = 7
-
-        elif step == 7 and table_data is not None:
-            sel_ids = _rumination_parse_selected_row_ids(table_data, request.selected_row_ids)
-            if not (1 <= len(sel_ids) <= 3):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="请在左侧勾选 1–3 行作为最终选择后再点确认",
-                )
-            id_set = set(sel_ids)
-            by_id: Dict[str, dict] = {}
-            for r in table_data or []:
-                if not isinstance(r, dict):
-                    continue
-                rid = str(r.get("id", "")).strip()
-                if rid in id_set:
-                    # 保留 __final 用于审计 snapshot；运行时其它 meta key 清除
-                    clean = _rumination_strip_meta_keys([dict(r)], keep_final=True)[0]
-                    by_id[rid] = clean
-            ordered = [by_id[i] for i in sel_ids if i in by_id]
-            if len(ordered) != len(sel_ids):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="所选行与当前表格不一致，请刷新后重试",
-                )
-            # 终步定稿：每行带 __final=True，供回看渲染绿色态与审计
-            wdone = [{**dict(r), "__final": True} for r in ordered]
-            # 在覆盖 progress 之前读取：短链直达终步时曾为 True，用于结语分支
-            rumination_finalize_via_short_path = bool(progress.get("filter_early_terminated"))
-            closing_summary_for_epilogue = "；".join(
-                str(r.get("用户确认的假设") or "").strip() for r in ordered
-            )[:RUMINATION_CLOSING_SUMMARY_MAX_CHARS]
-            finalized_at = datetime.now(timezone.utc).isoformat()
-            finalized_count = len(ordered)
-            s7 = snapshots.setdefault("7", {})
-            # submitted 保留 __final 以支持审计回看；strip 默认 keep_final=False 仅用于其它场景
-            s7["submitted"] = deepcopy(_rumination_strip_meta_keys(wdone, keep_final=True))
-            s7["finalized_at"] = finalized_at
-            s7["finalized_count"] = finalized_count
-            snapshots["7"] = s7
-            progress = save_rumination_progress(
-                reports_root,
-                report_id,
-                main_section="final_choice",
-                filter_step=7,
-                filter_table=wdone,
-                filter_step_snapshots=snapshots,
-                filter_early_terminated=False,
-                filter_terminate_reason=None,
-            )
-            # 终步定稿即锁定 rumination（与其它四阶段「进入下一阶段锁上一阶段」口径对称；
-            # rumination 是最后一步，无后续阶段触发锁定，需在此显式锁定）
-            registry.lock_step(report_id, "rumination")
-            next_table = None
-            next_step_val = 7
-            rumination_submit_next_action = "rumination_finalize_transition"
-
-        # 终步确认后写入会话结语：见 ``append_post_table_finalize_message``（短链固定 / 正常 LLM；非流式与 submit 同请求）。
-        if rumination_submit_next_action == "rumination_finalize_transition":
-            try:
-                mgr_e = get_activation_manager_for_code(request.activation_code)
-                _rec_e, _rep_e, _ph_e, log_sid_e, cat_e, conv_e = _resolve_report_context(
-                    manager=mgr_e,
-                    activation_code=request.activation_code,
-                    current_user=current_user,
-                    phase="rumination",
-                    thread_id=(request.thread_id or "").strip() or None,
-                )
-                vip_e = getattr(rec, "vip_level", 1) or 1
-                llm_e = _get_dialogue_llm_provider(vip_level=vip_e)
-                await append_post_table_finalize_message(
-                    llm=llm_e,
-                    conv_manager=conv_e,
-                    report_session_id=report["report_id"],
-                    category=cat_e,
-                    logical_session_id=log_sid_e,
-                    activation_session_id=getattr(_rec_e, "session_id", None),
-                    via_short_path=rumination_finalize_via_short_path,
-                    selected_summary=closing_summary_for_epilogue,
-                    normalize_token_usage=_normalize_token_usage,
-                )
-            except Exception as e:
-                logger.warning("rumination closing epilogue skipped: %s", e)
-
-        # step3 推进到后续子步后，清掉 discussion 子步标记，
-        # 否则前端 isStep3DiscussionMode 会因 filter_sub_step 残留而误停在 step3 画面。
-        cleanup_fields: Dict[str, Any] = {
-            "pending_table_submit": None,
-            "rumination_neg_state": None,
-        }
-        if step == 3 and next_step_val > 3:
-            cleanup_fields["filter_sub_step"] = None
-        merge_rumination_progress_fields(
-            reports_root,
-            report_id,
-            cleanup_fields,
-        )
-        progress = load_rumination_progress(reports_root, report_id)
-        snaps = progress.get("filter_step_snapshots") or {}
-        data: dict = {
-            "progress": progress,
-            "next_step": next_step_val,
-            "max_reached_filter_step": max_reached_filter_step(snaps),
-        }
-        if next_table:
-            data["next_table_widget"] = next_table
-        if rumination_submit_next_action:
-            data["next_action"] = rumination_submit_next_action
-
-        return SimpleChatResponse(code=200, message="success", data=data)
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("rumination-table-submit 未预期错误")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="表格提交失败，请稍后重试",
-        ) from None
-
-
-# ── v3: 组合矩阵模式 ────────────────────────────────────────
-
-
-class ComboConclusionSaveRequest(BaseModel):
-    activation_code: str
-    combo_id: str
-    action: str  # "confirm" | "skip"
-    text: Optional[str] = None
-
-
-@router.post("/rumination-combo-conclusion", response_model=SimpleChatResponse)
-async def rumination_save_combo_conclusion(
-    request: ComboConclusionSaveRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    set_llm_usage_context(
-        user_id=(current_user or {}).get("user_id"),
-        activation_code=getattr(request, "activation_code", None),
-        scene="rumination",
-    )
-    """保存单个组合的结论状态（确认/跳过）。"""
-    try:
-        manager = get_activation_manager_for_code(request.activation_code)
-        # 试用码阶段锁（预检，保证 402 优先于阶段推进锁的 400）
-        _peek_trial_phase_lock(manager, request.activation_code, current_user, "rumination")
-        rec, report, _, _, _, _ = _resolve_report_context(
-            manager=manager,
-            activation_code=request.activation_code,
-            current_user=current_user,
-            phase="rumination",
-        )
-        storage_root = str(get_effective_simple_root(rec))
-        reports_root = str(Path(storage_root) / "reports")
-        rid = report["report_id"]
-
-        progress = load_rumination_progress(Path(reports_root), rid)
-        conclusions = dict(progress.get("combo_conclusions") or {})
-
-        action = (request.action or "").strip().lower()
-        if action not in ("confirm", "skip"):
-            raise HTTPException(status_code=400, detail="action 须为 confirm 或 skip")
-
-        text = (request.text or "").strip() if request.text else ""
-        if action == "confirm":
-            if len(text) < 5:
-                raise HTTPException(status_code=400, detail="确认内容至少需要 5 个字")
-            conclusions[request.combo_id] = {"text": text, "state": "confirmed"}
-        else:
-            conclusions[request.combo_id] = {"text": text, "state": "skipped"}
-
-        progress = merge_rumination_progress_fields(
-            Path(reports_root), rid, {"combo_conclusions": conclusions}
-        )
-
-        return SimpleChatResponse(code=200, message="success", data={"progress": progress})
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("rumination-combo-conclusion failed: %s", e)
-        raise HTTPException(status_code=500, detail=f"保存失败: {e}") from e
-
-
-class ComboMatrixSubmitRequest(BaseModel):
-    activation_code: str
-    thread_id: Optional[str] = None
-
-
-class RuminationComboGuideRequest(BaseModel):
-    activation_code: str
-    combo_id: str
-    thread_id: Optional[str] = None
-
-
-async def _generate_and_store_combo_guide(
-    activation_code: str,
-    combo_id: str,
-    thread_id: Optional[str],
-    current_user: dict,
-) -> Optional[dict]:
-    """Generate a combo guide via LLM and store as message. Returns guide_message on success."""
-    try:
-        manager = get_activation_manager_for_code(activation_code)
-        rec, report, _, logical_session_id, category, conv_manager = _resolve_report_context(
-            manager=manager,
-            activation_code=activation_code,
-            current_user=current_user,
-            phase="rumination",
-            thread_id=thread_id,
-        )
-        if not logical_session_id:
-            logger.warning("combo guide: no session for %s/%s", activation_code, combo_id)
-            return None
-
-        storage_root = str(get_effective_simple_root(rec))
-        reports_root = str(Path(storage_root) / "reports")
-        rid = report["report_id"]
-        session_id_for_storage = rid
-
-        # Re-check: may have been generated while waiting in queue
-        history_messages: List[dict] = await conv_manager.get_messages(
-            session_id=session_id_for_storage,
-            category=category,
-        )
-        combo_messages = slice_messages_for_combo(history_messages, combo_id)
-        if combo_messages:
-            return None
-
-        progress = load_rumination_progress(Path(reports_root), rid)
-        matrix = progress.get("combo_matrix") or []
-        combo = get_combo_by_id(matrix, combo_id)
-        if not combo:
-            return None
-
-        passion_name = str(combo.get("passion_name") or "")
-        strength_name = str(combo.get("strength_name") or "")
-
-        from app.core.llmapi.base import LLMMessage as _LLMMsg
-        from app.domain.rumination_prompt_strings import STEP_3_COMBO_OPENING_SYSTEM_ZH
-
-        # 开场引导语专用 user prompt：只传组合信息 + 生成开场 + 第一问的要求。
-        # 不再要求 LLM 在开场就生成假设候选（hyp_candidates 由后续自由对话产出）。
-        combo_user_context = (
-            f"当前组合：热爱「{passion_name}」× 优势「{strength_name}」。\n"
-            f"请针对这个组合生成开场白 + 第一个探索问题。\n"
-        )
-
-        llm_messages = [
-            _LLMMsg(role="system", content=STEP_3_COMBO_OPENING_SYSTEM_ZH),
-            _LLMMsg(role="user", content=combo_user_context),
-        ]
-
-        vip_level = getattr(rec, "vip_level", 1) or 1
-        llm = _get_dialogue_llm_provider(vip_level=vip_level)
-
-        async def _call_llm_once() -> str:
-            """单次调用 LLM；返回 content 字符串（可能为空）。"""
-            sem = _get_llm_semaphore()
-            if sem:
-                async with sem:
-                    resp = await llm.chat(llm_messages, temperature=0.65, max_tokens=8192)
-            else:
-                resp = await llm.chat(llm_messages, temperature=0.65, max_tokens=8192)
-            content = getattr(resp, "content", resp) if resp else ""
-            # 记录原始返回便于排查"短文案/空返回"类问题
-            logger.info(
-                "combo guide LLM raw resp: %s/%s len=%d preview=%r",
-                activation_code,
-                combo_id,
-                len(str(content or "")),
-                str(content or "")[:200],
-            )
-            return str(content or "")
-
-        guide_text = ""
-        try:
-            guide_text = await _call_llm_once()
-            # LLM 返回空（限流/解析失败/思考模型 content 进了 reasoning 等）→ 重试一次
-            if not guide_text.strip():
-                logger.warning(
-                    "combo guide LLM returned empty, retrying: %s/%s",
-                    activation_code,
-                    combo_id,
-                )
-                guide_text = await _call_llm_once()
-        except Exception as e:
-            logger.warning("combo guide LLM failed, falling back to template: %s", e)
-            conclusions = progress.get("combo_conclusions") or {}
-            completed_count = count_completed_combos(conclusions)
-            guide_text = build_combo_guide_text(passion_name, strength_name, completed_count)
-
-        guide_text = str(guide_text).strip() or build_combo_guide_text(
-            passion_name, strength_name, 0
-        )
-
-        # 解析 [STEP3_HYP_JSON] 协议块：分离可见引导文本与假设候选
-        visible_text, raw_candidates, _row = _extract_step3_hyp_output(guide_text)
-        hyp_candidates = sanitize_hyp_candidates(raw_candidates)
-        # 兜底：LLM 未按协议输出时，visible_text 为原文（含/不含残留标记），保持原文展示
-        if visible_text.strip():
-            guide_text = visible_text
-
-        from datetime import datetime, timezone
-
-        guide_message = {
-            "role": "assistant",
-            "content": guide_text,
-            "hyp_candidates": hyp_candidates,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "type": "combo_guide",
-            "filter_step": 3,
-            "combo_id": combo_id,
-        }
-        guide_message.update(
-            IDCodec.build_message_ids(
-                thread_id=logical_session_id,
-                activation_session_id=rec.session_id,
-            )
-        )
-        guide_message.setdefault("step_id", "rumination")
-        guide_message.setdefault("agent_id", "coach")
-        guide_message.setdefault("event", "assistant_reply")
-
-        await conv_manager.append_message(
-            session_id=session_id_for_storage,
-            category=category,
-            message=guide_message,
-        )
-        logger.info("combo guide generated: %s/%s", activation_code, combo_id)
-        return guide_message
-    except Exception as e:
-        logger.exception("combo guide generation failed: %s/%s", activation_code, combo_id)
-        return None
-
-
-@router.post("/rumination-combo-guide", response_model=SimpleChatResponse)
-async def rumination_ensure_combo_guide(
-    request: RuminationComboGuideRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    set_llm_usage_context(
-        user_id=(current_user or {}).get("user_id"),
-        activation_code=getattr(request, "activation_code", None),
-        scene="rumination",
-    )
-    """确保进入某个组合时右侧已出现引导语。
-    - 已有消息 → 立即返回 created=false
-    - 正在排队或生成 → 返回 status=queued
-    - 尚未排队 → 入队后立即返回 status=queued，后台 fire-and-forget 生成
-    """
-    try:
-        user_id = (current_user or {}).get("user_id") or (current_user or {}).get("sub")
-        if not user_id:
-            logger.warning("combo-guide: no user_id in current_user=%s", current_user)
-            raise HTTPException(status_code=400, detail="请先登录")
-
-        # Fast path: check existing messages (synchronous)
-        manager = get_activation_manager_for_code(request.activation_code)
-        # 试用码阶段锁（预检，保证 402 优先于阶段推进锁的 400）
-        _peek_trial_phase_lock(manager, request.activation_code, current_user, "rumination")
-        rec, report, _, logical_session_id, category, conv_manager = _resolve_report_context(
-            manager=manager,
-            activation_code=request.activation_code,
-            current_user=current_user,
-            phase="rumination",
-            thread_id=request.thread_id,
-        )
-        if not logical_session_id:
-            logger.warning(
-                "combo-guide: no logical_session_id for code=%s thread=%s",
-                request.activation_code,
-                request.thread_id,
-            )
-            raise HTTPException(status_code=400, detail="无法确定会话 ID")
-
-        storage_root = str(get_effective_simple_root(rec))
-        rid = report["report_id"]
-        session_id_for_storage = rid
-
-        history_messages: List[dict] = await conv_manager.get_messages(
-            session_id=session_id_for_storage,
-            category=category,
-        )
-        combo_messages = slice_messages_for_combo(history_messages, request.combo_id)
-
-        if combo_messages:
-            return SimpleChatResponse(
-                code=200,
-                message="success",
-                data={"created": False, "message": None},
-            )
-
-        # Not cached → enqueue
-        from app.utils.combo_guide_queue import get_combo_guide_queue
-
-        queue = get_combo_guide_queue()
-
-        if await queue.is_in_flight(user_id, request.combo_id):
-            return SimpleChatResponse(
-                code=200,
-                message="success",
-                data={"created": False, "status": "queued", "combo_id": request.combo_id},
-            )
-
-        async def _run():
-            await queue.enqueue(
-                user_id=user_id,
-                combo_id=request.combo_id,
-                generate_fn=lambda: _generate_and_store_combo_guide(
-                    activation_code=request.activation_code,
-                    combo_id=request.combo_id,
-                    thread_id=request.thread_id,
-                    current_user=current_user,
-                ),
-            )
-
-        asyncio.create_task(_run())
-
-        return SimpleChatResponse(
-            code=200,
-            message="success",
-            data={"created": False, "status": "queued", "combo_id": request.combo_id},
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("rumination-combo-guide failed: %s", e)
-        raise HTTPException(status_code=500, detail=f"创建组合引导语失败: {e}") from e
-
-
-@router.post("/rumination-combo-matrix-submit", response_model=SimpleChatResponse)
-async def rumination_combo_matrix_submit(
-    request: ComboMatrixSubmitRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    """提交组合矩阵，将已确认的组合转为 3b 深度讨论表格。"""
-    try:
-        manager = get_activation_manager_for_code(request.activation_code)
-        # 试用码阶段锁（预检，保证 402 优先于阶段推进锁的 400）
-        _peek_trial_phase_lock(manager, request.activation_code, current_user, "rumination")
-        rec, report, _, _, _, category = _resolve_report_context(
-            manager=manager,
-            activation_code=request.activation_code,
-            current_user=current_user,
-            phase="rumination",
-        )
-        storage_root = str(get_effective_simple_root(rec))
-        reports_root = str(Path(storage_root) / "reports")
-        rid = report["report_id"]
-
-        progress = load_rumination_progress(Path(reports_root), rid)
-        conclusions = progress.get("combo_conclusions") or {}
-        matrix = progress.get("combo_matrix")
-
-        if not matrix:
-            raise HTTPException(status_code=400, detail="组合矩阵尚未初始化")
-
-        # 将空组合标记为 skipped（用户已在弹窗中确认），不匹配组合自动 skipped
-        for item in matrix:
-            cid = item["combo_id"]
-            if cid not in conclusions:
-                conclusions[cid] = {"text": "", "state": "skipped"}
-            elif item.get("is_non_matching"):
-                # 确保不匹配组合的 state 不为 confirmed
-                if conclusions[cid].get("state") != "confirmed":
-                    conclusions[cid] = {"text": "", "state": "skipped"}
-
-        # 构建 3b 表格（只含 confirmed 且有文字的组合）
-        # 关键：表行的 id 必须翻译回 gen_table 行号体系（1 + pi*5 + si），与
-        # snapshot[1]/[2] 同源；不能直接用 combo_id（"pi"+"si" 双位编码，如 "20"/"23"），
-        # 否则会让后续 snapshot/filter_table/neg_gate/前端的行 id 与原表错位。
-        table_rows = []
-        for item in matrix:
-            cid = item["combo_id"]
-            entry = conclusions.get(cid) or {}
-            if entry.get("state") == "confirmed" and str(entry.get("text") or "").strip():
-                table_rows.append(
-                    {
-                        "id": combo_id_to_row_id(item),
-                        "热爱": str(item.get("passion_name") or ""),
-                        "优势": str(item.get("strength_name") or ""),
-                        "用户确认的假设": str(entry["text"]).strip(),
-                    }
-                )
-
-        if not table_rows:
-            raise HTTPException(
-                status_code=400,
-                detail="没有任何已确认的假设，请至少为一个组合填写并确认假设。",
-            )
-
-        # 保存快照（不清除 submitted — 3b 深度讨论的提交会在后面设置）
-        snapshots = dict(progress.get("filter_step_snapshots") or {})
-        snap3 = dict(snapshots.get("3") or {})
-        # 不设置 snap3["submitted"]，让 neg gate 在 3b table submit 时正常触发
-        # 仅将 matrix 模式的确认结果保存到快照的 initial 字段，供回看
-        snap3["initial"] = deepcopy(table_rows)
-
-        # 更新进度：进入 3b
-        progress = merge_rumination_progress_fields(
-            Path(reports_root),
-            rid,
-            {
-                "combo_conclusions": conclusions,
-                "filter_sub_step": "discussion",
-                # discussion 模式全行解锁：cursor 对齐行数，保持数据自洽，
-                # 避免后续 step3 提交时旧 cursor 触发"未完成全部行"误判。
-                "filter_row_cursor": len(table_rows),
-                "filter_table": table_rows,
-                "filter_step_snapshots": {**snapshots, "3": snap3},
-            },
-        )
-
-        # ── 后台异步生成 step3 matrix 阶段的 anchor 摘要（供 step4+ 使用）──
-        # 进入 3b discussion 时触发，沉淀 matrix 阶段讨论出的假设要点。
-        # discussion 结束提交时（rumination-table-submit step=3）会再次更新此 anchor。
-        try:
-            anchor_conv_mgr = ConversationFileManager(base_dir=reports_root)
-            asyncio.create_task(
-                refine_and_save_rumination_step_anchor(
-                    rid,
-                    3,
-                    category,
-                    anchor_conv_mgr,
-                    vip_level=getattr(rec, "vip_level", 1) or 1,
-                )
-            )
-        except Exception as e:
-            logger.warning("combo_matrix_submit: matrix anchor task spawn failed: %s", e)
-
-        # 构建 3b 表格 widget（全部解锁，不逐行限制）
-        table_widget = _build_table_widget_payload(
-            step=3,
-            rows=table_rows,
-            columns=[
-                {"key": "id", "label": "id"},
-                {"key": "热爱", "label": "热爱"},
-                {"key": "优势", "label": "优势"},
-                {"key": "用户确认的假设", "label": "假设"},
-            ],
-            editable_cols=["用户确认的假设"],
-            guide_text="以下是您已确认的假设方向，选中某一行可在右侧提问。",
-        )
-        # 3b discussion 阶段所有行解锁：rowCursor = 行数，前端按 rowIdx <= rowCursor 判定可点。
-        table_widget["rowCursor"] = len(table_rows)
-        table_widget["subStep"] = "discussion"
-
-        return SimpleChatResponse(
-            code=200,
-            message="success",
-            data={
-                "progress": progress,
-                "next_action": "rumination_step3b_entry",
-                "next_table_widget": table_widget,
-                "confirmed_count": len(table_rows),
-            },
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("rumination-combo-matrix-submit failed: %s", e)
-        raise HTTPException(status_code=500, detail=f"提交失败: {e}") from e
-
-
-@router.get("/rumination-combo-matrix", response_model=SimpleChatResponse)
-async def rumination_get_combo_matrix(
-    activation_code: str,
-    current_user: dict = Depends(get_current_user),
-):
-    """获取或初始化组合矩阵。"""
-    try:
-        manager = get_activation_manager_for_code(activation_code)
-        rec, report, _, _, _, _ = _resolve_report_context(
-            manager=manager,
-            activation_code=activation_code,
-            current_user=current_user,
-            phase="rumination",
-        )
-        storage_root = str(get_effective_simple_root(rec))
-        reports_root = str(Path(storage_root) / "reports")
-        rid = report["report_id"]
-
-        progress = load_rumination_progress(Path(reports_root), rid)
-
-        # matrix 始终由 step2 过滤结果派生：step2 是用户可逆操作，不匹配标记会变，
-        # 因此每次都重新构建，而非缓存复用后打补丁。
-        _, strengths_list, interests_list, _, _ = extract_dimension_lists_for_rumination_table(
-            reports_root, rid, rec.record_dict if hasattr(rec, "record_dict") else None
-        )
-        # interests_list 即热爱（rumination 中 interests = 热爱）
-        passions = interests_list[:3]
-        strengths = strengths_list[:5]
-
-        # 从 step2 snapshot 提取不匹配组合，用于矩阵置灰标记
-        non_matching_pairs = _resolve_non_matching_pairs(progress)
-
-        matrix = build_combo_matrix(passions, strengths, non_matching_pairs=non_matching_pairs)
-
-        # 清理 combo_conclusions 中不匹配组合的脏记录（理论上不该存在，置灰后不可填）
-        combo_conclusions = progress.get("combo_conclusions") or {}
-        non_matching_ids = {item["combo_id"] for item in matrix if item.get("is_non_matching")}
-        cleaned_conclusions = {
-            cid: v for cid, v in combo_conclusions.items() if cid not in non_matching_ids
-        }
-        # 聚合 meta：跟 matrix 同源派生（同一份 non_matching_pairs + passions/strengths），
-        # 一起并入 progress_fields 原子写入，保证 matrix/meta 永远一致，无竞态无死循环。
-        meta = build_combo_matrix_meta(matrix)
-        progress_fields: Dict[str, Any] = {
-            "combo_matrix": matrix,
-            "combo_matrix_meta": meta,
-        }
-        if not progress.get("filter_sub_step"):
-            progress_fields["filter_sub_step"] = "matrix"
-        # 清理脏数据：不匹配组合的结论（置灰后不可填，理论不存在）。
-        # 同时覆盖首次初始化场景：原 progress 无 combo_matrix 时 conclusions 若有残留一并清掉。
-        if len(cleaned_conclusions) != len(combo_conclusions) or not progress.get("combo_matrix"):
-            progress_fields["combo_conclusions"] = cleaned_conclusions
-
-        progress = merge_rumination_progress_fields(
-            Path(reports_root),
-            rid,
-            progress_fields,
-        )
-
-        return SimpleChatResponse(
-            code=200,
-            message="success",
-            data={
-                "progress": progress,
-                "combo_matrix": matrix,
-                "combo_matrix_meta": meta,
-            },
-        )
-    except Exception as e:
-        logger.exception("rumination-combo-matrix init failed: %s", e)
-        raise HTTPException(status_code=500, detail=f"获取组合矩阵失败: {e}") from e
-
-
-@router.post("/rumination-neg-resolve", response_model=SimpleChatResponse)
-async def rumination_neg_resolve(
-    request: RuminationNegResolveRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    set_llm_usage_context(
-        user_id=(current_user or {}).get("user_id"),
-        activation_code=getattr(request, "activation_code", None),
-        scene="rumination",
-    )
-    """闸门后续：继续推进 / 开始深入讨论 / 结束讨论并回到表格。"""
-    try:
-        manager = get_activation_manager_for_code(request.activation_code)
-        rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
-        if rec.status == ActivationStatus.EXPIRED and not _skip_expired_for_debug(
-            rec, current_user
-        ):
-            raise HTTPException(status_code=400, detail="激活码已过期")
-        # 试用码阶段锁：rumination 闸门操作对试用码一律拦截
-        _assert_trial_phase_allowed(rec, current_user, "rumination")
-        root = get_effective_simple_root(rec)
-        registry = ReportRegistry(base_dir=str(root))
-        report = registry.ensure_report(
-            rec.code,
-            (current_user or {}).get("user_id", ""),
-            bind_session_id_for_ensure_report(rec),
-        )
-        report_id = report.get("report_id")
-        if not report_id:
-            raise HTTPException(status_code=500, detail="报告初始化失败")
-        reports_root = root / "reports"
-        progress = load_rumination_progress(reports_root, report_id)
-        neg = progress.get("rumination_neg_state") or {}
-        pending = progress.get("pending_table_submit")
-
-        if request.action == "dismiss":
-            """用户点击「我再看看」：关闭闸门弹窗，清除 pending 和 triggered 标记，下次确认重新检测。"""
-            if not isinstance(neg, dict) or neg.get("status") != "awaiting_choice":
-                raise HTTPException(status_code=400, detail="当前没有待确认的闸门弹窗")
-            gate_step = int(neg.get("step") or progress.get("filter_step") or 0)
-            merge_rumination_progress_fields(
-                reports_root,
-                report_id,
-                {"rumination_neg_state": None, "pending_table_submit": None},
-            )
-            if gate_step >= 1:
-                clear_neg_gate_triggered_step(reports_root, report_id, gate_step)
-            progress2 = load_rumination_progress(reports_root, report_id)
-            return SimpleChatResponse(
-                code=200,
-                message="success",
-                data={
-                    "progress": progress2,
-                    "next_action": "rumination_neg_dismissed",
-                },
-            )
-
-        if request.action == "deep_start":
-            if not isinstance(pending, dict) or pending.get("table_data") is None:
-                raise HTTPException(status_code=400, detail="没有待处理的表格提交，请先确认表格")
-            if not isinstance(neg, dict) or neg.get("status") != "awaiting_choice":
-                raise HTTPException(
-                    status_code=400,
-                    detail="当前没有待处理的表格跟进项，请重新确认表格",
-                )
-            neg2 = {**neg, "status": "exploring"}
-            merge_rumination_progress_fields(
-                reports_root,
-                report_id,
-                {"rumination_neg_state": neg2},
-            )
-            progress2 = load_rumination_progress(reports_root, report_id)
-            return SimpleChatResponse(
-                code=200,
-                message="success",
-                data={
-                    "progress": progress2,
-                    "next_action": "rumination_neg_deep_started",
-                    "opening_zh": str(neg.get("opening_zh") or ""),
-                },
-            )
-
-        if request.action == "deep_end":
-            if not isinstance(neg, dict) or neg.get("status") != "exploring":
-                raise HTTPException(status_code=400, detail="当前不在深入讨论状态")
-            gate_step = int(neg.get("step") or progress.get("filter_step") or 0)
-            # discussion 模式下用户改动已通过前端 debounce save 持续写入 filter_table，
-            # 它就是最新值。此处绝不能用 pending.table_data 覆盖 filter_table ——
-            # pending 是 neg_gate 触发那一刻的旧快照，会冲掉用户在深度讨论期间的修改。
-            update_fields: Dict[str, Any] = {
-                "pending_table_submit": None,
-                "rumination_neg_state": None,
-            }
-            if gate_step >= 1:
-                update_fields["filter_step"] = gate_step
-            merge_rumination_progress_fields(
-                reports_root,
-                report_id,
-                update_fields,
-            )
-            # 与 dismiss / continue(zero) 保持一致：清除本子步 neg_gate 触发标记，
-            # 否则用户结束讨论后再次确认表格时不会重新检测跟进项。
-            if gate_step >= 1:
-                clear_neg_gate_triggered_step(reports_root, report_id, gate_step)
-            progress2 = load_rumination_progress(reports_root, report_id)
-            snaps2 = progress2.get("filter_step_snapshots") or {}
-            return SimpleChatResponse(
-                code=200,
-                message="success",
-                data={
-                    "progress": progress2,
-                    "next_step": gate_step or int(progress2.get("filter_step") or 1),
-                    "max_reached_filter_step": max_reached_filter_step(snaps2),
-                    "next_action": "rumination_neg_deep_ended",
-                    "opening_zh": "这段讨论我们先收束在这里。现在你可以回到左侧表格修改答案，完成后再点确认继续。",
-                },
-            )
-
-        if request.action == "continue":
-            # zero_results 弹窗不能 continue（相同数据会循环），按 dismiss 处理
-            neg_kind = str(neg.get("kind") or "")
-            if neg_kind.startswith("zero_"):
-                gate_step = int(neg.get("step") or progress.get("filter_step") or 0)
-                merge_rumination_progress_fields(
-                    reports_root,
-                    report_id,
-                    {"rumination_neg_state": None, "pending_table_submit": None},
-                )
-                if gate_step >= 1:
-                    clear_neg_gate_triggered_step(reports_root, report_id, gate_step)
-                progress2 = load_rumination_progress(reports_root, report_id)
-                return SimpleChatResponse(
-                    code=200,
-                    message="success",
-                    data={"progress": progress2, "next_action": "rumination_neg_dismissed"},
-                )
-            fallback_table = progress.get("filter_table")
-            if (
-                (not isinstance(pending, dict) or pending.get("table_data") is None)
-                and isinstance(neg, dict)
-                and neg.get("status") == "exploring"
-                and isinstance(fallback_table, list)
-            ):
-                pending = {
-                    "step": int(neg.get("step") or progress.get("filter_step") or 1),
-                    "table_data": fallback_table,
-                }
-            if not isinstance(pending, dict) or pending.get("table_data") is None:
-                raise HTTPException(
-                    status_code=400, detail="没有待提交的表格数据，请重新在左侧确认表格"
-                )
-            sub = RuminationTableSubmitRequest(
-                activation_code=request.activation_code,
-                thread_id=request.thread_id,
-                step=int(pending.get("step") or 1),
-                table_data=pending.get("table_data"),
-                selected_row_ids=pending.get("selected_row_ids"),
-                neg_force_commit=True,
-            )
-            return await rumination_table_submit(sub, current_user)
-
-        raise HTTPException(status_code=400, detail="无效操作")
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.warning("rumination-neg-resolve failed: %s", e)
-        raise HTTPException(status_code=500, detail="处理失败，请稍后重试") from e
-
-
-@router.get("/rumination-get-table", response_model=SimpleChatResponse)
-async def rumination_get_table(
-    activation_code: str,
-    step: Optional[int] = 1,
-    reset_initial: bool = False,
-    thread_id: Optional[str] = None,
-    current_user: dict = Depends(get_current_user),
-):
-    """获取 rumination 筛选流程指定步的表格；支持快照恢复与 reset_initial 回到该步初始表。"""
-    manager = get_activation_manager_for_code(activation_code)
-    rec = _resolve_activation_for_user(manager, activation_code, current_user)
-    root = get_effective_simple_root(rec)
-    registry = ReportRegistry(base_dir=str(root))
-    report = registry.ensure_report(
-        rec.code,
-        (current_user or {}).get("user_id", ""),
-        bind_session_id_for_ensure_report(rec),
-    )
-    report_id = report.get("report_id")
-    if not report_id:
-        raise HTTPException(status_code=500, detail="报告初始化失败")
-    reports_root = root / "reports"
-    progress = load_rumination_progress(reports_root, report_id)
-    record_path = reports_root / report_id / "record.json"
-    record_obj: Optional[dict] = None
-    if record_path.is_file():
-        try:
-            raw = json.loads(record_path.read_text(encoding="utf-8") or "{}")
-            if isinstance(raw, dict):
-                record_obj = raw
-        except (json.JSONDecodeError, OSError, TypeError):
-            record_obj = None
-
-    step = max(1, min(MAX_FILTER_STEP, int(step or 1)))
-    snapshots = _rumination_snapshots_copy(progress)
-
-    # step 4 价值观关键词优先从快照读取（保证下拉与对话一致）
-    values_list, values_source = resolve_values_for_step4(
-        str(reports_root), report_id, record_obj, snapshots
-    )
-    # 其余维度仍需全量解析（step 1 需 strengths/interests 生成行）
-    _v_full, strengths_list, interests_list, _purpose, _sources_full = (
-        extract_dimension_lists_for_rumination_table(str(reports_root), report_id, record_obj)
-    )
-    passions = interests_list if interests_list else ["热爱1", "热爱2"]
-    strengths_list = strengths_list if strengths_list else ["优势1", "优势2"]
-    strength_markers = load_strength_markers(str(reports_root), report_id)
-
-    sk = str(step)
-
-    def _persist(rows: List[dict], snap: Dict[str, Any]) -> Dict[str, Any]:
-        kw: Dict[str, Any] = dict(
-            filter_step_snapshots=snap,
-        )
-        # 首次拉取第 1 步表时同步进入筛选段，否则前端仅靠 progress 不会请求 get-table
-        if step == 1 and (progress.get("main_section") or "opening") in (
-            "opening",
-            "review",
-        ):
-            kw["main_section"] = "filter"
-            kw["filter_early_terminated"] = False
-            kw["filter_step"] = step
-            kw["filter_table"] = rows
-        return save_rumination_progress(reports_root, report_id, **kw)
-
-    if reset_initial:
-        ent = snapshots.get(sk) or {}
-        initial = ent.get("initial")
-        if initial is None:
-            return SimpleChatResponse(
-                code=400,
-                message="该步暂无初始表格快照，无法重新填写",
-                data={"progress": progress, "table_widget": None},
-            )
-        # 从本步起之后整段作废：删除后续子步快照
-        for d in range(step + 1, MAX_FILTER_STEP + 1):
-            snapshots.pop(str(d), None)
-
-        # 统一逻辑：所有 step（1-7）恢复 initial 快照，清除 submitted
-        rows = deepcopy(initial)
-        ent = {**ent, "submitted": None}
-        snapshots[sk] = ent
-        hr = 1 if step <= 3 else 2
-        save_rumination_progress(
-            reports_root,
-            report_id,
-            main_section="filter",
-            filter_step=step,
-            filter_table=rows,
-            filter_row_cursor=0,
-            hypothesis_round=hr,
-            filter_early_terminated=False,
-            filter_terminate_reason=None,
-            filter_step_snapshots=snapshots,
-        )
-        merge_fields: Dict[str, Any] = {
-            "pending_table_submit": None,
-            "rumination_neg_state": None,
-        }
-        # 从 step ≤ 3 重新填写时，step3 的组合矩阵数据全部作废：
-        # matrix 会由 step2 重新派生，conclusions 必须清空避免预填旧跳过/确认记录。
-        # step3 reset 后必须把 filter_sub_step 设回 "matrix"，让前端 isStep3MatrixMode 立即为 true、
-        # 自动触发 combo_matrix 初始化 effect；否则会停留在 discussion 的普通表格组件（只解锁第一行）。
-        if step <= 3:
-            merge_fields.update(
-                {
-                    "combo_matrix": None,
-                    "combo_conclusions": {},
-                    "combo_completion_modal_dismissed": False,
-                    "matrix_intro_dismissed": False,
-                    "filter_sub_step": "matrix" if step == 3 else None,
-                }
-            )
-        merge_rumination_progress_fields(
-            reports_root,
-            report_id,
-            merge_fields,
-        )
-        clear_neg_gate_triggered_from_step(reports_root, report_id, step)
-        try:
-            # 用与其它端点一致的 thread_id 解析逻辑：优先显式 thread_id → selected_session_id → session_ids
-            # 不能直接取 selected_session_id：旧 report 可能未写入该字段（None），
-            # 且对话文件名按 thread_id 命名（rumination__{thread_id}），两者不一定相同。
-            logical_tid = _resolve_default_logical_thread_id(
-                registry,
-                report,
-                "rumination",
-                thread_id,
-                rec.session_id,
-            )
-            if logical_tid:
-                conv_mgr = ConversationFileManager(base_dir=str(root / "reports"))
-                rum_cat = _storage_category("rumination", logical_tid)
-                await conv_mgr.delete_messages_from_filter_step(report_id, rum_cat, step)
-        except Exception as e:
-            logger.warning("[rumination] reset_initial: failed to clear messages: %s", e)
-        prog = load_rumination_progress(reports_root, report_id)
-        if step == 7:
-            rows = _rumination_step7_rows_for_widget(rows)
-        payload = _table_widget_payload(
-            step, rows, values_list, progress=prog, values_source=values_source
-        )
-        return _rumination_get_table_response(prog, payload)
-
-    ent_sub = snapshots.get(sk) or {}
-    if ent_sub.get("submitted") is not None:
-        rows = deepcopy(ent_sub["submitted"])
-        if step == 7:
-            rows = _rumination_step7_rows_for_widget(rows)
-        prog = _persist(rows, snapshots)
-        payload = _table_widget_payload(
-            step, rows, values_list, progress=prog, values_source=values_source
-        )
-        return _rumination_get_table_response(prog, payload)
-
-    if step == 1:
-        rows = gen_table(strengths_list, passions, strength_markers)
-        ent = snapshots.setdefault(sk, {})
-        if ent.get("initial") is None:
-            ent["initial"] = deepcopy(rows)
-            ent["initial_at"] = datetime.now(timezone.utc).isoformat()
-            snapshots[sk] = ent
-        prog = _persist(rows, snapshots)
-        payload = _table_widget_payload(
-            step, rows, values_list, progress=prog, values_source=values_source
-        )
-        return _rumination_get_table_response(prog, payload)
-
-    if step == 2:
-        prev_source = snapshots.get("1", {}).get("submitted")
-        if prev_source is None:
-            prev_source = progress.get("filter_table") or []
-        filtered = filter_strength(prev_source)
-        rows = filter_match(filtered)
-        if not rows:
-            return _rumination_get_table_response(progress, None)
-        ent = snapshots.setdefault(sk, {})
-        if ent.get("initial") is None:
-            ent["initial"] = deepcopy(rows)
-            ent["initial_at"] = datetime.now(timezone.utc).isoformat()
-            snapshots[sk] = ent
-        prog = _persist(rows, snapshots)
-        payload = _table_widget_payload(
-            step, rows, values_list, progress=prog, values_source=values_source
-        )
-        return _rumination_get_table_response(prog, payload)
-
-    # ── step 3-7: 先查快照，无快照则从前一步 submitted 生成 ──
-    # step3 特殊处理：逐行实时编辑模式，filter_table 才是最新的
-    if step == 3:
-        ft_live = progress.get("filter_table")
-        sub_step_3 = progress.get("filter_sub_step")
-        if isinstance(ft_live, list) and ft_live:
-            rows = deepcopy(ft_live)
-            # 自愈：从 initial 快照补全被前端 redact 清空的原始字段（热爱/优势/匹配性）
-            initial_rows = (snapshots.get(sk) or {}).get("initial")
-            if isinstance(initial_rows, list) and initial_rows:
-                rows = _merge_step3_filter_table(rows, initial_rows)
-            prog = _persist(rows, snapshots)
-            payload = _table_widget_payload(
-                step,
-                rows,
-                values_list,
-                progress=prog,
-                values_source=values_source,
-                sub_step=sub_step_3,
-            )
-            return _rumination_get_table_response(prog, payload)
-
-    ent_any = snapshots.get(sk) or {}
-    for key in ("submitted", "initial"):
-        r0 = ent_any.get(key)
-        if r0 is not None:
-            rows = deepcopy(r0)
-            if step == 7:
-                rows = _rumination_step7_rows_for_widget(rows)
-            prog = _persist(rows, snapshots)
-            payload = _table_widget_payload(
-                step, rows, values_list, progress=prog, values_source=values_source
-            )
-            return _rumination_get_table_response(prog, payload)
-
-    # ── neg_gate 进行中：使用 pending_table_submit 的数据作为表格（不重新生成）──
-    neg = progress.get("rumination_neg_state") or {}
-    pending = progress.get("pending_table_submit")
-    if (
-        neg.get("status") in ("awaiting_choice", "exploring")
-        and isinstance(pending, dict)
-        and int(pending.get("step") or 0) == step
-        and isinstance(pending.get("table_data"), list)
-    ):
-        rows = deepcopy(pending["table_data"])
-        if step == 7:
-            rows = _rumination_step7_rows_for_widget(rows)
-        # 保存为 initial 快照（下次不再走此分支），但不写 submitted
-        ent_any["initial"] = deepcopy(pending["table_data"])
-        snapshots[sk] = ent_any
-        save_rumination_progress(
-            reports_root,
-            report_id,
-            filter_step=step,
-            filter_step_snapshots=snapshots,
-        )
-        prog = load_rumination_progress(reports_root, report_id)
-        payload = _table_widget_payload(
-            step, rows, values_list, progress=prog, values_source=values_source
-        )
-        return _rumination_get_table_response(prog, payload)
-
-    # 无快照但 filter_table 存在且 filter_step 指向目标步骤：直接使用（deep_end 后 / 覆盖恢复的兜底）
-    # 仅当 filter_step == step 时生效，避免用上一步的 filter_table 错误填充后续步骤
-    current_filter_step = progress.get("filter_step") or 0
-    if current_filter_step == step and isinstance(progress.get("filter_table"), list):
-        rows = deepcopy(progress["filter_table"])
-        if step == 7:
-            rows = _rumination_step7_rows_for_widget(rows)
-        ent_any["initial"] = deepcopy(progress["filter_table"])
-        snapshots[sk] = ent_any
-        save_rumination_progress(
-            reports_root,
-            report_id,
-            filter_step=step,
-            filter_step_snapshots=snapshots,
-        )
-        prog = load_rumination_progress(reports_root, report_id)
-        payload = _table_widget_payload(
-            step, rows, values_list, progress=prog, values_source=values_source
-        )
-        return _rumination_get_table_response(prog, payload)
-
-    # 无快照：从前一步 submitted 生成
-    prev_sk = str(step - 1)
-    prev_submitted = (snapshots.get(prev_sk) or {}).get("submitted")
-    if prev_submitted is None:
-        return _rumination_get_table_response(progress, None)
-
-    rows = None
-    if step == 3:
-        rows = structure_hypothesis_round1_table(prev_submitted)
-    elif step == 4:
-        rows = value_filter(prev_submitted, values_list)
-    elif step == 5:
-        rows = passion_filter(prev_submitted)
-    elif step == 6:
-        rows = reality_filter(prev_submitted)
-    elif step == 7:
-        rows = similar_filter(prev_submitted)
-        if rows:
-            rows = _rumination_step7_rows_for_widget(rows)
-
-    if not rows:
-        return _rumination_get_table_response(progress, None)
-
-    ent = snapshots.setdefault(sk, {})
-    if ent.get("initial") is None:
-        ent["initial"] = deepcopy(_rumination_strip_meta_keys(rows) if step == 7 else rows)
-        ent["initial_at"] = datetime.now(timezone.utc).isoformat()
-        # step 4 首次生成时快照价值观关键词 + source
-        if step == 4:
-            snapshots = save_values_snapshot_to_snapshots(
-                snapshots, values_list, values_source, step=4
-            )
-        snapshots[sk] = ent
-    prog = _persist(rows, snapshots)
-    payload = _table_widget_payload(
-        step, rows, values_list, progress=prog, values_source=values_source
-    )
-    return _rumination_get_table_response(prog, payload)
 
 
 def _build_system_prompt(
@@ -4236,8 +1469,6 @@ def _build_system_prompt(
     extra_goal_hint: str = "",
     *,
     values_info: str = "",
-    rumination_step_addon: str = "",
-    rumination_neg_injection: str = "",
     purpose_progress_injection: str = "",
 ) -> str:
     """根据阶段构建 system prompt（通过模板渲染，避免超长硬编码）。"""
@@ -4252,7 +1483,6 @@ def _build_system_prompt(
         "basic_info": basic_info,
         "prior_block": prior_block,
         "values_info": (values_info or "").strip(),
-        "rumination_step_addon": (rumination_step_addon or "").strip(),
     }
     if (template_override or "").strip():
         env = Environment(trim_blocks=True, lstrip_blocks=True)
@@ -4261,16 +1491,9 @@ def _build_system_prompt(
         base_prompt = get_simple_chat_system_prompt(context)
     if (extra_goal_hint or "").strip():
         base_prompt = f"{base_prompt}\n\n[管理员调试目标补充]\n{extra_goal_hint.strip()}"
-    inj = (rumination_neg_injection or "").strip()
-    if inj:
-        base_prompt = f"{base_prompt}\n{inj}"
     # 使命阶段进度注入
     if (phase or "").strip().lower() == "purpose" and (purpose_progress_injection or "").strip():
         base_prompt = f"{base_prompt}\n\n{purpose_progress_injection.strip()}"
-    # rumination 阶段不使用结论卡 pending 协议：仅保留自然对话与表格流程。
-    if (phase or "").strip().lower() == "rumination":
-        return base_prompt
-
     # 机器协议：每轮回复末尾输出状态 JSON，后端据此驱动 pending 状态机（不会展示给前端）。
     protocol = f"""
 
@@ -4357,6 +1580,7 @@ async def simple_chat(
     request: SimpleChatRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    _require_four_phase_chat(request.phase)
     set_llm_usage_context(
         user_id=(current_user or {}).get("user_id"),
         activation_code=getattr(request, "activation_code", None),
@@ -4425,29 +1649,20 @@ async def simple_chat(
     vip_level = getattr(rec, "vip_level", 1) or 1
     llm = _get_dialogue_llm_provider(vip_level=vip_level)
 
-    # rumination 不走 question_bank；其余阶段沿用线程级固定题库。
-    if phase_step == "rumination":
-        question_bank = ""
-    else:
-        question_bank = await _get_or_create_thread_question_bank(
-            conv_manager=conv_manager,
-            session_id=session_id,
-            category=category,
-            phase_step=phase_step,
-        )
+    # 前四阶段使用线程级固定题库。
+    question_bank = await _get_or_create_thread_question_bank(
+        conv_manager=conv_manager,
+        session_id=session_id,
+        category=category,
+        phase_step=phase_step,
+    )
     basic_info = _load_basic_info_from_activation(request.activation_code)
     prior_context = _load_prior_context_from_activation(request.activation_code, phase_step, report)
     override_cfg = _resolve_prompt_lab_override_for_request(rec, current_user)
     _root = get_effective_simple_root(rec)
     reports_root = str(Path(_root) / "reports")
     loc = _normalize_client_locale(request.locale)
-    vi, ra = _system_prompt_dimension_extras(
-        phase_step,
-        report,
-        reports_root,
-        request.rumination_filter_step,
-        loc,
-    )
+    vi = _values_info_for_phase(phase_step, report, reports_root)
     # 使命阶段：加载 purpose_progress 并构建注入块
     purpose_prog_injection = ""
     if phase_step == "purpose":
@@ -4466,8 +1681,6 @@ async def simple_chat(
         template_override=(override_cfg or {}).get("template"),
         extra_goal_hint=(override_cfg or {}).get("extra_goal_hint", ""),
         values_info=vi,
-        rumination_step_addon=ra,
-        rumination_neg_injection="",
         purpose_progress_injection=purpose_prog_injection,
     )
     llm_messages = [LLMMessage(role="system", content=system_prompt)]
@@ -4493,8 +1706,7 @@ async def simple_chat(
     try:
         response = await llm.chat(llm_messages, temperature=0.7)
         reply_text = (response.content or "").strip()
-        if phase_step != "rumination":
-            reply_text, _ = _split_visible_reply_and_state(reply_text)
+        reply_text, _ = _split_visible_reply_and_state(reply_text)
         token_usage = _normalize_token_usage(getattr(response, "usage", None))
     except Exception as e:
         # 避免因为上游 LLM 配置/网络问题导致初始化 500，保证问答流程可继续。
@@ -4573,6 +1785,7 @@ async def simple_init(
     - 如果该阶段已经有历史消息，则直接返回（不再重复生成）
     - 如果没有历史，则生成一条「首轮引导问题」的 assistant 消息
     """
+    _require_four_phase_chat(request.phase)
     try:
         return await _simple_init_impl(request, current_user)
     except HTTPException:
@@ -4643,47 +1856,6 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
         rec=rec,
     )
 
-    # 沉淀阶段：首轮开场白见 ``synthesize_rumination_entry_greeting``
-    if phase_step == "rumination":
-        vip_r = getattr(rec, "vip_level", 1) or 1
-        llm_r = _get_dialogue_llm_provider(vip_level=vip_r)
-        basic_info_r = _load_basic_info_from_activation(request.activation_code)
-        prior_r = _load_prior_context_from_activation(request.activation_code, phase_step, report)
-        reply_text, token_usage = await synthesize_rumination_entry_greeting(
-            llm_r,
-            basic_info=basic_info_r,
-            prior_block=prior_r,
-            normalize_token_usage=_normalize_token_usage,
-        )
-        await conv_manager.append_message(
-            session_id=session_id,
-            category=category,
-            message={
-                "role": "assistant",
-                "content": reply_text,
-                **IDCodec.build_message_ids(
-                    thread_id=logical_session_id,
-                    activation_session_id=rec.session_id,
-                ),
-                "step_id": phase_step,
-                "agent_id": "coach",
-                "event": "init_rumination_intro",
-                "token_usage": token_usage,
-            },
-        )
-        return SimpleChatResponse(
-            code=200,
-            message="success",
-            data={
-                "messages": [{"role": "assistant", "content": reply_text}],
-                "activation": IDCodec.build_activation_client_view(rec, logical_session_id),
-                "report_id": report["report_id"],
-                "step_id": phase_step,
-                "step_intro": get_step_copy(phase_step, "intro", init_loc),
-                "token_usage": token_usage,
-            },
-        )
-
     # 没有历史：生成一条首轮引导问题
     vip_level = getattr(rec, "vip_level", 1) or 1
     llm = _get_dialogue_llm_provider(vip_level=vip_level)
@@ -4698,7 +1870,7 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
     override_cfg = _resolve_prompt_lab_override_for_request(rec, current_user)
     _ir = get_effective_simple_root(rec)
     _reports_root = str(Path(_ir) / "reports")
-    vi_i, ra_i = _system_prompt_dimension_extras(phase_step, report, _reports_root, None, init_loc)
+    vi_i = _values_info_for_phase(phase_step, report, _reports_root)
     # 使命阶段：加载 purpose_progress 并构建注入块
     purpose_prog_injection_i = ""
     if phase_step == "purpose":
@@ -4717,8 +1889,6 @@ async def _simple_init_impl(request: SimpleInitRequest, current_user: dict) -> S
         template_override=(override_cfg or {}).get("template"),
         extra_goal_hint=(override_cfg or {}).get("extra_goal_hint", ""),
         values_info=vi_i,
-        rumination_step_addon=ra_i,
-        rumination_neg_injection="",
         purpose_progress_injection=purpose_prog_injection_i,
     )
     llm_messages = [
@@ -4791,6 +1961,7 @@ async def reopen_thread(
     current_user: dict = Depends(get_current_user),
 ):
     """用户选择「再聊聊」完善答案时，清除完成状态以便继续对话"""
+    _require_four_phase_chat(request.phase)
     manager = get_activation_manager_for_code(request.activation_code)
     # 试用码阶段锁（预检，保证 402 优先于阶段推进锁的 400）
     _peek_trial_phase_lock(
@@ -4882,20 +2053,7 @@ async def reopen_thread(
                 "conclusion_reject_baseline_user_count": None,
             },
         )
-    # 沉淀阶段重新填写 step1 时，重新生成 phase 级别引导语
     result_data: dict = {}
-    if phase_step == "rumination":
-        vip_r = getattr(rec, "vip_level", 1) or 1
-        llm_r = _get_dialogue_llm_provider(vip_level=vip_r)
-        basic_info_r = _load_basic_info_from_activation(request.activation_code)
-        prior_r = _load_prior_context_from_activation(request.activation_code, phase_step, report)
-        greeting_text, _ = await synthesize_rumination_entry_greeting(
-            llm_r,
-            basic_info=basic_info_r,
-            prior_block=prior_r,
-            normalize_token_usage=_normalize_token_usage,
-        )
-        result_data["entry_greeting"] = greeting_text
 
     return SimpleChatResponse(code=200, message="success", data=result_data)
 
@@ -4906,6 +2064,7 @@ async def mark_thread_complete(
     current_user: dict = Depends(get_current_user),
 ):
     """标记某对话为已完成（用户点击「确认没有问题」后调用）"""
+    _require_four_phase_chat(request.phase)
     manager = get_activation_manager_for_code(request.activation_code)
     # 试用码阶段锁（预检，保证 402 优先于阶段推进锁的 400）
     _peek_trial_phase_lock(
@@ -5101,6 +2260,7 @@ async def request_conclusion_card(
     - 判定本身失败/超时 → 503（前端「判定失败，点击重试」，不静默、不擅自出卡）；
     - 仅 state=none 时判定生成；已有 pending/confirmed 直接幂等返回现有卡。
     """
+    _require_four_phase_chat(request.phase)
     manager = get_activation_manager_for_code(request.activation_code)
     # 试用码阶段锁（预检，保证 402 优先于阶段推进锁的 400）
     _peek_trial_phase_lock(
@@ -5118,10 +2278,6 @@ async def request_conclusion_card(
     )
     # 试用码阶段锁 + 邮箱验证门控（与全部写端点同口径）
     _assert_trial_phase_allowed(rec, current_user, phase_step)
-    if phase_step == "rumination":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="rumination 阶段不支持手动请求结论卡"
-        )
     conv_data = await conv_manager.get_conversation_data(report["report_id"], category)
     metadata = conv_data.get("metadata", {})
     cmeta = _read_conclusion_meta(metadata)
@@ -5512,7 +2668,7 @@ async def simple_history(
         record = registry.get_report_by_id(report["report_id"]) or {}
         step_payload = ((record.get("steps") or {}).get(phase_step)) or {}
 
-        # rumination 阶段按 filter_step 过滤（减少网络传输，切换子步时只拉本子步消息）
+        # 只读历史沉淀消息可按旧 filter_step 过滤；不再提供旧阶段写入口
         if (
             phase_step == "rumination"
             and rumination_filter_step is not None
@@ -5587,267 +2743,6 @@ async def simple_history(
         ) from e
 
 
-async def _hyp_candidate_fallback_retry(
-    *,
-    reports_root: Path,
-    report_id: str,
-    llm_messages: list,
-    llm: Any,
-    conv_manager: Any,
-    session_id: str,
-    category: str,
-    logical_session_id: str,
-    activation_session_id: str,
-    stream_usage: dict,
-    phase_step: str,
-    request: Any,
-    explicit_row_index: Optional[int] = None,
-    strict: bool = False,
-) -> tuple[list[str], Optional[int]]:
-    """兜底追问：主回复未含结构化假设时，用 function calling 补充。
-
-    retry_messages = llm_messages（含完整用户/助手对话）+ system 指令 + 已解锁行表格块。
-    - matrix 模式（combo_id + filter_sub_step=matrix）→ 直接 JSON 模式，从 combo_matrix 注入 combo 上下文
-    - 有明确点选/表格操作行 → 行级 retry
-    - strict=True（主回复含引导语）→ 必须 function call
-    - 否则 → 上下文 retry（AI 判定是否提交）
-    """
-    prog = load_rumination_progress(reports_root, report_id)
-
-    # ── matrix / discussion 模式专用分支：直接 JSON 模式 ──
-    # discussion 模式下 combo_id 通常未传，但只要 step3 都能从 filter_table
-    # 里按 explicit_row_index 取热爱/优势作为组合上下文，走同样的严格 prompt。
-    sub_step = (prog.get("filter_sub_step") or "").strip()
-    combo_id_req = getattr(request, "combo_id", None)
-    is_step3_combo_retry = phase_step == "rumination" and (
-        (combo_id_req and sub_step == "matrix")
-        or (sub_step == "discussion" and explicit_row_index is not None)
-    )
-    if is_step3_combo_retry:
-        p_name: str = ""
-        s_name: str = ""
-        current_hypothesis: str = ""
-        if combo_id_req and sub_step == "matrix":
-            combo_matrix = prog.get("combo_matrix") or []
-            p_name, s_name = get_passion_strength_names(combo_matrix, combo_id_req)
-            # matrix: 从 combo_conclusions 取当前 combo 已确认的假设作为参考
-            conclusions_map = prog.get("combo_conclusions") or {}
-            entry = conclusions_map.get(combo_id_req) or {}
-            if isinstance(entry, dict) and str(entry.get("state") or "").strip() == "confirmed":
-                current_hypothesis = str(entry.get("text") or "").strip()
-        else:
-            # discussion: 从 filter_table 的指定行取热爱/优势 + 已确认假设
-            ft_d = prog.get("filter_table") or []
-            p_name, s_name = get_step3_row_passion_strength(ft_d, explicit_row_index)
-            if isinstance(explicit_row_index, int) and 0 <= explicit_row_index < len(ft_d):
-                row_d = ft_d[explicit_row_index]
-                if isinstance(row_d, dict):
-                    current_hypothesis = str(row_d.get("用户确认的假设") or "").strip()
-        hyp_ref_line = ""
-        if current_hypothesis:
-            hyp_ref_line = (
-                f"用户当前这一组合已确认的假设是：「{current_hypothesis}」。\n"
-                "这是用户当下的选择，作为参考。请结合上方对话判断用户对假设的诉求（想换方向 / 想更多选项 / 想细化等），"
-                "生成符合用户诉求的新假设。不要机械重复上面的文本。\n\n"
-            )
-        matrix_retry_system = (
-            "【兜底重新生成假设候选 · 组合模式】\n"
-            f"当前组合：热爱「{p_name or '（未填）'}」× 优势「{s_name or '（未填）'}」。\n"
-            f"{hyp_ref_line}"
-            "**重要：忽略上方对话中已经出现过的任何假设（无论你或用户说过）。现在必须重新生成两条全新、独立的假设候选。**\n"
-            '不要回复"就是刚才给你的那两个"或类似话术——本次任务要求你基于组合本身的特质，重新构想。\n\n'
-            "生成要求：\n"
-            "- 一条自由职业/创业方向（用户可作为独立个体、自由职业者或小型创业者来经营的事业）\n"
-            "- 一条公司职业方向（用户进入公司作为员工来发展的职业路径）\n"
-            "- 每条假设至少 25 字，必须让用户能想象出具体场景：角色 + 服务对象 + 在做什么 + 想达成什么\n"
-            '- 避免抽象的标签或职位名称（如"设计师""创业""老师"），要写成一个有画面感的具体事业描述\n\n'
-            "好的示例（自由职业向）：「开设一家面向都市独居年轻人的小而美的手工陶艺工作室，定期开课教学并提供定制作品」\n"
-            "好的示例（公司职业向）：「加入一家注重美学表达的设计工作室，担任品牌视觉设计师，为生活方式类客户打造完整视觉系统」\n"
-            "坏的示例（禁止输出）：「陶艺老师」「设计师」「创业」「自由职业」「就是刚才给你的那两个」\n\n"
-            "**仅**输出一个 JSON 对象（不要 markdown 代码块、不要解释文字），格式严格如下：\n"
-            '{"candidates": ["个人事业向假设（≥25字具体描述）", "职业路径向假设（≥25字具体描述）"]}\n'
-            "candidates 必须恰好两个字符串。"
-        )
-        matrix_messages = list(llm_messages) + [
-            LLMMessage(role="system", content=matrix_retry_system),
-        ]
-        # 历史里有大量干扰（早期短回复/用户闲聊），retry 容易被带偏。
-        # 策略：只保留首条 system + 最近 2 轮对话 + retry system，让 LLM 聚焦当前任务。
-        trimmed: list = []
-        for m in llm_messages:
-            role = getattr(m, "role", None) or (m.get("role") if isinstance(m, dict) else None)
-            content = getattr(m, "content", None) or (
-                m.get("content") if isinstance(m, dict) else ""
-            )
-            if role == "system" and not trimmed:
-                trimmed.append(
-                    m if not isinstance(m, dict) else LLMMessage(role="system", content=content)
-                )
-                continue
-            if role in ("user", "assistant"):
-                trimmed.append(
-                    m if not isinstance(m, dict) else LLMMessage(role=role, content=content)
-                )
-        matrix_messages = trimmed[-5:] + [
-            LLMMessage(role="system", content=matrix_retry_system),
-        ]
-
-        async def _matrix_call(*, use_json_mode: bool) -> Any:
-            kwargs: dict = {"temperature": 0.1, "max_tokens": 8192}
-            if use_json_mode:
-                kwargs["response_format"] = {"type": "json_object"}
-            try:
-                return await asyncio.wait_for(
-                    llm.chat(matrix_messages, **kwargs),
-                    timeout=STEP3_FALLBACK_LLM_TIMEOUT_SECONDS,
-                )
-            except TypeError:
-                # provider 不支持 response_format 关键字 → 降级纯文本
-                if use_json_mode:
-                    logger.warning(
-                        "[step3] matrix retry: response_format unsupported, fallback to plain"
-                    )
-                    return await asyncio.wait_for(
-                        llm.chat(matrix_messages, temperature=0.1, max_tokens=8192),
-                        timeout=STEP3_FALLBACK_LLM_TIMEOUT_SECONDS,
-                    )
-                raise
-
-        resp_m: Any = None
-        try:
-            resp_m = await _matrix_call(use_json_mode=True)
-        except Exception as e:
-            logger.warning(
-                "[step3] matrix fallback retry call#1 failed err_type=%s err=%s",
-                type(e).__name__,
-                e,
-            )
-
-        raw_m = (getattr(resp_m, "content", "") or "").strip() if resp_m else ""
-        logger.info(
-            "[step3] matrix fallback retry raw#1 len=%d tail=%r",
-            len(raw_m),
-            raw_m[-200:],
-        )
-
-        # 空返回 → 重试一次（不复用 JSON mode，避免某些 provider 在 JSON mode 下偶发空）
-        if not raw_m:
-            logger.warning("[step3] matrix retry empty content, retrying plain mode")
-            try:
-                resp_m = await _matrix_call(use_json_mode=False)
-                raw_m = (getattr(resp_m, "content", "") or "").strip() if resp_m else ""
-                logger.info(
-                    "[step3] matrix fallback retry raw#2 len=%d tail=%r",
-                    len(raw_m),
-                    raw_m[-200:],
-                )
-            except Exception as e:
-                logger.warning(
-                    "[step3] matrix fallback retry call#2 failed err_type=%s err=%s",
-                    type(e).__name__,
-                    e,
-                )
-
-        if not raw_m:
-            # 第 3 次兜底：JSON/空返回都失败时，用 [STEP3_HYP_JSON] 协议块格式再试一次
-            # （LLM 对标记协议的遵循度通常比纯 JSON 更高）。
-            protocol_addon = (
-                "\n\n如果 JSON 输出失败，请改用以下协议块格式输出（界面会自动隐藏）：\n"
-                "[STEP3_HYP_JSON]\n"
-                '{"candidates": ["个人事业向假设（≥25字具体描述）", "职业路径向假设（≥25字具体描述）"]}\n'
-                "[/STEP3_HYP_JSON]\n"
-                "必须恰好两个字符串，每个至少 25 字。"
-            )
-            proto_messages = matrix_messages + [LLMMessage(role="system", content=protocol_addon)]
-            try:
-                resp_proto = await asyncio.wait_for(
-                    llm.chat(proto_messages, temperature=0.1, max_tokens=8192),
-                    timeout=STEP3_FALLBACK_LLM_TIMEOUT_SECONDS,
-                )
-                raw_m = (getattr(resp_proto, "content", "") or "").strip() if resp_proto else ""
-                logger.info(
-                    "[step3] matrix fallback retry raw#3 (protocol) len=%d tail=%r",
-                    len(raw_m),
-                    raw_m[-200:],
-                )
-            except Exception as e:
-                logger.warning(
-                    "[step3] matrix fallback retry call#3 (protocol) failed err_type=%s err=%s",
-                    type(e).__name__,
-                    e,
-                )
-        if not raw_m:
-            logger.info("[step3] matrix fallback retry: still empty after 3 attempts")
-            return [], None
-        try:
-            obj_m = json.loads(raw_m)
-        except (json.JSONDecodeError, TypeError):
-            obj_m = _extract_json_object(raw_m)
-        cands_m: list[str] = []
-        if isinstance(obj_m, dict):
-            raw_cands_m = obj_m.get("candidates")
-            if isinstance(raw_cands_m, list):
-                cands_m = sanitize_hyp_candidates([str(c) for c in raw_cands_m])
-        # JSON 解析失败或 candidates 为空 → 尝试 [STEP3_HYP_JSON] 协议块
-        if len(cands_m) < 2 and "[STEP3_HYP_JSON]" in raw_m:
-            _, proto_cands, _ = _extract_step3_hyp_output(raw_m)
-            proto_cands_clean = sanitize_hyp_candidates(proto_cands)
-            if len(proto_cands_clean) > len(cands_m):
-                cands_m = proto_cands_clean
-        if len(cands_m) >= 2:
-            # 审计落盘
-            try:
-                await conv_manager.append_message(
-                    session_id=session_id,
-                    category=category,
-                    message={
-                        "role": "system",
-                        "content": matrix_retry_system,
-                        **IDCodec.build_message_ids(
-                            thread_id=logical_session_id,
-                            activation_session_id=activation_session_id,
-                        ),
-                        "step_id": phase_step,
-                        "filter_step": 3,
-                        "event": "hyp_candidate_retry_system",
-                        "hyp_candidate_retry_kind": "matrix_json",
-                    },
-                )
-                await conv_manager.append_message(
-                    session_id=session_id,
-                    category=category,
-                    message={
-                        "role": "assistant",
-                        "content": json.dumps({"candidates": cands_m}, ensure_ascii=False),
-                        **IDCodec.build_message_ids(
-                            thread_id=logical_session_id,
-                            activation_session_id=activation_session_id,
-                        ),
-                        "step_id": phase_step,
-                        "filter_step": 3,
-                        "event": "hyp_candidate_retry_reply",
-                        "token_usage": stream_usage,
-                        "combo_id": combo_id_req,
-                    },
-                )
-            except Exception as e:
-                logger.warning("[step3] matrix fallback retry save failed: %s", e)
-            return cands_m[:2], None
-        logger.info("[step3] matrix fallback retry: still no valid hypotheses")
-        return [], None
-
-    # 非 combo 分支（matrix 无 combo_id，或 discussion 无 explicit_row_index）：
-    # 用户未选中合法行 → 无法确定目标组合 → 不再 retry（空模板分支已废弃）。
-    # 前端必须要求用户先选中一行再发消息，否则视为错误状态。
-    logger.info(
-        "[step3] fallback retry skipped: not combo retry (sub_step=%s combo_id=%s explicit_row=%s)",
-        sub_step,
-        combo_id_req,
-        explicit_row_index,
-    )
-    return [], None
-
-
 @router.post("/message/stream")
 async def simple_chat_stream(
     request: SimpleChatStreamRequest,
@@ -5860,10 +2755,11 @@ async def simple_chat_stream(
     - 使用 chat_stream 按块返回助手回复
     - 结束时保存完整助手回复
     """
+    _require_four_phase_chat(request.phase)
     set_llm_usage_context(
         user_id=(current_user or {}).get("user_id"),
         activation_code=request.activation_code,
-        scene="rumination" if "rumination" in (request.phase or "").lower() else "chat",
+        scene="chat",
     )
     manager = get_activation_manager_for_code(request.activation_code)
     # 试用码阶段锁（预检，保证 402 优先于阶段推进锁的 400）
@@ -5952,15 +2848,12 @@ async def simple_chat_stream(
                         vip_level=vip_level,
                     )
 
-        if phase_step == "rumination":
-            question_bank = ""
-        else:
-            question_bank = await _get_or_create_thread_question_bank(
-                conv_manager=conv_manager,
-                session_id=session_id,
-                category=category,
-                phase_step=phase_step,
-            )
+        question_bank = await _get_or_create_thread_question_bank(
+            conv_manager=conv_manager,
+            session_id=session_id,
+            category=category,
+            phase_step=phase_step,
+        )
         basic_info = _load_basic_info_from_activation(request.activation_code)
         prior_context = _load_prior_context_from_activation(
             request.activation_code, phase_step, report
@@ -5968,75 +2861,7 @@ async def simple_chat_stream(
         override_cfg = _resolve_prompt_lab_override_for_request(rec, current_user)
         stream_loc = _normalize_client_locale(request.locale)
         reports_root = str(Path(storage_root) / "reports")
-        rumination_filter_step_val = (
-            int(request.rumination_filter_step)
-            if phase_step == "rumination" and request.rumination_filter_step
-            else 0
-        )
-        step3_prompt_mode: Optional[str] = None
-        step3_explicit_row_index: Optional[int] = None
-        step3_sub_step: Optional[str] = None
-        if phase_step == "rumination" and rumination_filter_step_val == 3:
-            try:
-                rid_s3 = report.get("report_id")
-                if rid_s3:
-                    rp_s3 = load_rumination_progress(Path(reports_root), str(rid_s3))
-                    ft_s3 = rp_s3.get("filter_table")
-                    cur_s3 = int(rp_s3.get("filter_row_cursor") or 0)
-                    step3_sub_step = (rp_s3.get("filter_sub_step") or "").strip() or None
-                    step3_prompt_mode = resolve_step3_prompt_mode(
-                        step3_table_action=request.step3_table_action,
-                    )
-                    step3_explicit_row_index = resolve_step3_explicit_row_index(
-                        filter_table=ft_s3 if isinstance(ft_s3, list) else [],
-                        rumination_row_index=request.rumination_row_index,
-                        step3_action_row=request.step3_action_row,
-                    )
-            except Exception:
-                pass
-        vi_s, ra_s = _system_prompt_dimension_extras(
-            phase_step,
-            report,
-            reports_root,
-            request.rumination_filter_step,
-            stream_loc,
-            rumination_row_index=request.rumination_row_index,
-            step3_prompt_mode=step3_prompt_mode,
-            combo_id=request.combo_id,
-        )
-        # step3 模式分流：matrix 模式用 combo addon「替换」通用 [3] addon（避免重复堆叠）；
-        # discussion 模式保留 [3]（已含协议块+切换组合能力）。两者互斥。
-        if (
-            phase_step == "rumination"
-            and rumination_filter_step_val == 3
-            and step3_sub_step == "matrix"
-            and request.combo_id
-        ):
-            try:
-                rid_m = report.get("report_id")
-                if rid_m:
-                    rp_m = load_rumination_progress(Path(reports_root), str(rid_m))
-                    combo_matrix_m = rp_m.get("combo_matrix") or []
-                    p_name_m, s_name_m = get_passion_strength_names(
-                        combo_matrix_m, request.combo_id
-                    )
-                    if p_name_m or s_name_m:
-                        ra_s = build_combo_chat_system_addon(p_name_m, s_name_m)
-            except Exception:
-                pass
-        rumination_neg_inj = ""
-        if phase_step == "rumination":
-            try:
-                rid = report.get("report_id")
-                if rid:
-                    rp = load_rumination_progress(Path(reports_root), rid)
-                    neg_st = rp.get("rumination_neg_state") or {}
-                    if neg_st.get("status") == "exploring":
-                        inj = str(neg_st.get("injection_zh") or "").strip()
-                        if inj:
-                            rumination_neg_inj = inj
-            except Exception:
-                pass
+        vi_s = _values_info_for_phase(phase_step, report, reports_root)
         # 使命阶段：加载 purpose_progress 并构建注入块
         purpose_prog_injection_s = ""
         if phase_step == "purpose":
@@ -6055,63 +2880,17 @@ async def simple_chat_stream(
             template_override=(override_cfg or {}).get("template"),
             extra_goal_hint=(override_cfg or {}).get("extra_goal_hint", ""),
             values_info=vi_s,
-            rumination_step_addon=ra_s,
-            rumination_neg_injection=rumination_neg_inj,
             purpose_progress_injection=purpose_prog_injection_s,
         )
         llm_messages = [LLMMessage(role="system", content=system_prompt)]
 
-        # ── 构建历史上下文（rumination 按子步隔离，其他阶段保持原逻辑）──
-
-        if rumination_filter_step_val > 0:
-            # Rumination：只取当前子步的消息 + 之前子步的累积 anchor
-            step_messages = [
-                m
-                for m in history_messages
-                if int(m.get("filter_step") or 0) == rumination_filter_step_val
-            ]
-            # v3: 组合矩阵模式 — 进一步按 combo_id 隔离（addon 已在前置分流中决定）
-            combo_id_for_context = None
-            if rumination_filter_step_val == 3 and request.combo_id and step3_sub_step == "matrix":
-                step_messages = slice_messages_for_combo(step_messages, request.combo_id)
-                combo_id_for_context = request.combo_id
-            elif rumination_filter_step_val == 3 and step3_sub_step == "discussion":
-                # step3 discussion：只取 discussion 子步消息，避免 matrix 阶段消息混入。
-                # 只保留明确标记为 discussion 的消息（打标功能上线后的新消息），
-                # 无 rumination_sub_step 字段的旧消息视为 matrix 阶段遗留，排除。
-                step_messages = [
-                    m
-                    for m in step_messages
-                    if (m.get("rumination_sub_step") or "").strip() == "discussion"
-                ]
-            trimmed = step_messages[-30:]
-
-            # 加载之前子步的 anchor 并拼接
-            try:
-                step_anchors = await load_rumination_step_anchors(
-                    session_id, category, conv_manager
-                )
-            except Exception:
-                step_anchors = {}
-            anchor_parts = []
-            for s in range(1, rumination_filter_step_val):
-                a = step_anchors.get(str(s))
-                if a:
-                    anchor_parts.append(f"[子步 {s} 要点] {a}")
-            if anchor_parts:
-                accumulated = "\n---\n".join(anchor_parts)
-                llm_messages.append(
-                    LLMMessage(role="assistant", content=f"[此前对话要点]\n{accumulated}")
-                )
-        else:
-            # 非 rumination 阶段：使用原有 anchor + trim 逻辑
-            anchor = load_anchor_for_phase(session_id, phase_step, storage_root)
-            anchor_text = format_anchor_for_prompt(anchor)
-            if anchor_text:
-                llm_messages.append(
-                    LLMMessage(role="assistant", content=f"[此前对话要点]\n{anchor_text}")
-                )
-            trimmed = _trim_history_messages_for_llm(history_messages)
+        anchor = load_anchor_for_phase(session_id, phase_step, storage_root)
+        anchor_text = format_anchor_for_prompt(anchor)
+        if anchor_text:
+            llm_messages.append(
+                LLMMessage(role="assistant", content=f"[此前对话要点]\n{anchor_text}")
+            )
+        trimmed = _trim_history_messages_for_llm(history_messages)
 
         for m in trimmed:
             role = m.get("role") or "user"
@@ -6124,83 +2903,9 @@ async def simple_chat_stream(
 
         # 当前用户输入
         user_content = (request.message or "").strip()
-        # 子步 3 表格操作消息：将操作格式化为 [表格操作] 标记的 user 消息
-        step3_action_content = ""
-        if request.step3_table_action and rumination_filter_step_val == 3:
-            rid_sp = report.get("report_id")
-            if rid_sp:
-                try:
-                    rp = load_rumination_progress(Path(reports_root), str(rid_sp))
-                    ft = rp.get("filter_table")
-                    row_idx = request.step3_action_row
-                    if isinstance(ft, list) and row_idx is not None and 0 <= row_idx < len(ft):
-                        row = ft[row_idx]
-                        if isinstance(row, dict):
-                            p = str(row.get("热爱") or "").strip() or "（未填）"
-                            s = str(row.get("优势") or "").strip() or "（未填）"
-                            if request.step3_table_action == "select_none":
-                                step3_action_content = (
-                                    f"[表格操作·选无] 用户在第 {row_idx + 1} 行"
-                                    f"（热爱：{p} / 优势：{s}）选择了「无」。"
-                                )
-                            elif request.step3_table_action == "fill_hypothesis":
-                                hyp = (request.step3_action_hyp_text or "").strip()
-                                step3_action_content = (
-                                    f"[表格操作·填假设] 用户在第 {row_idx + 1} 行"
-                                    f"（热爱：{p} / 优势：{s}）填入了假设：「{hyp}」。"
-                                )
-                            elif request.step3_table_action == "regenerate_hyp":
-                                step3_action_content = (
-                                    f"[表格操作·重新生成] 用户请求重新生成第 {row_idx + 1} 行"
-                                    f"（热爱：{p} / 优势：{s}）的假设候选。"
-                                )
-                except Exception:
-                    pass
         # 操作消息作为 user input 发给 LLM（不需要额外文字消息）
-        if step3_action_content:
-            llm_messages.append(LLMMessage(role="user", content=step3_action_content))
-            await conv_manager.append_message(
-                session_id=session_id,
-                category=category,
-                message={
-                    "role": "user",
-                    "content": step3_action_content,
-                    **IDCodec.build_message_ids(
-                        thread_id=logical_session_id,
-                        activation_session_id=rec.session_id,
-                    ),
-                    "step_id": phase_step,
-                    "filter_step": 3,
-                    "agent_id": None,
-                    "event": "step3_table_action",
-                    # 标记为内部协议消息：前端 history 加载时跳过，不展示给用户。
-                    "internal": True,
-                },
-            )
-        elif user_content:
+        if user_content:
             llm_user_content = user_content
-            row_wrap_applied = False
-            if (
-                phase_step == "rumination"
-                and rumination_filter_step_val > 0
-                and request.rumination_row_index is not None
-            ):
-                try:
-                    rid_row = report.get("report_id")
-                    if rid_row:
-                        rp_row = load_rumination_progress(Path(reports_root), str(rid_row))
-                        ft_row = rp_row.get("filter_table")
-                        wrapped = build_rumination_row_chat_user_message(
-                            filter_step=rumination_filter_step_val,
-                            row_index=int(request.rumination_row_index),
-                            user_query=user_content,
-                            filter_table=ft_row if isinstance(ft_row, list) else [],
-                        )
-                        if wrapped:
-                            llm_user_content = wrapped
-                            row_wrap_applied = True
-                except Exception as e:
-                    logger.warning("rumination row chat wrap failed: %s", e)
             llm_messages.append(LLMMessage(role="user", content=llm_user_content))
             user_msg_kw: dict = {
                 "role": "user",
@@ -6210,39 +2915,9 @@ async def simple_chat_stream(
                     activation_session_id=rec.session_id,
                 ),
                 "step_id": phase_step,
-                "filter_step": (
-                    int(request.rumination_filter_step)
-                    if phase_step == "rumination" and request.rumination_filter_step
-                    else None
-                ),
                 "agent_id": None,
                 "event": "user_message",
             }
-            if row_wrap_applied:
-                user_msg_kw["rumination_user_query"] = user_content
-                if request.rumination_row_index is not None:
-                    user_msg_kw["rumination_row_index"] = int(request.rumination_row_index)
-                row_lbl = (request.rumination_row_label or "").strip()
-                if row_lbl:
-                    user_msg_kw["rumination_row_label"] = row_lbl
-            # v3: 组合矩阵模式 — 给消息打 combo_id 标签
-            # matrix 阶段所有消息都应可识别：前端传了 combo_id 用之；未传（opening/早期
-            # 版本/通用引导）用保留值 _matrix_general 兜底，避免 discussion 模式切片时
-            # 把 matrix 阶段遗留消息当成 3b 内容显示。
-            # 条件用 step3_sub_step != "discussion"（而非 == "matrix"）：
-            # discussion 严格不打 combo_id（跨组合公共讨论空间）；
-            # 其余情况（matrix / 过渡态 / sub_step 为空）都打 combo_id，
-            # 与下方助手回复打 combo_id 的条件保持一致。
-            if (
-                phase_step == "rumination"
-                and rumination_filter_step_val == 3
-                and step3_sub_step != "discussion"
-            ):
-                user_msg_kw["combo_id"] = request.combo_id or "_matrix_general"
-            # step3：打 rumination_sub_step 标记（matrix/discussion），供前端按子步精确过滤。
-            # 与 combo_id 正交：combo_id 标识组合，rumination_sub_step 标识子步阶段。
-            if phase_step == "rumination" and rumination_filter_step_val == 3 and step3_sub_step:
-                user_msg_kw["rumination_sub_step"] = step3_sub_step
             # 先保存用户消息（重试去重：前端「重新尝试」会原样重发最后一条用户消息；
             # 若历史最后一条就是相同 user 消息且距今 <5 分钟，视为同一次发送不重复落盘，
             # 避免对话 JSON 出现连续两条相同 user——2026-09-21 空回复事故排查时的干扰项）
@@ -6279,26 +2954,6 @@ async def simple_chat_stream(
         conv_data = await conv_manager.get_conversation_data(session_id, category)
         meta = conv_data.get("metadata", {})
         cmeta = _read_conclusion_meta(meta)
-        if phase_step == "rumination" and (
-            cmeta.get("state") == CONCLUSION_STATE_PENDING or isinstance(cmeta.get("draft"), dict)
-        ):
-            await conv_manager.update_metadata(
-                session_id,
-                category,
-                {
-                    **_build_conclusion_meta_update(
-                        state=CONCLUSION_STATE_NONE,
-                        final=cmeta.get("final"),
-                        feedback="",
-                        shown_at=None,
-                        thread_completed=False,
-                    ),
-                    "conclusion_reject_baseline_user_count": None,
-                },
-            )
-            conv_data = await conv_manager.get_conversation_data(session_id, category)
-            meta = conv_data.get("metadata", {})
-            cmeta = _read_conclusion_meta(meta)
         pending_conclusion = cmeta.get("draft")
         rejected_feedback = cmeta.get("feedback") or ""
         conv_history = [
@@ -6695,21 +3350,7 @@ async def simple_chat_stream(
 
             full_think = ""
             visible_acc = ""  # 已推给前端的可见正文（stream_hidden_filter 之后）
-            rfs_stream = (
-                int(request.rumination_filter_step or 0) if phase_step == "rumination" else 0
-            )
-            if phase_step == "rumination":
-                stream_markers: List[Tuple[str, str]] = (
-                    [
-                        ("[ROW_STATE_JSON]", "[/ROW_STATE_JSON]"),
-                        ("[HYP_CANDIDATE]", "[/HYP_CANDIDATE]"),
-                        ("[STEP3_HYP_JSON]", "[/STEP3_HYP_JSON]"),
-                    ]
-                    if rfs_stream == 3
-                    else []
-                )
-            else:
-                stream_markers = [("[STATE_JSON]", "[/STATE_JSON]")]
+            stream_markers = [("[STATE_JSON]", "[/STATE_JSON]")]
             stream_hidden_filter = _build_stream_hidden_block_filter(block_markers=stream_markers)
 
             def _process_chunk(c):
@@ -6790,10 +3431,7 @@ async def simple_chat_stream(
             try:
                 partial_raw = (full_reply or "").strip()
                 if partial_raw:
-                    if phase_step == "rumination" and int(request.rumination_filter_step or 0) == 3:
-                        partial_visible, _ = _split_visible_reply_and_row_state(partial_raw)
-                    else:
-                        partial_visible, _ = _split_visible_reply_and_state(partial_raw)
+                    partial_visible, _ = _split_visible_reply_and_state(partial_raw)
                     partial_visible = (partial_visible or "").strip()
                     if partial_visible:
                         await conv_manager.append_message(
@@ -6807,11 +3445,6 @@ async def simple_chat_stream(
                                     activation_session_id=rec.session_id,
                                 ),
                                 "step_id": phase_step,
-                                "filter_step": (
-                                    int(request.rumination_filter_step)
-                                    if phase_step == "rumination" and request.rumination_filter_step
-                                    else None
-                                ),
                                 "agent_id": "coach",
                                 "event": "assistant_reply_partial",
                             },
@@ -6880,140 +3513,11 @@ async def simple_chat_stream(
         # 主对话模型流式输出已结束；后续为解析、落盘、结论卡与埋点，前端可切换「后台处理中」占位提示
         yield f"data: {json.dumps({'llm_stream_end': True}, ensure_ascii=False)}\n\n"
 
-        # 3) 解析模型状态输出（STATE_JSON / ROW_STATE_JSON）并驱动 pending / 子步 3 游标
         raw_full_reply = full_reply
         state_obj = None
-        step3_row_unlock_progress: Optional[Dict[str, Any]] = None
-        hyp_candidates: list[str] = []
-        hyp_target_row: Optional[int] = None
-        hyp_row_unresolved: bool = False
-        rfs_parse = int(request.rumination_filter_step or 0) if phase_step == "rumination" else 0
-        if phase_step == "rumination":
-            if rfs_parse == 3:
-                visible_r, row_st = _split_visible_reply_and_row_state(raw_full_reply)
-                full_reply = visible_r
-                has_hyp_json = "[STEP3_HYP_JSON]" in full_reply
-                has_hyp_marker = "[HYP_CANDIDATE]" in full_reply
-                has_end_marker = "[/HYP_CANDIDATE]" in full_reply
-                logger.info(
-                    "[step3] hyp markers: STEP3_HYP_JSON=%s HYP_CANDIDATE=%s/%s | last 300: %s",
-                    has_hyp_json,
-                    has_hyp_marker,
-                    has_end_marker,
-                    full_reply[-300:],
-                )
-                full_reply, hyp_candidates, ai_declared_row = _extract_step3_hyp_output(full_reply)
-                hyp_candidates = sanitize_hyp_candidates(hyp_candidates)
-                _guide_present = guide_phrase_present_in_reply(raw_full_reply, full_reply)
-                logger.info(
-                    "[step3] extracted hyp_candidates count=%s ai_row=%s guide=%s",
-                    len(hyp_candidates),
-                    ai_declared_row,
-                    _guide_present,
-                )
-                rid_sp = report.get("report_id")
-                prog_hyp = (
-                    load_rumination_progress(Path(reports_root), str(rid_sp)) if rid_sp else {}
-                )
-                ft_hyp = (
-                    prog_hyp.get("filter_table")
-                    if isinstance(prog_hyp.get("filter_table"), list)
-                    else []
-                )
-                cur_hyp = int(prog_hyp.get("filter_row_cursor") or 0)
-                hyp_target_row, hyp_row_unresolved = resolve_step3_hyp_delivery(
-                    candidates=hyp_candidates,
-                    cursor=cur_hyp,
-                    filter_table=ft_hyp,
-                    explicit_row_index=step3_explicit_row_index,
-                    ai_declared_row=ai_declared_row,
-                )
-                if row_st and rid_sp:
-                    step3_row_unlock_progress = _try_rumination_step3_row_unlock(
-                        Path(reports_root), str(rid_sp), row_st
-                    )
-                # 兜底：AI 未输出 ROW_STATE_JSON 或校验失败时，若当前行假设已完整则自动推进
-                if not step3_row_unlock_progress and rid_sp:
-                    step3_row_unlock_progress = _try_rumination_step3_auto_unlock(
-                        Path(reports_root), str(rid_sp)
-                    )
 
-                # 兜底：discuss 且满足分层条件时 retry（显式行 or 已解锁表+对话）
-                _discuss_user_turns = count_discuss_user_turns_since_last_forward(llm_messages)
-                _strict_hyp_retry = is_strict_hyp_candidate_retry(raw_full_reply, full_reply)
-                _will_fallback = should_trigger_hyp_candidate_fallback(
-                    hyp_candidates=hyp_candidates,
-                    step3_table_action=request.step3_table_action,
-                    step3_prompt_mode=step3_prompt_mode or "discuss",
-                    visible_reply=full_reply,
-                    explicit_row_index=step3_explicit_row_index,
-                    discuss_user_turns_since_forward=_discuss_user_turns,
-                    guide_phrase_present=_guide_present,
-                )
-                if not _will_fallback and _guide_present and len(hyp_candidates) < 2:
-                    logger.info(
-                        "[step3] fallback skipped despite guide phrase: mode=%s action=%s candidates=%s",
-                        step3_prompt_mode,
-                        request.step3_table_action,
-                        len(hyp_candidates),
-                    )
-                if _will_fallback and rid_sp:
-                    retry_kind = (
-                        "strict"
-                        if _strict_hyp_retry
-                        else ("row" if step3_explicit_row_index is not None else "context")
-                    )
-                    logger.info(
-                        "[step3] fallback: discuss mode, no structured hyp — %s retry (explicit_row=%s)",
-                        retry_kind,
-                        step3_explicit_row_index,
-                    )
-                    # 通知前端：兜底 retry 进行中（matrix 模式输入框显示"正在生成假设选项…"）
-                    yield f"data: {json.dumps({'hyp_retry_started': True}, ensure_ascii=False)}\n\n"
-                    try:
-                        retry_candidates, retry_row = await _hyp_candidate_fallback_retry(
-                            reports_root=Path(reports_root),
-                            report_id=str(rid_sp),
-                            llm_messages=llm_messages,
-                            llm=llm,
-                            conv_manager=conv_manager,
-                            session_id=session_id,
-                            category=category,
-                            logical_session_id=logical_session_id,
-                            activation_session_id=rec.session_id,
-                            stream_usage=stream_usage,
-                            phase_step=phase_step,
-                            request=request,
-                            explicit_row_index=step3_explicit_row_index,
-                            strict=_strict_hyp_retry,
-                        )
-                        if retry_candidates:
-                            hyp_candidates = retry_candidates
-                            hyp_target_row, hyp_row_unresolved = resolve_step3_hyp_delivery(
-                                candidates=hyp_candidates,
-                                cursor=cur_hyp,
-                                filter_table=ft_hyp,
-                                explicit_row_index=step3_explicit_row_index,
-                                ai_declared_row=retry_row,
-                            )
-                            logger.info(
-                                "[step3] fallback retry succeeded: candidates=%s row=%s unresolved=%s",
-                                len(hyp_candidates),
-                                hyp_target_row,
-                                hyp_row_unresolved,
-                            )
-                    except Exception as retry_err:
-                        logger.warning("[step3] fallback retry failed: %s", retry_err)
-            else:
-                full_reply = raw_full_reply
-
-        # 解析状态输出（STATE_JSON）并驱动 pending / 子步
-        # 子步 3 已在上方完成 HYP_CANDIDATE / ROW_STATE_JSON 清洗，不再用 raw_full_reply 覆盖
-        if rfs_parse == 3:
-            state_obj = None
-        else:
-            visible_reply, state_obj = _split_visible_reply_and_state(raw_full_reply)
-            full_reply = visible_reply
+        visible_reply, state_obj = _split_visible_reply_and_state(raw_full_reply)
+        full_reply = visible_reply
         # 使命阶段：解析 purpose_progress 并更新 metadata
         if phase_step == "purpose" and state_obj:
             draft_raw = state_obj.get("draft")
@@ -7048,78 +3552,17 @@ async def simple_chat_stream(
                     activation_session_id=rec.session_id,
                 ),
                 "step_id": phase_step,
-                "filter_step": (
-                    int(request.rumination_filter_step)
-                    if phase_step == "rumination" and request.rumination_filter_step
-                    else None
-                ),
                 "agent_id": "coach",
                 "event": "assistant_reply",
                 "token_usage": stream_usage,
             }
             if full_think:
                 msg_payload["think_content"] = full_think
-            # v3: 组合矩阵模式 — 给助手回复也打 combo_id 标签
-            # 与用户消息同样规则：未传 combo_id 时用 _matrix_general 兜底。
-            # 条件用 step3_sub_step != "discussion"（而非 == "matrix"）：
-            # discussion 严格不打 combo_id（discussion 是跨组合公共讨论空间）；
-            # 其余情况（matrix / 过渡态 / sub_step 为空）都打 combo_id，
-            # 避免漏标导致前端 discussion 视图无法靠 comboId 区分 matrix 残留。
-            if (
-                phase_step == "rumination"
-                and rumination_filter_step_val == 3
-                and step3_sub_step != "discussion"
-            ):
-                msg_payload["combo_id"] = request.combo_id or "_matrix_general"
-            # step3：打 rumination_sub_step 标记（matrix/discussion），供前端按子步精确过滤。
-            if phase_step == "rumination" and rumination_filter_step_val == 3 and step3_sub_step:
-                msg_payload["rumination_sub_step"] = step3_sub_step
-            # step3 假设候选 chips 持久化到消息：刷新加载 history 时仍能渲染
-            if phase_step == "rumination" and rumination_filter_step_val == 3 and hyp_candidates:
-                msg_payload["hyp_candidates"] = hyp_candidates
             await conv_manager.append_message(
                 session_id=session_id,
                 category=category,
                 message=msg_payload,
             )
-            if phase_step == "rumination" and _looks_like_markdown_table(full_reply):
-                await conv_manager.append_message(
-                    session_id=session_id,
-                    category=category,
-                    message={
-                        "role": "table",
-                        "content": full_reply,
-                        **IDCodec.build_message_ids(
-                            thread_id=logical_session_id,
-                            activation_session_id=rec.session_id,
-                        ),
-                        "step_id": phase_step,
-                        "filter_step": (
-                            int(request.rumination_filter_step)
-                            if phase_step == "rumination" and request.rumination_filter_step
-                            else None
-                        ),
-                        "agent_id": "coach",
-                        "event": "table_output",
-                        "table_format": "markdown",
-                    },
-                )
-            if step3_row_unlock_progress:
-                yield (
-                    "data: "
-                    + json.dumps(
-                        {"rumination_progress": step3_row_unlock_progress},
-                        ensure_ascii=False,
-                    )
-                    + "\n\n"
-                )
-        if hyp_candidates:
-            hyp_sse: dict = {"hyp_candidates": hyp_candidates}
-            if hyp_target_row is not None:
-                hyp_sse["hyp_target_row"] = hyp_target_row
-            if hyp_row_unresolved:
-                hyp_sse["hyp_row_unresolved"] = True
-            yield ("data: " + json.dumps(hyp_sse, ensure_ascii=False) + "\n\n")
         pending_spawned_in_turn = False
         if state_obj and not cmeta.get("thread_completed"):
             state_name = str(state_obj.get("state") or "").strip().lower()
@@ -7334,7 +3777,6 @@ async def simple_chat_stream(
         except Exception:
             pass
 
-        # 子步 3 hyp_candidates 已在 full_reply 落盘块中发送，此处不再重复
 
         yield (
             f'data: {{"done": true, "response": {json.dumps(full_reply, ensure_ascii=False)}, '
@@ -7360,6 +3802,7 @@ async def delete_thread(
     """
     删除某个线程：同时删除后端 report 中的会话文件与 session 绑定，保证前后端一致。
     """
+    _require_four_phase_chat(request.phase)
     manager = get_activation_manager_for_code(request.activation_code)
     phase_step = _require_simple_chat_phase(request.phase)
     rec = _resolve_activation_for_user(manager, request.activation_code, current_user)
@@ -7438,7 +3881,7 @@ async def delete_thread(
 
 
 # ── Rumination v4 子路由挂载(见 wiki/开发文档/0707-tag1.6.0.md)──────────
-# v4 与 v3 端点共存,v4 路径前缀: /simple-chat/rumination-v4/...
+# 沉淀唯一运行入口；旧流程实现仅保留在 Git 历史。
 try:
     from app.api.v1.rumination_v4_routes import router as _rumination_v4_router
     router.include_router(_rumination_v4_router)

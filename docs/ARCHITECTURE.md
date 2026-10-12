@@ -1,6 +1,6 @@
 # 当前架构
 
-基线为 v1.8.0，以下描述当前实现，不代表计划中的迁移已经发生。
+基线为 v1.8.0 + clean，以下描述当前实现，不代表计划中的迁移已经发生。为什么这样设计、替代了什么、约束何时退出，见 [架构与开发决策](DECISIONS.md)。
 
 ```text
 Next.js 页面 → lib/api（访问令牌、刷新、SSE）
@@ -20,7 +20,10 @@ SQLite（账户、订单、券、退款、统计）   JSON（激活码、探索�
 | --- | --- |
 | `src/backend/app/main.py` | 路由、中间件、定时任务注册；检查公开面先从此处开始 |
 | `api/security.py` | 旧会话/回答归属、管理员和点赞所属探索校验 |
-| `api/v1/simple_chat/`、`simple_chat_routes.py` | 当前探索路由，多个模块仍通过兼容入口互引，不能只凭静态导入删除 |
+| `api/v1/simple_chat/`、`simple_chat_routes.py` | 前四阶段写接口与历史读取；拒绝旧沉淀写请求。多个模块仍通过兼容入口互引，不能只凭静态导入删除 |
+| `api/v1/rumination_v4_routes.py`、`services/rumination_v4_service.py` | 当前唯一沉淀运行链路，组合创建/讨论/用户卡/独立判断/终选；无 A/B 分流 |
+| `utils/rumination_inputs.py` | 四阶段结论输入提取，按确认卡、anchor、prior_text 优先级读取 |
+| `utils/legacy_rumination_export.py` | 仅为历史数据导出读取旧格式，不生成/更新旧状态、不向 v4 转换 |
 | `core/agent/` | 仍挂载的旧 LangGraph 链路，与 simple-chat 共存 |
 | `services/auth_service.py`、`core/database/user_db.py` | 登录、令牌轮换、找回密码、密码重置事务 |
 | `utils/simple_activation_manager.py` | 激活码状态、归属、升级、数据根选择 |

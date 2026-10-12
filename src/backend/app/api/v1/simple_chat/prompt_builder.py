@@ -1,6 +1,7 @@
 """
 提示词构建：system prompt 组装、题库加载、兜底问题。
 """
+
 import random
 from typing import Optional
 
@@ -22,7 +23,6 @@ def _phase_to_loader_category(phase: str) -> str:
         "strengths": "strengths",
         "interests": "interests",
         "purpose": "purpose",
-        "rumination": "values",  # 沉淀阶段不在提示词中注入题库；此处仅为映射表完备性
     }
     return mapping.get(phase, "values")
 
@@ -50,7 +50,6 @@ def build_fallback_opening_question(phase: str) -> str:
         "strengths": "hi,我们先聊聊优势：在别人眼里，你最常被夸\u201c做得自然且稳定\u201d的一件事是什么？",
         "interests": "hi,我们先聊热忱：哪类话题会让你不知不觉投入很久、并且越做越有能量？",
         "purpose": "hi,我们先聊使命：如果你的工作能持续帮助一类人，你最希望他们发生什么改变？",
-        "rumination": "hi,恭喜你进入最后一轮！我们将综合你的价值观、优势、热爱和使命，帮你确定三个职业发展方向。准备好开始了吗？",
     }
     return fallback_map.get(phase, fallback_map["values"])
 
@@ -93,19 +92,21 @@ def build_system_prompt(
     extra_goal_hint: str = "",
     *,
     values_info: str = "",
-    rumination_step_addon: str = "",
     purpose_progress_injection: str = "",
     conclusion_state_injection: str = "",
 ) -> str:
     """根据阶段构建 system prompt（通过模板渲染，避免超长硬编码）。"""
-    prior_block = f"\n\n以下是该来访者在上一轮咨询中的谈话结果，供你参考：\n{prior_context}" if prior_context.strip() else ""
+    prior_block = (
+        f"\n\n以下是该来访者在上一轮咨询中的谈话结果，供你参考：\n{prior_context}"
+        if prior_context.strip()
+        else ""
+    )
     context = {
         "phase": phase,
         "question_bank": question_bank,
         "basic_info": basic_info,
         "prior_block": prior_block,
         "values_info": (values_info or "").strip(),
-        "rumination_step_addon": (rumination_step_addon or "").strip(),
     }
     if (template_override or "").strip():
         env = Environment(trim_blocks=True, lstrip_blocks=True)
@@ -143,4 +144,3 @@ def build_system_prompt(
     if (conclusion_state_injection or "").strip():
         state_tail = f"\n{conclusion_state_injection.strip()}"
     return f"{base_prompt}{purpose_block}\n{protocol}{state_tail}"
-

@@ -53,8 +53,6 @@ interface BackendMessage {
   think_content?: string;
   type?: string;
   conclusion_data?: Record<string, unknown>;
-  table_payload?: Record<string, unknown>;
-  rumination_row_label?: string;
   created_at?: string | number;
   id?: string;
 }

@@ -1,3 +1,5 @@
+> **历史证据（2026-10-12状态核对）**：旧 v3 开发清单已退役，未勾选项不再是当前待办。 当前入口见 [决策文档](../../docs/DECISIONS.md)，退役边界见 [ADR-0025](../../docs/adr/0025-retire-v3-runtime-and-separate-history.md)。以下保留当时记录。
+
 # Step3 组合矩阵重构 Todo List（2026-06-16）
 
 > 依据：Grill 决策（2026-06-16）

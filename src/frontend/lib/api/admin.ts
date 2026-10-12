@@ -233,9 +233,6 @@ export async function cloneConversation(payload: {
 
 export async function jumpToRumination(payload: {
   activation_code: string;
-  target_section?: string;
-  target_filter_step?: number;
-  seed_table?: Record<string, unknown>;
 }): Promise<{ progress: unknown; activation_code: string }> {
   const res = await apiClient.post('/admin/conversations/jump-to-rumination', payload);
   return (res.data ?? {}) as { progress: unknown; activation_code: string };
@@ -1234,19 +1231,11 @@ export interface PromptCatalogSection {
   }>;
 }
 
-export interface PromptCatalogRuminationStep {
-  step: number;
-  label: string;
-  opening_mode: string;
-  sections: PromptCatalogSection[];
-}
-
 export interface PromptCatalogPhase {
   key: string;
   label: string;
   color: string;
   sections: PromptCatalogSection[];
-  rumination_steps?: PromptCatalogRuminationStep[];
 }
 
 export interface PromptCatalogSimpleChatDiff {

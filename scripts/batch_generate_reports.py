@@ -13,18 +13,13 @@ batch_generate_reports.py — 从 admin 批量导出包批量生成 PDF 报告
        - record.json                 ← stats.json 元信息 + raw 文件名推导五阶段索引
        - dimension_conclusions.json  ← summary.json phases.{4维}.conclusion_final（同构直映）
        - {step}__{session}.json      ← raw/ 原样拷贝（注解键无害）
-       - rumination_v4_progress.json ← v3 数据合成：raw/rumination_progress.json 的
-                                       combo_matrix 提供 passion/strength 名称，
-                                       summary.json 的 combo_conclusions 中
-                                       state=confirmed 的 text 作为 conclusion_card.hypothesis；
-                                       终选取 filter_table 的 __final 行（行号反推 combo_id，
-                                       2026-09-08 修正，原误用全部 confirmed），无 __final 行时回退全部 confirmed
+       - rumination_v4_progress.json ← raw/ 下的原生 v4 文件原样复制；缺失不从旧矩阵推导
     2. 生成：完全复用 app.services.report_pdf_service.ReportPdfService
        （与线上 POST /export/report-pdf 同一套 LLM 提示词、同一套 PDF 渲染），
        产出 PDF + report_markdown.md 到 --output-dir。
 
   完整性口径（与 2026-08-07 下载门控一致）：4 维 conclusion_final 齐全
-  且 rumination 至少 1 条 confirmed 结论，才生成；否则跳过（--include-incomplete 可覆盖）。
+  且原生 v4 已提交终选、选中 1–3 条有效结论，才生成；否则跳过（--include-incomplete 可覆盖）。
 
 用法示例：
     # 批量生成 test/reports 下所有完整报告，PDF 输出到 test/reports_generated/
@@ -56,6 +51,7 @@ batch_generate_reports.py — 从 admin 批量导出包批量生成 PDF 报告
     1  有报告生成失败
     2  参数错误
 """
+
 from __future__ import annotations
 
 import argparse
@@ -70,10 +66,6 @@ _BACKEND = Path(__file__).resolve().parent.parent / "src" / "backend"
 if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
-from app.services.rumination_v4_service import (  # noqa: E402
-    default_state,
-    new_combo_session,
-)
 from app.utils.report_registry import STEP_IDS  # noqa: E402
 
 _DIMENSION_PHASES = ("values", "strengths", "interests", "purpose")
@@ -141,66 +133,27 @@ def stage_report(pkg_dir: Path, staging_reports: Path) -> dict:
         json.dumps(dim, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
-    # 4. v3 → v4 合成 rumination_v4_progress.json
-    rumi = phases.get("rumination") or {}
-    combo_conclusions = rumi.get("combo_conclusions") or {}
-    confirmed = {
-        cid: c for cid, c in combo_conclusions.items()
-        if isinstance(c, dict) and c.get("state") == "confirmed" and c.get("text")
+    # 4. 只使用原生 v4 快照；旧矩阵没有等价语义，不能合成用户的终选。
+    native_v4 = raw_dir / "rumination_v4_progress.json"
+    state = _load_json(native_v4)
+    target_v4 = dest / "rumination_v4_progress.json"
+    if native_v4.is_file() and state:
+        shutil.copy2(native_v4, target_v4)
+    else:
+        target_v4.unlink(missing_ok=True)  # 防止暂存目录残留被误作本次输入
+    final = state.get("final_selection") or {}
+    selected = final.get("selected_combo_ids") or []
+    valid_ids = {
+        combo.get("combo_id")
+        for combo in state.get("combo_sessions", [])
+        if combo.get("status") == "concluded"
+        and (combo.get("conclusion_card") or {}).get("hypothesis")
     }
-    v4_combo_count = 0
-    if confirmed:
-        progress = _load_json(raw_dir / "rumination_progress.json")
-        matrix = {m.get("combo_id"): m for m in (progress.get("combo_matrix") or [])}
-        ts = stats.get("report_updated_at")
-        state = default_state()
-        state["main_section"] = "end"
-        for cid, cc in confirmed.items():
-            m = matrix.get(cid) or {}
-            passion = m.get("passion_name") or "（未知热爱）"
-            strength = m.get("strength_name") or "（未知优势）"
-            if not m:
-                print(f"  ⚠️  combo {cid} 不在 combo_matrix 中，名称用占位", file=sys.stderr)
-            sess = new_combo_session(cid, passion, [strength])
-            sess["status"] = "concluded"
-            sess["created_at"] = ts
-            sess["updated_at"] = ts
-            sess["conclusion_card"] = {
-                "hypothesis": cc["text"],
-                "balance_found": None,
-                "balance_fail_reason": None,
-                "created_at": ts,
-                "updated_at": ts,
-            }
-            state["combo_sessions"].append(sess)
-
-        # 终选口径（2026-09-08 修正）：v3 真正的 N选3 终选在 filter_table 的
-        # __final=true 行（通常 1~3 个），行 id 是 gen_table 行号（1 + pi*5 + si），
-        # 需经 combo_id_to_row_id 反推回 combo_id；此前误用全部 confirmed 组合
-        # （可达 14 条，只是“聊完确认过假设”），导致报告第五章逐个剖析十几个方向。
-        # 找不到有效 __final 行时回退为全部 confirmed（旧口径兼底）。
-        from app.utils.rumination_combo_matrix import combo_id_to_row_id
-
-        row_to_combo = {
-            combo_id_to_row_id(m): cid for cid, m in matrix.items()
-        }
-        final_combo_ids = [
-            row_to_combo.get(str(r.get("id")))
-            for r in (progress.get("filter_table") or [])
-            if r.get("__final")
-        ]
-        final_combo_ids = [c for c in final_combo_ids if c in confirmed]
-        if not final_combo_ids:
-            final_combo_ids = list(confirmed.keys())
-        state["final_selection"] = {
-            "selected_combo_ids": final_combo_ids,
-            "submitted": True,
-            "submitted_at": ts,
-        }
-        (dest / "rumination_v4_progress.json").write_text(
-            json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        v4_combo_count = len(final_combo_ids)
+    v4_combo_count = (
+        len(selected)
+        if (final.get("submitted") and 1 <= len(selected) <= 3 and set(selected) <= valid_ids)
+        else 0
+    )
 
     dims_done = sum(1 for p in _DIMENSION_PHASES if p in dim)
     complete = dims_done == len(_DIMENSION_PHASES) and v4_combo_count > 0

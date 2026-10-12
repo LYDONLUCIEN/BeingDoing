@@ -108,7 +108,7 @@ def _report_portal_unlocked(steps: dict) -> bool:
 
     rumination 特例：v4 无 thread 概念，终选提交（final-selection/submit）只 lock_step
     不写 selected_session_id，故 rumination 接受 locked 作为完成信号；
-    v3 口径不受影响（step7 定稿先 select_session 后 lock，locked 蕴含已完成）。
+    历史已完成报告继续按 locked 读取；当前沉淀只由 v4 终选提交写入完成状态。
     """
     for sid in STEP_IDS:
         st = steps.get(sid) or {}

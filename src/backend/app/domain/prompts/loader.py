@@ -80,7 +80,7 @@ def get_simple_chat_system_prompt(context: Dict[str, Any]) -> str:
     """
     simple_chat 系统提示词。
     context: phase, question_bank, basic_info, prior_block,
-             values_info（可选）, rumination_step_addon（可选）
+             values_info（使命阶段可选）
     """
     return _get_loader().render("simple_chat_system", context)
 

@@ -1,6 +1,6 @@
 # 开发入口
 
-先读 [CONTRIBUTING.md](CONTRIBUTING.md)。启动/测试读 [开发指南](docs/DEVELOPMENT.md)；改业务字段读 [字段字典](docs/DATA_DICTIONARY.md) 与 [产品规则](docs/PRODUCT_RULES.md)；新产品读 [跨产品边界](docs/PRODUCT_EVOLUTION.md)。
+先读 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [现行决策与约束](docs/DECISIONS.md)。启动/测试读 [开发指南](docs/DEVELOPMENT.md)；改业务字段读 [字段字典](docs/DATA_DICTIONARY.md) 与 [产品规则](docs/PRODUCT_RULES.md)；新产品读 [跨产品边界](docs/PRODUCT_EVOLUTION.md)。
 
 ## 工作顺序
 
@@ -9,14 +9,17 @@
 3. 用公开接口验证允许路径和拒绝路径。检查 API 文档及字段语义是否需同步。
 4. 提交前执行贡献规范中的检查。已有失败与新回归分开记录，不能把跳过称为通过。
 
-## 硬边界
+## 当前边界（类别与退出条件见决策文档）
 
 - 不改真实 `.env`、`app.db`、用户数据及生产密钥；测试使用临时目录和独立数据库。`deploy/` 的生产配置变更需人工确认。
-- 保留会员预留表/接口（ADR-0006/0007）、团队分析 `page.impl.tsx`、沉淀 v3 后端兼容能力。界面未启用不代表可以删除。
+- 保留会员预留表/接口（ADR-0006/0007）、团队分析 `page.impl.tsx`。界面未启用不代表可以删除。
 - 保留 `.duplicate/`、`data_backup/` 等被迁移手册要求保存的快照；保留根目录原始笔记/问题库/CSV，保留 PNG 无损母版。删除依据见 [清理台账](docs/CLEANUP.md)。
 - `report/xunlu` 为只读设计母版；生产渲染源码在 `src/report-renderer`，其 `dist/` 必须随源码构建提交。
 - 使用真实账户权限判定，运营标签 `user_type=admin` 不授予管理员权限。报告授权不包含对话原文。
 - 历史迁移保持可追溯。字段重命名/语义迁移先明确兼容期、空值和回滚；不靠改文档宣称迁移完成。
+
+- 沉淀运行链路仅 v4；旧矩阵、七步协议和 A/B 分流已退役（ADR-0025）。历史数据只读，不从旧矩阵自动生成当前组合或用户终选。v4 的 `combo_id` 是独立会话标识。
+- 历史 ADR、wiki、tasks、issue 记录当时范围，不直接形成今日指令。先读 ADR 状态索引；最新明确决定可替代旧保护线，未实施计划不能当作已完成迁移。
 
 ## 查阅条件
 

@@ -1,13 +1,7 @@
-"""
-Rumination v3/v4 分组分配数据模型
+"""历史沉淀 A/B 分配表映射（实验已退役）。
 
-一个 report_id 一条记录，首次进入 rumination 时写入，后续只读。
-保证同一用户在同一 report 下看到的版本稳定（v3 或 v4）。
-
-字段说明：
-- version: 'v3' | 'v4'（该 report 应走的 rumination 版本）
-- source: 'forced'（配置强制）| 'ab'（按比例随机分配）
-- ratio_at_assignment: 分配时 RUMINATION_AB_V4_RATIO 的值（ab 模式留痕，便于事后回溯）
+保留用于读取历史记录、账户删除及迁移链兼容；运行时不再分配或覆盖记录。
+version/source/ratio_at_assignment 仅说明当时的实验分组，不决定当前路由。
 """
 
 import uuid

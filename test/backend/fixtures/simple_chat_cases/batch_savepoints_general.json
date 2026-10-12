@@ -65,21 +65,6 @@
    }
   },
   {
-   "name": "sp_rumination_opening_chat_5_entry",
-   "start_state_code": "5-1-a",
-   "end_state_code": "5-1-b",
-   "seed_fixture": {
-    "report_dir": "test/backend/fixtures/simple_chat_reports/mock_rumination_opening",
-    "ttl_minutes": 180
-   },
-   "phase": "rumination",
-   "thread_id": "t_rum_chat_001",
-   "message": "我想先确认「优势标记」这一步整体在做什么？",
-   "mock": {
-    "stream_reply": "这一步是把前面各维度里出现的优势线索收敛成可勾选的表格行，方便后面逐步筛选。"
-   }
-  },
-  {
    "name": "sp_values_reject_then_reopen_pending_then_confirm",
    "start_state_code": "1-3-a",
    "end_state_code": "1-3-d",

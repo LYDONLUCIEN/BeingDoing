@@ -21,8 +21,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from app.utils.report_registry import STEP_IDS, ReportRegistry
 from app.utils.helpers import parse_iso_to_utc
+from app.utils.report_registry import STEP_IDS, ReportRegistry
 from app.utils.simple_activation_manager import (
     ActivationRecord,
     SimpleActivationManager,
@@ -906,11 +906,10 @@ def _trim_report_snapshot(
     record["final_conclusion"] = None
     record_file.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    # 3) 若不是 rumination 起点，移除 rumination_progress，避免残留
+    # 回退前四阶段时，下游新旧沉淀状态都失效，避免旧终选混入新的前置结论。
     if phase != "rumination":
-        prog = report_dir / "rumination_progress.json"
-        if prog.is_file():
-            prog.unlink(missing_ok=True)
+        for name in ("rumination_progress.json", "rumination_v4_progress.json"):
+            (report_dir / name).unlink(missing_ok=True)
 
 
 def create_savepoint(

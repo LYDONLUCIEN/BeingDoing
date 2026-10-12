@@ -1,6 +1,6 @@
 # 字段与状态字典
 
-核对 v1.8.0 + clean 安全边界。这里描述现存数据，不执行改名/迁移。金额均为整数分；持久化时间通常为 UTC，SQLite DateTime 读出可能无 tzinfo，按 UTC 解释后比较。统计日桶使用 Asia/Shanghai。NULL、空串、字段缺失按各列语义处理，不统一视作未使用。
+核对 v1.8.0 + clean 当前契约。只列当前字段与仍需识别的存量值；已退役结构见 [历史证据](HISTORY_EVIDENCE.md)，不作为新开发模型。这里不执行改名/迁移。金额均为整数分；持久化时间通常为 UTC，SQLite DateTime 读出可能无 tzinfo，按 UTC 解释后比较。统计日桶使用 Asia/Shanghai。NULL、空串、字段缺失按各列语义处理，不统一视作未使用。
 
 ## 身份与访问
 
@@ -44,7 +44,12 @@
 | --- | --- |
 | phase / current_step / dimension | values/strengths/interests/purpose/rumination 是当前主阶段；旧 Agent dimension 名称不同，聚合需显式映射 |
 | passions / strengths | 沉淀输入的热爱与优势；interests 是阶段名，passions 是提炼结果 |
-| v3 combo_id / v4 combo session | v3 是两索引格子；v4 独立组合含一热爱和多优势，不按索引自动转换 |
+| combo_sessions[].combo_id / active_combo_id | 当前沉淀独立会话 ID，如 combo_1；在一个 report 的 v4 状态内引用，不是跨报告全局 ID、不是账户 ID |
+| matrix_snapshot.passions / strengths | 当前可选热爱/优势输入快照；不是组合会话列表，也不是终选结果 |
+| combo_sessions[].passion / strengths | 一个热爱字符串＋一个或多个优势；创建后固定，换维度需新建组合；最多10组，按同热爱与相同优势集合判重 |
+| combo_sessions[].status / user_skipped | discussing/concluded/abandoned 与可逆跳过标记；跳过不删除用户卡，不等于终选提交 |
+| conclusion_card / balance_analysis.status | 用户卡与独立判定任务；任务 analyzing/done/failed，未发起可空；两者不能等同于审核状态 |
+| final_selection.selected_combo_ids / submitted / submitted_at | 1–3个当前组合 ID 的用户终选及提交记录；锁定沉淀、触发审核，不能由报告脚本推断或补写 |
 | hypothesis | 用户填写字符串，不是按优势分组的 dict |
 | balance_found / balance_fail_reason | 后台对确认快照的判断及理由；新消息/修改假设使判断失效；不是强制准入 |
 | AnalyticsLike.user_id / message_id | 点赞者与消息 ID；新写入必须有已认证用户，读写按用户过滤 |
@@ -53,6 +58,8 @@
 | visitor_id / page_view / auth_active | 匿名访客标识/PV/登录活跃事件；PV 可公开上报，auth_active 仅服务端写；不是登录用户数同一口径 |
 | paid_status | ADR-0023 筛选口径：存在 paid/granted 订单为 paid；partially_refunded 不计，明确不是终身付费用户标签 |
 | code_kind / stage | 非 consumed 码最高档 full>trial>none（过期仍计）；stage 取多记录最前进度，与审核结果不同 |
+
+当前沉淀权威源为 `reports/{report_id}/rumination_v4_progress.json`（schema_version=4），实现见 [v4服务](../src/backend/app/services/rumination_v4_service.py)。输入提取见 [rumination_inputs](../src/backend/app/utils/rumination_inputs.py)：确认卡优先，其次报告 anchor，再到 prior_text；不把模型摘要误称用户确认。
 
 历史 user_id 为空的点赞不推断归属、不公开给任意人；若要迁回账户，需用可信数据验证后单独迁移。
 
@@ -78,7 +85,7 @@
 
 ## 已确认冲突与待决定事项
 
-1. 年度套餐历史定价决定 ¥159，而 settings 默认 ANNUAL_PRICE=12800。未读取线上覆盖值，不能认定线上售错价。本次保留价格，发布前由产品核对实际配置并决定统一值。
+1. #67/提交 b123969 已实施年度 ¥128；其后 ADR-0014 决定 ¥159，但未找到实现或撤销证据。settings 默认 ANNUAL_PRICE=12800，线上覆盖未知。按 [决策差异](DECISIONS.md) 跟踪，清理不自动改价。
 2. 老 AnalyticsLike.session_id、ActivationRecord.session_id 与 report thread 的同名不同义尚未迁移。新接口分别命名为 account_id/activation_code/exploration_id/thread_id/report_id，并声明映射；这些是命名建议，不是已存在的新列。
 3. paid_status 排除部分退款是已接受筛选定义。若新产品要「历史有支付」或「当前有效订阅」，新增维度，不能悄改旧报表。
 4. membership_monthly/lifetime 是保留能力，不代表新月/年订阅已经可售。按 [跨产品方案](PRODUCT_EVOLUTION.md) 设计后再迁移。

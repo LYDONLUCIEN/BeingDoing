@@ -1,28 +1,33 @@
 # 决策记录索引
 
-ADR 解释为什么这样做，按决定发生时的范围阅读；当前行为入口为 [产品规则](../PRODUCT_RULES.md)。2026-10-05 退款、10-06 多次券定稿已替代早期对应细则，详见产品规则链接。
+本索引核对日期为2026-10-12，历史源码基线为`5b461e6`。ADR原文记录决定发生时的原因与范围，标题和正文保留不代表每条仍有效。当前决定入口为 [DECISIONS](../DECISIONS.md)，现行行为为 [产品规则](../PRODUCT_RULES.md)，变更完成情况见 [CHANGELOG](../CHANGELOG.md)；详细替代链见 [历史证据](../HISTORY_EVIDENCE.md)，GitHub原始记录见 [issue索引](../ISSUE_HISTORY.md)。
 
-| 决策 | 当前阅读提示 |
-| --- | --- |
-| [ADR-0003: Step3 组合矩阵与深度讨论拆分](0003-step3-combo-matrix.md) | v3 背景，后端兼容保留 |
-| [ADR-0004: Rumination v4 页壳刻意偏离 HTML mock](0004-rumination-v4-shell-layout.md) | 历史决定，实施范围请读正文 |
-| [ADR-0005: 支付走官方双线接口（微信+支付宝），而非静态收款码人工确认](0005-payment-dual-channel-official-gateway.md) | 历史决定，实施范围请读正文 |
-| [ADR-0006: 激活码与会员是两条独立产品线，高级模型权益购买时固化](0006-membership-vs-activation-code-two-product-lines.md) | 会员预留，未上线，要求保留 |
-| [ADR-0007: 会员体系按真实代扣设计，本期只交付表与接口、不对外开放](0007-membership-built-but-not-launched.md) | 会员预留，未上线，要求保留 |
-| [ADR-0008: 套餐体系取代单一 SKU，激活码分试用/完整双维度](0008-packages-trial-vs-full-codes.md) | 历史决定，实施范围请读正文 |
-| [ADR-0009: 报告阻塞式审核 + 随机时限自动批复](0009-report-review-auto-approve.md) | 历史决定，实施范围请读正文 |
-| [ADR-0010: 激活码双角色（所属人/激活人）与报告授权边界](0010-code-purchaser-activator-report-auth.md) | 历史决定，实施范围请读正文 |
-| [ADR-0011: 存储演进路线——稳定性收敛 → SQLite 全量入库 → 条件触发 PostgreSQL](0011-storage-evolution-sqlite-then-postgres.md) | 演进路线，尚未全量入库 |
-| [ADR-0012: 品牌更名——寻路 (xunlu) → 寻路·OpenLife (openlife)](0012-rebrand-xunlu-to-openlife.md) | 历史决定，实施范围请读正文 |
-| [ADR-0013: 统计看板——事件时间口径漏斗 + 埋点业务同库（SQLite），不建 Cohort、不提前上 PG](0013-analytics-funnel-event-time-sqlite.md) | 历史决定，实施范围请读正文 |
-| [ADR-0014: 套餐交付改为全量未绑定码 + 消耗升级，年度套餐调价 ¥159](0014-unbound-delivery-consume-to-upgrade.md) | 历史决定，实施范围请读正文 |
-| [ADR-0015: rumination v4 结论卡改为用户主导填写 + 平衡点判定移交独立后台 AI](0015-user-driven-card-async-balance-judge.md) | 历史决定，实施范围请读正文 |
-| [ADR-0016: 延期体系改版 —— 首次过期免费送 7 天 + 付费续期统一 9.9 元/7 天](0016-free-7day-renewal-and-9.9-paid-renewal.md) | 历史决定，实施范围请读正文 |
-| [ADR-0017: 报告后处理修正管线 —— 一次生成 + 按章节分步修正](0017-report-post-processing-pipeline.md) | 历史决定，实施范围请读正文 |
-| [ADR-0018: 套餐码有效期改为「支付成功起算」+ 团队分析联系邮箱变量化](0018-package-validity-starts-at-purchase.md) | 新套餐有效期从交付起算 |
-| [ADR-0019: 报告 PDF 渲染接入 xunlu 精简渲染器（子进程 + 开关共存）](0019-xunlu-pdf-renderer.md) | 双引擎部分被 0021 替代 |
-| [ADR-0020: 旧浏览器内核兼容底线——视口高度 vh→dvh 回退与新 CSS 特性静态回退](0020-old-browser-kernel-compat-floor.md) | 历史决定，实施范围请读正文 |
-| [ADR-0021: 移除 WeasyPrint 简洁版，xunlu 设计版成为唯一报告渲染引擎](0021-single-xunlu-report-renderer.md) | 历史决定，实施范围请读正文 |
-| [ADR-0022: 静态性能皮肤——装饰动画与磨砂玻璃对全员移除](0022-static-performance-skin.md) | 历史决定，实施范围请读正文 |
-| [ADR-0023: 通用用户筛选系统（过滤器注册表 + schema 下发）](0023-user-filter-registry.md) | 历史决定，实施范围请读正文 |
-| [ADR-0024：跨产品共用账户，交易与产品权益分离](0024-shared-account-product-boundaries.md) | 共享账户边界已接受，实现另行设计 |
+“当前”表示决定与已核对实现一致，不证明已部署；“条件性”必须满足写明的产品/迁移/规模条件；“部分替代”只保留未被新决定改变的部分。历史一次性范围限制（如本期不改支付、迁移前冻结存储）不自动成为永久禁令。明确保留的兼容数据、未开放功能与母版，需新的具体决定才能改变；本轮用户已明确撤销v3运行时保留。
+
+| ADR | 当前判定 | 有效边界、替代原因与条件 |
+| --- | --- | --- |
+| [0003 Step3组合矩阵与深度讨论](0003-step3-combo-matrix.md) | **已废止** | v3两位索引组合、矩阵/3b及运行时被本轮用户取消保留；见0025。v4同名combo_id不是该旧概念。 |
+| [0004 v4页壳与HTML差异](0004-rumination-v4-shell-layout.md) | **视觉部分已替代** | 7月单shell/沿用v3视觉由0919–0923 guided及0022静态皮肤替代；业务状态以现行v4为准。 |
+| [0005 官方双渠道支付](0005-payment-dual-channel-official-gateway.md) | **原则当前、细则部分替代** | 服务端核实官方支付有效；#57扩展主动查单/对账，10月退款替代早期整单限制。签约配置决定渠道是否可用，非双线已上线证明。 |
+| [0006 会员与激活码独立产品线](0006-membership-vs-activation-code-two-product-lines.md) | **边界当前、会员预留** | 会员不等于免费码，旧vip_level不是新产品通用权限；原折扣等规则属未开放会员设计，须结合0007和0024。 |
+| [0007 会员按真实代扣设计、本期不开放](0007-membership-built-but-not-launched.md) | **明确保留、未开放** | 保留表/接口/旧monthly与lifetime语义，默认关闭；签约与产品上线条件未证明满足，不得借清理启用代扣。 |
+| [0008 套餐与trial/full](0008-packages-trial-vs-full-codes.md) | **基础当前、交付细则已替代** | trial/full保留；交付看0014、续期看0016、期限看0018、退款看10月设计。旧注册发码时点、价格、审核数字不作当前契约。 |
+| [0009 阻塞式审核与自动批复](0009-report-review-auto-approve.md) | **后续修订当前** | 终选提交触发；新审核固定24h，取代标题中的随机3–24h；存量pending不改deadline。报告页仅兜底，用户沟通口径需另行核对。 |
+| [0010 购买者/激活人与报告授权](0010-code-purchaser-activator-report-auth.md) | **当前权限边界** | 购买者不等于激活人；赠送报告须授权，对话不共享；不得以付款记录或运营标签绕过资源权限。 |
+| [0011 JSON→SQLite→条件性PG](0011-storage-evolution-sqlite-then-postgres.md) | **演进计划未全量落地** | #59关闭为暂缓；当前混合存储。JSON全入库且验证完成前不能删锁/补偿；多worker、锁库或扩容触发PG评估。旧tag冻结是当次阶段限制。 |
+| [0012 品牌更名OpenLife](0012-rebrand-xunlu-to-openlife.md) | **品牌原则当前、迁移步骤历史化** | 新用户文案统一；内部key/服务名/历史母版不为改名强改。旧域名/CORS部署步骤不能直接复用为当前配置，须核对后续域名收敛。 |
+| [0013 事件时间漏斗与业务同库](0013-analytics-funnel-event-time-sqlite.md) | **当前统计定义、规模条件保留** | 事件时间非cohort，历史无源事件不伪造；收入口径不等于利润。分析与业务同库；JSON聚合待0011迁移，不证明迁移已做。 |
+| [0014 未绑定交付、消耗升级、159元](0014-unbound-delivery-consume-to-upgrade.md) | **交付当前、价格未找到落地、退款已替代** | 消耗升级保留原探索并追溯；代码默认128元有#67/`b123969`依据，更晚159元决定未找到实施/撤销证据；退款按10月明细行规则。 |
+| [0015 用户手填卡与独立平衡判定](0015-user-driven-card-async-balance-judge.md) | **当前v4核心契约** | 取代chips/tool/主对话写卡；假设字符串、确认快照、改聊即失效。旧正文“v3不受影响/AB不变”是当次范围，已由0025取消保留。 |
+| [0016 免费7天与9.9元7天延期](0016-free-7day-renewal-and-9.9-paid-renewal.md) | **当前续期规则** | 合资格完整码按码一次免费、owner手领；付费与免费解耦、延期不退；旧20元90天及分档价仅历史语义。 |
+| [0017 分章节后处理](0017-report-post-processing-pipeline.md) | **分层原则当前、旧渲染细则受限** | 一次生成后确定性修正/局部压缩、失败保原文；精确阈值看现行处理器，旧WeasyPrint CSS/分页已不能作引擎要求。 |
+| [0018 新码支付交付起算](0018-package-validity-starts-at-purchase.md) | **当前＋明确存量兼容** | 新码交付起算，升级继承剩余期限；旧expires_at空值完整码继续首用起算，trial空值不限期，不可统一强迁。 |
+| [0019 xunlu子进程＋开关共存](0019-xunlu-pdf-renderer.md) | **架构当前、双引擎已替代** | 静态渲染/母版/dist保留，0021取消开关和旧报告兜底；重渲染不等于LLM重生成。 |
+| [0020 旧内核CSS兼容底线](0020-old-browser-kernel-compat-floor.md) | **当前兼容边界** | 特性检测、vh/dvh与颜色回退；IE仅提示不保证应用可用。旧blur前缀建议仅适用仍使用blur处，不要求恢复0022已移除的blur。 |
+| [0021 唯一xunlu报告引擎](0021-single-xunlu-report-renderer.md) | **当前；一项保留依据需重判** | 不恢复WeasyPrint报告切换/兜底。基线会话导出的WeasyPrint调用已不在，但依赖因历史保留条款仍在；删除依赖需显式重新判定，不能谎称仍有调用。 |
+| [0022 静态性能皮肤](0022-static-performance-skin.md) | **已实施范围当前、后续阶段未启动** | 前四聊天＋v4移除装饰动画/blur、保留功能反馈；#103三轮验收替代初版不透明色带。首页/dashboard后续范围不自动推广成全站禁令。 |
+| [0023 用户筛选注册表](0023-user-filter-registry.md) | **当前定义＋条件性兼容** | paid_status/code_kind/stage是运营筛选，不是权益授权；旧扁平参数约定下一大版本移除；数万用户再评估预聚合，暂不做DSL/独立包属规模范围。 |
+| [0024 共享账户、交易权益分离](0024-shared-account-product-boundaries.md) | **边界已接受、订阅实现未开始** | 共享users.id；新订阅不挪用vip_level或lifetime；扣费/券范围/购物车仍待设计，不宣称已交付。 |
+| [0025 v3运行时退役与历史分离](0025-retire-v3-runtime-and-separate-history.md) | **本轮最新决定** | 用户撤销v3兼容保留；实现和验收以当前CHANGELOG/测试证据为准，不将旧历史读取等同于恢复旧运行流程。 |
+
+修改规则时应注明被替代的是哪一条、为何改变、谁确认、是否改变已存数据，以及适用版本或条件。旧正文保留为证据，无需改写成“从来如此”。

@@ -72,12 +72,7 @@ export function sectionMatchesFilters(
 }
 
 export function phaseHasVisibleContent(phase: PromptCatalogPhase, filters: CatalogFilterState): boolean {
-  const mainHit = phase.sections.some((sec) => sectionMatchesFilters(sec, phase.key, filters));
-  if (mainHit) return true;
-  if (!phase.rumination_steps?.length) return false;
-  return phase.rumination_steps.some((rs) =>
-    rs.sections.some((sec) => sectionMatchesFilters(sec, 'rumination', filters)),
-  );
+  return phase.sections.some((sec) => sectionMatchesFilters(sec, phase.key, filters));
 }
 
 export function collectCatalogTags(catalog: PromptCatalogData): string[] {
@@ -87,12 +82,7 @@ export function collectCatalogTags(catalog: PromptCatalogData): string[] {
       tags.add(sec.key);
       sec.layer_stack?.forEach((l) => tags.add(l.id));
     });
-    phase.rumination_steps?.forEach((rs) => {
-      rs.sections.forEach((sec) => {
-        tags.add(sec.key);
-        sec.layer_stack?.forEach((l) => tags.add(l.id));
-      });
-    });
+
   });
   return Array.from(tags).sort();
 }
@@ -109,7 +99,6 @@ export function collectCatalogCategories(catalog: PromptCatalogData): string[] {
   };
   catalog.phases.forEach((p) => {
     walk(p.sections);
-    p.rumination_steps?.forEach((rs) => walk(rs.sections));
   });
   return Array.from(cats).sort();
 }

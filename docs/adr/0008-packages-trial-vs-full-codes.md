@@ -1,5 +1,7 @@
 # ADR-0008: 套餐体系取代单一 SKU，激活码分试用/完整双维度
 
+> **现行阅读限制（2026-10-12）：trial/full基础区分保留，多项交付细则已替代。** 自动绑定/升级由[ADR-0014](0014-unbound-delivery-consume-to-upgrade.md)改为未绑定码与显式消耗升级；延期由[ADR-0016](0016-free-7day-renewal-and-9.9-paid-renewal.md)改为免费7天/付费9.9元7天；新码起算由[ADR-0018](0018-package-validity-starts-at-purchase.md)改为支付交付，旧空到期完整码有兼容例外。早期价格、注册即送、退款及审核数字不能照抄为当前规范；以[产品规则](../PRODUCT_RULES.md)和[历史证据](../HISTORY_EVIDENCE.md)追溯更晚决定。
+
 **状态**: accepted
 **日期**: 2026-07-20
 **决策者**: 产品 + 开发 Grill

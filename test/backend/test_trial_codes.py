@@ -20,8 +20,8 @@ from pathlib import Path
 import pytest
 from fastapi import HTTPException, Response
 
-import app.main  # noqa: F401  先导入 app.main，规避 simple_chat 包循环导入
 import app.api.v1.simple_chat_routes as scr
+import app.main  # noqa: F401  先导入 app.main，规避 simple_chat 包循环导入
 import app.utils.simple_activation_manager as sam
 import app.utils.trial_codes as trial_codes
 from app.api.v1 import auth as auth_module
@@ -35,7 +35,6 @@ from app.utils.trial_codes import (
     ensure_trial_code_for_user,
     is_trial_code,
 )
-
 
 # ──────────────────────────────────────────────────────────────────
 # Fixtures / 工具
@@ -423,14 +422,13 @@ async def test_trial_phase_lock_on_thread_complete(patched_roots, manager, monke
     assert json.loads(exc.value.detail) == {"type": "trial_phase_locked", "has_upgrade_codes": False}
 
 
-async def test_trial_phase_lock_on_rumination_submit(patched_roots, manager, monkeypatch):
+async def test_old_rumination_submit_is_retired(patched_roots, manager, monkeypatch):
     rec, registry, rid = _make_bound_code(manager, USER, n_values_msgs=2)
     _patch_manager_lookup(monkeypatch, manager)
-    req = scr.RuminationTableSubmitRequest(activation_code=rec.code, step=1, table_data=[])
+    req = scr.SimpleChatStreamRequest(activation_code=rec.code, phase="rumination", message="hello")
     with pytest.raises(HTTPException) as exc:
-        await scr.rumination_table_submit(req, dict(USER))
-    assert exc.value.status_code == 402
-    assert json.loads(exc.value.detail) == {"type": "trial_phase_locked", "has_upgrade_codes": False}
+        await scr.simple_chat_stream(req, dict(USER))
+    assert exc.value.status_code == 410
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -553,9 +551,10 @@ def test_consume_for_trial_upgrade_rejects_trial_as_source(patched_roots, manage
 
 from datetime import datetime, timezone  # noqa: E402
 
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
+
 import app.models.database as db_module  # noqa: E402
 from app.models.payment import PaymentOrder  # noqa: E402
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 
 
 @pytest.fixture

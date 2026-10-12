@@ -26,8 +26,7 @@ export interface ThreadMessage {
   conclusionConfirmed?: boolean;
   /** 结论卡是否已固化为只读（发送新消息或阶段提交后） */
   conclusionLocked?: boolean;
-  /** 沉淀 v3 专用字段（tablePayload/ruminationRowLabel/filterStep/hypCandidates 等）
-   *  已随 v3 前端一并删除（2026-09，沉淀无条件走 v4）。 */
+
 }
 
 /** 使命阶段结构化「经历 → 价值观」行（与后端 payload 一致） */

@@ -5,7 +5,7 @@ Rumination v4 API 路由（2026-08-06 版，ADR-0015：用户主导结论卡 + �
 (挂在 simple_chat.router 下,避免改动 main.py 注册)
 
 端点:
-- GET  /version                          v3/v4 分组判定
+- GET  /version                          当前版本探测
 - GET  /state
 - GET  /combos
 - GET  /combos/{combo_id}
@@ -23,6 +23,7 @@ Rumination v4 API 路由（2026-08-06 版，ADR-0015：用户主导结论卡 + �
 
 数据模型与决策见 wiki/开发文档/0707-tag1.6.0.md + docs/adr/0015
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -36,7 +37,6 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.api.v1.auth import get_current_user
-from app.core.llmapi.usage_context import set_llm_usage_context
 from app.api.v1.simple_chat.context_resolver import (
     load_basic_info_from_activation as _load_basic_info_from_activation,
 )
@@ -46,22 +46,15 @@ from app.api.v1.simple_chat.context_resolver import (
 from app.api.v1.simple_chat.llm_providers import (
     get_dialogue_llm_provider as _get_dialogue_llm_provider,
 )
-from app.utils.simple_activation_manager import (
-    get_activation_manager_for_code,
-    get_effective_simple_root,
-)
-from app.utils.report_registry import ReportRegistry
-from app.utils.rumination_ops import extract_dimension_lists_for_rumination_table
-from app.utils.survey_storage import (
-    format_conclusion_prior_block,
-    load_dimension_conclusions,
-)
+from app.core.llmapi.usage_context import set_llm_usage_context
 from app.services.rumination_v4_service import (
     append_message,
     build_chat_messages,
     confirm_conclusion_card,
-    create_and_start as svc_create_and_start,
-    delete_combo as svc_delete_combo,
+)
+from app.services.rumination_v4_service import create_and_start as svc_create_and_start
+from app.services.rumination_v4_service import delete_combo as svc_delete_combo
+from app.services.rumination_v4_service import (
     find_combo,
     get_live_analysis_task,
     invalidate_balance_analysis,
@@ -70,7 +63,9 @@ from app.services.rumination_v4_service import (
     load_v4_state,
     mark_intro_shown,
     maybe_summarize_combo,
-    patch_conclusion_card as svc_patch_card,
+)
+from app.services.rumination_v4_service import patch_conclusion_card as svc_patch_card
+from app.services.rumination_v4_service import (
     register_analysis_task,
     run_balance_judge,
     save_v4_state,
@@ -82,11 +77,16 @@ from app.services.rumination_v4_service import (
     update_final_selection,
 )
 from app.utils.activation_audit import append_activation_audit  # 复用项目审计日志
-
-# v3/v4 分组判定
-from app.models.database import get_db
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.services.rumination_ab_service import resolve_rumination_version
+from app.utils.report_registry import ReportRegistry
+from app.utils.rumination_inputs import extract_dimension_inputs
+from app.utils.simple_activation_manager import (
+    get_activation_manager_for_code,
+    get_effective_simple_root,
+)
+from app.utils.survey_storage import (
+    format_conclusion_prior_block,
+    load_dimension_conclusions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -177,7 +177,7 @@ def _assert_rumination_editable(reports_root: Path, rid: str, current_user: dict
     """报告定稿（终选提交）后 rumination 锁定：v4 写端点统一拦截。
 
     豁免口径与 simple_chat 一致：管理员调试工作区（fork/resident）可绕过。
-    锁定时机：final-selection/submit（V4）或 step7 定稿（V3）时 lock_step("rumination")。
+    锁定时机：final-selection/submit；历史已定稿报告的 locked 仍受保护。
     """
     from app.api.v1.simple_chat_routes import _can_bypass_flow_limits  # 延迟导入避免循环依赖
 
@@ -218,7 +218,7 @@ def _build_user_context(
 
     - basic_info: 复用 simple_chat 的激活码维度拼装(format_basic_info_for_prompt)
     - 前四阶段结论卡: load_dimension_conclusions,逐阶段 keywords + summary 全量不截断
-    - values 关键词: extract_dimension_lists_for_rumination_table 的 values 结果,
+    - values 关键词: extract_dimension_inputs 的 values 结果,
       为空则返回 None(prompt 整块省略,禁固定 8 词兜底)
 
     Returns:
@@ -245,9 +245,7 @@ def _build_user_context(
     values_keywords: Optional[List[str]] = None
     try:
         record_obj = rec.record_dict if hasattr(rec, "record_dict") else None
-        values_list, _s, _i, _p, _src = extract_dimension_lists_for_rumination_table(
-            str(reports_root), rid, record_obj
-        )
+        values_list, _s, _i, _p, _src = extract_dimension_inputs(str(reports_root), rid, record_obj)
         if values_list:
             values_keywords = list(values_list)
     except Exception as e:
@@ -269,22 +267,24 @@ def _audit_log(event: str, user: Optional[dict], activation_code: str, detail: D
         logger.info("AUDIT %s user=%s code=%s detail=%s", event, (user or {}).get("user_id"), activation_code, detail)
 
 
-# ── 端点 0:GET /version（v3/v4 分组判定，前端进 rumination 时首调）────────
+# ── 端点 0:GET /version（保留响应兼容）────────
 @router.get("/version")
 async def get_rumination_version(
     activation_code: str,
     current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
 ):
-    """返回该 report 应走的 rumination 版本。
-
-    首次进入时按配置（强制 v3/v4 或 AB 随机）分配并落库，后续直接返回已分配结果。
-    返回 {version: 'v3'|'v4', source: 'forced'|'ab', assigned_at, ratio_at_assignment}。
-    """
-    reports_root, rid = _resolve_v4_ctx(activation_code, current_user)
-    result = await resolve_rumination_version(db, rid, (current_user or {}).get("user_id"))
-    _audit_log("version_assigned", current_user, activation_code, result)
-    return {"code": 200, "message": "success", "data": result}
+    """兼容已有探测客户端：鉴权后始终返回当前 v4，不分配历史 A/B 记录。"""
+    _resolve_v4_ctx(activation_code, current_user)
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "version": "v4",
+            "source": "current",
+            "assigned_at": None,
+            "ratio_at_assignment": None,
+        },
+    }
 
 
 # ── 端点 1:GET /state ──────────────────────────────────────────────────
@@ -312,7 +312,7 @@ async def get_state(activation_code: str, current_user: dict = Depends(get_curre
     if needs_fill:
         try:
             record_obj = rec.record_dict if hasattr(rec, "record_dict") else None
-            _, strengths_list, interests_list, _, _ = extract_dimension_lists_for_rumination_table(
+            _, strengths_list, interests_list, _, _ = extract_dimension_inputs(
                 str(reports_root), rid, record_obj
             )
             passions = (interests_list or [])[:3]

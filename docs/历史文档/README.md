@@ -1,35 +1,9 @@
-# 文档目录
+# 历史文档
 
-本目录包含项目的所有重要文档。
+本目录保存旧架构、计划、部署和界面记录，**不是当前开发指令或当前系统完整说明**。原文里的“必须”“本期不做”“下一步”和未勾选清单只在其当时范围内成立；目录位置、日期或完成标题都不能证明仍有效。
 
-## 📚 文档结构
+现在开发请先读 [开发指南](../DEVELOPMENT.md)、[当前决定](../DECISIONS.md)、[产品规则](../PRODUCT_RULES.md)和[字段字典](../DATA_DICTIONARY.md)。历史问题的替代关系见 [HISTORY_EVIDENCE](../HISTORY_EVIDENCE.md)、[ADR状态索引](../adr/README.md)和[GitHub记录索引](../ISSUE_HISTORY.md)。本目录真实文件分类见 [INDEX](INDEX.md)。
 
-### 开发文档
-- `DEVELOPMENT.md` - 开发指南
-- `TESTING.md` - 测试说明
-- `API_DOCUMENTATION.md` - API接口文档
-- `ARCHITECTURE.md` - 架构设计文档
+阅读历史材料时先确定其提交与产品范围，再核对后续决定和当前实现。旧v3设计本轮已明确废止；旧JSON说明则仍解释部分真实存储，因为全量数据库迁移尚未实施。二者不能套用同一个“过时即删”的判断。旧数据、备份和迁移记录也不因代码淘汰而被授权删除。
 
-### 部署文档
-- `DEPLOYMENT.md` - 部署指南
-- `DOCKER.md` - Docker使用说明
-
-### 用户文档
-- `USER_GUIDE.md` - 用户使用指南
-- `FAQ.md` - 常见问题
-
-### 配置文档
-- `ENV_SETUP.md` - 环境配置说明
-- `DEPENDENCIES.md` - 依赖清单
-
-### 设计文档
-- `DESIGN.md` - 系统设计概述
-- `DATABASE_SCHEMA.md` - 数据库设计
-
-## 📖 快速导航
-
-- **新手指南**: 查看 `QUICK_START.md`
-- **开发环境**: 查看 `ENV_SETUP.md`
-- **API文档**: 查看 `API_DOCUMENTATION.md`
-- **部署指南**: 查看 `DEPLOYMENT.md`
-- **测试说明**: 查看 `TESTING.md`
+旧部署命令、主机、域名、数据库revision和环境配置仅用于追溯，执行前必须按当前部署环境重新制定步骤。一次性迁移限制不自动成为永久禁令；明确的兼容、隐私与未开放功能保留条件则需具体的新决定才能改变。

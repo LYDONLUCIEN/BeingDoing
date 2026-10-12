@@ -2,6 +2,8 @@
 
 # ADR-0019: 报告 PDF 渲染接入 xunlu 精简渲染器（子进程 + 开关共存）
 
+> **现行阅读限制（2026-10-12）：静态渲染架构和保留条件有效，双引擎开关已废止。** [ADR-0021](0021-single-xunlu-report-renderer.md)已将xunlu设为唯一报告引擎，删除运行时切换和WeasyPrint报告兜底。`report/xunlu`只读设计母版与`src/report-renderer/dist`生产构建产物有明确用途，不能按通用“旧目录/生成目录”规则删除；前端设计母版不是线上服务。重新渲染已有Markdown不应触发LLM重生成。见[历史证据](../HISTORY_EVIDENCE.md)。
+
 **状态**: accepted
 **日期**: 2026-08-20
 **决策者**: 产品 + 开发 Grill

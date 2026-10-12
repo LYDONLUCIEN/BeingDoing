@@ -1,5 +1,5 @@
 """
-Rumination 导出数据组装工具
+历史沉淀只读导出工具（旧表格协议已退役，不生成或迁移 combo_id）
 
 供两个消费方复用：
   1. 批量导出（batch_export_service）—— 产出 rumination_tables.json / summary.json / raw
@@ -13,6 +13,7 @@ Rumination 导出数据组装工具
   - slice_conversation_by_step(messages) -> dict[str, list] | {"_unified": list}
       按 filter_step 切分 rumination 对话；老数据无法切片则整段单列
 """
+
 from __future__ import annotations
 
 import json
@@ -20,11 +21,9 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from app.utils.report_registry import ReportRegistry, STEP_IDS
-from app.utils.rumination_progress import (
-    FILTER_STEPS,
-    load_rumination_progress,
-)
+from app.utils.report_registry import STEP_IDS, ReportRegistry
+
+FILTER_STEPS = range(1, 8)  # 仅用于解释已存在的历史表格快照
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +37,9 @@ ALL_PHASES = ("values", "strengths", "interests", "purpose", "rumination")
 SLICE_ROLES_KEEP = {"user", "assistant", "conclusion_card"}
 
 
-def _load_step_session_json(registry: ReportRegistry, report_id: str, step_id: str) -> Optional[dict]:
+def _load_step_session_json(
+    registry: ReportRegistry, report_id: str, step_id: str
+) -> Optional[dict]:
     """读取某 phase 的 selected_session 对应的源 JSON；无则 None。"""
     record = registry.get_report_by_id(report_id)
     if not record:
@@ -116,7 +117,9 @@ def _extract_columns(rows: List[dict]) -> List[str]:
     return cols
 
 
-def build_rumination_tables(report_id: str, registry: Optional[ReportRegistry] = None) -> Dict[str, Any]:
+def build_rumination_tables(
+    report_id: str, registry: Optional[ReportRegistry] = None
+) -> Dict[str, Any]:
     """组装 rumination_tables.json 的完整结构。
 
     结构见设计文档：
@@ -136,8 +139,7 @@ def build_rumination_tables(report_id: str, registry: Optional[ReportRegistry] =
     prerequisites = build_prerequisites(registry, report_id)
 
     # rumination 进度
-    reports_root = registry.reports_root
-    progress = load_rumination_progress(reports_root, report_id)
+    progress = load_raw_rumination_progress(report_id, registry) or {}
     snapshots = progress.get("filter_step_snapshots") or {}
 
     steps: Dict[str, Dict[str, Any]] = {}
@@ -163,7 +165,9 @@ def build_rumination_tables(report_id: str, registry: Optional[ReportRegistry] =
         "prerequisites": prerequisites,
         "steps": steps,
         "combo_matrix": combo_matrix if isinstance(combo_matrix, list) and combo_matrix else None,
-        "combo_conclusions": combo_conclusions if isinstance(combo_conclusions, dict) and combo_conclusions else None,
+        "combo_conclusions": (
+            combo_conclusions if isinstance(combo_conclusions, dict) and combo_conclusions else None
+        ),
     }
 
 
@@ -188,7 +192,7 @@ def build_summary(report_id: str, registry: Optional[ReportRegistry] = None) -> 
         cf = ((raw.get("metadata") or {}) if raw else {}).get("conclusion_final")
         entry: Dict[str, Any] = {"conclusion_final": cf}
         if phase == "rumination":
-            progress = load_rumination_progress(registry.reports_root, report_id)
+            progress = load_raw_rumination_progress(report_id, registry) or {}
             cc = progress.get("combo_conclusions")
             entry["combo_conclusions"] = cc if isinstance(cc, dict) and cc else None
         phases[phase] = entry
@@ -200,7 +204,9 @@ def build_summary(report_id: str, registry: Optional[ReportRegistry] = None) -> 
     }
 
 
-def load_raw_rumination_progress(report_id: str, registry: Optional[ReportRegistry] = None) -> Optional[dict]:
+def load_raw_rumination_progress(
+    report_id: str, registry: Optional[ReportRegistry] = None
+) -> Optional[dict]:
     """原样读取 rumination_progress.json（供 raw/ 产物）；不存在返回 None。"""
     if registry is None:
         registry = ReportRegistry()
@@ -208,7 +214,8 @@ def load_raw_rumination_progress(report_id: str, registry: Optional[ReportRegist
     if not path.is_file():
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8") or "{}")
+        value = json.loads(path.read_text(encoding="utf-8") or "{}")
+        return value if isinstance(value, dict) else None
     except (OSError, json.JSONDecodeError):
         return None
 
@@ -232,7 +239,9 @@ def slice_conversation_by_step(messages: List[dict]) -> Dict[str, List[dict]]:
     has_any_step = any(isinstance(m, dict) and m.get("filter_step") is not None for m in messages)
     if not has_any_step:
         # 老数据：整段单列
-        unified = [m for m in messages if isinstance(m, dict) and (m.get("role") in SLICE_ROLES_KEEP)]
+        unified = [
+            m for m in messages if isinstance(m, dict) and (m.get("role") in SLICE_ROLES_KEEP)
+        ]
         return {"_unified": unified} if unified else {}
 
     # 为每条消息打 step 标签。归属规则：

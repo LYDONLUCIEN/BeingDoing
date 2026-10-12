@@ -17,7 +17,6 @@ const CATEGORY_BADGE: Record<string, string> = {
 interface LayerStackViewProps {
   layers: PromptCatalogLayer[];
   variableSamples?: Record<string, string>;
-  activePhase: string;
   highlightQuery?: string;
   onCopy?: (text: string, label: string) => void;
 }
@@ -25,7 +24,6 @@ interface LayerStackViewProps {
 function NestedConditionBlock({
   conditions,
   variableSamples,
-  activePhase,
   highlightQuery = '',
 }: {
   conditions: Array<{
@@ -34,15 +32,13 @@ function NestedConditionBlock({
     segments?: PromptContentSegment[];
   }>;
   variableSamples?: Record<string, string>;
-  activePhase: string;
   highlightQuery?: string;
 }) {
   if (!conditions.length) return null;
   return (
     <div className="mt-2 space-y-2 border-l-2 border-bd-border pl-3">
       {conditions.map((c) => {
-        const active =
-          c.condition === 'rumination_step_addon' && activePhase === 'rumination';
+        const active = Boolean(variableSamples?.[c.condition]);
         return (
           <div
             key={c.condition}
@@ -68,7 +64,6 @@ function NestedConditionBlock({
 export function LayerStackView({
   layers,
   variableSamples,
-  activePhase,
   highlightQuery = '',
   onCopy,
 }: LayerStackViewProps) {
@@ -162,7 +157,6 @@ export function LayerStackView({
                   <NestedConditionBlock
                     conditions={layer.nested_conditions}
                     variableSamples={variableSamples}
-                    activePhase={activePhase}
                     highlightQuery={highlightQuery}
                   />
                 ) : null}
