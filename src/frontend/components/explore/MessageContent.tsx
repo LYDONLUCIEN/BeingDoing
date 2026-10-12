@@ -1,7 +1,7 @@
 'use client';
 
 import { memo } from 'react';
-import MarkdownPreview from '@uiw/react-markdown-preview';
+import MarkdownPreview from '@/components/common/SafeMarkdownPreview';
 import { preprocessMarkdown } from '@/lib/mdPreprocess';
 
 interface MessageContentProps {

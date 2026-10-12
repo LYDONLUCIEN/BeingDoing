@@ -4,7 +4,7 @@
 
 import hashlib
 import logging
-import random
+import secrets
 import smtplib
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -200,6 +200,15 @@ def _create_token(
 
     to_encode.update({"exp": expire, "type": token_type})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def _verify_one_time_code(record: Dict, code: str) -> None:
+    """每个验证码最多尝试五次，耗尽后保留发送冷却直到重发。"""
+    if record.get("attempts", 0) >= 5:
+        raise ValueError("验证码尝试次数过多，请重新获取验证码")
+    record["attempts"] = record.get("attempts", 0) + 1
+    if not secrets.compare_digest(str(record["code"]).encode(), (code or "").strip().encode()):
+        raise ValueError("验证码错误")
 
 
 class AuthService:
@@ -523,7 +532,7 @@ class AuthService:
     @staticmethod
     async def request_password_reset(email: str) -> None:
         """
-        申请重置密码：生成一次性验证码，并通过邮件发送（当前开发环境直接打印到日志）
+        申请重置密码：生成一次性验证码，通过 SMTP 邮件发送
 
         Args:
             email: 用户邮箱
@@ -553,7 +562,7 @@ class AuthService:
             raise ValueError("发送过于频繁，请 60 秒后再试")
 
         # 生成 6 位数字验证码（最新发送覆盖旧验证码）
-        code = f"{random.randint(0, 999999):06d}"
+        code = f"{secrets.randbelow(1_000_000):06d}"
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
         # 通过 SMTP 发送邮件，发送成功后再写入本次验证码记录
         try:
@@ -599,8 +608,7 @@ class AuthService:
             raise ValueError("验证码已过期，请重新获取")
 
         # 检查验证码
-        if record["code"] != code:
-            raise ValueError("验证码错误")
+        _verify_one_time_code(record, code)
 
         # 验证通过，更新密码
         async with AsyncSessionLocal() as db:
@@ -612,7 +620,7 @@ class AuthService:
                 raise ValueError("用户已被禁用")
 
             password_hash = AuthService.get_password_hash(new_password)
-            await user_db.update_user(user.id, password_hash=password_hash)
+            await user_db.reset_password(user.id, password_hash)
 
         # 一次性验证码，成功后删除
         _password_reset_email_codes.pop(email, None)
@@ -650,7 +658,7 @@ class AuthService:
             raise ValueError("发送过于频繁，请 60 秒后再试")
 
         # 最新发送覆盖旧验证码
-        code = f"{random.randint(0, 999999):06d}"
+        code = f"{secrets.randbelow(1_000_000):06d}"
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
         _password_reset_phone_codes[phone] = {
             "code": code,
@@ -681,8 +689,7 @@ class AuthService:
             del _password_reset_phone_codes[phone]
             raise ValueError("验证码已过期，请重新获取")
 
-        if record["code"] != code:
-            raise ValueError("验证码错误")
+        _verify_one_time_code(record, code)
 
         async with AsyncSessionLocal() as db:
             user_db = UserDB(db)
@@ -693,7 +700,7 @@ class AuthService:
                 raise ValueError("用户已被禁用")
 
             password_hash = AuthService.get_password_hash(new_password)
-            await user_db.update_user(user.id, password_hash=password_hash)
+            await user_db.reset_password(user.id, password_hash)
 
         _password_reset_phone_codes.pop(phone, None)
 
@@ -714,7 +721,7 @@ class AuthService:
             if not user:
                 raise ValueError("用户不存在")
             password_hash = AuthService.get_password_hash(new_password)
-            await user_db.update_user(user.id, password_hash=password_hash)
+            await user_db.reset_password(user.id, password_hash)
 
     # ===================== 修改密码相关（已登录用户） =====================
 
@@ -1172,7 +1179,7 @@ class AuthService:
             raise ValueError("发送过于频繁，请 60 秒后再试")
 
         # 生成 6 位数字验证码（最新发送覆盖旧验证码），发送成功后才写入
-        code = f"{random.randint(0, 999999):06d}"
+        code = f"{secrets.randbelow(1_000_000):06d}"
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
         try:
             await EmailService.send_account_recovery_code(
@@ -1229,8 +1236,7 @@ class AuthService:
             raise ValueError("验证码已过期，请重新获取")
 
         # 检查验证码
-        if record["code"] != (code or "").strip():
-            raise ValueError("验证码错误")
+        _verify_one_time_code(record, code)
 
         # 一次性验证码，验证通过即消费
         _account_recovery_codes.pop(email, None)

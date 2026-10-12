@@ -3,12 +3,14 @@
 """
 import json
 import logging
-
-from fastapi import APIRouter, HTTPException, Depends, Request, status, Header, Response, Cookie
-from pydantic import BaseModel, EmailStr
 from typing import Optional
-from app.services.auth_service import AuthService, LoginLockedError
+
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, Response, status
+from pydantic import BaseModel, EmailStr
+
 from app.config.settings import settings
+from app.services.auth_service import AuthService, LoginLockedError
+from app.utils.client_ip import get_client_ip as _client_ip
 from app.utils.super_admin import is_super_admin_user
 
 logger = logging.getLogger(__name__)
@@ -23,15 +25,7 @@ REGISTER_RATE_LIMIT_PER_HOUR = 5
 _REGISTER_ATTEMPTS: dict = {}  # ip -> {"count": int, "window_start": datetime}
 
 
-def _client_ip(request: Request) -> str:
-    """提取客户端 IP（优先 X-Forwarded-For，与 simple_auth._client_ip 同口径）。"""
-    forwarded = (request.headers.get("x-forwarded-for") or "").split(",")
-    if forwarded and forwarded[0].strip():
-        return forwarded[0].strip()
-    if request.client and request.client.host:
-        return request.client.host
-    return ""
-
+# 兼容既有调用名，统一由 ASGI 服务器处理可信代理。
 
 def _check_register_rate_limit(ip: str) -> None:
     """超限抛 429；未超限则计数。IP 为空（拿不到）时不限。"""
@@ -425,6 +419,8 @@ async def request_password_reset_sms(request: PasswordResetSMSRequest):
     """
     申请重置密码验证码（通过手机号）
     """
+    if settings.APP_ENV.strip().lower() not in {"development", "test"}:
+        raise HTTPException(status_code=503, detail="短信找回密码尚未上线，请使用邮箱或联系管理员")
     try:
         await AuthService.request_password_reset_by_phone(phone=request.phone)
         return AuthResponse(
@@ -444,6 +440,8 @@ async def confirm_password_reset_sms(request: PasswordResetSMSConfirmRequest):
     """
     使用手机短信验证码重置密码（开发环境假实现）
     """
+    if settings.APP_ENV.strip().lower() not in {"development", "test"}:
+        raise HTTPException(status_code=503, detail="短信找回密码尚未上线，请使用邮箱或联系管理员")
     try:
         await AuthService.reset_password_with_phone_code(
             phone=request.phone,

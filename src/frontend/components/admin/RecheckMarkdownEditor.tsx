@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import MarkdownPreview from '@uiw/react-markdown-preview';
+import MarkdownPreview from '@/components/common/SafeMarkdownPreview';
 import { Loader2, Download, Send } from 'lucide-react';
 import {
   fetchAdminRecheckMarkdown,

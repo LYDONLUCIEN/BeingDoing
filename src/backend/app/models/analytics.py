@@ -64,7 +64,9 @@ class AnalyticsLike(Base):
     __tablename__ = "analytics_likes"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String(36), nullable=True, index=True)  # 点赞用户 ID（未登录可为空）
+    user_id = Column(
+        String(36), nullable=True, index=True
+    )  # 点赞账户 ID（历史匿名记录可为空，新写入须登录）
     session_id = Column(String(128), nullable=False, index=True)
     thread_id = Column(
         String(128), nullable=True, index=True

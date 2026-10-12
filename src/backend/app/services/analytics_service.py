@@ -90,6 +90,7 @@ class AnalyticsService:
     @staticmethod
     async def record_like(
         session_id: str,
+        user_id: str,
         log_index: int,
         content_preview: Optional[str] = None,
         dimension: Optional[str] = None,
@@ -98,6 +99,8 @@ class AnalyticsService:
         try:
             async with AsyncSessionLocal() as db:
                 like = AnalyticsLike(
+                    user_id=user_id,
+                    message_id=f"legacy_{session_id}_{log_index}",
                     session_id=session_id,
                     log_index=log_index,
                     content_preview=(content_preview or "")[:500],
@@ -113,7 +116,7 @@ class AnalyticsService:
 
     @staticmethod
     async def toggle_like(
-        user_id: Optional[str],
+        user_id: str,
         session_id: str,
         message_id: str,
         thread_id: Optional[str] = None,
@@ -134,8 +137,7 @@ class AnalyticsService:
             async with AsyncSessionLocal() as db:
                 # 查找是否已点赞
                 q = select(AnalyticsLike).where(AnalyticsLike.message_id == message_id)
-                if user_id:
-                    q = q.where(AnalyticsLike.user_id == user_id)
+                q = q.where(AnalyticsLike.user_id == user_id)
                 result = await db.execute(q)
                 existing = result.scalar_one_or_none()
 
@@ -169,13 +171,12 @@ class AnalyticsService:
             raise
 
     @staticmethod
-    async def remove_like(message_id: str, user_id: Optional[str] = None) -> bool:
+    async def remove_like(message_id: str, user_id: str) -> bool:
         """取消指定消息的点赞"""
         try:
             async with AsyncSessionLocal() as db:
                 q = delete(AnalyticsLike).where(AnalyticsLike.message_id == message_id)
-                if user_id:
-                    q = q.where(AnalyticsLike.user_id == user_id)
+                q = q.where(AnalyticsLike.user_id == user_id)
                 result = await db.execute(q)
                 await db.commit()
                 return result.rowcount > 0
@@ -185,6 +186,7 @@ class AnalyticsService:
 
     @staticmethod
     async def get_likes(
+        user_id: str,
         activation_code: Optional[str] = None,
         phase: Optional[str] = None,
         limit: int = 50,
@@ -196,14 +198,20 @@ class AnalyticsService:
         """
         try:
             async with AsyncSessionLocal() as db:
-                q = select(AnalyticsLike).order_by(AnalyticsLike.created_at.desc())
+                q = (
+                    select(AnalyticsLike)
+                    .where(AnalyticsLike.user_id == user_id)
+                    .order_by(AnalyticsLike.created_at.desc())
+                )
                 if activation_code:
                     q = q.where(AnalyticsLike.activation_code == activation_code)
                 if phase:
                     q = q.where(AnalyticsLike.phase == phase)
 
                 # 总数
-                count_q = select(func.count(AnalyticsLike.id))
+                count_q = select(func.count(AnalyticsLike.id)).where(
+                    AnalyticsLike.user_id == user_id
+                )
                 if activation_code:
                     count_q = count_q.where(AnalyticsLike.activation_code == activation_code)
                 if phase:
@@ -236,13 +244,13 @@ class AnalyticsService:
             return {"records": [], "total": 0, "limit": limit, "offset": offset}
 
     @staticmethod
-    async def check_like_status(message_ids: List[str]) -> Dict[str, bool]:
+    async def check_like_status(message_ids: List[str], user_id: str) -> Dict[str, bool]:
         """批量查询消息点赞状态"""
         try:
             async with AsyncSessionLocal() as db:
                 result = await db.execute(
                     select(AnalyticsLike.message_id).where(
-                        AnalyticsLike.message_id.in_(message_ids)
+                        AnalyticsLike.message_id.in_(message_ids), AnalyticsLike.user_id == user_id
                     )
                 )
                 liked_ids = {row[0] for row in result.all()}
@@ -252,16 +260,17 @@ class AnalyticsService:
             return {mid: False for mid in message_ids}
 
     @staticmethod
-    async def get_liked_message_trace(message_id: str) -> Optional[Dict[str, Any]]:
+    async def get_liked_message_trace(message_id: str, user_id: str) -> Optional[Dict[str, Any]]:
         """
         按 message_id 回查原文。
-        优先返回 content_snapshot（点赞时快照留存），
-        若快照为空，则尝试从对话历史文件中加载原始消息。
+        仅返回该用户的 content_snapshot 或预览，不按客户端标识读取历史文件。
         """
         try:
             async with AsyncSessionLocal() as db:
                 result = await db.execute(
-                    select(AnalyticsLike).where(AnalyticsLike.message_id == message_id)
+                    select(AnalyticsLike).where(
+                        AnalyticsLike.message_id == message_id, AnalyticsLike.user_id == user_id
+                    )
                 )
                 like = result.scalar_one_or_none()
 
@@ -272,16 +281,7 @@ class AnalyticsService:
             source = "snapshot"
             content = like.content_snapshot or like.content_preview or ""
 
-            # 快照为空时，尝试从对话历史回溯
-            if not content and like.session_id:
-                content = AnalyticsService._recover_message_from_history(
-                    session_id=like.session_id,
-                    thread_id=like.thread_id,
-                    message_id=message_id,
-                    phase=like.phase,
-                )
-                if content:
-                    source = "history_recovery"
+            # 用户接口仅返回已存快照；历史文件回溯保留给有独立鉴权的管理员工具。
 
             return {
                 "message_id": message_id,
@@ -298,36 +298,6 @@ class AnalyticsService:
         except Exception as e:
             logger.exception("get_liked_message_trace failed: %s", e)
             return None
-
-    @staticmethod
-    def _recover_message_from_history(
-        session_id: str,
-        thread_id: Optional[str],
-        message_id: str,
-        phase: Optional[str] = None,
-    ) -> Optional[str]:
-        """
-        从对话历史文件中恢复消息内容（快照兜底策略）。
-        扫描 simple 模式的 JSON 对话文件，匹配 message_id。
-        """
-        try:
-            simple_dir = get_simple_base_dir() / session_id
-            if not simple_dir.is_dir():
-                return None
-
-            # 遍历该 session 下所有对话 JSON 文件
-            for conv_file in simple_dir.glob("*.json"):
-                try:
-                    data = json.loads(conv_file.read_text(encoding="utf-8"))
-                except (json.JSONDecodeError, OSError):
-                    continue
-                messages = data.get("messages") or []
-                for msg in messages:
-                    if msg.get("id") == message_id:
-                        return msg.get("content") or ""
-        except Exception as e:
-            logger.warning("recover_message_from_history failed: %s", e)
-        return None
 
     @staticmethod
     def _empty_dashboard() -> Dict[str, Any]:

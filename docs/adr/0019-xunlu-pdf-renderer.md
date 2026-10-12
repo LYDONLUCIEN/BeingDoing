@@ -1,3 +1,5 @@
+> 双引擎切换部分已由 [ADR-0021](0021-single-xunlu-report-renderer.md) 取代；渲染器本体与元数据契约保留。
+
 # ADR-0019: 报告 PDF 渲染接入 xunlu 精简渲染器（子进程 + 开关共存）
 
 **状态**: accepted

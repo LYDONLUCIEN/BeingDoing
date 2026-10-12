@@ -75,9 +75,9 @@ test("昵称提取：任意标题层级", () => {
   assert.equal(extractNickname("# 没有旅程标题"), undefined);
 });
 
-test("xunlu 原生样例：归一化是恒等变换，章节结构与页数不变", () => {
+test("原生方言合成样例：归一化后章节结构与页数不变", () => {
   const sample = readFileSync(
-    "/home/gitclone/BeingDoing/report/xunlu/content/reports/mixkz-report.md",
+    new URL("./fixtures/native-report.md", import.meta.url),
     "utf8",
   );
   const normalized = normalizeReportMarkdown(sample);

@@ -1,11 +1,15 @@
 # 后端核心依赖
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
-sqlalchemy>=2.0.0
+sqlalchemy[asyncio]>=2.0.0
 pydantic>=2.0.0
-python-jose[cryptography]>=3.3.0
+python-jose[cryptography]>=3.4.0
 passlib[bcrypt]>=1.7.4
-python-multipart>=0.0.6
+# passlib 1.7.4 与 bcrypt 4.1+ 的元数据及 5.x 长度行为不兼容
+bcrypt>=4.0.1,<4.1
+email-validator>=2.0.0
+aiofiles>=23.2.1
+python-multipart>=0.0.30
 python-dotenv>=1.0.0
 
 # 数据库
@@ -21,17 +25,14 @@ langchain-openai>=0.0.5
 openai>=1.0.0
 tiktoken>=0.5.0
 
-# ASR/TTS（可选，AUDIO_MODE控制）
-openai-whisper>=20231117
-pyttsx3>=2.90
-gtts>=2.5.0
+# ASR/TTS 可选依赖见 requirements-audio.txt（AUDIO_MODE 默认关闭）
 
 # 工具
 filelock>=3.12.0
 pydantic-settings>=2.0.0
 reportlab>=4.0.0  # PDF导出（可选）
 PyYAML>=6.0
-Jinja2>=3.1.0
+Jinja2>=3.1.6
 markdown>=3.5  # markdown → HTML（报告 PDF 中间层）
 weasyprint>=60.0  # HTML/CSS → PDF（报告导出）
 
@@ -39,13 +40,10 @@ weasyprint>=60.0  # HTML/CSS → PDF（报告导出）
 oss2>=2.19.0  # 阿里云 OSS SDK
 
 # 头像压缩（服务端裁剪+缩放+转 WebP）
-Pillow>=10.0.0
+Pillow>=12.3.0
 
-# 测试（开发依赖）
-pytest>=7.4.0
-pytest-asyncio>=0.21.0
+# HTTP 客户端（生产支付与 LLM 请求也使用）
 httpx>=0.25.0
-pytest-cov>=4.1.0
 
 # 退信扫描（IMAP + 定时任务）
 apscheduler>=3.10.0

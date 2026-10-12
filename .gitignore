@@ -102,3 +102,7 @@ test/report0816
 
 # 本地 env 备份（含密钥，禁止入库）
 .env.bak-*
+
+# 本地验证截图/脚本与 FileLock 哨兵，不是测试输入
+/output/
+*.json.lock

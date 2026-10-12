@@ -1,3 +1,5 @@
+> 版本历史参考：旧 WeasyPrint 主题/双引擎步骤已被 ADR-0021 替代；当前开发入口为仓库 docs/DEVELOPMENT.md。
+
 # 报告生成提示词、流程与渲染素材说明（2026-08-15）
 
 > 面向需要调整报告生成提示词、报告样式/素材的同学。本文梳理：提示词位置、完整生成流程、注入的用户变量、图表/渲染链路、素材文件清单与调整入口。
@@ -148,7 +150,7 @@ report_markdown.md（缓存）
 |---|---|---|
 | 报告章节内容、结构、表格形态 | 提示词 `src/backend/app/domain/prompts/templates/report_system.yaml` | **需要** force 重新生成（普通用户每报告限 2 次，admin 不限） |
 | 分页/列表/标题修正规则、信件压缩 | `src/backend/app/services/report_postprocess.py` | 需要重新生成 |
-| 配色（正文/标题/表格/卡片颜色） | 只改 `src/backend/app/static/styles/report_theme.json` + 重启后端（详见 `wiki/开发文档/0812-报告配色配置说明.md`） | **不需要**（下载时即时渲染） |
+| 配色（正文/标题/表格/卡片颜色） | 只改 `src/backend/app/static/styles/report_theme.json` + 重启后端（详见 `wiki/开发文档/（旧配色操作已移除，现行见 docs/adr/0021-single-xunlu-report-renderer.md）`） | **不需要**（下载时即时渲染） |
 | 版式/表格样式/水印位置/页眉页脚/信件排版 | `src/backend/app/static/styles/report_pdf.css`（注意 `{{token}}` 需在 theme.json 有对应 key） | 不需要，重启后端即可 |
 | 字体 | 替换 `static/fonts/` 下 ttf 并同步改 `report_pdf.css` 顶部 `@font-face` | 不需要 |
 | 水印 / 页眉页脚 logo | 替换 `static/assets/` 同名 png 即可 | 不需要 |

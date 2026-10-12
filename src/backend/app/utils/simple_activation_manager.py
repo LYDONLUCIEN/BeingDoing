@@ -19,13 +19,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
-import logging
 from typing import Dict, List, Optional, Tuple
 
 from app.utils.helpers import parse_iso_to_utc
@@ -67,7 +67,7 @@ class ActivationRecord:
     session_id: str
     mode: str
     created_at: str
-    expires_at: Optional[str]  # None = 不过期（试用码）
+    expires_at: Optional[str]  # None：试用不限期；存量完整码待首次使用起算
     last_activity_at: str
     activation_session_id: Optional[str] = None
     status: str = ActivationStatus.ACTIVE
@@ -77,7 +77,7 @@ class ActivationRecord:
     deleted_at: Optional[str] = None
     purge_after: Optional[str] = None
     source: Optional[str] = None
-    vip_level: int = 1  # 1=DeepSeek, 2=Kimi/Qwen
+    vip_level: int = 1  # 历史模型档位；实际供应商/模型由运行配置决定
     # 管理员调试沙箱：独立存储于 data/test/simple/sandboxes/{fork_id}/
     is_sandbox: bool = False
     sandbox_root: Optional[str] = None  # 相对 data/test/simple，如 sandboxes/uuid
@@ -96,7 +96,7 @@ class ActivationRecord:
     report_index_updated_at: Optional[str] = None
     # ── 套餐与试用体系（ADR-0008；存量码一律 code_type=full）──
     code_type: str = "full"  # trial | full
-    package_type: Optional[str] = None  # None | quarterly | annual（决定延期价格档）
+    package_type: Optional[str] = None  # None | quarterly | annual（来源套餐，延期现统一定价）
     source_order_id: Optional[str] = None  # 交付来源订单（赠品码/升级追溯）
     purchaser_user_id: Optional[str] = None  # 所属人（购买者）；激活人看 owner_user_id
     report_authorized: bool = False  # 激活人一键授权报告给所属人
@@ -104,7 +104,7 @@ class ActivationRecord:
     consumed_into: Optional[str] = None
     # 消耗升级反向溯源（仅试用码记录）：本试用码是被哪个付费码消耗升级而来的
     upgraded_from_code: Optional[str] = None
-    # 7 天免费续期（ADR-0015）：每个完整码首次过期通知一次、可免费领取一次
+    # 7 天免费续期（ADR-0016）：每个完整码首次过期通知一次、可免费领取一次
     free_renewal_offered_at: Optional[str] = None  # 已发过期通知时间（幂等标记）
     free_renewal_claimed_at: Optional[str] = None  # 已领取免费续期时间
 
@@ -278,7 +278,7 @@ class SimpleActivationManager:
                 # 消耗升级（ADR-0014）
                 data.setdefault("consumed_into", None)
                 data.setdefault("upgraded_from_code", None)
-                # 7 天免费续期（ADR-0015）
+                # 7 天免费续期（ADR-0016）
                 data.setdefault("free_renewal_offered_at", None)
                 data.setdefault("free_renewal_claimed_at", None)
                 records[code] = ActivationRecord(**data)

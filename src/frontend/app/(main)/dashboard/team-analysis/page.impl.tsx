@@ -19,7 +19,7 @@ import {
   UsersRound,
   XCircle,
 } from 'lucide-react';
-import MarkdownPreview from '@uiw/react-markdown-preview';
+import MarkdownPreview from '@/components/common/SafeMarkdownPreview';
 import { useLocale } from '@/hooks/useLocale';
 import { getApiErrorMessage } from '@/lib/api/client';
 import {

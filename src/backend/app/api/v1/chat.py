@@ -16,6 +16,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from app.api.security import require_session_owner
 from app.api.v1.auth import get_current_user
 from app.config.settings import settings
 from app.core.agent.config import AgentRunConfig
@@ -140,6 +141,7 @@ async def send_message(
     background_tasks: BackgroundTasks = None,
 ):
     """发送消息（思考链 + 用户侧输出：用户可见内容来自 user_agent 节点）"""
+    await require_session_owner(request.session_id, current_user)
     try:
         user_id = current_user["user_id"] if current_user else None
 
@@ -361,6 +363,7 @@ async def send_message_stream(
     current_user: Optional[dict] = Depends(get_current_user),
 ):
     """发送消息并流式返回助手回复（SSE）。先发 started，再跑智能体；reasoning 节点使用 chat_stream 边生成边推块，真流式输出。"""
+    await require_session_owner(request.session_id, current_user)
 
     async def event_stream():
         try:
@@ -518,6 +521,7 @@ async def record_interrupt(
     current_user: Optional[dict] = Depends(get_current_user),
 ):
     """用户点击终止时记录打断动作与截至之前的助手内容"""
+    await require_session_owner(request.session_id, current_user)
     try:
         conversation_manager = ConversationFileManager()
         category = "main_flow"
@@ -605,6 +609,7 @@ async def get_conversation_history(
     current_user: Optional[dict] = Depends(get_current_user),
 ):
     """获取对话历史"""
+    await require_session_owner(session_id, current_user)
     try:
         conversation_manager = ConversationFileManager(base_dir=str(settings.CONVERSATION_DIR))
 
@@ -646,6 +651,7 @@ async def trigger_guide(
     request: GuideRequest, current_user: Optional[dict] = Depends(get_current_user)
 ):
     """触发主动引导"""
+    await require_session_owner(request.session_id, current_user)
     try:
         from app.services.guide_service import GuideService
 
@@ -678,6 +684,7 @@ async def set_guide_preference(
     request: GuidePreferenceRequest, current_user: Optional[dict] = Depends(get_current_user)
 ):
     """设置引导偏好"""
+    await require_session_owner(request.session_id, current_user)
     try:
         from app.services.guide_service import GuideService
 
@@ -699,6 +706,7 @@ async def resummarize_after_edit(
     request: ResummarizeRequest, current_user: Optional[dict] = Depends(get_current_user)
 ):
     """用户修改回答后触发后台思考智能体重新梳理和总结（当前返回成功，后续可接入智能体重算 step_summary）"""
+    await require_session_owner(request.session_id, current_user)
     # TODO: 接入 agent 根据该步骤最新回答重新生成 step_summary 并持久化
     return StandardResponse(
         code=200,

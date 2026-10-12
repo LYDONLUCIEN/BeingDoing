@@ -1,0 +1,10 @@
+-r requirements.txt
+
+# 本地验证工具
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+black>=24.0
+isort>=5.13
+bandit>=1.7.0
+pip-audit>=2.7.0

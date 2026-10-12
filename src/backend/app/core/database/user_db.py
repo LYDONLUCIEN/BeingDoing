@@ -2,12 +2,14 @@
 用户数据操作
 """
 
+from datetime import datetime, timezone
 from typing import List, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.models.refresh_token import RefreshToken
 from app.models.user import ProjectExperience, User, UserProfile, WorkHistory
 
 
@@ -66,6 +68,23 @@ class UserDB:
         await self.session.commit()
         await self.session.refresh(user)
         return user
+
+    async def reset_password(self, user_id: str, password_hash: str) -> None:
+        """原子更新密码并撤销全部刷新令牌，避免旧登录态恢复访问。"""
+        user = await self.get_user_by_id(user_id)
+        if user is None:
+            raise ValueError("用户不存在")
+        user.password_hash = password_hash
+        await self.session.execute(
+            update(RefreshToken)
+            .where(RefreshToken.user_id == user_id, RefreshToken.is_revoked.is_(False))
+            .values(
+                is_revoked=True,
+                revoked_at=datetime.now(timezone.utc),
+                revoked_reason="password_reset",
+            )
+        )
+        await self.session.commit()
 
     async def create_user_profile(
         self, user_id: str, gender: Optional[str] = None, age: Optional[int] = None

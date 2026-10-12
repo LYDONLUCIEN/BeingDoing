@@ -1,0 +1,114 @@
+# 验证与已知基线问题
+
+核查日期 2026-10-12。基线从 v1.8.0 用 git archive 导出到独立临时目录；clean 与基线使用同一 Python 3.12.14 环境、APP_ENV=test、独立测试密钥，没有复制生产数据库/用户数据。Node 本次实际为 26.0.0；目标部署 Node 需另行验收。
+
+## 可复跑命令
+
+根目录激活虚拟环境后：
+
+```bash
+APP_ENV=test DEBUG=False python -m pytest test/backend
+python -m pytest test/backend/test_security_boundaries.py test/backend/test_security_config.py test/backend/test_analytics_privacy.py test/backend/test_password_reset_sessions.py
+black --check --config src/backend/pyproject.toml src/backend
+isort --check-only --settings-path src/backend/pyproject.toml src/backend
+```
+
+前端目录运行 `npm run lint`、`npm run test:security`、`NEXT_TELEMETRY_DISABLED=1 npm run build`。渲染器目录运行 `npm test`。依赖审计：`python -m pip_audit`、前端 `npm audit`，结果需按可达条件人工判断。
+
+## 实际结果
+
+| 检查 | 结果与范围 |
+| --- | --- |
+| 全量后端基线 | 978 passed，56 failed，6 errors |
+| clean 最终全量 | 1030 passed，56 failed，6 errors；失败 ID 集合与基线完全相同，新增 52 项通过 |
+| 新增安全用例独立运行 | 52 passed，覆盖权限、归属、配置、重置令牌和导出正反路径 |
+| 前端安全行为 | 3 passed；实际 React 组件渲染，不是文本搜索断言 |
+| 前端 lint | 退出 0，保留原有 Hook 依赖/原生 img 提示 |
+| 前端 production build | 退出 0，路由编译及 TypeScript 检查通过 |
+| 报告 renderer | 8 passed；修复 node --test 的目录参数兼容，并以合成 fixture 替代硬编码服务器私有报告路径；dist 重建无差异 |
+| 全量 Python 格式 | 原有大量格式债：首次 Black 检查 204 文件待调整；isort 也有既有失败。新增文件完整格式化，旧文件只格式化变更行/导入，避免全仓无关重排 |
+| pip-audit | 133 包，2 个不同未修复公告（原输出 3 条含重复），适用条件见安全评估 |
+| npm audit | bulk advisory 请求 ECONNRESET；未获得可靠完整结果，不能写成通过 |
+
+完整后端失败不是本次新增，但也不等于可忽略。没有删除这些失败测试来制造绿色结果。
+
+## 失败分类与处理次序
+
+- core/agent、LLM：缺真实 API/DB 默认模型、计费预期与现有实现不一致，部分 tokenizer 初次下载受网络限制。先拆开离线契约测试与真实服务集成测试。
+- ASR/Chroma：可选组件未装；音频不属于本次默认运行配置。
+- 知识库：干净克隆缺部署侧 CSV 路径/内容。先用受控 fixture 固定离线输入。
+- 旧 ConversationFileManager 测试：仍期待已经改变的方法/返回值，需要按当前存储契约修订，不能据此删除仍挂载的旧聊天路由。
+- 两个数据库测试：旧建表/异步会话假设与当前依赖环境冲突，需隔离 fixture。
+- v3 prompt/候选与回放：历史断言、fixture 中协议和当前兼容代码不一致；v3 后端明确保留，先定位实际支持范围再更新预期。
+- 6 个 real_history 错误：测试依赖未入库的真实历史文件。应脱敏转受控 fixture，而非依赖某台机器目录。
+
+## 基线失败 ID（便于追踪）
+
+```text
+test/backend/core/agent/test_graph.py::test_agent_graph_basic_flow
+test/backend/core/agent/test_graph.py::test_agent_graph_basic_flow_deepseek
+test/backend/core/asr/test_openai_whisper.py::test_transcribe_success
+test/backend/core/knowledge/test_loader.py::test_load_all
+test/backend/core/knowledge/test_loader.py::test_load_interests
+test/backend/core/knowledge/test_loader.py::test_load_strengths
+test/backend/core/knowledge/test_loader.py::test_load_values
+test/backend/core/knowledge/test_search.py::test_get_similar_examples
+test/backend/core/knowledge/test_search.py::test_search_interests
+test/backend/core/knowledge/test_search.py::test_search_questions
+test/backend/core/knowledge/test_search.py::test_search_strengths
+test/backend/core/knowledge/test_search.py::test_search_values
+test/backend/core/knowledge/vector/test_factory.py::test_create_chroma_vector_store
+test/backend/core/llmapi/test_factory.py::test_get_default_llm_provider
+test/backend/core/llmapi/test_openai_provider.py::test_count_tokens
+test/backend/core/llmapi/test_openai_provider.py::test_estimate_cost
+test/backend/core/tts/test_openai_tts.py::test_synthesize_invalid_speed
+test/backend/core/tts/test_openai_tts.py::test_synthesize_invalid_voice
+test/backend/test_conversation_file_manager.py::test_add_message
+test/backend/test_conversation_file_manager.py::test_delete_session
+test/backend/test_conversation_file_manager.py::test_file_structure
+test/backend/test_conversation_file_manager.py::test_get_all_categories
+test/backend/test_conversation_file_manager.py::test_get_conversation_history
+test/backend/test_conversation_file_manager.py::test_get_messages
+test/backend/test_conversation_file_manager.py::test_get_messages_with_limit
+test/backend/test_database.py::test_user_model_crud
+test/backend/test_database_operations.py::test_question_db
+test/backend/test_database_operations.py::test_user_db_create
+test/backend/test_database_operations.py::test_user_db_get_by_email
+test/backend/test_database_operations.py::test_user_profile_create
+test/backend/test_profile_sync_bug.py::test_db_failure_does_not_write_json
+test/backend/test_profile_sync_bug.py::test_save_basic_info_raises_on_db_failure
+test/backend/test_profile_sync_bug.py::test_save_basic_info_updates_user_profile_immediately
+test/backend/test_profile_sync_bug.py::test_save_empty_survey_still_persists
+test/backend/test_prompt_catalog.py::test_catalog_rumination_step3_fixed_opening
+test/backend/test_rumination_neg_gate.py::TestStep3HypothesisDef::test_collect_multiple_candidates
+test/backend/test_rumination_neg_gate.py::TestStep3HypothesisDef::test_collect_one_candidate
+test/backend/test_rumination_neg_gate.py::TestStep3HypothesisDef::test_collect_zero_candidates
+test/backend/test_rumination_opening_chain.py::TestFixedOpeningIsolation::test_fixed_templates_contain_row_count_placeholder
+test/backend/test_rumination_opening_chain.py::TestFixedOpeningIsolation::test_render_fixed_opening_uses_correct_template
+test/backend/test_rumination_ops.py::TestRuminationStepAnchors::test_load_rumination_step_anchors_reads_metadata
+test/backend/test_rumination_row_chat.py::test_build_row_chat_step3_adds_cursor_note
+test/backend/test_rumination_step3_flow.py::TestStep3PromptCopyNoLegacyUi::test_step3_addon_no_legacy
+test/backend/test_savepoint_replay_batch.py::test_savepoint_batch_cases[savepoint_snap_values_20260501_a]
+test/backend/test_savepoint_replay_batch.py::test_savepoint_batch_cases[savepoint_snap_values_20260501_conclusion_card_error_show]
+test/backend/test_savepoint_replay_batch.py::test_savepoint_batch_cases[savepoint_snap_values_20260501_conclusion_card_repo_right]
+test/backend/test_savepoint_replay_batch.py::test_savepoint_batch_cases[savepoint_snap_values_20260501_conclusion_card_show]
+test/backend/test_savepoint_replay_batch.py::test_savepoint_batch_cases[savepoint_snap_values_20260501_conclusion_reject]
+test/backend/test_savepoint_replay_batch.py::test_savepoint_batch_cases[sp_rumination_opening_chat_5_entry]
+test/backend/test_savepoint_replay_batch.py::test_savepoint_batch_cases[sp_strengths_dialogue_continue_2_2]
+test/backend/test_savepoint_replay_batch.py::test_savepoint_batch_cases[sp_values_pending_continue_1_2]
+test/backend/test_savepoint_replay_batch.py::test_savepoint_batch_cases[sp_values_reject_then_reopen_pending_then_confirm]
+test/backend/test_simple_chat_pending_real_history.py::test_flow_1_load_real_pending_history
+test/backend/test_simple_chat_pending_real_history.py::test_flow_2_pending_confirm_emit_card
+test/backend/test_simple_chat_pending_real_history.py::test_flow_3_pending_rejected_then_continue_chat
+test/backend/test_simple_chat_pending_real_history.py::test_flow_4_thread_complete_from_real_pending
+test/backend/test_simple_chat_pending_real_history.py::test_flow_5_reopen_after_complete
+test/backend/test_simple_chat_pending_real_history.py::test_flow_6_rejected_history_can_reenter_pending
+test/backend/test_simple_chat_replay_cases.py::test_replay_case_single_continue
+test/backend/test_simple_chat_replay_cases.py::test_replay_cases_batch_basic
+test/backend/test_step3_hyp_candidate.py::TestFallbackTrigger::test_no_trigger_when_candidates_present
+test/backend/test_step3_hyp_candidate.py::TestSanitizeHypCandidates::test_filters_guide_phrase
+```
+
+## 上线前另行验证
+
+实际 LLM 多阶段探索、SMTP 验证/重置、OSS 上传、真实渠道支付/退款、Chrome PDF、反向代理 SSE/刷新/限流及数据恢复未完成现场端到端验证。代码回归证据不能替代这些检查。

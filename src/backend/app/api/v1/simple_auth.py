@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 from fastapi import Depends, Request
 
+from app.api.security import require_super_admin
 from app.api.v1.auth import get_current_user
 from app.utils import rate_limit
 from app.utils.activation_audit import (
@@ -24,6 +25,7 @@ from app.utils.activation_audit import (
     EVENT_OWNER_VERIFIED,
     append_activation_audit,
 )
+from app.utils.client_ip import get_client_ip as _client_ip
 from app.utils.code_format import ACTIVATION_CONTEXT, normalize_user_code
 from app.utils.id_codec import IDCodec
 from app.utils.report_registry import ReportRegistry, compute_explore_resume
@@ -89,17 +91,7 @@ def _report_status(rec, user_id: str, email: str) -> Optional[str]:
     return None
 
 
-def _client_ip(request) -> str:
-    """从 FastAPI Request 中提取客户端 IP。"""
-    if request is None:
-        return ""
-    forwarded = (request.headers.get("x-forwarded-for") or "").split(",")
-    if forwarded and forwarded[0].strip():
-        return forwarded[0].strip()
-    if request.client and request.client.host:
-        return request.client.host
-    return ""
-
+# 兼容既有调用名，统一由 ASGI 服务器处理可信代理。
 
 class CreateActivationRequest(BaseModel):
     """创建激活码请求（仅开发/内部使用）"""
@@ -121,11 +113,14 @@ class ActivateRequest(BaseModel):
 
 
 @router.post("/activation", response_model=ActivationResponse)
-async def create_activation(request: CreateActivationRequest):
+async def create_activation(
+    request: CreateActivationRequest,
+    current_user: dict = Depends(require_super_admin),
+):
     """
     创建一个新的简单模式激活码。
 
-    注意：当前为开发/内部接口，用于生成测试用激活码。
+    开发/内部接口，仅允许超级管理员生成测试用激活码。
     """
     manager = SimpleActivationManager()
     rec = manager.create_activation(

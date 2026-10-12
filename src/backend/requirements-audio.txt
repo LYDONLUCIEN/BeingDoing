@@ -1,0 +1,5 @@
+# 启用 AUDIO_MODE 时额外安装；核心 HTTP 服务不需要这些依赖
+-r requirements.txt
+openai-whisper>=20231117
+pyttsx3>=2.90
+gtts>=2.5.0

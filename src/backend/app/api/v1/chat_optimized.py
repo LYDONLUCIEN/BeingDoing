@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from app.api.security import require_session_owner, require_super_admin
 from app.api.v1.auth import get_current_user
 
 # question_progress、debug_logs 持久化（与 chat 共用，统一使用项目根 data/）
@@ -161,6 +162,7 @@ async def send_message_stream_optimized(
     2. 加载完整上下文（all_flow + note）
     3. 自动保存结论性 note
     """
+    await require_session_owner(request.session_id, current_user)
 
     async def event_stream():
         try:
@@ -335,7 +337,7 @@ async def send_message_stream_optimized(
 
 
 @router.get("/cache/stats")
-async def get_cache_stats():
+async def get_cache_stats(current_user: dict = Depends(require_super_admin)):
     """获取缓存统计信息"""
     cache = get_graph_cache()
     stats = cache.get_stats()
@@ -378,7 +380,9 @@ async def get_cache_stats():
 
 
 @router.post("/cache/clear")
-async def clear_cache(session_id: Optional[str] = None):
+async def clear_cache(
+    session_id: Optional[str] = None, current_user: dict = Depends(require_super_admin)
+):
     """手动清除缓存"""
     cache = get_graph_cache()
     if session_id:
@@ -399,16 +403,6 @@ async def clear_cache(session_id: Optional[str] = None):
         return StandardResponse(code=200, message="All caches cleared", data={"cache_size": 0})
 
 
-# ========== 向后兼容的导入 ==========
-
-# 保持原有函数可访问
-from app.utils.enhanced_conversation_manager import (
-    ConversationFileManager as OldConversationFileManager,
-)
-
-_old_manager = OldConversationFileManager()
-
-
 # ========== 新增：获取历史 Answer Cards API ==========
 
 
@@ -421,6 +415,7 @@ async def get_answer_cards(
 
     用于前端页面加载时恢复已完成的题目列表
     """
+    await require_session_owner(session_id, current_user)
     try:
         manager = _get_enhanced_manager()
         answer_cards = await manager.get_answer_cards(session_id)
@@ -441,6 +436,7 @@ async def get_notes(session_id: str, current_user: Optional[dict] = Depends(get_
 
     返回完整的 note.json 内容
     """
+    await require_session_owner(session_id, current_user)
     try:
         manager = _get_enhanced_manager()
         notes = await manager.get_notes(session_id)

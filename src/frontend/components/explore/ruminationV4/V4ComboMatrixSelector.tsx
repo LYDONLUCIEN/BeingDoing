@@ -170,11 +170,10 @@ export default function V4ComboMatrixSelector({
                   </span>
                 )}
                 <span
-                  className="label line-clamp-2 px-0.5 text-[12.5px] font-medium leading-snug"
-                  dangerouslySetInnerHTML={{
-                    __html: s.name.replace(/\n/g, '<br>'),
-                  }}
-                />
+                  className="label line-clamp-2 whitespace-pre-line px-0.5 text-[12.5px] font-medium leading-snug"
+                >
+                  {s.name}
+                </span>
               </button>
             );
           })}

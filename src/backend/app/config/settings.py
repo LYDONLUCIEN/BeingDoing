@@ -1,17 +1,21 @@
 """
 应用配置
 """
-from pydantic_settings import BaseSettings
-from typing import Optional
 from pathlib import Path
+from typing import Optional
+
+from pydantic import model_validator
+from pydantic_settings import BaseSettings
+
 from app.utils.data_paths import get_conversation_dir, get_project_root
+
 
 class Settings(BaseSettings):
     """应用配置类"""
-    
+
     # 应用配置
     APP_ENV: str = "development"
-    DEBUG: bool = True
+    DEBUG: bool = False
     SECRET_KEY: str = "your-secret-key-here-change-in-production"
     # JWT access token 有效期（分钟）
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
@@ -50,13 +54,13 @@ class Settings(BaseSettings):
     ADMIN_DEBUG_POLICY_ENABLED: bool = False
     ADMIN_DEBUG_WORKSPACE_ENABLED: bool = True
     ADMIN_SANDBOX_ENABLED: bool = True
-    
+
     # 数据库
     DATABASE_URL: str = "sqlite+aiosqlite:///./app.db"
-    
+
     # 架构配置（与 app.config.architecture 保持一致）
     ARCHITECTURE_MODE: str = "simple"  # simple | full
-    
+
     # LLM配置
     LLM_PROVIDER: str = "openai"  # openai | deepseek
     OPENAI_API_KEY: Optional[str] = None
@@ -217,18 +221,18 @@ class Settings(BaseSettings):
 
     # 前端地址（用于邮箱验证链接）
     FRONTEND_URL: str = "http://localhost:3000"
-    
+
     # ASR配置
     ASR_PROVIDER: str = "openai"
     OPENAI_WHISPER_API_KEY: Optional[str] = None
-    
+
     # TTS配置
     TTS_PROVIDER: str = "openai"
     OPENAI_TTS_API_KEY: Optional[str] = None
-    
+
     # 语音功能
     AUDIO_MODE: bool = False
-    
+
     # 引导策略
     GUIDE_IDLE_TIMEOUT: int = 600  # 10分钟（秒）
     GUIDE_QUIET_TIMEOUT: int = 900  # 15分钟（秒）
@@ -260,6 +264,23 @@ class Settings(BaseSettings):
 
     # basic_info 多源合并策略（迁移时用）：A=最新覆盖 B=并集(非空优先) C=A∩B 交集
     BASIC_INFO_MERGE_STRATEGY: str = "A"
+
+    @model_validator(mode="after")
+    def validate_production_security(self):
+        """生产环境缺少必要安全配置时拒绝启动，避免使用公开默认密钥。"""
+        if self.APP_ENV.strip().lower() in {"production", "prod"}:
+            if (
+                self.SECRET_KEY == "your-secret-key-here-change-in-production"
+                or len(self.SECRET_KEY.strip()) < 32
+            ):
+                raise ValueError("生产 SECRET_KEY 必须是至少 32 字符的独立随机密钥")
+            if self.REFRESH_TOKEN_SECRET_KEY and len(self.REFRESH_TOKEN_SECRET_KEY.strip()) < 32:
+                raise ValueError("生产 REFRESH_TOKEN_SECRET_KEY 如单独配置，必须至少 32 字符")
+            if self.DEBUG:
+                raise ValueError("生产环境必须设置 DEBUG=False")
+            if not self.REFRESH_COOKIE_SECURE:
+                raise ValueError("生产环境必须设置 REFRESH_COOKIE_SECURE=True 并使用 HTTPS")
+        return self
 
     class Config:
         #env_file = ".env"

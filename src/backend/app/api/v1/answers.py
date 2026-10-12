@@ -1,9 +1,12 @@
 """
 回答API
 """
-from fastapi import APIRouter, HTTPException, Depends, status, Query
+from typing import Dict, List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from typing import Optional, List, Dict
+
+from app.api.security import require_answer_owner, require_session_owner
 from app.api.v1.auth import get_current_user
 from app.services.answer_service import AnswerService
 
@@ -40,6 +43,7 @@ async def submit_answer(
     current_user: Optional[dict] = Depends(get_current_user)
 ):
     """提交回答"""
+    await require_session_owner(request.session_id, current_user)
     try:
         # 验证回答
         validation = AnswerService.validate_answer(request.content)
@@ -48,7 +52,7 @@ async def submit_answer(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=validation["error_message"]
             )
-        
+
         result = await AnswerService.save_answer(
             session_id=request.session_id,
             category=request.category,
@@ -56,13 +60,13 @@ async def submit_answer(
             question_id=request.question_id,
             metadata=request.metadata
         )
-        
+
         return StandardResponse(
             code=200,
             message="提交成功",
             data=result
         )
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -79,6 +83,7 @@ async def update_answer(
     current_user: Optional[dict] = Depends(get_current_user)
 ):
     """更新回答"""
+    await require_answer_owner(answer_id, current_user)
     try:
         if request.content:
             validation = AnswerService.validate_answer(request.content)
@@ -87,26 +92,26 @@ async def update_answer(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=validation["error_message"]
                 )
-        
+
         result = await AnswerService.update_answer(
             answer_id=answer_id,
             content=request.content,
             metadata=request.metadata,
             change_type=request.change_type
         )
-        
+
         if not result:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="回答不存在"
             )
-        
+
         return StandardResponse(
             code=200,
             message="更新成功",
             data=result
         )
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -123,15 +128,16 @@ async def get_answers(
     current_user: Optional[dict] = Depends(get_current_user)
 ):
     """获取回答列表"""
+    await require_session_owner(session_id, current_user)
     try:
         answers = await AnswerService.get_session_answers(session_id, category)
-        
+
         return StandardResponse(
             code=200,
             message="success",
             data={"answers": answers, "count": len(answers)}
         )
-    
+
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -145,21 +151,21 @@ async def get_answer(
     current_user: Optional[dict] = Depends(get_current_user)
 ):
     """获取单个回答"""
+    answer = await require_answer_owner(answer_id, current_user)
     try:
-        answer = await AnswerService.get_answer(answer_id)
-        
+
         if not answer:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="回答不存在"
             )
-        
+
         return StandardResponse(
             code=200,
             message="success",
             data=answer
         )
-    
+
     except HTTPException:
         raise
     except Exception as e:
