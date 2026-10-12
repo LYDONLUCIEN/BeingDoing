@@ -318,3 +318,49 @@ async def test_native_v4_snapshot_export_and_staging_preserve_user_selection(
     assert result["confirmed_combos"] == 0
     assert not (staging / rid / "rumination_v4_progress.json").exists()
     assert source.read_bytes() == raw
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("schema_version,step_count", [(1, 9), (2, 7), (3, 7)])
+async def test_legacy_export_preserves_original_steps_and_messages(
+    batch_service, schema_version, step_count
+):
+    """旧九步与七步按源编号解释，表格和对话不截断、不迁移或写回。"""
+    from app.utils.legacy_rumination_export import (
+        build_rumination_tables,
+        slice_conversation_by_step,
+    )
+
+    root = batch_service.registry.simple_base_dir
+    rid = f"legacy-{schema_version}"
+    _write_record(root, rid, _make_record(rid, selected_sessions={"rumination": "legacy"}))
+    messages = [
+        {"role": "user", "content": f"原步骤{n}对话", "filter_step": n}
+        for n in range(1, step_count + 1)
+    ]
+    _write_step_session(root, rid, "rumination", "legacy", messages)
+    original = {
+        "schema_version": schema_version,
+        "filter_step_snapshots": {
+            str(n): {"submitted": [{"内容": f"原步骤{n}结论"}]} for n in range(1, step_count + 1)
+        },
+    }
+    source = root / "reports" / rid / "rumination_progress.json"
+    raw = json.dumps(original, ensure_ascii=False).encode()
+    source.write_bytes(raw)
+    tables = build_rumination_tables(rid, batch_service.registry)
+    assert tables["source_schema_version"] == schema_version
+    assert len(tables["steps"]) == step_count
+    assert tables["steps"][str(step_count)]["rows"] == [{"内容": f"原步骤{step_count}结论"}]
+    sliced = slice_conversation_by_step(messages)
+    assert sliced[str(step_count)][0]["content"] == f"原步骤{step_count}对话"
+    files = dict(await batch_service.collect_report_export(rid, "md"))
+    md = files[f"report_{rid}.md"].decode()
+    assert f"schema={schema_version}" in md
+    for n in range(1, step_count + 1):
+        assert f"### Step {n}（" in md
+        assert f"原步骤{n}结论" in md
+        assert f"原步骤{n}对话" in md
+    assert tables["combo_matrix"] is None
+    assert source.read_bytes() == raw
+    assert not (source.parent / "rumination_v4_progress.json").exists()

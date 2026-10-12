@@ -38,13 +38,13 @@ isort --check-only --settings-path src/backend/pyproject.toml src/backend
 | 检查 | 实测结果 |
 | --- | --- |
 | 退役前新增拒绝用例 | 19项先失败，实施后通过；后续扩充只读、输入提取、版本和后台跳转边界 |
-| 退役/v4/后台/导出/提示词/试用定向回归 | 132 passed，包括26项退役边界用例；管理员跳转仅沙箱、保留原生组合，模拟资料不写生产根 |
-| 全量后端 | **853 passed、44 failed、6 errors**；失败/错误ID共50项，全部属于第一轮既有失败，无新增ID |
-| 前端 | lint退出0（既有警告保留）、3项安全行为通过、production build与TypeScript通过；最后展示分支清理另跑类型检查 |
+| 退役/v4/后台/导出/提示词/试用定向回归 | 135 passed，包括26项退役边界用例；管理员跳转仅沙箱、保留原生组合，模拟资料不写生产根 |
+| 全量后端 | **856 passed、44 failed、6 errors**；失败/错误ID共50项，全部属于第一轮既有失败，无新增ID |
+| 前端 | lint退出0（既有警告保留）、3项安全行为通过、production build与TypeScript通过；最终修复后重新构建通过 |
 | 历史对话统计脚本（额外） | 31 passed、5 failed；独立导出v1.8.0源码复跑为相同5个失败，涉及测试Namespace缺gap_threshold_minutes和旧聚合预期，无新增失败 |
 | 源码与文档 | Python编译、git diff --check；本轮新增Markdown相对链接核对；历史ADR原文仅增加顶部状态说明 |
 
-总用例数由1112变为903：随v3删除整文件/专属场景，同时补退役边界和原生导出回归。减少的12个失败对应下面条目，**是功能退役，不是修好12个缺陷**。其余50个失败/错误仍需处理；本次不静默skip、不修改其预期来制造全绿。没有连接真实模型、支付渠道或生产数据库进行最终验收。
+总用例数由1092变为906：随v3删除整文件/专属场景，同时补退役边界和原生导出回归。减少的12个失败对应下面条目，**是功能退役，不是修好12个缺陷**。其余50个失败/错误仍需处理；本次不静默skip、不修改其预期来制造全绿。没有连接真实模型、支付渠道或生产数据库进行最终验收。
 
 ```text
 test/backend/test_prompt_catalog.py::test_catalog_rumination_step3_fixed_opening
@@ -61,7 +61,7 @@ test/backend/test_step3_hyp_candidate.py::TestFallbackTrigger::test_no_trigger_w
 test/backend/test_step3_hyp_candidate.py::TestSanitizeHypCandidates::test_filters_guide_phrase
 ```
 
-本轮未修改渲染器，第一轮8项renderer结果仍适用其未变源码；本轮新增导出测试验证原生v4快照无损复制、旧矩阵不合成终选、重用暂存目录不残留上一次v4数据。沙箱回退测试验证清除下游状态且源报告不变。
+本轮未修改渲染器，第一轮8项renderer结果仍适用其未变源码；本轮新增导出测试验证原生v4快照无损复制、旧矩阵不合成终选、重用暂存目录不残留上一次v4数据。沙箱回退测试验证清除下游状态且源报告不变。复审补充schema1/2/3历史导出回归，九步记录的第8/9步及对话不截断；后台跳转使用真实双根激活码索引验证，避免替换manager掩盖集成问题。
 
 ## 失败分类与处理次序
 

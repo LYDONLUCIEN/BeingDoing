@@ -1706,7 +1706,7 @@ def _build_rumination_extras(report_id: str, conversation: dict) -> dict:
     """为 admin 会话详情追加旧沉淀只读历史字段。
 
     返回 {rumination_tables, conversation_by_step}：
-      - rumination_tables: prerequisites + steps[1-7] + combo（见 legacy_rumination_export.build_rumination_tables）
+      - rumination_tables: prerequisites + steps[原步骤编号] + combo（见 legacy_rumination_export）
       - conversation_by_step: 按 filter_step 切片的对话 {step_str: [msg]} 或 {_unified: [msg]}
     """
     from app.utils.legacy_rumination_export import (
@@ -1915,8 +1915,7 @@ async def jump_to_rumination(
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     _assert_admin_sandbox_enabled()
 
-    manager = SimpleActivationManager()
-    rec = manager.get_activation(request.activation_code.strip().upper())
+    _manager, rec = get_activation_with_manager(request.activation_code)
     if not rec:
         raise HTTPException(status_code=404, detail="激活码不存在")
 

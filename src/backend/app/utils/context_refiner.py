@@ -3,6 +3,7 @@
 
 写入时机：结论卡首次展示、每次弹出结论卡、step 提交、每 20 轮。
 """
+
 from __future__ import annotations
 
 import json
@@ -163,7 +164,11 @@ def format_anchor_for_prompt(anchor: Optional[Dict]) -> str:
     for k in ANCHOR_EXTENSIBLE_FIELDS:
         v = anchor.get(k)
         if v and isinstance(v, str) and v.strip():
-            label = {"personality": "性格特点", "style": "表达风格", "conflicts": "矛盾/待澄清"}.get(k, k)
+            label = {
+                "personality": "性格特点",
+                "style": "表达风格",
+                "conflicts": "矛盾/待澄清",
+            }.get(k, k)
             parts.append(f"[{label}] {v.strip()}")
     return "\n".join(parts) if parts else ""
 
@@ -176,18 +181,3 @@ def load_anchor_for_phase(report_id: str, phase: str, base_dir: str) -> Optional
         return None
     step = (record.get("steps") or {}).get(phase) or {}
     return step.get("anchor_summary")
-
-
-# ---------------------------------------------------------------------------
-# Rumination per-step anchor（沉淀筛选阶段，按子步独立生成摘要）
-# ---------------------------------------------------------------------------
-
-_RUMINATION_STEP_OBJECTIVES = {
-    1: "确认用户的热爱领域与核心优势，生成热爱×优势组合表",
-    2: "分析热爱与优势的匹配性，用户确认或修改匹配结果",
-    3: "为每个热爱+优势组合生成并确认具体假设方向",
-    4: "用价值观过滤假设，判断每个假设的工作目的",
-    5: "用激情过滤假设，区分「忍不住想做」与「应该做」",
-    6: "用现实性过滤假设，区分「现在可做」与「未来再做」",
-    7: "最终选择并确认要投入的核心假设",
-}

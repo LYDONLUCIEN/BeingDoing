@@ -164,9 +164,9 @@ def test_legacy_export_ignores_malformed_data_without_rewriting(tmp_path, conten
 
 
 @pytest.mark.asyncio
-async def test_admin_jump_uses_sandbox_v4_and_preserves_existing_combos(monkeypatch, tmp_path):
-    from types import SimpleNamespace
-
+async def test_admin_jump_uses_real_sandbox_index_and_preserves_existing_combos(
+    monkeypatch, tmp_path
+):
     from fastapi import HTTPException
 
     from app.api.v1 import admin
@@ -178,21 +178,37 @@ async def test_admin_jump_uses_sandbox_v4_and_preserves_existing_combos(monkeypa
     )
     from app.utils import admin_mock, simple_activation_manager
     from app.utils.report_registry import ReportRegistry
+    from app.utils.simple_activation_manager import ActivationRecord, SimpleActivationManager
 
-    sandbox = tmp_path / "sandbox"
     production = tmp_path / "production"
-    production.mkdir()
-    rec = SimpleNamespace(code="SBXTEST", session_id="sandbox-session")
-    manager = SimpleNamespace(get_activation=lambda code: rec)
-    monkeypatch.setattr(admin, "SimpleActivationManager", lambda: manager)
-    monkeypatch.setattr(simple_activation_manager, "SimpleActivationManager", lambda: manager)
-    monkeypatch.setattr(admin, "get_effective_simple_root", lambda record: sandbox)
-    monkeypatch.setattr(
-        simple_activation_manager, "get_effective_simple_root", lambda record: sandbox
-    )
+    test_root = tmp_path / "test"
+    monkeypatch.setattr(simple_activation_manager, "get_simple_base_dir", lambda: production)
+    monkeypatch.setattr(simple_activation_manager, "get_simple_test_base_dir", lambda: test_root)
     monkeypatch.setattr(admin_mock, "get_simple_base_dir", lambda: production)
     monkeypatch.setattr(admin, "_assert_admin_sandbox_enabled", lambda: None)
     monkeypatch.setattr(admin, "_is_super_admin", lambda user: user.get("user_id") == "admin")
+    # 使用真实双根索引及解析器；只替换账户权限和受控的模拟资料来源。
+    common = dict(
+        session_id="sandbox-session",
+        mode="combined",
+        created_at="2026-01-01T00:00:00Z",
+        expires_at=None,
+        last_activity_at="2026-01-01T00:00:00Z",
+    )
+    rec = ActivationRecord(
+        code="SBXTEST",
+        owner_user_id="admin",
+        workspace_kind="fork",
+        workspace_root="sandboxes/fork1",
+        **common,
+    )
+    SimpleActivationManager(base_dir=str(test_root)).put_activation(rec)
+    prod_manager = SimpleActivationManager(base_dir=str(production))
+    prod_manager.put_activation(ActivationRecord(code="REALCODE", **common))
+    assert prod_manager.get_activation(rec.code) is None
+    before = {
+        str(p.relative_to(production)): p.read_bytes() for p in production.rglob("*") if p.is_file()
+    }
     prior = tmp_path / "mock"
     prior.mkdir()
     (prior / "prior_context_values.txt").write_text("成长")
@@ -204,13 +220,14 @@ async def test_admin_jump_uses_sandbox_v4_and_preserves_existing_combos(monkeypa
     with pytest.raises(HTTPException) as denied:
         await admin.jump_to_rumination(request, {"user_id": "member"})
     assert denied.value.status_code == 403
-    rec.code = "REALCODE"
     with pytest.raises(HTTPException) as unsafe:
-        await admin.jump_to_rumination(request, {"user_id": "admin"})
+        await admin.jump_to_rumination(
+            admin.JumpToRuminationRequest(activation_code="REALCODE"), {"user_id": "admin"}
+        )
     assert unsafe.value.status_code == 400
+    sandbox = test_root / rec.workspace_root
     assert not sandbox.exists()
 
-    rec.code = "SBXTEST"
     registry = ReportRegistry(base_dir=str(sandbox))
     report = registry.ensure_report(
         activation_code=rec.code, user_id="admin", session_id=rec.session_id
@@ -224,4 +241,12 @@ async def test_admin_jump_uses_sandbox_v4_and_preserves_existing_combos(monkeypa
     assert load_v4_state(registry.reports_root, rid)["combo_sessions"] == state["combo_sessions"]
     assert not (registry.reports_root / rid / "rumination_progress.json").exists()
     assert (sandbox / rec.session_id / "prior_context_values.txt").read_text() == "成长"
-    assert not list(production.iterdir())
+    record = registry.get_report_by_id(rid)
+    assert all(
+        record["steps"][phase]["locked"]
+        for phase in ("values", "strengths", "interests", "purpose")
+    )
+    after = {
+        str(p.relative_to(production)): p.read_bytes() for p in production.rglob("*") if p.is_file()
+    }
+    assert after == before

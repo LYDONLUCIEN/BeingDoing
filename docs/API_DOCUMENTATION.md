@@ -29,7 +29,7 @@
 - 通用 `/simple-chat/message`、`message/stream`、`init`、`thread/reopen`、`thread/complete`、`conclusion/request`、`thread/delete` 对已认证请求的 `phase=rumination` 返回410，提示使用 `/simple-chat/rumination-v4`；在激活码读写与模型调用前拒绝。旧 row/step3/combo 请求字段从 Schema 移除。
 - 现行 `/simple-chat/rumination-v4/*` 继续使用独立组合 `combo_id`；`/version` 保留响应形状，固定 v4/current，分配时间与比例为空，不创建 A/B 记录。
 - 后台 `jump-to-rumination` 请求只保留 `activation_code`，仍要求超级管理员与沙箱；初始化 v4、不覆盖已有组合。旧 `target_section/target_filter_step/seed_table` 不再是契约。
-- `/simple-chat/history` 继续经原权限边界读取历史消息；可选 `rumination_filter_step` 仅用于历史消息筛选。后台历史导出不写回、不补矩阵。当前批量导出增加 `raw/rumination_v4_progress.json`，缺少原生终选的包不判为当前完整报告。
+- `/simple-chat/history` 继续经原权限边界读取历史消息；可选 `rumination_filter_step` 仅用于历史消息筛选。后台历史导出不写回、不补矩阵，`source_schema_version`注明原版本，`steps`保留原编号（schema1为九步），不将旧步骤重新编号为当前流程。当前批量导出增加 `raw/rumination_v4_progress.json`，缺少原生终选的包不判为当前完整报告。
 
 这是明确退役，不是旧客户端无感兼容。已保存的历史 Markdown/PDF 继续按原归属及审核规则读取；未完成旧探索的数据迁移另行设计。
 

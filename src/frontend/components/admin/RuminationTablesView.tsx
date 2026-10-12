@@ -5,13 +5,13 @@ import MessageContent from '@/components/explore/MessageContent';
 import { formatLocalDateTime } from '@/lib/utils/formatTime';
 
 /**
- * Admin 会话详情：Rumination 表格区块
+ * Admin 会话详情：历史 Rumination 只读表格区块
  *
  * 渲染：前置结论(keywords) + 每个 step 区块(表格 + 该 step 对话切片)。
  * step 区块默认展开，单击标题条折叠整个区块(表格+对话)。
  *
  * 数据来源：admin 会话详情接口返回的
- *   detail.rumination_tables  —— prerequisites + steps[1-7] + combo
+ *   detail.rumination_tables  —— prerequisites + steps[原步骤编号] + combo
  *   detail.conversation_by_step —— {step_str: [msg]} | {_unified: [msg]}
  */
 
@@ -26,6 +26,7 @@ interface StepData {
 
 interface RuminationTables {
   report_id?: string;
+  source_schema_version?: number | string | null;
   prerequisites?: Record<string, string[]>;
   steps?: Record<string, StepData>;
   combo_matrix?: any[] | null;
@@ -81,6 +82,9 @@ export default function RuminationTablesView({ tables, conversationByStep }: Pro
 
   return (
     <div className="space-y-4">
+      <p className="text-xs text-bd-subtle">
+        历史沉淀记录 · 原步骤编号（schema {tables.source_schema_version ?? '未标注'}）
+      </p>
       {/* 前置结论 */}
       {hasPrereq && (
         <section className="rounded-xl border border-bd-border bg-bd-overlay-md p-4">

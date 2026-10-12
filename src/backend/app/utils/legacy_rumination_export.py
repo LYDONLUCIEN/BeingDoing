@@ -7,7 +7,7 @@
 
 三个核心函数：
   - build_rumination_tables(report_id) -> dict
-      组装 prerequisites(4 phase keywords) + steps[1-7](status/row_count/columns/rows) + combo
+      组装 prerequisites(4 phase keywords) + steps[原步骤编号](status/row_count/columns/rows) + combo
   - build_summary(report_id) -> dict
       汇总 report_final_conclusion + 5 phase 的 conclusion_final
   - slice_conversation_by_step(messages) -> dict[str, list] | {"_unified": list}
@@ -22,8 +22,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from app.utils.report_registry import STEP_IDS, ReportRegistry
-
-FILTER_STEPS = range(1, 8)  # 仅用于解释已存在的历史表格快照
 
 logger = logging.getLogger(__name__)
 
@@ -126,24 +124,30 @@ def build_rumination_tables(
       {
         report_id,
         prerequisites: {values/strengths/interests/purpose: [keywords]},
-        steps: {1..7: {status, row_count, columns, rows}},
+        source_schema_version,
+        steps: {原步骤编号: {status, row_count, columns, rows}},
         combo_matrix: [...] | null,
         combo_conclusions: {...} | null
       }
     """
     if registry is None:
         registry = ReportRegistry()
-    record = registry.get_report_by_id(report_id)
-
     # 前置结论
     prerequisites = build_prerequisites(registry, report_id)
 
     # rumination 进度
     progress = load_raw_rumination_progress(report_id, registry) or {}
     snapshots = progress.get("filter_step_snapshots") or {}
+    if not isinstance(snapshots, dict):
+        snapshots = {}
+    source_version = progress.get("schema_version")
+    # 只解释原始编号，不执行历史9→7迁移；原第8/9步与额外快照不能丢失。
+    default_count = 9 if str(source_version) == "1" else 7
+    step_numbers = set(range(1, default_count + 1))
+    step_numbers.update(int(k) for k in snapshots if str(k).isdigit() and int(k) > 0)
 
     steps: Dict[str, Dict[str, Any]] = {}
-    for step in FILTER_STEPS:  # 1..7
+    for step in sorted(step_numbers):
         sk = str(step)
         key_exists = sk in snapshots
         snap = snapshots.get(sk)
@@ -162,6 +166,7 @@ def build_rumination_tables(
 
     return {
         "report_id": report_id,
+        "source_schema_version": source_version,
         "prerequisites": prerequisites,
         "steps": steps,
         "combo_matrix": combo_matrix if isinstance(combo_matrix, list) and combo_matrix else None,

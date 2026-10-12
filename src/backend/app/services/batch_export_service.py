@@ -663,9 +663,16 @@ class BatchExportService:
         sliced = slice_conversation_by_step(msgs)
         unified = sliced.get("_unified")  # 老数据兜底
 
-        # step 中文标题（1~4 仅数字，按设计；5/6/7 也只数字）
-        for step_no in range(1, 8):
-            sk = str(step_no)
+        # 保留历史源步骤编号，不能把九步记录按七步截断或重解释。
+        version = tables.get("source_schema_version")
+        lines.extend(
+            [
+                f"> 历史沉淀记录（原步骤编号；schema={version if version is not None else '未标注'}）",
+                "",
+            ]
+        )
+        for sk in sorted(steps_data, key=int):
+            step_no = int(sk)
             sd = steps_data.get(sk) or {}
             status = sd.get("status") or "not_reached"
             row_count = sd.get("row_count", 0)

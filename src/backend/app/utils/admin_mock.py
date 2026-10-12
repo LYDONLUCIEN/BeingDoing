@@ -120,13 +120,12 @@ def apply_mock_to_activation(activation_code: str, registry: ReportRegistry) -> 
     用于满足 lock_previous_step 要求，使 init rumination 不再报 400。
     """
     from app.utils.simple_activation_manager import (
-        SimpleActivationManager,
+        get_activation_with_manager,
         get_effective_simple_root,
     )
 
     _ensure_mock_structure()
-    manager = SimpleActivationManager()
-    rec = manager.get_activation(activation_code.strip().upper())
+    _manager, rec = get_activation_with_manager(activation_code)
     if not rec:
         raise ValueError("激活码不存在")
 
