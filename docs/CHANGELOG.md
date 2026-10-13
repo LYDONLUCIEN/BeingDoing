@@ -2,6 +2,10 @@
 
 这里记录可核验的变更过程，不替代 [当前决策](DECISIONS.md)。历史完整原因和来源见 [HISTORY_EVIDENCE](HISTORY_EVIDENCE.md)；旧提交/issue 中的暂定方案不能直接进入未来开发要求。
 
+## 2026-10-13 · 将缺包修复简化为手册首页的短流程
+
+所有者指出，当前仅需要补装前端依赖，完整服务器发布／恢复手册增加了不必要的操作负担。手册首页新增 dev／prod 各三行命令：停止、按锁文件安装、明确环境启动；说明 start.sh 已包含构建，npm ls 只核对安装，已有 tmux session 不能靠再次 start 重启。完整迁移／备份流程保留为按需参考，补充 rehype-sanitize 的安全用途及共享组件缺包导致构建失败的原因。本轮仅改文档，命令做语法检查，未连接或重启服务器。
+
 ## 2026-10-13 · dev／prod 服务器操作手册
 
 服务器报告 SafeMarkdownPreview 找不到 rehype-sanitize。核对声明与锁文件均已提交、本地导入正常，但 start.sh／deploy.sh 没有安装依赖步骤；尚未读取服务器安装日志，不能把最可能的旧 node_modules 原因写成现场已证实。所有者确认 dev／prod 为两台独立服务器，通常通过 start.sh／tmux 启动，要求分别说明操作方式。

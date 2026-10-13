@@ -4,7 +4,35 @@
 
 本手册负责日常运行与版本更新；首次安装／新建空库见 [开发指南](DEVELOPMENT.md)，现有测试债和上线条件见 [TESTING](TESTING.md)、[安全评估](SECURITY_REVIEW.md)。不把“提交已推送”当成生产验收完成。
 
-使用顺序：只修这次缺包，读第 2、3、5 节；完整更新，依次读第 2、4、5 节，先 dev 后 prod；平时查日志／重启看第 6 节，失败处理看第 7 节。更新过程中的环境变量在同一个 SSH／Bash 会话有效；新开终端后要重新选择本机环境及记录的目标／备份路径。
+## 先看这里：这次缺包只需要安装依赖、重新启动
+
+适用于：代码和锁文件已更新到同一版本、服务器配置及 Conda 正常，本次只处理缺少前端依赖。**这一步不涉及数据库迁移、data 恢复或切换 systemd。** 两台服务器分别安装各自的依赖，dev 验证后再在 prod 执行。
+
+在各自服务器的 BeingDoing 仓库根目录执行；下面采用整套服务停止后再启动的简单方式，会短暂停服。prod 安排可停服的时间，有维护页时按现有维护方式开启。
+
+**prod：**
+
+```bash
+./start.sh stop &&
+(cd src/frontend && npm ci --include=dev && npm ls rehype-sanitize --depth=0) &&
+./start.sh start prod
+```
+
+**dev：**
+
+```bash
+./start.sh stop &&
+(cd src/frontend && npm ci --include=dev && npm ls rehype-sanitize --depth=0) &&
+./start.sh start dev
+```
+
+`npm ls` 只是确认安装结果，应显示 `rehype-sanitize@6.0.0`。**start.sh 会自动执行 `npm run build`，不用提前再构建一次。** 若此前已手动构建也可以，但 start 会删除 `.next` 并再次构建。已有 tmux session 时直接 `start prod` 不会重启，所以这里先 stop；自定义 Conda 的机器仍沿用原来的 CONDA_BASE／CONDA_ENV 覆盖值。
+
+看前端日志出现构建完成和服务就绪，再访问网站检查。安装失败则命令链停止，先处理 npm 的报错；不要继续启动。只想重启前端并保留后端运行时，看第 3 节。
+
+`rehype-sanitize` 是 Markdown 展示的 HTML 安全过滤插件，删除不在允许列表中的标签、事件属性和危险链接，降低用户输入／AI 输出造成 XSS 的风险。项目聊天与后台记录共用 SafeMarkdownPreview，因此缺失这个编译依赖会让前端构建失败。更新依赖即可恢复构建所需模块，不能通过删掉清洗组件解决缺包。[插件官方说明](https://github.com/rehypejs/rehype-sanitize)
+
+下面是按需查阅的完整手册：环境不确定看第 2 节；涉及新版本、后端依赖或数据库变化时用第 4、5 节；日常查日志／重启看第 6 节，失败处理看第 7 节。完整更新过程中的环境变量在同一个 SSH／Bash 会话有效；新开终端后需重新选择本机环境及记录的目标／备份路径。
 
 ## 1. 两台机器分别负责什么
 
