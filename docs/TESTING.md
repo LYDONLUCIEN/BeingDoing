@@ -15,6 +15,12 @@ isort --check-only --settings-path src/backend/pyproject.toml src/backend
 
 前端目录运行 `npm run lint`、`npm run test:security`、`NEXT_TELEMETRY_DISABLED=1 npm run build`。渲染器目录运行 `npm test`。依赖审计：`python -m pip_audit`、前端 `npm audit`，结果需按可达条件人工判断。
 
+## 2026-10-13 服务器手册的命令验证
+
+[服务器操作手册](OPERATIONS.md) 的 22 段 Bash 通过 `bash -n`，3 段内嵌 Python 通过语法检查。临时目录中使用合成配置、SQLite 和 data，复制本仓库的 Settings／data_paths 模块到隔离目录，完成 **16 项行为检查**：相对／绝对 DB 定位，缺失库／内存库／非 SQLite／特殊 URI 拒绝，含 WAL 数据的 DB 与 JSON／环境文件备份，重复目标拒绝，dev／prod 环境覆盖与实际 Settings 校验，DB 路径变化拒绝，APP_ENV 不匹配和不安全生产配置拒绝。
+
+只执行上述隔离片段；Conda／npm 安装、Git 发布切换、服务器启停、生产迁移、nginx 维护和公网业务验收未在服务器运行。语法检查不证明这些外部步骤已通过，本次没有运行全量产品测试或真实数据恢复。
+
 ## 2026-10-13 根目录整理的定向验证
 
 本轮只整理根目录文档／图像及测试工具的清单路径，应用源码未改。执行 `PYTHONPATH=test/claude-test python -m pytest -c test/claude-test/pytest.ini test/claude-test/parser/test_md_parser.py -q`：**3 passed**；缺失清单不再被静默当作成功。

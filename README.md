@@ -15,6 +15,7 @@
 | 需要做什么 | 入口 |
 | --- | --- |
 | 启动、配置、测试 | [开发指南](docs/DEVELOPMENT.md) · [验证记录](docs/TESTING.md) |
+| dev／prod 服务器更新、备份、重启与回滚 | [服务器操作手册](docs/OPERATIONS.md) |
 | 找模块、理解存储 | [架构](docs/ARCHITECTURE.md) |
 | 接口与权限 | [API 契约](docs/API_DOCUMENTATION.md) |
 | 理解字段、状态和跨产品关系 | [字段字典](docs/DATA_DICTIONARY.md) · [新产品边界](docs/PRODUCT_EVOLUTION.md) |
