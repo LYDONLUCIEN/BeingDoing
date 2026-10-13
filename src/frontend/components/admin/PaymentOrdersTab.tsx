@@ -7,6 +7,7 @@ import {
   adminGetOrder,
   adminListOrders,
   adminCreateRefund,
+  adminExportOrders,
   fenToYuan,
   type AdminOrderItem,
   type OrderStatus,
@@ -88,6 +89,7 @@ export default function PaymentOrdersTab() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>('all');
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   // 展开详情 / 退款确认
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -133,6 +135,23 @@ export default function PaymentOrdersTab() {
   }, [loadOrders]);
 
   const reload = () => loadOrders(page, statusFilter, channelFilter);
+
+  /** 导出当前筛选条件下的全部订单（xlsx，无分页） */
+  const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      await adminExportOrders({
+        status: statusFilter === 'all' ? undefined : statusFilter,
+        channel: channelFilter === 'all' ? undefined : channelFilter,
+      });
+      setToast({ type: 'success', msg: '导出成功，已开始下载' });
+    } catch (e: unknown) {
+      setToast({ type: 'error', msg: getApiErrorMessage(e, '导出订单失败') });
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const formatTime = (iso?: string | null) => {
     if (!iso) return '—';
@@ -245,6 +264,15 @@ export default function PaymentOrdersTab() {
           </select>
         </label>
         <span className="text-[11px] text-bd-subtle ml-auto">共 {total} 单</span>
+        <button
+          type="button"
+          onClick={() => void handleExport()}
+          disabled={exporting}
+          title="按当前筛选条件导出全部订单明细（xlsx）"
+          className="px-3 py-1.5 rounded-lg bg-bd-ui-accent text-bd-ui-accent-fg text-xs disabled:opacity-60"
+        >
+          {exporting ? '导出中…' : '导出 Excel'}
+        </button>
       </section>
 
       {/* 订单列表 */}

@@ -90,6 +90,21 @@ _account_recovery_codes: Dict[str, Dict[str, Any]] = {}
 _email_verify_cooldowns: Dict[str, datetime] = {}
 _refresh_schema_ready: bool = False
 
+# ── 注册前置验证（2026-10-13 起，ADR-0026）─────────────────────
+# 验证码/链接双形态：进程内内存存储（与找回密码码同口径，重启失效——
+# 已拍板接受：恰好注册验证中遇上重启的概率可接受，见 ADR-0026）。
+# key: pending_id（发码时签发的随机会话标识），
+# value: {"email", "code", "expires_at", "sent_at", "verified"}
+_register_verifications: Dict[str, Dict[str, Any]] = {}
+# 发码冷却按邮箱计（60 秒；已注册邮箱的通知邮件同受此限，防通知轰炸）
+_register_code_cooldowns: Dict[str, datetime] = {}
+# 绑定邮箱验证码（纯手机老账号强制绑邮箱）：
+# key: email, value: {"user_id", "code", "expires_at", "sent_at"}
+_bind_email_codes: Dict[str, Dict[str, Any]] = {}
+REGISTER_VERIFY_CODE_EXPIRE_MINUTES = 10
+REGISTER_TICKET_EXPIRE_MINUTES = 30
+BIND_EMAIL_CODE_EXPIRE_MINUTES = 10
+
 # ── 登录防爆破（进程内内存，对齐上方验证码冷却模式，重启失效）────────────
 # 口径（2026-09-18 起阶梯锁定 + 每小时整窗重置）：
 # - 按登录标识（email 小写 / phone）计数，不存在的账号同样计入（防枚举旁路）；
@@ -889,27 +904,157 @@ class AuthService:
 
         return {"user_id": user_id, "email": payload.get("email"), "already_verified": False}
 
+    # ===================== 注册前置验证（2026-10-13 起，ADR-0026） =====================
+
+    @staticmethod
+    def _create_register_ticket(email: str) -> str:
+        """签发注册凭证：邮箱验证通过后颁发，注册接口凭此确认邮箱已验证（30 分钟有效）"""
+        return _create_token(
+            {"email": email, "jti": uuid.uuid4().hex},
+            expires_delta=timedelta(minutes=REGISTER_TICKET_EXPIRE_MINUTES),
+            token_type="register_ticket",
+        )
+
+    @staticmethod
+    def verify_register_ticket(ticket: str, email: str) -> None:
+        """校验注册凭证有效且与注册邮箱一致，否则 ValueError"""
+        payload = AuthService.verify_token((ticket or "").strip(), expected_type="register_ticket")
+        if not payload:
+            raise ValueError("邮箱验证已过期，请重新验证邮箱")
+        if _normalize_email(payload.get("email")) != _normalize_email(email):
+            raise ValueError("验证邮箱与注册邮箱不一致，请重新验证")
+
+    @staticmethod
+    def _get_register_record(pending_id: str, email: str) -> Dict:
+        """取注册验证会话记录；不存在/邮箱不符/过期统一 ValueError"""
+        record = _register_verifications.get((pending_id or "").strip())
+        if not record or record.get("email") != _normalize_email(email):
+            raise ValueError("验证会话不存在或已失效，请重新发送验证码")
+        if datetime.now(timezone.utc) > record["expires_at"]:
+            _register_verifications.pop((pending_id or "").strip(), None)
+            raise ValueError("验证码已过期，请重新发送")
+        return record
+
+    @staticmethod
+    async def request_register_verification(email: str) -> Dict:
+        """
+        注册第一步：向未注册邮箱发送验证码 + 验证链接（双形态，10 分钟有效，60 秒冷却）。
+
+        邮箱已注册时不发验证码，改发「有人尝试注册」通知邮件，返回 already_registered=True
+        （明确提示口径，见 ADR-0026；注册侧枚举风险可接受，登录侧防枚举不变）。
+        """
+        email = _normalize_email(email)
+        if not email:
+            raise ValueError("邮箱不能为空")
+
+        # 60 秒冷却（已注册邮箱的通知邮件同受此限，防通知轰炸）
+        last_sent = _register_code_cooldowns.get(email)
+        if last_sent and (datetime.now(timezone.utc) - last_sent).total_seconds() < 60:
+            raise ValueError("发送过于频繁，请 60 秒后再试")
+
+        async with AsyncSessionLocal() as db:
+            user_db = UserDB(db)
+            existing = await user_db.get_user_by_email(email)
+
+        if existing:
+            try:
+                await EmailService.send_register_exists_notice(to_email=email)
+            except Exception as e:
+                raise _friendly_email_send_error(e, "注册提示") from e
+            _register_code_cooldowns[email] = datetime.now(timezone.utc)
+            return {"pending_id": None, "already_registered": True}
+
+        pending_id = secrets.token_hex(16)
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(minutes=REGISTER_VERIFY_CODE_EXPIRE_MINUTES)
+        # 链接形态：任何设备点开仅完成服务端验证，原注册页轮询领 ticket（跨设备不断进度）
+        link_token = _create_token(
+            {"pid": pending_id, "email": email},
+            expires_delta=timedelta(minutes=REGISTER_VERIFY_CODE_EXPIRE_MINUTES),
+            token_type="register_verify_link",
+        )
+        try:
+            await EmailService.send_register_verification(
+                to_email=email,
+                code=code,
+                link_token=link_token,
+                valid_minutes=REGISTER_VERIFY_CODE_EXPIRE_MINUTES,
+            )
+        except Exception as e:
+            raise _friendly_email_send_error(e, "注册验证") from e
+        _register_verifications[pending_id] = {
+            "email": email,
+            "code": code,
+            "expires_at": expires_at,
+            "sent_at": now,
+            "verified": False,
+        }
+        _register_code_cooldowns[email] = now
+        return {
+            "pending_id": pending_id,
+            "already_registered": False,
+            "expires_in": REGISTER_VERIFY_CODE_EXPIRE_MINUTES * 60,
+        }
+
+    @staticmethod
+    async def verify_register_code(pending_id: str, email: str, code: str) -> Dict:
+        """注册第二步（验证码形态）：校验 6 位验证码，通过即签发注册 ticket（一次性消费）"""
+        record = AuthService._get_register_record(pending_id, email)
+        _verify_one_time_code(record, code)
+        _register_verifications.pop((pending_id or "").strip(), None)
+        return {"ticket": AuthService._create_register_ticket(record["email"])}
+
+    @staticmethod
+    async def verify_register_link(token: str) -> Dict:
+        """注册第二步（链接形态）：点开邮件链接仅标记服务端验证通过，由原注册页轮询领 ticket"""
+        payload = AuthService.verify_token(token, expected_type="register_verify_link")
+        if not payload:
+            raise ValueError("验证链接无效或已过期")
+        pending_id = str(payload.get("pid") or "")
+        email = _normalize_email(payload.get("email"))
+        record = AuthService._get_register_record(pending_id, email or "")
+        record["verified"] = True
+        return {"email": record["email"], "verified": True}
+
+    @staticmethod
+    async def poll_register_verification(pending_id: str, email: str) -> Dict:
+        """原注册页轮询：链接验证已通过则签发 ticket 并消费会话；未通过/已过期如实返回"""
+        record = _register_verifications.get((pending_id or "").strip())
+        if not record or record.get("email") != _normalize_email(email):
+            return {"verified": False}
+        if datetime.now(timezone.utc) > record["expires_at"]:
+            _register_verifications.pop((pending_id or "").strip(), None)
+            return {"verified": False, "expired": True}
+        if not record.get("verified"):
+            return {"verified": False}
+        _register_verifications.pop((pending_id or "").strip(), None)
+        return {"verified": True, "ticket": AuthService._create_register_ticket(record["email"])}
+
     @staticmethod
     async def register(
         email: Optional[str] = None,
         phone: Optional[str] = None,
         username: Optional[str] = None,
         password: str = "",
+        ticket: Optional[str] = None,
     ) -> Dict:
         """
         用户注册
 
         Args:
-            email: 邮箱（可选）
-            phone: 手机号（可选）
+            email: 邮箱（必填）
+            phone: 手机号（可选附带字段，前端当前不收集，等短信通道上线）
             username: 用户名（可选）
             password: 密码
+            ticket: 注册前置验证凭证（2026-10-13 起必填，ADR-0026；
+                由 verify_register_code / poll_register_verification 签发，绑定邮箱）
 
         Returns:
             注册结果（包含user_id和token）
 
         Raises:
-            ValueError: 如果邮箱或手机号已存在
+            ValueError: 邮箱已存在 / 未携带或携带无效 ticket
         """
         email = _normalize_email(email)
         phone = _normalize_phone(phone)
@@ -921,6 +1066,11 @@ class AuthService:
 
         if not password:
             raise ValueError("密码不能为空")
+
+        # 2026-10-13 起：邮箱验证前置——无 ticket 直接调注册接口无法绕过验证
+        if not ticket:
+            raise ValueError("请先完成邮箱验证")
+        AuthService.verify_register_ticket(ticket, email)
 
         async with AsyncSessionLocal() as db:
             user_db = UserDB(db)
@@ -937,14 +1087,13 @@ class AuthService:
                 if existing_user:
                     raise ValueError("手机号已被注册")
 
-            # 创建用户
+            # 创建用户（邮箱已前置验证，落库即已验证）
             password_hash = AuthService.get_password_hash(password)
             user = await user_db.create_user(
                 email=email, phone=phone, username=username, password_hash=password_hash
             )
-            # 新注册用户邮箱未验证
             if email:
-                await user_db.update_user(user.id, email_verified=False)
+                await user_db.update_user(user.id, email_verified=True)
 
             token_pair = await AuthService._issue_token_pair(user)
             await _record_auth_active(user.id)
@@ -955,25 +1104,20 @@ class AuthService:
                 "phone": user.phone,
                 "username": user.username,
                 "avatar_url": user.avatar_url,
+                "email_verified": True,
             }
 
-        # 注册即自动发送验证邮件（2026-09-27 起强制邮箱验证）。
-        # 发信失败不阻断注册：用户已落库、token 正常签发，前端按
-        # verification_email_sent=False 引导稍后重发（避免 SMTP 故障 = 注册挂死）。
-        verification_email_sent = False
+        # 邮箱已前置验证：试用码发放时点从「验证通过后」平移到「注册完成」
+        # （ensure_* 自带「0 码才发 + 并发回收」保护，幂等安全；发码失败只记日志，不阻断注册）。
         try:
-            verify_token = AuthService.create_email_verify_token(
-                data={"sub": result["user_id"], "email": email},
-            )
-            await EmailService.send_email_verification(to_email=email, token=verify_token)
-            _email_verify_cooldowns[email] = datetime.now(timezone.utc)
-            verification_email_sent = True
+            from app.utils.trial_codes import ensure_trial_code_for_user
+
+            ensure_trial_code_for_user({"user_id": result["user_id"], "email": email})
         except Exception:
-            logger.exception("注册自动发送验证邮件失败（不阻断注册）: email=%s", email)
+            logger.exception("注册发放试用码失败（不阻断注册）: user_id=%s", result["user_id"])
 
         return {
             **result,
-            "verification_email_sent": verification_email_sent,
             **token_pair,
         }
 
@@ -1063,6 +1207,25 @@ class AuthService:
 
             # 登录成功：清零失败计数
             _clear_login_failures(lock_key)
+
+            # 纯手机老账号（无邮箱）：2026-10-13 起强制绑定邮箱（ADR-0026）——
+            # 签发受限 token（硬门禁，仅可访问绑定邮箱端点，不签发 refresh token），
+            # 绑定完成前无法正常使用。口径替代旧「历史手机号登录保留」。
+            if not _normalize_email(user.email):
+                binding_token = _create_token(
+                    {"sub": user.id, "phone": user.phone},
+                    expires_delta=timedelta(minutes=30),
+                    token_type="email_binding_required",
+                )
+                return {
+                    "user_id": user.id,
+                    "email": user.email,
+                    "phone": user.phone,
+                    "username": user.username,
+                    "token": binding_token,
+                    "expires_in": 30 * 60,
+                    "email_binding_required": True,
+                }
 
             # 更新最后登录时间
             await user_db.update_user(user.id, last_login_at=datetime.now(timezone.utc))
@@ -1267,3 +1430,148 @@ class AuthService:
             "avatar_url": user.avatar_url,
             **token_pair,
         }
+
+    # ===================== 绑定邮箱（纯手机老账号强制绑定，ADR-0026） =====================
+
+    @staticmethod
+    async def get_binding_current_user(token: str) -> Optional[Dict]:
+        """
+        从「强制绑定邮箱」受限 Token 获取当前用户（仅绑定邮箱端点使用）
+
+        要求 payload type == "email_binding_required"、用户存在且启用、非注销、
+        且仍未绑定邮箱（已绑定则受限 token 即刻失效）。
+        """
+        payload = AuthService.verify_token(token, expected_type="email_binding_required")
+        if not payload:
+            return None
+
+        user_id = payload.get("sub")
+        if not user_id:
+            return None
+
+        async with AsyncSessionLocal() as db:
+            user_db = UserDB(db)
+            user = await user_db.get_user_by_id(user_id)
+
+            if (
+                not user
+                or not user.is_active
+                or getattr(user, "deleted_at", None)
+                or _normalize_email(user.email)
+            ):
+                return None
+
+            return {
+                "user_id": user.id,
+                "phone": user.phone,
+                "username": user.username,
+            }
+
+    @staticmethod
+    async def request_bind_email_code(user_id: str, email: str) -> None:
+        """
+        发送绑定邮箱验证码（6 位数字，10 分钟有效，60 秒发送冷却）
+
+        Raises:
+            ValueError: 账户状态异常 / 已绑定邮箱 / 邮箱被其他账号占用 / 发送过于频繁
+        """
+        email = _normalize_email(email)
+        if not email:
+            raise ValueError("邮箱不能为空")
+
+        async with AsyncSessionLocal() as db:
+            user_db = UserDB(db)
+            user = await user_db.get_user_by_id(user_id)
+            if not user or not user.is_active or getattr(user, "deleted_at", None):
+                raise ValueError("账户状态异常")
+            if _normalize_email(user.email):
+                raise ValueError("该账号已绑定邮箱，无需重复绑定")
+            # 邮箱必须唯一：不允许绑定到已注册邮箱（不合并账号，见 HISTORY_EVIDENCE）
+            existing = await user_db.get_user_by_email(email)
+            if existing:
+                raise ValueError("该邮箱已被其他账号使用，请更换邮箱，或直接使用该邮箱登录")
+
+        # 60 秒冷却期：避免连续轰炸发送
+        last = _bind_email_codes.get(email)
+        if (
+            last
+            and last.get("sent_at")
+            and (datetime.now(timezone.utc) - last["sent_at"]).total_seconds() < 60
+        ):
+            raise ValueError("发送过于频繁，请 60 秒后再试")
+
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(minutes=BIND_EMAIL_CODE_EXPIRE_MINUTES)
+        try:
+            await EmailService.send_bind_email_code(
+                to_email=email,
+                code=code,
+                valid_minutes=BIND_EMAIL_CODE_EXPIRE_MINUTES,
+            )
+        except Exception as e:
+            raise _friendly_email_send_error(e, "绑定邮箱验证") from e
+        _bind_email_codes[email] = {
+            "user_id": user_id,
+            "code": code,
+            "expires_at": expires_at,
+            "sent_at": now,
+        }
+
+    @staticmethod
+    async def confirm_bind_email(user_id: str, email: str, code: str) -> Dict:
+        """
+        校验绑定验证码并完成绑定：写入 email + email_verified=True，
+        补发试用码（幂等，失败不阻断），签发正式 access + refresh token 对。
+        """
+        email = _normalize_email(email)
+        if not email:
+            raise ValueError("邮箱不能为空")
+
+        record = _bind_email_codes.get(email)
+        if not record or record.get("user_id") != user_id:
+            raise ValueError("请先获取验证码")
+
+        if datetime.now(timezone.utc) > record["expires_at"]:
+            _bind_email_codes.pop(email, None)
+            raise ValueError("验证码已过期，请重新获取")
+
+        _verify_one_time_code(record, code)
+
+        async with AsyncSessionLocal() as db:
+            user_db = UserDB(db)
+            user = await user_db.get_user_by_id(user_id)
+            if not user or not user.is_active or getattr(user, "deleted_at", None):
+                raise ValueError("账户状态异常")
+            if _normalize_email(user.email):
+                raise ValueError("该账号已绑定邮箱，无需重复绑定")
+            # 二次确认邮箱仍未被占用（发码后到确认前可能被注册）
+            existing = await user_db.get_user_by_email(email)
+            if existing and existing.id != user_id:
+                raise ValueError("该邮箱已被其他账号使用，请更换邮箱")
+
+            await user_db.update_user(user_id, email=email, email_verified=True)
+            user = await user_db.get_user_by_id(user_id)
+            token_pair = await AuthService._issue_token_pair(user)
+            result = {
+                "user_id": user.id,
+                "email": user.email,
+                "phone": user.phone,
+                "username": user.username,
+                "avatar_url": user.avatar_url,
+                "email_verified": True,
+            }
+
+        # 一次性验证码，验证通过即消费
+        _bind_email_codes.pop(email, None)
+
+        # 绑定即验证通过：补发试用码（与验证通过发码口径一致；幂等，失败只记日志）
+        try:
+            from app.utils.trial_codes import ensure_trial_code_for_user
+
+            ensure_trial_code_for_user({"user_id": user_id, "email": email})
+        except Exception:
+            logger.exception("绑定邮箱后补发试用码失败: user_id=%s", user_id)
+
+        logger.info("纯手机老账号完成邮箱绑定: user_id=%s", user_id)
+        return {**result, **token_pair}

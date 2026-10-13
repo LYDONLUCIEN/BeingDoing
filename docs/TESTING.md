@@ -160,6 +160,39 @@ test/backend/test_step3_hyp_candidate.py::TestFallbackTrigger::test_no_trigger_w
 test/backend/test_step3_hyp_candidate.py::TestSanitizeHypCandidates::test_filters_guide_phrase
 ```
 
+## 第三轮结果：注册验证前置与强制绑邮箱（ADR-0026，2026-10-13）
+
+| 检查 | 实测结果 |
+| --- | --- |
+| 新增前置流程用例 | test_register_preverification.py 16 项全过（发码/验码/链接/轮询/ticket/强制绑定正反路径） |
+| 存量验证路径回归 | test_register_email_verification.py 11 项全过（重发、验证发码、journeys 懒补发、IP 频控按新口径调整） |
+| 认证相关定向回归 | login_lockout/password_reset/account_deletion/change_password/security_boundaries/trial_codes/refresh_token/email_error 共 110 项全过 |
+| 全量后端 | **893 passed、32 failed**；失败 ID 全部是上方第一轮既有基线（knowledge/conversation_file_manager/database/profile_sync 等），无一与本次改动相关，无新增失败 ID（总数少于上轮因 llmapi/savepoint 等部分旧失败在当前工作区通过，未追查原因，不归功于本轮） |
+| 前端 | `next build` 退出 0（含新增 /bind-email、/register-verify 路由，TypeScript 通过） |
+
+未做真机 SMTP 收发与浏览器端到端验收，见下节。
+
+## 第四轮结果：会话隔离修复（2026-10-13）
+
+| 检查 | 实测结果 |
+| --- | --- |
+| 新增防护用例 | test_thread_complete_requires_conclusion.py 2 项先红后绿（无结论卡 complete→400 且不写 phase 级选择；有 pending 草案→200） |
+| 全量后端 | **895 passed、32 failed**；失败 ID 与第三轮基线完全一致（含 flow_6 既有失败），无新增失败 |
+| 前端 | lint 退出 0（仅既有警告）、test:security 3 passed、production build 退出 0（TypeScript 通过） |
+
+本轮修复：phase 1-4 流式期间禁新建会话 + SSE 事件按 thread 归属丢弃；thread/complete 无结论卡 400 前置校验；rumination v4 流式状态按 combo 归属（streamingComboId）。未做浏览器端到端验收与线上历史污染数据清理。
+
+## 第五轮结果：admin 会话列表/详情覆盖 v4 combo（2026-10-13）
+
+| 检查 | 实测结果 |
+| --- | --- |
+| 新增用例 | test_admin_conversations_v4.py 4 项先红后绿（列表补枚举 combo、step 过滤、详情返回原文且 ts→created_at 归一化、非管理员 403） |
+| 全量后端 | **899 passed、32 failed**；失败 ID 与第三/四轮基线逐一比对完全一致，无新增失败 |
+| 真实数据只读验证 | P7XC7VEFDO 会话列表由 5 行变为 13 行（4 phase thread + 旧 rumination thread + 8 个 v4 combo）；combo_7 详情返回 15 条消息原文 |
+| Python 格式 | 新增测试文件 black/isort 通过；admin.py 的 black/isort 告警均为既有格式债（非本次改动区域），未做无关重排 |
+
+背景：v4 combo 只存 rumination_v4_progress.json、从不登记 record.json session_ids，admin 会话页整组漏行；本次在展示层补枚举/回退，未动数据模型。未做浏览器端页面验收。
+
 ## 上线前另行验证
 
 实际 LLM 多阶段探索、SMTP 验证/重置、OSS 上传、真实渠道支付/退款、Chrome PDF、反向代理 SSE/刷新/限流及数据恢复未完成现场端到端验证。代码回归证据不能替代这些检查。

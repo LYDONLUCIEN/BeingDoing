@@ -20,6 +20,11 @@
     （含未选中的线程与 record 未登记的孤儿文件），保证对话全量可溯源
     （2026-10-06：修复 rumination 之前的聊天线程漏导问题）。
   - 若报告 markdown 已生成（``report_markdown.md`` 缓存存在），原样附带。
+  - rumination 第五轮（2026-10-13 补全）：v4 对话只在
+    ``rumination_v4_progress.json``（combo 会话，不登记 session_ids）。
+    md 章节、stats 行、rumination_tables.json（``v4`` 键）、summary.json
+    （``v4_final_selection`` / ``v4_conclusions``）均从原生 v4 快照补齐；
+    无 session 但有 v4/旧进度数据时 md 也输出沉淀章节，不再缺第五轮。
 """
 
 from __future__ import annotations
@@ -37,6 +42,12 @@ from app.utils.legacy_rumination_export import (
     slice_conversation_by_step,
 )
 from app.utils.report_registry import STEP_IDS, ReportRegistry
+from app.utils.v4_rumination_export import (
+    build_v4_block,
+    compute_v4_message_stats,
+    has_v4_content,
+    load_v4_progress,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +197,11 @@ class BatchExportService:
         files.append((f"report_{report_id}.{ext}", md_content.encode("utf-8")))
 
         # —— 产物 3：统计 JSON ——
+        # v4 沉淀对话聚合进 phases（修复「stats 缺第五轮」：v4 会话只在
+        # rumination_v4_progress.json，不登记 session_ids，旧逻辑整体漏行）
+        per_phase_stats = self._merge_v4_rumination_stat(
+            report_id, record, per_phase_stats
+        )
         stats = self._build_stats(
             report_id=report_id, record=record, per_phase=per_phase_stats
         )
@@ -326,6 +342,68 @@ class BatchExportService:
     # ------------------------------------------------------------------
     # 统计
     # ------------------------------------------------------------------
+
+    def _merge_v4_rumination_stat(
+        self, report_id: str, record: dict, per_phase: List[dict]
+    ) -> List[dict]:
+        """把 v4 沉淀对话聚合成一条 rumination phase 统计行。
+
+        规则：
+          - 无 v4 快照或 v4 无任何对话 → 原样返回（旧数据口径不变）。
+          - v4 有对话 → 生成 ``source="rumination_v4"`` 的统计行；若已有
+            session 口径的 rumination 行（多为迁移残留的几条占位消息），原位替换，
+            避免双计。v4 是现行协议（ADR-0025），以 v4 为准。
+        """
+        state = load_v4_progress(report_id, registry=self.registry)
+        if state is None:
+            return per_phase
+        agg = compute_v4_message_stats(state)
+        if agg is None:
+            return per_phase
+
+        locked = bool((record.get("steps", {}).get("rumination") or {}).get("locked"))
+        final_sel = state.get("final_selection") or {}
+        has_card = any(
+            isinstance(c, dict) and (c.get("conclusion_card") or {}).get("hypothesis")
+            for c in (state.get("combo_sessions") or [])
+        )
+        v4_row = {
+            "step_id": "rumination",
+            "step_label_cn": PHASE_LABEL_CN["rumination"],
+            "session_id": None,
+            "source": "rumination_v4",
+            "is_selected_session": locked,
+            "is_completed": locked,  # v4 不写 selected，locked 是完成信号
+            "message_count": agg["message_count"],
+            "message_count_by_role": agg["message_count_by_role"],
+            "ai_chars": agg["ai_chars"],
+            "user_chars": agg["user_chars"],
+            "total_dialogue_chars": agg["total_dialogue_chars"],
+            "duration_seconds": agg["duration_seconds"],
+            "duration_human": self._humanize_duration(agg["duration_seconds"]),
+            "first_message_at": agg["first_message_at"],
+            "last_message_at": agg["last_message_at"],
+            "token_usage": None,  # v4 消息不落 token_usage
+            "conclusion_state": None,
+            "has_conclusion_final": has_card,
+            "combo_count": agg["combo_count"],
+            "per_combo": agg["per_combo"],
+            "final_selection_submitted": bool(final_sel.get("submitted")),
+        }
+
+        out: List[dict] = []
+        replaced = False
+        for p in per_phase:
+            if p.get("step_id") == "rumination":
+                if not replaced:
+                    out.append(v4_row)  # 原位替换，保持 phases 顺序
+                    replaced = True
+                # 多余的 rumination 行（理论不出现）直接丢弃
+            else:
+                out.append(p)
+        if not replaced:
+            out.append(v4_row)  # rumination 是 STEP_IDS 最后一步，追加即末尾
+        return out
 
     def _compute_phase_stat(
         self,
@@ -571,14 +649,16 @@ class BatchExportService:
             lines.append("")
 
             raw = self._load_step_session_json(report_id, step_id, session_id)
+
+            # rumination 走特殊渲染：v4 combos + 前置结论 + 历史 step（表格 + 对话切片）。
+            # raw 为 None（会话源文件缺失）也照走——v4 / 旧进度文件区块仍可渲染。
+            if step_id == "rumination":
+                self._render_rumination_md(lines, report_id, raw)
+                continue
+
             if raw is None:
                 lines.append("> （该阶段对话源文件缺失）")
                 lines.append("")
-                continue
-
-            # rumination 走特殊渲染：前置结论 + 每个 step 的（表格 + 对话切片）
-            if step_id == "rumination":
-                self._render_rumination_md(lines, report_id, raw)
                 continue
 
             # 其他 phase：结论 + 完整对话
@@ -592,6 +672,22 @@ class BatchExportService:
             lines.append("### 对话记录")
             lines.append("")
             self._render_dialogue_md(lines, raw.get("messages") or [])
+
+        # —— 第五轮兑底：rumination 无登记 session 但有 v4 / 旧进度数据时，
+        # 仍输出沉淀章节（修复「导出缺第五轮」：v4 不登记 session_ids）。
+        included = {step_id for step_id, _, _, _ in phase_sessions}
+        if "rumination" not in included:
+            v4_state = load_v4_progress(report_id, registry=self.registry)
+            legacy_progress = load_raw_rumination_progress(report_id, registry=self.registry)
+            if (v4_state is not None and has_v4_content(v4_state)) or (legacy_progress is not None):
+                seq = len(phase_sessions) + 1
+                locked = bool((record.get("steps", {}).get("rumination") or {}).get("locked"))
+                title = f"## {seq}. {PHASE_LABEL_CN['rumination']}（rumination）"
+                if not locked:
+                    title += "  ⚠️ 进行中（未确认）"
+                lines.append(title)
+                lines.append("")
+                self._render_rumination_md(lines, report_id, None)
 
         return "\n".join(lines).rstrip() + "\n"
 
@@ -627,11 +723,17 @@ class BatchExportService:
         "not_reached": "— 未进行",
     }
 
-    def _render_rumination_md(
-        self, lines: List[str], report_id: str, raw: dict
-    ) -> None:
-        """渲染 rumination 章节：前置结论 + 每个 step（表格 + 对话切片）。
+    # v4 combo 状态中文标注（md 用）
+    _V4_STATUS_CN = {
+        "discussing": "讨论中",
+        "concluded": "已出结论",
+        "abandoned": "已放弃",
+    }
 
+    def _render_rumination_md(self, lines: List[str], report_id: str, raw: Optional[dict]) -> None:
+        """渲染 rumination 章节：前置结论 + v4 combos（现行） + 历史 step（表格 + 对话切片）。
+
+        raw 为 None 时表示无会话源文件（v4-only report），v4 / 旧进度区块仍照常渲染。
         rumination 全局结论不在此处（留在 md 顶部「报告最终结论」）。
         """
         tables = build_rumination_tables(report_id, registry=self.registry)
@@ -653,13 +755,23 @@ class BatchExportService:
                     lines.append(f"- {phase_label.get(ph, ph)}：{('、'.join(kws))}")
             lines.append("")
 
+        # —— v4 区块（现行沉淀流程，ADR-0025）：终选 + 每个 combo（结论卡 + 对话全文） ——
+        v4_state = load_v4_progress(report_id, registry=self.registry)
+        if v4_state is not None and has_v4_content(v4_state):
+            self._render_v4_rumination_md(lines, v4_state)
+
+        # —— 历史区块（旧七步/九步表格协议，已退役）：仅在有旧会话消息或旧进度文件时渲染 ——
+        msgs = (raw or {}).get("messages") or []
+        legacy_progress = load_raw_rumination_progress(report_id, registry=self.registry)
+        if not msgs and legacy_progress is None:
+            return
+
         # —— step3 组合矩阵 / 讨论结论（若存在，放在 step3 之前作为元信息） ——
         combo_matrix = tables.get("combo_matrix")
         combo_conclusions = tables.get("combo_conclusions")
 
         # —— 按 step 渲染（表格 + 对话切片） ——
         steps_data = tables.get("steps") or {}
-        msgs = raw.get("messages") or []
         sliced = slice_conversation_by_step(msgs)
         unified = sliced.get("_unified")  # 老数据兜底
 
@@ -722,6 +834,57 @@ class BatchExportService:
             else:
                 lines.append("> （本步骤无对话记录）")
                 lines.append("")
+
+    def _render_v4_rumination_md(self, lines: List[str], v4_state: dict) -> None:
+        """渲染 v4 沉淀区块：终选状态 + 每个 combo（结论卡 + 对话全文）。
+
+        数据全部取自原生 rumination_v4_progress.json，不从旧矩阵合成。
+        """
+        combos = [c for c in (v4_state.get("combo_sessions") or []) if isinstance(c, dict)]
+        final_sel = v4_state.get("final_selection") or {}
+        selected_ids = [str(x) for x in (final_sel.get("selected_combo_ids") or []) if x]
+
+        lines.append("### 沉淀 v4（现行流程）")
+        lines.append("")
+        if final_sel.get("submitted"):
+            submitted_at = final_sel.get("submitted_at") or "时间未知"
+            picked = "、".join(selected_ids) if selected_ids else "（无）"
+            lines.append(f"> 终选已提交（{submitted_at}）：{picked}")
+        else:
+            lines.append("> 终选未提交")
+        lines.append("")
+
+        for combo in combos:
+            passion = combo.get("passion") or "（未命名热情）"
+            strengths = "、".join(combo.get("strengths") or []) or "（未选优势）"
+            status = combo.get("status")
+            status_cn = self._V4_STATUS_CN.get(status, status or "未知")
+            meta = [f"combo_id: {combo.get('combo_id')}", f"状态: {status_cn}"]
+            if combo.get("user_skipped"):
+                meta.append("用户已跳过")
+            if combo.get("combo_id") in selected_ids:
+                meta.append("★ 终选")
+            lines.append(f"#### {passion} × {strengths}")
+            lines.append("")
+            lines.append(f"> {'；'.join(meta)}")
+            lines.append("")
+
+            card = combo.get("conclusion_card") or {}
+            hypothesis = card.get("hypothesis")
+            if hypothesis:
+                lines.append(f"**结论卡：**{hypothesis}")
+                lines.append("")
+                if card.get("balance_found") is True:
+                    lines.append("**平衡点判定：**✅ 成立")
+                    lines.append("")
+                elif card.get("balance_found") is False:
+                    reason = card.get("balance_fail_reason") or "未注明原因"
+                    lines.append(f"**平衡点判定：**❌ 未成立（{reason}）")
+                    lines.append("")
+
+            lines.append("**对话记录：**")
+            lines.append("")
+            self._render_dialogue_md(lines, combo.get("messages") or [])
 
     def _render_table_md(
         self, lines: List[str], columns: List[str], rows: List[dict]

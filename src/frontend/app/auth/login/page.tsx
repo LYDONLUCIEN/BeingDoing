@@ -30,7 +30,7 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get('redirect') || '/explore';
-  const { setUser, setToken, setRecoveryMode } = useAuthStore();
+  const { setUser, setToken, setRecoveryMode, setBindingMode } = useAuthStore();
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(false);
 
@@ -73,6 +73,19 @@ function LoginForm() {
             avatar_url: response.data.avatar_url,
           });
           router.push('/account-recovery');
+          return;
+        }
+        // 纯手机老账号（ADR-0026）：保存受限 token 后跳转绑定邮箱页（硬门禁，绑定前不可用）
+        if (response.data.email_binding_required) {
+          setToken(response.data.token);
+          // 标记绑定会话：AuthGate/401 拦截器据此跳过会话校验与强制登出
+          setBindingMode(true);
+          setUser({
+            user_id: response.data.user_id,
+            phone: response.data.phone,
+            username: response.data.username,
+          });
+          router.push('/bind-email');
           return;
         }
         try {

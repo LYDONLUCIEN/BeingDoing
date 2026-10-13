@@ -2037,6 +2037,51 @@ async def list_conversations(
                         or report.get("updated_at"),
                     }
                 )
+        # 补充枚举 rumination v4 combo 会话（2026-10-13）：v4 对话只存
+        # rumination_v4_progress.json，从不登记 record.json 的 session_ids，
+        # 仅靠上方循环会整组漏行（导出链路已同样补过）。
+        if step_id and ReportRegistry.normalize_step_id(step_id) != "rumination":
+            continue
+        try:
+            from app.services.rumination_v4_service import load_v4_state
+
+            v4_state = load_v4_state(registry.reports_root, rid)
+        except Exception:
+            continue
+        existing = {(r["report_id"], r["step_id"], r["session_id"]) for r in rows}
+        for combo in v4_state.get("combo_sessions") or []:
+            combo_id = combo.get("combo_id")
+            if not combo_id:
+                continue
+            if session_id and session_id != combo_id:
+                continue
+            if (rid, "rumination", combo_id) in existing:
+                continue
+            if q:
+                target = (
+                    f"{rid} {ac} {uid} rumination {combo_id} "
+                    f"{combo.get('passion') or ''} {'、'.join(combo.get('strengths') or [])}"
+                ).lower()
+                if q.lower() not in target:
+                    continue
+            combo_messages = combo.get("messages") or []
+            combo_last_ts = None
+            if combo_messages:
+                combo_last_ts = (combo_messages[-1] or {}).get("ts")
+            rows.append(
+                {
+                    "report_id": rid,
+                    "activation_code": ac,
+                    "user_id": uid,
+                    "step_id": "rumination",
+                    "session_id": combo_id,
+                    "message_count": len(combo_messages),
+                    "last_message_at": combo_last_ts,
+                    "updated_at": combo.get("updated_at")
+                    or v4_state.get("updated_at")
+                    or report.get("updated_at"),
+                }
+            )
     rows.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
     total = len(rows)
     start = (page - 1) * page_size
@@ -2094,6 +2139,52 @@ async def get_conversation_detail(
                 report_id,
             )
             return {"code": 200, "message": "success", "data": data}
+        # v4 回退（2026-10-13）：rumination 的 combo 会话不登记 session_ids，
+        # 磁盘上也没有 {step}__{session}.json，需从 rumination_v4_progress.json 取。
+        if normalized_step == "rumination":
+            try:
+                from app.services.rumination_v4_service import load_v4_state
+
+                v4_state = load_v4_state(registry.reports_root, report_id)
+            except Exception:
+                v4_state = {}
+            for combo in v4_state.get("combo_sessions") or []:
+                if combo.get("combo_id") != session_id:
+                    continue
+                # 消息 ts 归一化为 created_at，前端详情页按 created_at 渲染时间
+                v4_messages = [
+                    {
+                        **{k: v for k, v in (m or {}).items() if k != "ts"},
+                        "created_at": (m or {}).get("ts"),
+                    }
+                    for m in (combo.get("messages") or [])
+                ]
+                conv = {
+                    "messages": v4_messages,
+                    "metadata": {
+                        "combo_id": combo.get("combo_id"),
+                        "passion": combo.get("passion"),
+                        "strengths": combo.get("strengths") or [],
+                        "status": combo.get("status"),
+                        "conclusion_card": combo.get("conclusion_card"),
+                        "balance_analysis": combo.get("balance_analysis"),
+                        "user_skipped": combo.get("user_skipped"),
+                        "created_at": combo.get("created_at"),
+                        "updated_at": combo.get("updated_at"),
+                    },
+                }
+                data = _finalize_data(
+                    {
+                        "source": "report_dir_v4",
+                        "report_id": report_id,
+                        "step_id": normalized_step,
+                        "session_id": session_id,
+                        "conversation": conv,
+                    },
+                    normalized_step,
+                    report_id,
+                )
+                return {"code": 200, "message": "success", "data": data}
 
     # 兜底：仅按 session_id 在注册表中反查
     found = registry.find_report_step_by_session(session_id)

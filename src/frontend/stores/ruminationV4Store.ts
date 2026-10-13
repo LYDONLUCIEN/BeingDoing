@@ -42,6 +42,8 @@ interface RuminationV4Store {
   /** 当前激活 combo 的流式回复(对话面板用) */
   streamingText: string;
   isStreaming: boolean;
+  /** 正在进行流式回复的 combo（2026-10-13 串台修复：流式状态按 combo 归属，切走不串「思考中」） */
+  streamingComboId: string | null;
   /** 思考流式中(对话面板思考占位动画用,对齐前四 phase) */
   thinkStreaming: boolean;
   /** 思考过程实时片段(单行预览) */
@@ -182,6 +184,7 @@ export const useRuminationV4Store = create<RuminationV4Store>((set, get) => {
     comboCache: {},
     streamingText: '',
     isStreaming: false,
+    streamingComboId: null,
     thinkStreaming: false,
     thinkChunkContent: undefined,
     activationCode: null,
@@ -366,8 +369,11 @@ export const useRuminationV4Store = create<RuminationV4Store>((set, get) => {
         set({ error: '正在分析中，请稍后再聊' });
         return;
       }
+      // 单流互斥（双保险,面板层已用 canInput 拦截）：已有其他 combo 在回复时不受理
+      if (get().isStreaming) return;
       set({
         isStreaming: true,
+        streamingComboId: comboId,
         streamingText: '',
         thinkStreaming: false,
         thinkChunkContent: undefined,
@@ -411,17 +417,18 @@ export const useRuminationV4Store = create<RuminationV4Store>((set, get) => {
         if (evt.done) {
           // 空回复不追加,避免空气泡(后端已有兜底话术,这里是双保险)
           if (!full.trim()) {
-            set({ isStreaming: false, streamingText: '', thinkStreaming: false, thinkChunkContent: undefined });
+            set({ isStreaming: false, streamingComboId: null, streamingText: '', thinkStreaming: false, thinkChunkContent: undefined });
             return;
           }
           const assistantMsg = { role: 'assistant' as const, content: full, ts: new Date().toISOString() };
           updateCombo(comboId, (c) => ({ ...c, messages: [...c.messages, assistantMsg] }));
-          set({ isStreaming: false, streamingText: '', thinkStreaming: false, thinkChunkContent: undefined });
+          set({ isStreaming: false, streamingComboId: null, streamingText: '', thinkStreaming: false, thinkChunkContent: undefined });
         }
         if (evt.error) {
           set({
             error: evt.error,
             isStreaming: false,
+            streamingComboId: null,
             streamingText: '',
             thinkStreaming: false,
             thinkChunkContent: undefined,
@@ -435,7 +442,7 @@ export const useRuminationV4Store = create<RuminationV4Store>((set, get) => {
     abortChat: () => {
       chatHandle?.abort();
       chatHandle = null;
-      set({ isStreaming: false, streamingText: '', thinkStreaming: false, thinkChunkContent: undefined });
+      set({ isStreaming: false, streamingComboId: null, streamingText: '', thinkStreaming: false, thinkChunkContent: undefined });
     },
 
     patchCard: async (comboId, hypothesis) => {

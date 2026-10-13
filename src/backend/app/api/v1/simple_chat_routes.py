@@ -2084,15 +2084,24 @@ async def mark_thread_complete(
     _assert_trial_phase_allowed(rec, current_user, phase_step)
     root = get_effective_simple_root(rec)
     registry = ReportRegistry(base_dir=str(root))
+    # 前置校验（2026-10-13）：该线程必须已有结论卡（confirmed final 或 pending draft），
+    # 否则拒绝。防止前端串会话等异常路径把无结论的空线程 select 成 phase 级选择，
+    # 污染 anchor / dimension_conclusions / rumination 输入。校验先于 bind/select，
+    # 保证拒绝时不落任何 phase 级写入。
+    conv_data = await conv_manager.get_conversation_data(report["report_id"], category)
+    metadata = conv_data.get("metadata", {})
+    cmeta = _read_conclusion_meta(metadata)
+    dimension_conclusion = cmeta.get("final") or cmeta.get("draft")
+    if not isinstance(dimension_conclusion, dict):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="该对话尚未生成结论卡，无法确认完成",
+        )
     registry.bind_session(report["report_id"], phase_step, logical_session_id)
     try:
         registry.select_session(report["report_id"], phase_step, logical_session_id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    conv_data = await conv_manager.get_conversation_data(report["report_id"], category)
-    metadata = conv_data.get("metadata", {})
-    cmeta = _read_conclusion_meta(metadata)
-    dimension_conclusion = cmeta.get("final") or cmeta.get("draft")
     messages = conv_data.get("messages") or []
     has_conclusion_card = any((m or {}).get("role") == "conclusion_card" for m in messages)
     if dimension_conclusion and not has_conclusion_card:

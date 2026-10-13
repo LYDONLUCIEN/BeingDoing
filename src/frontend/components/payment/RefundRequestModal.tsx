@@ -6,7 +6,8 @@
  * 数据源 GET /payment/orders/{id}/refund-options：行级分摊明细（码 × 分摊实付 ×
  * 实时状态）+ 全退/部分退可用性 + 在途申请与历史。
  * - 全退：一行确认（金额 = 剩余可退）
- * - 部分退（仅年度套餐/咨询）：勾选要退的码（金额 = Σ 所选行分摊实付，实时合计）
+ * - 部分退（仅年度套餐/咨询）：勾选要退的码（金额 = Σ 所选行分摊实付，实时合计；
+ *   已被使用的码也可勾选提交，由 admin 审批决定是否退款）
  * - 待审批申请可撤回；驳回理由用户可见；驳回/撤回后可重新申请
  */
 
@@ -70,17 +71,18 @@ export default function RefundRequestModal({ order, onClose, onChanged }: Props)
     void loadOptions();
   }, [loadOptions]);
 
-  const availableLines = useMemo(
-    () => (options?.lines ?? []).filter((l) => l.effective_status === 'available'),
+  // 可勾选的行 = 未退款行（含已被使用的码；是否退款由 admin 审批判断）
+  const selectableLines = useMemo(
+    () => (options?.lines ?? []).filter((l) => l.effective_status !== 'refunded'),
     [options]
   );
 
   const selectedAmount = useMemo(
     () =>
-      availableLines
+      selectableLines
         .filter((l) => selectedLineIds.includes(l.id))
         .reduce((sum, l) => sum + l.amount_paid_alloc, 0),
-    [availableLines, selectedLineIds]
+    [selectableLines, selectedLineIds]
   );
 
   const fullAmount = options?.remaining_refundable ?? 0;
@@ -208,10 +210,10 @@ export default function RefundRequestModal({ order, onClose, onChanged }: Props)
               </div>
             )}
 
-            {/* 不可退提示 */}
+            {/* 不可退提示（仅延期订单/订单状态不允许/全部已退时出现） */}
             {!options.full_allowed && !options.partial_allowed && !options.pending_request && (
               <div className="mb-4 rounded-lg bg-gray-100 p-4 text-sm text-gray-600">
-                该订单当前不可退款（激活码已被使用、咨询已预约或订单状态不允许）。
+                该订单当前不可退款（延期订单交付即已使用，或订单状态不允许）。
                 如有特殊情况请通过反馈渠道联系我们。
               </div>
             )}
@@ -288,10 +290,11 @@ export default function RefundRequestModal({ order, onClose, onChanged }: Props)
                 {refundType === 'partial' && options.partial_allowed && (
                   <div>
                     <p className="mb-2 text-sm text-gray-600">
-                      选择要退款的激活码（每枚按分摊实付折算，退多少作废多少）：
+                      选择要退款的激活码（每枚按分摊实付折算，退多少作废多少；
+                      已被使用的码也可提交，由管理员审批决定）：
                     </p>
                     <ul className="max-h-44 space-y-1 overflow-y-auto">
-                      {availableLines.map((line) => (
+                      {selectableLines.map((line) => (
                         <li key={line.id}>
                           <label className="flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">
                             <span className="flex items-center gap-2">
@@ -302,6 +305,11 @@ export default function RefundRequestModal({ order, onClose, onChanged }: Props)
                                 className="h-4 w-4 accent-indigo-600"
                               />
                               <span className="font-mono">{line.item_ref}</span>
+                              {line.effective_status === 'used' && (
+                                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700">
+                                  已被使用
+                                </span>
+                              )}
                             </span>
                             <span className="text-gray-500">¥{fenToYuan(line.amount_paid_alloc)}</span>
                           </label>

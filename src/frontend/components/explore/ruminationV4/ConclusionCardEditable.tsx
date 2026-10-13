@@ -245,7 +245,7 @@ export default function ConclusionCardEditable({ comboId, card, analysis, userSk
           <textarea
             value={localHypothesis}
             onChange={(e) => setLocalHypothesis(e.target.value)}
-            placeholder="把你们聊出的职业方向写在这里（角色、服务对象、具体动作、目的/价值），填好后点「确认」"
+            placeholder="把你们聊出的职业方向写在这里（角色、服务对象、具体动作、目的/价值），至少 5 个字，填好后点「确认」"
             rows={4}
             disabled={locked || saving}
             className={`editor w-full resize-y rounded-[13px] border px-3.5 py-3 text-[13px] leading-[1.6] outline-none focus:border-[#7b68ff] focus:shadow-[0_0_0_3px_rgba(123,104,255,0.10)] disabled:opacity-60 ${

@@ -12,6 +12,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useRouter, usePathname } from 'next/navigation';
 import AgreeTermsCheckbox from '@/components/legal/AgreeTermsCheckbox';
 import { useLegalConsentPersistence } from '@/hooks/useLegalConsent';
+import { useRegisterVerification } from '@/hooks/useRegisterVerification';
 
 const loginSchema = z.object({
   email: z.string().email().optional().or(z.literal('')),
@@ -26,16 +27,13 @@ const loginSchema = z.object({
   path: ['agreeTerms'],
 });
 
+// 2026-10-13 起（ADR-0026）：注册邮箱验证前置——邮箱/验证码步骤由 useRegisterVerification 管理，
+// 本 schema 只管验证通过后的密码表单；手机号不收集（等短信通道上线）。
 const registerSchema = z.object({
-  email: z.string().email().optional().or(z.literal('')),
-  phone: z.string().optional(),
   username: z.string().optional(),
   password: z.string().min(6, '密码至少6位'),
   confirmPassword: z.string(),
   agreeTerms: z.boolean(),
-}).refine((data) => data.email || data.phone, {
-  message: '邮箱或手机号至少提供一个',
-  path: ['email'],
 }).refine((data) => data.password === data.confirmPassword, {
   message: '两次输入的密码不一致',
   path: ['confirmPassword'],
@@ -64,9 +62,14 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
   const [resetCooldown, setResetCooldown] = useState(0);
   // 登录防爆破：423 login_locked 时的剩余锁定秒数（倒计时，期间禁用提交）
   const [loginLockSeconds, setLoginLockSeconds] = useState(0);
-  const { setUser, setToken, setRecoveryMode } = useAuthStore();
+  const { setUser, setToken, setRecoveryMode, setBindingMode } = useAuthStore();
   const router = useRouter();
   const pathname = usePathname();
+
+  // 注册前置验证（邮箱 → 验证码 → 密码）共享逻辑
+  const regVerify = useRegisterVerification();
+  const [regEmailInput, setRegEmailInput] = useState('');
+  const [regCodeInput, setRegCodeInput] = useState('');
 
   const loginForm = useForm<LoginFormData>({ resolver: zodResolver(loginSchema) });
   const registerForm = useForm<RegisterFormData>({
@@ -155,6 +158,24 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
           }, 400);
           return;
         }
+        // 纯手机老账号（ADR-0026）：保存受限 token 后跳转绑定邮箱页（硬门禁，绑定前不可用）
+        if (resData.email_binding_required) {
+          setToken(resData.token);
+          // 标记绑定会话：AuthGate/401 拦截器据此跳过会话校验与强制登出
+          setBindingMode(true);
+          setUser({
+            user_id: resData.user_id,
+            phone: resData.phone,
+            username: resData.username,
+          });
+          setSuccessMsg('为了账号安全，需要先绑定邮箱');
+          setTimeout(() => {
+            setLoading(false);
+            onClose();
+            router.push('/bind-email');
+          }, 400);
+          return;
+        }
         try {
           const me = await authApi.getCurrentUser();
           const userData = me?.data || resData;
@@ -214,37 +235,24 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
     setLoading(true);
     try {
       const response = await authApi.register({
-        email: normalizeEmail(data.email),
-        phone: data.phone?.trim() || undefined,
+        email: regVerify.email,
         username: data.username?.trim() || undefined,
         password: data.password,
+        ticket: regVerify.ticket,
       });
       const resData = response?.data;
       if (response?.code === 200 && resData?.token) {
         setToken(resData.token);
-        try {
-          const me = await authApi.getCurrentUser();
-          const userData = me?.data || resData;
-          setUser({
-            user_id: userData?.user_id ?? resData.user_id,
-            email: userData?.email ?? resData.email,
-            phone: userData?.phone ?? resData.phone,
-            username: userData?.username ?? resData.username,
-            avatar_url: userData?.avatar_url ?? resData.avatar_url,
-            is_super_admin: userData?.is_super_admin,
-            email_verified: userData?.email_verified ?? resData.email_verified,
-          });
-        } catch {
-          setUser({
-            user_id: resData.user_id,
-            email: resData.email,
-            phone: resData.phone,
-            username: resData.username,
-            avatar_url: resData.avatar_url,
-            is_super_admin: false,
-            email_verified: resData.email_verified,
-          });
-        }
+        // 邮箱已前置验证，直接用注册响应写入用户态（不再拉 /auth/me 避免多余往返）
+        setUser({
+          user_id: resData.user_id,
+          email: resData.email,
+          phone: resData.phone,
+          username: resData.username,
+          avatar_url: resData.avatar_url,
+          is_super_admin: false,
+          email_verified: true,
+        });
         setSuccessMsg('注册成功！');
         setTimeout(() => {
           setLoading(false);
@@ -314,6 +322,9 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
     setError('');
     loginForm.reset();
     registerForm.reset();
+    regVerify.backToEmail();
+    setRegEmailInput('');
+    setRegCodeInput('');
     setMode(target);
   };
 
@@ -528,47 +539,138 @@ export default function AuthModal({ isOpen, onClose, redirectTo = '/' }: AuthMod
               </div>
             </div>
           ) : (
-            <form onSubmit={registerForm.handleSubmit(onRegisterSubmit)} className="space-y-3.5">
-              <div>
-                <label htmlFor="register-email" className={labelClass}>邮箱</label>
-                <input {...registerForm.register('email')} type="email" id="register-email" autoComplete="email" className={inputClass} placeholder="your@email.com" />
-                {registerForm.formState.errors.email && <p className={errorClass}>{registerForm.formState.errors.email.message}</p>}
-              </div>
-              <div>
-                <label htmlFor="register-phone" className={labelClass}>手机号（可选）</label>
-                <input {...registerForm.register('phone')} type="tel" id="register-phone" className={inputClass} placeholder="13800138000" />
-              </div>
-              <div>
-                <label htmlFor="register-username" className={labelClass}>用户名（可选）</label>
-                <input {...registerForm.register('username')} type="text" id="register-username" className={inputClass} placeholder="你的昵称" />
-              </div>
-              <div>
-                <label htmlFor="register-password" className={labelClass}>密码</label>
-                <input {...registerForm.register('password')} type="password" id="register-password" autoComplete="new-password" className={inputClass} placeholder="至少6位" />
-                {registerForm.formState.errors.password && <p className={errorClass}>{registerForm.formState.errors.password.message}</p>}
-              </div>
-              <div>
-                <label htmlFor="register-confirmPassword" className={labelClass}>确认密码</label>
-                <input {...registerForm.register('confirmPassword')} type="password" id="register-confirmPassword" autoComplete="new-password" className={inputClass} placeholder="再次输入密码" />
-                {registerForm.formState.errors.confirmPassword && <p className={errorClass}>{registerForm.formState.errors.confirmPassword.message}</p>}
-              </div>
-              {/* 隐私政策 & 服务条款勾选（勾选状态本地记忆） */}
-              <AgreeTermsCheckbox
-                inputProps={registerForm.register('agreeTerms')}
-                error={registerForm.formState.errors.agreeTerms?.message}
-                errorClassName={errorClass}
-              />
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-2.5 px-4 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-bd-primary-fg"
-                style={{ background: 'var(--bd-primary)' }}
-                onMouseEnter={(e) => !loading && (e.currentTarget.style.background = 'var(--bd-primary-alt)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bd-primary)')}
-              >
-                {loading ? '注册中...' : '注册'}
-              </button>
-            </form>
+            /* 注册：邮箱 → 验证码 → 密码（ADR-0026 前置验证） */
+            <div className="space-y-3.5">
+              {regVerify.error && (
+                <div className="p-3 rounded-lg text-sm bg-bd-error-dim border border-bd-err text-bd-err">
+                  {regVerify.error}
+                </div>
+              )}
+              {regVerify.notice && (
+                <div className="p-3 rounded-lg text-sm bg-green-500/15 border border-green-500/50 text-green-700 dark:text-green-400">
+                  {regVerify.notice}
+                </div>
+              )}
+
+              {regVerify.step === 'email' && (
+                <>
+                  <div>
+                    <label htmlFor="register-email" className={labelClass}>邮箱</label>
+                    <input
+                      type="email"
+                      id="register-email"
+                      autoComplete="email"
+                      className={inputClass}
+                      placeholder="your@email.com"
+                      value={regEmailInput}
+                      onChange={(e) => setRegEmailInput(e.target.value)}
+                    />
+                    <p className="mt-1 text-xs text-bd-subtle">注册前需要先验证邮箱</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={regVerify.sending || !regEmailInput.trim()}
+                    onClick={() => void regVerify.sendCode(regEmailInput)}
+                    className="w-full py-2.5 px-4 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-bd-primary-fg"
+                    style={{ background: 'var(--bd-primary)' }}
+                  >
+                    {regVerify.sending ? '发送中...' : '发送验证码'}
+                  </button>
+                  {regVerify.alreadyRegistered && (
+                    <p className="text-sm text-center text-bd-muted">
+                      该邮箱已有账号，请切换到「登录」Tab 直接登录
+                    </p>
+                  )}
+                </>
+              )}
+
+              {regVerify.step === 'code' && (
+                <>
+                  <p className="text-sm text-bd-muted">
+                    验证码已发送至 <span className="text-bd-fg font-medium">{regVerify.email}</span>
+                    ，10 分钟内有效；点击邮件中的链接也可完成验证，本页会自动继续。
+                  </p>
+                  <div>
+                    <label htmlFor="register-code" className={labelClass}>邮箱验证码</label>
+                    <input
+                      type="text"
+                      id="register-code"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      className={`${inputClass} tracking-widest`}
+                      placeholder="6 位验证码"
+                      value={regCodeInput}
+                      onChange={(e) => setRegCodeInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={regVerify.verifying || regCodeInput.length !== 6}
+                    onClick={() => void regVerify.verifyCode(regCodeInput)}
+                    className="w-full py-2.5 px-4 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-bd-primary-fg"
+                    style={{ background: 'var(--bd-primary)' }}
+                  >
+                    {regVerify.verifying ? '验证中...' : '验证并继续'}
+                  </button>
+                  <div className="flex items-center justify-between text-sm">
+                    <button
+                      type="button"
+                      onClick={regVerify.backToEmail}
+                      className="text-bd-subtle hover:text-bd-fg"
+                    >
+                      更换邮箱
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void regVerify.sendCode(regVerify.email)}
+                      disabled={regVerify.sending || regVerify.cooldown > 0}
+                      className="text-bd-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {regVerify.cooldown > 0 ? `${regVerify.cooldown}s 后可重发` : regVerify.sending ? '发送中...' : '重新发送'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {regVerify.step === 'password' && (
+                <form onSubmit={registerForm.handleSubmit(onRegisterSubmit)} className="space-y-3.5">
+                  <p className="text-sm text-bd-muted">
+                    邮箱 <span className="text-bd-fg font-medium">{regVerify.email}</span> 已验证 ✓
+                  </p>
+                  <div>
+                    <label htmlFor="register-username" className={labelClass}>用户名（可选）</label>
+                    <input {...registerForm.register('username')} type="text" id="register-username" className={inputClass} placeholder="你的昵称" />
+                  </div>
+                  <div>
+                    <label htmlFor="register-password" className={labelClass}>密码</label>
+                    <input {...registerForm.register('password')} type="password" id="register-password" autoComplete="new-password" className={inputClass} placeholder="至少6位" />
+                    {registerForm.formState.errors.password && <p className={errorClass}>{registerForm.formState.errors.password.message}</p>}
+                  </div>
+                  <div>
+                    <label htmlFor="register-confirmPassword" className={labelClass}>确认密码</label>
+                    <input {...registerForm.register('confirmPassword')} type="password" id="register-confirmPassword" autoComplete="new-password" className={inputClass} placeholder="再次输入密码" />
+                    {registerForm.formState.errors.confirmPassword && <p className={errorClass}>{registerForm.formState.errors.confirmPassword.message}</p>}
+                  </div>
+                  {/* 隐私政策 & 服务条款勾选（勾选状态本地记忆） */}
+                  <AgreeTermsCheckbox
+                    inputProps={registerForm.register('agreeTerms')}
+                    error={registerForm.formState.errors.agreeTerms?.message}
+                    errorClassName={errorClass}
+                  />
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-2.5 px-4 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-bd-primary-fg"
+                    style={{ background: 'var(--bd-primary)' }}
+                    onMouseEnter={(e) => !loading && (e.currentTarget.style.background = 'var(--bd-primary-alt)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bd-primary)')}
+                  >
+                    {loading ? '注册中...' : '完成注册'}
+                  </button>
+                </form>
+              )}
+            </div>
           )}
         </div>
       </div>

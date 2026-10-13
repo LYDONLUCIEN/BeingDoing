@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
 import type { FilterSchemaEntry, FilterValues } from '@/lib/api/admin';
 
 interface FilterBarProps {
@@ -22,12 +23,120 @@ const CONTROL_STYLE = {
 };
 
 /**
+ * 多选下拉面板（multi_enum 用，2026-10-13）。
+ * 按钮态显示「标签（已选数）」；点开为 checkbox 列表面板，支持多选；
+ * 点击面板外或按 Escape 关闭。全不勾 = 不限（删除该 key）。
+ */
+function MultiSelectDropdown({
+  label,
+  options,
+  selected,
+  onToggle,
+  onClear,
+}: {
+  label: string;
+  options: { value: string; label: string }[];
+  selected: string[];
+  onToggle: (value: string, checked: boolean) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // 点击面板外 / Escape 关闭
+  useEffect(() => {
+    if (!open) return;
+    const onDocDown = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const selectedLabels = options
+    .filter((o) => selected.includes(o.value))
+    .map((o) => o.label)
+    .join('、');
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`${CONTROL_CLASS} flex items-center gap-1.5 whitespace-nowrap`}
+        style={CONTROL_STYLE}
+        title={selectedLabels || `全部${label}`}
+      >
+        <span style={{ color: 'var(--bd-fg-muted)' }}>{label}</span>
+        {selected.length > 0 && (
+          <span
+            className="px-1.5 py-0.5 rounded-full text-xs font-medium leading-none"
+            style={{ background: 'rgba(59,130,246,0.14)', color: '#2563eb' }}
+          >
+            {selected.length}
+          </span>
+        )}
+        <span className="text-xs" style={{ color: 'var(--bd-fg-muted)' }}>
+          {open ? '▴' : '▾'}
+        </span>
+      </button>
+      {open && (
+        <div
+          className="absolute z-30 mt-1 min-w-[10rem] max-h-64 overflow-y-auto rounded-xl border p-2 space-y-1 shadow-lg"
+          style={{
+            background: 'var(--bd-card, #fff)',
+            borderColor: 'var(--bd-border)',
+          }}
+        >
+          {options.map((opt) => (
+            <label
+              key={opt.value}
+              className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm cursor-pointer hover:opacity-70"
+              style={{ color: 'var(--bd-fg)' }}
+            >
+              <input
+                type="checkbox"
+                checked={selected.includes(opt.value)}
+                onChange={(e) => onToggle(opt.value, e.target.checked)}
+              />
+              {opt.label}
+            </label>
+          ))}
+          {selected.length > 0 && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="w-full text-left px-2 py-1.5 rounded-lg text-xs hover:opacity-70"
+              style={{ color: 'var(--bd-fg-muted)' }}
+            >
+              清空选择
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * 通用用户筛选条（ADR-0023）。
  * 按 schema 声明顺序渲染，类型映射：
  * - text       → 原生 input（受控，placeholder 用 label）
  * - enum       → 原生 select，第一项「全部」（value=''，选中即从 values 删除该 key）
- * - multi_enum → label + 行内原生 checkbox 组（全不勾即删除该 key）
+ * - multi_enum → 自定义多选下拉面板（MultiSelectDropdown，全不勾即删除该 key）
  * - date_range → 两个原生 input[type=date]（两端皆空即删除该 key）
+ *
+ * 布局（2026-10-13）：flex-wrap 自然换行，超宽即折到下一行，不再横向滚动；
+ * 下方数据表格的横向滚动由各页面表格容器自行承担（overflow-x-auto）。
  */
 export function FilterBar({ schema, values, onChange, className }: FilterBarProps) {
   /** 写入单个 key；value 为 undefined 时删除该 key（空值 = 不限） */
@@ -42,10 +151,7 @@ export function FilterBar({ schema, values, onChange, className }: FilterBarProp
   };
 
   return (
-    // 单行不折行 + 横向滚动（2026-10-09）：滚动条样式在 openlife-admin.css 的 .bd-filterbar-scroll
-    <div
-      className={`flex flex-nowrap items-center gap-3 overflow-x-auto bd-filterbar-scroll pb-2 ${className ?? ''}`}
-    >
+    <div className={`flex flex-wrap items-center gap-3 ${className ?? ''}`}>
       {schema.map((entry) => {
         switch (entry.type) {
           case 'text': {
@@ -61,7 +167,7 @@ export function FilterBar({ schema, values, onChange, className }: FilterBarProp
                   // 纯空白视为清空（后端对 text 过滤器要求非空字符串）
                   setValue(entry.key, e.target.value.trim() ? e.target.value : undefined)
                 }
-                className={`${CONTROL_CLASS} shrink-0`}
+                className={`${CONTROL_CLASS} w-56`}
                 style={CONTROL_STYLE}
               />
             );
@@ -74,7 +180,7 @@ export function FilterBar({ schema, values, onChange, className }: FilterBarProp
                 key={entry.key}
                 value={current}
                 onChange={(e) => setValue(entry.key, e.target.value || undefined)}
-                className={`${CONTROL_CLASS} shrink-0`}
+                className={CONTROL_CLASS}
                 style={CONTROL_STYLE}
               >
                 <option value="">全部{entry.label}</option>
@@ -95,28 +201,14 @@ export function FilterBar({ schema, values, onChange, className }: FilterBarProp
               setValue(entry.key, nextArr.length > 0 ? nextArr : undefined);
             };
             return (
-              <div
+              <MultiSelectDropdown
                 key={entry.key}
-                className="flex flex-nowrap items-center gap-2 shrink-0 whitespace-nowrap"
-              >
-                <span className="text-xs" style={{ color: 'var(--bd-fg-muted)' }}>
-                  {entry.label}
-                </span>
-                {(entry.options ?? []).map((opt) => (
-                  <label
-                    key={opt.value}
-                    className="flex items-center gap-1 text-sm cursor-pointer"
-                    style={{ color: 'var(--bd-fg)' }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={current.includes(opt.value)}
-                      onChange={(e) => toggle(opt.value, e.target.checked)}
-                    />
-                    {opt.label}
-                  </label>
-                ))}
-              </div>
+                label={entry.label}
+                options={entry.options ?? []}
+                selected={current}
+                onToggle={toggle}
+                onClear={() => setValue(entry.key, undefined)}
+              />
             );
           }
           case 'date_range': {
@@ -135,10 +227,8 @@ export function FilterBar({ schema, values, onChange, className }: FilterBarProp
               }
             };
             return (
-              <div
-                key={entry.key}
-                className="flex flex-nowrap items-center gap-2 shrink-0 whitespace-nowrap"
-              >
+              // 日期区间作为整体换行（内部不折行）
+              <div key={entry.key} className="flex flex-nowrap items-center gap-2 whitespace-nowrap">
                 <span className="text-xs" style={{ color: 'var(--bd-fg-muted)' }}>
                   {entry.label}
                 </span>
@@ -169,7 +259,7 @@ export function FilterBar({ schema, values, onChange, className }: FilterBarProp
       })}
       <button
         onClick={() => onChange({})}
-        className="px-3 py-2 rounded-lg text-sm border hover:opacity-80 transition-opacity shrink-0"
+        className="px-3 py-2 rounded-lg text-sm border hover:opacity-80 transition-opacity"
         style={{ borderColor: 'var(--bd-border)', color: 'var(--bd-fg-muted)' }}
       >
         重置

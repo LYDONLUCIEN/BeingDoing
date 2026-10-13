@@ -24,6 +24,7 @@ SQLite（账户、订单、券、退款、统计）   JSON（激活码、探索�
 | `api/v1/rumination_v4_routes.py`、`services/rumination_v4_service.py` | 当前唯一沉淀运行链路，组合创建/讨论/用户卡/独立判断/终选；无 A/B 分流 |
 | `utils/rumination_inputs.py` | 四阶段结论输入提取，按确认卡、anchor、prior_text 优先级读取 |
 | `utils/legacy_rumination_export.py` | 仅为历史数据导出读取旧格式，不生成/更新旧状态、不向 v4 转换 |
+| `utils/v4_rumination_export.py` | 导出侧读取原生 v4 快照：md 第五轮章节、stats 行、tables `v4` 键、summary 终选/结论卡（2026-10-13） |
 | `core/agent/` | 仍挂载的旧 LangGraph 链路，与 simple-chat 共存 |
 | `services/auth_service.py`、`core/database/user_db.py` | 登录、令牌轮换、找回密码、密码重置事务 |
 | `utils/simple_activation_manager.py` | 激活码状态、归属、升级、数据根选择 |

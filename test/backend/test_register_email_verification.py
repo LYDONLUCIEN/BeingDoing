@@ -1,12 +1,15 @@
 """注册强制邮箱验证（2026-09-27 起）测试
 
+2026-10-13 起（ADR-0026）：邮箱验证前置——注册接口必须携带前置验证 ticket，
+落库即已验证，注册完成即发试用码；注册后自动发验证邮件的旧流程已退役。
+本文件保留存量路径测试（未验证老用户的重发/验证发码/journeys 懒补发），
+新前置流程测试见 test_register_preverification.py。
+
 覆盖：
-- 注册自动发送验证邮件（响应带 verification_email_sent；冷却已记录）
-- 发信失败不阻断注册（verification_email_sent=false，token 正常签发）
 - 纯手机注册被 400 拒绝
-- 注册不再发试用码；verify_email_token 验证通过才发（幂等，发码失败不阻断验证）
-- journeys 懒补发：未验证用户不补发、已验证用户正常补发
 - 注册接口 IP 频控（单 IP 每小时 5 次，第 6 次 429）
+- verify_email_token 验证通过才发试用码（幂等，发码失败不阻断验证）
+- journeys 懒补发：未验证用户不补发、已验证用户正常补发
 - SMTP 认证失败告警：站内信 + 当天幂等；发信钩子仅对认证失败触发
 
 使用独立 in-memory SQLite + monkeypatch 替换各模块的 AsyncSessionLocal；
@@ -100,43 +103,7 @@ async def _create_user(email: str, user_id: str, email_verified: bool = False) -
         await db.commit()
 
 
-# ─── 1. 注册自动发验证邮件 ──────────────────────────────────
-
-
-async def test_register_sends_verification_email(_setup):
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        res = await client.post(
-            "/api/v1/auth/register",
-            json={"email": "new@test.com", "password": PASSWORD},
-        )
-    assert res.status_code == 200
-    data = res.json()["data"]
-    assert data["verification_email_sent"] is True
-    assert data["token"]
-    # 自动发信被调用，目标邮箱正确
-    send_mock = _setup["send_mock"]
-    send_mock.assert_awaited_once()
-    assert send_mock.await_args.kwargs["to_email"] == "new@test.com"
-    # 冷却已记录（立即手动重发会被 5 分钟冷却拦）
-    assert "new@test.com" in as_mod._email_verify_cooldowns
-
-
-async def test_register_survives_email_send_failure(_setup, monkeypatch):
-    monkeypatch.setattr(
-        as_mod.EmailService,
-        "send_email_verification",
-        AsyncMock(side_effect=smtplib.SMTPAuthenticationError(550, b"User has no permission")),
-    )
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        res = await client.post(
-            "/api/v1/auth/register",
-            json={"email": "fail@test.com", "password": PASSWORD},
-        )
-    # 发信失败不阻断注册
-    assert res.status_code == 200
-    data = res.json()["data"]
-    assert data["verification_email_sent"] is False
-    assert data["token"]
+# ─── 1. 注册入口约束 ─────────────────────────────────────
 
 
 async def test_register_phone_only_rejected(_setup):
@@ -149,18 +116,7 @@ async def test_register_phone_only_rejected(_setup):
     assert "请使用邮箱注册" in res.json()["detail"]
 
 
-# ─── 2. 试用码发放时机 ──────────────────────────────────────
-
-
-async def test_register_does_not_grant_trial_code(_setup):
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        res = await client.post(
-            "/api/v1/auth/register",
-            json={"email": "nocode@test.com", "password": PASSWORD},
-        )
-    assert res.status_code == 200
-    uid = res.json()["data"]["user_id"]
-    assert list_owned_codes(uid, "nocode@test.com") == []
+# ─── 2. 试用码发放时机（存量未验证用户的验证发码路径） ─────────────
 
 
 async def test_verify_email_token_grants_trial_code(_setup):
@@ -224,13 +180,15 @@ async def test_journeys_lazy_grant_for_verified(_setup):
 
 
 async def test_register_ip_rate_limit(_setup):
+    # 2026-10-13 起注册需前置验证 ticket：无 ticket 请求同样计入 IP 频控
+    # （频控在服务校验之前执行），用无 ticket 的 400 请求凑满窗口即可。
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         for i in range(auth_module.REGISTER_RATE_LIMIT_PER_HOUR):
             res = await client.post(
                 "/api/v1/auth/register",
                 json={"email": f"rl{i}@test.com", "password": PASSWORD},
             )
-            assert res.status_code == 200
+            assert res.status_code == 400
         # 超限 → 429
         res = await client.post(
             "/api/v1/auth/register",

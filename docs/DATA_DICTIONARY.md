@@ -7,10 +7,10 @@
 | 字段 / 来源 | 含义 | 空值、更新者和约束 |
 | --- | --- | --- |
 | users.id；JWT sub；API current_user.user_id | 跨产品账户主键 | UUID 字符串；新产品继续引用这个身份，不按邮箱另建账户 |
-| users.email / phone | 联系与登录标识 | 可空，不能作为跨产品永久主键；现注册需邮箱，存量手机号存在 |
+| users.email / phone | 联系与登录标识 | 可空，不能作为跨产品永久主键；ADR-0026 起注册必须邮箱且验证前置（register_ticket 凭证据），手机号不收集；存量纯手机账号登录走强制绑定 |
 | users.username / survey.nickname | 展示昵称 | 昵称可变；问卷缺省回填，不能参与授权 |
 | users.user_type | real/beta/test/admin 运营分组 | 默认 real；admin 标签不授权。真正权限由 SUPER_ADMIN_* 与 is_super_admin_user 决定 |
-| users.email_verified / is_active / deleted_at | 邮箱验证、启用、注销状态 | 不同维度；恢复账户 token 受限，不可当普通登录态 |
+| users.email_verified / is_active / deleted_at | 邮箱验证、启用、注销状态 | 不同维度；恢复账户 token 与强制绑定 token 均受限，不可当普通登录态；register_ticket 仅证明邮箱已验证、不是登录态 |
 | membership_plan / membership_expires_at | 老会员缓存 | none/monthly/lifetime，未上线；lifetime 绝不等于新 annual |
 | refresh_tokens.user_id / family_id / is_revoked | 刷新令牌所属账户、轮换族、撤销标志 | 只存令牌哈希；重置密码撤销该账户所有刷新令牌；既有 access token 仍受原有效期限制 |
 
@@ -78,7 +78,7 @@
 | PaymentOrderLine.item_type / item_ref | code/consultation_service/renewal_service；引用码、预约或目标码 |
 | price_original_alloc / coupon_alloc / amount_paid_alloc | 行分摊原价/优惠总额/实付，尾差归最后一行；coupon_alloc 名称虽然写 coupon，实际含所有优惠 |
 | PaymentOrderLine.status | 持久核销记录；可退性还需实时查认领/消耗/预约，不能只看 available |
-| PaymentRefund.requested_amount / approved_amount / refund_no | 申请额/批准执行额/渠道幂等号；同单一个待审批申请，成功才累计退款 |
+| PaymentRefund.requested_amount / approved_amount / refund_no | 申请额/批准执行额/渠道幂等号；同单一个待审批申请，成功才累计退款；申请与审批均不因行已被使用拦截，admin 人工判断 |
 | Coupon.max_uses / used_count / locked_count | 总次数（1..10000）/已核销/锁定中；容量守卫在 DB 原子更新 |
 | owner_user_id / expires_at / suspended_at / voided_at | 单次券归属/期限/停用/作废；多次券不绑人；过期、停用、作废不是同一状态 |
 | CouponRedemption.order_id / user_id / status | 一订单一次券记录；locked/used/released/refunded；新发生记录落表，旧单槽信息兼容保留 |

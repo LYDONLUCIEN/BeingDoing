@@ -2,6 +2,37 @@
 
 这里记录可核验的变更过程，不替代 [当前决策](DECISIONS.md)。历史完整原因和来源见 [HISTORY_EVIDENCE](HISTORY_EVIDENCE.md)；旧提交/issue 中的暂定方案不能直接进入未来开发要求。
 
+## 2026-10-13 · Admin 总览营收卡片 + 支付订单明细 xlsx 导出
+
+所有者要求：总览 Dashboard 能直接看到整体营收，支付管理页支持导出全部订单明细 Excel。现状核查：营收统计此前只在 /admin/analytics 漏斗面板（限 732 天区间、排除已退款口径），总览页无营收指标；订单仅有分页列表接口，前后端均无 Excel 依赖。经逐项确认（呈现位置、导出范围、格式、字段、金额口径、审计）后实施。
+
+- **营收汇总**：新增 `GET /admin/payment/revenue-summary`（超管，实时单表聚合，不进 static 缓存）。净实收 = Σ实付 − Σ已退款，计收状态 paid/granted/partially_refunded/refunding/refunded；今日/本月按 paid_at 以 +08:00 日界（与漏斗服务一致）。总览 Dashboard 新增「营收（实时）」区 6 卡（累计净实收/实收/已退款/付费订单数/今日/本月），独立于 overview 缓存 fetch，附 analytics 趋势与 payment 明细入口。
+- **订单导出**：新增 `GET /admin/payment/orders/export`（超管），遵循当前 status/channel 筛选、无分页，单批上限 20000 行；服务层 `admin_export_orders` 复用列表查询但去掉 code_refundable/code_expiry 的 N+1 激活码联查。新模块 `order_export_service` 用 openpyxl 内存构建 xlsx（金额分→元、状态/渠道/商品中文、时间 +08:00）；因含用户邮箱，每次导出追加审计 `data/admin_export_audit.jsonl`（仿注销审计模式，独立文件）。前端订单 Tab 筛选栏加「导出 Excel」按钮，blob 下载复用 admin.ts 的 pickFilenameFromHeaders/triggerBlobDownload（改为导出函数）。
+- **依赖**：requirements.txt 增加 `openpyxl>=3.1.0`，requirements.lock 用 uv 按既有命令重新编译（lock 净增 openpyxl/et-xmlfile 两条）；dev/prod 部署需按手册手动 pip 安装，不能靠 git pull/start。
+
+测试：新增 `test/backend/test_admin_order_export.py` 8 项（403 门控、xlsx 可读回、筛选透传、审计、行数上限 400、净实收口径、+08:00 日界）通过；支付/退款/漏斗/券相关既有 72 项回归通过；前端 `tsc --noEmit` 通过。
+
+## 2026-10-13 · 退款申请不再以「已被使用」拦截，统一由 admin 审批判断
+
+所有者反馈：激活码未被绑定，但申请退款被拒为「已被使用」（行生成时状态冻结不回验、码懒过期等都会触发），且用户端部分退款无法手输金额。本轮改动：
+
+- **申请时**（`RefundService._create_request` / `get_refund_options`）：移除「行已被使用」（码已绑定/消耗、咨询已预约）的拦截，全退/部分退申请照单全收并照常通知 admin（站内信+邮件）；仅排除已退款行。延期订单不可退、季度/legacy 仅全退、同单一个在途申请等其余守卫保持不变。
+- **审批时**（`RefundService.approve_refund`）：admin 为最终裁判——行已被使用不再收缩可退上限、不再拒批；上限 = min(Σ 未退款行分摊实付, 订单剩余可退)。批准后对应激活码强制作废、咨询预约取消（原有联动不变）。
+- **前端**：用户端部分退款弹窗可勾选已被使用的码（带「已被使用」标签提示）；admin 审批详情可退上限口径与后端一致，批准表单在行已被使用时显示强制作废警示。
+- **部分退款金额口径不变**：用户端仍按码勾选（金额 = 所选行分摊实付），自定义金额走 admin 审批下调或代录申请（现成能力）。
+
+测试：`test/backend` 下退款相关 5 个文件 104 项通过；旧「拒退」断言改为「受理+强制批准」共 6 处，新增 3 项（申请时已用码受理、部分退勾选已用码、申请后码被激活强制批准）。文档同步产品规则与字段字典。
+
+## 2026-10-13 · 注册邮箱验证前置化与纯手机老账号强制绑邮箱（ADR-0026）
+
+所有者要求：注册时先验证邮箱再建号，验证通过后登录只需邮箱+密码；登录/注册均不允许「只有手机号、没有邮箱」完成。经两轮逐项确认（验证形态、存量账号、存储、枚举口径、跨设备、门禁强度）后实施。
+
+注册改为单页三步：邮箱 → 验证码（+链接双形态）→ 密码。验证通过签发 register_ticket（JWT 30 分钟绑定邮箱），注册接口无 ticket 一律 400，无法绕过验证建号；落库即 email_verified=True，试用码发放时点从「验证后」平移到「注册完成」。链接在任意设备点开仅标记服务端验证，原注册页 5 秒轮询领 ticket，解决跨设备断点。已注册邮箱明确提示并改发通知邮件（接受注册侧枚举，登录侧防枚举不变）。频控：发码 IP 10 次/小时 + 单邮箱 60 秒冷却 + 单码 5 次试错；注册 IP 5 次/小时保留。
+
+纯手机老账号：手机+密码认证通过签发 email_binding_required 受限 token（仿 deleted_recovery，30 分钟硬门禁），仅可访问绑定端点；绑定需邮箱验证码、拒绝已注册邮箱（不合并账号），绑定即发正式 token 对并补发试用码。「历史手机号登录保留」条款废止。存量未验证邮箱老账号的重发验证、探索写操作 403 门控、journeys 懒补发路径不变。手机号不收集（无真实短信通道），等通道上线再做。
+
+后端新增 6 个端点与 3 个邮件模板；前端注册页/AuthModal 步骤化（共享 useRegisterVerification hook），新增 /bind-email、/register-verify 页，authStore 增加 bindingMode（与 recoveryMode 同模式接入 401 拦截器与 AuthGate）。新增 test_register_preverification.py 16 项，test_register_email_verification.py 改为存量路径回归；后端相关 137 项测试通过，`next build` 通过。人机验证（CAPTCHA）经讨论不做，阶梯锁定+频控已覆盖，将来首选 Turnstile 或国产行为验证。
+
 ## 2026-10-13 · 将缺包修复简化为手册首页的短流程
 
 所有者指出，当前仅需要补装前端依赖，完整服务器发布／恢复手册增加了不必要的操作负担。手册首页新增 dev／prod 各三行命令：停止、按锁文件安装、明确环境启动；说明 start.sh 已包含构建，npm ls 只核对安装，已有 tmux session 不能靠再次 start 重启。完整迁移／备份流程保留为按需参考，补充 rehype-sanitize 的安全用途及共享组件缺包导致构建失败的原因。本轮仅改文档，命令做语法检查，未连接或重启服务器。

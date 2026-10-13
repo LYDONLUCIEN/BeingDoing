@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from app.utils.report_registry import STEP_IDS, ReportRegistry
+from app.utils.v4_rumination_export import build_v4_block, load_v4_progress
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +165,7 @@ def build_rumination_tables(
     combo_matrix = progress.get("combo_matrix")
     combo_conclusions = progress.get("combo_conclusions")
 
-    return {
+    tables: Dict[str, Any] = {
         "report_id": report_id,
         "source_schema_version": source_version,
         "prerequisites": prerequisites,
@@ -174,6 +175,13 @@ def build_rumination_tables(
             combo_conclusions if isinstance(combo_conclusions, dict) and combo_conclusions else None
         ),
     }
+
+    # v4 区块（现行沉淀协议，ADR-0025）：原生快照结构化呈现，不从旧表格合成
+    v4_state = load_v4_progress(report_id, registry=registry)
+    if v4_state is not None:
+        tables["v4"] = build_v4_block(v4_state)
+
+    return tables
 
 
 def build_summary(report_id: str, registry: Optional[ReportRegistry] = None) -> Dict[str, Any]:
@@ -200,6 +208,22 @@ def build_summary(report_id: str, registry: Optional[ReportRegistry] = None) -> 
             progress = load_raw_rumination_progress(report_id, registry) or {}
             cc = progress.get("combo_conclusions")
             entry["combo_conclusions"] = cc if isinstance(cc, dict) and cc else None
+            # v4（现行协议）：终选提交状态 + 各 combo 结论卡摘要
+            v4_state = load_v4_progress(report_id, registry)
+            if v4_state is not None:
+                entry["v4_final_selection"] = v4_state.get("final_selection")
+                entry["v4_conclusions"] = [
+                    {
+                        "combo_id": c.get("combo_id"),
+                        "passion": c.get("passion"),
+                        "strengths": c.get("strengths") or [],
+                        "status": c.get("status"),
+                        "hypothesis": (c.get("conclusion_card") or {}).get("hypothesis"),
+                        "balance_found": (c.get("conclusion_card") or {}).get("balance_found"),
+                    }
+                    for c in (v4_state.get("combo_sessions") or [])
+                    if isinstance(c, dict) and c.get("conclusion_card")
+                ]
         phases[phase] = entry
 
     return {

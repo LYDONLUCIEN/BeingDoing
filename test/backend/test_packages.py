@@ -531,7 +531,8 @@ async def _refund_full(order_id: str, user_id: str = "u1"):
 
 @pytest.mark.asyncio
 async def test_refund_allowed_when_package_codes_untouched(_setup_db, fake_channel):
-    """套餐退款（ADR-0014）：全部码未动 → 可退，全部码作废；任一动用 → 拒退"""
+    """套餐退款（ADR-0014）：全部码未动 → 可退，全部码作废；码已动用 → 申请仍受理，
+    admin 可强制批准并作废全部码（2026-10-13 起，admin 为最终裁判）"""
     mgr = _setup_db
     for product_type in ("quarterly_package", "annual_package"):
         coupon = await _big_coupon()
@@ -548,7 +549,7 @@ async def test_refund_allowed_when_package_codes_untouched(_setup_db, fake_chann
         for code in PaymentService._parse_meta(refunded.meta)["codes"]:
             assert mgr.get_activation(code).status == "revoked"
 
-    # 任一码被 claim → 整单拒退（守卫在申请时）
+    # 码被 claim 不再拦截申请（2026-10-13 起）：申请受理，admin 可强制批准
     coupon = await _big_coupon()
     order, _ = await PaymentService.create_order(
         user_id="u1",
@@ -558,10 +559,12 @@ async def test_refund_allowed_when_package_codes_untouched(_setup_db, fake_chann
     )
     codes = PaymentService._parse_meta(order.meta)["codes"]
     mgr.claim_owner(codes[0], {"user_id": "u2", "email": "bob@test.com"})
-    with pytest.raises(ValueError, match="不可整单退款"):
-        await RefundService.create_refund_request(
-            user_id="u1", order_id=order.id, refund_type="full", reason="测试退款"
-        )
+    executed = await _refund_full(order.id)
+    assert executed.status == "succeeded"
+    refunded = await _get_order_pkg(order.id)
+    assert refunded.status == "refunded"
+    for code in codes:
+        assert mgr.get_activation(code).status == "revoked"
 
 
 @pytest.mark.asyncio
@@ -627,7 +630,9 @@ async def test_refund_consultation_before_scheduled(fake_channel):
 
 
 @pytest.mark.asyncio
-async def test_refund_consultation_rejected_when_scheduled():
+async def test_refund_consultation_accepted_when_scheduled():
+    """咨询已预约：申请不再拦截（2026-10-13 起），提交后待 admin 审批；
+    admin 强制批准后预约取消"""
     coupon = await _big_coupon()
     order, _ = await PaymentService.create_order(
         user_id="u1",
@@ -647,7 +652,20 @@ async def test_refund_consultation_rejected_when_scheduled():
         booking.status = "scheduled"
         await db.commit()
 
-    with pytest.raises(ValueError, match="已预约"):
-        await RefundService.create_refund_request(
-            user_id="u1", order_id=order.id, refund_type="full", reason="测试退款"
-        )
+    refund = await RefundService.create_refund_request(
+        user_id="u1", order_id=order.id, refund_type="full", reason="测试退款"
+    )
+    assert refund.status == "pending_review"
+    executed = await RefundService.approve_refund(
+        admin_user={"user_id": "admin"}, refund_id=refund.id
+    )
+    assert executed.status == "succeeded"
+    async with _TestSessionLocal() as db:
+        booking = (
+            await db.execute(
+                select(ConsultationBooking).where(
+                    ConsultationBooking.id == meta["booking_id"]
+                )
+            )
+        ).scalar_one()
+    assert booking.status == "cancelled"

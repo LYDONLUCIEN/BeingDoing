@@ -74,6 +74,7 @@ key / label / 类型(multi_enum | enum | date_range | text) / 选项集 / 执行
 - 导出链路保持「分页 500 循环拉取」骨架，内存过滤器插入在拉取后、拼装前（与现 `has_report` 内存过滤同位）。
 - 测试：每个过滤器 apply 的单测（含三态归并、code_kind 最高档、paid/unpaid 边界）、schema 端点、旧参数兼容映射、两消费方集成测试。
 - **运营视角命名（2026-10-09 补）**：admin 用户表格首列 = 昵称（主）+ 邮箱（次行）；导出 zip 用户目录按「昵称+邮箱」命名（`user_export_service.build_user_export_dirname`：无昵称退邮箱、无邮箱退手机号、皆无退 `user-{id前8}`，非法字符转 `_`，撞名加 `-{id前8}` 去重），`index.json` 带 `export_dir`。FilterBar 单行不折行 + 横向滚动（`.bd-filterbar-scroll`）。
+- **筛选条布局修订（2026-10-13，替代上一句的横滚口径）**：multi_enum 改为自定义多选下拉面板（按钮显示已选数、面板内 checkbox，点击外部/Escape 关闭），容器改 `flex-wrap` 自然换行，不再横向滚动；下方数据表格的横向滚动由各页面表格容器（`overflow-x-auto`）自行承担。
 
 ## 后果
 

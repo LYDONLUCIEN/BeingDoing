@@ -20,6 +20,7 @@
 | POST /api/v1/analytics/report-generated | 需登录并拥有探索；不是报告已生成的可信账务证据 |
 | POST /api/v1/export/report-pdf/{id}?force=true | 仅管理员可强制重新生成；用户走 report-recheck |
 | /api/v1/auth/password/reset 的 phone 接口 | development/test 以外返回 503，真实短信通道未实现 |
+| POST /api/v1/simple-chat/thread/complete | 线程须已有结论卡（confirmed final 或 pending draft），否则 400 且不执行 bind/select_session（2026-10-13 串会话防护） |
 
 点赞 trace 仅返回自己保存的快照/预览，不再根据客户端曾提交的 session_id 扫描磁盘；历史匿名点赞不自动认领。匿名 page_view 仍可经 /analytics/event 提交，服务端限定事件类型，保持 ADR-0013 口径。
 
@@ -36,6 +37,13 @@
 ## 报告与新产品
 
 报告 PDF 链路保留 activation_code + report_id 的现有权限检查、完成度和审核门控；导出会话与报告 PDF 是两类功能。新产品按激活码索引历史报告时必须调用有授权的服务，不能直接公开 record.json 或拼文件路径。接口命名涉及会话/线程时必须说明具体模型，见字段字典。
+
+## 支付管理（2026-10-13 新增）
+
+| 接口 | 约束 |
+| --- | --- |
+| GET /api/v1/admin/payment/revenue-summary | 仅超级管理员；实时 SQL 聚合，净实收口径 = Σ实付 − Σ已退款（计收状态 paid/granted/partially_refunded/refunding/refunded），今日/本月按 paid_at 以 +08:00 日界归属；与漏斗统计（排除已退款订单）口径不同，不可混用 |
+| GET /api/v1/admin/payment/orders/export | 仅超级管理员；xlsx 下载，遵循 status/channel 筛选、无分页，单批上限 20000 行（超出 400 提示分批）；响应含用户邮箱（个人敏感信息），每次导出追加审计到 `data/admin_export_audit.jsonl` |
 
 ## 前端适配
 

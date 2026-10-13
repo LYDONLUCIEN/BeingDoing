@@ -22,12 +22,19 @@ interface AuthState {
    * 只允许停留在 /account-recovery 完成邮箱验证。
    */
   recoveryMode: boolean;
+  /**
+   * 强制绑定邮箱会话：纯手机老账号登录后持有受限 token（email_binding_required，30 分钟，ADR-0026）。
+   * 与 recoveryMode 同理：不能调 /auth/me，不走 401 拦截器逻辑，
+   * 只允许停留在 /bind-email 完成邮箱绑定。
+   */
+  bindingMode: boolean;
   /** 仅客户端：localStorage 恢复完成后为 true，避免未恢复就重定向导致闪屏/空白 */
   _hasHydrated: boolean;
   setUser: (user: User | null) => void;
   setToken: (token: string | null) => void;
   setTokens: (token: string | null) => void;
   setRecoveryMode: (v: boolean) => void;
+  setBindingMode: (v: boolean) => void;
   setHasHydrated: (v: boolean) => void;
   logout: () => void;
 }
@@ -39,6 +46,7 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       isAuthenticated: false,
       recoveryMode: false,
+      bindingMode: false,
       _hasHydrated: false,
       setUser: (user) => set({ user, isAuthenticated: !!user }),
       setToken: (token) => {
@@ -56,6 +64,7 @@ export const useAuthStore = create<AuthState>()(
         set({ token });
       },
       setRecoveryMode: (v) => set({ recoveryMode: v }),
+      setBindingMode: (v) => set({ bindingMode: v }),
       setHasHydrated: (v) => set({ _hasHydrated: v }),
       logout: () => {
         if (typeof window !== 'undefined') {
@@ -83,7 +92,7 @@ export const useAuthStore = create<AuthState>()(
           }
           keysToRemove.forEach((k) => localStorage.removeItem(k));
         }
-        set({ user: null, token: null, isAuthenticated: false, recoveryMode: false });
+        set({ user: null, token: null, isAuthenticated: false, recoveryMode: false, bindingMode: false });
       },
     }),
     {
@@ -94,6 +103,7 @@ export const useAuthStore = create<AuthState>()(
         token: state.token,
         isAuthenticated: state.isAuthenticated,
         recoveryMode: state.recoveryMode,
+        bindingMode: state.bindingMode,
       }),
     }
   )

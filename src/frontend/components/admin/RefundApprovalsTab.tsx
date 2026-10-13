@@ -5,8 +5,9 @@
  *
  * - 列表：状态/订单号筛选 + 分页，含申请人邮箱、申请/批准金额、审批留痕
  * - 详情：金额调整记录、行快照、订单实时行状态（审批参考——申请后码可能已被用）
- * - 操作：批准并执行（可下调金额，与申请额不一致必填理由）/ 驳回（必填理由，
- *   用户可见）/ 失败重试（同 refund_no 渠道幂等）/ 代录申请（线下协商场景）
+ * - 操作：批准并执行（可下调金额，与申请额不一致必填理由；行已被使用不拦截，
+ *   admin 为最终裁判，批准后对应码强制作废）/ 驳回（必填理由，用户可见）/
+ *   失败重试（同 refund_no 渠道幂等）/ 代录申请（线下协商场景）
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -135,13 +136,19 @@ export default function RefundApprovalsTab() {
     }
   };
 
+  // 可退上限 = Σ 未退款行分摊实付 与 订单剩余可退 取小（与后端 approve 同口径；
+  // 行已被使用不收缩上限，admin 为最终裁判）
   const capFen = detail
     ? Math.min(
         (detail.order_lines ?? [])
-          .filter((l) => l.effective_status === 'available')
+          .filter((l) => l.effective_status !== 'refunded')
           .reduce((sum, l) => sum + l.amount_paid_alloc, 0),
         detail.order.amount_paid - detail.order.amount_refunded
       )
+    : 0;
+
+  const usedLineCount = detail
+    ? (detail.order_lines ?? []).filter((l) => l.effective_status === 'used').length
     : 0;
 
   const handleApprove = async () => {
@@ -441,7 +448,7 @@ export default function RefundApprovalsTab() {
                 {/* 订单实时行状态（审批参考：申请后码可能已被用） */}
                 <div>
                   <p className="mb-1 text-xs font-medium text-bd-muted">
-                    订单明细行（实时状态；可退上限 = Σ 可退行分摊实付 与 剩余可退 取小）
+                    订单明细行（实时状态；可退上限 = Σ 未退款行分摊实付 与 剩余可退 取小；已被使用不拦截，由 admin 判断）
                   </p>
                   <ul className="space-y-1">
                     {detail.order_lines.map((l) => (
@@ -494,6 +501,12 @@ export default function RefundApprovalsTab() {
                         <p className="text-xs text-emerald-800">
                           批准金额（只能 ≤ 当前可退上限 ¥{fenToYuan(capFen)}；与申请额不一致须填调整理由）
                         </p>
+                        {usedLineCount > 0 && (
+                          <p className="rounded bg-amber-100 px-2 py-1 text-xs text-amber-800">
+                            注意：订单含 {usedLineCount} 项已被使用的明细（码已绑定/消耗或咨询已预约），
+                            批准后对应激活码将强制作废、预约将取消。
+                          </p>
+                        )}
                         <div className="flex items-center gap-2">
                           <span className="text-xs">¥</span>
                           <input

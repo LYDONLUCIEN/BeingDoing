@@ -682,25 +682,31 @@ async def _make_granted_order(
 
 
 @pytest.mark.asyncio
-async def test_refund_guard_claimed_code(fake_channel, tmp_path):
-    """退款守卫：交付码已被用户 claim → ValueError 拒绝，不退款不作废"""
+async def test_refund_claimed_code_accepted_for_admin_review(fake_channel, tmp_path):
+    """交付码已被用户 claim：申请不再拦截（2026-10-13 起），提交后待 admin 审批；
+    admin 强制批准后码强制作废"""
     order = await _make_granted_order(tmp_path=tmp_path)
 
     # 模拟用户 claim 该码
     mgr = SimpleActivationManager(base_dir=str(tmp_path / "simple"))
     mgr.claim_owner(order.delivered_code, {"user_id": "u9", "email": "x@test.com"})
 
-    with pytest.raises(ValueError, match="已被使用"):
-        await RefundService.create_refund_request(
-            user_id="u1", order_id=order.id, refund_type="full", reason="测试退款"
-        )
-
-    final = await _get_order(order.id)
-    assert final.status == "granted"
-    assert final.refunded_at is None
+    # 申请受理（不再因码已被使用拒绝）
+    refund = await RefundService.create_refund_request(
+        user_id="u1", order_id=order.id, refund_type="full", reason="测试退款"
+    )
+    assert refund.status == "pending_review"
     assert fake_channel.refunds == []
-    # 码未作废
     assert mgr.get_activation(order.delivered_code).status == "active"
+
+    # admin 强制批准 → 退款成功、码作废
+    executed = await RefundService.approve_refund(
+        admin_user={"user_id": "admin"}, refund_id=refund.id
+    )
+    assert executed.status == "succeeded"
+    final = await _get_order(order.id)
+    assert final.status == "refunded"
+    assert mgr.get_activation(order.delivered_code).status == "revoked"
 
 
 @pytest.mark.asyncio
@@ -1042,24 +1048,25 @@ async def test_refund_package_untouched_success(fake_channel, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_refund_package_rejected_when_code_claimed(fake_channel, tmp_path):
-    """套餐退款：任一码被 claim → 整单不可退"""
+async def test_refund_package_accepted_when_code_claimed(fake_channel, tmp_path):
+    """套餐退款：码被 claim 不再拦截申请（2026-10-13 起）——申请受理，
+    admin 可强制批准，批准后全部码强制作废"""
     order = await _make_granted_annual_order(tmp_path)
     meta = ps_mod.PaymentService._parse_meta(order.meta)
     mgr = SimpleActivationManager(base_dir=str(tmp_path / "simple"))
     mgr.claim_owner(meta["codes"][1], {"user_id": "u9", "email": "x@test.com"})
 
-    with pytest.raises(ValueError, match="不可整单退款"):
-        await RefundService.create_refund_request(
-            user_id="u1", order_id=order.id, refund_type="full", reason="测试退款"
-        )
-    assert fake_channel.refunds == []
-    assert (await _get_order(order.id)).status == "granted"
+    executed = await _refund_full(order.id)
+    assert executed.status == "succeeded"
+    assert (await _get_order(order.id)).status == "refunded"
+    for code in meta["codes"]:
+        assert mgr.get_activation(code).status == "revoked"
 
 
 @pytest.mark.asyncio
-async def test_refund_package_rejected_when_code_consumed(fake_channel, tmp_path):
-    """套餐退款：任一码被消耗升级 → 整单不可退"""
+async def test_refund_package_accepted_when_code_consumed(fake_channel, tmp_path):
+    """套餐退款：码被消耗升级不再拦截申请（2026-10-13 起）——申请受理，
+    admin 可强制批准（是否退款由 admin 人工判断）"""
     order = await _make_granted_annual_order(tmp_path)
     meta = ps_mod.PaymentService._parse_meta(order.meta)
     mgr = SimpleActivationManager(base_dir=str(tmp_path / "simple"))
@@ -1067,16 +1074,15 @@ async def test_refund_package_rejected_when_code_consumed(fake_channel, tmp_path
     mgr.claim_owner(trial.code, {"user_id": "u1", "email": "alice@test.com"})
     mgr.consume_for_trial_upgrade(meta["codes"][0], trial.code, actor={"user_id": "u1"})
 
-    with pytest.raises(ValueError, match="不可整单退款"):
-        await RefundService.create_refund_request(
-            user_id="u1", order_id=order.id, refund_type="full", reason="测试退款"
-        )
-    assert fake_channel.refunds == []
+    executed = await _refund_full(order.id)
+    assert executed.status == "succeeded"
+    assert (await _get_order(order.id)).status == "refunded"
 
 
 @pytest.mark.asyncio
-async def test_refund_package_rejected_legacy_upgraded(fake_channel, tmp_path):
-    """旧订单（meta.upgraded=True，已自动升级试用码）→ 不可退"""
+async def test_refund_package_accepted_legacy_upgraded(fake_channel, tmp_path):
+    """旧订单（meta.upgraded=True，已自动升级试用码）：行生成即 used，
+    申请不再被拦截（2026-10-13 起），由 admin 审批判断"""
     order = await _make_granted_annual_order(tmp_path)
     async with _TestSessionLocal() as db:
         row = await cls_get(db, order.id)
@@ -1093,10 +1099,9 @@ async def test_refund_package_rejected_legacy_upgraded(fake_channel, tmp_path):
             await db.delete(line)
         await db.commit()
 
-    with pytest.raises(ValueError, match="不可整单退款"):
-        await RefundService.create_refund_request(
-            user_id="u1", order_id=order.id, refund_type="full", reason="测试退款"
-        )
+    executed = await _refund_full(order.id)
+    assert executed.status == "succeeded"
+    assert (await _get_order(order.id)).status == "refunded"
 
 
 async def cls_get(db, order_id):

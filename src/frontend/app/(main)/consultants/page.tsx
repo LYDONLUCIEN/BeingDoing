@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import PaperVeilLayers from '@/components/explore/PaperVeilLayers';
-import XiaohongshuQrEntry from '@/components/common/XiaohongshuQrEntry';
 
 // 文案来源：wiki/历史开发记录/10-05/咨询师.md（2026-10-06 上线咨询师介绍页，入口在顶部导航「咨询团队」）
 // v3（2026-10-07）：咨询师改为一次展示一位、左右切换；卡内多栏铺开全量内容
@@ -14,9 +13,9 @@ import XiaohongshuQrEntry from '@/components/common/XiaohongshuQrEntry';
 // 咨询风格/适合人群双栏/价值观 chips），每位咨询师独立 accent 色
 // （祝余=蓝、Mary=绿、Lena=紫）。样式见 styles/components/consultants-coach.css。
 
-// 统一介绍（含小红书/反馈指引，文案与需求文档保持一致）
+// 统一介绍（反馈指引，文案与需求文档保持一致）
 const INTRO_PARAGRAPH =
-  '寻路OpenLife 严选在自由职业、转型赛道与职场发展领域经验丰富的咨询师，为您提供定制化报告解读。目前，我们已帮助 100+ 自由职业者和职场转型人理清思路并找到自己的方向。想了解匹配建议或预约方式，可前往小红书店铺，或点击右下角“提交问题反馈”联系我们。';
+  '寻路OpenLife 严选在自由职业、转型赛道与职场发展领域经验丰富的咨询师，为您提供定制化报告解读。目前，我们已帮助 100+ 自由职业者和职场转型人理清思路并找到自己的方向。想了解匹配建议或预约方式，可点击右下角“提交问题反馈”联系我们。';
 
 const SCOPE_TEXT =
   '寻路OpenLife 咨询师团队提供专业的寻路OpenLife 报告解读，覆盖自我认知提升、职场答疑解惑、自由职业探索、职业方向转型等维度。所有咨询师均由团队严选并接受培训，咨询效果稳定，全程无导流、无额外收费。';
@@ -247,7 +246,10 @@ function CoachCarousel() {
           onClick={() => move(-1)}
           className="ol-round-arrow absolute top-1/2 -translate-y-1/2 z-10 -left-4"
         >
-          ←
+          {/* SVG 箭头：字符箭头受字体字形影响会偏位，SVG 天然居中 */}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
         </button>
         <button
           type="button"
@@ -255,7 +257,9 @@ function CoachCarousel() {
           onClick={() => move(1)}
           className="ol-round-arrow absolute top-1/2 -translate-y-1/2 z-10 -right-4"
         >
-          →
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M9 6l6 6-6 6" />
+          </svg>
         </button>
       </div>
 
@@ -321,29 +325,31 @@ export default function ConsultantsPage() {
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
-          className="bd-glass-card ol-reading-glass relative rounded-2xl p-6 md:p-8 space-y-6 text-bd-muted leading-loose text-sm md:text-base [&_p]:max-w-[42rem]"
+          className="bd-glass-card ol-reading-glass relative rounded-2xl p-6 md:p-8 space-y-6 text-bd-muted leading-loose text-sm md:text-base"
         >
-          {/* 小红书二维码入口：文字面板右上角（与关于我们同款） */}
-          <XiaohongshuQrEntry className="ol-about-qr" />
           <p>{INTRO_PARAGRAPH}</p>
 
-          <div className="space-y-2 border-t border-bd-border pt-6">
-            <h2 className="text-sm font-semibold text-bd-fg">咨询范围</h2>
-            <p>{SCOPE_TEXT}</p>
-          </div>
-
-          <div className="space-y-2 border-t border-bd-border pt-6">
-            <h2 className="text-sm font-semibold text-bd-fg">咨询条件</h2>
-            <p>{REQUIREMENT_TEXT}</p>
-          </div>
-
-          <div className="space-y-2 border-t border-bd-border pt-6">
-            <h2 className="text-sm font-semibold text-bd-fg">咨询形式</h2>
-            <ol className="list-decimal pl-5 space-y-1.5">
-              {FORMAT_ITEMS.map((item, i) => (
-                <li key={i}>{item}</li>
-              ))}
-            </ol>
+          {/* 三节分栏（2026-10-13）：去二维码后改为左右两栏——左列范围+条件，右列形式，
+              充分利用横向空间；移动端自动单列堆叠 */}
+          <div className="grid gap-x-10 gap-y-6 border-t border-bd-border pt-6 md:grid-cols-2">
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <h2 className="text-sm font-semibold text-bd-fg">咨询范围</h2>
+                <p>{SCOPE_TEXT}</p>
+              </div>
+              <div className="space-y-2">
+                <h2 className="text-sm font-semibold text-bd-fg">咨询条件</h2>
+                <p>{REQUIREMENT_TEXT}</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-sm font-semibold text-bd-fg">咨询形式</h2>
+              <ol className="list-decimal pl-5 space-y-1.5">
+                {FORMAT_ITEMS.map((item, i) => (
+                  <li key={i}>{item}</li>
+                ))}
+              </ol>
+            </div>
           </div>
         </motion.div>
 

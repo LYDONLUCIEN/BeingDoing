@@ -69,6 +69,8 @@ ecdsa==0.19.2
     # via python-jose
 email-validator==2.3.0
     # via -r src/backend/requirements.txt
+et-xmlfile==2.0.0
+    # via openpyxl
 fastapi==0.143.0
     # via -r src/backend/requirements.txt
 filelock==4.1.1
@@ -158,6 +160,8 @@ openai==3.29.0
     # via
     #   -r src/backend/requirements.txt
     #   langchain-openai
+openpyxl==3.1.5
+    # via -r src/backend/requirements.txt
 opentelemetry-api==1.45.1
     # via fastapi
 orjson==3.13.0

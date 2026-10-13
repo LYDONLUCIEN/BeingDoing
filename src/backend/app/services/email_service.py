@@ -112,6 +112,85 @@ class EmailService:
         )
 
     @staticmethod
+    async def send_register_verification(
+        to_email: str, code: str, link_token: str, valid_minutes: int = 10
+    ) -> None:
+        """注册前置验证邮件（验证码 + 链接双形态，ADR-0026）"""
+        base_url = settings.FRONTEND_URL.rstrip("/")
+        link = f"{base_url}/register-verify?token={link_token}"
+        subject = "【寻路·OpenLife】注册验证码"
+        body = (
+            f"您好，\n\n"
+            f"您正在注册寻路·OpenLife账号。\n"
+            f"本次验证码为：{code}\n"
+            f"有效期：{valid_minutes} 分钟。\n\n"
+            f"您也可以点击以下链接完成验证（点击后请回到原注册页面继续）：\n\n"
+            f"{link}\n\n"
+            f"如果这不是您的操作，请忽略本邮件。\n"
+        )
+        body_html = (
+            "<html><body style=\"font-family: sans-serif; line-height: 1.6; color: #333;\">"
+            "<p>您好，</p>"
+            "<p>您正在注册寻路·OpenLife账号，本次验证码为：</p>"
+            f"<p style=\"font-size: 28px; font-weight: bold; letter-spacing: 6px; "
+            f"color: #4F46E5;\">{code}</p>"
+            f"<p>验证码 {valid_minutes} 分钟内有效。</p>"
+            "<p>您也可以点击下方按钮完成验证（点击后请回到原注册页面继续设置密码）：</p>"
+            f"<p><a href=\"{link}\" style=\"display: inline-block; padding: 10px 24px; "
+            "background-color: #4F46E5; color: #ffffff; text-decoration: none; "
+            "border-radius: 6px;\">完成邮箱验证</a></p>"
+            "<p>如果按钮无法点击，请复制以下链接到浏览器打开：<br>"
+            f'<a href="{link}">{link}</a></p>'
+            "<p>如果这不是您的操作，请忽略本邮件。</p>"
+            "</body></html>"
+        )
+        await EmailService.send_email(
+            to_email=to_email, subject=subject, body_text=body, body_html=body_html
+        )
+
+    @staticmethod
+    async def send_register_exists_notice(to_email: str) -> None:
+        """已注册邮箱被用于注册时的通知邮件（明确提示口径，ADR-0026）"""
+        base_url = settings.FRONTEND_URL.rstrip("/")
+        login_link = f"{base_url}/auth/login"
+        subject = "【寻路·OpenLife】注册尝试通知"
+        body = (
+            f"您好，\n\n"
+            f"有人（可能是您自己）刚刚尝试使用该邮箱注册寻路·OpenLife账号。\n"
+            f"该邮箱已注册过账号，请直接登录：{login_link}\n"
+            f"如忘记密码，可在登录页使用「忘记密码」重置。\n\n"
+            f"如果这不是您的操作，请忽略本邮件；若多次收到，请联系我们处理。\n"
+        )
+        body_html = (
+            "<html><body style=\"font-family: sans-serif; line-height: 1.6; color: #333;\">"
+            "<p>您好，</p>"
+            "<p>有人（可能是您自己）刚刚尝试使用该邮箱注册寻路·OpenLife账号。"
+            "该邮箱已注册过账号，请直接登录：</p>"
+            f"<p><a href=\"{login_link}\" style=\"display: inline-block; padding: 10px 24px; "
+            "background-color: #4F46E5; color: #ffffff; text-decoration: none; "
+            "border-radius: 6px;\">前往登录</a></p>"
+            "<p>如忘记密码，可在登录页使用「忘记密码」重置。</p>"
+            "<p>如果这不是您的操作，请忽略本邮件；若多次收到，请联系我们处理。</p>"
+            "</body></html>"
+        )
+        await EmailService.send_email(
+            to_email=to_email, subject=subject, body_text=body, body_html=body_html
+        )
+
+    @staticmethod
+    async def send_bind_email_code(to_email: str, code: str, valid_minutes: int = 10) -> None:
+        """绑定邮箱验证码（纯手机老账号强制绑定，ADR-0026）"""
+        subject = "【寻路·OpenLife】绑定邮箱验证码"
+        body = (
+            f"您好，\n\n"
+            f"您正在为寻路·OpenLife账号绑定邮箱。\n"
+            f"本次验证码为：{code}\n"
+            f"有效期：{valid_minutes} 分钟。\n\n"
+            f"如果这不是您的操作，请忽略本邮件。\n"
+        )
+        await EmailService.send_email(to_email=to_email, subject=subject, body_text=body)
+
+    @staticmethod
     async def send_email(
         to_email: str, subject: str, body_text: str, body_html: str | None = None
     ) -> None:

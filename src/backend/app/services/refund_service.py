@@ -7,12 +7,16 @@
 
 职责：
 1. 可退性视图 get_refund_options：行级分摊明细 + 实时状态重验 + 剩余可退
-2. 申请（用户自提 / admin 代录）：类型守卫（延期不可退、咨询仅未预约、
+2. 申请（用户自提 / admin 代录）：类型守卫（延期不可退、
    季度/legacy 仅全退、部分退仅年度套餐按码折算或咨询协商）、
-   同订单同时仅一个在途申请；partial 申请时把所选行落 line_snapshot
+   同订单同时仅一个在途申请；partial 申请时把所选行落 line_snapshot。
+   2026-10-13 起：申请不再以「行已被使用」（码已绑定/消耗、咨询已预约）
+   拦截——申请照单全收并通知 admin，由 admin 结合审批详情中的实时行状态
+   人工判断（可强制批准或驳回）
 3. 审批 approve：事务内锁定申请 → 实时重验行状态与金额上限（不信任申请时
-   快照）→ 批准额只能 ≤ 实时上限、与申请额不一致必填调整理由 → 渠道同步
-   退款（0 元单跳过）→ 成功后原子联动订单/行/码/预约/券
+   快照；行已被使用不拦截批准，admin 为最终裁判）→ 批准额只能 ≤ 实时上限、
+   与申请额不一致必填调整理由 → 渠道同步退款（0 元单跳过）→ 成功后原子
+   联动订单/行/码/预约/券
 4. 驳回 reject / 撤回 withdraw / 失败重试 retry（复用同 refund_no，渠道幂等）
 5. 通知：新申请 → admin 站内信+邮件；审批结果与退款成功 → 用户站内信+邮件；
    退款失败 → admin 站内信（人工兜底）
@@ -338,7 +342,6 @@ class RefundService:
 
             lines = await _order_refundable_lines(db, order)
             await db.commit()  # 惰性回填的明细行落库（ensure 只 add+flush）
-            available_count = sum(1 for _, s in lines if s == "available")
             remaining = _remaining_refundable(order)
 
             in_flight = (
@@ -369,16 +372,18 @@ class RefundService:
             )
 
             deliverable = order.status in ("granted", "partially_refunded")
+            # 行已被使用（码已绑定/消耗、咨询已预约）不再拦截申请，
+            # 统一提交给 admin 审批判断；仅排除已退款行
+            has_refundable = any(s != "refunded" for _, s in lines)
             full_allowed = (
                 deliverable
                 and order.product_type != _PRODUCT_RENEWAL
-                and len(lines) > 0
-                and available_count == len(lines)
+                and has_refundable
             )
             partial_allowed = (
                 deliverable
                 and _supports_partial(order, len(lines))
-                and available_count > 0
+                and has_refundable
             )
 
             return {
@@ -503,22 +508,22 @@ class RefundService:
             lines = await _order_refundable_lines(db, order)
             if not lines:
                 raise ValueError("订单缺少可退明细，需人工核查")
-            available = {line.id: line for line, s in lines if s == "available"}
-            cap = sum(l.amount_paid_alloc for l in available.values())
+            # 申请不再以「行已被使用」（码已绑定/消耗、咨询已预约）拦截：
+            # 申请照单全收并通知 admin，由 admin 结合审批详情中的实时行状态
+            # 人工判断（2026-10-13 起）。仅排除已退款行。
+            refundable = {line.id: line for line, s in lines if s != "refunded"}
+            if not refundable:
+                raise ValueError("订单内可退项已全部退款，无可申请项")
+            cap = sum(l.amount_paid_alloc for l in refundable.values())
             selected_lines: List[PaymentOrderLine] = []
 
             if refund_type == "full":
-                # 全退：无可退项被使用（码已激活/消耗、咨询已预约 → 整单不可退）；
-                # 已退过部分后全退剩余允许（行 refunded 不算被使用）。
-                # 金额 = min(订单剩余可退, 可用行分摊实付)——历史审批曾下调
+                # 金额 = min(订单剩余可退, 未退款行分摊实付)——历史审批曾下调
                 # 金额时二者会偏离，取小者保证不超退
-                if any(s == "used" for _, s in lines):
-                    raise ValueError(
-                        "订单内激活码已被使用或咨询已预约，不可整单退款（请走线下协商）"
-                    )
                 computed = min(_remaining_refundable(order), cap)
             else:
-                # 部分退：仅年度套餐（按码折算）/ 咨询（协商金额）
+                # 部分退：仅年度套餐（按码折算）/ 咨询（协商金额）；
+                # 已使用的行也可勾选提交，是否退款由 admin 审批判断
                 if not _supports_partial(order, len(lines)):
                     raise ValueError("该商品仅支持全额退款")
                 if not line_ids:
@@ -527,9 +532,9 @@ class RefundService:
                 unknown = [i for i in line_ids if i not in all_ids]
                 if unknown:
                     raise ValueError("退款项不存在")
-                selected_lines = [available[i] for i in line_ids if i in available]
+                selected_lines = [refundable[i] for i in line_ids if i in refundable]
                 if len(selected_lines) != len(line_ids):
-                    raise ValueError("所选退款项已被使用，请刷新后重试")
+                    raise ValueError("所选退款项已退款，请刷新后重试")
                 computed = sum(l.amount_paid_alloc for l in selected_lines)
 
             final_amount = requested_amount if requested_amount is not None else computed
@@ -742,19 +747,20 @@ class RefundService:
                 raise ValueError(f"订单当前状态不可退款（{order.status}）")
 
             lines = await _order_refundable_lines(db, order)
-            available = {line.id: line for line, s in lines if s == "available"}
+            # admin 为最终裁判（2026-10-13 起）：行已被使用（码已绑定/消耗、
+            # 咨询已预约）不再拦截批准；批准后对应码强制作废、预约取消。
+            # 仅排除已退款行；行实时状态在审批详情中展示，供 admin 判断。
+            refundable = {line.id: line for line, s in lines if s != "refunded"}
             has_remaining = _remaining_refundable(order) > 0
 
-            # 批准行集合：partial = 申请所选行 ∩ 仍可用；full = 当前全部可用行
+            # 批准行集合：partial = 申请所选行 ∩ 未退款；full = 当前全部未退款行
             if refund.refund_type == "full":
-                approved_lines = list(available.values())
-                if has_remaining and not approved_lines:
-                    raise ValueError("订单内可退项已全部被使用，不可退款（请驳回并走线下协商）")
+                approved_lines = list(refundable.values())
             else:
                 requested_ids = _snapshot_line_ids(refund)
-                approved_lines = [available[i] for i in requested_ids if i in available]
-                if has_remaining and not approved_lines:
-                    raise ValueError("所选退款项已被使用，不可退款（请驳回并走线下协商）")
+                approved_lines = [refundable[i] for i in requested_ids if i in refundable]
+            if has_remaining and not approved_lines:
+                raise ValueError("订单内可退明细已全部退款，无可执行项")
 
             cap = min(
                 sum(l.amount_paid_alloc for l in approved_lines),
@@ -766,7 +772,7 @@ class RefundService:
             if final_amount < 0 or final_amount > cap:
                 raise ValueError(
                     f"批准金额超出实时可退上限（上限 ¥{_fen_to_yuan(cap)}；"
-                    "所选退款项可能已被使用）"
+                    "所选退款项可能已退款）"
                 )
             if final_amount != refund.requested_amount and not note:
                 raise ValueError("批准金额与申请金额不一致，必须填写调整理由")

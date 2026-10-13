@@ -48,6 +48,16 @@ logger = logging.getLogger(__name__)
 # 订单号生成冲突重试上限
 _MAX_ORDER_NO_RETRIES = 5
 
+# Admin 订单导出单批上限（防御内存失控）
+_ADMIN_EXPORT_MAX_ROWS = 20000
+
+# 营收统计计收状态：排除 pending/closed/cancelled；
+# refunded 单 amount_refunded == amount_paid（不变式），净额自然为 0
+_REVENUE_STATUSES = ("paid", "granted", "partially_refunded", "refunding", "refunded")
+
+# 营收「今日/本月」日界：Asia/Shanghai 固定 UTC+8（与 analytics_funnel_service 口径一致）
+_SH_TZ = timezone(timedelta(hours=8))
+
 # 支付宝视为支付成功的交易状态
 _ALIPAY_PAID_STATUSES = {"TRADE_SUCCESS", "TRADE_FINISHED"}
 
@@ -1259,6 +1269,124 @@ class PaymentService:
                 item["code_refundable"] = cls._order_refundable(order)
                 items.append(item)
             return items, total
+
+    @classmethod
+    async def admin_revenue_summary(cls) -> Dict[str, Any]:
+        """Admin 营收汇总（实时 SQL 聚合；净实收口径：Σ实付 − Σ已退款）
+
+        计收范围：status ∈ paid/granted/partially_refunded/refunding/refunded
+        （排除 pending/closed/cancelled）；今日/本月按 paid_at 归属，
+        日界 Asia/Shanghai UTC+8（与漏斗统计一致）。轻量单表聚合，不进 static 缓存。
+        """
+        counted = PaymentOrder.status.in_(_REVENUE_STATUSES)
+        async with AsyncSessionLocal() as db:
+            total_paid, total_refunded, order_count = (
+                await db.execute(
+                    select(
+                        func.coalesce(func.sum(PaymentOrder.amount_paid), 0),
+                        func.coalesce(func.sum(PaymentOrder.amount_refunded), 0),
+                        func.count(PaymentOrder.id),
+                    ).where(counted)
+                )
+            ).one()
+
+            now_sh = datetime.now(timezone.utc).astimezone(_SH_TZ)
+            today_start = now_sh.replace(hour=0, minute=0, second=0, microsecond=0)
+            month_start = today_start.replace(day=1)
+
+            async def net_paid_since(start_sh: datetime) -> int:
+                # DB 时间为 naive UTC（与 reconcile 等处比较方式一致）
+                start_utc_naive = start_sh.astimezone(timezone.utc).replace(tzinfo=None)
+                paid, refunded = (
+                    await db.execute(
+                        select(
+                            func.coalesce(func.sum(PaymentOrder.amount_paid), 0),
+                            func.coalesce(func.sum(PaymentOrder.amount_refunded), 0),
+                        ).where(counted, PaymentOrder.paid_at >= start_utc_naive)
+                    )
+                ).one()
+                return int(paid) - int(refunded)
+
+            today_net = await net_paid_since(today_start)
+            month_net = await net_paid_since(month_start)
+
+        total_paid, total_refunded = int(total_paid), int(total_refunded)
+        return {
+            "total_paid_cents": total_paid,
+            "total_refunded_cents": total_refunded,
+            "net_revenue_cents": total_paid - total_refunded,
+            "paid_order_count": int(order_count),
+            "today_net_cents": today_net,
+            "month_net_cents": month_net,
+            "generated_at": _utcnow().isoformat(),
+        }
+
+    @classmethod
+    async def admin_export_orders(
+        cls,
+        status: Optional[str] = None,
+        channel: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Admin 订单导出查询（同 admin_list_orders 筛选口径，无分页）
+
+        与列表接口的差异：不含 code_refundable / code_expiry（逐单查激活码
+        记录是 N+1 文件 IO，大批量导出不需要实时可退判定）。
+
+        Returns:
+            订单 dict 列表（created_at 倒序），字段对齐列表展示 + user_email
+
+        Raises:
+            ValueError: 超过 _ADMIN_EXPORT_MAX_ROWS 行（路由转 400，提示加筛选分批）
+        """
+        async with AsyncSessionLocal() as db:
+            base = (
+                select(PaymentOrder, Coupon.code, User.email)
+                .outerjoin(Coupon, PaymentOrder.coupon_id == Coupon.id)
+                .join(User, PaymentOrder.user_id == User.id)
+            )
+            if status:
+                base = base.where(PaymentOrder.status == status)
+            if channel:
+                base = base.where(PaymentOrder.channel == channel)
+            rows = (
+                await db.execute(
+                    base.order_by(PaymentOrder.created_at.desc()).limit(
+                        _ADMIN_EXPORT_MAX_ROWS + 1
+                    )
+                )
+            ).all()
+            if len(rows) > _ADMIN_EXPORT_MAX_ROWS:
+                raise ValueError(
+                    f"导出超过 {_ADMIN_EXPORT_MAX_ROWS} 行上限，请先加筛选条件分批导出"
+                )
+
+            def iso(dt: Optional[datetime]) -> Optional[str]:
+                return dt.isoformat() if dt else None
+
+            items = []
+            for order, coupon_code, user_email in rows:
+                items.append(
+                    {
+                        "order_no": order.order_no,
+                        "user_email": user_email,
+                        "product_type": order.product_type,
+                        "quantity": order.quantity,
+                        "amount_original": order.amount_original,
+                        "amount_discount": order.amount_discount,
+                        "amount_paid": order.amount_paid,
+                        "amount_refunded": order.amount_refunded,
+                        "coupon_code": coupon_code,
+                        "channel": order.channel,
+                        "status": order.status,
+                        "delivered_code": order.delivered_code,
+                        "channel_transaction_id": order.channel_transaction_id,
+                        "created_at": iso(order.created_at),
+                        "paid_at": iso(order.paid_at),
+                        "closed_at": iso(order.closed_at),
+                        "refunded_at": iso(order.refunded_at),
+                    }
+                )
+            return items
 
     @classmethod
     async def admin_get_order(cls, order_id: str) -> Dict[str, Any]:

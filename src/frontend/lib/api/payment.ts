@@ -5,6 +5,7 @@
  * 前端展示元（/100，保留两位），用户输入元（×100 取整提交）。
  */
 import { apiClient } from '@/lib/api/client';
+import { pickFilenameFromHeaders, triggerBlobDownload } from '@/lib/api/admin';
 
 // ─── 类型定义 ─────────────────────────────────────────────
 
@@ -457,6 +458,42 @@ export async function adminListOrders(params?: {
 export async function adminGetOrder(id: string): Promise<{ order: AdminOrderItem }> {
   const res = await apiClient.get(`/admin/payment/orders/${encodeURIComponent(id)}`);
   return res.data as { order: AdminOrderItem };
+}
+
+/** Admin 营收汇总（净实收口径：Σ实付 − Σ已退款；今日/本月按 paid_at 归属，+08:00 日界） */
+export interface AdminRevenueSummary {
+  total_paid_cents: number;
+  total_refunded_cents: number;
+  net_revenue_cents: number;
+  paid_order_count: number;
+  today_net_cents: number;
+  month_net_cents: number;
+  generated_at?: string;
+}
+
+/** 营收汇总（实时 SQL 聚合，超管） */
+export async function adminRevenueSummary(): Promise<AdminRevenueSummary> {
+  const res = await apiClient.get('/admin/payment/revenue-summary');
+  return res.data as AdminRevenueSummary;
+}
+
+/**
+ * 订单明细导出（xlsx，遵循当前 status/channel 筛选，无分页；超管）
+ *
+ * 用底层 axios 实例拉 blob（apiClient.get 会解包 response.data，拿不到 headers），
+ * 再触发浏览器下载——不能用 <a href> 直接跳转（无法带 Authorization header）。
+ */
+export async function adminExportOrders(params?: {
+  status?: OrderStatus;
+  channel?: PayChannel;
+}): Promise<void> {
+  const res = await apiClient.raw.get('/admin/payment/orders/export', {
+    params,
+    responseType: 'blob',
+  });
+  const blob = res.data as Blob;
+  const filename = pickFilenameFromHeaders(res.headers, 'orders.xlsx');
+  triggerBlobDownload(blob, filename);
 }
 
 // ===================== 退款（2026-10-05 统一申请单）=====================

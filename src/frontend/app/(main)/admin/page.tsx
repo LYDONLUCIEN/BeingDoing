@@ -1,12 +1,18 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
   fetchAdminDashboardOverview,
   syncAdminDashboardOverview,
   type AdminDashboardOverview,
   type AdminDashboardOverviewPayload,
 } from '@/lib/api/admin';
+import {
+  adminRevenueSummary,
+  fenToYuan,
+  type AdminRevenueSummary,
+} from '@/lib/api/payment';
 import { formatUTC } from '@/lib/utils/formatTime';
 
 export default function AdminDashboardPage() {
@@ -15,6 +21,31 @@ export default function AdminDashboardPage() {
   const [data, setData] = useState<AdminDashboardOverview | null>(null);
   const [meta, setMeta] = useState<Pick<AdminDashboardOverviewPayload, 'generated_at' | 'source'> | null>(null);
   const [syncing, setSyncing] = useState(false);
+
+  // 营收汇总（实时接口，独立于 overview 缓存；失败不影响主面板）
+  const [revenue, setRevenue] = useState<AdminRevenueSummary | null>(null);
+  const [revenueLoading, setRevenueLoading] = useState(false);
+  const [revenueError, setRevenueError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      setRevenueLoading(true);
+      setRevenueError(null);
+      try {
+        const res = await adminRevenueSummary();
+        if (!cancelled) setRevenue(res);
+      } catch (e: any) {
+        if (!cancelled) setRevenueError(e?.message || '加载营收数据失败');
+      } finally {
+        if (!cancelled) setRevenueLoading(false);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -121,6 +152,52 @@ export default function AdminDashboardPage() {
             {loading ? '...' : data?.visit_count ?? 0}
           </p>
         </div>
+      </section>
+
+      {/* 营收（实时，净实收 = 实付 − 已退款） */}
+      <section>
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-3">
+          <h2 className="text-sm font-medium" style={{ color: 'var(--bd-fg)' }}>
+            营收（实时数据）
+          </h2>
+          <span className="text-[11px] text-bd-subtle">
+            净实收 = 实付 − 已退款；今日/本月按支付时间（+08:00）归属
+          </span>
+          <span className="text-[11px] ml-auto flex gap-3">
+            <Link href="/admin/analytics" className="text-bd-ui-accent hover:underline">
+              分产品/趋势 →
+            </Link>
+            <Link href="/admin/payment" className="text-bd-ui-accent hover:underline">
+              订单明细 →
+            </Link>
+          </span>
+        </div>
+        {revenueError ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 text-xs px-4 py-3">
+            {revenueError}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            {[
+              { label: '累计净实收', value: `¥${fenToYuan(revenue?.net_revenue_cents ?? 0)}` },
+              { label: '累计实收', value: `¥${fenToYuan(revenue?.total_paid_cents ?? 0)}` },
+              { label: '累计已退款', value: `¥${fenToYuan(revenue?.total_refunded_cents ?? 0)}` },
+              { label: '付费订单数', value: String(revenue?.paid_order_count ?? 0) },
+              { label: '今日净实收', value: `¥${fenToYuan(revenue?.today_net_cents ?? 0)}` },
+              { label: '本月净实收', value: `¥${fenToYuan(revenue?.month_net_cents ?? 0)}` },
+            ].map((c) => (
+              <div
+                key={c.label}
+                className="rounded-2xl bg-bd-card border border-bd-border px-5 py-4 shadow-sm"
+              >
+                <p className="text-xs text-bd-subtle mb-1">{c.label}</p>
+                <p className="text-xl font-semibold" style={{ color: 'var(--bd-fg)' }}>
+                  {revenueLoading ? '...' : c.value}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -47,6 +47,7 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
   const sendChat = useRuminationV4Store((s) => s.sendChat);
   const abortChat = useRuminationV4Store((s) => s.abortChat);
   const isStreaming = useRuminationV4Store((s) => s.isStreaming);
+  const streamingComboId = useRuminationV4Store((s) => s.streamingComboId);
   const streamingText = useRuminationV4Store((s) => s.streamingText);
   const thinkStreaming = useRuminationV4Store((s) => s.thinkStreaming);
   const thinkChunkContent = useRuminationV4Store((s) => s.thinkChunkContent);
@@ -80,6 +81,9 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
 
   const isDraft = !comboId;
   const combo = comboId ? comboCache[comboId] : null;
+  /** 流式按 combo 归属（2026-10-13）：只有正在回复的组合显示思考中/停止键；其他组合输入禁用并提示 */
+  const isStreamingHere = isStreaming && streamingComboId === comboId;
+  const isStreamingElsewhere = isStreaming && !isStreamingHere;
   const messages = useMemo(() => combo?.messages || [], [combo?.messages]);
   const hasOpening = messages.some((m) => m.role === 'assistant');
   const isReadOnly = combo?.status === 'concluded' || combo?.status === 'abandoned';
@@ -170,14 +174,14 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
   // 流式结束（含中止）后 textarea 重新可用时，自动聚焦，用户可直接继续输入；
   // 进入流式时记录开始时间（流式气泡时间戳稳定化）
   useEffect(() => {
-    if (isStreaming && !wasStreamingRef.current) {
+    if (isStreamingHere && !wasStreamingRef.current) {
       streamStartRef.current = Date.now();
     }
-    if (wasStreamingRef.current && !isStreaming) {
+    if (wasStreamingRef.current && !isStreamingHere) {
       inputRef.current?.focus();
     }
-    wasStreamingRef.current = isStreaming;
-  }, [isStreaming]);
+    wasStreamingRef.current = isStreamingHere;
+  }, [isStreamingHere]);
 
   const handleStart = async () => {
     if (!comboId) return;
@@ -303,7 +307,7 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
                         key={m.id}
                         msg={m}
                         isLast={idx === enrichedMessages.length - 1}
-                        isStreaming={isStreaming}
+                        isStreaming={isStreamingHere}
                         userInitials={userInitials}
                         comboId={comboId}
                         activationCode={activationCode}
@@ -311,7 +315,7 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
                       />
                     ))}
 
-                    {isStreaming && (
+                    {isStreamingHere && (
                       <FlowAiMessage
                         content={streamingText}
                         phase="rumination"
@@ -366,7 +370,7 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
                 >
                   <div
                     className={`flow-input-box !flex !flex-col !items-stretch gap-1.5${
-                      !canInput && !isStreaming ? ' opacity-40 pointer-events-none' : ''
+                      !canInput && !isStreamingHere ? ' opacity-40 pointer-events-none' : ''
                     }`}
                   >
                     <div className="flex w-full min-w-0 items-end gap-2.5">
@@ -387,7 +391,9 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
                               ? '请先点击「开始探索」'
                               : !hasOpening
                               ? '点击「开始讨论」'
-                              : isAnalyzing
+                              : isStreamingElsewhere
+                                ? '其他组合正在回复，请稍后…'
+                                : isAnalyzing
                                 ? '正在分析中，请稍后…'
                                 : isReadOnly
                                   ? combo.status === 'concluded'
@@ -400,15 +406,15 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
                         className="flow-input-field"
                       />
                       <div className="flow-send-btn-wrap">
-                        {isStreaming && <div className="flow-send-glow" aria-hidden />}
+                        {isStreamingHere && <div className="flow-send-glow" aria-hidden />}
                         <button
                           type="button"
-                          onClick={isStreaming ? abortChat : handleSend}
-                          disabled={!isStreaming && (!canInput || !input.trim())}
-                          className={`flow-send-btn ${isStreaming ? 'is-stop' : ''}`}
-                          aria-label={isStreaming ? '停止' : '发送'}
+                          onClick={isStreamingHere ? abortChat : handleSend}
+                          disabled={!isStreamingHere && (!canInput || !input.trim())}
+                          className={`flow-send-btn ${isStreamingHere ? 'is-stop' : ''}`}
+                          aria-label={isStreamingHere ? '停止' : '发送'}
                         >
-                          {isStreaming ? (
+                          {isStreamingHere ? (
                             <Square size={16} strokeWidth={0} fill="white" />
                           ) : (
                             <ArrowUp size={16} strokeWidth={2.2} />

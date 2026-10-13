@@ -9,7 +9,8 @@ import { authApi } from '@/lib/api/auth';
 /**
  * 无需登录即可访问的公开页面。
  * 隐私声明 / 用户协议是首页弹窗（LegalDocModal），随首页公开；
- * /auth/login、/auth/register、/account-recovery 在 (main) 组之外，本就不经过 AuthGate。
+ * /auth/login、/auth/register、/account-recovery、/bind-email、/register-verify
+ * 在 (main) 组之外，本就不经过 AuthGate。
  */
 const PUBLIC_PATHS = new Set(['/', '/about', '/community', '/verify-email']);
 
@@ -32,7 +33,7 @@ function validateSessionOnce(): void {
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { isAuthenticated, _hasHydrated, recoveryMode } = useAuthStore();
+  const { isAuthenticated, _hasHydrated, recoveryMode, bindingMode } = useAuthStore();
   const openAuthModal = useAuthModalStore((s) => s.openAuthModal);
 
   /**
@@ -51,10 +52,16 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   // 账户恢复会话（受限 token）：只允许停留在恢复页，且跳过 /auth/me 校验
   // （受限 token 调 /auth/me 必 401，会触发拦截器误登出）
   const needsRecovery = !isLocalUiPreview && _hasHydrated && isAuthenticated && recoveryMode;
+  // 强制绑邮箱会话（受限 token，ADR-0026）：同理只允许停留在 /bind-email
+  const needsBinding = !isLocalUiPreview && _hasHydrated && isAuthenticated && !recoveryMode && bindingMode;
 
   useEffect(() => {
     if (needsRecovery) {
       router.replace('/account-recovery');
+      return;
+    }
+    if (needsBinding) {
+      router.replace('/bind-email');
       return;
     }
     if (needsAuth) {
@@ -64,15 +71,17 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       openAuthModal('/');
       return;
     }
-    if (_hasHydrated && isAuthenticated && !recoveryMode && !isLocalUiPreview) {
+    if (_hasHydrated && isAuthenticated && !recoveryMode && !bindingMode && !isLocalUiPreview) {
       validateSessionOnce();
     }
-  }, [needsAuth, needsRecovery, _hasHydrated, isAuthenticated, recoveryMode, isLocalUiPreview, router, openAuthModal]);
+  }, [needsAuth, needsRecovery, needsBinding, _hasHydrated, isAuthenticated, recoveryMode, bindingMode, isLocalUiPreview, router, openAuthModal]);
 
   // 未登录时不渲染受保护内容，避免内容闪现和触发带缓存的 API 请求
   if (needsAuth) return null;
   // 恢复会话不渲染主站内容，等待跳转到恢复页
   if (needsRecovery) return null;
+  // 绑邮箱会话不渲染主站内容，等待跳转到绑定页
+  if (needsBinding) return null;
 
   return <>{children}</>;
 }

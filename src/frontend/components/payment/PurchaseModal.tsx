@@ -79,15 +79,15 @@ const PACKAGE_TYPES: ProductType[] = ['quarterly_package', 'annual_package'];
 const FALLBACK_PRODUCTS: ProductItem[] = [
   {
     product_type: 'quarterly_package',
-    name: '季度套餐',
-    description: '不限量对话 · 全部 5 阶段 · 1 份完整报告 + 人工审核',
+    name: '启程版',
+    description: '不限量对话 · 全部 5 轮话题 · 1 份完整报告 + 人工审核',
     price: 6900,
     duration_days: 90,
     popular: true,
   },
   {
     product_type: 'annual_package',
-    name: '年度套餐',
+    name: '远航版',
     description: '3 份完整报告 · 3 个激活码（可自用可转赠） · 团队分析 · 人工审核',
     price: 15900,
     duration_days: 365,
@@ -132,29 +132,26 @@ const WIDE_PLAN_THEME: Record<
   },
 };
 
-/** 方案卡：编号 + 名称/定位 + 推荐标 + 一句话承诺 + ✓ 特性列表（付费卡可点选，免费卡仅展示） */
+/** 方案卡：编号 + 名称 + 一句话承诺 + ✓ 特性列表（付费卡可点选，免费卡仅展示）。
+ *  badge 为常驻角标（如启程版「★ 最受欢迎」），绝对定位不占文档流，保证三卡内容顶部对齐。 */
 function WidePlanCard({
   plan,
   index,
   name,
-  role,
   promise,
   features,
-  recommend,
+  badge,
   selected,
-  selectedTag,
   selectable,
   onSelect,
 }: {
   plan: WidePlanId;
   index: string;
   name: string;
-  role: string;
   promise: string;
   features: string[];
-  recommend?: string;
+  badge?: string;
   selected: boolean;
-  selectedTag: string;
   selectable: boolean;
   onSelect: () => void;
 }) {
@@ -176,7 +173,7 @@ function WidePlanCard({
             }
           : undefined
       }
-      className={`relative flex min-h-[286px] w-full min-w-0 flex-1 flex-col rounded-[19px] border bg-white/80 px-[19px] pb-[17px] pt-[19px] transition max-[860px]:min-h-0 ${
+      className={`relative flex w-full min-w-0 flex-1 flex-col rounded-[16px] border bg-white/80 px-4 pb-3 pt-3.5 transition ${
         selected
           ? `${theme.border} bg-white ${theme.selectedShadow}`
           : `border-[#e3e8ec] ${
@@ -186,43 +183,32 @@ function WidePlanCard({
             }`
       } focus:outline-none focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-[3px] focus-visible:outline-[rgba(53,105,212,0.25)]`}
     >
-      {selected && selectable && (
+      {badge && (
+        <span className="absolute right-[12px] top-[12px] inline-flex items-center gap-1 rounded-full bg-[#fff6e4] px-2 py-[3px] text-[10px] font-bold text-[#a16a12]">
+          <span aria-hidden className="text-[#e8a13a]">★</span>
+          {badge}
+        </span>
+      )}
+      <div className={`mb-2 flex items-center gap-[9px] ${badge ? 'pr-[86px]' : ''}`}>
         <span
-          className={`absolute right-[14px] top-[14px] rounded-full px-2 py-1 text-[10px] font-bold ${theme.soft} ${theme.deep}`}
+          aria-hidden
+          className={`grid h-[26px] w-[26px] shrink-0 place-items-center rounded-[9px] text-[11px] font-extrabold tracking-[0.04em] ${theme.soft} ${theme.deep}`}
         >
-          {selectedTag}
+          {index}
         </span>
-      )}
-      <div className="mb-3 flex min-h-[52px] items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-[9px]">
-          <span
-            aria-hidden
-            className={`grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[10px] text-[11px] font-extrabold tracking-[0.04em] ${theme.soft} ${theme.deep}`}
-          >
-            {index}
-          </span>
-          <span className="min-w-0">
-            <span className="block text-xl font-bold leading-[1.2] tracking-[-0.025em] text-[#182130]">
-              {name}
-            </span>
-            <span className="mt-[5px] block text-xs leading-[1.4] text-[#5f6c7d]">{role}</span>
-          </span>
-        </div>
+        <span className="min-w-0 text-lg font-bold leading-[1.2] tracking-[-0.025em] text-[#182130]">
+          {name}
+        </span>
       </div>
-      {recommend && (
-        <span className="mb-2.5 inline-flex min-h-6 w-fit items-center rounded-full bg-[#eef4ff] px-[9px] text-[11px] font-bold text-[#254f9d]">
-          {recommend}
-        </span>
-      )}
-      <p className="mb-3 min-h-[44px] text-sm font-medium leading-[1.55] text-[#465366] max-[860px]:min-h-0">
+      <p className="mb-2 min-h-[40px] text-[13px] font-medium leading-[1.5] text-[#465366] max-[860px]:min-h-0">
         {promise}
       </p>
-      <ul className="grid list-none gap-2 p-0">
+      <ul className="grid list-none gap-1.5 p-0">
         {features.map((f) => (
-          <li key={f} className="relative min-h-5 pl-6 text-[13px] leading-[1.55] text-[#465366]">
+          <li key={f} className="relative min-h-5 pl-6 text-xs leading-[1.5] text-[#465366]">
             <span
               aria-hidden
-              className={`absolute left-0 top-[2px] grid h-[17px] w-[17px] place-items-center rounded-full text-[11px] font-extrabold ${theme.soft} ${theme.deep}`}
+              className={`absolute left-0 top-[1px] grid h-[16px] w-[16px] place-items-center rounded-full text-[10px] font-extrabold ${theme.soft} ${theme.deep}`}
             >
               ✓
             </span>
@@ -257,7 +243,7 @@ function WidePriceOption({
   const theme = WIDE_PLAN_THEME[plan];
   return (
     <label
-      className={`relative flex min-h-[66px] min-w-0 items-center justify-between gap-3 rounded-[14px] border px-[13px] py-[11px] transition ${
+      className={`relative flex min-h-[56px] min-w-0 items-center justify-between gap-3 rounded-[14px] border px-[13px] py-2 transition ${
         selected
           ? `${theme.border} ${theme.soft} shadow-[0_0_0_2px_rgba(53,105,212,0.12)]`
           : 'border-[#cbd3dc] bg-white hover:border-[#9ba8b5]'
@@ -288,7 +274,7 @@ function WidePriceOption({
         </span>
       </span>
       <span className={`shrink-0 text-right ${theme.deep}`}>
-        <strong className="block text-[22px] font-bold leading-[1.05] tracking-[-0.035em]">
+        <strong className="block text-xl font-bold leading-[1.05] tracking-[-0.035em]">
           {price}
         </strong>
       </span>
@@ -397,32 +383,48 @@ function QrStage({
  * 模糊化的假二维码 + 半透明遮罩（「同意协议后扫码支付」+「同意协议」小按钮 + 条款链接），
  * 点击「同意协议」才真正下单出码（假码内容为本站首页，仅示意不可扫）。
  * 支付按钮只存在于遮罩上——下单后不再有任何「支付中」按钮，扫码完成后由轮询切成功视图。
+ * free（券后 0 元）：不出码，背景改为「无需扫码」占位，按钮变为「同意协议，免费开通」，点击直接下单交付。
  */
 function QrAgreementMask({
   submitting,
   creatingLabel,
   onAgree,
+  free = false,
   t,
 }: {
   submitting: boolean;
   creatingLabel: string;
   onAgree: () => void;
+  free?: boolean;
   t: (k: string, vars?: Record<string, string>) => string;
 }) {
   return (
     <div className="relative flex h-[210px] w-[194px] items-center justify-center overflow-hidden rounded-[10px] border border-dashed border-[#aeb9c4] bg-[#f7f9fc]">
-      {/* 假二维码（模糊化示意，不可扫） */}
-      <QRCodeSVG
-        value="https://openlife.beyondego.me/"
-        size={168}
-        level="M"
-        marginSize={1}
-        aria-hidden
-        className="select-none opacity-50 blur-[4px]"
-      />
-      {/* 遮罩：标题 + 同意协议按钮 + 条款链接 */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white/70 px-3 text-center">
-        <p className="text-xs font-medium text-[#293644]">{t('payment.agreement.maskTitle')}</p>
+      {!free && (
+        /* 假二维码（模糊化示意，不可扫） */
+        <QRCodeSVG
+          value="https://openlife.beyondego.me/"
+          size={168}
+          level="M"
+          marginSize={1}
+          aria-hidden
+          className="select-none opacity-50 blur-[4px]"
+        />
+      )}
+      {/* 遮罩：标题 + 同意协议按钮 + 条款链接（0 元时顶部显示「无需扫码」占位，无背景假码） */}
+      <div
+        className={`absolute inset-0 flex flex-col items-center justify-center gap-2 px-3 text-center ${
+          free ? '' : 'bg-white/70'
+        }`}
+      >
+        {free && (
+          <span className="text-[10px] font-medium leading-[1.5] text-[#8996a3]">
+            {t('payment.agreement.freePlaceholder')}
+          </span>
+        )}
+        <p className="text-xs font-medium text-[#293644]">
+          {free ? t('payment.agreement.maskTitleFree') : t('payment.agreement.maskTitle')}
+        </p>
         <button
           type="button"
           onClick={onAgree}
@@ -430,7 +432,7 @@ function QrAgreementMask({
           className="inline-flex min-h-[30px] items-center justify-center gap-1.5 rounded-lg bg-[#222b35] px-4 text-xs font-semibold text-white transition hover:bg-[#151c23] disabled:cursor-wait disabled:opacity-55"
         >
           {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
-          {submitting ? creatingLabel : t('payment.agreement.agree')}
+          {submitting ? creatingLabel : free ? t('payment.agreement.agreeFree') : t('payment.agreement.agree')}
         </button>
         <p className="text-[10px] leading-[1.5] text-[#5f6c7d]">
           {t('payment.agreement.termsPrefix')}
@@ -495,12 +497,12 @@ function CompareSection({
     },
   ];
   return (
-    <div className="mt-3.5 overflow-hidden rounded-2xl border border-[#e3e8ec] bg-white/70">
+    <div className="mt-2.5 overflow-hidden rounded-2xl border border-[#e3e8ec] bg-white/70">
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="flex min-h-[50px] w-full items-center justify-between gap-4 px-[17px]"
+        className="flex min-h-[42px] w-full items-center justify-between gap-4 px-[17px]"
       >
         <span className="text-sm font-semibold text-[#293644]">
           {t('payment.dialog.compareTitle')}
@@ -1044,8 +1046,8 @@ export default function PurchaseModal({
     {
       label: t('payment.compare.recheck'),
       free: false,
-      quarterly: t('payment.compare.recheckValue'),
-      annual: t('payment.compare.recheckValue'),
+      quarterly: t('payment.compare.recheckQuarterly'),
+      annual: t('payment.compare.recheckAnnual'),
     },
     {
       label: t('payment.compare.codes'),
@@ -1117,8 +1119,8 @@ export default function PurchaseModal({
 
                 <div className="overflow-y-auto overscroll-contain">
                   {/* 弹窗头：eyebrow + 主标题 */}
-                  <header className="border-b border-[#e3e8ec]/85 bg-white/70 px-[38px] pb-5 pt-[30px] max-[1080px]:px-[26px] max-[700px]:px-5 max-[700px]:pb-[17px] max-[700px]:pt-6">
-                    <div className="mb-2 flex items-center gap-2.5 text-xs font-bold tracking-[0.08em] text-[#254f9d]">
+                  <header className="border-b border-[#e3e8ec]/85 bg-white/70 px-[38px] pb-4 pt-5 max-[1080px]:px-[26px] max-[700px]:px-5 max-[700px]:pb-3.5 max-[700px]:pt-4">
+                    <div className="mb-1.5 flex items-center gap-2.5 text-xs font-bold tracking-[0.08em] text-[#254f9d]">
                       <span
                         aria-hidden
                         className="h-[7px] w-[7px] rounded-full bg-[#3569d4] shadow-[0_0_0_5px_rgba(53,105,212,0.1)]"
@@ -1127,47 +1129,44 @@ export default function PurchaseModal({
                     </div>
                     <h1
                       id="purchase-modal-title"
-                      className="text-[clamp(25px,2.4vw,34px)] font-bold leading-[1.2] tracking-[-0.045em] text-[#182130]"
+                      className="text-[clamp(21px,2vw,27px)] font-bold leading-[1.2] tracking-[-0.045em] text-[#182130]"
                     >
                       {t('payment.wide.title')}
                     </h1>
                   </header>
 
-                  <main className="px-[38px] pb-6 pt-[22px] max-[1080px]:px-[26px] max-[700px]:px-4">
+                  <main className="px-[38px] pb-4 pt-4 max-[1080px]:px-[26px] max-[700px]:px-4">
                     {/* 选择探索版本：三列方案卡（免费版仅展示）+ 价格选择条 */}
                     <section aria-label={t('payment.wide.sectionTitle')}>
-                      <div className="mb-3 flex items-center justify-between gap-4">
+                      <div className="mb-2 flex items-center justify-between gap-4">
                         <strong className="text-[15px] font-bold text-[#293644]">
                           {t('payment.wide.sectionTitle')}
                         </strong>
                       </div>
                       <div
                         aria-disabled={wideWaiting}
-                        className={`grid grid-cols-3 gap-3.5 max-[860px]:grid-cols-1 ${
+                        className={`grid grid-cols-3 gap-3 max-[860px]:grid-cols-1 ${
                           wideWaiting ? 'pointer-events-none opacity-70' : ''
                         }`}
                       >
                         {/* 免费版：仅展示不可选（试用流程不在本弹窗） */}
-                        <div className="flex min-w-0 flex-col gap-2.5">
+                        <div className="flex min-w-0 flex-col gap-2">
                           <WidePlanCard
                             plan="free"
                             index="01"
                             name={t('payment.wide.free.name')}
-                            role={t('payment.wide.free.role')}
                             promise={t('payment.wide.free.promise')}
                             features={[
                               t('payment.wide.free.f1'),
                               t('payment.wide.free.f2'),
                               t('payment.wide.free.f3'),
-                              t('payment.wide.free.f4'),
                             ]}
                             selected={false}
-                            selectedTag={t('payment.wide.selectedTag')}
                             selectable={false}
                             onSelect={() => {}}
                           />
                           {/* 免费版价格条（静态，无单选） */}
-                          <div className="flex min-h-[66px] min-w-0 items-center justify-between gap-3 rounded-[14px] border border-dashed border-[#b9c5c0] bg-[#f4f8f6] px-[13px] py-[11px] opacity-90">
+                          <div className="flex min-h-[56px] min-w-0 items-center justify-between gap-3 rounded-[14px] border border-dashed border-[#b9c5c0] bg-[#f4f8f6] px-[13px] py-2 opacity-90">
                             <span className="min-w-0">
                               <span className="block text-sm font-semibold text-[#293644]">
                                 {t('payment.wide.free.name')}
@@ -1176,31 +1175,28 @@ export default function PurchaseModal({
                                 {t('payment.wide.free.priceNote')}
                               </span>
                             </span>
-                            <span className="inline-flex min-h-[25px] shrink-0 items-center whitespace-nowrap rounded-full bg-[#edf9f5] px-2.5 text-[11px] font-semibold text-[#176a57]">
-                              {t('payment.wide.freeBadge')}
-                            </span>
+                            <strong className="shrink-0 text-right text-xl font-bold leading-[1.05] tracking-[-0.035em] text-[#176a57]">
+                              ¥0
+                            </strong>
                           </div>
                         </div>
 
-                        {/* 启程版（quarterly_package） */}
-                        <div className="flex min-w-0 flex-col gap-2.5">
+                        {/* 启程版（quarterly_package）：常驻「★ 最受欢迎」角标 */}
+                        <div className="flex min-w-0 flex-col gap-2">
                           <WidePlanCard
                             plan="quarterly_package"
                             index="02"
                             name={planName(quarterlyProduct)}
-                            role={t('payment.wide.quarterly.role')}
                             promise={t('payment.wide.quarterly.promise')}
                             features={[
                               t('payment.plan.quarterly_package.f1'),
                               t('payment.plan.quarterly_package.f2'),
                               t('payment.plan.quarterly_package.f3'),
                               t('payment.plan.quarterly_package.f4'),
+                              t('payment.plan.quarterly_package.f5'),
                             ]}
-                            recommend={
-                              quarterlyProduct.popular ? t('payment.plan.popular') : undefined
-                            }
+                            badge={t('payment.wide.mostPopular')}
                             selected={displayType === 'quarterly_package'}
-                            selectedTag={t('payment.wide.selectedTag')}
                             selectable
                             onSelect={() => setSelectedType('quarterly_package')}
                           />
@@ -1216,22 +1212,22 @@ export default function PurchaseModal({
                           />
                         </div>
 
-                        {/* 同行版（annual_package） */}
-                        <div className="flex min-w-0 flex-col gap-2.5">
+                        {/* 远航版（annual_package） */}
+                        <div className="flex min-w-0 flex-col gap-2">
                           <WidePlanCard
                             plan="annual_package"
                             index="03"
                             name={planName(annualProduct)}
-                            role={t('payment.wide.annual.role')}
                             promise={t('payment.wide.annual.promise')}
                             features={[
                               t('payment.plan.annual_package.f1'),
                               t('payment.plan.annual_package.f2'),
                               t('payment.plan.annual_package.f3'),
                               t('payment.plan.annual_package.f4'),
+                              t('payment.plan.annual_package.f5'),
+                              t('payment.plan.annual_package.f6'),
                             ]}
                             selected={displayType === 'annual_package'}
-                            selectedTag={t('payment.wide.selectedTag')}
                             selectable
                             onSelect={() => setSelectedType('annual_package')}
                           />
@@ -1265,11 +1261,11 @@ export default function PurchaseModal({
                     <section
                       ref={paymentPanelRef}
                       aria-label={t('payment.wide.checkoutLabel')}
-                      className="mt-3.5 overflow-hidden rounded-[18px] border border-[#e3e8ec] bg-white/95 shadow-[0_12px_30px_rgba(31,48,64,0.05)]"
+                      className="mt-2.5 overflow-hidden rounded-[18px] border border-[#e3e8ec] bg-white/95 shadow-[0_12px_30px_rgba(31,48,64,0.05)]"
                     >
                       <div className="grid grid-cols-1 min-[701px]:grid-cols-[296px_minmax(0,1fr)]">
                         {/* 二维码列：占位框 → 自渲染二维码（qrText 缺失时回退支付宝前置模式 iframe） */}
-                        <div className="grid place-items-center border-b border-[#e3e8ec] bg-[#fcfdfd] p-3.5 min-[701px]:border-b-0 min-[701px]:border-r">
+                        <div className="grid place-items-center border-b border-[#e3e8ec] bg-[#fcfdfd] p-2.5 min-[701px]:border-b-0 min-[701px]:border-r">
                           <QrStage
                             active={qrActive}
                             payUrl={payUrl}
@@ -1279,11 +1275,13 @@ export default function PurchaseModal({
                             hint={t('payment.wide.qrHint')}
                             scanTip={t('payment.wide.qrScanTip')}
                             mask={
-                              view === 'order' && displayAmount > 0 ? (
+                              /* 协议门控：下单前常驻；券后 0 元走 free 模式（无码，同意协议即交付） */
+                              view === 'order' ? (
                                 <QrAgreementMask
                                   submitting={submitting}
                                   creatingLabel={t('payment.creating')}
                                   onAgree={() => void handlePay()}
+                                  free={displayAmount === 0}
                                   t={t}
                                 />
                               ) : undefined
@@ -1294,7 +1292,7 @@ export default function PurchaseModal({
                         {/* 结算列：应付金额 / 优惠码 / 支付方式 */}
                         <div className="grid min-w-0 divide-y divide-[#e3e8ec]">
                           {/* 应付金额行：套餐 + 合计（纯展示，支付按钮在面板底部通栏） */}
-                          <div className="grid min-h-[68px] grid-cols-[76px_minmax(90px,1fr)_auto] items-center gap-3 px-3.5 py-2.5 max-[700px]:grid-cols-[1fr_auto]">
+                          <div className="grid min-h-[58px] grid-cols-[76px_minmax(90px,1fr)_auto] items-center gap-3 px-3.5 py-2 max-[700px]:grid-cols-[1fr_auto]">
                             <span className="text-[11px] font-bold tracking-[0.06em] text-[#5f6c7d] max-[700px]:col-span-2">
                               {t('payment.wide.amountLabel')}
                             </span>
@@ -1312,14 +1310,14 @@ export default function PurchaseModal({
                           </div>
 
                           {/* 优惠码行：我的可用券 + 手动输入 + 使用（反馈走状态行） */}
-                          <div className="grid min-h-[68px] grid-cols-[76px_minmax(0,1fr)] items-center gap-3 px-3.5 py-2.5 max-[700px]:grid-cols-1 max-[700px]:gap-2 max-[700px]:py-3">
+                          <div className="grid min-h-[58px] grid-cols-[76px_minmax(0,1fr)] items-center gap-3 px-3.5 py-2 max-[700px]:grid-cols-1 max-[700px]:gap-2 max-[700px]:py-3">
                             <span className="text-[11px] font-bold tracking-[0.06em] text-[#5f6c7d]">
                               {t('payment.wide.couponLabel')}
                             </span>
                             <fieldset disabled={wideWaiting} className="min-w-0">
                               <div className="grid grid-cols-[minmax(116px,0.7fr)_minmax(150px,1fr)_auto] gap-1.5 max-[700px]:grid-cols-[1fr_auto]">
                                 {renderMyCouponsSelect(
-                                  'h-[42px] w-full min-w-0 rounded-[11px] border border-[#b6c0ca] bg-white px-2.5 text-xs text-[#293644] outline-none transition focus:border-[#3569d4] max-[700px]:col-span-2',
+                                  'h-9 w-full min-w-0 rounded-[11px] border border-[#b6c0ca] bg-white px-2.5 text-xs text-[#293644] outline-none transition focus:border-[#3569d4] max-[700px]:col-span-2',
                                 )}
                                 <input
                                   type="text"
@@ -1333,13 +1331,13 @@ export default function PurchaseModal({
                                   }}
                                   placeholder={t('payment.coupon.placeholder')}
                                   aria-label={t('payment.wide.couponLabel')}
-                                  className="h-[42px] w-full min-w-0 rounded-[11px] border border-[#b6c0ca] bg-white px-3 text-xs text-[#293644] outline-none transition focus:border-[#3569d4]"
+                                  className="h-9 w-full min-w-0 rounded-[11px] border border-[#b6c0ca] bg-white px-3 text-xs text-[#293644] outline-none transition focus:border-[#3569d4]"
                                 />
                                 <button
                                   type="button"
                                   onClick={() => void handleApplyCoupon()}
                                   disabled={couponChecking || !couponInput.trim()}
-                                  className="h-[42px] shrink-0 rounded-[11px] border border-[#aab5c0] bg-white px-3.5 text-xs font-semibold text-[#293644] transition hover:bg-[#f7f9fc] disabled:opacity-40"
+                                  className="h-9 shrink-0 rounded-[11px] border border-[#aab5c0] bg-white px-3.5 text-xs font-semibold text-[#293644] transition hover:bg-[#f7f9fc] disabled:opacity-40"
                                 >
                                   {couponChecking
                                     ? t('payment.coupon.checking')
@@ -1350,7 +1348,7 @@ export default function PurchaseModal({
                           </div>
 
                           {/* 支付方式行：支付宝（微信即将上线，保持现有禁用态） */}
-                          <div className="grid min-h-[68px] grid-cols-[76px_minmax(0,1fr)] items-center gap-3 px-3.5 py-2.5 max-[700px]:grid-cols-1 max-[700px]:gap-2 max-[700px]:py-3">
+                          <div className="grid min-h-[58px] grid-cols-[76px_minmax(0,1fr)] items-center gap-3 px-3.5 py-2 max-[700px]:grid-cols-1 max-[700px]:gap-2 max-[700px]:py-3">
                             <span className="text-[11px] font-bold tracking-[0.06em] text-[#5f6c7d]">
                               {t('payment.channelLabel')}
                             </span>
@@ -1363,7 +1361,7 @@ export default function PurchaseModal({
                                   setChannel('alipay');
                                 }}
                                 disabled={wideWaiting}
-                                className={`flex min-h-[42px] items-center justify-center gap-[7px] rounded-xl border px-3 text-[13px] font-semibold transition ${
+                                className={`flex min-h-[38px] items-center justify-center gap-[7px] rounded-xl border px-3 text-[13px] font-semibold transition ${
                                   channel === 'alipay'
                                     ? 'border-[#254f9d] bg-[#eef4ff] text-[#254f9d] shadow-[0_0_0_1px_rgba(37,79,157,0.13)]'
                                     : 'border-[#e3e8ec] bg-white text-[#465366] hover:border-[#aeb8c3]'
@@ -1381,7 +1379,7 @@ export default function PurchaseModal({
                                 type="button"
                                 disabled
                                 title={t('payment.channel.comingSoon')}
-                                className="relative flex min-h-[42px] cursor-not-allowed items-center justify-center gap-[7px] rounded-xl border border-[#e3e8ec] bg-white/60 px-3 text-[13px] font-semibold text-[#9aa8bb]"
+                                className="relative flex min-h-[38px] cursor-not-allowed items-center justify-center gap-[7px] rounded-xl border border-[#e3e8ec] bg-white/60 px-3 text-[13px] font-semibold text-[#9aa8bb]"
                               >
                                 <span
                                   aria-hidden

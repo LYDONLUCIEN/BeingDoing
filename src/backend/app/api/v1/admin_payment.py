@@ -14,7 +14,9 @@ Admin 支付管理 API（P1：折扣券管理；P2a：订单管理；2026-10-05 
 - GET    /admin/coupon-config    读折扣券默认有效期（天）
 - POST   /admin/coupon-config    调整默认有效期（1-3650 天，即时生效，只影响新券）
 - GET    /admin/payment/orders           订单分页列表（status/channel 筛选，含 user_email + code_refundable）
+- GET    /admin/payment/orders/export    订单明细导出 xlsx（同列表筛选，无分页；写 admin_export_audit.jsonl）
 - GET    /admin/payment/orders/{id}      订单详情（完整字段 + user_email + code_refundable + delivered_codes 去向）
+- GET    /admin/payment/revenue-summary  营收汇总（净实收 = Σ实付 − Σ已退款；今日/本月按 paid_at，+08:00 日界）
 - GET    /admin/payment/refunds          退款单分页列表（status/order_no 筛选，含审批留痕）
 - GET    /admin/payment/refunds/{id}     退款单详情（行快照 + 实时行状态 + 订单 + 用户邮箱）
 - POST   /admin/payment/refunds          代录退款申请（线下协商场景，代录人留痕）
@@ -25,16 +27,25 @@ Admin 支付管理 API（P1：折扣券管理；P2a：订单管理；2026-10-05 
 全部 is_super_admin_user 门控，统一响应 {code, message, data}。
 """
 
+import io
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.api.v1.auth import get_current_user
 from app.core.payment.base import PaymentChannelError
 from app.services import coupon_config
 from app.services.coupon_service import CouponService
+from app.services.order_export_service import (
+    XLSX_MEDIA_TYPE,
+    append_order_export_audit,
+    build_orders_xlsx,
+    make_export_filename,
+)
 from app.services.payment_service import OrderNotFoundError, PaymentService
 from app.services.refund_service import RefundNotFoundError, RefundService, refund_to_dict
 from app.utils.super_admin import is_super_admin_user
@@ -298,6 +309,15 @@ async def set_coupon_config(
 # ===================== 订单管理（P2a）=====================
 
 
+@router.get("/payment/revenue-summary")
+async def get_revenue_summary(
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """营收汇总（实时 SQL 聚合；净实收口径：Σ实付 − Σ已退款）"""
+    _require_super_admin(current_user)
+    return _ok(await PaymentService.admin_revenue_summary())
+
+
 @router.get("/payment/orders")
 async def list_payment_orders(
     status: Optional[str] = Query(
@@ -314,6 +334,42 @@ async def list_payment_orders(
         status=status, channel=channel, page=page, page_size=page_size
     )
     return _ok({"items": items, "total": total, "page": page, "page_size": page_size})
+
+
+# 注意：/payment/orders/export 必须注册在 /payment/orders/{order_id} 之前，
+# 否则 "export" 会被路径参数吃掉
+@router.get("/payment/orders/export")
+async def export_payment_orders(
+    status: Optional[str] = Query(None, description="同订单列表 status 筛选"),
+    channel: Optional[str] = Query(None, description="alipay | wechat"),
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> StreamingResponse:
+    """订单明细导出（xlsx，遵循 status/channel 筛选，无分页）
+
+    含用户邮箱（个人敏感信息），每次导出写 data/admin_export_audit.jsonl 审计。
+    """
+    _require_super_admin(current_user)
+    try:
+        items = await PaymentService.admin_export_orders(status=status, channel=channel)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    content = build_orders_xlsx(items)
+    append_order_export_audit(
+        actor_email=(current_user or {}).get("email"),
+        filters={"status": status, "channel": channel},
+        row_count=len(items),
+    )
+    filename = make_export_filename()
+    quoted = quote(filename)
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type=XLSX_MEDIA_TYPE,
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{quoted}"; filename*=UTF-8\'\'{quoted}'
+            )
+        },
+    )
 
 
 @router.get("/payment/orders/{order_id}")

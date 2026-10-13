@@ -439,8 +439,9 @@ export async function syncReportsFromActivations() {
 
 /**
  * 从 axios 响应头 Content-Disposition 取文件名，兜底返回 fallback。
+ * （导出供 payment.ts 等其它 blob 下载场景复用）
  */
-function pickFilenameFromHeaders(headers: any, fallback: string): string {
+export function pickFilenameFromHeaders(headers: any, fallback: string): string {
   const disposition: string = headers?.['content-disposition'] || '';
   const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
   const raw = match?.[1];
@@ -454,9 +455,9 @@ function pickFilenameFromHeaders(headers: any, fallback: string): string {
 }
 
 /**
- * 用 Blob 触发浏览器下载（内部工具）。
+ * 用 Blob 触发浏览器下载（导出供 payment.ts 等其它 blob 下载场景复用）。
  */
-function triggerBlobDownload(blob: Blob, filename: string): void {
+export function triggerBlobDownload(blob: Blob, filename: string): void {
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;

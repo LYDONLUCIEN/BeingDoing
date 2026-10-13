@@ -364,3 +364,192 @@ async def test_legacy_export_preserves_original_steps_and_messages(
     assert tables["combo_matrix"] is None
     assert source.read_bytes() == raw
     assert not (source.parent / "rumination_v4_progress.json").exists()
+
+
+# ── v4 沉淀导出（2026-10-13：修复「导出缺第五轮」）────────────────
+
+
+def _write_v4_progress(
+    root: Path,
+    report_id: str,
+    combos: Optional[List[dict]] = None,
+    final_selection: Optional[dict] = None,
+) -> dict:
+    """写一份 rumination_v4_progress.json（原生 v4 快照）。"""
+    d = root / "reports" / report_id
+    d.mkdir(parents=True, exist_ok=True)
+    state = {
+        "schema_version": 4,
+        "matrix_snapshot": {"passions": [], "strengths": []},
+        "combo_sessions": combos or [],
+        "active_combo_id": None,
+        "final_selection": final_selection
+        or {"selected_combo_ids": [], "submitted": False, "submitted_at": None},
+        "main_section": "matrix",
+        "intro_shown": True,
+    }
+    (d / "rumination_v4_progress.json").write_text(
+        json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return state
+
+
+def _v4_combo(
+    combo_id: str = "combo_1",
+    status: str = "concluded",
+    with_card: bool = True,
+    n_msgs: int = 3,
+) -> dict:
+    msgs = []
+    base_ts = 1760000000
+    for i in range(n_msgs):
+        role = "user" if i % 2 else "assistant"
+        msgs.append(
+            {
+                "role": role,
+                "content": f"{combo_id}-消息{i}",
+                "ts": f"2026-08-10T05:{i:02d}:00+00:00",
+            }
+        )
+    return {
+        "combo_id": combo_id,
+        "passion": "写作",
+        "strengths": ["共情"],
+        "created_at": "2026-08-10T04:00:00+00:00",
+        "updated_at": "2026-08-10T05:10:00+00:00",
+        "status": status,
+        "messages": msgs,
+        "summary": None,
+        "summary_last_round": 0,
+        "conclusion_card": (
+            {
+                "hypothesis": f"{combo_id} 的方向假设",
+                "balance_found": True,
+                "balance_fail_reason": None,
+            }
+            if with_card
+            else None
+        ),
+        "balance_analysis": None,
+        "user_skipped": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_v4_only_report_exports_round5(batch_service: BatchExportService) -> None:
+    """v4-only report（无 rumination session）：md/stats/tables/summary 均含第五轮。"""
+    root = batch_service.registry.simple_base_dir
+    rid = "rpt-v4-only"
+    selected = {sid: f"sess-{sid}" for sid in STEP_IDS if sid != "rumination"}
+    record = _make_record(
+        rid, selected_sessions=selected, locked_overrides={"rumination": True}
+    )
+    _write_record(root, rid, record)
+    for sid, sess in selected.items():
+        _write_step_session(root, rid, sid, sess)
+    _write_v4_progress(
+        root,
+        rid,
+        combos=[_v4_combo("combo_1"), _v4_combo("combo_2", status="discussing", n_msgs=2)],
+        final_selection={
+            "selected_combo_ids": ["combo_1"],
+            "submitted": True,
+            "submitted_at": "2026-08-18T09:23:41+00:00",
+        },
+    )
+
+    result = await batch_service.collect_report_export(rid, "md")
+    assert result is not None
+    files = dict(result)
+
+    # md：第五轮章节 + v4 区块 + combo 对话 + 结论卡
+    md = files[f"report_{rid}.md"].decode("utf-8")
+    assert "## 5. 沉淀（rumination）" in md
+    assert "⚠️ 进行中" not in md  # locked=True 视为已完成
+    assert "### 沉淀 v4（现行流程）" in md
+    assert "终选已提交" in md and "combo_1" in md
+    assert "写作 × 共情" in md
+    assert "combo_1 的方向假设" in md
+    assert "combo_1-消息0" in md and "combo_2-消息1" in md
+    assert "★ 终选" in md
+
+    # stats：rumination 行来自 v4
+    stats = json.loads(files["stats.json"])
+    rum_rows = [p for p in stats["phases"] if p["step_id"] == "rumination"]
+    assert len(rum_rows) == 1
+    row = rum_rows[0]
+    assert row["source"] == "rumination_v4"
+    assert row["message_count"] == 5
+    assert row["combo_count"] == 2
+    assert row["is_completed"] is True
+    assert row["final_selection_submitted"] is True
+    assert len(row["per_combo"]) == 2
+
+    # tables：v4 区块
+    tables = json.loads(files["rumination_tables.json"])
+    assert tables["v4"]["combo_count"] == 2
+    assert tables["v4"]["combos"][0]["is_final_selected"] is True
+    assert tables["v4"]["combos"][1]["is_final_selected"] is False
+
+    # summary：v4 终选 + 结论卡
+    summary = json.loads(files["summary.json"])
+    rum = summary["phases"]["rumination"]
+    assert rum["v4_final_selection"]["submitted"] is True
+    assert {c["combo_id"] for c in rum["v4_conclusions"]} == {"combo_1", "combo_2"}
+
+
+@pytest.mark.asyncio
+async def test_v4_replaces_placeholder_session_stat(
+    batch_service: BatchExportService,
+) -> None:
+    """v4 有真实对话时，stats 的 rumination 行以 v4 为准（旧 session 多为迁移残留）。"""
+    root = batch_service.registry.simple_base_dir
+    rid = "rpt-v4-mixed"
+    selected = {sid: f"sess-{sid}" for sid in STEP_IDS}
+    record = _make_record(rid, selected_sessions=selected)
+    _write_record(root, rid, record)
+    for sid, sess in selected.items():
+        _write_step_session(root, rid, sid, sess)
+    _write_v4_progress(root, rid, combos=[_v4_combo("combo_1", n_msgs=4)])
+
+    result = await batch_service.collect_report_export(rid, "md")
+    assert result is not None
+    files = dict(result)
+
+    stats = json.loads(files["stats.json"])
+    rum_rows = [p for p in stats["phases"] if p["step_id"] == "rumination"]
+    assert len(rum_rows) == 1
+    assert rum_rows[0]["source"] == "rumination_v4"
+    assert rum_rows[0]["message_count"] == 4
+
+    # md：v4 区块 + 旧会话的历史区块（消息不丢）
+    md = files[f"report_{rid}.md"].decode("utf-8")
+    assert "### 沉淀 v4（现行流程）" in md
+    assert "历史沉淀记录" in md  # 旧 session 文件仍在，保留历史区块
+
+
+@pytest.mark.asyncio
+async def test_empty_v4_state_no_round5_chapter(
+    batch_service: BatchExportService,
+) -> None:
+    """v4 文件存在但无任何内容（无 combo、未提交）→ 不输出空第五轮章节。"""
+    root = batch_service.registry.simple_base_dir
+    rid = "rpt-v4-empty"
+    selected = {sid: f"sess-{sid}" for sid in STEP_IDS if sid != "rumination"}
+    record = _make_record(rid, selected_sessions=selected)
+    _write_record(root, rid, record)
+    for sid, sess in selected.items():
+        _write_step_session(root, rid, sid, sess)
+    _write_v4_progress(root, rid, combos=[])
+
+    result = await batch_service.collect_report_export(rid, "md")
+    assert result is not None
+    files = dict(result)
+
+    md = files[f"report_{rid}.md"].decode("utf-8")
+    assert "沉淀（rumination）" not in md
+    stats = json.loads(files["stats.json"])
+    assert all(p["step_id"] != "rumination" for p in stats["phases"])
+    # tables 仍带 v4 区块（combo_count=0），保证结构可见
+    tables = json.loads(files["rumination_tables.json"])
+    assert tables["v4"]["combo_count"] == 0

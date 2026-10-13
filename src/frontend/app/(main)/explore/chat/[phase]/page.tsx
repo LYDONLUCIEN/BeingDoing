@@ -1363,6 +1363,9 @@ function LiveChatPhasePage() {
         activeThreadId && backendSyncedThreadId && activeThreadId === backendSyncedThreadId
           ? activeThreadId
           : undefined;
+      // 本次流归属的线程快照：流式期间用户切走/新建会话后，旧流事件一律丢弃，
+      // 防止旧线程的结论卡/loading 落进新线程（2026-10-13 串会话修复）
+      const streamOwnerThreadId = activeThreadId;
       const uiSnap = (() => {
         const last = lastDimensionConclusionMessage(messages);
         if (!last) return undefined;
@@ -1449,6 +1452,8 @@ function LiveChatPhasePage() {
           if (!line.startsWith('data: ')) continue;
           try {
             const payload = JSON.parse(line.slice(6));
+            // 事件归属校验：已切换到其他线程时，旧流事件全部丢弃
+            if (activeThreadIdRef.current !== streamOwnerThreadId) continue;
             if (payload.error) {
               // SSE 内嵌试用拦截（防御：后端也可能以流内 error + type 下发）
               const block = parseTrialBlock(payload);
@@ -1675,6 +1680,8 @@ function LiveChatPhasePage() {
   const handleNewChat = async () => {
     if (!activationCode || !phase) return;
     if (stepLocked && !adminDebugBypass) return;
+    // 流式进行中禁止新建（按钮已置灰，此处为兜底）：否则旧流事件会落进新会话
+    if (sending) return;
     const list = getThreads(activationCode, phase);
     if (!adminDebugBypass && list.length >= 5) return;
 

@@ -55,12 +55,77 @@ def _check_register_rate_limit(ip: str) -> None:
         )
 
 
+# ── 注册验证码 IP 频控（2026-10-13 起，ADR-0026）────────────────
+# 前置验证会向任意未注册邮箱发信，无频控等于开放发信中继。
+# 进程内内存计数（对齐注册频控模式，重启失效）：单 IP 每小时最多 10 次。
+REGISTER_CODE_RATE_LIMIT_PER_HOUR = 10
+_REGISTER_CODE_ATTEMPTS: dict = {}  # ip -> {"count": int, "window_start": datetime}
+
+
+def _check_register_code_rate_limit(ip: str) -> None:
+    """超限抛 429；未超限则计数。IP 为空（拿不到）时不限。"""
+    if not ip:
+        return
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    rec = _REGISTER_CODE_ATTEMPTS.get(ip)
+    if rec and (now - rec["window_start"]).total_seconds() >= 3600:
+        rec = None
+    if rec is None:
+        rec = {"count": 0, "window_start": now}
+        _REGISTER_CODE_ATTEMPTS[ip] = rec
+    rec["count"] += 1
+    if rec["count"] > REGISTER_CODE_RATE_LIMIT_PER_HOUR:
+        logger.warning("注册验证码 IP 频控拦截: ip=%s count=%d", ip, rec["count"])
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=json.dumps(
+                {
+                    "type": "register_code_rate_limited",
+                    "message": "验证码发送过于频繁，请 1 小时后再试",
+                },
+                ensure_ascii=False,
+            ),
+        )
+
+
 class RegisterRequest(BaseModel):
-    """注册请求"""
+    """注册请求（2026-10-13 起必须携带前置验证 ticket，ADR-0026）"""
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
     username: Optional[str] = None
     password: str
+    ticket: Optional[str] = None
+
+
+class RegisterCodeRequest(BaseModel):
+    """注册前置验证：发送验证码请求"""
+    email: EmailStr
+
+
+class RegisterVerifyCodeRequest(BaseModel):
+    """注册前置验证：校验验证码请求"""
+    pending_id: str
+    email: EmailStr
+    code: str
+
+
+class RegisterPollRequest(BaseModel):
+    """注册前置验证：轮询链接验证结果请求"""
+    pending_id: str
+    email: EmailStr
+
+
+class BindEmailCodeRequest(BaseModel):
+    """绑定邮箱：发送验证码请求"""
+    email: EmailStr
+
+
+class BindEmailConfirmRequest(BaseModel):
+    """绑定邮箱：校验验证码请求"""
+    email: EmailStr
+    code: str
 
 
 class LoginRequest(BaseModel):
@@ -234,6 +299,31 @@ async def get_deleted_current_user(
     return user
 
 
+async def get_binding_current_user(
+    token: Optional[str] = Depends(get_token_from_header),
+) -> dict:
+    """
+    获取待绑定邮箱的当前用户（依赖注入，仅绑定邮箱端点使用，ADR-0026）
+
+    校验强制绑定受限 token（payload type == "email_binding_required"）、
+    用户存在且启用且仍未绑定邮箱，否则 401。
+    """
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="未提供认证Token"
+        )
+
+    user = await AuthService.get_binding_current_user(token)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token无效或已完成邮箱绑定"
+        )
+
+    return user
+
+
 def _is_super_admin(user: Optional[dict]) -> bool:
     """是否超级管理员（仅超级管理员可看 debug 日志等）"""
     return is_super_admin_user(user)
@@ -244,6 +334,54 @@ def _is_debug_admin(user: Optional[dict]) -> bool:
     if not user or not getattr(settings, "DEBUG_MODE", False):
         return False
     return _is_super_admin(user)
+
+
+# ===================== 注册前置验证（2026-10-13 起，ADR-0026） =====================
+
+
+@router.post("/register/code", response_model=AuthResponse)
+async def request_register_code(request: RegisterCodeRequest, raw_request: Request):
+    """注册第一步：发送验证码 + 验证链接（双形态）。已注册邮箱改发通知邮件并如实告知。"""
+    _check_register_code_rate_limit(_client_ip(raw_request))
+    try:
+        result = await AuthService.request_register_verification(request.email)
+        message = (
+            "该邮箱已注册，请直接登录"
+            if result.get("already_registered")
+            else "验证码已发送（10分钟有效，60秒内不可重复发送）"
+        )
+        return AuthResponse(code=200, message=message, data=result)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.post("/register/verify", response_model=AuthResponse)
+async def verify_register_code(request: RegisterVerifyCodeRequest):
+    """注册第二步（验证码形态）：校验 6 位验证码，通过返回注册 ticket"""
+    try:
+        result = await AuthService.verify_register_code(
+            request.pending_id, request.email, request.code
+        )
+        return AuthResponse(code=200, message="邮箱验证成功", data=result)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.get("/register/verify-link", response_model=AuthResponse)
+async def verify_register_link(token: str):
+    """注册第二步（链接形态）：点开邮件链接完成服务端验证，原注册页轮询领 ticket"""
+    try:
+        result = await AuthService.verify_register_link(token)
+        return AuthResponse(code=200, message="邮箱验证成功，请回到注册页继续", data=result)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.post("/register/poll", response_model=AuthResponse)
+async def poll_register_verification(request: RegisterPollRequest):
+    """原注册页轮询：链接已验证则返回注册 ticket"""
+    result = await AuthService.poll_register_verification(request.pending_id, request.email)
+    return AuthResponse(code=200, message="success", data=result)
 
 
 @router.post("/register", response_model=AuthResponse)
@@ -263,11 +401,12 @@ async def register(request: RegisterRequest, response: Response, raw_request: Re
             email=request.email,
             phone=request.phone,
             username=request.username,
-            password=request.password
+            password=request.password,
+            ticket=request.ticket,
         )
 
-        # 2026-09-27 起：试用码改为「邮箱验证通过后发放」（见 verify_email_token），
-        # 此处不再注册即送；验证邮件由 AuthService.register 自动发送（失败不阻断注册）。
+        # 2026-10-13 起（ADR-0026）：邮箱验证前置——注册时必须携带前置验证 ticket，
+        # 落库即已验证，试用码在注册完成时发放（AuthService.register 内）。
 
         refresh_token = (result or {}).pop("refresh_token", None)
         if refresh_token:
@@ -586,6 +725,55 @@ async def confirm_account_recovery(
         return AuthResponse(
             code=200,
             message="账户恢复成功",
+            data=result
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+# ===================== 绑定邮箱（纯手机老账号强制绑定，ADR-0026） =====================
+
+
+@router.post("/bind-email/code", response_model=AuthResponse)
+async def request_bind_email_code(
+    request: BindEmailCodeRequest,
+    current_user: dict = Depends(get_binding_current_user),
+):
+    """发送绑定邮箱验证码（6 位数字，10 分钟有效，60 秒冷却）"""
+    try:
+        await AuthService.request_bind_email_code(current_user["user_id"], request.email)
+        return AuthResponse(
+            code=200,
+            message="验证码已发送（10分钟有效，60秒内不可重复发送）",
+            data={}
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.post("/bind-email/confirm", response_model=AuthResponse)
+async def confirm_bind_email(
+    request: BindEmailConfirmRequest,
+    response: Response,
+    current_user: dict = Depends(get_binding_current_user),
+):
+    """校验绑定验证码并完成绑定，签发正式 token 对（refresh 经 cookie 下发，与登录一致）"""
+    try:
+        result = await AuthService.confirm_bind_email(
+            current_user["user_id"], request.email, request.code
+        )
+        refresh_token = (result or {}).pop("refresh_token", None)
+        if refresh_token:
+            _set_refresh_cookie(response, refresh_token)
+        return AuthResponse(
+            code=200,
+            message="邮箱绑定成功",
             data=result
         )
     except ValueError as e:

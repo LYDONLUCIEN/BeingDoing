@@ -11,8 +11,10 @@
 7. 0 元单：跳过渠道调用，作废码
 8. 并发双批：第二个 approve 拒绝（状态门闩）
 9. 咨询协商部分退：admin 代录金额 → 批准执行 → 预约取消
-10. 申请后码被激活：approve 实时重验，上限收缩/拒批
+10. 码已使用（申请前已绑定/申请后被激活）不拦截：申请照单全收，admin 可强制批准
+    （批准后码强制作废）；金额上限仍不超过实付
 11. 全额退款退券（used → unused）；部分退不退券
+12. 部分退可勾选已被使用的码（提交后由 admin 审批判断）
 """
 
 from datetime import datetime, timedelta, timezone
@@ -529,21 +531,88 @@ async def test_consultation_partial_admin_create(fake_channel, _setup_db):
 
 
 @pytest.mark.asyncio
-async def test_code_claimed_after_request_blocks_approve(fake_channel, _setup_db):
-    """申请后码被激活：approve 实时重验 → 拒批（请驳回）"""
+async def test_code_claimed_after_request_admin_can_force_approve(fake_channel, _setup_db):
+    """申请后码被激活：admin 为最终裁判，可强制批准；批准后全部码强制作废"""
     mgr = _setup_db
     order = await _make_annual_order(mgr)
     refund = await RefundService.create_refund_request(
         user_id="u1", order_id=order.id, refund_type="full", reason="x"
     )
-    # 申请后 1 个码被他人激活
+    # 申请后 1 个码被他人激活（行实时状态变 used）→ 不再拦截批准
     codes = json.loads((await _get_order(order.id)).meta)["codes"]
     mgr.claim_owner(codes[0], {"user_id": "u9", "email": "x@test.com"})
-    # 上限实时收缩：3 码只剩 2 码可退（20000 < 申请 30000）→ 拒批并提示收缩后上限
-    with pytest.raises(ValueError, match="超出实时可退上限"):
-        await RefundService.approve_refund(admin_user={"user_id": "admin"}, refund_id=refund.id)
-    assert fake_channel.refunds == []
-    assert (await _get_order(order.id)).status == "granted"
+    executed = await RefundService.approve_refund(
+        admin_user={"user_id": "admin"}, refund_id=refund.id
+    )
+    assert executed.status == "succeeded"
+    assert executed.approved_amount == 30000
+    assert fake_channel.refunds == [(order.order_no, 30000, order.order_no + "R001")]
+    assert (await _get_order(order.id)).status == "refunded"
+    # 已被他人激活的码也随退款强制作废
+    assert mgr.get_activation(codes[0]).status == "revoked"
+
+
+@pytest.mark.asyncio
+async def test_request_allowed_when_code_already_used(fake_channel, _setup_db):
+    """申请时码已被使用（已绑定他人）：申请不再被拦截，提交后待 admin 审批"""
+    mgr = _setup_db
+    order = await _make_annual_order(mgr)
+    # 申请前 1 个码已被绑定
+    codes = json.loads((await _get_order(order.id)).meta)["codes"]
+    mgr.claim_owner(codes[0], {"user_id": "u9", "email": "x@test.com"})
+
+    # 能力视图：全退/部分退均允许提交（行状态仍如实展示供 admin 判断）
+    opts = await RefundService.get_refund_options("u1", order.id)
+    assert opts["full_allowed"] is True
+    assert opts["partial_allowed"] is True
+    assert [l["effective_status"] for l in opts["lines"]] == ["used", "available", "available"]
+
+    refund = await RefundService.create_refund_request(
+        user_id="u1", order_id=order.id, refund_type="full", reason="码未用到，想退"
+    )
+    assert refund.status == "pending_review"
+    assert refund.requested_amount == 30000  # 上限 = min(剩余可退, 未退款行分摊)
+
+    # admin 强制批准 → 全部码作废（含已绑定的码）
+    executed = await RefundService.approve_refund(
+        admin_user={"user_id": "admin"}, refund_id=refund.id
+    )
+    assert executed.status == "succeeded"
+    for code in codes:
+        assert mgr.get_activation(code).status == "revoked"
+
+
+@pytest.mark.asyncio
+async def test_partial_refund_can_select_used_code(fake_channel, _setup_db):
+    """部分退可勾选已被使用的码：申请受理 → admin 批准 → 仅所选行退款并作废该码"""
+    mgr = _setup_db
+    order = await _make_annual_order(mgr, paid=30000)
+    codes = json.loads((await _get_order(order.id)).meta)["codes"]
+    mgr.claim_owner(codes[1], {"user_id": "u9", "email": "x@test.com"})
+
+    opts = await RefundService.get_refund_options("u1", order.id)
+    used_line = opts["lines"][1]
+    assert used_line["effective_status"] == "used"
+
+    refund = await RefundService.create_refund_request(
+        user_id="u1",
+        order_id=order.id,
+        refund_type="partial",
+        line_ids=[used_line["id"]],
+        reason="这个码没用上",
+    )
+    assert refund.requested_amount == 10000
+    executed = await RefundService.approve_refund(
+        admin_user={"user_id": "admin"}, refund_id=refund.id
+    )
+    assert executed.status == "succeeded"
+    final = await _get_order(order.id)
+    assert final.status == "partially_refunded"
+    assert final.amount_refunded == 10000
+    lines_after = await _get_lines(order.id)
+    assert [l.status for l in lines_after] == ["available", "refunded", "available"]
+    assert mgr.get_activation(codes[1]).status == "revoked"
+    assert mgr.get_activation(codes[0]).status == "active"
 
 
 # ─── 7. 可退性视图 / 通知 ─────────────────────────────────────
