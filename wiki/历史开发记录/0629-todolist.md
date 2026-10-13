@@ -316,7 +316,7 @@ POST /sessions/...
 
 ## 七、提交前检查清单(每个任务完成后)
 
-按 `claude-开发文档.md` 第三节执行:
+按当时的 [`claude-开发文档.md` 第三节](https://github.com/LYDONLUCIEN/BeingDoing/blob/e6181d4e8dc34270e6948d2c78695e6855931368/claude-%E5%BC%80%E5%8F%91%E6%96%87%E6%A1%A3.md)执行（历史记录；当前规范见 [CONTRIBUTING](../../CONTRIBUTING.md)）:
 1. Python: `black --check .` 和 `isort --check .`(在 `src/backend` 下)
 2. TypeScript: `npm run lint`(在 `src/frontend` 下)
 3. 后端测试: `pytest test/backend -v`(从项目根目录)

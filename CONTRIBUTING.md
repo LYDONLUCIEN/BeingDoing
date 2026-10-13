@@ -26,6 +26,8 @@
 
 文档职责：`docs/DEVELOPMENT.md` 维护现行开发方式，产品规则／字段字典维护当前契约，CHANGELOG／ADR 记录变更与取舍，`wiki/` 保留历史证据。更新规则时标明替代关系；旧记录不自动产生新待办。不要复制源码为 `current/` 或维护第二套环境指南，版本比较使用固定 Git 提交。移动资料时同步引用；删除重复材料前验证来源可追溯，保留唯一设计源和有存量用途的迁移依据。
 
+根目录只放入口、必要配置／脚本和明确保留的原始输入；用途及例外见 [根目录索引](docs/ROOT_FILES.md)。新增评审按主题命名，不按 Claude、Cursor 等工具命名；区分“观察”“提案”“已决定”“已验证”，注明日期、基线与替代关系，历史记录不另充当现行规范。
+
 ## 提交前检查
 
 从根目录执行后端测试 `python -m pytest test/backend`；前端执行 `npm run lint`、`npm run test:security`、`npm run build`。涉及渲染器时运行它的 `npm test` 并核对 dist。

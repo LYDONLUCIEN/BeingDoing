@@ -1,4 +1,6 @@
-# claude-test 自动化测试框架
+# 历史 4.28 清单回归工具
+
+> 本工具保留当年的任务映射、清单解析和报告生成能力。默认输入已归档到 [2026-04-28 开发待测清单](../../wiki/历史回归记录/2026-04-28-开发待测清单.md)，含已退役的旧沉淀规则。下文用例数量、覆盖表和运行结果为历史说明；不能将本工具输出当作当前版本验收。当前命令与实际基线见 [docs/TESTING](../../docs/TESTING.md)。旧 JSON／Markdown 报告保留生成时的文件名与结果。
 
 基于 **4.28 开发待测清单** 搭建的端到端测试框架。从 MD 清单自动解析测试项 → 执行 pytest → 生成 JSON + Markdown 报告。
 
@@ -57,7 +59,7 @@ python test/claude-test/run_all.py \
 ### 指定清单文件
 
 ```bash
-python test/claude-test/run_all.py --checklist 4.28开发待测清单.md
+python test/claude-test/run_all.py --checklist wiki/历史回归记录/2026-04-28-开发待测清单.md
 python test/claude-test/run_all.py --checklist wiki/某待测清单.md
 ```
 

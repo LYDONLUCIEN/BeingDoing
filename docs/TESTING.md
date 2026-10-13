@@ -15,6 +15,14 @@ isort --check-only --settings-path src/backend/pyproject.toml src/backend
 
 前端目录运行 `npm run lint`、`npm run test:security`、`NEXT_TELEMETRY_DISABLED=1 npm run build`。渲染器目录运行 `npm test`。依赖审计：`python -m pip_audit`、前端 `npm audit`，结果需按可达条件人工判断。
 
+## 2026-10-13 根目录整理的定向验证
+
+本轮只整理根目录文档／图像及测试工具的清单路径，应用源码未改。执行 `PYTHONPATH=test/claude-test python -m pytest -c test/claude-test/pytest.ini test/claude-test/parser/test_md_parser.py -q`：**3 passed**；缺失清单不再被静默当作成功。
+
+对比迁移前后的解析对象：标题、优先级和 **109 项清单内容完全一致**；验证工具默认路径可读取新位置。7 份归档文档移除新增范围提示后与原文逐字节一致，6 张 PNG 哈希不变；另外 23 个未编辑保留的根目录文件字节不变。没有运行带旧七步规则的历史业务清单、重放旧报告或连接真实服务。本轮检查不能替代下列产品回归及其未通过项。
+
+检查 Wiki、现行 docs、根入口及本轮修改文档共 160 份：881 条本地链接目标有效，106 个固定 Git 来源存在；同步修复引用旧根评审的并发分析文档中的相对路径。`git diff --check` 通过。这是本次列明文档范围的文件目标检查，不是全仓历史链接、页内锚点或外部网站可用性验证。
+
 ## 第一轮结果（截至 5b461e6，历史快照）
 
 | 检查 | 结果与范围 |

@@ -1,3 +1,6 @@
+> **历史资料，非现行开发规范。** 原根目录文件：`claude-simple-chat-review.md`；2026-10-13 归档。处置依据见 [根目录索引](../../docs/ROOT_FILES.md)。
+> 保存 4 月 4 日评审及 4 月 5 日拆分、提示词恢复记录；正文同时包含已执行变更和未执行方案。旧九步／矩阵沉淀已被 [ADR-0025](../../docs/adr/0025-retire-v3-runtime-and-separate-history.md) 替代；拆分方案、合并建议和未勾选项不自动成为当前任务。当前模块和接口见 [架构](../../docs/ARCHITECTURE.md) 与 [API 契约](../../docs/API_DOCUMENTATION.md)。
+
 # Simple Chat 模块深度审查报告
 
 > 审查日期：2026-04-04

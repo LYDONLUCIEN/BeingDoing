@@ -19,6 +19,7 @@
 | 接口与权限 | [API 契约](docs/API_DOCUMENTATION.md) |
 | 理解字段、状态和跨产品关系 | [字段字典](docs/DATA_DICTIONARY.md) · [新产品边界](docs/PRODUCT_EVOLUTION.md) |
 | 安全与本次清理 | [安全评估](docs/SECURITY_REVIEW.md) · [清理依据](docs/CLEANUP.md) · [双轴复审](docs/REVIEW.md) |
+| 根目录文件用途、旧文件去向 | [根目录职责与处置索引](docs/ROOT_FILES.md) |
 | 理解现行选择、原因和约束 | [架构与开发决策](docs/DECISIONS.md) · [开发变更记录](docs/CHANGELOG.md) |
 | 查历史过程和替代关系 | [历史证据](docs/HISTORY_EVIDENCE.md) · [GitHub 全量索引](docs/ISSUE_HISTORY.md) · [ADR 状态](docs/adr/README.md) |
 

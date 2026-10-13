@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""claude-test 统一测试入口
+"""历史 4.28 清单测试入口（非当前版本验收入口，见 docs/TESTING.md）
 
 用法:
     python test/claude-test/run_all.py                          # 全部
@@ -33,11 +33,11 @@ from parser.md_checklist_parser import parse_checklist
 
 
 def _parse_args():
-    parser = argparse.ArgumentParser(description="claude-test 统一测试入口")
+    parser = argparse.ArgumentParser(description="历史清单回归工具；当前验收见 docs/TESTING.md")
     parser.add_argument(
         "--checklist",
-        default=os.path.join(_PROJECT_ROOT, "4.28开发待测清单.md"),
-        help="MD 清单文件路径",
+        default=os.path.join(_PROJECT_ROOT, "wiki", "历史回归记录", "2026-04-28-开发待测清单.md"),
+        help="MD 清单文件路径（默认历史 4.28 清单，含已退役规则）",
     )
     parser.add_argument(
         "--type",

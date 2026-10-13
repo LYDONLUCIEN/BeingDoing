@@ -80,13 +80,17 @@ def test_parse_with_priority_table():
 
 
 def test_parse_real_checklist():
-    """用实际 4.28 开发待测清单做冒烟测试"""
+    """历史清单归档后仍可完整解析；缺失文件必须报告失败。"""
     real_path = os.path.join(
-        os.path.dirname(__file__), "..", "..", "..", "4.28开发待测清单.md"
+        os.path.dirname(__file__),
+        "..",
+        "..",
+        "..",
+        "wiki",
+        "历史回归记录",
+        "2026-04-28-开发待测清单.md",
     )
     real_path = os.path.normpath(real_path)
-    if not os.path.isfile(real_path):
-        return  # CI 环境可能没有这个文件
     title, items, priorities = parse_checklist(real_path)
     assert "4.28" in title
     assert len(items) > 40  # 清单项应该足够多
