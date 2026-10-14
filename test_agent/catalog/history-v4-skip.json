@@ -1,0 +1,24 @@
+{
+  "id": "history-v4-skip",
+  "title": "跳过保留卡片且退出终选",
+  "module": "沉淀",
+  "kind": "api",
+  "core": false,
+  "purpose": "跳过保留卡片且退出终选",
+  "inputs": [
+    "跳过已有卡片的组合后恢复组合"
+  ],
+  "assertions": [
+    "跳过不清空卡片、不进入终选，恢复保留原文"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:12",
+      "rule": "跳过不清空卡片、不进入终选，恢复保留原文"
+    }
+  ],
+  "targets": [
+    "test/backend/test_rumination_v4_e2e.py::test_skip_keeps_card_and_excluded_from_final"
+  ],
+  "timeout": 300
+}

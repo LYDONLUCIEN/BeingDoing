@@ -1,0 +1,24 @@
+{
+  "id": "history-card-early",
+  "title": "自然出卡不受旧十一轮门槛限制",
+  "module": "前四阶段",
+  "kind": "api",
+  "core": false,
+  "purpose": "自然出卡不受旧十一轮门槛限制",
+  "inputs": [
+    "在不足十一轮时接收模型自然输出的有效结论"
+  ],
+  "assertions": [
+    "结论正常展示并进入待确认状态"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:9",
+      "rule": "结论正常展示并进入待确认状态"
+    }
+  ],
+  "targets": [
+    "test/backend/test_conclusion_min_turns_gate.py::test_model_card_allowed_before_11_turns"
+  ],
+  "timeout": 300
+}

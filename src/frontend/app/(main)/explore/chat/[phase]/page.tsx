@@ -1,5 +1,7 @@
 'use client';
 
+import ResponsiveSidebar from '@/components/explore/ResponsiveSidebar';
+import { useChatViewport } from '@/hooks/useChatViewport';
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useRouter, useParams, usePathname, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
@@ -2150,15 +2152,20 @@ function LiveChatPhasePage() {
   /* ── 引用稳定回调组（2026-10-05 性能优化）──────────────────────
      侧栏与消息行已 memo 化：这些回调经 ref 桥接为恒定引用（每渲染更新 ref，
      与组件顶部 messagesRef 同一惯用法），避免每帧新闭包击穿子组件浅比较。 */
+  const mobileViewportRef = useChatViewport();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
   const handleSelectThreadRef = useRef(handleSelectThread);
   handleSelectThreadRef.current = handleSelectThread;
   const onSelectThreadStable = useCallback((thread: ChatThread) => {
+    setSidebarOpen(false);
     handleSelectThreadRef.current(thread);
   }, []);
 
   const handleNewChatRef = useRef(handleNewChat);
   handleNewChatRef.current = handleNewChat;
   const onNewChatStable = useCallback(() => {
+    setSidebarOpen(false);
     handleNewChatRef.current();
   }, []);
 
@@ -2226,6 +2233,7 @@ function LiveChatPhasePage() {
 
   return (
     <div
+      ref={mobileViewportRef}
       className="flow-light careering-matte chat-shell-h flex min-h-0 flex-col overflow-hidden"
       data-phase={phase}
       {...chatAppearanceAttrs}
@@ -2236,6 +2244,7 @@ function LiveChatPhasePage() {
       <ChatPhaseBackground phase={phase} engine="silk" />
       {/* 顶栏留白由 (main)/layout.tsx 的 pt-14 承担，此处勿再 pt-14，否则侧栏与主区会出现双倍空白 */}
       <div className="flex min-h-0 flex-1 overflow-hidden relative z-10">
+        <ResponsiveSidebar label="会话列表" open={sidebarOpen} onOpen={() => setSidebarOpen(true)} onClose={closeSidebar}>
         <ChatPhaseSidebar
             threads={threads}
             activeThreadId={activeThreadId}
@@ -2253,6 +2262,7 @@ function LiveChatPhasePage() {
             activeTurnCount={activeThreadSidebarMeta?.turnCount}
             activeLastAt={activeThreadSidebarMeta?.lastAt}
           />
+        </ResponsiveSidebar>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {/* 报告已解锁：只读历史模式提示条 + 查看报告入口 */}
           {reportUnlocked && activationCode && (
@@ -2558,7 +2568,8 @@ function LiveChatPhasePage() {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
+                      // 输入法回车用于确认候选词，不应当作发送（旧 WebKit 可能仅报 229）。
+                      if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
                         e.preventDefault();
                         if (!sending && !isReadOnly) {
                           handleSend();
@@ -2593,6 +2604,7 @@ function LiveChatPhasePage() {
                         conclusionReqState === 'loading' ||
                         (!sending && !input.trim())
                       }
+                      aria-label={sending ? '停止回复' : '发送消息'}
                       className={`flow-send-btn ${sending ? 'is-stop' : ''}`}
                     >
                       {sending ? (

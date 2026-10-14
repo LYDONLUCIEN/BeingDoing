@@ -1,0 +1,24 @@
+{
+  "id": "history-activation-admin",
+  "title": "内部激活仅超级管理员可用",
+  "module": "权限",
+  "kind": "api",
+  "core": false,
+  "purpose": "内部激活仅超级管理员可用",
+  "inputs": [
+    "分别以普通用户和超级管理员请求内部激活"
+  ],
+  "assertions": [
+    "普通用户拒绝，超级管理员合法请求允许"
+  ],
+  "sources": [
+    {
+      "path": "docs/DATA_DICTIONARY.md:12",
+      "rule": "普通用户拒绝，超级管理员合法请求允许"
+    }
+  ],
+  "targets": [
+    "test/backend/test_security_boundaries.py::test_internal_activation_requires_super_admin"
+  ],
+  "timeout": 300
+}

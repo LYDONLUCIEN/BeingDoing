@@ -14,6 +14,7 @@
 - TypeScript strict；新增代码避免 any（第三方适配确需使用应说明）。API 类型与调用在 lib/api，状态在 stores，可复用界面放 components。
 - 用户和模型内容经 SafeMarkdownPreview 渲染；普通字符串交给 React 转义。权限在后端校验，UI 隐藏仅负责交互。
 - Schema 变化新增 Alembic migration，确认存量兼容及回滚；保留历史迁移。API 契约变化更新 docs/API_DOCUMENTATION.md，领域变化更新字典/规则，需要长期取舍时记录 ADR。
+- Schema／业务文件格式变化同时审阅 `test_agent/snapshot/schema.json` 的导出字段与脱敏规则，并补充独立生产副本迁移用例；不能通过 `create_all`、`stamp head` 或忽略未知字段掩盖迁移缺口。配置与执行入口见 [生产副本自动验收](docs/SNAPSHOT_TESTING.md)。
 
 ## 业务决定与实现同步
 
@@ -30,7 +31,9 @@
 
 ## 提交前检查
 
-从根目录执行后端测试 `python -m pytest test/backend`；前端执行 `npm run lint`、`npm run test:security`、`npm run build`。涉及渲染器时运行它的 `npm test` 并核对 dist。
+每次功能或修复交付必须同时创建/更新 `test_agent/catalog/<id>.json` 与真实测试脚本，并在 `test_agent/changes/*.json` 登记实际变更。此工作由开发者/开发代理完成，不留给 admin 事后补写。定义必须分开记录测试目的、用户输入、断言标准、现行开发文档来源及执行入口；历史功能先核对最新有效规则。详见 [固定用例目录](test_agent/catalog/README.md)。admin 的核心/归档/人工修订由控制库保留，新版本只能提出差异建议。
+
+全量后端验证从根目录执行 `PYTHONPATH=src/backend:. .venv/bin/python -m test_agent.center.verify_backend --output output/backend-<本次唯一名称>`，使用独立源码、数据库、文件根和禁止外部调用的环境；不得直接从共享工作区运行全量 pytest，旧测试未全部自带数据库隔离。证据目录必须是新目录，避免覆盖历史结果。前端执行 `npm run lint`、`npm run test:security`、`npm run build`。涉及渲染器时运行它的 `npm test` 并核对 dist。
 
 在后端目录运行 Black/isort 全量只读检查；变更文件须符合格式。仓库现存格式债和失败测试不能通过大范围无关重排、删除测试或静默跳过隐藏。命令和本次基线对照见 [验证记录](docs/TESTING.md)。
 

@@ -1,0 +1,13 @@
+{
+  "id": "desktop-workspace",
+  "title": "PC 工作区宽度与高度独立适配",
+  "module": "沉淀",
+  "kind": "ui",
+  "core": true,
+  "purpose": "保证普通 PC 100% 缩放的既有布局，低高度不触发整页堆叠",
+  "inputs": ["在1440、1280、1024、820宽度与900、700、600高度间切换", "窄窗口主动打开并关闭覆盖式选择器"],
+  "assertions": ["输入框可见且可读，页面不横向溢出", "普通桌面始终保持guided组合侧栏，不因高度进入classic", "缩放空间变化和面板开关不丢失未发送草稿"],
+  "sources": [{"path": "docs/MOBILE_AND_TEST_CENTER_PLAN.md", "rule": "普通PC100%体验优先，窄窗口由用户展开辅助面板"}],
+  "targets": ["desktop"],
+  "timeout": 600
+}

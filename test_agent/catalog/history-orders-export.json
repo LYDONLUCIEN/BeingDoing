@@ -1,0 +1,24 @@
+{
+  "id": "history-orders-export",
+  "title": "订单导出保留字段筛选与审计",
+  "module": "后台",
+  "kind": "api",
+  "core": false,
+  "purpose": "订单导出保留字段筛选与审计",
+  "inputs": [
+    "按筛选条件导出订单xlsx"
+  ],
+  "assertions": [
+    "文件可读，字段格式正确，筛选透传并记录审计"
+  ],
+  "sources": [
+    {
+      "path": "docs/CHANGELOG.md:17",
+      "rule": "文件可读，字段格式正确，筛选透传并记录审计"
+    }
+  ],
+  "targets": [
+    "test/backend/test_admin_order_export.py::test_export_orders_xlsx_ok"
+  ],
+  "timeout": 300
+}

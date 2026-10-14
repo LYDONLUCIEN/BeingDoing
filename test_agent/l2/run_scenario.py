@@ -92,11 +92,9 @@ def _extract_input(s: Dict[str, Any]) -> ScenarioReplayInput:
     if not seed_report_dir or not thread_id:
         raise ValueError("场景缺少 data.fixture_report_dir 或 data.thread_id")
 
-    message = (
-        _extract_chat_send_text(s)
-        or str((s.get("assertions") or {}).get("expected_hint") or "").strip()
-        or "请继续"
-    )
+    message = _extract_chat_send_text(s)
+    if not message:
+        raise ValueError("场景缺少明确的用户输入，不能使用断言标准代替输入")
     savepoint_id = scenario_id if scenario_id.startswith("sp_") else None
     return ScenarioReplayInput(
         scenario_id=scenario_id,
@@ -179,7 +177,11 @@ def main() -> None:
     args = p.parse_args()
 
     root = _project_root()
-    scenario_path = (root / args.scenario).resolve() if not Path(args.scenario).is_absolute() else Path(args.scenario)
+    scenario_path = (
+        (root / args.scenario).resolve()
+        if not Path(args.scenario).is_absolute()
+        else Path(args.scenario)
+    )
     if not scenario_path.is_file():
         raise SystemExit(f"场景文件不存在: {scenario_path}")
 
@@ -230,7 +232,11 @@ def main() -> None:
         return
 
     proc = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True)
-    summary = _parse_playwright_result(proc.stdout) if engine == "playwright" else _parse_summary(proc.stdout)
+    summary = (
+        _parse_playwright_result(proc.stdout)
+        if engine == "playwright"
+        else _parse_summary(proc.stdout)
+    )
     report = {
         "scenario_id": scenario_id,
         "scenario_file": str(scenario_path),
@@ -239,6 +245,11 @@ def main() -> None:
         "command": pretty,
         "exit_code": proc.returncode,
         "summary": summary,
+        "status": (
+            "pass"
+            if engine == "playwright" and proc.returncode == 0 and summary.get("passed") is True
+            else "needs_review" if engine == "replay" and proc.returncode == 0 else "fail"
+        ),
     }
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[L2] report={out}")
@@ -246,8 +257,10 @@ def main() -> None:
     if proc.returncode != 0:
         print(proc.stderr)
         raise SystemExit(proc.returncode)
+    if report["status"] != "pass":
+        print("回放完成但没有可信的目标回复断言，不能作为通过证据")
+        raise SystemExit(2)
 
 
 if __name__ == "__main__":
     main()
-

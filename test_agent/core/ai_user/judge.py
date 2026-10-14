@@ -37,12 +37,9 @@ class L4Judge:
                 if ft not in signals.ux_risk:
                     signals.ux_risk.append(ft)
 
-        # completion: 当前阶段已进入目标后续阶段，或达到至少 2 轮并有有效用户输入
-        phase = str(runtime_state.get("phase") or "")
-        if phase and phase in {"talents", "interests"}:
-            signals.completion = True
-        elif len([t for t in timeline if t.get("action") == "chat_send"]) >= 2:
-            signals.completion = True
+        # 阶段名和用户发送次数不是目标回复断言。首版判定器未接入目标轮次评价，
+        # 无运行错误也只能待复核，不能形成发布通过证据。
+        signals.ux_risk.append("target_assertions_unavailable")
 
         for item in timeline:
             duration_ms = int(item.get("duration_ms") or 0)
@@ -51,7 +48,7 @@ class L4Judge:
                 break
 
         score = self._score(task_spec=task_spec, signals=signals)
-        status = "passed" if signals.completion and signals.consistency else "passed_with_risk"
+        status = "needs_review"
         if not signals.consistency:
             status = "failed"
 

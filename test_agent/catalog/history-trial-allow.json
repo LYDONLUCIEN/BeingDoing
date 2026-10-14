@@ -1,0 +1,24 @@
+{
+  "id": "history-trial-allow",
+  "title": "试用第九第十条仍可发送",
+  "module": "试用",
+  "kind": "api",
+  "core": false,
+  "purpose": "试用第九第十条仍可发送",
+  "inputs": [
+    "在试用价值观阶段发送第九和第十条用户消息"
+  ],
+  "assertions": [
+    "两条消息正常进入对话"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:7",
+      "rule": "两条消息正常进入对话"
+    }
+  ],
+  "targets": [
+    "test/backend/test_trial_codes.py::test_trial_stream_allows_9th_10th_messages"
+  ],
+  "timeout": 300
+}

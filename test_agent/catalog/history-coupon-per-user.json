@@ -1,0 +1,24 @@
+{
+  "id": "history-coupon-per-user",
+  "title": "多次券每人只能用一次",
+  "module": "优惠券",
+  "kind": "api",
+  "core": false,
+  "purpose": "多次券每人只能用一次",
+  "inputs": [
+    "同一用户再次使用已经核销过的多次券"
+  ],
+  "assertions": [
+    "第二次使用被拒绝"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:25",
+      "rule": "第二次使用被拒绝"
+    }
+  ],
+  "targets": [
+    "test/backend/test_coupon_multi_use.py::test_per_user_once"
+  ],
+  "timeout": 300
+}

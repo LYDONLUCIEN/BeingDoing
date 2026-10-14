@@ -1,0 +1,24 @@
+{
+  "id": "history-recheck-publish",
+  "title": "复核发布替换正式稿并备份",
+  "module": "报告",
+  "kind": "api",
+  "core": false,
+  "purpose": "复核发布替换正式稿并备份",
+  "inputs": [
+    "管理员发布复核staging稿"
+  ],
+  "assertions": [
+    "替换正式稿、保留旧稿备份并清理staging"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:35",
+      "rule": "替换正式稿、保留旧稿备份并清理staging"
+    }
+  ],
+  "targets": [
+    "test/backend/test_report_recheck.py::test_staging_publish_replaces_official_with_backup"
+  ],
+  "timeout": 300
+}

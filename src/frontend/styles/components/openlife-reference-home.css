@@ -998,12 +998,26 @@ html[data-landing='true'] .journey-navbar .journey-nav-link.is-active::after {
   border-radius: 50%;
   background: #d3dbe0;
 }
-
 .ol-review-dots button[aria-current='true'] {
   width: 23px;
   border-radius: 5px;
   background: #7f96a9;
 }
+@media (max-width: 767px) {
+  .ol-review-dots button,
+  .ol-review-dots button[aria-current='true'] {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 44px;
+    background: transparent;
+  }
+  .ol-review-dots button::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #d3dbe0; }
+  .ol-review-dots button[aria-current='true']::after { width: 20px; border-radius: 5px; background: #7f96a9; }
+}
+.ol-review-dots button:focus-visible { outline: 2px solid #7f96a9; outline-offset: 2px; border-radius: 8px; }
+#mobile-navigation { max-height: calc(100vh - 90px); max-height: calc(100dvh - 90px); overflow-y: auto; overscroll-behavior: contain; }
+.journey-mobile-menu-button { min-width: 44px; min-height: 44px; }
 
 .ol-method {
   padding-top: 78px;
@@ -1520,7 +1534,6 @@ html[data-landing='true'] .journey-navbar .journey-nav-link.is-active::after {
   .ol-report-visual { order: -1; }
   .ol-report-fan { max-width: 660px; height: clamp(500px, 74vw, 640px); }
   .ol-review-grid { grid-template-columns: 1fr 1fr; }
-  .ol-review-card:nth-child(3) { display: none; }
 }
 
 @media (max-width: 900px) {
@@ -1540,14 +1553,14 @@ html[data-landing='true'] .journey-navbar .journey-nav-link.is-active::after {
   }
   html[data-landing='true'] .journey-navbar-brand { font-size: 17px; }
   .ol-home-scene-bg { width: 100%; height: 520px; aspect-ratio: auto; object-fit: cover; object-position: center bottom; }
-  .ol-hero-copy { top: 138px; width: calc(100% - 32px); }
+  .ol-hero-copy { position: relative; top: auto; left: auto; transform: none; width: auto; margin: 0 18px; padding-top: 96px; }
   .ol-eyebrow { margin-bottom: 13px; font-size: 11px; }
-  .ol-hero-copy h1 { font-size: 38px; }
+  .ol-hero-copy h1 { font-size: clamp(32px, 9vw, 42px); line-height: 1.16; }
   .ol-hero-copy > p:last-of-type { margin: 13px 0 17px; font-size: 14px; }
-  .ol-hero-copy .ol-hero-cta { padding: 11px 21px 11px 23px; font-size: 12px; }
+  .ol-hero-copy .ol-hero-cta { min-height: 44px; padding: 12px 24px; font-size: 14px; }
   .ol-home-section { padding-right: 18px; padding-left: 18px; }
-  .ol-hero.ol-home-section { height: max(760px, calc(100svh - var(--ol-header-h))); }
-  .ol-journey-dock { top: 338px; width: calc(100% - 28px); }
+  .ol-hero.ol-home-section { height: auto; min-height: 720px; min-height: max(720px, calc(100dvh - var(--ol-header-h))); padding-bottom: 68px; }
+  .ol-journey-dock { position: relative; top: auto; left: auto; transform: none; width: calc(100% - 28px); margin: 42px auto 0; }
   .ol-journey-dock > h2 { margin-bottom: 19px; font-size: 23px; }
   .ol-phase-cards {
     display: grid;
@@ -1584,7 +1597,6 @@ html[data-landing='true'] .journey-navbar .journey-nav-link.is-active::after {
   .ol-review-stage { grid-template-columns: 1fr; }
   .ol-round-arrow { display: none; }
   .ol-review-grid { grid-template-columns: 1fr; }
-  .ol-review-card:nth-child(n + 2) { display: none; }
   .ol-reference-list { grid-template-columns: 1fr; }
   .ol-faq { padding-top: 62px; padding-bottom: 66px; }
   .ol-faq-list { padding: 7px 18px 20px; }

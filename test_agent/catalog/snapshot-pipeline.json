@@ -1,0 +1,25 @@
+{
+  "id": "snapshot-pipeline",
+  "title": "生产副本：脱敏、隔离迁移与测试流水线",
+  "module": "测试基础设施",
+  "kind": "api",
+  "core": true,
+  "purpose": "保证生产基准单向导入独立副本，迁移和测试不能覆盖生产或已有 dev 数据，失败与未执行不能被记为通过。",
+  "inputs": [
+    "合成的 SQLite 旧结构、关联的激活码/聊天/报告及敏感字段",
+    "真实项目 024 到 025 迁移和现有用户读取接口",
+    "迁移失败、篡改包、非法路径、跳过/零用例、超时和 SSH 边界"
+  ],
+  "assertions": [
+    "账号与激活码引用保持一致，凭据被清除，业务数值和字段名不受假名化破坏",
+    "源备份及现有 dev 数据不变，每组测试从独立副本开始",
+    "失败拒绝后续执行或返回非通过状态；恶意包不在目标外写入",
+    "普通 API/UI 夹具回归与生产副本兼容性结果分别报告"
+  ],
+  "sources": [
+    {"path": "docs/SNAPSHOT_TESTING.md", "rule": "完整流水线、隔离、数据版本和脱敏边界。"},
+    {"path": "docs/OPERATIONS.md", "rule": "一致 DB＋data 快照与生产发布人工操作。"}
+  ],
+  "targets": ["test/backend/test_snapshot_pipeline.py"],
+  "timeout": 300
+}

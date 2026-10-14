@@ -1,0 +1,24 @@
+{
+  "id": "history-refresh-replay",
+  "title": "宽限外重放撤销令牌族",
+  "module": "认证",
+  "kind": "api",
+  "core": false,
+  "purpose": "宽限外重放撤销令牌族",
+  "inputs": [
+    "在宽限期之后重用已轮换刷新令牌"
+  ],
+  "assertions": [
+    "整族撤销，新令牌也不能继续使用"
+  ],
+  "sources": [
+    {
+      "path": "docs/DECISIONS.md:31",
+      "rule": "整族撤销，新令牌也不能继续使用"
+    }
+  ],
+  "targets": [
+    "test/backend/test_refresh_token_rotation.py::test_reuse_after_grace_revokes_family"
+  ],
+  "timeout": 300
+}

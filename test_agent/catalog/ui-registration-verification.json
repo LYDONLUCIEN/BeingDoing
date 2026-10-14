@@ -1,0 +1,127 @@
+{
+  "id": "ui-registration-verification",
+  "title": "注册：验证码与协议拦截",
+  "module": "注册",
+  "kind": "ui",
+  "core": false,
+  "purpose": "用管理员可编辑的步骤验证错误验证码不能进入设密步骤，未同意协议不能完成注册。",
+  "sources": [
+    {
+      "path": "docs/adr/0026-register-email-preverification-and-phone-binding.md",
+      "rule": "邮箱验证前置，验证码错误不能进入设密。"
+    },
+    {
+      "path": "src/frontend/app/auth/register/page.tsx",
+      "rule": "现行注册界面在未同意协议时拒绝完成注册。"
+    }
+  ],
+  "inputs": [
+    "打开注册页面",
+    "填写：邮箱 = case@example.invalid",
+    "点击：发送验证码",
+    "填写：邮箱验证码 = 000000",
+    "点击：验证并继续",
+    "填写：邮箱验证码 = 123456",
+    "点击：验证并继续",
+    "填写：密码 = fixture-password",
+    "填写：确认密码 = fixture-password",
+    "点击：完成注册"
+  ],
+  "assertions": [
+    "第1步：应跳转：/auth/register",
+    "第1步：页面无横向溢出",
+    "第5步：应显示：验证码错误或已过期",
+    "第5步：不应显示：完成注册",
+    "第7步：按钮可用：完成注册",
+    "第10步：应显示：请阅读并同意协议后继续",
+    "第10步：应跳转：/auth/register"
+  ],
+  "targets": [
+    "scenario"
+  ],
+  "fixture": "account",
+  "steps": [
+    {
+      "action": "navigate",
+      "value": "/auth/register"
+    },
+    {
+      "action": "fill",
+      "label": "邮箱",
+      "value": "case@example.invalid"
+    },
+    {
+      "action": "click",
+      "value": "发送验证码"
+    },
+    {
+      "action": "fill",
+      "label": "邮箱验证码",
+      "value": "000000"
+    },
+    {
+      "action": "click",
+      "value": "验证并继续"
+    },
+    {
+      "action": "fill",
+      "label": "邮箱验证码",
+      "value": "123456"
+    },
+    {
+      "action": "click",
+      "value": "验证并继续"
+    },
+    {
+      "action": "fill",
+      "label": "密码",
+      "value": "fixture-password"
+    },
+    {
+      "action": "fill",
+      "label": "确认密码",
+      "value": "fixture-password"
+    },
+    {
+      "action": "click",
+      "value": "完成注册"
+    }
+  ],
+  "ui_checks": [
+    {
+      "step": 1,
+      "type": "url",
+      "value": "/auth/register"
+    },
+    {
+      "step": 1,
+      "type": "no_overflow"
+    },
+    {
+      "step": 5,
+      "type": "visible",
+      "value": "验证码错误或已过期"
+    },
+    {
+      "step": 5,
+      "type": "hidden",
+      "value": "完成注册"
+    },
+    {
+      "step": 7,
+      "type": "enabled",
+      "value": "完成注册"
+    },
+    {
+      "step": 10,
+      "type": "visible",
+      "value": "请阅读并同意协议后继续"
+    },
+    {
+      "step": 10,
+      "type": "url",
+      "value": "/auth/register"
+    }
+  ],
+  "timeout": 600
+}

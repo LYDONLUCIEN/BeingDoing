@@ -1,0 +1,25 @@
+{
+  "id": "coupons",
+  "title": "优惠券生命周期",
+  "module": "优惠券",
+  "kind": "api",
+  "core": true,
+  "inputs": [
+    "使用、锁定、释放及过期"
+  ],
+  "assertions": [
+    "容量、期限及多次使用约束保持一致"
+  ],
+  "targets": [
+    "test/backend/test_coupon_multi_use.py",
+    "test/backend/test_coupon_expiry.py"
+  ],
+  "timeout": 300,
+  "purpose": "保护多次券每人一次、锁定释放与期限规则。",
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md",
+      "rule": "优惠券多次核销、容量、期限与兼容口径。"
+    }
+  ]
+}

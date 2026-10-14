@@ -1,0 +1,24 @@
+{
+  "id": "history-v3-history-readonly",
+  "title": "旧沉淀历史只读导出",
+  "module": "历史兼容",
+  "kind": "api",
+  "core": false,
+  "purpose": "旧沉淀历史只读导出",
+  "inputs": [
+    "导出既有旧沉淀历史"
+  ],
+  "assertions": [
+    "不生成矩阵、不改源文件、不伪造v4状态"
+  ],
+  "sources": [
+    {
+      "path": "docs/adr/0025-retire-v3-runtime-and-separate-history.md",
+      "rule": "不生成矩阵、不改源文件、不伪造v4状态"
+    }
+  ],
+  "targets": [
+    "test/backend/test_rumination_retirement.py::test_legacy_export_reads_existing_data_without_creating_matrix_or_writing"
+  ],
+  "timeout": 300
+}

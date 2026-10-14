@@ -1,0 +1,26 @@
+{
+  "id": "mobile-test-center-phase1",
+  "summary": "测试中心固定用例、独立执行与手机首页",
+  "paths": [
+    "src/backend/app/services/test_center.py",
+    "src/backend/app/api/v1/admin_test_center.py",
+    "src/backend/app/main.py",
+    "src/frontend/app/(main)/admin/",
+    "src/frontend/lib/api/testCenter.ts",
+    "src/frontend/app/(main)/page.tsx",
+    "src/frontend/components/layout/TopNavbar.tsx",
+    "src/frontend/styles/components/openlife-reference-home.css",
+    "test_agent/",
+    "src/backend/app/api/v1/simple_chat/__init__.py",
+    "src/backend/app/utils/admin_savepoints.py"
+  ],
+  "cases": [
+    "test-center",
+    "home-mobile",
+    "activation-codes",
+    "chat-boundaries",
+    "test-center-ui",
+    "chat-ui",
+    "reply-integrity"
+  ]
+}

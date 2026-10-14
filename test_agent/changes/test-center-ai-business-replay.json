@@ -1,0 +1,23 @@
+{
+  "id": "test-center-ai-business-replay",
+  "summary": "AI 回放编排现有业务接口；每轮独立副本、结构化起点、状态证据及实际模型预算；撤回产品包导出重构",
+  "paths": [
+    "src/backend/app/api/v1/admin_test_center.py",
+    "src/backend/app/services/test_center.py",
+    "src/backend/app/services/test_center_ai.py",
+    "src/backend/app/services/test_center_budget.py",
+    "src/backend/app/services/test_center_capture.py",
+    "src/backend/app/services/test_center_workflow.py",
+    "src/frontend/lib/api/testCenter.ts",
+    "src/frontend/app/(main)/admin/test-center/",
+    "src/frontend/components/admin/test-center/",
+    "test_agent/center/",
+    "test_agent/l2/center_admin_case.mjs"
+  ],
+  "cases": [
+    "test-center-workflow",
+    "test-center-authoring",
+    "test-center-ui",
+    "test-center"
+  ]
+}

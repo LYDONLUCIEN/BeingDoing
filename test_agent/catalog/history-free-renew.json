@@ -1,0 +1,24 @@
+{
+  "id": "history-free-renew",
+  "title": "合资格完整码免费延长七天",
+  "module": "激活码",
+  "kind": "api",
+  "core": false,
+  "purpose": "合资格完整码免费延长七天",
+  "inputs": [
+    "为合资格过期完整码领取免费延期"
+  ],
+  "assertions": [
+    "恢复有效并增加七天"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:19",
+      "rule": "恢复有效并增加七天"
+    }
+  ],
+  "targets": [
+    "test/backend/test_free_renewal.py::test_claim_success_extends_7_days"
+  ],
+  "timeout": 300
+}

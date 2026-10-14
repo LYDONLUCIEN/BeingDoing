@@ -1185,7 +1185,7 @@ def export_savepoint_assets(*, savepoint_id: str) -> Dict[str, Any]:
             },
             "phase": str(meta.get("phase") or "values"),
             "thread_id": str(meta.get("thread_id") or ""),
-            "message": str(meta.get("expected_hint") or "请继续"),
+            "message": str(meta.get("user_input") or ""),
         }
     )
     cases_obj["cases"] = cases
@@ -1196,7 +1196,8 @@ def export_savepoint_assets(*, savepoint_id: str) -> Dict[str, Any]:
     scenario_dir = _project_root() / "test_agent" / "scenarios" / "generated"
     scenario_dir.mkdir(parents=True, exist_ok=True)
     scenario_file = scenario_dir / f"{spid}.yaml"
-    expected_hint = str(meta.get("expected_hint") or "请继续")
+    expected_hint = str(meta.get("expected_hint") or "")
+    user_input_json = json.dumps(str(meta.get("user_input") or ""), ensure_ascii=False)
     expected_hint_escaped = expected_hint.replace('"', '\\"')
     expected_keywords = json.dumps(meta.get("expected_keywords") or [], ensure_ascii=False)
     scenario_yaml = (
@@ -1219,7 +1220,7 @@ def export_savepoint_assets(*, savepoint_id: str) -> Dict[str, Any]:
         f"  - action: wait_ms\n"
         f"    ms: 1200\n"
         f"  - action: chat_send\n"
-        f'    text: "{expected_hint_escaped}"\n'
+        f"    text: {user_input_json}\n"
         f"  - action: wait_for_ai\n"
         f"    delta: 1\n"
         f"  - action: screenshot\n"

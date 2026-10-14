@@ -1,0 +1,24 @@
+{
+  "id": "history-paid-filter",
+  "title": "付费筛选遵循当前状态定义",
+  "module": "统计",
+  "kind": "api",
+  "core": false,
+  "purpose": "付费筛选遵循当前状态定义",
+  "inputs": [
+    "按paid_status筛选包含不同订单状态的用户"
+  ],
+  "assertions": [
+    "granted计入，pending和partially_refunded不计入"
+  ],
+  "sources": [
+    {
+      "path": "docs/DATA_DICTIONARY.md:90",
+      "rule": "granted计入，pending和partially_refunded不计入"
+    }
+  ],
+  "targets": [
+    "test/backend/test_user_filters.py::test_paid_status"
+  ],
+  "timeout": 300
+}

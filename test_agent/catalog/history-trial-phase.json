@@ -1,0 +1,24 @@
+{
+  "id": "history-trial-phase",
+  "title": "试用不能进入其他阶段聊天",
+  "module": "试用",
+  "kind": "api",
+  "core": false,
+  "purpose": "试用不能进入其他阶段聊天",
+  "inputs": [
+    "试用码请求非价值观阶段流式聊天"
+  ],
+  "assertions": [
+    "返回阶段门禁402"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:7",
+      "rule": "返回阶段门禁402"
+    }
+  ],
+  "targets": [
+    "test/backend/test_trial_codes.py::test_trial_phase_lock_on_stream"
+  ],
+  "timeout": 300
+}

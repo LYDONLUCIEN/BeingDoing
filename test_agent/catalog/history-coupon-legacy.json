@@ -1,0 +1,24 @@
+{
+  "id": "history-coupon-legacy",
+  "title": "历史裸券码保持可用",
+  "module": "优惠券",
+  "kind": "api",
+  "core": false,
+  "purpose": "历史裸券码保持可用",
+  "inputs": [
+    "使用历史无前缀券码验证和锁定"
+  ],
+  "assertions": [
+    "精确匹配历史券并允许合法锁定"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:26",
+      "rule": "精确匹配历史券并允许合法锁定"
+    }
+  ],
+  "targets": [
+    "test/backend/test_coupon_multi_use.py::test_legacy_bare_code_still_works"
+  ],
+  "timeout": 300
+}

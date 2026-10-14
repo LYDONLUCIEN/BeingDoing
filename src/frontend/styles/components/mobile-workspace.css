@@ -1,0 +1,58 @@
+/* 手机工作区复用桌面的消息、选择器和素材，仅调整布局与触控尺寸。 */
+.workspace-sidebar-desktop { display: flex; min-height: 0; flex-shrink: 0; }
+.workspace-sidebar-dialog {
+  position: fixed; inset: 0; margin: 0; padding: 0; border: 0;
+  width: 100%; max-width: none; height: 100%; max-height: none;
+  background: transparent; color: #17212d;
+}
+.workspace-sidebar-dialog::backdrop { background: rgba(15, 23, 42, .35); }
+.workspace-sidebar-panel {
+  display: flex; flex-direction: column; height: 100%; width: min(320px, 88vw);
+  background: #f9fafb; padding-bottom: env(safe-area-inset-bottom);
+}
+.workspace-sidebar-heading { display: flex; align-items: center; justify-content: space-between; padding: 6px 14px; font-weight: 600; }
+.workspace-sidebar-heading button, .workspace-sidebar-toggle { display: grid; place-items: center; min-width: 44px; min-height: 44px; }
+.workspace-sidebar-toggle { position: absolute; z-index: 40; left: 8px; top: 8px; border-radius: 12px; background: #fff; color: #17212d; }
+.workspace-sidebar-panel > aside { flex: 1; width: 100% !important; min-height: 0; }
+
+@media (max-width: 767px) {
+  .workspace-sidebar-desktop { display: none; }
+  .flow-light.careering-matte .workspace-sidebar-panel > .careering-sidebar { width: 100% !important; }
+  .chat-shell-h {
+    position: fixed; left: 0; right: 0; top: var(--chat-visible-top, 56px);
+    height: calc(100vh - 56px); max-height: calc(100vh - 56px);
+    height: var(--chat-visible-height, calc(100dvh - 56px));
+    max-height: var(--chat-visible-height, calc(100dvh - 56px));
+  }
+  .flow-light.careering-matte .careering-chat-header { padding: 8px 12px 8px 58px !important; min-height: 60px; justify-content: space-between; gap: 4px; }
+  .flow-light.careering-matte .careering-chat-phase-title { position: static; transform: none; max-width: none; padding: 0; font-size: 16px; text-align: left; }
+  .careering-chat-header-actions .bd-btn-black { min-height: 44px; padding: 8px 10px; font-size: 12px; }
+  .careering-chat-header-actions .bd-btn-black span { max-width: none; }
+  .flow-light .careering-input-dock { padding: 8px 10px max(8px, env(safe-area-inset-bottom)); }
+  .flow-light .flow-input-field { font-size: 16px; }
+  .flow-light .flow-send-btn, .flow-light .flow-send-btn-wrap { min-width: 44px; min-height: 44px; }
+  .flow-light .flow-chat-body { overscroll-behavior: contain; }
+  .flow-light .flow-msg-ai-content { overflow-wrap: anywhere; }
+  /* 聊天页通过顶栏菜单进入反馈，避免浮动入口遮挡消息与输入提示。 */
+  .ol-msg-launcher--chat { display: none; }
+  .v4-mobile-workspace .journey-rumination-header { min-height: 64px; padding: 8px 8px 8px 54px; grid-template-columns: 0 minmax(0, 1fr) auto; }
+  .v4-mobile-workspace .journey-rumination-header h1 { font-size: 16px; }
+  .v4-mobile-workspace .journey-rumination-header > div:nth-child(2) { padding: 0 4px; }
+  .v4-mobile-workspace .journey-rumination-header .complete-btn { padding: 8px 10px; min-height: 44px; font-size: 12px; }
+  .v4-mobile-tabs { display: flex; flex-shrink: 0; gap: 8px; padding: 0 12px 8px; position: relative; z-index: 10; }
+  .v4-mobile-tabs button { flex: 1; min-height: 44px; border-radius: 12px; border: 1px solid #ded8ed; background: #fff; color: #5b536d; }
+  .v4-mobile-tabs button[aria-pressed='true'] { background: #ede6fa; color: #5b3fb8; border-color: #a99ac5; }
+  .v4-mobile-chat { min-height: 0; flex: 1; flex-direction: column; position: relative; z-index: 10; }
+  .v4-mobile-selection { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 0 10px max(12px, env(safe-area-inset-bottom)); position: relative; z-index: 10; }
+  .v4-mobile-workspace .conclusion-card-v4 { grid-template-columns: minmax(0, 1fr) !important; gap: 8px !important; }
+  .v4-mobile-workspace .conclusion-card-v4 .bag-icon, .v4-mobile-workspace .conclusion-card-v4 .card-actions { display: none; }
+  .v4-mobile-workspace .conclusion-card-v4 > div:last-child { grid-column: 1 !important; }
+  .v4-mobile-workspace textarea { font-size: 16px; }
+  .v4-mobile-workspace .small-btn { min-height: 44px; }
+  .v4-combo-sidebar button[aria-label='删除组合'] { display: grid; width: 32px; height: 44px; }
+  .v4-final-modal { width: calc(100vw - 24px) !important; max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); padding: 20px 14px !important; }
+  .v4-final-modal .modal-header { padding-top: 28px; }
+  .v4-final-modal .modal-header h2 { font-size: 20px; }
+  .v4-final-modal .direction-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .v4-final-modal .modal-actions { gap: 10px; flex-shrink: 0; }
+}

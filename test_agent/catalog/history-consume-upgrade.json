@@ -1,0 +1,24 @@
+{
+  "id": "history-consume-upgrade",
+  "title": "消耗升级继承剩余有效期",
+  "module": "激活码",
+  "kind": "api",
+  "core": false,
+  "purpose": "消耗升级继承剩余有效期",
+  "inputs": [
+    "用完整码消耗升级试用探索，并覆盖旧空期限码"
+  ],
+  "assertions": [
+    "保留探索并继承剩余期限，兼容历史空期限"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:18",
+      "rule": "保留探索并继承剩余期限，兼容历史空期限"
+    }
+  ],
+  "targets": [
+    "test/backend/test_packages.py::test_consume_upgrade_inherits_remaining_validity"
+  ],
+  "timeout": 300
+}

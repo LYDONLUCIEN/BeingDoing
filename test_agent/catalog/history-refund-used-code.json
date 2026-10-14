@@ -1,0 +1,24 @@
+{
+  "id": "history-refund-used-code",
+  "title": "管理员可批准申请后已使用的码退款",
+  "module": "退款",
+  "kind": "api",
+  "core": false,
+  "purpose": "管理员可批准申请后已使用的码退款",
+  "inputs": [
+    "申请后认领激活码，再由管理员批准退款"
+  ],
+  "assertions": [
+    "允许批准，退款成功后对应激活码作废"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:27",
+      "rule": "允许批准，退款成功后对应激活码作废"
+    }
+  ],
+  "targets": [
+    "test/backend/test_refund_service.py::test_code_claimed_after_request_admin_can_force_approve"
+  ],
+  "timeout": 300
+}

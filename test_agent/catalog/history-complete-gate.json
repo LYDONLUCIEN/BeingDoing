@@ -1,0 +1,24 @@
+{
+  "id": "history-complete-gate",
+  "title": "无结论不能直接完成阶段",
+  "module": "前四阶段",
+  "kind": "api",
+  "core": false,
+  "purpose": "无结论不能直接完成阶段",
+  "inputs": [
+    "没有有效结论时调用完成接口"
+  ],
+  "assertions": [
+    "返回400，不写完成状态或阶段选择"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:9",
+      "rule": "返回400，不写完成状态或阶段选择"
+    }
+  ],
+  "targets": [
+    "test/backend/test_thread_complete_requires_conclusion.py::test_complete_without_conclusion_returns_400"
+  ],
+  "timeout": 300
+}

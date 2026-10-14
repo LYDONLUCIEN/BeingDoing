@@ -1,0 +1,24 @@
+{
+  "id": "history-phone-bind",
+  "title": "手机老账户进入受限绑定模式",
+  "module": "认证",
+  "kind": "api",
+  "core": false,
+  "purpose": "手机老账户进入受限绑定模式",
+  "inputs": [
+    "纯手机老账户登录后访问普通账户接口"
+  ],
+  "assertions": [
+    "要求绑定邮箱，受限凭证不能访问普通能力"
+  ],
+  "sources": [
+    {
+      "path": "docs/DATA_DICTIONARY.md:13",
+      "rule": "要求绑定邮箱，受限凭证不能访问普通能力"
+    }
+  ],
+  "targets": [
+    "test/backend/test_register_preverification.py::test_phone_only_login_requires_binding"
+  ],
+  "timeout": 300
+}

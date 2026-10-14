@@ -1,5 +1,7 @@
 'use client';
 
+import { useConversationDraft } from '@/hooks/useConversationDraft';
+
 /**
  * v4 对话面板 — DOM/样式对齐 v3 rumination 聊天区
  *
@@ -59,7 +61,7 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
   const finalSubmitted = useRuminationV4Store((s) => !!s.state?.final_selection?.submitted);
   const { user } = useAuthStore();
 
-  const [input, setInput] = useState('');
+  const [input, setInput] = useConversationDraft(`chat:${activationCode}:${comboId ?? 'draft'}`);
   const bodyRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   /** 记录上一帧是否在流式中，用于流式结束后把光标放回输入框 */
@@ -379,7 +381,8 @@ export default function V4ChatPanel({ comboId, hideDraftHint = false }: Props) {
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
+                          // 输入法回车用于确认候选词，不应当作发送（旧 WebKit 可能仅报 229）。
+                      if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
                             e.preventDefault();
                             handleSend();
                           }

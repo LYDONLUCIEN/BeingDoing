@@ -1,0 +1,24 @@
+{
+  "id": "history-notify-amount",
+  "title": "金额不匹配不能交付",
+  "module": "订单",
+  "kind": "api",
+  "core": false,
+  "purpose": "金额不匹配不能交付",
+  "inputs": [
+    "提交金额不匹配的支付通知"
+  ],
+  "assertions": [
+    "拒绝交付，订单保持待支付且没有交付码"
+  ],
+  "sources": [
+    {
+      "path": "docs/DATA_DICTIONARY.md:74",
+      "rule": "拒绝交付，订单保持待支付且没有交付码"
+    }
+  ],
+  "targets": [
+    "test/backend/test_payment_service.py::test_notify_amount_mismatch_rejected"
+  ],
+  "timeout": 300
+}

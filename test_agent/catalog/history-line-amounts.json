@@ -1,0 +1,24 @@
+{
+  "id": "history-line-amounts",
+  "title": "明细分摊保留整数总额",
+  "module": "订单",
+  "kind": "api",
+  "core": false,
+  "purpose": "明细分摊保留整数总额",
+  "inputs": [
+    "对不同总额和行数执行等额分摊"
+  ],
+  "assertions": [
+    "总和等于原金额，前行等额且尾差在末行"
+  ],
+  "sources": [
+    {
+      "path": "docs/DATA_DICTIONARY.md:79",
+      "rule": "总和等于原金额，前行等额且尾差在末行"
+    }
+  ],
+  "targets": [
+    "test/backend/test_payment_lines.py::test_allocate_equal_sum_invariant"
+  ],
+  "timeout": 300
+}

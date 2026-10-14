@@ -1,0 +1,24 @@
+{
+  "id": "history-trial-threads",
+  "title": "新线程不能绕过试用总次数",
+  "module": "试用",
+  "kind": "api",
+  "core": false,
+  "purpose": "新线程不能绕过试用总次数",
+  "inputs": [
+    "达到试用总次数后另建价值观线程发送"
+  ],
+  "assertions": [
+    "按同一报告累计，不能绕过次数门禁"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:7",
+      "rule": "按同一报告累计，不能绕过次数门禁"
+    }
+  ],
+  "targets": [
+    "test/backend/test_trial_codes.py::test_trial_limit_counts_across_threads"
+  ],
+  "timeout": 300
+}

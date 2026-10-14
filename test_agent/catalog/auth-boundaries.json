@@ -1,0 +1,25 @@
+{
+  "id": "auth-boundaries",
+  "title": "认证与权限",
+  "module": "认证",
+  "kind": "api",
+  "core": true,
+  "inputs": [
+    "注册验证、普通用户与受限凭证访问"
+  ],
+  "assertions": [
+    "允许有效请求，拒绝未授权及跨用户访问"
+  ],
+  "targets": [
+    "test/backend/test_register_preverification.py",
+    "test/backend/test_security_boundaries.py"
+  ],
+  "timeout": 300,
+  "purpose": "保护邮箱前置注册、受限凭据和跨用户权限。",
+  "sources": [
+    {
+      "path": "docs/adr/0026-register-email-preverification-and-phone-binding.md",
+      "rule": "先验邮箱再建号，受限老账号只能完成绑定流程。"
+    }
+  ]
+}

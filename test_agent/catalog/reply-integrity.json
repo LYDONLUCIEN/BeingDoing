@@ -1,0 +1,24 @@
+{
+  "id": "reply-integrity",
+  "title": "目标回复断言真实性",
+  "module": "测试中心",
+  "kind": "ui",
+  "core": true,
+  "inputs": [
+    "页面同时含有用户输入、旧 AI 回复和本次流式回复"
+  ],
+  "assertions": [
+    "仅本次完成的回复可命中，未完成或缺少目标轮次不能通过"
+  ],
+  "targets": [
+    "reply-integrity"
+  ],
+  "timeout": 300,
+  "purpose": "防止用户输入或旧模型回复造成目标回复假通过。",
+  "sources": [
+    {
+      "path": "docs/adr/0027-test-center-fixed-cases-and-data-boundaries.md",
+      "rule": "输入与断言分开，只判断实际目标回复；未执行不能通过。"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "history-code-expiry",
+  "title": "新码有效期从交付开始",
+  "module": "激活码",
+  "kind": "api",
+  "core": false,
+  "purpose": "新码有效期从交付开始",
+  "inputs": [
+    "交付新套餐码后认领并首次使用"
+  ],
+  "assertions": [
+    "有效期从交付计算，认领和首次使用不重置"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:18",
+      "rule": "有效期从交付计算，认领和首次使用不重置"
+    }
+  ],
+  "targets": [
+    "test/backend/test_packages.py::test_gift_code_expiry_starts_at_delivery"
+  ],
+  "timeout": 300
+}

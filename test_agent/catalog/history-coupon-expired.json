@@ -1,0 +1,24 @@
+{
+  "id": "history-coupon-expired",
+  "title": "过期券验证和锁定被拒绝",
+  "module": "优惠券",
+  "kind": "api",
+  "core": false,
+  "purpose": "过期券验证和锁定被拒绝",
+  "inputs": [
+    "验证并锁定过期优惠券"
+  ],
+  "assertions": [
+    "两个入口均拒绝，过期由时间派生"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:26",
+      "rule": "两个入口均拒绝，过期由时间派生"
+    }
+  ],
+  "targets": [
+    "test/backend/test_coupon_expiry.py::test_expired_coupon_validate_and_lock_rejected"
+  ],
+  "timeout": 300
+}

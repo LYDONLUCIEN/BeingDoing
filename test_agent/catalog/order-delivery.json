@@ -1,0 +1,25 @@
+{
+  "id": "order-delivery",
+  "title": "订单与交付",
+  "module": "支付",
+  "kind": "api",
+  "core": true,
+  "inputs": [
+    "下单、分摊、重复交付"
+  ],
+  "assertions": [
+    "金额正确且重复交付幂等；使用受控渠道"
+  ],
+  "targets": [
+    "test/backend/test_payment_service.py",
+    "test/backend/test_payment_lines.py"
+  ],
+  "timeout": 300,
+  "purpose": "保护订单金额分摊与重复交付的幂等性。",
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md",
+      "rule": "付款与交付分离，整数分及激活码交付规则。"
+    }
+  ]
+}

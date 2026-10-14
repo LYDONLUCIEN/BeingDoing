@@ -11,7 +11,10 @@
  * classic/studio（备选）：保留 outer-shell + inner-pane 原结构（mist 等皮肤依赖）。
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useMobileLayout } from '@/hooks/useMobileLayout';
+import ResponsiveSidebar from '@/components/explore/ResponsiveSidebar';
+import WorkspaceDrawer from '@/components/explore/WorkspaceDrawer';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { ChevronRight, ChevronsLeft, ChevronsRight, FileText, Lock } from 'lucide-react';
@@ -46,30 +49,34 @@ export default function RuminationV4Page({
   const init = useRuminationV4Store((s) => s.init);
   // Chat 外观配置 → 根节点 data-* 属性（背景/气泡/布局/皮肤/矩阵等）
   const { dataAttrs: chatAppearanceAttrs, style: chatAppearanceStyle } = useChatAppearanceAttrs();
-  /** 页面布局（外观面板）：guided = 左组合列表 / 中对话 / 右选择器（stacked 时回退 classic 堆叠） */
+  /** 页面布局遵循用户外观设置；低高度不切换 guided/classic。 */
   const ruminationLayout = useChatAppearanceStore((s) => s.ruminationLayout);
   const [finalModalOpen, setFinalModalOpen] = useState(false);
   const [introOpen, setIntroOpen] = useState(false);
   const introCheckedRef = useRef(false);
   const router = useRouter();
+  const mobile = useMobileLayout();
+  const [mobilePane, setMobilePane] = useState<'chat' | 'selection'>('selection');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
+  const [narrowSelectorOpen, setNarrowSelectorOpen] = useState(false);
+  const closeSelector = useCallback(() => setNarrowSelectorOpen(false), []);
 
   /**
-   * 自适应堆叠模式（2026-08-24）：
-   * 工作台过窄（< 视口 2/3，对齐 v3 口径）或视口过低（< 760px，常见于系统缩放
-   * 150% 的笔记本 100% 缩放场景）时，左右双栏改为上下堆叠 + 页面纵向滚动，
-   * 避免固定视口高 + overflow-hidden 把左栏选择器/结论卡裁掉。
-   * （阈值可调：125% 缩放等效 864px 高，走双栏 + 选择器内部滚动 + 小高度压缩）
+   * 按三栏的实际最小占位判断是否需要辅助面板入口：组合栏238、选择器280、
+   * 可读对话360、收拢条22、间距36与边距32。观察稳定外壳，避免收栏后宽度
+   * 变化反复切换；窗口高度只影响内部滚动，绝不替换用户选择的桌面布局。
    */
   const workbenchRef = useRef<HTMLDivElement>(null);
-  const [stacked, setStacked] = useState(false);
+  const [compact, setCompact] = useState(false);
+  const loaded = !!state;
   useEffect(() => {
     const el = workbenchRef.current;
     if (!el) return;
     const update = () => {
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
       const w = el.getBoundingClientRect().width;
-      setStacked(w < (vw * 2) / 3 || vh < 760);
+      const minimum = (ruminationLayout === 'guided' ? 238 : 0) + 280 + 360 + 22 + 36 + 32;
+      setCompact(!mobile && w < minimum);
     };
     update();
     const ro = new ResizeObserver(update);
@@ -79,14 +86,17 @@ export default function RuminationV4Page({
       ro.disconnect();
       window.removeEventListener('resize', update);
     };
-    // state 加载完成后 workbench 才渲染；isGuided/stacked 切换会换挂 workbench 节点，需重挂观察
-  }, [state, ruminationLayout]);
+  }, [loaded, ruminationLayout, mobile]);
 
   /** 终选已提交：顶栏按钮变为「查看报告」直达报告页（报告下载页除个人空间外的另一入口） */
   const finalSubmitted = !!state?.final_selection?.submitted;
-  /** guided 布局（外观面板「组合解锁」）：左组合列表 / 中对话 / 右选择器；stacked 窄屏回退 classic 堆叠 */
-  const isGuided = ruminationLayout === 'guided' && !stacked;
+  const isGuided = ruminationLayout === 'guided' && !mobile;
   const activeComboId = state?.active_combo_id ?? null;
+  useEffect(() => {
+    setMobilePane(activeComboId ? 'chat' : 'selection');
+    setSidebarOpen(false);
+    if (activeComboId) setNarrowSelectorOpen(false);
+  }, [activeComboId]);
   /**
    * guided 选择器收拢策略：
    * - 确认新组合（草稿 null → id）后自动收拢，对话区伸展（2026-09-22 拍板）
@@ -228,31 +238,31 @@ export default function RuminationV4Page({
   const selectorNode = (
     <div
       className={`flex min-h-0 min-w-0 flex-col overflow-hidden ${
-        stacked ? 'w-full flex-none' : ''
+        compact ? 'min-h-0 flex-1 w-full' : ''
       } ${
-        isGuided
+        isGuided && !compact
           ? `flex-none transition-[width,opacity,margin] duration-[400ms] ease-[cubic-bezier(0.2,0.8,0.2,1)] motion-reduce:transition-none ${
               selectorCollapsed ? 'pointer-events-none' : ''
             }`
           : 'v4-inner-pane flex-[1.05]'
       }`}
       style={
-        isGuided && !stacked
+        isGuided && !compact
           ? selectorCollapsed
             ? { width: 0, opacity: 0, marginLeft: '-12px' }
             : { width: 'max(280px, min(430px, calc(50% - 262px)))', opacity: 1, marginLeft: 0 }
           : undefined
       }
-      aria-hidden={isGuided && !stacked && selectorCollapsed ? true : undefined}
+      aria-hidden={isGuided && !compact && selectorCollapsed ? true : undefined}
     >
-      <V4MatrixLeftPanel stacked={stacked} />
+      <V4MatrixLeftPanel stacked={false} />
     </div>
   );
 
   /* guided 收拢/展开边条（仅已有激活组合时可收拢；草稿态强制展开）。
      hover 有浅紫底+描边的「被选中」反馈（0923 拍板） */
   const collapseNode =
-    isGuided && !stacked && !!activeComboId ? (
+    isGuided && !compact && !!activeComboId ? (
       <button
         type="button"
         onClick={() => setSelectorCollapsed((v) => !v)}
@@ -273,7 +283,7 @@ export default function RuminationV4Page({
   const chatNode = (
     <div
       className={`relative flex min-w-0 flex-col overflow-hidden ${
-        stacked ? 'h-[min(58vh,560px)] w-full flex-none' : 'min-h-0 flex-1'
+        'min-h-0 flex-1'
       }`}
     >
       <V4ChatPanel comboId={state.active_combo_id} hideDraftHint={isGuided} />
@@ -293,7 +303,7 @@ export default function RuminationV4Page({
             </p>
             <button
               type="button"
-              onClick={enterComboDraft}
+              onClick={() => { enterComboDraft(); if (compact) setNarrowSelectorOpen(true); }}
               className="mt-1 rounded-full bg-[var(--journey-ink,#17212d)] px-5 py-2 text-[13px] font-semibold text-white transition-transform hover:-translate-y-0.5"
             >
               ＋ 新建组合
@@ -307,8 +317,9 @@ export default function RuminationV4Page({
   return (
     <div
       className={`rumination-beautiful-root rumination-v4-root flow-light relative min-h-0 flex-1 ${
-        stacked ? 'block overflow-y-auto' : 'flex overflow-hidden'
+        mobile ? 'v4-mobile-workspace flex flex-col overflow-hidden' : 'flex overflow-hidden'
       }`}
+      ref={workbenchRef}
       data-phase="rumination"
       {...chatAppearanceAttrs}
       style={chatAppearanceStyle}
@@ -325,29 +336,54 @@ export default function RuminationV4Page({
         <img src="/assets/openlife-journey/sticker-rumination.webp" alt="" />
       </div>
 
-      {isGuided ? (
+      {mobile ? (
+        <>
+          <ResponsiveSidebar label="组合列表" open={sidebarOpen} onOpen={() => setSidebarOpen(true)} onClose={closeSidebar}>
+            <V4ComboSidebar onNavigate={() => {
+              closeSidebar();
+              if (!useRuminationV4Store.getState().state?.active_combo_id) setMobilePane('selection');
+            }} onExpandSelector={() => { closeSidebar(); setMobilePane('selection'); }} />
+          </ResponsiveSidebar>
+          {headerNode}
+          {lockBannerNode}
+          <div className="v4-mobile-tabs" aria-label="沉淀工作区">
+            <button type="button" aria-pressed={mobilePane === 'chat'} onClick={() => setMobilePane('chat')}>对话</button>
+            <button type="button" aria-pressed={mobilePane === 'selection'} onClick={() => setMobilePane('selection')}>组合与结论</button>
+          </div>
+          {/* 两个面板保持挂载，切换时保留尚未提交的输入和卡片草稿。 */}
+          <div className="v4-mobile-chat" style={{ display: mobilePane === 'chat' ? 'flex' : 'none' }}>{chatNode}</div>
+          <div className="v4-mobile-selection" style={{ display: mobilePane === 'selection' ? 'block' : 'none' }}>
+            <V4MatrixLeftPanel stacked />
+          </div>
+        </>
+      ) : isGuided ? (
         <>
           {/* guided（默认）：组合栏直接挂根级、全高左栏（同前四阶段会话侧栏 / HTML .sidebar），
               不再包进 outer-shell；header/对话/选择器落在内容列，流光背景直接可见 */}
-          <V4ComboSidebar onExpandSelector={() => setSelectorCollapsed(false)} />
+          {compact ? <WorkspaceDrawer label="组合列表" open={sidebarOpen} onClose={closeSidebar}>
+            <V4ComboSidebar onNavigate={() => { closeSidebar(); if (!useRuminationV4Store.getState().state?.active_combo_id) setNarrowSelectorOpen(true); }} onExpandSelector={() => { closeSidebar(); setNarrowSelectorOpen(true); }} />
+          </WorkspaceDrawer> : <V4ComboSidebar onExpandSelector={() => setSelectorCollapsed(false)} />}
           <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col py-2 pr-3 sm:pr-4">
+            {compact && <div className="flex shrink-0 gap-2 px-3 py-1">
+              <button type="button" className="min-h-11 rounded-lg border border-bd-border px-3 text-sm" onClick={() => setSidebarOpen(true)}>打开组合列表</button>
+              <button type="button" className="min-h-11 rounded-lg border border-bd-border px-3 text-sm" onClick={() => setNarrowSelectorOpen(true)}>打开组合选择器</button>
+            </div>}
             {headerNode}
             {lockBannerNode}
             <div
-              ref={workbenchRef}
               className="rumination-workbench rumination-workbench--flush-left flex min-h-0 flex-1 gap-3 overflow-hidden"
             >
               {chatNode}
               {/* 0923 拍板：收拢条放在选择器左侧——展开时跟随选择器往左移动，点击收起滑回右缘 */}
               {collapseNode}
-              {selectorNode}
+              {compact ? <WorkspaceDrawer label="组合选择器" open={narrowSelectorOpen} onClose={closeSelector}>{selectorNode}</WorkspaceDrawer> : selectorNode}
             </div>
           </div>
         </>
       ) : (
         <div className="relative z-10 flex min-h-0 w-full flex-col px-3 pb-3 pt-1 sm:px-4">
           <div
-            className={`v4-outer-shell flex w-full flex-col ${stacked ? 'flex-none' : 'min-h-0 flex-1 overflow-hidden'}`}
+            className={`v4-outer-shell flex w-full flex-col min-h-0 flex-1 overflow-hidden`}
           >
             {headerNode}
             {/* 组合 tabs + 新建组合（classic 布局横向条；guided 移到左侧 V4ComboSidebar） */}
@@ -355,14 +391,14 @@ export default function RuminationV4Page({
               <TopComboBar />
             </div>
             {lockBannerNode}
+            {compact && <button type="button" className="min-h-11 self-start rounded-lg border border-bd-border px-3 text-sm" onClick={() => setNarrowSelectorOpen(true)}>打开组合选择器</button>}
             {/* classic/studio：左选择器 / 右对话 */}
             <div
-              ref={workbenchRef}
               className={`rumination-workbench flex gap-3 ${
-                stacked ? 'w-full flex-none flex-col' : 'min-h-0 flex-1 overflow-hidden'
+                'min-h-0 flex-1 overflow-hidden'
               }`}
             >
-              {selectorNode}
+              {compact ? <WorkspaceDrawer label="组合选择器" open={narrowSelectorOpen} onClose={closeSelector}>{selectorNode}</WorkspaceDrawer> : selectorNode}
               {chatNode}
             </div>
           </div>

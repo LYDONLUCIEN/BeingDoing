@@ -53,8 +53,9 @@ class ScenarioResult:
         start_dt = datetime.fromisoformat(self.started_at)
         end_dt = datetime.fromisoformat(self.finished_at)
         self.duration_ms = int((end_dt - start_dt).total_seconds() * 1000)
-        if any(step.status == "fail" for step in self.steps):
+        if not self.steps or any(step.status != "pass" for step in self.steps):
             self.status = "fail"
+            self.failure_type = self.failure_type or "execution_incomplete"
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

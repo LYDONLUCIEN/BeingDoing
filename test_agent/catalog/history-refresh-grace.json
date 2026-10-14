@@ -1,0 +1,24 @@
+{
+  "id": "history-refresh-grace",
+  "title": "刷新并发宽限不误撤令牌族",
+  "module": "认证",
+  "kind": "api",
+  "core": false,
+  "purpose": "刷新并发宽限不误撤令牌族",
+  "inputs": [
+    "在轮换宽限期内重用旧刷新令牌"
+  ],
+  "assertions": [
+    "允许宽限内重复请求，令牌族仍有效"
+  ],
+  "sources": [
+    {
+      "path": "docs/DECISIONS.md:31",
+      "rule": "允许宽限内重复请求，令牌族仍有效"
+    }
+  ],
+  "targets": [
+    "test/backend/test_refresh_token_rotation.py::test_rotate_and_reuse_within_grace_ok"
+  ],
+  "timeout": 300
+}

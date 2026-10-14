@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/authStore';
 import { useAuthModalStore } from '@/stores/authModalStore';
+import { useNotificationStore } from '@/stores/notificationStore';
 import { useThemeStore } from '@/stores/themeStore';
 import { useLocaleStore } from '@/stores/localeStore';
 import { onAuthRequired } from '@/lib/api/client';
@@ -19,8 +20,20 @@ export default function TopNavbar() {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const mobileToggleRef = useRef<HTMLButtonElement>(null);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+  useEffect(() => setMobileOpen(false), [pathname]);
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { setMobileOpen(false); mobileToggleRef.current?.focus(); }
+    };
+    const desktop = window.matchMedia('(min-width: 768px)');
+    const resize = () => { if (desktop.matches) setMobileOpen(false); };
+    window.addEventListener('keydown', close); desktop.addEventListener('change', resize);
+    return () => { window.removeEventListener('keydown', close); desktop.removeEventListener('change', resize); };
+  }, [mobileOpen]);
   const { t } = useLocale(mounted ? undefined : 'zh');
   const { isAuthenticated, user, logout, _hasHydrated } = useAuthStore();
   const { colorScheme } = useThemeStore();
@@ -261,6 +274,10 @@ export default function TopNavbar() {
         {/* Mobile hamburger */}
         <button
           type="button"
+          ref={mobileToggleRef}
+          aria-label={mobileOpen ? '关闭导航菜单' : '打开导航菜单'}
+          aria-expanded={mobileOpen}
+          aria-controls="mobile-navigation"
           onClick={() => setMobileOpen(!mobileOpen)}
           className="journey-mobile-menu-button md:hidden ml-auto p-2 text-bd-muted hover:text-bd-fg"
         >
@@ -271,6 +288,7 @@ export default function TopNavbar() {
       {/* Mobile menu */}
       {mobileOpen && (
         <div
+          id="mobile-navigation"
           className={`bd-nav-glass md:hidden px-4 pb-4 space-y-1${isJourneySurface ? ' journey-mobile-menu' : ''}`}
           style={{ backgroundColor: 'var(--bd-nav-bg)', borderBottom: '1px solid var(--bd-nav-border)' }}
         >
@@ -307,6 +325,10 @@ export default function TopNavbar() {
                 >
                   {t('nav.personalHomepage')}
                 </Link>
+                <button type="button" className={`block w-full text-left ${linkBase} ${linkInactive}`}
+                  onClick={() => { setMobileOpen(false); useNotificationStore.getState().openWidget(); }}>
+                  站内信与反馈
+                </button>
                 {isAdmin && (
                   <Link
                     href="/admin/system"

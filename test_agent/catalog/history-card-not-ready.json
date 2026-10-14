@@ -1,0 +1,24 @@
+{
+  "id": "history-card-not-ready",
+  "title": "未就绪时手动出卡继续引导",
+  "module": "前四阶段",
+  "kind": "api",
+  "core": false,
+  "purpose": "未就绪时手动出卡继续引导",
+  "inputs": [
+    "请求结论且判断返回未就绪"
+  ],
+  "assertions": [
+    "返回引导，保持无结论状态"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:9",
+      "rule": "返回引导，保持无结论状态"
+    }
+  ],
+  "targets": [
+    "test/backend/test_conclusion_min_turns_gate.py::test_conclusion_request_not_ready_returns_guidance"
+  ],
+  "timeout": 300
+}

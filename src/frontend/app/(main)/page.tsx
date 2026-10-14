@@ -216,9 +216,18 @@ function ReportSection({ onStart, t }: { onStart: () => void; t: (key: string) =
 
 function ReviewsSection() {
   const { t } = useLocale();
-  const pageCount = Math.ceil(TESTIMONIALS.length / 3);
+  const [pageSize, setPageSize] = useState(3);
+  useEffect(() => {
+    const phone = window.matchMedia('(max-width: 720px)');
+    const tablet = window.matchMedia('(max-width: 1050px)');
+    const update = () => { setPageSize(phone.matches ? 1 : tablet.matches ? 2 : 3); setPage(0); };
+    update();
+    phone.addEventListener('change', update); tablet.addEventListener('change', update);
+    return () => { phone.removeEventListener('change', update); tablet.removeEventListener('change', update); };
+  }, []);
+  const pageCount = Math.ceil(TESTIMONIALS.length / pageSize);
   const [page, setPage] = useState(0);
-  const visible = TESTIMONIALS.slice(page * 3, page * 3 + 3);
+  const visible = TESTIMONIALS.slice(page * pageSize, page * pageSize + pageSize);
   const move = (delta: number) => setPage((current) => (current + delta + pageCount) % pageCount);
 
   return (

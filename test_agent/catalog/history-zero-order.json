@@ -1,0 +1,24 @@
+{
+  "id": "history-zero-order",
+  "title": "零元订单直接交付",
+  "module": "订单",
+  "kind": "api",
+  "core": false,
+  "purpose": "零元订单直接交付",
+  "inputs": [
+    "创建折扣后金额为零的订单"
+  ],
+  "assertions": [
+    "不调用支付渠道，正确核销优惠券并交付激活码"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:24",
+      "rule": "不调用支付渠道，正确核销优惠券并交付激活码"
+    }
+  ],
+  "targets": [
+    "test/backend/test_payment_service.py::test_zero_amount_order_granted_immediately"
+  ],
+  "timeout": 300
+}

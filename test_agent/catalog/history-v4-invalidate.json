@@ -1,0 +1,24 @@
+{
+  "id": "history-v4-invalidate",
+  "title": "再聊或改卡使旧判断失效",
+  "module": "沉淀",
+  "kind": "api",
+  "core": false,
+  "purpose": "再聊或改卡使旧判断失效",
+  "inputs": [
+    "已判断组合继续聊天或修改假设"
+  ],
+  "assertions": [
+    "旧判断失效，组合回到讨论状态"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:12",
+      "rule": "旧判断失效，组合回到讨论状态"
+    }
+  ],
+  "targets": [
+    "test/backend/test_rumination_v4_e2e.py::test_chat_or_edit_invalidates_judgement"
+  ],
+  "timeout": 300
+}

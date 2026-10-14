@@ -1,0 +1,24 @@
+{
+  "id": "history-cancel-paid",
+  "title": "取消与付款竞态保持交付",
+  "module": "订单",
+  "kind": "api",
+  "core": false,
+  "purpose": "取消与付款竞态保持交付",
+  "inputs": [
+    "用户取消订单时渠道查单返回已支付"
+  ],
+  "assertions": [
+    "交付已付款订单，不误取消"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:24",
+      "rule": "交付已付款订单，不误取消"
+    }
+  ],
+  "targets": [
+    "test/backend/test_payment_service.py::test_cancel_order_paid_race_delivers_instead"
+  ],
+  "timeout": 300
+}

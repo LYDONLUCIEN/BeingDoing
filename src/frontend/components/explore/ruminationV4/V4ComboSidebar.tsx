@@ -23,6 +23,7 @@ import type { ComboSession } from '@/lib/explore/ruminationV4Api';
 const MAX_COMBOS = 10;
 
 interface SidebarProps {
+  onNavigate?: () => void;
   /** 点「编辑」展开右侧选择器（结论卡完整编辑入口在那边），由 RuminationV4Page 注入 */
   onExpandSelector?: () => void;
 }
@@ -50,7 +51,7 @@ function hypText(c: ComboSession | undefined): string {
   return Object.values(h).filter(Boolean).join('\n');
 }
 
-export default function V4ComboSidebar({ onExpandSelector }: SidebarProps) {
+export default function V4ComboSidebar({ onExpandSelector, onNavigate }: SidebarProps) {
   /* 窄选择器（2026-10-05 性能优化）：流式 chunk 不再触发本栏重渲染 */
   const state = useRuminationV4Store((s) => s.state);
   const switchCombo = useRuminationV4Store((s) => s.switchCombo);
@@ -77,7 +78,7 @@ export default function V4ComboSidebar({ onExpandSelector }: SidebarProps) {
 
       <button
         type="button"
-        onClick={enterComboDraft}
+        onClick={() => { enterComboDraft(); onNavigate?.(); }}
         disabled={atLimit || finalSubmitted}
         title={
           finalSubmitted
@@ -109,11 +110,13 @@ export default function V4ComboSidebar({ onExpandSelector }: SidebarProps) {
               onClick={() => {
                 if (isConfirming) return;
                 switchCombo(c.combo_id);
+                onNavigate?.();
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
                   switchCombo(c.combo_id);
+                  onNavigate?.();
                 }
               }}
               title={`${c.passion} + ${c.strengths.join('、')}${isFinalSelected ? '（已入选）' : ''}`}

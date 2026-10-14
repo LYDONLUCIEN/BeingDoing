@@ -1,0 +1,24 @@
+{
+  "id": "history-coupon-lock-quota",
+  "title": "锁定额度守卫",
+  "module": "优惠券",
+  "kind": "api",
+  "core": false,
+  "purpose": "锁定额度守卫",
+  "inputs": [
+    "对两个额度顺序发起五个不同用户的锁定请求"
+  ],
+  "assertions": [
+    "恰好两次成功，其余拒绝；不等同并发压测"
+  ],
+  "sources": [
+    {
+      "path": "docs/DATA_DICTIONARY.md:82",
+      "rule": "恰好两次成功，其余拒绝；不等同并发压测"
+    }
+  ],
+  "targets": [
+    "test/backend/test_coupon_multi_use.py::test_quota_guard_two_of_five"
+  ],
+  "timeout": 300
+}

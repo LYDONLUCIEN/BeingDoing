@@ -14,6 +14,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import LegacyBrowserNotice from '@/components/layout/LegacyBrowserNotice';
 import { useAuthStore } from '@/stores/authStore';
+import { useChatViewport } from '@/hooks/useChatViewport';
+import { ConversationDraftProvider } from '@/hooks/useConversationDraft';
 import {
   loadSession,
   unlockNextPhase,
@@ -29,6 +31,7 @@ const RuminationV4Page = dynamic(
 );
 
 export default function RuminationV4Entry() {
+  const mobileViewportRef = useChatViewport();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuthStore();
@@ -107,7 +110,7 @@ export default function RuminationV4Entry() {
   }, [activationCode, session, router]);
 
   return (
-    <div className="chat-shell-h flex min-h-0 flex-col overflow-hidden">
+    <div ref={mobileViewportRef} className="chat-shell-h flex min-h-0 flex-col overflow-hidden">
       {/* 旧内核浏览器提示（ADR-0020）：「不再提示」前每个 phase 页都弹 */}
       <LegacyBrowserNotice />
       {chatError && (
@@ -119,10 +122,12 @@ export default function RuminationV4Entry() {
         </div>
       )}
       {activationCode ? (
+        <ConversationDraftProvider key={activationCode}>
         <RuminationV4Page
           activationCode={activationCode}
           onCompleteAndContinue={handleV4CompleteAndContinue}
         />
+        </ConversationDraftProvider>
       ) : (
         <div className="flex flex-1 items-center justify-center text-sm text-gray-400">
           加载中…

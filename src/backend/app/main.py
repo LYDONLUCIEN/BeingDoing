@@ -31,6 +31,7 @@ from app.api.v1 import admin_consultations  # 新增：咨询管理（P-D admin�
 from app.api.v1 import team_analysis  # 新增：团队分析（P-E）
 from app.api.v1 import (  # 新增：简单模式激活与对话
     admin,
+    admin_test_center,
     analytics,
     answers,
     audio,
@@ -543,6 +544,7 @@ app.include_router(formula.router, prefix="/api/v1")
 app.include_router(audio.router, prefix="/api/v1")
 app.include_router(export.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
+app.include_router(admin_test_center.router, prefix="/api/v1")
 app.include_router(analytics.router, prefix="/api/v1")
 app.include_router(admin_notifications.router, prefix="/api/v1")  # 通知邮件群发
 app.include_router(admin_bounces.router, prefix="/api/v1")  # 退信黑名单

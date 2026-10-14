@@ -1,0 +1,24 @@
+{
+  "id": "history-refund-mutex",
+  "title": "同一订单不重复受理待审退款",
+  "module": "退款",
+  "kind": "api",
+  "core": false,
+  "purpose": "同一订单不重复受理待审退款",
+  "inputs": [
+    "存在待处理退款时再次申请"
+  ],
+  "assertions": [
+    "第二份待处理申请被拒绝"
+  ],
+  "sources": [
+    {
+      "path": "docs/DATA_DICTIONARY.md:81",
+      "rule": "第二份待处理申请被拒绝"
+    }
+  ],
+  "targets": [
+    "test/backend/test_refund_service.py::test_in_flight_mutex"
+  ],
+  "timeout": 300
+}

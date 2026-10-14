@@ -1,0 +1,26 @@
+{
+  "id": "activation-codes",
+  "title": "激活码与试用",
+  "module": "激活码",
+  "kind": "api",
+  "core": true,
+  "inputs": [
+    "试用、认领转赠和延期"
+  ],
+  "assertions": [
+    "阶段、次数和归属门禁生效"
+  ],
+  "targets": [
+    "test/backend/test_trial_codes.py",
+    "test/backend/test_activation_transfer.py",
+    "test/backend/test_free_renewal.py"
+  ],
+  "timeout": 300,
+  "purpose": "保护激活码归属、试用次数与延期规则。",
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md",
+      "rule": "探索试用与激活、有效期、共享规则。"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "history-review-deadline",
+  "title": "新报告审核固定二十四小时",
+  "module": "报告",
+  "kind": "api",
+  "core": false,
+  "purpose": "新报告审核固定二十四小时",
+  "inputs": [
+    "为新报告计算审核期限"
+  ],
+  "assertions": [
+    "审核期限准确增加二十四小时"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:34",
+      "rule": "审核期限准确增加二十四小时"
+    }
+  ],
+  "targets": [
+    "test/backend/test_report_review.py::test_fixed_deadline_is_24h"
+  ],
+  "timeout": 300
+}

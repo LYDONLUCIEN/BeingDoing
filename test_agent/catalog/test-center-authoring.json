@@ -1,0 +1,26 @@
+{
+  "id": "test-center-authoring",
+  "title": "管理员用例编写、AI 回放与预算",
+  "module": "测试中心",
+  "kind": "api",
+  "core": true,
+  "inputs": [
+    "管理员编译输入与断言、保存修订和 v4 上下文，排队并复核 AI 用例",
+    "取消批次、限制预算、返回不完整用量和模糊语义判定"
+  ],
+  "assertions": [
+    "未知动作不可执行；修订与上下文固定；人工修改保留，旧批次不被修改",
+    "只检查目标回复；重复从相同起点运行；用量未知停止后续调用；复核追加不覆盖自动结果"
+  ],
+  "targets": [
+    "test/backend/test_test_center_authoring.py"
+  ],
+  "timeout": 300,
+  "purpose": "保护用例修订、上下文、逐轮判断和真实模型预算边界。",
+  "sources": [
+    {
+      "path": "docs/TEST_CENTER.md",
+      "rule": "独立/连续模式、指定轮次标准、未知意图拦截及人工修改保留。"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "history-bind-token",
+  "title": "邮箱绑定需要专用受限凭证",
+  "module": "认证",
+  "kind": "api",
+  "core": false,
+  "purpose": "邮箱绑定需要专用受限凭证",
+  "inputs": [
+    "分别使用普通凭证及无凭证调用绑定端点"
+  ],
+  "assertions": [
+    "两种调用均被拒绝"
+  ],
+  "sources": [
+    {
+      "path": "docs/DATA_DICTIONARY.md:13",
+      "rule": "两种调用均被拒绝"
+    }
+  ],
+  "targets": [
+    "test/backend/test_register_preverification.py::test_bind_email_requires_restricted_token"
+  ],
+  "timeout": 300
+}

@@ -1,0 +1,24 @@
+{
+  "id": "history-review-on-submit",
+  "title": "提交终选即启动审核预生成",
+  "module": "报告",
+  "kind": "api",
+  "core": false,
+  "purpose": "提交终选即启动审核预生成",
+  "inputs": [
+    "提交沉淀v4终选"
+  ],
+  "assertions": [
+    "无需先访问报告页便启动审核和预生成"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:34",
+      "rule": "无需先访问报告页便启动审核和预生成"
+    }
+  ],
+  "targets": [
+    "test/backend/test_report_review.py::test_review_starts_on_v4_final_submit"
+  ],
+  "timeout": 300
+}

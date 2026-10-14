@@ -1,0 +1,24 @@
+{
+  "id": "history-report-force",
+  "title": "普通用户不能强制重新生成报告",
+  "module": "报告",
+  "kind": "api",
+  "core": false,
+  "purpose": "普通用户不能强制重新生成报告",
+  "inputs": [
+    "普通用户携带force参数请求重新生成报告"
+  ],
+  "assertions": [
+    "拒绝越权强制生成"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:35",
+      "rule": "拒绝越权强制生成"
+    }
+  ],
+  "targets": [
+    "test/backend/test_security_boundaries.py::test_report_force_regeneration_is_reserved_for_admin"
+  ],
+  "timeout": 300
+}

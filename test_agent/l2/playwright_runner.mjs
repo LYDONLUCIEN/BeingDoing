@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { targetReply, checkReply } from './reply_assertions.mjs';
 
 import fs from "node:fs";
 import path from "node:path";
@@ -259,6 +260,8 @@ async function run() {
   await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
 
   let aiCount = 0;
+  let targetIndex = null;
+  let assertionsChecked = 0;
   let firstError = "";
   try {
     await page.goto(defaultUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
@@ -287,6 +290,8 @@ async function run() {
             timeoutMs
           );
           if (!input) throw new Error("未找到聊天输入框");
+          targetIndex = await page.locator(".flow-msg-ai-content").count();
+          aiCount = targetIndex;
           await input.fill(text);
           const sendButton = await firstVisible(
             page,
@@ -307,6 +312,7 @@ async function run() {
             { prev: aiCount, delta },
             { timeout: timeoutMs }
           );
+          await targetReply(page, targetIndex, timeoutMs);
           aiCount = await page.locator(".flow-msg-ai-content").count();
         } else if (action === "wait_ms") {
           const ms = Number.parseInt(String(readStepParam(step, "ms", "1000") || "1000"), 10);
@@ -330,10 +336,12 @@ async function run() {
           const selector = String(readStepParam(step, "selector", "") || "").trim();
           if (!selector) throw new Error("assert_dom 缺少 selector");
           await page.locator(selector).first().waitFor({ state: "visible", timeout: timeoutMs });
+          assertionsChecked += 1;
         } else if (action === "assert_text") {
           const txt = String(readStepParam(step, "text", "") || "").trim();
           if (!txt) throw new Error("assert_text 缺少 text");
-          const bodyText = await page.locator("body").innerText();
+          const bodyText = targetIndex === null ? await page.locator("body").innerText() : await targetReply(page, targetIndex, timeoutMs);
+          assertionsChecked += 1;
           if (!bodyText.includes(txt)) {
             throw new Error(`页面未包含文本: ${txt}`);
           }
@@ -359,30 +367,19 @@ async function run() {
       }
     }
 
-    const bodyText = await page.locator("body").innerText();
-    if (typeof assertions.expected_hint === "string" && assertions.expected_hint.trim()) {
-      if (!bodyText.includes(assertions.expected_hint.trim())) {
-        result.assertion_failures.push(`expected_hint 未命中: ${assertions.expected_hint}`);
-      }
+    if (assertions.expected_hint || assertions.expected_keywords?.length || assertions.no_leak_tags?.length) {
+      try {
+        const reply = await targetReply(page, targetIndex, timeoutMs);
+        const checked = checkReply(reply, assertions);
+        assertionsChecked += checked.count;
+        result.assertion_failures.push(...checked.failures);
+      } catch (error) { result.assertion_failures.push(String(error)); }
     }
-    if (Array.isArray(assertions.expected_keywords)) {
-      for (const kw of assertions.expected_keywords) {
-        const keyword = String(kw || "").trim();
-        if (!keyword) continue;
-        if (!bodyText.includes(keyword)) {
-          result.assertion_failures.push(`expected_keywords 未命中: ${keyword}`);
-        }
-      }
+    if (assertions.metadata_checks && Object.keys(assertions.metadata_checks).length) {
+      result.assertion_failures.push('metadata_checks 尚未实现，不能忽略声明的断言');
     }
-    if (Array.isArray(assertions.no_leak_tags)) {
-      for (const tag of assertions.no_leak_tags) {
-        const t = String(tag || "").trim();
-        if (!t) continue;
-        if (bodyText.includes(t)) {
-          result.assertion_failures.push(`no_leak_tags 触发泄露: ${t}`);
-        }
-      }
-    }
+    if (!assertionsChecked) result.assertion_failures.push('没有执行有效断言');
+    result.assertions_checked = assertionsChecked;
   } finally {
     try {
       await page.screenshot({ path: finalShot, fullPage: true });

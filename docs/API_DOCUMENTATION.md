@@ -48,3 +48,31 @@
 ## 前端适配
 
 新增文件下载使用 download_url 并携带现有访问令牌；不要在页面显示磁盘路径。仓库现有前端未引用旧会话 export/generate 的 file_path；外部客户端如使用旧返回值需升级。新增 Markdown 统一使用 SafeMarkdownPreview。
+
+## 管理员测试中心（dev）
+
+统一前缀 `/api/v1/admin/test-center`；真实超级管理员，且 `APP_ENV` 为 development/dev/test、`TEST_CENTER_ENABLED=1` 并配置独立 `TEST_CENTER_ROOT`。普通身份 403，关闭/生产环境 404，缺控制目录配置 503。成功返回 `{code:200,message:"ok",data:...}`；非法用例/验收条件 400，缺资源 404。
+
+| 方法 | 路径 | 行为 |
+| --- | --- | --- |
+| GET | `/catalog` | 自动登记固定定义，返回核心/版本/归档状态、输入与断言、构建和覆盖缺口、执行器心跳与容量 |
+| PUT | `/cases/{id}` | `{core:boolean,archived:boolean}`，保存人工覆盖并留调整记录 |
+| POST | `/runs` | `{case_ids:string[],mode:"diagnostic"或"release",budget?:{max_calls,max_tokens}}`，202 入队；只运行登记入口，验收禁止子集/脏源码/无 tag/缺覆盖 |
+| GET | `/runs` | 最近 100 批摘要（不重复返回上下文/消息），完整证据与历史可按 ID 查询 |
+| GET | `/runs/{id}` | 固定修订、构建/清单摘要、逐例状态、断言计数、错误和证据名 |
+| POST | `/runs/{id}/cancel` | 申请取消；普通测试终止进程组，AI 等已发调用结算后停止后续请求 |
+| GET | `/runs/{id}/artifacts/{case_id}/{name}` | 鉴权下载登记证据；不接受任意文件路径 |
+| GET | `/capabilities` | 非敏感模型配置与 worker 凭据就绪状态；不返回密钥 |
+| POST/GET | `/drafts` | 分开的输入/断言编译固定草稿或待澄清草稿；列最近 100 份 |
+| POST | `/cases` | `{draft_id}` 确认保存可执行草稿；基于旧修订的覆盖被拒绝 |
+| GET | `/cases/{id}/revisions` | 不可变定义修订，可供导出 |
+| POST/GET | `/contexts` | 保存固定起点 / 列表；strict schema，不接受任意路径 |
+| GET | `/contexts/{id}` | 按内容摘要读取不可变上下文 |
+| POST | `/contexts/preview` | `{activation_code,phase,thread_id,name}` 读取调试工作区当前起点，供检查脱敏，不自动保存 |
+| POST | `/runs/{id}/reviews` | `{case_id,attempt,verdict,reason}`，attempt 从 0 开始；已结束 AI 次数的追加复核，操作者取登录身份 |
+
+草稿请求：`title/kind/inputs/assertions` 必填；`purpose` 单独描述目的（最多 4000 字）；API/UI 使用 `template_id`，UI 可组合明确步骤；修改已有用例带 `case_id/base_revision`。AI 使用 `context_id/repeats`（1–10，默认 1）、`conversation_mode`（`independent` 默认独立单轮，`sequence` 连续聊天历史，`workflow` 通过既有业务接口推进状态）；允许逐轮/逐步断言，整组重复仍恢复起点。来源 `sources` 随原用例保留。未知操作/断言返回 `state=needs_clarification`，不能确认保存。语法与业务状态限制见下方指南。
+
+业务回放的上下文扩展 `workflow_seed`（前置完成阶段、基本资料、结论、线程状态、锚点）；未知字段或权限/路径配置拒绝。已有预览入口可返回结构化状态，仍只允许 dev 调试工作区。步骤与逐步标准通过已有草稿入口固定，未新增用户业务 endpoint。
+
+运行详情额外返回 `ai` 固定模型/预算/上下文、逐次 `attempts`、`calls` 调用账本、`usage` 已知与预留用量、追加 `reviews`。业务回放的 attempt 另含 `request/http_status/response/before_state/state/model_calls`，没有模型调用的步骤不要求提示词摘要；calls 记录该次产品请求使用的 `max_output_tokens`。自动结论和复核独立。状态：`queued/running/pass/fail/error/incomplete/cancelled/needs_review`。只有有效断言完整执行且全部通过才是 pass。部署与语义详见 [测试中心指南](TEST_CENTER.md)。

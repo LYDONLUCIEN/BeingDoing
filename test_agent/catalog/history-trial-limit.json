@@ -1,0 +1,24 @@
+{
+  "id": "history-trial-limit",
+  "title": "试用第十一条被拦截",
+  "module": "试用",
+  "kind": "api",
+  "core": false,
+  "purpose": "试用第十一条被拦截",
+  "inputs": [
+    "发送第十一条试用用户消息"
+  ],
+  "assertions": [
+    "返回402并说明已用次数与上限"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:7",
+      "rule": "返回402并说明已用次数与上限"
+    }
+  ],
+  "targets": [
+    "test/backend/test_trial_codes.py::test_trial_stream_blocks_11th_message"
+  ],
+  "timeout": 300
+}

@@ -1,0 +1,24 @@
+{
+  "id": "history-register-ticket",
+  "title": "无注册凭证不能注册",
+  "module": "认证",
+  "kind": "api",
+  "core": false,
+  "purpose": "无注册凭证不能注册",
+  "inputs": [
+    "不提供 register_ticket 请求注册"
+  ],
+  "assertions": [
+    "拒绝注册，不绕过邮箱验证"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:8",
+      "rule": "拒绝注册，不绕过邮箱验证"
+    }
+  ],
+  "targets": [
+    "test/backend/test_register_preverification.py::test_register_without_ticket_rejected"
+  ],
+  "timeout": 300
+}

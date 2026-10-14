@@ -1,0 +1,24 @@
+{
+  "id": "history-v4-admin-history",
+  "title": "后台能读取指定组合对话",
+  "module": "后台",
+  "kind": "api",
+  "core": false,
+  "purpose": "后台能读取指定组合对话",
+  "inputs": [
+    "按report和combo读取v4会话详情"
+  ],
+  "assertions": [
+    "返回对应组合原文，ts归一为created_at"
+  ],
+  "sources": [
+    {
+      "path": "docs/DATA_DICTIONARY.md:47",
+      "rule": "返回对应组合原文，ts归一为created_at"
+    }
+  ],
+  "targets": [
+    "test/backend/test_admin_conversations_v4.py::test_detail_returns_v4_combo_messages"
+  ],
+  "timeout": 300
+}

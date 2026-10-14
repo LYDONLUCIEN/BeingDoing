@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { useConversationDraft } from '@/hooks/useConversationDraft';
 import { Briefcase, Loader2 } from 'lucide-react';
 import { useRuminationV4Store } from '@/stores/ruminationV4Store';
 import { BalanceAnalysis, ConclusionCard } from '@/lib/explore/ruminationV4Api';
@@ -47,14 +48,17 @@ export default function ConclusionCardEditable({ comboId, card, analysis, userSk
   const finalSubmitted = useRuminationV4Store(
     (s) => !!s.state?.final_selection?.submitted
   );
-  const [localHypothesis, setLocalHypothesis] = useState<string>(hypToString(card?.hypothesis));
+  const activationCode = useRuminationV4Store((s) => s.activationCode);
+  const [localHypothesis, setLocalHypothesis] = useConversationDraft(
+    `hypothesis:${activationCode}:${comboId}`, hypToString(card?.hypothesis)
+  );
   const [saving, setSaving] = useState(false);
   /** 已保存卡点「再聊聊」进入的编辑模式；取消则退出（底部动作随之收起） */
   const [editingMode, setEditingMode] = useState(false);
 
   useEffect(() => {
-    setLocalHypothesis(hypToString(card?.hypothesis));
-  }, [card?.hypothesis, card?.updated_at]);
+    setEditingMode(false);
+  }, [comboId]);
 
   const savedText = hypToString(card?.hypothesis);
   const analysisStatus = analysis?.status || null;

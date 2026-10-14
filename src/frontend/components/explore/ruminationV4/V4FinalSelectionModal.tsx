@@ -149,7 +149,10 @@ export default function V4FinalSelectionModal({ open, onClose, onConfirm }: Prop
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 12, scale: 0.98 }}
             transition={{ duration: 0.24, ease: 'easeOut' }}
-            className="modal relative flex max-h-[92vh] w-[min(820px,82vw)] flex-col overflow-hidden rounded-[20px] p-7"
+            className="v4-final-modal modal relative flex max-h-[92vh] w-[min(820px,82vw)] flex-col overflow-hidden rounded-[20px] p-7"
+            role="dialog"
+            aria-label="最终选择"
+            aria-modal="true"
             style={{
               background: 'rgba(255,255,255,0.97)',
               boxShadow: '0 28px 75px rgba(7,21,50,0.28)',

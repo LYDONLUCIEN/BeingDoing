@@ -1,0 +1,24 @@
+{
+  "id": "history-account-purge",
+  "title": "到期清理不影响其他账户",
+  "module": "账户",
+  "kind": "api",
+  "core": false,
+  "purpose": "到期清理不影响其他账户",
+  "inputs": [
+    "对已过清理期限的注销账户执行清理"
+  ],
+  "assertions": [
+    "清除目标关联数据并留审计，其他账户数据保留"
+  ],
+  "sources": [
+    {
+      "path": "docs/DECISIONS.md:43",
+      "rule": "清除目标关联数据并留审计，其他账户数据保留"
+    }
+  ],
+  "targets": [
+    "test/backend/test_account_deletion.py::test_purge_expired_account"
+  ],
+  "timeout": 300
+}

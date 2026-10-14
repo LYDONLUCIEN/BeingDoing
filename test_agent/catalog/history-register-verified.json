@@ -1,0 +1,24 @@
+{
+  "id": "history-register-verified",
+  "title": "验证后注册并取得试用资格",
+  "module": "认证",
+  "kind": "api",
+  "core": false,
+  "purpose": "验证后注册并取得试用资格",
+  "inputs": [
+    "提供有效注册凭证完成注册"
+  ],
+  "assertions": [
+    "返回登录凭证且恰好发放一个试用码"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:7",
+      "rule": "返回登录凭证且恰好发放一个试用码"
+    }
+  ],
+  "targets": [
+    "test/backend/test_register_preverification.py::test_verify_code_then_register"
+  ],
+  "timeout": 300
+}

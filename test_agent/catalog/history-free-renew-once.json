@@ -1,0 +1,24 @@
+{
+  "id": "history-free-renew-once",
+  "title": "免费延期只能领取一次",
+  "module": "激活码",
+  "kind": "api",
+  "core": false,
+  "purpose": "免费延期只能领取一次",
+  "inputs": [
+    "对已领取免费延期的激活码再次领取"
+  ],
+  "assertions": [
+    "拒绝第二次领取"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:19",
+      "rule": "拒绝第二次领取"
+    }
+  ],
+  "targets": [
+    "test/backend/test_free_renewal.py::test_claim_twice_rejected"
+  ],
+  "timeout": 300
+}

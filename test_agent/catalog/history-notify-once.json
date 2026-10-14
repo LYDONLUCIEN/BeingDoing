@@ -1,0 +1,24 @@
+{
+  "id": "history-notify-once",
+  "title": "支付通知重复不重复交付",
+  "module": "订单",
+  "kind": "api",
+  "core": false,
+  "purpose": "支付通知重复不重复交付",
+  "inputs": [
+    "重复提交同一订单的有效支付通知"
+  ],
+  "assertions": [
+    "只交付一次，不重复生成激活码"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:28",
+      "rule": "只交付一次，不重复生成激活码"
+    }
+  ],
+  "targets": [
+    "test/backend/test_payment_service.py::test_notify_delivers_and_is_idempotent"
+  ],
+  "timeout": 300
+}

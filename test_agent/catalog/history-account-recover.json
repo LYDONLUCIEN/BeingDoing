@@ -1,0 +1,24 @@
+{
+  "id": "history-account-recover",
+  "title": "恢复账户核对验证码",
+  "module": "账户",
+  "kind": "api",
+  "core": false,
+  "purpose": "恢复账户核对验证码",
+  "inputs": [
+    "先使用错误验证码再使用正确验证码恢复账户"
+  ],
+  "assertions": [
+    "错误拒绝，正确恢复后取得正常凭证"
+  ],
+  "sources": [
+    {
+      "path": "docs/DATA_DICTIONARY.md:13",
+      "rule": "错误拒绝，正确恢复后取得正常凭证"
+    }
+  ],
+  "targets": [
+    "test/backend/test_account_deletion.py::test_recovery_flow"
+  ],
+  "timeout": 300
+}

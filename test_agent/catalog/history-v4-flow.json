@@ -1,0 +1,24 @@
+{
+  "id": "history-v4-flow",
+  "title": "用户填写卡片后完成沉淀流程",
+  "module": "沉淀",
+  "kind": "api",
+  "core": false,
+  "purpose": "用户填写卡片后完成沉淀流程",
+  "inputs": [
+    "讨论、填写假设、确认判断、选择终选并提交"
+  ],
+  "assertions": [
+    "沿用户输入推进组合及终选状态；模型响应受控"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:11",
+      "rule": "沿用户输入推进组合及终选状态；模型响应受控"
+    }
+  ],
+  "targets": [
+    "test/backend/test_rumination_v4_e2e.py::test_full_happy_path_user_driven_card"
+  ],
+  "timeout": 300
+}

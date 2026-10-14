@@ -1,0 +1,24 @@
+{
+  "id": "history-coupon-capacity",
+  "title": "多次券耗尽后不能再锁定",
+  "module": "优惠券",
+  "kind": "api",
+  "core": false,
+  "purpose": "多次券耗尽后不能再锁定",
+  "inputs": [
+    "三个用户核销三次券后由第四人验证并锁定"
+  ],
+  "assertions": [
+    "第四人验证及锁定均拒绝"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:25",
+      "rule": "第四人验证及锁定均拒绝"
+    }
+  ],
+  "targets": [
+    "test/backend/test_coupon_multi_use.py::test_multi_use_three_users_then_exhausted"
+  ],
+  "timeout": 300
+}

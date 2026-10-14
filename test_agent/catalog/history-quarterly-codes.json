@@ -1,0 +1,24 @@
+{
+  "id": "history-quarterly-codes",
+  "title": "季度套餐交付未绑定码",
+  "module": "激活码",
+  "kind": "api",
+  "core": false,
+  "purpose": "季度套餐交付未绑定码",
+  "inputs": [
+    "购买季度套餐并完成支付交付"
+  ],
+  "assertions": [
+    "交付一个未绑定完整码，不自动升级已有试用码"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:17",
+      "rule": "交付一个未绑定完整码，不自动升级已有试用码"
+    }
+  ],
+  "targets": [
+    "test/backend/test_packages.py::test_quarterly_delivers_unbound_code"
+  ],
+  "timeout": 300
+}

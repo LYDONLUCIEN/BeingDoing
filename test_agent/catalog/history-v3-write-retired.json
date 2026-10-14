@@ -1,0 +1,24 @@
+{
+  "id": "history-v3-write-retired",
+  "title": "退役沉淀写接口返回410",
+  "module": "历史兼容",
+  "kind": "api",
+  "core": false,
+  "purpose": "退役沉淀写接口返回410",
+  "inputs": [
+    "调用已退役的旧阶段写接口"
+  ],
+  "assertions": [
+    "访问激活码或模型前即返回410"
+  ],
+  "sources": [
+    {
+      "path": "docs/adr/0025-retire-v3-runtime-and-separate-history.md",
+      "rule": "访问激活码或模型前即返回410"
+    }
+  ],
+  "targets": [
+    "test/backend/test_rumination_retirement.py::test_old_phase_writes_stop_before_activation_or_llm_access"
+  ],
+  "timeout": 300
+}

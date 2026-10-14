@@ -1,0 +1,24 @@
+{
+  "id": "history-review-block",
+  "title": "审核中不能取得报告PDF",
+  "module": "报告",
+  "kind": "api",
+  "core": false,
+  "purpose": "审核中不能取得报告PDF",
+  "inputs": [
+    "审核未完成时查询、生成并下载报告"
+  ],
+  "assertions": [
+    "显示pending_review，生成和下载不交付PDF"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:34",
+      "rule": "显示pending_review，生成和下载不交付PDF"
+    }
+  ],
+  "targets": [
+    "test/backend/test_report_review.py::test_user_side_pending_blocked"
+  ],
+  "timeout": 300
+}

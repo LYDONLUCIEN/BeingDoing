@@ -1,0 +1,24 @@
+{
+  "id": "history-annual-codes",
+  "title": "年度套餐交付三个不同码",
+  "module": "激活码",
+  "kind": "api",
+  "core": false,
+  "purpose": "年度套餐交付三个不同码",
+  "inputs": [
+    "购买年度套餐并完成支付交付"
+  ],
+  "assertions": [
+    "交付三个不同未绑定完整码，原试用码不变"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:17",
+      "rule": "交付三个不同未绑定完整码，原试用码不变"
+    }
+  ],
+  "targets": [
+    "test/backend/test_packages.py::test_annual_delivers_three_unbound_codes"
+  ],
+  "timeout": 300
+}

@@ -1,0 +1,24 @@
+{
+  "id": "history-v4-final-gate",
+  "title": "待分析完成前不能提交终选",
+  "module": "沉淀",
+  "kind": "api",
+  "core": false,
+  "purpose": "待分析完成前不能提交终选",
+  "inputs": [
+    "有已确认组合仍分析时更新并提交终选"
+  ],
+  "assertions": [
+    "更新和提交均被拒绝"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:12",
+      "rule": "更新和提交均被拒绝"
+    }
+  ],
+  "targets": [
+    "test/backend/test_rumination_v4_service.py::test_final_selection_blocked_by_pending_analysis"
+  ],
+  "timeout": 300
+}

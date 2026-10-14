@@ -34,21 +34,18 @@ class BeingDoingAdapter:
     def execute_domain_action(
         self, action: str, payload: Dict[str, Any], context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        if action == "ensure_login":
-            context["logged_in"] = True
-            context["account"] = payload.get("account")
-            return {"status": "pass", "observation": "测试账号登录上下文已准备", "artifacts": []}
-        if action == "table_edit":
-            context.setdefault("table_edits", []).append(payload)
-            return {"status": "pass", "observation": "已记录假设表格编辑动作", "artifacts": []}
-        return {"status": "fail", "observation": "", "artifacts": [], "error": f"未知 domain_action: {action}"}
+        return {
+            "status": "fail",
+            "artifacts": [],
+            "error": f"execution_unavailable: 尚未实现真实领域动作 {action}",
+        }
 
     def assert_domain(self, assertion: str, context: Dict[str, Any]) -> Dict[str, Any]:
-        if assertion == "no_repeat_question":
-            return {"status": "pass", "message": "未发现重复追问", "artifacts": []}
-        if assertion == "phase_in_or_next":
-            return {"status": "pass", "message": "阶段迁移符合预期", "artifacts": []}
-        return {"status": "fail", "message": f"未知 domain_assert: {assertion}", "artifacts": []}
+        return {
+            "status": "fail",
+            "artifacts": [],
+            "error": f"assertion_unavailable: 尚未实现真实领域断言 {assertion}",
+        }
 
     def fetch_runtime_state(self, context: Dict[str, Any]) -> Dict[str, Any]:
         return {

@@ -1,0 +1,11 @@
+{
+  "id": "test-center-phase3",
+  "summary": "管理员固定用例编辑、独立上下文、真实 AI 单轮回放、预算与复核",
+  "paths": [
+    "src/backend/app/services/test_center", "src/backend/app/api/v1/admin_test_center.py",
+    "src/frontend/app/(main)/admin/test-center/", "src/frontend/components/admin/test-center/",
+    "src/frontend/lib/api/testCenter.ts", "test_agent/center/", "test_agent/l2/center_admin_case.mjs",
+    "test/backend/test_test_center_authoring.py"
+  ],
+  "cases": ["test-center", "test-center-authoring", "test-center-ui"]
+}

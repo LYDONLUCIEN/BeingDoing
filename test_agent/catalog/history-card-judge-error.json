@@ -1,0 +1,24 @@
+{
+  "id": "history-card-judge-error",
+  "title": "判断失败不擅自生成结论",
+  "module": "前四阶段",
+  "kind": "api",
+  "core": false,
+  "purpose": "判断失败不擅自生成结论",
+  "inputs": [
+    "请求结论时判断服务失败"
+  ],
+  "assertions": [
+    "返回503且结论状态不变"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:9",
+      "rule": "返回503且结论状态不变"
+    }
+  ],
+  "targets": [
+    "test/backend/test_conclusion_min_turns_gate.py::test_conclusion_request_judge_failure_returns_503"
+  ],
+  "timeout": 300
+}

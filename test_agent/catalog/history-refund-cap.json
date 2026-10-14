@@ -1,0 +1,24 @@
+{
+  "id": "history-refund-cap",
+  "title": "批准金额不能超过可退金额",
+  "module": "退款",
+  "kind": "api",
+  "core": false,
+  "purpose": "批准金额不能超过可退金额",
+  "inputs": [
+    "管理员批准超过上限的退款金额"
+  ],
+  "assertions": [
+    "拒绝执行且退款仍保持待审"
+  ],
+  "sources": [
+    {
+      "path": "docs/DATA_DICTIONARY.md:81",
+      "rule": "拒绝执行且退款仍保持待审"
+    }
+  ],
+  "targets": [
+    "test/backend/test_refund_service.py::test_approve_over_cap_rejected"
+  ],
+  "timeout": 300
+}

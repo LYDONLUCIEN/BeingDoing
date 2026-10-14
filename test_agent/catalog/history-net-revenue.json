@@ -1,0 +1,24 @@
+{
+  "id": "history-net-revenue",
+  "title": "净实收扣除累计退款",
+  "module": "统计",
+  "kind": "api",
+  "core": false,
+  "purpose": "净实收扣除累计退款",
+  "inputs": [
+    "对不同状态和退款额的订单汇总收入"
+  ],
+  "assertions": [
+    "计收状态实付减累计退款，pending和closed不计入"
+  ],
+  "sources": [
+    {
+      "path": "docs/DATA_DICTIONARY.md:74",
+      "rule": "计收状态实付减累计退款，pending和closed不计入"
+    }
+  ],
+  "targets": [
+    "test/backend/test_admin_order_export.py::test_admin_revenue_summary_net_amounts"
+  ],
+  "timeout": 300
+}

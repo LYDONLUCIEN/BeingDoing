@@ -1,0 +1,24 @@
+{
+  "id": "history-refund-partial-coupon",
+  "title": "部分退款不返券",
+  "module": "退款",
+  "kind": "api",
+  "core": false,
+  "purpose": "部分退款不返券",
+  "inputs": [
+    "对用券订单执行部分退款"
+  ],
+  "assertions": [
+    "退款后已核销优惠券不返还"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:27",
+      "rule": "退款后已核销优惠券不返还"
+    }
+  ],
+  "targets": [
+    "test/backend/test_refund_service.py::test_partial_refund_keeps_coupon"
+  ],
+  "timeout": 300
+}

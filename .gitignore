@@ -106,3 +106,6 @@ test/report0816
 # 本地验证截图/脚本与 FileLock 哨兵，不是测试输入
 /output/
 *.json.lock
+
+# 测试中心控制数据和证据，与业务 data 独立
+.test-center/

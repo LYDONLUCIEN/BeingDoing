@@ -1,0 +1,6 @@
+{
+  "id": "snapshot-pipeline",
+  "summary": "独立生产副本工具：一致备份、源端脱敏、SSH 拉取、隔离迁移和测试；发布继续人工操作",
+  "paths": ["test_agent/snapshot/", "scripts/test_snapshot.py", "scripts/test_snapshot.sh", "test/backend/test_snapshot_pipeline.py"],
+  "cases": ["snapshot-pipeline"]
+}

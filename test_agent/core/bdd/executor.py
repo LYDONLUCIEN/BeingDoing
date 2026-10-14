@@ -31,28 +31,18 @@ class LocalActionExecutor:
         name = action.action
         params = action.params
 
-        if name == "goto":
-            context["phase"] = params.get("phase", context.get("phase", "values"))
-            return {"status": "pass", "observation": f'进入页面: {params.get("url", "")}', "artifacts": []}
-        if name == "click":
-            return {"status": "pass", "observation": f'点击元素: {params.get("selector", "")}', "artifacts": []}
-        if name == "fill":
-            return {"status": "pass", "observation": "输入完成", "artifacts": []}
-        if name == "chat_send":
-            text = str(params.get("text") or "").strip()
-            context["last_chat_message"] = text
-            return {"status": "pass", "observation": f"发送消息: {text}", "artifacts": []}
-        if name == "wait_for":
-            return {"status": "pass", "observation": "等待完成", "artifacts": []}
-        if name == "assert_text":
-            expected = str(params.get("text") or "").strip()
-            context.setdefault("expected_texts", []).append(expected)
-            return {"status": "pass", "observation": f"断言文本存在: {expected}", "artifacts": []}
-        if name == "assert_dom":
-            return {"status": "pass", "observation": f'DOM 存在: {params.get("selector", "")}', "artifacts": []}
+        if name in {"goto", "click", "fill", "chat_send", "wait_for", "assert_text", "assert_dom"}:
+            return {
+                "status": "fail",
+                "observation": "",
+                "artifacts": [],
+                "error": f"execution_unavailable: 本地占位执行器不能验证 {name}，请使用真实执行器",
+            }
         if name == "domain_action":
             domain_name = str(params.get("name") or "").strip()
-            payload = params.get("payload") if isinstance(params.get("payload"), dict) else dict(params)
+            payload = (
+                params.get("payload") if isinstance(params.get("payload"), dict) else dict(params)
+            )
             return adapter.execute_domain_action(domain_name, payload, context)
         if name == "domain_assert":
             domain_name = str(params.get("name") or "").strip()
@@ -74,7 +64,7 @@ class PlaywrightActionExecutor:
 
     说明：
     - 为保持状态连续性，按“累计动作”重放到当前步骤。
-    - 不支持的动作由上层回退到 LocalActionExecutor。
+    - 不支持的动作必须明确失败，不能冒充浏览器执行。
     """
 
     SUPPORTED_ACTIONS = {
@@ -177,8 +167,12 @@ class PlaywrightActionExecutor:
                     "failure_type": "runtime_error",
                 }
 
-            action_failures = payload.get("action_failures", []) if isinstance(payload, dict) else []
-            assertion_failures = payload.get("assertion_failures", []) if isinstance(payload, dict) else []
+            action_failures = (
+                payload.get("action_failures", []) if isinstance(payload, dict) else []
+            )
+            assertion_failures = (
+                payload.get("assertion_failures", []) if isinstance(payload, dict) else []
+            )
             artifacts = []
             if isinstance(payload.get("artifacts"), dict):
                 artifacts = [str(v) for v in payload["artifacts"].values() if isinstance(v, str)]
@@ -205,7 +199,9 @@ class PlaywrightActionExecutor:
             if not current_step_error and assertion_failures:
                 current_step_error = str(assertion_failures[0])
             if not current_step_error:
-                current_step_error = str(payload.get("fatal_error") or payload.get("error") or "playwright_failed")
+                current_step_error = str(
+                    payload.get("fatal_error") or payload.get("error") or "playwright_failed"
+                )
 
             return {
                 "status": "fail",
@@ -275,13 +271,15 @@ class BddExecutor:
             raw_step = step.get("raw") if isinstance(step.get("raw"), dict) else {}
             if raw_step.get("action"):
                 action_name = str(raw_step.get("action")).strip()
-                action_params = {k: v for k, v in raw_step.items() if k not in {"action", "keyword", "text"}}
+                action_params = {
+                    k: v for k, v in raw_step.items() if k not in {"action", "keyword"}
+                }
                 actions = [ActionContract(action=action_name, params=action_params)]
             else:
                 actions = self.adapter.compile_step(keyword, text)
             action_dicts = [asdict(action) for action in actions]
 
-            status = "pass"
+            status = "pass" if actions else "fail"
             observation = ""
             artifacts: List[str] = []
             error = None
@@ -298,7 +296,9 @@ class BddExecutor:
                     playwright_actions_in_step.append(action)
                     continue
 
-                action_ret = self.action_executor.execute_action(action, context=context, adapter=self.adapter)
+                action_ret = self.action_executor.execute_action(
+                    action, context=context, adapter=self.adapter
+                )
                 observation = action_ret.get("observation") or observation
                 artifacts.extend(action_ret.get("artifacts") or [])
                 if action.action in {"assert_text", "assert_dom", "domain_assert"}:
@@ -307,10 +307,11 @@ class BddExecutor:
                             "assertion": action.action,
                             "params": action.params,
                             "status": action_ret.get("status", "pass"),
-                            "message": action_ret.get("message") or action_ret.get("observation", ""),
+                            "message": action_ret.get("message")
+                            or action_ret.get("observation", ""),
                         }
                     )
-                if action_ret.get("status") == "fail":
+                if action_ret.get("status") != "pass":
                     status = "fail"
                     error = action_ret.get("error") or "action_failed"
                     failure_type = _classify_failure(error)
@@ -329,7 +330,7 @@ class BddExecutor:
                 )
                 observation = pw_ret.get("observation") or observation
                 artifacts.extend(pw_ret.get("artifacts") or [])
-                if pw_ret.get("status") == "fail":
+                if pw_ret.get("status") != "pass":
                     status = "fail"
                     error = pw_ret.get("error") or "playwright_action_failed"
                     failure_type = pw_ret.get("failure_type") or _classify_failure(error)

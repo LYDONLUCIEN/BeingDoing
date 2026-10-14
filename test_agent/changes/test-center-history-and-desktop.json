@@ -1,0 +1,27 @@
+{
+  "id": "test-center-history-and-desktop",
+  "summary": "测试目的与规范来源、固定连续多轮、历史回归库及普通PC工作区保护",
+  "paths": [
+    "src/backend/app/api/v1/admin_test_center.py",
+    "src/backend/app/services/test_center.py",
+    "src/backend/app/services/test_center_authoring.py",
+    "src/backend/app/services/test_center_ai.py",
+    "src/backend/app/services/test_center_budget.py",
+    "src/backend/app/services/test_center_steps.py",
+    "src/frontend/lib/api/testCenter.ts",
+    "src/frontend/app/(main)/admin/test-center/",
+    "src/frontend/components/admin/test-center/",
+    "src/frontend/components/explore/WorkspaceDrawer.tsx",
+    "src/frontend/components/explore/ruminationV4/RuminationV4Page.tsx",
+    "src/frontend/styles/components/openlife-reference-home.css"
+  ],
+  "cases": [
+    "test-center-authoring",
+    "test-center",
+    "test-center-ui",
+    "desktop-workspace",
+    "rumination-ui",
+    "ui-registration-verification",
+    "home-mobile"
+  ]
+}

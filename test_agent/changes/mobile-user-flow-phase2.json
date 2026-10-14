@@ -1,0 +1,26 @@
+{
+  "id": "mobile-user-flow-phase2",
+  "summary": "手机聊天抽屉、可视高度、沉淀双面板与组合草稿隔离，注册/报告/既有支付回归",
+  "paths": [
+    "src/frontend/app/(main)/explore/chat/[phase]/page.tsx",
+    "src/frontend/app/globals.css",
+    "src/frontend/hooks/useMobileLayout.ts",
+    "src/frontend/hooks/useChatViewport.ts",
+    "src/frontend/hooks/useConversationDraft.tsx",
+    "src/frontend/components/explore/ResponsiveSidebar.tsx",
+    "src/frontend/components/explore/RuminationV4Entry.tsx",
+    "src/frontend/components/explore/ruminationV4/",
+    "src/frontend/components/layout/TopNavbar.tsx",
+    "src/frontend/styles/components/mobile-workspace.css",
+    "src/backend/app/services/test_center.py",
+    "test_agent/l2/center_",
+    "test_agent/catalog/"
+  ],
+  "cases": [
+    "chat-ui",
+    "rumination-ui",
+    "account-mobile-ui",
+    "home-mobile",
+    "test-center"
+  ]
+}

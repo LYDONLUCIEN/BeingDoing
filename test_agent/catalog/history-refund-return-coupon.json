@@ -1,0 +1,24 @@
+{
+  "id": "history-refund-return-coupon",
+  "title": "符合条件的全退返券保留归属",
+  "module": "退款",
+  "kind": "api",
+  "core": false,
+  "purpose": "符合条件的全退返券保留归属",
+  "inputs": [
+    "对满足返还条件的订单执行全额退款"
+  ],
+  "assertions": [
+    "返还优惠券并保留原使用者归属"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:27",
+      "rule": "返还优惠券并保留原使用者归属"
+    }
+  ],
+  "targets": [
+    "test/backend/test_refund_service.py::test_full_refund_returns_coupon"
+  ],
+  "timeout": 300
+}

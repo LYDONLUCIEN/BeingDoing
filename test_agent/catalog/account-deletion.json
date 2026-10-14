@@ -1,0 +1,24 @@
+{
+  "id": "account-deletion",
+  "title": "注销与恢复",
+  "module": "账户",
+  "kind": "api",
+  "core": true,
+  "inputs": [
+    "错误确认、注销、恢复和过期清理"
+  ],
+  "assertions": [
+    "拒绝错误凭据，正确清理副本数据"
+  ],
+  "targets": [
+    "test/backend/test_account_deletion.py"
+  ],
+  "timeout": 300,
+  "purpose": "保护注销确认、受限恢复与到期清理边界。",
+  "sources": [
+    {
+      "path": "docs/DATA_DICTIONARY.md",
+      "rule": "账户注销、恢复凭据与清理字段语义。"
+    }
+  ]
+}

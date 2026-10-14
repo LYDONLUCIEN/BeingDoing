@@ -1,0 +1,24 @@
+{
+  "id": "account-mobile-ui",
+  "title": "手机注册、个人空间、报告与支付",
+  "module": "用户主流程",
+  "kind": "ui",
+  "core": true,
+  "inputs": [
+    "邮箱验证码注册、个人空间旅程、报告下载、同意协议创建与继续支付、显式取消及回跳"
+  ],
+  "assertions": [
+    "错误验证码/未同意协议拒绝、阶段门禁保持、报告审核限制、下载归属正确、支付不重复下单、取消需显式操作、各页无横向溢出"
+  ],
+  "targets": [
+    "account"
+  ],
+  "timeout": 600,
+  "purpose": "保护手机注册、报告归属和现有支付交互。",
+  "sources": [
+    {
+      "path": "docs/MOBILE_AND_TEST_CENTER_PLAN.md",
+      "rule": "手机主流程复用原有业务门禁；真实渠道另行验收。"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "chat-boundaries",
+  "title": "聊天完成与归档",
+  "module": "探索",
+  "kind": "api",
+  "core": true,
+  "inputs": [
+    "完成与归档线程"
+  ],
+  "assertions": [
+    "没有有效结论时拒绝完成，归档状态正确"
+  ],
+  "targets": [
+    "test/backend/test_thread_complete_requires_conclusion.py",
+    "test/backend/test_thread_archive.py"
+  ],
+  "timeout": 300,
+  "purpose": "保护有效结论才能完成线程，以及归档生命周期。",
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md",
+      "rule": "前四阶段选择结论并完成后锁定，不能空结论完成。"
+    }
+  ]
+}

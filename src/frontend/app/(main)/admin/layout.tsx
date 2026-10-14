@@ -37,6 +37,7 @@ const ADMIN_NAV_ITEMS = [
   { path: '/admin/users', icon: Users, label: '用户管理' },
   { path: '/admin/data-export', icon: Download, label: '数据导出' },
   { path: '/admin/abuse', icon: ShieldAlert, label: '滥用监控' },
+  { path: '/admin/test-center', icon: FlaskConical, label: '测试中心' },
   { path: '/admin/sandboxes', icon: FlaskConical, label: '调试沙箱 Fork' },
   { path: '/admin/conversations', icon: MessageSquare, label: '会话记录' },
   { path: '/admin/feedbacks', icon: MessageCircle, label: '用户反馈' },

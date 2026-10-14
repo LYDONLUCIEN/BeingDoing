@@ -1,0 +1,24 @@
+{
+  "id": "history-renewal-no-refund",
+  "title": "延期订单不可退款",
+  "module": "退款",
+  "kind": "api",
+  "core": false,
+  "purpose": "延期订单不可退款",
+  "inputs": [
+    "对付费延期订单提交退款申请"
+  ],
+  "assertions": [
+    "拒绝申请"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:19",
+      "rule": "拒绝申请"
+    }
+  ],
+  "targets": [
+    "test/backend/test_packages.py::test_refund_rejected_for_renewal"
+  ],
+  "timeout": 300
+}

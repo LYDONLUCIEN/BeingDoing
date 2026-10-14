@@ -1,0 +1,24 @@
+{
+  "id": "history-refund-full",
+  "title": "整单退款完成审批核销",
+  "module": "退款",
+  "kind": "api",
+  "core": false,
+  "purpose": "整单退款完成审批核销",
+  "inputs": [
+    "申请整单退款并由管理员批准执行"
+  ],
+  "assertions": [
+    "审批人、退款号、退款金额及核销状态正确记录"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:27",
+      "rule": "审批人、退款号、退款金额及核销状态正确记录"
+    }
+  ],
+  "targets": [
+    "test/backend/test_refund_service.py::test_full_refund_flow"
+  ],
+  "timeout": 300
+}

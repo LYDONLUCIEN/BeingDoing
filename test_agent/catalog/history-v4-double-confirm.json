@@ -1,0 +1,24 @@
+{
+  "id": "history-v4-double-confirm",
+  "title": "分析中拒绝重复确认",
+  "module": "沉淀",
+  "kind": "api",
+  "core": false,
+  "purpose": "分析中拒绝重复确认",
+  "inputs": [
+    "组合卡片分析中再次确认"
+  ],
+  "assertions": [
+    "拒绝重复请求"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md:12",
+      "rule": "拒绝重复请求"
+    }
+  ],
+  "targets": [
+    "test/backend/test_rumination_v4_service.py::test_confirm_rejects_double_click"
+  ],
+  "timeout": 300
+}

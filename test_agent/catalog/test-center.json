@@ -1,0 +1,27 @@
+{
+  "id": "test-center",
+  "title": "测试中心与结果真实性",
+  "module": "测试中心",
+  "kind": "api",
+  "core": true,
+  "inputs": [
+    "登记、运行、取消、重跑和未执行场景"
+  ],
+  "assertions": [
+    "固定修订、隔离数据，未执行不能通过"
+  ],
+  "targets": [
+    "test/backend/test_test_center.py",
+    "test/backend/test_test_center_api.py",
+    "test/backend/test_test_agent_truthfulness.py",
+    "test/backend/test_test_center_verification.py"
+  ],
+  "timeout": 300,
+  "purpose": "防止结果假通过、测试数据污染及旧批次被覆盖。",
+  "sources": [
+    {
+      "path": "docs/adr/0027-test-center-fixed-cases-and-data-boundaries.md",
+      "rule": "每例干净起点，固定修订，测试资产独立保存。"
+    }
+  ]
+}

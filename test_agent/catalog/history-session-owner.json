@@ -1,0 +1,24 @@
+{
+  "id": "history-session-owner",
+  "title": "跨账户会话访问被拒绝",
+  "module": "权限",
+  "kind": "api",
+  "core": false,
+  "purpose": "跨账户会话访问被拒绝",
+  "inputs": [
+    "使用另一账户的 session 请求读写"
+  ],
+  "assertions": [
+    "在会话数据读写前拒绝越权请求"
+  ],
+  "sources": [
+    {
+      "path": "docs/DATA_DICTIONARY.md:32",
+      "rule": "在会话数据读写前拒绝越权请求"
+    }
+  ],
+  "targets": [
+    "test/backend/test_security_boundaries.py::test_foreign_session_is_denied_before_read_or_write"
+  ],
+  "timeout": 300
+}

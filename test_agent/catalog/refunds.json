@@ -1,0 +1,25 @@
+{
+  "id": "refunds",
+  "title": "退款流程",
+  "module": "支付",
+  "kind": "api",
+  "core": true,
+  "inputs": [
+    "申请、审批和执行退款"
+  ],
+  "assertions": [
+    "按当前订单行规则拒绝非法退款，防止重复执行"
+  ],
+  "targets": [
+    "test/backend/test_refund_service.py",
+    "test/backend/test_refund_api.py"
+  ],
+  "timeout": 300,
+  "purpose": "保护按明细行退款、审批与重复执行的边界。",
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md",
+      "rule": "退款当前定稿，0元单跳过渠道但保留审核核销。"
+    }
+  ]
+}
