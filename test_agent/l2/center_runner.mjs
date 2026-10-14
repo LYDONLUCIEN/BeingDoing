@@ -5,6 +5,7 @@ import { prepareRumination, testRumination } from './center_rumination_case.mjs'
 import { testReply } from './center_reply_case.mjs';
 import { prepareChat, testChat } from './center_chat_case.mjs';
 import { prepareAdmin, testAdmin } from './center_admin_case.mjs';
+import { testHomeCards } from './center_home_case.mjs';
 /** 固定浏览器用例。真实页面配受控 API；不会访问线上业务接口。 */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -42,11 +43,13 @@ try {
   if (!ready) throw new Error('隔离前端启动超时');
   for (const [engine, type] of [['chromium', chromium], ['webkit', webkit]]) {
     browser = await type.launch({ headless: true });
-    const views = (suite === 'scenario' ? [390, 1440] : ['home', 'chat', 'rumination', 'account'].includes(suite) ? [360, 390, 430, 820, 1440] : [1440])
+    const views = (suite === 'home' ? [320, 360, 390, 430, 600, 720, 721, 820, 1050, 1051, 1440] : suite === 'scenario' ? [390, 1440] : ['chat', 'rumination', 'account'].includes(suite) ? [360, 390, 430, 820, 1440] : [1440])
       .flatMap(width => (suite === 'chat' && [360, 1440].includes(width) ? ['values', 'strengths', 'interests', 'purpose'] : ['values']).map(phase => ({ width, phase })));
     for (const { width, phase } of views) {
       const viewName = `${engine}-${width}${suite === 'chat' ? `-${phase}` : ''}`;
-      const context = await browser.newContext({ viewport: { width, height: 900 }, isMobile: width < 768, hasTouch: width < 768, reducedMotion: 'reduce', serviceWorkers: 'block' });
+      // 首页额外覆盖 600px 的鼠标窄窗口，确保布局不依赖手机身份或触控能力。
+      const touch = width < 768 && !(suite === 'home' && width === 600);
+      const context = await browser.newContext({ viewport: { width, height: 900 }, isMobile: touch, hasTouch: touch, reducedMotion: 'reduce', serviceWorkers: 'block' });
       await context.route('**/*', async route => {
         const url = new URL(route.request().url());
         if (url.pathname.startsWith('/api/')) {
@@ -102,6 +105,19 @@ try {
         await page.locator('html[data-landing="true"]').waitFor();
         const dimensions = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }));
         check(dimensions.scroll <= dimensions.width + 1, `${engine}/${width}: 页面横向溢出 ${dimensions.scroll}`);
+        await testHomeCards(page, check);
+        await page.locator('.ol-journey-dock').screenshot({ path: path.join(artifacts, `${engine}-${width}-cards.png`) });
+        if (width === 360) {
+          await page.getByRole('button', { name: '打开导航菜单' }).click();
+          await page.locator('#mobile-navigation select').selectOption('en');
+          await page.keyboard.press('Escape');
+          await page.locator('.ol-phase-card strong').first().getByText('Clarify Your Values', { exact: true }).waitFor();
+          await testHomeCards(page, check);
+          await page.locator('.ol-journey-dock').screenshot({ path: path.join(artifacts, `${engine}-${width}-cards-en.png`) });
+          await page.getByRole('button', { name: '打开导航菜单' }).click();
+          await page.locator('#mobile-navigation select').selectOption('zh');
+          await page.keyboard.press('Escape');
+        }
         if (width >= 768) {
           const dot = await page.locator('.ol-review-dots button[aria-current="true"]').boundingBox();
           check(dot && Math.abs(dot.width - 23) < 0.5 && Math.abs(dot.height - 6) < 0.5, `${engine}/${width}: 桌面评价分页保持原有23×6尺寸`);
@@ -119,7 +135,7 @@ try {
         }
         check(names.size === 9, `${engine}/${width}: 九条评价仅可访问 ${names.size} 条`);
         if (width < 768) {
-          await page.evaluate(() => window.scrollTo(0, 0));
+          await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
           const toggle = page.getByRole('button', { name: '打开导航菜单' });
           await toggle.click();
           check(await page.locator('#mobile-navigation').isVisible(), '手机菜单打开');
@@ -135,11 +151,10 @@ try {
           await page.close();
           page = await context.newPage();
           await page.goto(base, { waitUntil: 'networkidle' });
-          const cards = page.locator('.ol-phase-cards');
-          await cards.evaluate(el => { el.scrollLeft = el.scrollWidth; });
-          check(await page.locator('.ol-phase-card').last().isVisible(), '最后一张旅程卡可访问');
+          await page.locator('.ol-phase-card').last().click({ trial: true });
+          check(true, '最后一张旅程卡可通过正常页面滚动访问');
         }
-        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
         await page.screenshot({ path: path.join(artifacts, `${engine}-${width}-viewport.png`) });
         await page.screenshot({ path: path.join(artifacts, `${engine}-${width}.png`), fullPage: true });
         await page.locator('.ol-hero-copy .ol-hero-cta').click();

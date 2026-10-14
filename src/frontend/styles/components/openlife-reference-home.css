@@ -1560,27 +1560,33 @@ html[data-landing='true'] .journey-navbar .journey-nav-link.is-active::after {
   .ol-hero-copy .ol-hero-cta { min-height: 44px; padding: 12px 24px; font-size: 14px; }
   .ol-home-section { padding-right: 18px; padding-left: 18px; }
   .ol-hero.ol-home-section { height: auto; min-height: 720px; min-height: max(720px, calc(100dvh - var(--ol-header-h))); padding-bottom: 68px; }
+  .ol-home-scene { position: relative; inset: auto; }
   .ol-journey-dock { position: relative; top: auto; left: auto; transform: none; width: calc(100% - 28px); margin: 42px auto 0; }
   .ol-journey-dock > h2 { margin-bottom: 19px; font-size: 23px; }
   .ol-phase-cards {
-    display: grid;
-    grid-template-columns: none;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(255px, 76vw);
+    /* 窄屏依顺序向下阅读；复用原卡片素材与选中态，不再要求横向滑动。 */
+    grid-template-columns: minmax(0, 1fr);
     gap: 14px;
     padding: 6px 3px 20px;
-    overflow-x: auto;
-    overscroll-behavior-inline: contain;
-    scroll-snap-type: x proximity;
-    scrollbar-width: none;
   }
-  .ol-phase-cards::-webkit-scrollbar { display: none; }
   .ol-phase-card,
   .ol-phase-card:nth-of-type(4),
-  .ol-phase-card:nth-of-type(5) { grid-column: auto; min-height: 250px; padding: 19px 22px 22px; scroll-snap-align: center; }
-  .ol-phase-symbol { width: 58px; height: 58px; margin: 11px auto 15px; }
-  .ol-phase-card strong { font-size: 21px; }
-  .ol-phase-card small { font-size: 15px; }
+  .ol-phase-card:nth-of-type(5) {
+    display: grid;
+    grid-column: auto;
+    grid-template-columns: 52px minmax(0, 1fr);
+    grid-template-areas: 'symbol step' 'symbol title' 'symbol description';
+    column-gap: 14px;
+    row-gap: 4px;
+    min-height: 0;
+    padding: 18px;
+    text-align: left;
+  }
+  .ol-phase-no { grid-area: step; }
+  .ol-phase-symbol { grid-area: symbol; width: 52px; height: 52px; margin: 0; align-self: center; }
+  .ol-phase-symbol svg { width: 36px; height: 36px; }
+  .ol-phase-card strong { grid-area: title; margin: 0; font-size: 21px; }
+  .ol-phase-card small { grid-area: description; font-size: 15px; overflow-wrap: anywhere; }
   .ol-floating-botanical { top: 55%; width: 112vw; }
   .ol-white-transition { height: 180px; }
   .ol-section-shell { border-radius: 24px; }

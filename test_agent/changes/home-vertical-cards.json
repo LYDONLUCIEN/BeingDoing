@@ -1,0 +1,11 @@
+{
+  "id": "home-vertical-cards",
+  "summary": "首页窄屏阶段卡改为左图右文、紧凑纵向排列，保留原卡片设计与桌面排布",
+  "paths": [
+    "src/frontend/styles/components/openlife-reference-home.css",
+    "test_agent/l2/center_home_case.mjs",
+    "test_agent/l2/center_runner.mjs",
+    "test_agent/catalog/home-mobile.json"
+  ],
+  "cases": ["home-mobile"]
+}
