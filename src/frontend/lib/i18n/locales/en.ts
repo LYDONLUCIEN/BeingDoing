@@ -423,8 +423,6 @@ export const en = {
     purchaseCard: {
       title: 'Buy Activation Code',
       desc: 'Your trial code will be upgraded to the full version directly — exploration progress is kept',
-      quarterly: 'Quarterly Plan',
-      annual: 'Annual Plan',
       popular: 'Most Popular',
       buy: 'Buy Now',
     },

@@ -17,6 +17,15 @@ isort --check-only --settings-path src/backend/pyproject.toml src/backend
 
 2026-10-14 更正：全量后端使用上述独立副本入口，不能直接从共享工作区运行 pytest。旧测试未全部自带隔离；本轮误用默认 `app.db` 的执行问题及处理见下方追加记录。历史独立导出源码的结果仍有效。
 
+## 2026-10-20 沉淀首开引导与 v3 老报告收口验证
+
+- 独立后端入口：`verify_backend --output output/backend-legacy-v3-target-final-20261020-130402 test/backend/test_rumination_retirement.py test/backend/test_rumination_v4_e2e.py test/backend/test_rumination_v4_service.py`，**73 passed / 0 failed / 0 errors**。新增正反用例确认只有完整 v3 证据命中收口，任何 combo、终选草稿/提交、active 组合或离开 matrix 均不命中；intro/matrix 快照不算实质 v4 数据。
+- 只读扫描本地 `data/simple/reports`：10 份含实质 v4 内容的报告均未命中收口；2 份完整 v3 老报告命中，包括 `df0b212f-7e59-44d6-890b-3dbcecbe3db8`。未修改真实数据。
+- 浏览器 `rumination`：Chromium 在 360/390/430/820/1440 五个视口完成 **132 项断言**，证据 `output/rumination-legacy-redirect-20261020-083911`；`desktop` Chromium 完成 **60 项断言**，证据 `output/desktop-legacy-redirect-20261020-084325`。两个 runner 随后都因环境缺少 WebKit 可执行文件退出 1，WebKit 不能记为通过。
+- 前端 `npm run lint`、`npm run test:security`（3/3）和 `npm run build` 均退出 0；lint 仅保留既有警告。
+- `check_catalog` 对本项无未知用例；当前仍列出支付相关既有并发改动覆盖缺口，见命令输出，不属于本项路径。
+- 全量后端入口已尝试：`output/backend-legacy-v3-report-redirect-20261020-125525` 在收集 `test/backend/test_test_center_workflow.py` 时因既有独立副本未复制 `test/__init__.py` 报 `ModuleNotFoundError: No module named 'test.backend'`，未能形成全量结果；不得写成全量通过。
+
 ## 2026-10-13 服务器手册的命令验证
 
 [服务器操作手册](OPERATIONS.md) 的 22 段 Bash 通过 `bash -n`，3 段内嵌 Python 通过语法检查。临时目录中使用合成配置、SQLite 和 data，复制本仓库的 Settings／data_paths 模块到隔离目录，完成 **16 项行为检查**：相对／绝对 DB 定位，缺失库／内存库／非 SQLite／特殊 URI 拒绝，含 WAL 数据的 DB 与 JSON／环境文件备份，重复目标拒绝，dev／prod 环境覆盖与实际 Settings 校验，DB 路径变化拒绝，APP_ENV 不匹配和不安全生产配置拒绝。
@@ -355,3 +364,22 @@ AI 框架的新行为由公开 API/执行证据验证：原上下文不变、独
 红→绿：旧样式在 320px 明确因阶段卡必须横滑而失败。初版纵向样式的截图暴露绝对定位首屏会隐藏内部滚动、底部提示覆盖文案；将窄屏容器改为正常文档流，并加入可见性/滚动/提示位置检查后通过。保留初次验证中 WebKit 断点口径不一致导致的测试失败记录，未改桌面产品样式来迎合测试。
 
 证据保留于 `output/home-vertical-20261014/`：`red/`、`green/`、`final-browser/`、`inspection-final/` 及前端/目录日志。最终 `final/` 在修正截图的即时回顶后再次验证 822 项全部通过；普通产品滚动行为未修改。其他页面的横向区域仅调查，候选建议见 [讨论记录](MOBILE_AND_TEST_CENTER.md) 末节；未部署，真机触控和浏览器菜单缩放未作现场验收。
+
+
+## 2026-10-18 · admin 主动退款与协商部分退款
+
+本轮改动涉及退款状态机、订单交付竞态、admin 退款界面和数据库迁移 026，未连接真实支付渠道、邮件或生产数据库。用户侧退款入口保持移除。
+
+| 检查 | 实测结果 |
+| --- | --- |
+| 退款/支付相关后端定向回归（独立源码、数据库和文件根） | **90 passed、0 failed、0 skipped**：退款服务/API、支付订单服务、026 迁移升级与回滚 |
+| 相邻流程回归 | **33 passed、0 failed、0 skipped**：套餐/延期守卫、账户注销关单、admin 订单导出 |
+| 新增行为 | 覆盖 pending 渠道已付未交付全退、paid 全退、未付拒绝、创建/审批双查单、交付竞态认领、驳回后恢复 pending、在途退款禁止关单、季度 admin 协商部分退、重复退款行拒绝、保留激活码与失败重试沿用选择 |
+| admin 浏览器界面 | Chromium 1440px **27 项断言通过**；WebKit 未执行，因为本机缺少 Playwright WebKit 可执行文件，未将缺失环境记为通过 |
+| 前端 | lint 通过（仅既有 warning）、安全渲染 **3 passed**、生产构建与 TypeScript 通过 |
+| 固定用例目录 | `check_catalog` 通过，`coverage_gaps=[]`、`unknown_cases=[]` |
+| 语法/差异 | 变更 Python `py_compile`、L2 mjs `node --check`、JSON 解析和 `git diff --check` 通过 |
+
+补充运行 `test_test_center.py` 与 `test_snapshot_pipeline.py` 时：首次因根文件系统剩余空间不足 512 MiB 出现 15 项环境失败；清理本轮生成的隔离浏览器副本后重跑为 **111 passed、3 failed**。3 项均卡在既有快照运行时的 Alembic 导入环境（本地 `alembic/` 目录遮蔽/控制台依赖），与本次退款断言无关；本轮换了一个最小测试 env 直接验证 026 升级和回滚并通过。Black/isort 命令在当前环境不可用，未伪造格式检查结论。
+
+证据：`output/refund-admin-final-relevant-4-20261018/`、`output/refund-admin-adjacent-20261018/`、`output/admin-refund-ui-final-2-20261018/artifacts/`、`output/refund-admin-backend-with-migration-2-20261018/`。真实支付宝退款、退款后渠道到账、生产数据迁移和 WebKit 仍需在对应环境验收。

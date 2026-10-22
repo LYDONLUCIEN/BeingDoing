@@ -1,0 +1,28 @@
+{
+  "id": "history-v3-report-redirect",
+  "title": "v3已定稿老报告严格收口",
+  "module": "历史兼容",
+  "kind": "api",
+  "core": false,
+  "purpose": "只让证据完整的 v3 老报告退出 v4 入口，任何新 v4 数据都不得被跳过。",
+  "inputs": [
+    "构造前四阶段已选定、旧rumination会话锁定、v3进度与Markdown缓存齐全的报告",
+    "在同类报告上分别加入combo、终选草稿、终选提交、active组合或非matrix状态"
+  ],
+  "assertions": [
+    "完整v3证据才返回legacy_report_ready",
+    "任何实质v4数据、缺旧进度、缺旧锁定或缺Markdown缓存均不返回该标记；仅访问v4形成的intro/matrix快照不算实质数据",
+    "检测失败保守进入v4，不回填终选或迁移旧数据"
+  ],
+  "sources": [
+    {
+      "path": "docs/adr/0028-legacy-v3-report-redirect.md",
+      "rule": "严格派生legacy_report_ready；任何v4数据存在时不得收口。"
+    }
+  ],
+  "targets": [
+    "test/backend/test_rumination_retirement.py::test_legacy_v3_report_redirect_requires_positive_v3_evidence",
+    "test/backend/test_rumination_retirement.py::test_legacy_v3_report_redirect_never_matches_new_v4_data"
+  ],
+  "timeout": 300
+}

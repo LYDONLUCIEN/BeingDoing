@@ -16,6 +16,7 @@ import LegacyBrowserNotice from '@/components/layout/LegacyBrowserNotice';
 import { useAuthStore } from '@/stores/authStore';
 import { useChatViewport } from '@/hooks/useChatViewport';
 import { ConversationDraftProvider } from '@/hooks/useConversationDraft';
+import { fetchCombos } from '@/lib/explore/ruminationV4Api';
 import {
   loadSession,
   unlockNextPhase,
@@ -35,9 +36,12 @@ export default function RuminationV4Entry() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuthStore();
+  const authHydrated = useAuthStore((s) => s._hasHydrated);
   const [session, setSession] = useState<ExploreSession | null>(null);
   const [activationCode, setActivationCode] = useState<string | null>(null);
   const [chatError, setChatError] = useState<string | null>(null);
+  /** 老 v3 报告门卫未完成前不渲染 v4，避免先闪现「新建组合」再跳报告。 */
+  const [legacyCheckDone, setLegacyCheckDone] = useState(false);
   /** 防止「完成并继续」连点 / 多处导航竞态：导航中置 true，跳转完成后置 false */
   const isNavigatingRef = useRef(false);
 
@@ -59,6 +63,7 @@ export default function RuminationV4Entry() {
       router.replace('/explore/activate');
       return;
     }
+    setLegacyCheckDone(false);
     setActivationCode(code);
     const s = loadSession(code);
     setSession(s);
@@ -67,6 +72,32 @@ export default function RuminationV4Entry() {
       router.replace('/explore/survey');
     }
   }, [router, searchParams]);
+
+  // 仅后端严格确认的 v3 老报告收口到报告页；任何 v4 数据/请求失败都保守放行 v4。
+  useEffect(() => {
+    if (!activationCode || !authHydrated) return;
+    if (user?.is_super_admin) {
+      setLegacyCheckDone(true);
+      return;
+    }
+    let cancelled = false;
+    setLegacyCheckDone(false);
+    fetchCombos(activationCode)
+      .then((resp) => {
+        if (cancelled) return;
+        if (resp.data.legacy_report_ready) {
+          router.replace(`/explore/report?code=${encodeURIComponent(activationCode)}`);
+          return;
+        }
+        setLegacyCheckDone(true);
+      })
+      .catch(() => {
+        if (!cancelled) setLegacyCheckDone(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activationCode, authHydrated, router, user?.is_super_admin]);
 
   /** v4 顶栏「完成并继续」：解锁下一阶段并进过渡页（不依赖 v3 线程 completed 门控） */
   const handleV4CompleteAndContinue = useCallback(() => {
@@ -121,7 +152,7 @@ export default function RuminationV4Entry() {
           {chatError}
         </div>
       )}
-      {activationCode ? (
+      {activationCode && legacyCheckDone ? (
         <ConversationDraftProvider key={activationCode}>
         <RuminationV4Page
           activationCode={activationCode}

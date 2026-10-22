@@ -569,6 +569,8 @@ export interface RefundItem {
     item_ref: string | null;
     amount_paid_alloc: number;
   }> | null;
+  /** 审批时是否作废已选激活码（null=旧单未记录；approve 时由 admin 勾选提交） */
+  revoke_codes?: boolean | null;
   created_at: string;
   updated_at?: string | null;
   /** admin 列表附带 */
@@ -630,10 +632,8 @@ export async function adminListRefunds(params?: {
   return (res.data ?? { items: [], total: 0, page: 1, page_size: 20 }) as RefundListResult;
 }
 
-/** admin 退款单详情（含订单信息 + 实时行状态） */
-export async function adminGetRefund(
-  id: string
-): Promise<RefundItem & {
+/** admin 退款单详情（退款单 + 订单信息 + 实时行状态） */
+export interface AdminRefundDetail extends RefundItem {
   order: {
     id: string;
     order_no: string;
@@ -644,12 +644,25 @@ export async function adminGetRefund(
     coupon_id: string | null;
   };
   order_lines: Array<RefundLineItem & { db_status: string }>;
-}> {
-  const res = await apiClient.get(`/admin/payment/refunds/${encodeURIComponent(id)}`);
-  return res.data as ReturnType<typeof adminGetRefund>;
 }
 
-/** admin 代录退款申请（线下协商场景） */
+/** admin 退款单详情（含订单信息 + 实时行状态） */
+export async function adminGetRefund(id: string): Promise<AdminRefundDetail> {
+  const res = await apiClient.get(`/admin/payment/refunds/${encodeURIComponent(id)}`);
+  return res.data as AdminRefundDetail;
+}
+
+/** admin 订单退款能力视图（行级分摊 + 可退性；orderReference 支持订单 ID 或订单号） */
+export async function adminFetchRefundOptions(
+  orderReference: string
+): Promise<RefundOptions> {
+  const res = await apiClient.get(
+    `/admin/payment/orders/${encodeURIComponent(orderReference)}/refund-options`
+  );
+  return res.data as RefundOptions;
+}
+
+/** admin 代录退款申请（线下协商场景；order_id 支持订单 ID 或订单号） */
 export async function adminCreateRefund(
   payload: {
     order_id: string;
@@ -664,10 +677,11 @@ export async function adminCreateRefund(
   return res.data as { refund: RefundItem };
 }
 
-/** 批准并执行退款（approved_amount 不传 = 申请额；与申请额不一致必填 note） */
+/** 批准并执行退款（approved_amount 不传 = 申请额；与申请额不一致必填 note；
+ * revoke_codes 控制是否作废已选激活码，默认 true，取消勾选则行锁定但码保留） */
 export async function adminApproveRefund(
   id: string,
-  payload: { approved_amount?: number; note?: string }
+  payload: { approved_amount?: number; note?: string; revoke_codes?: boolean }
 ): Promise<{ refund: RefundItem }> {
   const res = await apiClient.post(
     `/admin/payment/refunds/${encodeURIComponent(id)}/approve`,

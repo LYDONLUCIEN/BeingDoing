@@ -56,7 +56,9 @@ export default function RuminationV4Page({
   const introCheckedRef = useRef(false);
   const router = useRouter();
   const mobile = useMobileLayout();
-  const [mobilePane, setMobilePane] = useState<'chat' | 'selection'>('selection');
+  const [mobilePane, setMobilePane] = useState<'chat' | 'selection'>('chat');
+  /** 仅用户主动点击「新建组合」后展开选点面板；空 active 本身不代表已发起新建。 */
+  const [comboDraftRequested, setComboDraftRequested] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
   const [narrowSelectorOpen, setNarrowSelectorOpen] = useState(false);
@@ -93,9 +95,12 @@ export default function RuminationV4Page({
   const isGuided = ruminationLayout === 'guided' && !mobile;
   const activeComboId = state?.active_combo_id ?? null;
   useEffect(() => {
-    setMobilePane(activeComboId ? 'chat' : 'selection');
+    if (activeComboId) {
+      setComboDraftRequested(false);
+      setMobilePane('chat');
+      setNarrowSelectorOpen(false);
+    }
     setSidebarOpen(false);
-    if (activeComboId) setNarrowSelectorOpen(false);
   }, [activeComboId]);
   /**
    * guided 选择器收拢策略：
@@ -112,6 +117,18 @@ export default function RuminationV4Page({
     if (!isGuided || prev === (activeComboId ?? null)) return;
     setSelectorCollapsed(prev ? false : !!activeComboId);
   }, [isGuided, activeComboId]);
+  /** 两个新建入口共用同一展示动作，按当前设备打开对应选择面板。 */
+  const revealComboDraft = () => {
+    setComboDraftRequested(true);
+    if (mobile) setMobilePane('selection');
+    else if (compact) setNarrowSelectorOpen(true);
+    else if (isGuided) setSelectorCollapsed(false);
+  };
+  const startComboDraft = () => {
+    enterComboDraft();
+    revealComboDraft();
+  };
+
   const gotoReport = () => {
     router.push(`/explore/report?code=${encodeURIComponent(activationCode)}`);
   };
@@ -286,9 +303,9 @@ export default function RuminationV4Page({
         'min-h-0 flex-1'
       }`}
     >
-      <V4ChatPanel comboId={state.active_combo_id} hideDraftHint={isGuided} />
-      {/* guided 锁屏：未确认组合时对话区锁定（对齐 HTML .guided-chat-lock） */}
-      {isGuided && !state.active_combo_id && !finalSubmitted && (
+      <V4ChatPanel comboId={state.active_combo_id} hideDraftHint={isGuided || mobile} />
+      {/* 未确认组合时对话区锁定；手机首开也先看同一份新建引导，避免双遮罩。 */}
+      {(isGuided || mobile) && !state.active_combo_id && !finalSubmitted && (
         <div
           className="absolute inset-0 z-20 flex items-center justify-center rounded-[20px] border border-white/60 bg-white/90 p-6"
           role="status"
@@ -299,11 +316,11 @@ export default function RuminationV4Page({
             </span>
             <h3 className="m-0 text-[16px] font-bold text-[#282331]">先创建一个新的组合</h3>
             <p className="m-0 text-[12.5px] leading-relaxed text-[#657198]">
-              从左侧新建组合，再在右侧选择一项热爱与至少一项优势。确认组合后，对话会自动解锁。
+              点击「新建组合」，再选择一项热爱与至少一项优势。点击「开始探索」后，对话会自动解锁。
             </p>
             <button
               type="button"
-              onClick={() => { enterComboDraft(); if (compact) setNarrowSelectorOpen(true); }}
+              onClick={startComboDraft}
               className="mt-1 rounded-full bg-[var(--journey-ink,#17212d)] px-5 py-2 text-[13px] font-semibold text-white transition-transform hover:-translate-y-0.5"
             >
               ＋ 新建组合
@@ -339,10 +356,7 @@ export default function RuminationV4Page({
       {mobile ? (
         <>
           <ResponsiveSidebar label="组合列表" open={sidebarOpen} onOpen={() => setSidebarOpen(true)} onClose={closeSidebar}>
-            <V4ComboSidebar onNavigate={() => {
-              closeSidebar();
-              if (!useRuminationV4Store.getState().state?.active_combo_id) setMobilePane('selection');
-            }} onExpandSelector={() => { closeSidebar(); setMobilePane('selection'); }} />
+            <V4ComboSidebar onNewCombo={revealComboDraft} onNavigate={closeSidebar} onExpandSelector={() => { closeSidebar(); setMobilePane('selection'); }} />
           </ResponsiveSidebar>
           {headerNode}
           {lockBannerNode}
@@ -361,12 +375,14 @@ export default function RuminationV4Page({
           {/* guided（默认）：组合栏直接挂根级、全高左栏（同前四阶段会话侧栏 / HTML .sidebar），
               不再包进 outer-shell；header/对话/选择器落在内容列，流光背景直接可见 */}
           {compact ? <WorkspaceDrawer label="组合列表" open={sidebarOpen} onClose={closeSidebar}>
-            <V4ComboSidebar onNavigate={() => { closeSidebar(); if (!useRuminationV4Store.getState().state?.active_combo_id) setNarrowSelectorOpen(true); }} onExpandSelector={() => { closeSidebar(); setNarrowSelectorOpen(true); }} />
-          </WorkspaceDrawer> : <V4ComboSidebar onExpandSelector={() => setSelectorCollapsed(false)} />}
+            <V4ComboSidebar onNewCombo={revealComboDraft} onNavigate={closeSidebar} onExpandSelector={() => { closeSidebar(); setNarrowSelectorOpen(true); }} />
+          </WorkspaceDrawer> : <V4ComboSidebar onNewCombo={revealComboDraft} onExpandSelector={() => setSelectorCollapsed(false)} />}
           <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col py-2 pr-3 sm:pr-4">
             {compact && <div className="flex shrink-0 gap-2 px-3 py-1">
               <button type="button" className="min-h-11 rounded-lg border border-bd-border px-3 text-sm" onClick={() => setSidebarOpen(true)}>打开组合列表</button>
-              <button type="button" className="min-h-11 rounded-lg border border-bd-border px-3 text-sm" onClick={() => setNarrowSelectorOpen(true)}>打开组合选择器</button>
+              {(activeComboId || comboDraftRequested) && (
+                <button type="button" className="min-h-11 rounded-lg border border-bd-border px-3 text-sm" onClick={() => setNarrowSelectorOpen(true)}>打开组合选择器</button>
+              )}
             </div>}
             {headerNode}
             {lockBannerNode}
@@ -376,7 +392,11 @@ export default function RuminationV4Page({
               {chatNode}
               {/* 0923 拍板：收拢条放在选择器左侧——展开时跟随选择器往左移动，点击收起滑回右缘 */}
               {collapseNode}
-              {compact ? <WorkspaceDrawer label="组合选择器" open={narrowSelectorOpen} onClose={closeSelector}>{selectorNode}</WorkspaceDrawer> : selectorNode}
+              {compact ? (
+                <WorkspaceDrawer label="组合选择器" open={narrowSelectorOpen} onClose={closeSelector}>{selectorNode}</WorkspaceDrawer>
+              ) : (
+                activeComboId || comboDraftRequested ? selectorNode : null
+              )}
             </div>
           </div>
         </>

@@ -16,6 +16,8 @@ Admin 支付管理 API（P1：折扣券管理；P2a：订单管理；2026-10-05 
 - GET    /admin/payment/orders           订单分页列表（status/channel 筛选，含 user_email + code_refundable）
 - GET    /admin/payment/orders/export    订单明细导出 xlsx（同列表筛选，无分页；写 admin_export_audit.jsonl）
 - GET    /admin/payment/orders/{id}      订单详情（完整字段 + user_email + code_refundable + delivered_codes 去向）
+- GET    /admin/payment/orders/{ref}/refund-options  Admin 退款能力视图（接受订单 ID 或商户订单号；
+                                  未交付订单仅全退，季度套餐 admin 可部分退）
 - GET    /admin/payment/revenue-summary  营收汇总（净实收 = Σ实付 − Σ已退款；今日/本月按 paid_at，+08:00 日界）
 - GET    /admin/payment/refunds          退款单分页列表（status/order_no 筛选，含审批留痕）
 - GET    /admin/payment/refunds/{id}     退款单详情（行快照 + 实时行状态 + 订单 + 用户邮箱）
@@ -106,7 +108,7 @@ class CouponConfigRequest(BaseModel):
 class AdminRefundCreateRequest(BaseModel):
     """代录退款申请请求（线下协商场景）"""
 
-    order_id: str = Field(..., min_length=1, description="订单 ID")
+    order_id: str = Field(..., min_length=1, description="订单 ID 或商户订单号")
     refund_type: str = Field(..., description="退款类型（full / partial）")
     amount: Optional[int] = Field(
         None, ge=0, description="代录金额（分，可选；不传按规则计算上限）"
@@ -125,6 +127,9 @@ class AdminRefundApproveRequest(BaseModel):
         None, ge=0, description="批准金额（分，不传=申请额；只能 ≤ 实时可退上限）"
     )
     note: Optional[str] = Field(None, description="审批意见 / 金额调整理由（与申请额不一致时必填）")
+    revoke_codes: bool = Field(
+        True, description="退款成功是否作废交付码（默认 true 作废；false=保留，重试沿用）"
+    )
 
 
 class AdminRefundRejectRequest(BaseModel):
@@ -386,6 +391,24 @@ async def get_payment_order(
     return _ok(data)
 
 
+@router.get("/payment/orders/{order_reference}/refund-options")
+async def get_admin_refund_options(
+    order_reference: str,
+    current_user: Optional[dict] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Admin 退款能力视图（接受内部订单 ID 或商户订单号）
+
+    granted/partially_refunded 返回行级分摊明细；paid/pending 未交付订单
+    无明细行仅允许全退；季度套餐 admin 可协商部分退。
+    """
+    _require_super_admin(current_user)
+    try:
+        data = await RefundService.admin_get_refund_options(order_reference)
+    except OrderNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return _ok(data)
+
+
 @router.post("/payment/orders/{order_id}/refund")
 async def refund_payment_order(
     order_id: str,
@@ -475,6 +498,7 @@ async def approve_payment_refund(
             refund_id=refund_id,
             approved_amount=payload.approved_amount,
             note=payload.note,
+            revoke_codes=payload.revoke_codes,
         )
     except (ValueError, RefundNotFoundError, RuntimeError, PaymentChannelError) as e:
         _raise_refund_service_error(e)

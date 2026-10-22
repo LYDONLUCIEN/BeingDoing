@@ -1,0 +1,26 @@
+{
+  "id": "history-refund-quarterly-partial",
+  "title": "季度套餐管理员协商部分退款",
+  "module": "退款",
+  "kind": "api",
+  "core": false,
+  "purpose": "季度套餐管理员协商部分退款",
+  "inputs": [
+    "admin 选择季度套餐唯一未退款明细行并填写协商金额"
+  ],
+  "assertions": [
+    "允许 admin 部分退款且金额不超过该行分摊实付",
+    "批准后该行标记 refunded，不能再次退款",
+    "用户侧季度套餐部分退款规则不放宽"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md",
+      "rule": "季度套餐允许 admin 协商部分退款；必须选择未退款明细行，退款行锁定后防止重复退款。"
+    }
+  ],
+  "targets": [
+    "test/backend/test_refund_service.py::test_admin_quarterly_partial_refund"
+  ],
+  "timeout": 300
+}

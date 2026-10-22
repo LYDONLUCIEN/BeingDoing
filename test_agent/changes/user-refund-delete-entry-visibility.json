@@ -1,0 +1,16 @@
+{
+  "id": "user-refund-delete-entry-visibility",
+  "summary": "移除用户订单页申请退款入口，暂时隐藏设置页注销入口并保留后端能力",
+  "paths": [
+    "src/frontend/components/dashboard/OrdersSection.tsx",
+    "src/frontend/app/(main)/dashboard/settings/page.tsx",
+    "docs/PRODUCT_RULES.md",
+    "test_agent/l2/center_account_case.mjs",
+    "test_agent/catalog/account-mobile-ui.json"
+  ],
+  "cases": [
+    "account-mobile-ui",
+    "refunds",
+    "account-deletion"
+  ]
+}

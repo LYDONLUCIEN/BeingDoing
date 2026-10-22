@@ -5,21 +5,26 @@
   "kind": "api",
   "core": true,
   "inputs": [
-    "申请、审批和执行退款"
+    "用户申请、admin 代录、审批和执行退款；包含未交付已支付订单、季度协商部分退款及激活码保留选择"
   ],
   "assertions": [
-    "按当前订单行规则拒绝非法退款，防止重复执行"
+    "按当前订单行规则拒绝非法退款，防止重复执行；未交付订单必须经渠道核实且只能全退；退款行锁定后不可重复退款"
   ],
   "targets": [
     "test/backend/test_refund_service.py",
-    "test/backend/test_refund_api.py"
+    "test/backend/test_refund_api.py",
+    "test/backend/test_refund_migration.py"
   ],
   "timeout": 300,
-  "purpose": "保护按明细行退款、审批与重复执行的边界。",
+  "purpose": "保护按明细行退款、admin 主动退款、审批与重复执行的边界。",
   "sources": [
     {
       "path": "docs/PRODUCT_RULES.md",
-      "rule": "退款当前定稿，0元单跳过渠道但保留审核核销。"
+      "rule": "退款当前定稿；2026-10-18 起 admin 可主动代录，未交付已支付订单仅全退，季度可协商部分退，激活码默认作废但审批可保留。"
+    },
+    {
+      "path": "docs/DATA_DICTIONARY.md",
+      "rule": "PaymentRefund.revoke_codes 记录审批时的激活码作废选择，NULL/true 作废，false 保留但退款行仍锁定。"
     }
   ]
 }

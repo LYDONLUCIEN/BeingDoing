@@ -1,0 +1,16 @@
+{
+  "id": "rumination-first-draft-guidance",
+  "summary": "统一第五轮首开新建引导，两个新建入口进入草稿并按设备打开选择面板",
+  "paths": [
+    "src/frontend/components/explore/ruminationV4/RuminationV4Page.tsx",
+    "src/frontend/components/explore/ruminationV4/V4ComboSidebar.tsx",
+    "docs/PRODUCT_RULES.md",
+    "test_agent/l2/center_rumination_case.mjs",
+    "test_agent/l2/center_desktop_case.mjs",
+    "test_agent/catalog/rumination-ui.json"
+  ],
+  "cases": [
+    "rumination-ui",
+    "desktop-workspace"
+  ]
+}

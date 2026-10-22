@@ -209,3 +209,92 @@ def test_admin_list_refunds_ok():
             res = client.get("/api/v1/admin/payment/refunds", params={"status": "pending_review"})
     assert res.status_code == 200
     assert res.json()["data"]["total"] == 1
+
+
+# ─── admin refund-options / revoke_codes 透传（2026-10-18）───────
+
+
+def test_admin_refund_options_require_super_admin():
+    """非 super_admin 访问 admin refund-options → 403"""
+    client = _client(_USER)
+    assert client.get("/api/v1/admin/payment/orders/o1/refund-options").status_code == 403
+
+
+def test_admin_refund_options_ok_and_404():
+    """admin refund-options：成功返回视图（接受订单 ID 或商户订单号）；不存在 → 404"""
+    client = _client(_ADMIN)
+    with _as_admin(client):
+        with patch.object(
+            RefundService,
+            "admin_get_refund_options",
+            new_callable=AsyncMock,
+            return_value={"full_allowed": True, "partial_allowed": False, "lines": []},
+        ) as m:
+            res = client.get("/api/v1/admin/payment/orders/X20261018ABCDEF/refund-options")
+        assert res.status_code == 200
+        assert res.json()["data"]["full_allowed"] is True
+        m.assert_awaited_once_with("X20261018ABCDEF")
+
+        with patch.object(
+            RefundService,
+            "admin_get_refund_options",
+            new_callable=AsyncMock,
+            side_effect=OrderNotFoundError("订单不存在"),
+        ):
+            res = client.get("/api/v1/admin/payment/orders/nope/refund-options")
+        assert res.status_code == 404
+
+
+def test_admin_approve_passes_revoke_codes():
+    """approve 透传 revoke_codes：显式 false / 缺省默认 true"""
+    client = _client(_ADMIN)
+    with _as_admin(client):
+        with patch.object(
+            RefundService,
+            "approve_refund",
+            new_callable=AsyncMock,
+            return_value=AsyncMock(refund_no="R1", status="succeeded"),
+        ) as m, patch(
+            "app.api.v1.admin_payment.refund_to_dict", lambda r: {"refund_no": "R1"}
+        ):
+            res = client.post(
+                "/api/v1/admin/payment/refunds/r1/approve", json={"revoke_codes": False}
+            )
+        assert res.status_code == 200
+        assert m.call_args.kwargs["revoke_codes"] is False
+
+        with patch.object(
+            RefundService,
+            "approve_refund",
+            new_callable=AsyncMock,
+            return_value=AsyncMock(refund_no="R1", status="succeeded"),
+        ) as m2, patch(
+            "app.api.v1.admin_payment.refund_to_dict", lambda r: {"refund_no": "R1"}
+        ):
+            res = client.post("/api/v1/admin/payment/refunds/r1/approve", json={})
+        assert res.status_code == 200
+        assert m2.call_args.kwargs["revoke_codes"] is True
+
+
+def test_admin_create_accepts_order_no():
+    """代录接受商户订单号（order_id 字段透传订单号，由服务层解析）"""
+    client = _client(_ADMIN)
+    with _as_admin(client):
+        with patch.object(
+            RefundService,
+            "admin_create_refund_request",
+            new_callable=AsyncMock,
+            return_value=AsyncMock(refund_no="R1", status="pending_review", originated="admin"),
+        ) as m, patch(
+            "app.api.v1.admin_payment.refund_to_dict", lambda r: {"refund_no": "R1"}
+        ):
+            res = client.post(
+                "/api/v1/admin/payment/refunds",
+                json={
+                    "order_id": "X20261018120000ABCDEF",
+                    "refund_type": "full",
+                    "reason": "线下协商",
+                },
+            )
+    assert res.status_code == 200
+    assert m.call_args.kwargs["order_id"] == "X20261018120000ABCDEF"

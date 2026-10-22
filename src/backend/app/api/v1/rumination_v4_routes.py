@@ -59,6 +59,7 @@ from app.services.rumination_v4_service import (
     get_live_analysis_task,
     invalidate_balance_analysis,
     is_analyzing,
+    is_legacy_v3_report_ready,
     list_combos,
     load_v4_state,
     mark_intro_shown,
@@ -326,7 +327,18 @@ async def get_state(activation_code: str, current_user: dict = Depends(get_curre
         except Exception as e:
             logger.warning("v4 matrix_snapshot fill failed report=%s: %s", rid, e)
 
-    return {"code": 200, "message": "success", "data": {"state": state, "combos": list_combos(state)}}
+    legacy_report_ready = is_legacy_v3_report_ready(
+        reports_root, rid, record=report, state=state
+    )
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "state": state,
+            "combos": list_combos(state),
+            "legacy_report_ready": legacy_report_ready,
+        },
+    }
 
 
 # ── 端点 2:GET /combos ─────────────────────────────────────────────────
@@ -335,7 +347,16 @@ async def get_combos(activation_code: str, current_user: dict = Depends(get_curr
     """列出所有 combo_session 元信息(tag 条用)。"""
     reports_root, rid = _resolve_v4_ctx(activation_code, current_user)
     state = _load_state_swept(reports_root, rid)
-    return {"code": 200, "message": "success", "data": {"combos": list_combos(state), "active_combo_id": state.get("active_combo_id")}}
+    legacy_report_ready = is_legacy_v3_report_ready(reports_root, rid, state=state)
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "combos": list_combos(state),
+            "active_combo_id": state.get("active_combo_id"),
+            "legacy_report_ready": legacy_report_ready,
+        },
+    }
 
 
 # ── 端点 3:GET /combos/{combo_id} ──────────────────────────────────────

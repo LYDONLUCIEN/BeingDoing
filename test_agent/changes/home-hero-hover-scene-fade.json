@@ -1,0 +1,13 @@
+{
+  "id": "home-hero-hover-scene-fade",
+  "summary": "首页阶段卡取消默认及自动高亮，区分临时悬停与持久选择；顶部场景图下边缘增加渐隐和渐进模糊",
+  "paths": [
+    "docs/PRODUCT_RULES.md",
+    "src/frontend/app/(main)/page.tsx",
+    "src/frontend/styles/components/openlife-reference-home.css",
+    "test_agent/l2/center_home_case.mjs",
+    "test_agent/l2/center_runner.mjs",
+    "test_agent/catalog/home-mobile.json"
+  ],
+  "cases": ["home-mobile"]
+}

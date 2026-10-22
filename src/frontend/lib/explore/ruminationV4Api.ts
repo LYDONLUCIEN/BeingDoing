@@ -93,14 +93,24 @@ export interface RuminationV4State {
 const PREFIX = '/simple-chat/rumination-v4';
 
 export async function fetchV4State(activationCode: string) {
-  return apiClient.get<{ state: RuminationV4State; combos: ComboMeta[] }>(
+  return apiClient.get<{
+    state: RuminationV4State;
+    combos: ComboMeta[];
+    /** 仅严格识别出的 v3 老报告为 true；新 v4 数据恒为 false。 */
+    legacy_report_ready?: boolean;
+  }>(
     `${PREFIX}/state`,
     { params: { activation_code: activationCode } }
   );
 }
 
 export async function fetchCombos(activationCode: string) {
-  return apiClient.get<{ combos: ComboMeta[]; active_combo_id: string | null }>(
+  return apiClient.get<{
+    combos: ComboMeta[];
+    active_combo_id: string | null;
+    /** 仅严格识别出的 v3 老报告为 true；新 v4 数据恒为 false。 */
+    legacy_report_ready?: boolean;
+  }>(
     `${PREFIX}/combos`,
     { params: { activation_code: activationCode } }
   );

@@ -149,6 +149,113 @@ def test_legacy_export_reads_existing_data_without_creating_matrix_or_writing(tm
     assert not (registry.reports_root / "missing").exists()
 
 
+def _legacy_report_record(selected=True, locked=True, generated=True):
+    return {
+        "report_markdown_generated_at": "2026-07-17T00:58:08+00:00" if generated else None,
+        "steps": {
+            **{
+                phase: {"selected_session_id": f"{phase}-session", "locked": True}
+                for phase in ("values", "strengths", "interests", "purpose")
+            },
+            "rumination": {
+                "selected_session_id": "legacy-rumination-session" if selected else None,
+                "locked": locked,
+            },
+        },
+    }
+
+
+def _write_legacy_report_files(report_dir):
+    report_dir.mkdir(parents=True)
+    (report_dir / "rumination_progress.json").write_text(
+        json.dumps({"schema_version": 3, "main_section": "final_choice"})
+    )
+    (report_dir / "report_markdown.md").write_text("# 旧版报告")
+
+
+def test_legacy_v3_report_redirect_requires_positive_v3_evidence(tmp_path):
+    from app.services.rumination_v4_service import (
+        default_state,
+        is_legacy_v3_report_ready,
+    )
+
+    report_dir = tmp_path / "legacy"
+    _write_legacy_report_files(report_dir)
+    record = _legacy_report_record()
+    assert is_legacy_v3_report_ready(tmp_path, "legacy", record, default_state())
+
+    visited_shell = default_state()
+    visited_shell["intro_shown"] = True
+    visited_shell["matrix_snapshot"] = {"passions": ["创作"], "strengths": ["倾听"]}
+    assert is_legacy_v3_report_ready(tmp_path, "legacy", record, visited_shell)
+
+    mock_record = _legacy_report_record()
+    mock_record["steps"]["rumination"]["selected_session_id"] = "admin_mock"
+    assert not is_legacy_v3_report_ready(tmp_path, "legacy", mock_record, default_state())
+
+    assert not is_legacy_v3_report_ready(
+        tmp_path, "legacy", _legacy_report_record(locked=False), default_state()
+    )
+    assert not is_legacy_v3_report_ready(
+        tmp_path, "legacy", _legacy_report_record(selected=False), default_state()
+    )
+    assert not is_legacy_v3_report_ready(
+        tmp_path, "legacy", _legacy_report_record(generated=False), default_state()
+    )
+
+    without_v3 = tmp_path / "without-v3"
+    without_v3.mkdir()
+    (without_v3 / "report_markdown.md").write_text("# 旧版报告")
+    assert not is_legacy_v3_report_ready(tmp_path, "without-v3", record, default_state())
+
+    without_markdown = tmp_path / "without-markdown"
+    without_markdown.mkdir()
+    (without_markdown / "rumination_progress.json").write_text(
+        json.dumps({"schema_version": 3})
+    )
+    assert not is_legacy_v3_report_ready(tmp_path, "without-markdown", record, default_state())
+
+    wrong_schema = tmp_path / "wrong-schema"
+    _write_legacy_report_files(wrong_schema)
+    (wrong_schema / "rumination_progress.json").write_text(json.dumps({"schema_version": 4}))
+    assert not is_legacy_v3_report_ready(tmp_path, "wrong-schema", record, default_state())
+
+
+def test_legacy_v3_report_redirect_never_matches_new_v4_data(tmp_path):
+    from app.services.rumination_v4_service import (
+        default_state,
+        is_legacy_v3_report_ready,
+    )
+
+    report_dir = tmp_path / "legacy"
+    _write_legacy_report_files(report_dir)
+    record = _legacy_report_record()
+
+    with_combo = default_state()
+    with_combo["combo_sessions"] = [{"combo_id": "combo_1"}]
+    assert not is_legacy_v3_report_ready(tmp_path, "legacy", record, with_combo)
+
+    submitted = default_state()
+    submitted["final_selection"] = {
+        "selected_combo_ids": ["combo_1"],
+        "submitted": True,
+        "submitted_at": "2026-10-19T00:00:00+00:00",
+    }
+    assert not is_legacy_v3_report_ready(tmp_path, "legacy", record, submitted)
+
+    selected_draft = default_state()
+    selected_draft["final_selection"]["selected_combo_ids"] = ["combo_1"]
+    assert not is_legacy_v3_report_ready(tmp_path, "legacy", record, selected_draft)
+
+    active = default_state()
+    active["active_combo_id"] = "combo_1"
+    assert not is_legacy_v3_report_ready(tmp_path, "legacy", record, active)
+
+    moved = default_state()
+    moved["main_section"] = "final_selection"
+    assert not is_legacy_v3_report_ready(tmp_path, "legacy", record, moved)
+
+
 @pytest.mark.parametrize("content", ["[]", "null", "invalid"])
 def test_legacy_export_ignores_malformed_data_without_rewriting(tmp_path, content):
     from app.utils.legacy_rumination_export import load_raw_rumination_progress

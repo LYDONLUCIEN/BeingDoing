@@ -1,0 +1,29 @@
+{
+  "id": "admin-refund-ui",
+  "title": "管理员主动退款界面",
+  "module": "支付",
+  "kind": "ui",
+  "core": true,
+  "inputs": [
+    "管理员在订单管理打开 pending/paid/granted/partially_refunded 订单退款入口",
+    "管理员按订单号读取退款项、选择部分退款行并代录",
+    "管理员审批时保留默认作废或取消作废激活码"
+  ],
+  "assertions": [
+    "已使用激活码不再在前端禁用退款代录",
+    "部分退款必须选择明细行并提交 line_ids 与协商金额",
+    "审批默认提交 revoke_codes=true，取消勾选提交 revoke_codes=false",
+    "非法金额和缺少调整理由被前端拦截"
+  ],
+  "targets": [
+    "admin-refund"
+  ],
+  "timeout": 600,
+  "purpose": "保证用户通过邮件或反馈提出退款后，管理员能在后台完成代录、部分退款和激活码处置选择。",
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md",
+      "rule": "admin 可主动代录退款；季度可协商部分退；激活码默认作废但审批可保留。"
+    }
+  ]
+}

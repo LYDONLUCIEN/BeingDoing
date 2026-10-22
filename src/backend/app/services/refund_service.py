@@ -23,6 +23,18 @@
 
 金额一律整数分。业务约束违反抛 ValueError（路由转 400）；
 退款单/订单不存在抛 RefundNotFoundError / OrderNotFoundError（路由转 404）。
+
+2026-10-18 admin 退款改造：
+- 未交付订单（pending/paid）支持 admin 主动全额退款：pending 创建时与审批时
+  各调用一次渠道 query_order 确认已支付且金额一致（保存 paid_at/
+  channel_transaction_id）；批准前把订单推进 refunding 阻止交付，成功后 refunded；
+  未交付订单无明细行、只允许全退；用户自提 pending/paid 一律拒绝。
+  未交付退款成功后券仍 locked → release_coupon；已交付整退仍走
+  return_coupon_on_refund。
+- 季度套餐允许 admin 协商部分退（必须选择未退款行，金额不超该行分摊实付）；
+  用户侧 partial 规则不放宽。
+- 退款批准后激活码默认作废，admin 可选择保留（revoke_codes=False，落库，
+  失败重试沿用审批时的选择；NULL/True 均按作废，历史兼容）。
 """
 
 from __future__ import annotations
@@ -32,7 +44,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import settings
@@ -89,6 +101,12 @@ NOTIFY_TITLE_SUCCEEDED = "退款已到账"
 NOTIFY_TITLE_FAILED_ADMIN = "退款执行失败"
 
 _ERR_RENEWAL = "延期订单交付后即已使用，不可退款（请走线下协商）"
+
+# 渠道已支付交易状态（与 payment_service._ALIPAY_PAID_STATUSES 同口径）
+_CHANNEL_PAID_STATUSES = {"TRADE_SUCCESS", "TRADE_FINISHED"}
+
+# 未交付订单状态（admin 全额退款专用通道）
+_UNDELIVERED_STATUSES = ("pending", "paid")
 
 
 class RefundNotFoundError(Exception):
@@ -204,6 +222,42 @@ async def _get_order(db: AsyncSession, order_id: str) -> PaymentOrder:
     return order
 
 
+async def _get_order_by_reference(db: AsyncSession, reference: str) -> PaymentOrder:
+    """按内部订单 ID 或商户订单号定位订单（admin 入口接受两种标识）"""
+    order = (
+        await db.execute(
+            select(PaymentOrder).where(
+                (PaymentOrder.id == reference) | (PaymentOrder.order_no == reference)
+            )
+        )
+    ).scalar_one_or_none()
+    if not order:
+        raise OrderNotFoundError("订单不存在")
+    return order
+
+
+async def _confirm_channel_paid(order: PaymentOrder) -> Any:
+    """渠道查单确认订单已支付且金额一致（pending 退款前置确认）
+
+    Returns:
+        NotifyResult（渠道已支付确认结果）
+
+    Raises:
+        PaymentChannelError: 渠道查询失败（路由转 502）
+        ValueError: 渠道未支付 / 金额不符
+    """
+    channel = get_channel(order.channel)
+    result = await channel.query_order(order.order_no)
+    if result is None or result.trade_status not in _CHANNEL_PAID_STATUSES:
+        raise ValueError("渠道未查询到该订单的已支付记录，无法退款（请先核查是否真的已收款）")
+    if result.total_amount_fen != order.amount_paid:
+        raise ValueError(
+            f"渠道支付金额与订单实付不符（渠道 ¥{_fen_to_yuan(result.total_amount_fen)}，"
+            f"订单 ¥{_fen_to_yuan(order.amount_paid)}），需人工核查"
+        )
+    return result
+
+
 async def _get_refund(
     db: AsyncSession, refund_id: str, for_update: bool = False
 ) -> PaymentRefund:
@@ -279,6 +333,97 @@ async def _assert_no_in_flight(db: AsyncSession, order_id: str) -> None:
         raise ValueError("该订单已有待处理的退款申请，请等待处理完成后再提交")
 
 
+async def _build_refund_options(
+    db: AsyncSession, order: PaymentOrder, admin: bool
+) -> Dict[str, Any]:
+    """退款能力视图组装（用户/admin 共用；admin 视角放开未交付全退与季度部分退）"""
+    lines = await _order_refundable_lines(db, order)
+    await db.commit()  # 惰性回填的明细行落库（ensure 只 add+flush）
+    remaining = _remaining_refundable(order)
+
+    in_flight = (
+        (
+            await db.execute(
+                select(PaymentRefund)
+                .where(
+                    PaymentRefund.order_id == order.id,
+                    PaymentRefund.status.in_(_IN_FLIGHT_STATUSES),
+                )
+                .order_by(PaymentRefund.created_at.desc())
+            )
+        )
+        .scalars()
+        .first()
+    )
+    history = (
+        (
+            await db.execute(
+                select(PaymentRefund)
+                .where(PaymentRefund.order_id == order.id)
+                .order_by(PaymentRefund.created_at.desc())
+                .limit(10)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    deliverable = order.status in ("granted", "partially_refunded")
+    undelivered = order.status in _UNDELIVERED_STATUSES
+    # 行已被使用（码已绑定/消耗、咨询已预约）不再拦截申请，
+    # 统一提交给 admin 审批判断；仅排除已退款行
+    has_refundable = any(s != "refunded" for _, s in lines)
+    full_allowed = (
+        deliverable
+        and order.product_type != _PRODUCT_RENEWAL
+        and has_refundable
+    ) or (
+        # 未交付订单：admin 主动全额退款（创建时渠道确认已支付）
+        admin
+        and undelivered
+        and remaining > 0
+    )
+    partial_allowed = (
+        deliverable
+        and has_refundable
+        and (
+            _supports_partial(order, len(lines))
+            # 季度套餐：仅 admin 可协商部分退（用户侧不放宽）
+            or (admin and order.product_type == _PRODUCT_QUARTERLY)
+        )
+    )
+
+    return {
+        "order": {
+            "id": order.id,
+            "order_no": order.order_no,
+            "product_type": order.product_type,
+            "amount_paid": order.amount_paid,
+            "amount_refunded": order.amount_refunded or 0,
+            "status": order.status,
+        },
+        "full_allowed": full_allowed,
+        "partial_allowed": partial_allowed,
+        # 套餐部分退按所选码分摊实付；咨询部分退走 admin 协商金额
+        "partial_by_lines": order.product_type
+        in (_PRODUCT_QUARTERLY, _PRODUCT_ANNUAL),
+        "remaining_refundable": remaining,
+        "lines": [
+            {
+                "id": line.id,
+                "line_no": line.line_no,
+                "item_type": line.item_type,
+                "item_ref": line.item_ref,
+                "amount_paid_alloc": line.amount_paid_alloc,
+                "effective_status": status,
+            }
+            for line, status in lines
+        ],
+        "pending_request": refund_to_dict(in_flight) if in_flight else None,
+        "history": [refund_to_dict(r) for r in history],
+    }
+
+
 # ─── 序列化 ───────────────────────────────────────────────────
 
 
@@ -310,6 +455,8 @@ def refund_to_dict(refund: PaymentRefund) -> Dict[str, Any]:
         "executed_at": _iso(refund.executed_at),
         "succeeded_at": _iso(refund.succeeded_at),
         "failed_reason": refund.failed_reason,
+        # NULL/True 均按作废（历史兼容）；输出生效值
+        "revoke_codes": refund.revoke_codes is not False,
         "line_snapshot": snapshot,
         "created_at": _iso(refund.created_at),
         "updated_at": _iso(refund.updated_at),
@@ -339,82 +486,23 @@ class RefundService:
             order = await _get_order(db, order_id)
             if order.user_id != user_id:
                 raise OrderNotFoundError("订单不存在")
+            return await _build_refund_options(db, order, admin=False)
 
-            lines = await _order_refundable_lines(db, order)
-            await db.commit()  # 惰性回填的明细行落库（ensure 只 add+flush）
-            remaining = _remaining_refundable(order)
+    @classmethod
+    async def admin_get_refund_options(cls, order_reference: str) -> Dict[str, Any]:
+        """Admin 退款能力视图（接受内部订单 ID 或商户订单号，无属主校验）
 
-            in_flight = (
-                (
-                    await db.execute(
-                        select(PaymentRefund)
-                        .where(
-                            PaymentRefund.order_id == order.id,
-                            PaymentRefund.status.in_(_IN_FLIGHT_STATUSES),
-                        )
-                        .order_by(PaymentRefund.created_at.desc())
-                    )
-                )
-                .scalars()
-                .first()
-            )
-            history = (
-                (
-                    await db.execute(
-                        select(PaymentRefund)
-                        .where(PaymentRefund.order_id == order.id)
-                        .order_by(PaymentRefund.created_at.desc())
-                        .limit(10)
-                    )
-                )
-                .scalars()
-                .all()
-            )
+        与用户侧同一视图，admin 视角差异：
+        - granted/partially_refunded：返回行级分摊明细
+        - paid/pending（未交付）：无明细行，仅允许全退（创建时渠道确认已支付）
+        - 季度套餐 admin 可协商部分退（partial_allowed=True；用户侧不放宽）
 
-            deliverable = order.status in ("granted", "partially_refunded")
-            # 行已被使用（码已绑定/消耗、咨询已预约）不再拦截申请，
-            # 统一提交给 admin 审批判断；仅排除已退款行
-            has_refundable = any(s != "refunded" for _, s in lines)
-            full_allowed = (
-                deliverable
-                and order.product_type != _PRODUCT_RENEWAL
-                and has_refundable
-            )
-            partial_allowed = (
-                deliverable
-                and _supports_partial(order, len(lines))
-                and has_refundable
-            )
-
-            return {
-                "order": {
-                    "id": order.id,
-                    "order_no": order.order_no,
-                    "product_type": order.product_type,
-                    "amount_paid": order.amount_paid,
-                    "amount_refunded": order.amount_refunded or 0,
-                    "status": order.status,
-                },
-                "full_allowed": full_allowed,
-                "partial_allowed": partial_allowed,
-                # 套餐部分退按所选码分摊实付；咨询部分退走 admin 协商金额
-                "partial_by_lines": order.product_type
-                in (_PRODUCT_QUARTERLY, _PRODUCT_ANNUAL),
-                "remaining_refundable": remaining,
-                "lines": [
-                    {
-                        "id": line.id,
-                        "line_no": line.line_no,
-                        "item_type": line.item_type,
-                        "item_ref": line.item_ref,
-                        "amount_paid_alloc": line.amount_paid_alloc,
-                        "effective_status": status,
-                    }
-                    for line, status in lines
-                ],
-                "pending_request": refund_to_dict(in_flight) if in_flight else None,
-                "history": [refund_to_dict(r) for r in history],
-            }
+        Raises:
+            OrderNotFoundError: 订单不存在
+        """
+        async with AsyncSessionLocal() as db:
+            order = await _get_order_by_reference(db, order_reference)
+            return await _build_refund_options(db, order, admin=True)
 
     @classmethod
     async def create_refund_request(
@@ -458,6 +546,8 @@ class RefundService:
     ) -> PaymentRefund:
         """Admin 代录退款申请（线下协商场景；代录人留痕，可手输协商金额）
 
+        order_id 接受内部订单 ID 或商户订单号。
+
         Raises:
             OrderNotFoundError / ValueError
         """
@@ -494,55 +584,111 @@ class RefundService:
             raise ValueError("退款类型仅支持 full / partial")
 
         async with AsyncSessionLocal() as db:
-            order = await _get_order(db, order_id)
+            order = await _get_order_by_reference(db, order_id)
             if require_owner is not None and order.user_id != require_owner:
                 raise OrderNotFoundError("订单不存在")
             applicant_id = order.user_id
 
-            if order.status not in ("granted", "partially_refunded"):
+            undelivered = order.status in _UNDELIVERED_STATUSES
+            if order.status not in ("granted", "partially_refunded") and not undelivered:
                 raise ValueError(f"订单当前状态不可申请退款（{order.status}）")
-            if order.product_type == _PRODUCT_RENEWAL:
+            if not undelivered and order.product_type == _PRODUCT_RENEWAL:
                 raise ValueError(_ERR_RENEWAL)
+            if undelivered:
+                # 未交付退款（渠道已支付但本地未交付的真实风险场景）：仅 admin 全额
+                if originated != "admin":
+                    raise ValueError("订单未交付，如需退款请联系客服处理")
+                if refund_type != "full":
+                    raise ValueError("未交付订单仅支持全额退款")
             await _assert_no_in_flight(db, order.id)
 
-            lines = await _order_refundable_lines(db, order)
-            if not lines:
-                raise ValueError("订单缺少可退明细，需人工核查")
-            # 申请不再以「行已被使用」（码已绑定/消耗、咨询已预约）拦截：
-            # 申请照单全收并通知 admin，由 admin 结合审批详情中的实时行状态
-            # 人工判断（2026-10-13 起）。仅排除已退款行。
-            refundable = {line.id: line for line, s in lines if s != "refunded"}
-            if not refundable:
-                raise ValueError("订单内可退项已全部退款，无可申请项")
-            cap = sum(l.amount_paid_alloc for l in refundable.values())
-            selected_lines: List[PaymentOrderLine] = []
+            if undelivered:
+                # 创建时渠道确认已支付且金额一致（审批时再次确认）。pending 确认后
+                # 原子推进为 paid：脱离超时/注销/用户取消的 pending 关单池，避免
+                # 退款在途期间钱已付但订单被关掉；若交付已并发提交则刷新后按已交付处理。
+                paid_info = await _confirm_channel_paid(order)
+                if order.status == "pending":
+                    claimed = await db.execute(
+                        update(PaymentOrder)
+                        .where(
+                            PaymentOrder.id == order.id,
+                            PaymentOrder.status == "pending",
+                        )
+                        .values(status="paid")
+                    )
+                    if claimed.rowcount != 1:
+                        await db.rollback()
+                        order = await _get_order(db, order.id)
+                        if order.status not in ("granted", "partially_refunded"):
+                            raise ValueError(f"订单当前状态不可申请退款（{order.status}）")
+                        undelivered = False
+                    else:
+                        order.status = "paid"
+                if paid_info.paid_at and not order.paid_at:
+                    order.paid_at = paid_info.paid_at
+                if paid_info.channel_transaction_id and not order.channel_transaction_id:
+                    order.channel_transaction_id = paid_info.channel_transaction_id
 
-            if refund_type == "full":
-                # 金额 = min(订单剩余可退, 未退款行分摊实付)——历史审批曾下调
-                # 金额时二者会偏离，取小者保证不超退
-                computed = min(_remaining_refundable(order), cap)
+            lines = await _order_refundable_lines(db, order)
+            selected_lines: List[PaymentOrderLine] = []
+            if undelivered:
+                # 未交付订单无明细行，上限 = 订单剩余可退；为避免“部分退后既不可交付也不可再退”
+                # 的死态，创建时即强制按剩余实付全额退款。
+                cap = _remaining_refundable(order)
+                if cap <= 0:
+                    raise ValueError("订单无可退金额")
+                computed = cap
+                amount_cap = cap
+                if requested_amount is not None and requested_amount != cap:
+                    raise ValueError("未交付订单仅支持按实付金额全额退款")
             else:
-                # 部分退：仅年度套餐（按码折算）/ 咨询（协商金额）；
-                # 已使用的行也可勾选提交，是否退款由 admin 审批判断
-                if not _supports_partial(order, len(lines)):
-                    raise ValueError("该商品仅支持全额退款")
-                if not line_ids:
-                    raise ValueError("部分退款必须选择退款项")
-                all_ids = {line.id for line, _ in lines}
-                unknown = [i for i in line_ids if i not in all_ids]
-                if unknown:
-                    raise ValueError("退款项不存在")
-                selected_lines = [refundable[i] for i in line_ids if i in refundable]
-                if len(selected_lines) != len(line_ids):
-                    raise ValueError("所选退款项已退款，请刷新后重试")
-                computed = sum(l.amount_paid_alloc for l in selected_lines)
+                if not lines:
+                    raise ValueError("订单缺少可退明细，需人工核查")
+                # 申请不再以「行已被使用」（码已绑定/消耗、咨询已预约）拦截：
+                # 申请照单全收并通知 admin，由 admin 结合审批详情中的实时行状态
+                # 人工判断（2026-10-13 起）。仅排除已退款行。
+                refundable = {line.id: line for line, s in lines if s != "refunded"}
+                if not refundable:
+                    raise ValueError("订单内可退项已全部退款，无可申请项")
+                cap = sum(l.amount_paid_alloc for l in refundable.values())
+
+                if refund_type == "full":
+                    # 金额 = min(订单剩余可退, 未退款行分摊实付)——历史审批曾下调
+                    # 金额时二者会偏离，取小者保证不超退
+                    computed = min(_remaining_refundable(order), cap)
+                    amount_cap = cap
+                else:
+                    # 部分退：年度套餐（按码折算）/ 咨询（协商金额）/
+                    # 季度套餐（仅 admin 协商）；已使用的行也可勾选提交，
+                    # 是否退款由 admin 审批判断
+                    supports = _supports_partial(order, len(lines)) or (
+                        originated == "admin" and order.product_type == _PRODUCT_QUARTERLY
+                    )
+                    if not supports:
+                        raise ValueError("该商品仅支持全额退款")
+                    if not line_ids:
+                        raise ValueError("部分退款必须选择退款项")
+                    if len(set(line_ids)) != len(line_ids):
+                        raise ValueError("退款项重复，请刷新后重试")
+                    all_ids = {line.id for line, _ in lines}
+                    unknown = [i for i in line_ids if i not in all_ids]
+                    if unknown:
+                        raise ValueError("退款项不存在")
+                    selected_lines = [refundable[i] for i in line_ids if i in refundable]
+                    if len(selected_lines) != len(line_ids):
+                        raise ValueError("所选退款项已退款，请刷新后重试")
+                    computed = sum(l.amount_paid_alloc for l in selected_lines)
+                    # 部分退金额不超过所选行分摊实付
+                    amount_cap = computed
 
             final_amount = requested_amount if requested_amount is not None else computed
             if originated != "admin" and final_amount != computed:
                 raise ValueError("申请金额不合法")
-            if final_amount < 0 or final_amount > cap:
-                raise ValueError(f"申请金额超出可退上限（上限 ¥{_fen_to_yuan(cap)} 元）")
-            if final_amount == 0 and cap > 0:
+            if final_amount < 0 or final_amount > amount_cap:
+                raise ValueError(
+                    f"申请金额超出可退上限（上限 ¥{_fen_to_yuan(amount_cap)} 元）"
+                )
+            if final_amount == 0 and amount_cap > 0:
                 raise ValueError("申请金额必须大于 0")
 
             refund = PaymentRefund(
@@ -602,7 +748,12 @@ class RefundService:
                 raise RefundNotFoundError("退款单不存在")
             if refund.status != REFUND_PENDING_REVIEW:
                 raise ValueError(f"仅待审批的申请可撤回（当前状态：{refund.status}）")
+            order = await _get_order(db, refund.order_id)
             refund.status = REFUND_WITHDRAWN
+            # 未交付退款创建时会把 pending 推进 paid 以避开关单池；撤回后回到
+            # pending，恢复正常的渠道对账/交付路径，避免已付款订单悬空。
+            if refund.line_snapshot is None and order.status == "paid":
+                order.status = "pending"
             await db.commit()
             await db.refresh(refund)
             return refund
@@ -722,6 +873,7 @@ class RefundService:
         refund_id: str,
         approved_amount: Optional[int] = None,
         note: Optional[str] = None,
+        revoke_codes: bool = True,
     ) -> PaymentRefund:
         """批准并执行退款（一个动作：批准 → 同步渠道 → 状态联动）
 
@@ -729,6 +881,8 @@ class RefundService:
             approved_amount: 批准金额（分，不传 = 申请额；只能 ≤ 实时上限，
                 与申请额不一致必填 note 金额调整理由）
             note: 审批意见 / 金额调整理由
+            revoke_codes: 退款成功是否作废交付码（默认 True 作废；False=保留，
+                落库后失败重试沿用本选择）
 
         Raises:
             RefundNotFoundError / ValueError（状态或守卫不符）
@@ -737,38 +891,58 @@ class RefundService:
         admin_id = str(admin_user.get("user_id")) if admin_user else None
         note = (note or "").strip() or None
 
+        # 审批前置确认：未交付订单（pending/paid）再次向渠道确认已支付，防止本地状态失真
+        async with AsyncSessionLocal() as db:
+            refund = await _get_refund(db, refund_id)
+            if refund.status != REFUND_PENDING_REVIEW:
+                raise ValueError(f"退款单当前状态不可审批（{refund.status}）")
+            order = await _get_order(db, refund.order_id)
+            paid_info = None
+            if order.status in _UNDELIVERED_STATUSES:
+                paid_info = await _confirm_channel_paid(order)
+
         # 事务 A：锁定申请 + 实时重验（不信任申请时快照）
         async with AsyncSessionLocal() as db:
             refund = await _get_refund(db, refund_id, for_update=True)
             if refund.status != REFUND_PENDING_REVIEW:
                 raise ValueError(f"退款单当前状态不可审批（{refund.status}）")
             order = await _get_order(db, refund.order_id)
-            if order.status not in ("granted", "partially_refunded"):
+            undelivered = order.status in _UNDELIVERED_STATUSES
+            if order.status not in ("granted", "partially_refunded") and not undelivered:
                 raise ValueError(f"订单当前状态不可退款（{order.status}）")
 
-            lines = await _order_refundable_lines(db, order)
-            # admin 为最终裁判（2026-10-13 起）：行已被使用（码已绑定/消耗、
-            # 咨询已预约）不再拦截批准；批准后对应码强制作废、预约取消。
-            # 仅排除已退款行；行实时状态在审批详情中展示，供 admin 判断。
-            refundable = {line.id: line for line, s in lines if s != "refunded"}
-            has_remaining = _remaining_refundable(order) > 0
-
-            # 批准行集合：partial = 申请所选行 ∩ 未退款；full = 当前全部未退款行
-            if refund.refund_type == "full":
-                approved_lines = list(refundable.values())
+            if undelivered:
+                # 未交付订单：无明细行、仅全退；上限 = 订单剩余可退
+                if refund.refund_type != "full":
+                    raise ValueError("未交付订单仅支持全额退款")
+                approved_lines: List[PaymentOrderLine] = []
+                cap = _remaining_refundable(order)
             else:
-                requested_ids = _snapshot_line_ids(refund)
-                approved_lines = [refundable[i] for i in requested_ids if i in refundable]
-            if has_remaining and not approved_lines:
-                raise ValueError("订单内可退明细已全部退款，无可执行项")
+                lines = await _order_refundable_lines(db, order)
+                # admin 为最终裁判（2026-10-13 起）：行已被使用（码已绑定/消耗、
+                # 咨询已预约）不再拦截批准；批准后对应码强制作废、预约取消。
+                # 仅排除已退款行；行实时状态在审批详情中展示，供 admin 判断。
+                refundable = {line.id: line for line, s in lines if s != "refunded"}
+                has_remaining = _remaining_refundable(order) > 0
 
-            cap = min(
-                sum(l.amount_paid_alloc for l in approved_lines),
-                _remaining_refundable(order),
-            )
+                # 批准行集合：partial = 申请所选行 ∩ 未退款；full = 当前全部未退款行
+                if refund.refund_type == "full":
+                    approved_lines = list(refundable.values())
+                else:
+                    requested_ids = _snapshot_line_ids(refund)
+                    approved_lines = [refundable[i] for i in requested_ids if i in refundable]
+                if has_remaining and not approved_lines:
+                    raise ValueError("订单内可退明细已全部退款，无可执行项")
+
+                cap = min(
+                    sum(l.amount_paid_alloc for l in approved_lines),
+                    _remaining_refundable(order),
+                )
             final_amount = (
                 approved_amount if approved_amount is not None else refund.requested_amount
             )
+            if undelivered and final_amount != cap:
+                raise ValueError("未交付订单仅支持按实付金额全额退款，不允许调整金额")
             if final_amount < 0 or final_amount > cap:
                 raise ValueError(
                     f"批准金额超出实时可退上限（上限 ¥{_fen_to_yuan(cap)}；"
@@ -784,8 +958,32 @@ class RefundService:
             refund.reason_admin = note or refund.reason_admin
             refund.reviewed_by = admin_id
             refund.reviewed_at = _utcnow()
+            # 码作废选择落库：失败重试沿用审批时的选择
+            refund.revoke_codes = bool(revoke_codes)
             # 批准时重落快照 = 最终批准行集合（审计：批准时点的行选择）
             refund.line_snapshot = _line_snapshot_json(approved_lines)
+            if undelivered:
+                # 原子认领未交付订单：SQLite 下 SELECT FOR UPDATE 不可靠，必须用
+                # 条件 UPDATE 与交付侧的 pending/paid → paid 认领互斥。认领失败说明
+                # 交付/关单已先行提交；本次审批尚未调用渠道，可安全让 admin 刷新后重试。
+                claimed = await db.execute(
+                    update(PaymentOrder)
+                    .where(
+                        PaymentOrder.id == order.id,
+                        PaymentOrder.status.in_(_UNDELIVERED_STATUSES),
+                    )
+                    .values(status="refunding")
+                )
+                if claimed.rowcount != 1:
+                    await db.rollback()
+                    raise ValueError("订单状态刚发生变化，请刷新后重新审批")
+                order.status = "refunding"
+                # 保存渠道确认的支付信息
+                if paid_info is not None:
+                    if paid_info.paid_at and not order.paid_at:
+                        order.paid_at = paid_info.paid_at
+                    if paid_info.channel_transaction_id and not order.channel_transaction_id:
+                        order.channel_transaction_id = paid_info.channel_transaction_id
             await db.commit()
 
         executed = await cls._execute_refund(refund_id)
@@ -851,6 +1049,11 @@ class RefundService:
             refund.reason_admin = note
             refund.reviewed_by = str(admin_user.get("user_id")) if admin_user else None
             refund.reviewed_at = _utcnow()
+            order = await _get_order(db, refund.order_id)
+            # 未交付退款被驳回后回到 pending，允许对账补交付或按正常规则处理；
+            # 不停留在无自动任务的 paid 状态。
+            if refund.line_snapshot is None and order.status == "paid":
+                order.status = "pending"
             user_id = refund.user_id
             refund_no = refund.refund_no
             order_no = refund.order_no
@@ -918,16 +1121,21 @@ class RefundService:
             async with AsyncSessionLocal() as db:
                 refund = await _get_refund(db, refund_id, for_update=True)
                 if refund.status != REFUND_REFUNDING:
+                    current_status = refund.status
                     logger.warning(
                         "退款执行跳过（状态已被并发处理）：refund_no=%s status=%s",
                         refund_no,
-                        refund.status,
+                        current_status,
                     )
                     await db.rollback()
-                    return refund
+                    raise ValueError(f"退款单当前状态不可执行（{current_status}）")
 
                 order = await _get_order(db, refund.order_id)
                 snapshot_ids = set(_snapshot_line_ids(refund))
+                # 未交付退款：审批时已推进 refunding 阻止交付
+                was_undelivered = order.status == "refunding"
+                # NULL/True 均按作废（历史兼容）；False=admin 审批时选择保留码
+                should_revoke = refund.revoke_codes is not False
 
                 refund.status = REFUND_SUCCEEDED
                 refund.executed_at = executed_at
@@ -957,7 +1165,7 @@ class RefundService:
                     if line.id in snapshot_ids:
                         line.status = "refunded"
                         line.refunded_at = now
-                        if line.item_type == LINE_ITEM_CODE and line.item_ref:
+                        if line.item_type == LINE_ITEM_CODE and line.item_ref and should_revoke:
                             revoked_codes.append(line.item_ref)
                         if line.item_type == LINE_ITEM_CONSULTATION and line.item_ref:
                             booking_ids.append(line.item_ref)
@@ -1011,10 +1219,14 @@ class RefundService:
                     "退款完成，交付码已作废：refund_no=%s codes=%s", refund_no, revoked_codes
                 )
 
-            # 整单退完 → 退回券（按订单核销行回退，多次券减名额；失败不阻断）
+            # 整单退完 → 退回券（失败不阻断）：
+            # 未交付退款券仍 locked → release_coupon 释放；已交付整退 → return_coupon_on_refund
             if coupon_id and fully_refunded:
                 try:
-                    await CouponService.return_coupon_on_refund(coupon_id, refund.order_id)
+                    if was_undelivered:
+                        await CouponService.release_coupon(coupon_id, refund.order_id)
+                    else:
+                        await CouponService.return_coupon_on_refund(coupon_id, refund.order_id)
                 except ValueError as e:
                     logger.error(
                         "退款退券失败（订单已退款，需人工核查）：order=%s coupon=%s err=%s",
@@ -1036,6 +1248,9 @@ class RefundService:
             async with AsyncSessionLocal() as db:
                 return await _get_refund(db, refund_id)
 
+        except ValueError:
+            # 并发状态变化等明确业务拒绝不再覆盖为 failed；当前成功方会完成联动。
+            raise
         except Exception as e:
             # 渠道已退但联动失败（极端）：置 failed 供重试（同 refund_no 幂等不会多退）
             logger.error("退款联动失败（置 failed 供重试）：refund_no=%s err=%s", refund_no, e)

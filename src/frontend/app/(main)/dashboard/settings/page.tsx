@@ -465,8 +465,8 @@ export default function DashboardSettingsPage() {
         </button>
       </section>
 
-      {/* 危险区：注销账户 */}
-      <section className="rounded-2xl border border-rose-300/60 bg-bd-card/80 backdrop-blur-lg p-8 shadow-sm">
+      {/* 暂时隐藏注销入口，保留注销流程、二次确认及恢复能力 */}
+      <section className="hidden rounded-2xl border border-rose-300/60 bg-bd-card/80 backdrop-blur-lg p-8 shadow-sm">
         <h2 className="text-lg font-medium text-rose-600 mb-1">危险区</h2>
         <p className="text-sm text-bd-muted mb-6">
           注销后将无法使用任何功能；数据保留 30 天，期间登录可恢复；到期后数据永久删除，无法找回。

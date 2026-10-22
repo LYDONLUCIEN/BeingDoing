@@ -1,0 +1,26 @@
+{
+  "id": "legacy-v3-report-redirect",
+  "summary": "v3已定稿老报告经严格派生标记收口到报告页，新v4数据绝不跳过",
+  "paths": [
+    "src/backend/app/services/rumination_v4_service.py",
+    "src/backend/app/api/v1/rumination_v4_routes.py",
+    "src/frontend/lib/explore/ruminationV4Api.ts",
+    "src/frontend/components/explore/RuminationV4Entry.tsx",
+    "test/backend/test_rumination_retirement.py",
+    "test_agent/l2/center_rumination_case.mjs",
+    "test_agent/catalog/history-v3-report-redirect.json",
+    "test_agent/catalog/rumination-ui.json",
+    "docs/adr/0028-legacy-v3-report-redirect.md",
+    "docs/adr/README.md",
+    "docs/API_DOCUMENTATION.md",
+    "docs/DATA_DICTIONARY.md",
+    "docs/DECISIONS.md",
+    "docs/PRODUCT_RULES.md",
+    "docs/CHANGELOG.md",
+    "docs/TESTING.md"
+  ],
+  "cases": [
+    "history-v3-report-redirect",
+    "rumination-ui"
+  ]
+}

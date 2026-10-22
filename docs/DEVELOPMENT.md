@@ -59,7 +59,7 @@ asyncio.run(initialize())
 PY
 ```
 
-确认输出版本为 `025_user_type_admin_note (head)` 后启动：
+确认输出版本为 `026_refund_revoke_codes (head)` 后启动：
 
 ```bash
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000

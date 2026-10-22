@@ -1,0 +1,42 @@
+{
+  "id": "admin-proactive-refund-options",
+  "summary": "补齐管理员主动退款：已付未交付订单全退、季度协商部分退、退款行选择与激活码保留选项",
+  "paths": [
+    "src/backend/app/models/payment.py",
+    "src/backend/alembic/versions/026_refund_revoke_codes.py",
+    "src/backend/app/services/refund_service.py",
+    "src/backend/app/services/payment_service.py",
+    "src/backend/app/api/v1/admin_payment.py",
+    "src/backend/app/services/test_center.py",
+    "src/frontend/lib/api/payment.ts",
+    "src/frontend/components/admin/RefundApprovalsTab.tsx",
+    "src/frontend/components/admin/PaymentOrdersTab.tsx",
+    "test/backend/test_refund_service.py",
+    "test/backend/test_refund_api.py",
+    "test/backend/test_refund_migration.py",
+    "test_agent/l2/center_admin_refund_case.mjs",
+    "test_agent/l2/center_runner.mjs",
+    "test_agent/catalog/refunds.json",
+    "test_agent/catalog/history-refund-paid-order.json",
+    "test_agent/catalog/history-refund-quarterly-partial.json",
+    "test_agent/catalog/history-refund-keep-code.json",
+    "test_agent/catalog/admin-refund-ui.json",
+    "test_agent/snapshot/schema.json",
+    "docs/PRODUCT_RULES.md",
+    "docs/DATA_DICTIONARY.md",
+    "docs/API_DOCUMENTATION.md",
+    "docs/CHANGELOG.md",
+    "docs/DEVELOPMENT.md",
+    "docs/TESTING.md"
+  ],
+  "cases": [
+    "refunds",
+    "history-refund-paid-order",
+    "history-refund-quarterly-partial",
+    "history-refund-keep-code",
+    "admin-refund-ui",
+    "account-deletion",
+    "history-renewal-no-refund",
+    "snapshot-pipeline"
+  ]
+}

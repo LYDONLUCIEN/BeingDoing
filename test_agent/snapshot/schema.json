@@ -379,6 +379,7 @@
     "succeeded_at",
     "failed_reason",
     "channel_response",
+    "revoke_codes",
     "line_snapshot",
     "created_at",
     "updated_at"

@@ -50,6 +50,7 @@
 | combo_sessions[].status / user_skipped | discussing/concluded/abandoned 与可逆跳过标记；跳过不删除用户卡，不等于终选提交 |
 | conclusion_card / balance_analysis.status | 用户卡与独立判定任务；任务 analyzing/done/failed，未发起可空；两者不能等同于审核状态 |
 | final_selection.selected_combo_ids / submitted / submitted_at | 1–3个当前组合 ID 的用户终选及提交记录；锁定沉淀、触发审核，不能由报告脚本推断或补写 |
+| legacy_report_ready | `/rumination-v4/state` 与 `/combos` 的派生响应标记；仅严格识别 v3 已定稿且报告缓存可读、完全无 v4 实质数据的历史报告，用于入口收口；非持久化字段，不能由前端自报或用于补写终选 |
 | hypothesis | 用户填写字符串，不是按优势分组的 dict |
 | balance_found / balance_fail_reason | 后台对确认快照的判断及理由；新消息/修改假设使判断失效；不是强制准入 |
 | AnalyticsLike.user_id / message_id | 点赞者与消息 ID；新写入必须有已认证用户，读写按用户过滤 |
@@ -72,13 +73,14 @@
 | PaymentOrder.id / order_no / user_id | 内部订单 ID / 商户订单号 / 购买者；不是激活人 |
 | product_type / quantity / meta | 现有单商品订单的产品分支及交付载荷；quantity 不是现成的购物车支持 |
 | amount_original / amount_discount / amount_paid / amount_refunded | 原价/优惠合计/实付/累计成功退款，整数分；退款不得超过实付 |
-| status | pending→paid→granted；另有 closed/cancelled/refunding/partially_refunded/refunded；支付成功与权益交付分离 |
+| status | pending→paid→granted；另有 closed/cancelled/refunding/partially_refunded/refunded；支付成功与权益交付分离。admin 对渠道已付未交付订单退款时，创建后可停在 paid，审批执行期间用 refunding 阻止交付 |
 | delivered_code / meta.codes / gift_codes | 历史交付码字段与多码集合，展示取并集去重；不能仅看 delivered_code 就遗漏年度其余码 |
 | qr_code / pay_url / qr_text | 数据库 qr_code 兼容名实际存跳转 URL/凭证；qr_text 是用于自绘二维码的内容，提取失败可空并回退 |
 | PaymentOrderLine.item_type / item_ref | code/consultation_service/renewal_service；引用码、预约或目标码 |
 | price_original_alloc / coupon_alloc / amount_paid_alloc | 行分摊原价/优惠总额/实付，尾差归最后一行；coupon_alloc 名称虽然写 coupon，实际含所有优惠 |
 | PaymentOrderLine.status | 持久核销记录；可退性还需实时查认领/消耗/预约，不能只看 available |
 | PaymentRefund.requested_amount / approved_amount / refund_no | 申请额/批准执行额/渠道幂等号；同单一个待审批申请，成功才累计退款；申请与审批均不因行已被使用拦截，admin 人工判断 |
+| PaymentRefund.revoke_codes | 批准后是否作废已选激活码；NULL/true=作废（历史兼容），false=保留码但退款行仍置 refunded；失败重试沿用审批选择 |
 | Coupon.max_uses / used_count / locked_count | 总次数（1..10000）/已核销/锁定中；容量守卫在 DB 原子更新 |
 | owner_user_id / expires_at / suspended_at / voided_at | 单次券归属/期限/停用/作废；多次券不绑人；过期、停用、作废不是同一状态 |
 | CouponRedemption.order_id / user_id / status | 一订单一次券记录；locked/used/released/refunded；新发生记录落表，旧单槽信息兼容保留 |

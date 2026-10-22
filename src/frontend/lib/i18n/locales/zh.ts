@@ -42,7 +42,7 @@ export const zh = {
   home: {
     tagline: '寻路·OpenLife',
     heroTitle: '寻路·OpenLife',
-    heroSlogan: '所有热爱,都值得成为事业。',
+    heroSlogan: '所有热爱，都值得成为事业。',
     dimensionsTitle: '探索维度',
     dimensionsHeading: '向内寻找答案',
     dimensionsDescBefore: '职业方向不是被「',
@@ -414,8 +414,6 @@ export const zh = {
     purchaseCard: {
       title: '购买激活码',
       desc: '已有试用码将直接升级为完整版，探索记录保留',
-      quarterly: '季度套餐',
-      annual: '年度套餐',
       popular: '最受欢迎',
       buy: '立即购买',
     },

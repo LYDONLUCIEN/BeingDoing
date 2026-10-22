@@ -1,0 +1,32 @@
+{
+  "id": "history-refund-paid-order",
+  "title": "已支付未交付订单可由管理员全额退款",
+  "module": "退款",
+  "kind": "api",
+  "core": false,
+  "purpose": "已支付未交付订单可由管理员全额退款",
+  "inputs": [
+    "admin 对内部 paid 订单代录全额退款",
+    "admin 对本地 pending 但渠道已支付的订单代录并审批退款"
+  ],
+  "assertions": [
+    "创建和审批均核实渠道已支付且金额一致",
+    "批准后订单进入 refunding 并最终 refunded，不会交付激活码",
+    "锁定中的优惠券在退款成功后释放"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md",
+      "rule": "已付款未交付订单允许 admin 主动全额退款；pending 订单需渠道核实，未交付订单仅允许全退。"
+    }
+  ],
+  "targets": [
+    "test/backend/test_refund_service.py::test_admin_full_refund_pending_channel_paid",
+    "test/backend/test_refund_service.py::test_admin_full_refund_paid_order",
+    "test/backend/test_refund_service.py::test_reject_undelivered_refund_returns_order_to_pending",
+    "test/backend/test_refund_service.py::test_undelivered_refund_amount_must_be_full",
+    "test/backend/test_refund_service.py::test_in_flight_refund_blocks_order_close_paths",
+    "test/backend/test_refund_service.py::test_delivery_is_rejected_while_undelivered_refund_executes"
+  ],
+  "timeout": 300
+}

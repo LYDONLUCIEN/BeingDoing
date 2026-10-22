@@ -26,14 +26,14 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.config.settings import settings
 from app.core.payment import get_channel
 from app.core.payment.base import NotifyResult  # noqa: F401（供测试/调用方引用）
 from app.models.database import AsyncSessionLocal
 from app.models.feedback import Notification
-from app.models.payment import ConsultationBooking, Coupon, PaymentOrder
+from app.models.payment import ConsultationBooking, Coupon, PaymentOrder, PaymentRefund
 from app.models.user import User
 from app.services.coupon_service import CouponService
 from app.services.email_service import EmailService
@@ -534,6 +534,30 @@ class PaymentService:
                     order.status,
                 )
                 raise ValueError(f"订单状态不允许交付（当前状态：{order.status}）")
+
+            # 在任何激活码/预约等副作用前原子认领订单。SQLite 不支持可靠的
+            # SELECT FOR UPDATE；条件 UPDATE 与退款审批的 pending/paid → refunding
+            # 认领互斥，避免“退款成功后交付又覆盖状态且码未作废”。
+            claimed = await db.execute(
+                update(PaymentOrder)
+                .where(
+                    PaymentOrder.id == order.id,
+                    PaymentOrder.status.in_(("pending", "paid")),
+                )
+                .values(status="paid")
+            )
+            if claimed.rowcount != 1:
+                await db.rollback()
+                fresh = await cls._get_order_or_raise(db, order_id)
+                if fresh.status == "granted":
+                    return fresh
+                logger.critical(
+                    "支付交付认领失败：订单状态已变化（order_no=%s status=%s），需人工核查",
+                    fresh.order_no,
+                    fresh.status,
+                )
+                raise ValueError(f"订单状态不允许交付（当前状态：{fresh.status}）")
+            order.status = "paid"
 
             product_type = order.product_type
             meta = cls._parse_meta(order.meta)
@@ -1086,6 +1110,21 @@ class PaymentService:
 
     # ─── 取消与超时关单 ─────────────────────────────────────────
 
+    @staticmethod
+    async def _has_in_flight_refund(db, order_id: str) -> bool:
+        """订单是否有待审批/执行中的退款单（退款在途时禁止关单，防止钱单两悬空）"""
+        count = (
+            await db.execute(
+                select(func.count())
+                .select_from(PaymentRefund)
+                .where(
+                    PaymentRefund.order_id == order_id,
+                    PaymentRefund.status.in_(("pending_review", "refunding")),
+                )
+            )
+        ).scalar() or 0
+        return count > 0
+
     @classmethod
     async def cancel_order(cls, user_id: str, order_id: str) -> PaymentOrder:
         """主动取消（仅本人 pending）：渠道关单 → 强制查单确权 → 释放券 → cancelled
@@ -1104,6 +1143,8 @@ class PaymentService:
                 raise OrderNotFoundError("订单不存在")
             if order.status != "pending":
                 raise ValueError(f"仅待支付订单可取消（当前状态：{order.status}）")
+            if await cls._has_in_flight_refund(db, order.id):
+                raise ValueError("该订单退款申请正在处理中，不能取消；请等待退款审批完成")
             coupon_id = order.coupon_id
             order_id_ = order.id
             await cls._close_channel_order(order)
@@ -1149,6 +1190,9 @@ class PaymentService:
             )
             for order in rows:
                 try:
+                    if await cls._has_in_flight_refund(db, order.id):
+                        logger.info("退款处理中，跳过超时关单：order_no=%s", order.order_no)
+                        continue
                     await cls._close_channel_order(order)
                     coupon_id = order.coupon_id
                     order_id_ = order.id
@@ -1190,6 +1234,9 @@ class PaymentService:
             )
             for order in rows:
                 try:
+                    if await cls._has_in_flight_refund(db, order.id):
+                        logger.info("退款处理中，注销流程跳过关单：order_no=%s", order.order_no)
+                        continue
                     await cls._close_channel_order(order)
                     coupon_id = order.coupon_id
                     order_id_ = order.id

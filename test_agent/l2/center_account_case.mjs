@@ -4,6 +4,7 @@ export async function prepareAccount(context) {
   const phaseKeys = ['values', 'strengths', 'interests', 'purpose', 'rumination'];
   const state = { register: null, creates: [], cancelled: 0, downloads: [], review: 'approved', granted: false };
   const order = { id: 'order-fixture', order_no: 'TEST-ORDER', product_type: 'quarterly_package', status: 'pending', amount_original: 5900, amount_paid: 5900, created_at: '2026-10-14T00:00:00Z', channel: 'alipay', meta: {} };
+  const deliveredOrder = { ...order, status: 'granted', delivered_code: 'OPENLIFE-GGGG-HHHH-IIII' };
   await context.route('**/api/**', async route => {
     const url = new URL(route.request().url()); const p = url.pathname;
     const body = route.request().method() === 'GET' ? {} : route.request().postDataJSON(); let data = {};
@@ -26,9 +27,9 @@ export async function prepareAccount(context) {
     else if (p.endsWith('/payment/products')) data = { items: [{ product_type: 'quarterly_package', name: '启程版', amount: 5900 }, { product_type: 'annual_package', name: '远航版', amount: 12800 }] };
     else if (p.endsWith('/payment/orders') && route.request().method() === 'POST') {
       state.creates.push(body); data = { order, payment: { pay_type: 'qr', pay_url: 'https://example.invalid/test-cashier', qr_text: 'fixture-payment-only' } };
-    } else if (p.endsWith('/payment/orders')) data = { items: [order], total: 1, page: 1, page_size: 20 };
+    } else if (p.endsWith('/payment/orders')) data = { items: [state.granted ? deliveredOrder : order], total: 1, page: 1, page_size: 20 };
     else if (p.endsWith('/order-fixture/cancel')) { state.cancelled++; data = { order: { ...order, status: 'cancelled' } }; }
-    else if (p.includes('/payment/orders/')) data = { order: state.granted ? { ...order, status: 'granted', delivered_code: 'OPENLIFE-GGGG-HHHH-IIII' } : order, pay_type: 'qr', qr_text: 'fixture-payment-only', pay_url: 'https://example.invalid/test-cashier' };
+    else if (p.includes('/payment/orders/')) data = { order: state.granted ? deliveredOrder : order, pay_type: 'qr', qr_text: 'fixture-payment-only', pay_url: 'https://example.invalid/test-cashier' };
     else if (p.endsWith('/export/my-report-id')) data = { report_id: 'report-fixture', review_status: state.review, review_deadline: '2099-10-14T00:00:00Z' };
     else if (p.includes('/export/report-pdf-status/')) { await route.fulfill({ json: { status: 'ready' } }); return; }
     else if (p.includes('/export/report-pdf-download/')) {
@@ -80,6 +81,15 @@ export async function testAccount(page, base, state, check, replacePage) {
   check(await first.getByRole('button', { name: '报告', exact: true }).isDisabled(), '未完成旅程的报告不能访问');
   check(await first.locator('.ol-stage-mark:disabled').count() === 4, '未解锁的四个阶段保持禁用');
   await checkWidth(page, check, '个人空间');
+  const purchaseCard = page.locator('.ol-profile-purchase-card');
+  const purchaseCardText = await purchaseCard.innerText();
+  check(['免费版', '启程版', '远航版'].every(name => purchaseCardText.includes(name)), '个人空间购买入口同步展示免费版、启程版、远航版');
+  check(!purchaseCardText.includes('季度套餐') && !purchaseCardText.includes('年度套餐'), '个人空间购买入口不再使用季度/年度旧名称');
+  await purchaseCard.getByRole('button', { name: '立即购买', exact: true }).click();
+  await page.getByText('选择适合你的探索方式', { exact: true }).waitFor();
+  check(await page.locator('input[name="purchase-plan"][value="quarterly_package"]').isChecked(), '购买弹窗默认选择启程版');
+  await page.keyboard.press('Escape');
+  await page.getByRole('dialog').waitFor({ state: 'detached' });
   await page.locator('.ol-profile-journey-card').last().getByRole('button', { name: '报告', exact: true }).click();
   await page.waitForURL('**/explore/report/view**');
   const downloadButton = page.getByRole('button', { name: /下载.*PDF|下载报告/ });
@@ -101,7 +111,7 @@ export async function testAccount(page, base, state, check, replacePage) {
   check(await page.getByRole('button', { name: /微信支付/ }).isDisabled(), '微信支付保持未开放');
   await page.getByRole('button', { name: '同意协议', exact: true }).click();
   await page.getByText(/订单 TEST-ORDER 已创建/).waitFor();
-  check(state.creates.length === 1 && state.creates[0].channel === 'alipay', '同意协议后使用既有支付宝渠道下单一次');
+  check(state.creates.length === 1 && state.creates[0].channel === 'alipay' && state.creates[0].product_type === 'quarterly_package', '同意协议后按默认启程版使用既有支付宝渠道下单一次');
   await page.keyboard.press('Escape');
   await page.getByText('取消这笔订单？', { exact: true }).waitFor();
   check(await page.getByRole('button', { name: '继续支付', exact: true }).last().isVisible(), '等待支付关闭时可继续');
@@ -120,4 +130,13 @@ export async function testAccount(page, base, state, check, replacePage) {
   await page.getByText('OPENLIFE-GGGG-HHHH-IIII', { exact: true }).waitFor();
   check(true, '回跳页面根据服务端交付状态展示激活码');
   await checkWidth(page, check, '支付结果');
+
+  await page.goto(`${base}/dashboard/codes?tab=orders`, { waitUntil: 'networkidle' });
+  await page.getByText('OPENLIFE-GGGG-HHHH-IIII', { exact: true }).first().waitFor();
+  check(await page.getByRole('button', { name: '申请退款', exact: true }).count() === 0, '已交付订单不展示申请退款入口');
+
+  await page.goto(`${base}/dashboard/settings`, { waitUntil: 'networkidle' });
+  await page.getByRole('button', { name: '修改密码', exact: true }).waitFor();
+  check(await page.getByRole('button', { name: '注销账户', exact: true }).count() === 0, '设置页不展示注销账户入口');
+  check(!(await page.getByText('危险区', { exact: true }).isVisible()), '设置页隐藏注销危险区');
 }

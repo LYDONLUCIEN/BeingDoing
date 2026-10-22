@@ -28,7 +28,7 @@
 
 - 删除 `/simple-chat/rumination-progress`、`rumination-step-opening`、`rumination-step-opening-stream`、`rumination-table-submit`、`rumination-combo-conclusion`、`rumination-combo-guide`、`rumination-combo-matrix-submit`、`rumination-combo-matrix`、`rumination-neg-resolve`、`rumination-get-table` 路由，OpenAPI 不再发布，旧路径返回404。
 - 通用 `/simple-chat/message`、`message/stream`、`init`、`thread/reopen`、`thread/complete`、`conclusion/request`、`thread/delete` 对已认证请求的 `phase=rumination` 返回410，提示使用 `/simple-chat/rumination-v4`；在激活码读写与模型调用前拒绝。旧 row/step3/combo 请求字段从 Schema 移除。
-- 现行 `/simple-chat/rumination-v4/*` 继续使用独立组合 `combo_id`；`/version` 保留响应形状，固定 v4/current，分配时间与比例为空，不创建 A/B 记录。
+- 现行 `/simple-chat/rumination-v4/*` 继续使用独立组合 `combo_id`；`/version` 保留响应形状，固定 v4/current，分配时间与比例为空，不创建 A/B 记录。`/state` 与 `/combos` 响应附带派生字段 `legacy_report_ready`：仅在 v3 已定稿、旧 Markdown 可读且完全无 v4 实质数据时为 true，供入口直接收口报告页；它不是持久化状态，也不授权生成或重生成报告。
 - 后台 `jump-to-rumination` 请求只保留 `activation_code`，仍要求超级管理员与沙箱；初始化 v4、不覆盖已有组合。旧 `target_section/target_filter_step/seed_table` 不再是契约。
 - `/simple-chat/history` 继续经原权限边界读取历史消息；可选 `rumination_filter_step` 仅用于历史消息筛选。后台历史导出不写回、不补矩阵，`source_schema_version`注明原版本，`steps`保留原编号（schema1为九步），不将旧步骤重新编号为当前流程。当前批量导出增加 `raw/rumination_v4_progress.json`，缺少原生终选的包不判为当前完整报告。
 
@@ -44,6 +44,9 @@
 | --- | --- |
 | GET /api/v1/admin/payment/revenue-summary | 仅超级管理员；实时 SQL 聚合，净实收口径 = Σ实付 − Σ已退款（计收状态 paid/granted/partially_refunded/refunding/refunded），今日/本月按 paid_at 以 +08:00 日界归属；与漏斗统计（排除已退款订单）口径不同，不可混用 |
 | GET /api/v1/admin/payment/orders/export | 仅超级管理员；xlsx 下载，遵循 status/channel 筛选、无分页，单批上限 20000 行（超出 400 提示分批）；响应含用户邮箱（个人敏感信息），每次导出追加审计到 `data/admin_export_audit.jsonl` |
+| GET /api/v1/admin/payment/orders/{order_reference}/refund-options | 仅超级管理员；`order_reference` 可为内部订单 ID 或商户订单号。返回退款能力、剩余可退、明细行实时状态、在途申请与历史；`pending/paid` 未交付订单仅允许全额退款，admin 视角下季度套餐允许按行协商部分退款 |
+| POST /api/v1/admin/payment/refunds | 仅超级管理员；代录退款申请。`order_id` 可为内部订单 ID 或商户订单号；部分退款必须传 `line_ids`。`pending/paid` 未交付订单仅 admin 全退，且 pending/paid 均需渠道查单确认已支付且金额一致 |
+| POST /api/v1/admin/payment/refunds/{refund_id}/approve | 仅超级管理员；批准并执行渠道退款。`revoke_codes` 默认 true（作废已选激活码），false 表示保留激活码但退款行仍标记 refunded；选择落库，失败重试沿用 |
 
 ## 前端适配
 

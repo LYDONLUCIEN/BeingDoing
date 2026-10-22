@@ -3,6 +3,7 @@ export async function testDesktop(page, base, fixture, check, evidence) {
   await page.goto(`${base}/explore/chat/rumination?code=FIXTURE`, { waitUntil: 'networkidle' });
   const input = page.locator('textarea.flow-input-field');
   await input.waitFor();
+  await page.locator('.v4-combo-sidebar').getByRole('button', { name: '新建组合', exact: true }).click();
   await page.getByRole('button', { name: '帮助他人', exact: true }).click();
   await page.getByRole('button', { name: '倾听', exact: true }).click();
   await page.getByRole('button', { name: /开始探索/ }).click();

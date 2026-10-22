@@ -5,6 +5,7 @@ import { prepareRumination, testRumination } from './center_rumination_case.mjs'
 import { testReply } from './center_reply_case.mjs';
 import { prepareChat, testChat } from './center_chat_case.mjs';
 import { prepareAdmin, testAdmin } from './center_admin_case.mjs';
+import { prepareAdminRefund, testAdminRefund } from './center_admin_refund_case.mjs';
 import { testHomeCards } from './center_home_case.mjs';
 /** 固定浏览器用例。真实页面配受控 API；不会访问线上业务接口。 */
 import fs from 'node:fs';
@@ -59,6 +60,7 @@ try {
         } else { await route.abort(); }
       });
       const adminState = suite === 'admin-center' ? await prepareAdmin(context) : null;
+      const adminRefundState = suite === 'admin-refund' ? await prepareAdminRefund(context) : null;
       await context.tracing.start({ screenshots: true, snapshots: true });
       let page = await context.newPage();
       const chatState = fixtureSuite === 'chat' ? await prepareChat(context, phase) : null;
@@ -100,12 +102,17 @@ try {
           report.views.push(`${engine}/${width}${suite === 'chat' ? `/${phase}` : ''}`);
           continue;
         }
+        if (suite === 'admin-refund') {
+          await testAdminRefund(page, base, adminRefundState, check);
+          report.views.push(`${engine}/${width}`);
+          continue;
+        }
         if (suite !== 'home') throw new Error(`尚未实现套件: ${suite}`);
         await page.goto(base, { waitUntil: 'networkidle', timeout: 120000 });
         await page.locator('html[data-landing="true"]').waitFor();
         const dimensions = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }));
         check(dimensions.scroll <= dimensions.width + 1, `${engine}/${width}: 页面横向溢出 ${dimensions.scroll}`);
-        await testHomeCards(page, check);
+        await testHomeCards(page, check, { verifyInitialState: true });
         await page.locator('.ol-journey-dock').screenshot({ path: path.join(artifacts, `${engine}-${width}-cards.png`) });
         if (width === 360) {
           await page.getByRole('button', { name: '打开导航菜单' }).click();

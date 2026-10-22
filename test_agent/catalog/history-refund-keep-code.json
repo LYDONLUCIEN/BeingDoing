@@ -1,0 +1,32 @@
+{
+  "id": "history-refund-keep-code",
+  "title": "管理员退款时可选择保留激活码",
+  "module": "退款",
+  "kind": "api",
+  "core": false,
+  "purpose": "管理员退款时可选择保留激活码",
+  "inputs": [
+    "admin 审批退款时取消作废激活码",
+    "渠道失败后用原退款单号重试"
+  ],
+  "assertions": [
+    "退款成功后激活码保持 active，退款行仍标记 refunded",
+    "默认不传 revoke_codes 时保持作废的历史兼容行为",
+    "失败重试沿用审批时保存的保留选择"
+  ],
+  "sources": [
+    {
+      "path": "docs/PRODUCT_RULES.md",
+      "rule": "退款批准后默认作废已选激活码；admin 可选择保留，退款行仍标记已退款。"
+    },
+    {
+      "path": "docs/DATA_DICTIONARY.md",
+      "rule": "PaymentRefund.revoke_codes 中 NULL/true 表示作废，false 表示保留，失败重试沿用审批选择。"
+    }
+  ],
+  "targets": [
+    "test/backend/test_refund_service.py::test_revoke_codes_false_keeps_codes",
+    "test/backend/test_refund_service.py::test_revoke_codes_default_true_and_retry_reuses_choice"
+  ],
+  "timeout": 300
+}

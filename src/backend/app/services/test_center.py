@@ -281,6 +281,7 @@ class TestCenter:
             elif target not in {
                 "home",
                 "admin-center",
+                "admin-refund",
                 "chat",
                 "reply-integrity",
                 "rumination",

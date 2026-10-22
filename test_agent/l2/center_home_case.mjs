@@ -1,6 +1,19 @@
-/** 首页阶段卡：验证实际排布、完整内容和点击，不以元素存在代替可访问。 */
-export async function testHomeCards(page, check) {
+/** 首页阶段卡：验证实际排布、完整内容和选择交互，不以元素存在代替可访问。 */
+export async function testHomeCards(page, check, { verifyInitialState = false } = {}) {
   const cards = page.locator('.ol-phase-card');
+  const hoverCapable = await page.evaluate(() => matchMedia('(hover: hover) and (pointer: fine)').matches);
+  if (verifyInitialState) {
+    // 仅在桌面尺寸等待一个旧轮播周期，避免为所有断点增加相同等待。
+    if (await page.evaluate(() => innerWidth === 1440)) await page.waitForTimeout(3700);
+    check(await page.locator('.ol-phase-card[aria-checked="true"]').count() === 0, '五张阶段卡默认均不选中，也不再自动随机高亮');
+  }
+  if (verifyInitialState && hoverCapable) {
+    await cards.nth(1).hover();
+    check(await cards.nth(1).getAttribute('aria-checked') === 'true', '鼠标悬停阶段卡时显示临时选中态');
+    await page.mouse.move(0, 0);
+    check(await cards.nth(1).getAttribute('aria-checked') === 'false'
+      && await page.locator('.ol-phase-card[aria-checked="true"]').count() === 0, '鼠标离开阶段卡后立即清除临时选中态');
+  }
   await cards.first().focus();
   const layout = await page.locator('.ol-phase-cards').evaluate(container => {
     const box = element => {
@@ -27,6 +40,21 @@ export async function testHomeCards(page, check) {
       })),
     };
   });
+  const scenePresentation = await page.evaluate(() => {
+    const visual = document.querySelector('.ol-home-scene-visual');
+    const image = document.querySelector('.ol-home-scene-bg');
+    if (!visual || !image) return { mask: 'none', blur: 'none', fade: 'none' };
+    const imageStyle = getComputedStyle(image);
+    const edgeStyle = getComputedStyle(visual, '::after');
+    return {
+      mask: `${imageStyle.maskImage} ${imageStyle.getPropertyValue('-webkit-mask-image')}`,
+      blur: `${edgeStyle.backdropFilter} ${edgeStyle.getPropertyValue('-webkit-backdrop-filter')}`,
+      fade: edgeStyle.backgroundImage,
+    };
+  });
+  check(scenePresentation.mask.includes('linear-gradient'), '顶部场景图下边缘使用透明渐隐遮罩');
+  check(scenePresentation.blur.includes('blur'), '顶部场景图下边缘使用渐进模糊');
+  check(scenePresentation.fade.includes('linear-gradient'), '顶部场景图下边缘以白色渐变衔接后续内容');
   check(layout.cards.length === 5, '保留五个探索阶段');
   check(!layout.overflow, `${layout.width}px: 阶段卡无需横向滑动`);
   for (const [index, card] of layout.cards.entries()) {
@@ -52,6 +80,17 @@ export async function testHomeCards(page, check) {
     await cards.nth(index).click();
     check(await cards.nth(index).getAttribute('aria-checked') === 'true', `第 ${index + 1} 张阶段卡可正常选择`);
   }
+  if (hoverCapable) {
+    await cards.first().hover();
+    check(await cards.first().getAttribute('aria-checked') === 'true'
+      && await cards.nth(4).getAttribute('aria-checked') === 'false', '悬停只临时切换高亮，不覆盖点击选择');
+    await page.mouse.move(0, 0);
+    check(await cards.first().getAttribute('aria-checked') === 'false'
+      && await cards.nth(4).getAttribute('aria-checked') === 'true', '悬停结束后恢复此前点击选择的卡片');
+  }
+  await cards.nth(2).focus();
+  await cards.nth(2).blur();
+  check(await cards.nth(2).getAttribute('aria-checked') === 'true', '键盘选择的卡片在失焦后保留选中状态');
   if (layout.narrow) {
     check(await page.locator('.ol-home-scene').evaluate(scene => scene.scrollTop === 0 && scene.scrollLeft === 0), '仅靠正常页面滚动即可浏览五张卡，不依赖首屏内部隐藏滚动');
   }

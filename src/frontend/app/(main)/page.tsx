@@ -100,25 +100,17 @@ function PhaseSymbol({ phase }: { phase: DimensionKey }) {
 }
 
 function JourneyHero({ onStart, t }: { onStart: () => void; t: (key: string) => string }) {
-  const [selected, setSelected] = useState<DimensionKey>('values');
-  const [autoSelectPaused, setAutoSelectPaused] = useState(false);
-
-  useEffect(() => {
-    if (autoSelectPaused) return;
-    const timer = window.setInterval(() => {
-      setSelected((current) => {
-        const alternatives = DIMENSION_KEYS.filter((key) => key !== current);
-        return alternatives[Math.floor(Math.random() * alternatives.length)];
-      });
-    }, 3600);
-    return () => window.clearInterval(timer);
-  }, [autoSelectPaused]);
+  const [selected, setSelected] = useState<DimensionKey | null>(null);
+  const [hovered, setHovered] = useState<DimensionKey | null>(null);
+  const activeKey = hovered ?? selected;
 
   return (
     <>
       <section className="ol-hero ol-home-section" aria-label="寻路 OpenLife 首页">
         <div className="ol-home-scene">
-          <img className="ol-home-scene-bg" src="/assets/openlife-journey/home-scene.webp?v=20260921" alt="" fetchPriority="high" decoding="async" />
+          <div className="ol-home-scene-visual">
+            <img className="ol-home-scene-bg" src="/assets/openlife-journey/home-scene.webp?v=20260921" alt="" fetchPriority="high" decoding="async" />
+          </div>
           <div className="ol-hero-copy">
             <p className="ol-eyebrow"><span />{t('home.tagline')}<span /></p>
             <h1>{t('home.heroTitle')}</h1>
@@ -134,7 +126,6 @@ function JourneyHero({ onStart, t }: { onStart: () => void; t: (key: string) => 
               className="ol-phase-cards"
               role="radiogroup"
               aria-label={t('home.dimensionsTitle')}
-              onMouseLeave={() => setAutoSelectPaused(false)}
             >
               <svg className="ol-journey-connector" viewBox="0 0 1500 110" preserveAspectRatio="none" aria-hidden>
                 <path d="M36 64 C142 10 224 102 334 62 S516 18 624 65 S818 102 924 62 S1114 18 1218 64 S1386 96 1464 60" />
@@ -146,12 +137,12 @@ function JourneyHero({ onStart, t }: { onStart: () => void; t: (key: string) => 
                   type="button"
                   className={`ol-phase-card ol-phase-card--${key}`}
                   role="radio"
-                  aria-checked={selected === key}
-                  tabIndex={selected === key ? 0 : -1}
-                  onMouseEnter={() => { setAutoSelectPaused(true); setSelected(key); }}
-                  onFocus={() => { setAutoSelectPaused(true); setSelected(key); }}
-                  onBlur={() => setAutoSelectPaused(false)}
-                  onClick={() => { setAutoSelectPaused(true); setSelected(key); }}
+                  aria-checked={activeKey === key}
+                  tabIndex={(selected ?? 'values') === key ? 0 : -1}
+                  onMouseEnter={() => setHovered(key)}
+                  onMouseLeave={() => setHovered(null)}
+                  onFocus={() => { setHovered(null); setSelected(key); }}
+                  onClick={() => { setHovered(null); setSelected(key); }}
                 >
                   <span className="ol-phase-no">{t(`dimensions.${key}.step`)}</span>
                   <span className="ol-phase-symbol"><PhaseSymbol phase={key} /></span>

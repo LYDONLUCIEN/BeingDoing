@@ -276,7 +276,7 @@ function JourneyCard({
   );
 }
 
-/** 购买套餐卡片：展示季度/年度价格入口，点击打开购买弹窗 */
+/** 购买套餐卡片：与购买弹窗同步展示三种方案，点击打开购买弹窗 */
 function PurchaseCard({ onBuy, t }: { onBuy: () => void; t: (k: string) => string }) {
   return (
     <div className="ol-profile-purchase-card ol-profile-surface">
@@ -292,8 +292,9 @@ function PurchaseCard({ onBuy, t }: { onBuy: () => void; t: (k: string) => strin
         </div>
         <div className="flex items-center gap-4">
           <div className="text-left text-xs text-bd-muted leading-tight">
-            <div>{t('dashboard.purchaseCard.quarterly')} <span className="font-semibold text-bd-fg">¥69</span> · {t('dashboard.purchaseCard.popular')}</div>
-            <div>{t('dashboard.purchaseCard.annual')} <span className="font-semibold text-bd-fg">¥159</span></div>
+            <div>{t('payment.wide.free.name')} <span className="font-semibold text-bd-fg">¥0</span></div>
+            <div>{t('payment.plan.quarterly_package.name')} <span className="font-semibold text-bd-fg">¥69</span> · {t('dashboard.purchaseCard.popular')}</div>
+            <div>{t('payment.plan.annual_package.name')} <span className="font-semibold text-bd-fg">¥159</span></div>
           </div>
           <button
             type="button"

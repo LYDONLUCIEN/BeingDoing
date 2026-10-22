@@ -146,6 +146,71 @@ def save_v4_state(reports_root: Path, report_id: str, state: Dict[str, Any]) -> 
     return state
 
 
+_LEGACY_PROGRESS_SCHEMA_VERSIONS = {1, 2, 3}
+
+
+def is_legacy_v3_report_ready(
+    reports_root: Path,
+    report_id: str,
+    record: Optional[Dict[str, Any]] = None,
+    state: Optional[Dict[str, Any]] = None,
+) -> bool:
+    """严格识别可安全收口到报告页的 v3 老报告。
+
+    只有同时满足以下条件才返回 True：前四阶段已选定、rumination 由旧会话
+    定稿锁定、原生 v3 进度文件存在、没有任何实质 v4 数据，且旧 Markdown
+    报告缓存仍可读取。任一项证据缺失都保守返回 False，避免把新 v4 用户
+    或迁移残留误判为历史报告。
+    """
+    try:
+        if record is None:
+            from app.utils.report_registry import ReportRegistry
+
+            registry = ReportRegistry(base_dir=str(reports_root.parent))
+            record = registry.get_report_by_id(report_id)
+        if not record:
+            return False
+
+        steps = record.get("steps") or {}
+        for phase in ("values", "strengths", "interests", "purpose"):
+            selected = str(((steps.get(phase) or {}).get("selected_session_id")) or "").strip()
+            if not selected:
+                return False
+
+        rumination_step = steps.get("rumination") or {}
+        legacy_session_id = str(rumination_step.get("selected_session_id") or "").strip()
+        if not rumination_step.get("locked") or not legacy_session_id:
+            return False
+        if legacy_session_id == "admin_mock":
+            return False
+
+        report_dir = reports_root / report_id
+        legacy_progress_path = report_dir / "rumination_progress.json"
+        if not legacy_progress_path.is_file():
+            return False
+        legacy_progress = json.loads(legacy_progress_path.read_text(encoding="utf-8") or "{}")
+        if not isinstance(legacy_progress, dict):
+            return False
+        if legacy_progress.get("schema_version") not in _LEGACY_PROGRESS_SCHEMA_VERSIONS:
+            return False
+
+        v4_state = state if state is not None else load_v4_state(reports_root, report_id)
+        if v4_state.get("combo_sessions"):
+            return False
+        final_selection = v4_state.get("final_selection") or {}
+        if final_selection.get("submitted") or final_selection.get("selected_combo_ids"):
+            return False
+        if v4_state.get("active_combo_id") or v4_state.get("main_section") != "matrix":
+            return False
+
+        if not record.get("report_markdown_generated_at"):
+            return False
+        return (report_dir / "report_markdown.md").is_file()
+    except Exception:
+        logger.warning("legacy v3 report redirect detection failed: %s", report_id, exc_info=True)
+        return False
+
+
 def _normalize_v4_state(data: Dict[str, Any]) -> Dict[str, Any]:
     """补全缺失字段。2026-08-06 起(ADR-0015)旧数据的 fields_collected、
     conclusion_card 多余字段(motivation 等)直接忽略,不做迁移。"""

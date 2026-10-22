@@ -53,7 +53,7 @@ export type PurchaseModalProps = {
   onSuccess?: (code: string, order: OrderItem) => void;
   /** 「继续支付」：打开即拉取该订单并直接进入支付视图 */
   resumeOrderId?: string;
-  /** 下单视图默认选中的商品（如 dashboard 购买卡默认年度套餐） */
+  /** 下单视图默认选中的商品；未指定时默认启程版 */
   defaultProductType?: ProductType;
   /** 传入即进入「激活码延期」模式：跳过商品选择，直接渠道 + 券码下单 */
   renewalTargetCode?: string;
@@ -616,7 +616,7 @@ export default function PurchaseModal({
   const [view, setView] = useState<ViewState>('order');
   const [products, setProducts] = useState<ProductItem[]>(FALLBACK_PRODUCTS);
   const [selectedType, setSelectedType] = useState<ProductType>(
-    defaultProductType ?? 'annual_package',
+    defaultProductType ?? 'quarterly_package',
   );
   const [channel, setChannel] = useState<PayChannel>('alipay');
   const [couponInput, setCouponInput] = useState('');
@@ -819,7 +819,7 @@ export default function PurchaseModal({
     if (!open) return;
     resetToOrderView();
     setCopiedCode(null);
-    setSelectedType(defaultProductType ?? 'annual_package');
+    setSelectedType(defaultProductType ?? 'quarterly_package');
 
     getProducts()
       .then((res) => {

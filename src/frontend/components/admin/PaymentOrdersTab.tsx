@@ -48,6 +48,14 @@ const CHANNEL_LABEL: Record<string, string> = {
   wechat: '微信',
 };
 
+/** 允许代录退款申请的订单状态（退款统一走申请单；pending 需渠道确认已支付后才可批准） */
+const REFUNDABLE_STATUSES: readonly OrderStatus[] = [
+  'pending',
+  'paid',
+  'granted',
+  'partially_refunded',
+];
+
 const PRODUCT_LABEL: Record<string, string> = {
   activation_code: '全程激活码',
   membership_monthly: '会员（包月）',
@@ -363,7 +371,7 @@ export default function PaymentOrdersTab() {
                         {formatTime(item.paid_at)}
                       </td>
                       <td className="px-2 py-2 whitespace-nowrap">
-                        {item.status === 'granted' ? (
+                        {REFUNDABLE_STATUSES.includes(item.status) ? (
                           <button
                             type="button"
                             onClick={() => void openRefund(item)}
@@ -484,20 +492,45 @@ export default function PaymentOrdersTab() {
               <p>
                 订单号：<span className="font-mono">{refundTarget.order_no}</span>
               </p>
-              <p>实付金额：¥{fenToYuan(refundTarget.amount_paid)}</p>
+              <p>
+                订单状态：{STATUS_LABEL[refundTarget.status] || refundTarget.status}
+              </p>
+              <p>
+                实付金额：¥{fenToYuan(refundTarget.amount_paid)}
+                {refundTarget.status === 'partially_refunded' && (
+                  <span className="text-purple-700">
+                    （已退 ¥{fenToYuan(refundTarget.amount_refunded ?? 0)}，剩余 ¥
+                    {fenToYuan(
+                      refundTarget.amount_paid - (refundTarget.amount_refunded ?? 0)
+                    )}）
+                  </span>
+                )}
+              </p>
               <p>
                 交付激活码：
                 <span className="font-mono">{refundTarget.delivered_code || '—'}</span>
               </p>
             </div>
-            {refundTarget.code_refundable === false ? (
-              <p className="text-xs text-rose-600">激活码已被使用，不可退款</p>
-            ) : (
-              <p className="text-xs text-bd-subtle">
-                2026-10-05 起退款走统一审批流：此处代录申请，请到「退款审批」tab
-                批准执行（可下调金额、驳回）。提交后将通知管理员审批。
+            {/* pending 仅渠道确认已支付后才可批准；已用/已预约码不再禁用，由审批确认 */}
+            {refundTarget.status === 'pending' && (
+              <p className="text-xs text-amber-700">
+                待支付订单：仅当渠道（支付宝/微信）确认已支付后才可批准退款，请在审批前核对渠道账单。
               </p>
             )}
+            {refundTarget.status === 'partially_refunded' && (
+              <p className="text-xs text-bd-subtle">
+                该订单已部分退款，本次代录将继续退剩余部分。
+              </p>
+            )}
+            {refundTarget.code_refundable === false && (
+              <p className="text-xs text-amber-700">
+                交付码已被使用/已预约，是否退款及作废旧码由「退款审批」环节确认。
+              </p>
+            )}
+            <p className="text-xs text-bd-subtle">
+              2026-10-05 起退款走统一审批流：此处代录申请，请到「退款审批」tab
+              批准执行（可下调金额、驳回）。提交后将通知管理员审批。
+            </p>
             <div className="flex justify-end gap-2">
               <button
                 type="button"
@@ -510,7 +543,7 @@ export default function PaymentOrdersTab() {
               <button
                 type="button"
                 onClick={() => void handleRefund()}
-                disabled={refundWorking || refundTarget.code_refundable === false}
+                disabled={refundWorking}
                 className="px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-medium disabled:opacity-50"
               >
                 {refundWorking ? '提交中…' : '代录申请'}

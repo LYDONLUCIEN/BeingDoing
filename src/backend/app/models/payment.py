@@ -159,6 +159,9 @@ class PaymentRefund(Base):
         failed_reason: 渠道失败原因
         channel_response: 渠道回执（JSON 文本，审计留存）
         line_snapshot: 批准时关联行快照（JSON 文本）
+        revoke_codes: 退款成功是否作废交付码（2026-10-18，迁移 026）：
+            NULL/True=作废（默认，历史兼容）；False=admin 审批时选择保留，
+            失败重试沿用审批时保存的选择
         created_at / updated_at: 通用时间戳
     """
 
@@ -188,6 +191,8 @@ class PaymentRefund(Base):
     failed_reason = Column(Text, nullable=True)
     channel_response = Column(Text, nullable=True)
     line_snapshot = Column(Text, nullable=True)
+    # 退款成功是否作废交付码：NULL/True=作废（默认，历史兼容）；False=保留
+    revoke_codes = Column(Boolean, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(
         DateTime,

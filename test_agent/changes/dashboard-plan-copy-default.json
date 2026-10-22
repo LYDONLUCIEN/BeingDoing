@@ -1,0 +1,16 @@
+{
+  "id": "dashboard-plan-copy-default",
+  "summary": "个人空间购买入口同步免费版、启程版、远航版名称，普通套餐购买弹窗默认选择启程版",
+  "paths": [
+    "src/frontend/app/(main)/dashboard/page.tsx",
+    "src/frontend/components/payment/PurchaseModal.tsx",
+    "src/frontend/lib/i18n/locales/zh.ts",
+    "src/frontend/lib/i18n/locales/en.ts",
+    "docs/PRODUCT_RULES.md",
+    "test_agent/l2/center_account_case.mjs",
+    "test_agent/catalog/account-mobile-ui.json"
+  ],
+  "cases": [
+    "account-mobile-ui"
+  ]
+}

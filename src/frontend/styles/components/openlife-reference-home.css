@@ -243,14 +243,33 @@ html[data-landing='true'] .journey-navbar .journey-nav-link.is-active::after {
   background: #fff;
 }
 
-.ol-home-scene-bg {
+.ol-home-scene-visual {
   position: absolute;
   inset: 0 0 auto;
+  aspect-ratio: 2048 / 682;
+  pointer-events: none;
+}
+
+.ol-home-scene-bg {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
-  height: auto;
-  aspect-ratio: 2048 / 682;
+  height: 100%;
   object-fit: fill;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 70%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 70%, transparent 100%);
+}
+
+.ol-home-scene-visual::after {
+  content: '';
+  position: absolute;
+  inset: 62% 0 0;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.18) 55%, rgba(255, 255, 255, 0.86) 100%);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 72%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 72%);
 }
 
 .ol-hero-copy {
@@ -1552,7 +1571,8 @@ html[data-landing='true'] .journey-navbar .journey-nav-link.is-active::after {
     border-radius: 16px;
   }
   html[data-landing='true'] .journey-navbar-brand { font-size: 17px; }
-  .ol-home-scene-bg { width: 100%; height: 520px; aspect-ratio: auto; object-fit: cover; object-position: center bottom; }
+  .ol-home-scene-visual { height: 520px; aspect-ratio: auto; }
+  .ol-home-scene-bg { object-fit: cover; object-position: center bottom; }
   .ol-hero-copy { position: relative; top: auto; left: auto; transform: none; width: auto; margin: 0 18px; padding-top: 96px; }
   .ol-eyebrow { margin-bottom: 13px; font-size: 11px; }
   .ol-hero-copy h1 { font-size: clamp(32px, 9vw, 42px); line-height: 1.16; }

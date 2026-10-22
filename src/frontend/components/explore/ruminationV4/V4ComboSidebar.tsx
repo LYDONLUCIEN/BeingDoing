@@ -24,6 +24,8 @@ const MAX_COMBOS = 10;
 
 interface SidebarProps {
   onNavigate?: () => void;
+  /** 新建草稿后由页壳打开当前设备对应的选择面板。 */
+  onNewCombo?: () => void;
   /** 点「编辑」展开右侧选择器（结论卡完整编辑入口在那边），由 RuminationV4Page 注入 */
   onExpandSelector?: () => void;
 }
@@ -51,7 +53,7 @@ function hypText(c: ComboSession | undefined): string {
   return Object.values(h).filter(Boolean).join('\n');
 }
 
-export default function V4ComboSidebar({ onExpandSelector, onNavigate }: SidebarProps) {
+export default function V4ComboSidebar({ onExpandSelector, onNavigate, onNewCombo }: SidebarProps) {
   /* 窄选择器（2026-10-05 性能优化）：流式 chunk 不再触发本栏重渲染 */
   const state = useRuminationV4Store((s) => s.state);
   const switchCombo = useRuminationV4Store((s) => s.switchCombo);
@@ -78,7 +80,7 @@ export default function V4ComboSidebar({ onExpandSelector, onNavigate }: Sidebar
 
       <button
         type="button"
-        onClick={() => { enterComboDraft(); onNavigate?.(); }}
+        onClick={() => { enterComboDraft(); onNewCombo?.(); onNavigate?.(); }}
         disabled={atLimit || finalSubmitted}
         title={
           finalSubmitted
@@ -95,7 +97,7 @@ export default function V4ComboSidebar({ onExpandSelector, onNavigate }: Sidebar
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
         {combos.length === 0 && (
           <p className="m-0 px-1 pt-2 text-[12px] leading-relaxed text-[#9ca3af]">
-            还没有组合，从右侧选择热爱与优势后开始。
+            还没有组合，点击「新建组合」开始。
           </p>
         )}
         {combos.map((c, idx) => {
