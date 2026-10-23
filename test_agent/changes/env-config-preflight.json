@@ -1,0 +1,23 @@
+{
+  "id": "env-config-preflight",
+  "summary": "新增不泄密的 dev/prod 配置只读检查器、脱敏模板和 Git 防泄密机制，并将 v1.8.3 迁移手册改为做什么、验证和理论结果",
+  "paths": [
+    "scripts/check_env.py",
+    "test/backend/test_check_env.py",
+    ".gitignore",
+    ".env.dev",
+    ".env.example",
+    ".env.dev.example",
+    ".env.prod.example",
+    "docs/OPERATIONS.md",
+    "docs/DEVELOPMENT.md",
+    "docs/ROOT_FILES.md",
+    "docs/CHANGELOG.md",
+    "docs/TESTING.md",
+    "wiki/历史回归记录/10-22-1.8.3版本迁移/迁移手册.md",
+    "test_agent/catalog/env-config.json"
+  ],
+  "cases": [
+    "env-config"
+  ]
+}

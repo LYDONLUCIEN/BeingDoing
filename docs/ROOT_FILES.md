@@ -67,14 +67,15 @@
 | `rumination-step3-debug.png` | [原图](../wiki/历史回归记录/界面截图/rumination-step3-debug.png) |
 | `widget-collapsed.png` | [原图](../wiki/历史回归记录/界面截图/widget-collapsed.png) |
 
-## 配置与辅助脚本：13 个保留，本轮不改执行行为
+## 配置与辅助脚本：14 个保留，本轮不改执行行为
 
 | 文件 | 职责／限制 |
 | --- | --- |
 | `.dockerignore` | Docker 构建排除规则 |
 | `.gitignore` | Git 排除规则，防止重复提交输出及本地状态 |
-| `.env.dev` | 已跟踪的开发配置；本轮不改内容，不认定可直接用于生产 |
-| `.env.test` | 已跟踪的测试配置；本轮不改内容，隔离测试仍以现行指南为准 |
+| `.env.dev` | 本机私有开发覆盖层，已加入忽略并取消 Git 跟踪；本地文件保留，不认定可直接用于生产 |
+| `.env.example`、`.env.dev.example`、`.env.prod.example` | 可跟踪的脱敏配置模板，只含公开值和不可用占位符，不代替本机真实配置 |
+| `.env.test` | 已跟踪的测试配置；本轮不改内容，不得写入秘密，隔离测试仍以现行指南为准 |
 | `docker-compose.yml` | 本地容器编排及问题库挂载；不在文档整理中改部署配置 |
 | `pytest.ini` | 根测试发现／运行配置 |
 | `start.sh` | 现有服务启动入口；使用范围见开发指南 |

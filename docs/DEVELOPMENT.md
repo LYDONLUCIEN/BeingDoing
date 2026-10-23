@@ -75,11 +75,13 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 ## 配置要点
 
-- `.env` 不入库；`.env.dev/.env.test` 为已跟踪的环境覆盖，生产配置另行管理。settings 从根 `.env` 读取，环境变量优先；start.sh 还会按启动参数加载覆盖层。
+- 真实 `.env`、`.env.dev`、`.env.prod` 只保留本机，Git 只跟踪对应 `*.example` 脱敏模板；`.env.test` 仍是已跟踪测试覆盖层，不得写入秘密。旧标签可能仍跟踪 `.env.dev`，在旧版本下同样不得用它保存秘密。
+- settings 从根 `.env` 读取，进程环境优先；start.sh 按 `.env` → `.env.dev/.env.prod` 加载。覆盖层必须显式设置目标 `APP_ENV`，不要把注释当作撤销基础层值。
+- 配置只读预检：`python scripts/check_env.py --env dev --base .env --overlay .env.dev`，prod 将两处 dev 分别改为 prod／`.env.prod`。输出只有 PASS／INFO／FAIL，不打印配置值；失败必须停止后续启动或发布。
 - 生产必须显式 APP_ENV=production、DEBUG=False、随机 SECRET_KEY（至少 32 字符）、REFRESH_COOKIE_SECURE=True 和 HTTPS。可独立设置同等强度 REFRESH_TOKEN_SECRET_KEY。校验不通过会拒绝启动。
 - 注册验证和邮件找回依赖 SMTP。假短信找回仅 development/test 可用；手机存量登录未删除。
 - SUPER_ADMIN_USER_IDS/SUPER_ADMIN_EMAILS 决定真实管理员权限。user_type 只是运营标签。
-- 模型场景由 admin_runtime_config 的 llm_scene_config 优先配置（chat/rumination/report/conclusion）；未覆盖场景走环境分流。vip_level 不是订阅资格，也不能当成固定模型名。
+- 模型场景由 admin_runtime_config 的 llm_scene_config 优先配置（chat/rumination/report/conclusion）；未覆盖场景走环境分流。`LLM_FLASH_MODEL` 只是旧 chat 回退，不是当前主要场景的统一开关；vip_level 不是订阅资格，也不能当成固定模型名。
 - 旧 Agent 默认模型可能走 llm_model_configs 的 DB-first 配置；换密钥时核对 `scripts/sync_llm_db_config.py --check`。不把测试密钥覆盖到生产。
 - 报告只有 xunlu：REPORT_RENDERER_DIR、REPORT_RENDERER_NODE、CHROME_PATH、REPORT_RENDER_TIMEOUT；需要 Node 和 Chrome/Chromium。RENDER_ENGINE/report_render_config 已废弃。
 - 汇率/模型费率、套餐价格及券有效期要核对当前环境和后台配置。年度套餐文档 ¥159 与 settings 默认 ¥128 存在冲突，见字段字典；本次不擅自调价。

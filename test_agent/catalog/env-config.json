@@ -1,0 +1,42 @@
+{
+  "id": "env-config",
+  "title": "dev/prod 环境配置只读预检与秘密保护",
+  "module": "配置与发布",
+  "kind": "api",
+  "core": true,
+  "inputs": [
+    "使用 tmp_path 合成基础层、dev 覆盖层和 prod 覆盖层，包含合法配置、错误 APP_ENV、弱密钥、错误 SITE_URL、缺失支付项及重复键",
+    "通过显式文件路径和 stdin 调用 scripts/check_env.py，不读取仓库真实 env，不联网",
+    "在 dev/prod 合成配置中放入不同的哨兵秘密，并构造应隔离秘密相同的拒绝路径"
+  ],
+  "assertions": [
+    "合法 dev/prod/all 退出 0；dev 正式支付宝与 openlife 共享依赖只产生预期 INFO",
+    "生产安全、环境域名、团队邮箱、支付路径、重复键和应隔离秘密相等等拒绝路径返回非零并显示 FAIL",
+    "参数、文件或解析错误返回退出码 2；stdin 与显式路径行为一致",
+    "stdout/stderr 不包含任何哨兵秘密、原始配置行或 Traceback",
+    "显式路径模式不读取真实 .env；检查器不写配置、不访问数据库或外部服务"
+  ],
+  "targets": [
+    "test/backend/test_check_env.py"
+  ],
+  "timeout": 120,
+  "purpose": "以不泄密的一键预检替代人工逐行比较，防止不安全生产配置、环境串用和真实 env 被误提交。",
+  "sources": [
+    {
+      "path": "docs/OPERATIONS.md",
+      "rule": "真实 env 本机私有，按 base 到 overlay 做只读预检；dev 共享正式支付宝和 openlife 是已确认 INFO 例外，静态通过不证明外部服务可用。"
+    },
+    {
+      "path": "docs/DEVELOPMENT.md",
+      "rule": "真实 env 与脱敏模板分离，覆盖层显式 APP_ENV，主要模型由 admin 场景配置决定。"
+    },
+    {
+      "path": "src/backend/app/config/settings.py",
+      "rule": "生产拒绝默认或短签名密钥、短独立 refresh 密钥、DEBUG=True 和 REFRESH_COOKIE_SECURE=False。"
+    },
+    {
+      "path": "src/frontend/app/robots.ts",
+      "rule": "NEXT_PUBLIC_SITE_URL 只有精确等于生产 URL 才启用生产 robots；其他值全站禁止抓取。"
+    }
+  ]
+}

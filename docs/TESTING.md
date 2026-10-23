@@ -17,6 +17,13 @@ isort --check-only --settings-path src/backend/pyproject.toml src/backend
 
 2026-10-14 更正：全量后端使用上述独立副本入口，不能直接从共享工作区运行 pytest。旧测试未全部自带隔离；本轮误用默认 `app.db` 的执行问题及处理见下方追加记录。历史独立导出源码的结果仍有效。
 
+## 2026-10-23 环境配置只读预检验证
+
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src/backend:. python -m pytest -p no:cacheprovider -q test/backend/test_check_env.py`：**23 passed**。覆盖合法 dev/prod/all、拒绝路径、stdin、显式路径隔离、退出码 0/1/2 和哨兵秘密不进入 stdout/stderr。
+- `check_catalog` 在当前真实配置下先因生产有效配置缺少 Secure Cookie 而在 Settings 导入阶段中止；仅在当前进程临时设置 `REFRESH_COOKIE_SECURE=True`（未写回配置）后执行，结果 **coverage_gaps=[]、unknown_cases=[]**。这不是服务器配置已修复的证明。
+- 用当前真实 env 运行 `--env all` 返回 1，只按变量名报告：覆盖层缺少显式团队邮箱/支付地址、生产缺少 Secure Cookie，且主签名、KIMI、SMTP、OSS 秘密在合并结果中相同；未输出配置值。真实 env 未修改。
+- `git diff --check` 与 `git diff --cached --check` 通过；两个新 Python 文件人工检查 100 列通过。当前环境没有 black/isort 命令或模块，未执行这两项格式器检查；未运行全量后端、前端构建或真实外部服务验收。
+
 ## 2026-10-20 沉淀首开引导与 v3 老报告收口验证
 
 - 独立后端入口：`verify_backend --output output/backend-legacy-v3-target-final-20261020-130402 test/backend/test_rumination_retirement.py test/backend/test_rumination_v4_e2e.py test/backend/test_rumination_v4_service.py`，**73 passed / 0 failed / 0 errors**。新增正反用例确认只有完整 v3 证据命中收口，任何 combo、终选草稿/提交、active 组合或离开 matrix 均不命中；intro/matrix 快照不算实质 v4 数据。

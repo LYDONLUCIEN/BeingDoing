@@ -115,9 +115,33 @@ bd_load_env() {
 bd_load_env
 ```
 
-配置必须核对：prod 的 `APP_ENV=production`、`DEBUG=False`、`REFRESH_COOKIE_SECURE=True` 和 HTTPS；SECRET_KEY 为至少 32 字符的随机值，独立 refresh 密钥如配置也要满足长度。保留现有有效密钥，**不要每次发布重新生成**：这会影响登录；某些加密配置还依赖密钥。前端域名、API 代理、刷新 cookie 域和 Server Actions 稳定密钥使用本机配置。现行变量含义见开发指南。
+配置必须核对：prod 的 `APP_ENV=production`、`DEBUG=False`、`DEBUG_MODE=False`、`REFRESH_COOKIE_SECURE=True` 和 HTTPS；SECRET_KEY 为至少 32 字符的随机值且不是默认占位符，独立 refresh 密钥如配置也要满足长度。保留现有有效密钥，**不要每次发布重新生成**：这会影响登录；某些加密配置还依赖密钥。前端域名、API 代理、刷新 cookie 域和 Server Actions 稳定密钥使用本机配置。现行变量含义见开发指南。
 
-`.env.dev` 已被 Git 跟踪；若服务器修改过它，Git 更新前需要先留存并人工合并差异。不要用 `reset --hard` 或 `clean -fd` 清掉本机修改。
+真实 `.env`、`.env.dev`、`.env.prod` 均为本机私有文件，Git 只跟踪 `.env.example`、`.env.dev.example`、`.env.prod.example` 脱敏模板。不要把真实配置复制到另一台机器或发到聊天／issue。旧标签（包括 v1.8.3）仍可能跟踪 `.env.dev`；使用旧版本时先用 `git ls-files .env.dev` 核对，只要被跟踪就不得写入秘密。不要用 `reset --hard` 或 `clean -fd` 清掉本机配置。
+
+### 2.1 配置自动预检（只读、不打印配置值）
+
+在对应服务器、仓库根目录执行；检查器只读合并基础层与覆盖层，不启动服务、不访问外部渠道：
+
+```bash
+# dev：应通过，并显示一条共享正式支付宝／openlife 的 INFO
+python scripts/check_env.py --env dev --base .env --overlay .env.dev
+
+# prod：全部必需项 PASS 才能继续
+python scripts/check_env.py --env prod --base .env --overlay .env.prod
+```
+
+`INFO` 是已确认的支付例外：dev 也使用正式支付宝和 openlife notify/return，因此生产域名故障会影响 dev 这两条链路；它不是沙箱或真实支付通过证明。主动查单和对账仍是现有兜底，不改变该依赖。
+
+只有两份配置本来就合法地位于同一受控目录时，才额外执行：
+
+```bash
+python scripts/check_env.py --env all --base .env --dev .env.dev --prod .env.prod
+```
+
+它只比较应隔离且可直接比较的签名、模型、邮件和 OSS 秘密，不显示值；不要为了比较把生产 env 复制到 dev。发现相同时先排查继承或拿错文件；真实确需轮换时另行评估登录态和加密配置，不能为赶发布直接换生产密钥。相同相对 SQLite 路径不代表两台机共用数据库，静态 PASS 也不证明 DNS、nginx、物理数据库或外部渠道已经隔离／可用。
+
+固定发布旧标签而当前运行代码不含检查器时，从一个 dev 已验收且包含脚本的独立工具提交执行，例如 `git show "${BD_ENV_CHECK_REV}:scripts/check_env.py" | python - --env prod --base .env --overlay .env.prod`。运行版本仍按本手册锁定，不移动旧标签。
 
 ## 3. 仅修复这次缺少 rehype-sanitize
 
